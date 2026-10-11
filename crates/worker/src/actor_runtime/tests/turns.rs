@@ -279,6 +279,55 @@ async fn a_lost_lease_stops_the_turn_from_writing() {
     );
 }
 
+/// The control plane refuses an append whose fence is no longer the
+/// holder's (`create_events_fenced`); the refusal stops the turn exactly as a
+/// lost renew does: nothing more is written and nothing is released.
+#[tokio::test]
+async fn a_refused_append_stops_the_turn_like_a_lost_lease() {
+    let fixture = Fixture::new(model("Late.", vec![vec![call("c1", "read_inbox")]])).await;
+    fixture.gate.hold_first.store(true, Ordering::SeqCst);
+    let (worker, probe) = fixture.worker("w1");
+    fixture.send("Read my inbox.").await;
+
+    let running = {
+        let worker = worker.clone();
+        tokio::spawn(async move { run_once(&worker).await })
+    };
+    tokio::time::timeout(WAIT, fixture.gate.held.notified())
+        .await
+        .unwrap();
+    let fence = probe
+        .fence
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("hosts carry the fence");
+    assert_eq!(fence.holder, "w1");
+    assert_eq!(fence.session_id, fixture.session_id);
+    let before = fixture.events().await.len();
+    // An append of this turn comes back refused for its fence.
+    fence.observe::<()>(&Err(crate::actor_lease_store::actor_lease_lost(
+        fixture.session_id,
+        "another holder's fence",
+    )));
+    tokio::time::timeout(WAIT, running).await.unwrap().unwrap();
+    fixture.gate.release.notify_one();
+    tokio::task::yield_now().await;
+
+    assert_eq!(
+        fixture.events().await.len(),
+        before,
+        "no write after the refusal"
+    );
+    let row = fixture.store.row(fixture.session_id);
+    assert_eq!(
+        row.holder.as_deref(),
+        Some("w1"),
+        "the lease is left to expire, not released"
+    );
+    assert!(row.runnable.is_some(), "the next holder resumes the turn");
+}
+
 #[tokio::test]
 async fn a_turn_that_keeps_killing_its_worker_is_sealed() {
     let mut fixture = Fixture::new(model("Never.", vec![])).await;

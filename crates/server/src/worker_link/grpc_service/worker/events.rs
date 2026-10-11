@@ -5,6 +5,27 @@
 //! cannot span modules, so the work lives here and the trait forwards to it.
 
 use crate::worker_link::grpc_service::*;
+use everruns_internal_protocol::proto::ActorFence;
+
+fn append_fence(fence: &ActorFence) -> crate::services::ActorAppendFence<'_> {
+    crate::services::ActorAppendFence {
+        holder: &fence.holder,
+        fence: fence.fence,
+    }
+}
+
+/// A refused fence is `FAILED_PRECONDITION` with the lease-lost marker the
+/// worker stops on (`everruns_worker::ACTOR_LEASE_LOST`); nothing was stored.
+fn fenced_append_status(error: anyhow::Error) -> Status {
+    if let Some(rejected) = error.downcast_ref::<crate::storage::ActorLeaseFenceRejected>() {
+        return Status::failed_precondition(format!(
+            "{}: {rejected}",
+            everruns_worker::ACTOR_LEASE_LOST
+        ));
+    }
+    tracing::error!("Failed to emit fenced events: {}", error);
+    Status::internal("Failed to store events")
+}
 
 impl WorkerServiceImpl {
     pub(crate) async fn handle_emit_event_stream(
@@ -13,9 +34,21 @@ impl WorkerServiceImpl {
     ) -> Result<Response<EmitEventStreamResponse>, Status> {
         let mut stream = request.into_inner();
         let mut event_requests: Vec<everruns_core::EventRequest> = Vec::new();
+        // The first message's fence is the stream's; every message must carry
+        // the same one (a holder never mixes leased and unleased writes).
+        let mut fence: Option<Option<ActorFence>> = None;
 
         // Collect all event requests from the stream, converting proto to core types
         while let Some(req) = stream.message().await? {
+            match &fence {
+                None => fence = Some(req.actor_fence.clone()),
+                Some(first) if *first != req.actor_fence => {
+                    return Err(Status::invalid_argument(
+                        "every message of an event stream must carry the same actor fence",
+                    ));
+                }
+                Some(_) => {}
+            }
             let proto_event_request = match req.event {
                 Some(e) => e,
                 None => {
@@ -37,14 +70,21 @@ impl WorkerServiceImpl {
         }
 
         // Emit all events through the EventService
-        let (events_processed, last_event) = self
-            .event_service
-            .emit_batch_returning_last(event_requests)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to emit event batch: {}", e);
-                Status::internal("Failed to store events")
-            })?;
+        let (events_processed, last_event) = match fence.flatten() {
+            Some(fence) => self
+                .event_service
+                .emit_batch_fenced(event_requests, append_fence(&fence))
+                .await
+                .map_err(fenced_append_status)?,
+            None => self
+                .event_service
+                .emit_batch_returning_last(event_requests)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to emit event batch: {}", e);
+                    Status::internal("Failed to store events")
+                })?,
+        };
 
         Ok(Response::new(EmitEventStreamResponse {
             events_processed,
@@ -66,14 +106,23 @@ impl WorkerServiceImpl {
             .map_err(|e| Status::invalid_argument(format!("Invalid event: {e}")))?;
 
         // Emit through the EventService
-        let stored_event = self
-            .event_service
-            .emit(core_event_request)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to emit event: {}", e);
-                Status::internal("Failed to store event")
-            })?;
+        let stored_event = match req.actor_fence {
+            Some(fence) => self
+                .event_service
+                .emit_batch_fenced(vec![core_event_request], append_fence(&fence))
+                .await
+                .map_err(fenced_append_status)?
+                .1
+                .ok_or_else(|| Status::internal("Failed to store event"))?,
+            None => self
+                .event_service
+                .emit(core_event_request)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to emit event: {}", e);
+                    Status::internal("Failed to store event")
+                })?,
+        };
 
         // Return the full stored event with id and sequence
         Ok(Response::new(EmitEventResponse {

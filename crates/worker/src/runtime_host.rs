@@ -309,6 +309,9 @@ pub struct WorkerRuntimeHost<A: WorkerAdapters> {
     event_metadata: Option<serde_json::Map<String, serde_json::Value>>,
     reads: PhaseReads,
     write_behind: WriteBehind,
+    /// The session actor lease this host's turn runs on: every event it
+    /// emits is appended under it (see `crate::actor_lease_store::ActorFence`).
+    actor_fence: Option<crate::actor_lease_store::ActorFence>,
 }
 
 impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
@@ -349,6 +352,12 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
         self
     }
 
+    /// Append every event this host emits under the actor lease `fence`.
+    pub fn with_actor_fence(mut self, fence: Option<crate::actor_lease_store::ActorFence>) -> Self {
+        self.actor_fence = fence;
+        self
+    }
+
     pub fn with_turn_cancellation(
         mut self,
         cancellation: tokio::sync::watch::Receiver<bool>,
@@ -373,6 +382,7 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
             event_metadata: metadata,
             reads: PhaseReads::new(),
             write_behind: WriteBehind::new(),
+            actor_fence: None,
         }
     }
 }
@@ -514,7 +524,8 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             SessionAdapter::new(self.adapters.clone())
                 .with_event_metadata(self.event_metadata.clone())
                 .with_reads(self.reads.clone())
-                .with_write_behind(self.write_behind.clone()),
+                .with_write_behind(self.write_behind.clone())
+                .with_actor_fence(self.actor_fence.clone()),
         )
     }
 

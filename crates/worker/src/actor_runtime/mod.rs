@@ -72,6 +72,8 @@ pub struct TurnSignals {
     pub stop: watch::Receiver<bool>,
     /// A person asked to cancel the turn.
     pub cancel: watch::Receiver<bool>,
+    /// The lease every event of the turn is appended under.
+    pub fence: Option<crate::actor_lease_store::ActorFence>,
 }
 
 /// A phase of a turn, as the host's setup reads see it.
@@ -364,7 +366,8 @@ impl<A: WorkerAdapters> ActorHosts for WorkerActorHosts<A> {
             metadata
         });
         let host = WorkerRuntimeHost::with_event_metadata(self.adapters.clone(), event_metadata)
-            .with_turn_cancellation(signals.stop.clone(), signals.cancel.clone());
+            .with_turn_cancellation(signals.stop.clone(), signals.cancel.clone())
+            .with_actor_fence(signals.fence.clone());
         match turn.input_message_id {
             Some(message_id) => host.with_turn_reads(self.turns.slot(
                 turn.org_id,

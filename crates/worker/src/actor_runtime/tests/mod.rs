@@ -124,6 +124,8 @@ struct Probe {
     running: Mutex<HashSet<SessionId>>,
     overlapped: AtomicBool,
     on_turn_ended: Mutex<Option<Hook>>,
+    /// The fence of the latest turn host, as its appends would carry it.
+    fence: Mutex<Option<crate::actor_lease_store::ActorFence>>,
 }
 
 #[derive(Clone)]
@@ -136,7 +138,8 @@ struct TestHosts {
 impl ActorHosts for TestHosts {
     type Host = InProcessRuntime;
 
-    fn host(&self, turn: HostTurn, _signals: &TurnSignals) -> InProcessRuntime {
+    fn host(&self, turn: HostTurn, signals: &TurnSignals) -> InProcessRuntime {
+        *self.probe.fence.lock().unwrap() = signals.fence.clone();
         if turn.input_message_id.is_some()
             && !self.probe.running.lock().unwrap().insert(turn.session_id)
         {

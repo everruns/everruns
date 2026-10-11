@@ -77,7 +77,8 @@ pub use grpc_adapters::{
 
 // Re-export task worker types
 pub use actor_lease_store::{
-    ActorJournal, ActorLeaseStore, ActorRelease, ActorRenewal, LeasedActor,
+    ACTOR_LEASE_LOST, ActorFence, ActorJournal, ActorLeaseLost, ActorLeaseStore, ActorRelease,
+    ActorRenewal, LeasedActor, actor_lease_lost, is_actor_lease_lost,
 };
 pub use grpc_actor_lease_store::GrpcActorLeaseStore;
 pub use grpc_worker_adapters::GrpcWorkerAdapters;

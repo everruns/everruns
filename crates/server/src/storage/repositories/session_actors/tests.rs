@@ -636,3 +636,119 @@ async fn deleting_the_session_removes_its_actor() {
         .unwrap();
     assert!(db.get_session_actor(id).await.unwrap().is_none());
 }
+
+// --- Fenced log appends -------------------------------------------------------
+
+fn row(session_id: SessionId, event_type: &str) -> CreateEventRow {
+    CreateEventRow {
+        session_id,
+        event_type: event_type.to_string(),
+        ts: chrono::Utc::now(),
+        context: serde_json::json!({}),
+        data: serde_json::json!({}),
+        metadata: None,
+        tags: None,
+    }
+}
+
+async fn log_len(db: &StorageBackend, session_id: SessionId) -> usize {
+    db.read_session_actor_journal(session_id, Some(0), 0)
+        .await
+        .unwrap()
+        .events
+        .len()
+}
+
+fn rejected(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<crate::storage::ActorLeaseFenceRejected>()
+        .is_some()
+}
+
+#[tokio::test]
+async fn a_fenced_append_lands_only_under_the_holders_live_lease() {
+    let db = StorageBackend::test_database();
+    let id = runnable(&db, ORG_A, 1).await;
+    let first = db.lease_session_actors("w1", 1, TTL, 32).await.unwrap();
+    let f1 = first[0].fence;
+
+    let stored = db
+        .create_events_fenced(
+            vec![row(id, "turn.started"), row(id, "reason.started")],
+            "w1",
+            f1,
+        )
+        .await
+        .expect("the current holder's batch lands");
+    assert_eq!(stored.len(), 2);
+    assert_eq!(stored[1].sequence, stored[0].sequence + 1, "in order");
+    assert_eq!(log_len(&db, id).await, 2);
+
+    // Another holder's id with the right fence, or the right holder with a
+    // wrong fence: refused, nothing lands.
+    for (holder, fence) in [("w2", f1), ("w1", f1 + 1)] {
+        let error = db
+            .create_events_fenced(vec![row(id, "tool.completed")], holder, fence)
+            .await
+            .expect_err("not this holder's lease");
+        assert!(rejected(&error), "{error:#}");
+    }
+    assert_eq!(log_len(&db, id).await, 2);
+
+    // The lease runs out and another worker takes the session: the stale
+    // holder's in-flight write is refused; the new holder's lands.
+    expire_lease(&db, id).await;
+    let error = db
+        .create_events_fenced(vec![row(id, "tool.completed")], "w1", f1)
+        .await
+        .expect_err("an expired lease writes nothing");
+    assert!(rejected(&error), "{error:#}");
+    let second = db.lease_session_actors("w2", 1, TTL, 32).await.unwrap();
+    let f2 = second[0].fence;
+    assert!(f2 > f1);
+    let error = db
+        .create_events_fenced(
+            vec![row(id, "tool.completed"), row(id, "turn.completed")],
+            "w1",
+            f1,
+        )
+        .await
+        .expect_err("the stale holder's batch is refused whole");
+    assert!(rejected(&error), "{error:#}");
+    assert_eq!(
+        log_len(&db, id).await,
+        2,
+        "nothing of the stale batch landed"
+    );
+
+    db.create_events_fenced(vec![row(id, "turn.completed")], "w2", f2)
+        .await
+        .expect("the new holder's write lands");
+    assert_eq!(log_len(&db, id).await, 3);
+
+    // After release no fence is live.
+    db.release_session_actor(id, "w2", f2, 1).await.unwrap();
+    let error = db
+        .create_events_fenced(vec![row(id, "turn.completed")], "w2", f2)
+        .await
+        .expect_err("a released lease writes nothing");
+    assert!(rejected(&error), "{error:#}");
+}
+
+#[tokio::test]
+async fn a_session_without_an_actor_takes_no_fenced_append() {
+    let db = StorageBackend::test_database();
+    let id = session(&db, ORG_A).await;
+    let error = db
+        .create_events_fenced(vec![row(id, "turn.started")], "w1", 1)
+        .await
+        .expect_err("no lease exists");
+    assert!(rejected(&error), "{error:#}");
+    assert_eq!(log_len(&db, id).await, 0);
+    assert!(
+        db.create_events_fenced(Vec::new(), "w1", 1)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}

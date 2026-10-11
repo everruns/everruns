@@ -194,6 +194,16 @@ macro_rules! mock_worker_adapters {
                     "event emission failed",
                 ))
             }
+            async fn emit_events_fenced(
+                &self,
+                _requests: Vec<everruns_durable_engine::core::events::EventRequest>,
+                _fence: &everruns_worker::ActorFence,
+            ) -> CoreResult<Option<everruns_durable_engine::core::events::Event>> {
+                self.source_reads().events.fetch_add(1, Ordering::SeqCst);
+                Err(everruns_contracts::error::AgentLoopError::store(
+                    "event emission failed",
+                ))
+            }
             async fn get_model_spec(
                 &self,
                 _org_id: i64,

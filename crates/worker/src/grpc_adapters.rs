@@ -1664,7 +1664,7 @@ fn proto_model_to_model_spec(proto: proto::ResolvedModel) -> Result<ModelSpec> {
 /// Whether the control plane has NATS-backed event delivery, meaning ephemeral
 /// events skip PG. When true, the worker can fire-and-forget for deltas.
 /// When false, all events go to PG — must use blocking gRPC for correct id/sequence.
-fn server_supports_ephemeral_skip() -> bool {
+pub(crate) fn server_supports_ephemeral_skip() -> bool {
     // Matches the server-side check: EventDelivery::Nats is active only when NATS_URL is set.
     // Worker and server share the same environment in typical deployments.
     std::env::var("NATS_URL").is_ok()
@@ -1687,6 +1687,7 @@ impl EventEmitter for GrpcAdapter {
 
         let grpc_request = proto::EmitEventRequest {
             event: Some(proto_event_request),
+            actor_fence: None,
         };
 
         let response = client
@@ -1714,6 +1715,7 @@ impl GrpcAdapter {
         let proto_event_request = core_event_request_to_proto(&request)?;
         let grpc_request = proto::EmitEventRequest {
             event: Some(proto_event_request),
+            actor_fence: None,
         };
 
         // Destructure to avoid clones

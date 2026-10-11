@@ -114,3 +114,69 @@ async fn actor_rpcs_reject_a_missing_holder() {
         .unwrap_err();
     assert_eq!(status.code(), tonic::Code::InvalidArgument);
 }
+
+fn fenced_emit(
+    session_id: everruns_contracts::typed_id::SessionId,
+    holder: &str,
+    fence: i64,
+) -> proto::EmitEventRequest {
+    let request = everruns_core::EventRequest::new(
+        session_id,
+        everruns_core::events::EventContext::empty(),
+        everruns_core::events::OutputMessageCompletedData::new(
+            everruns_core::RuntimeMessage::assistant("hi"),
+        ),
+    );
+    proto::EmitEventRequest {
+        event: Some(everruns_internal_protocol::schema_event_request_to_proto(
+            &request,
+        )),
+        actor_fence: Some(proto::ActorFence {
+            holder: holder.to_string(),
+            fence,
+        }),
+    }
+}
+
+#[tokio::test]
+async fn emit_event_with_a_stale_actor_fence_is_refused_and_stores_nothing() {
+    let svc = test_worker_service().await;
+    let db = svc.db.clone();
+    let session_id = db.create_test_session().await;
+    db.mark_session_actor_runnable(session_id, everruns_core::DEFAULT_ORG_ID, 1)
+        .await
+        .unwrap();
+    let leased = db
+        .lease_session_actors("worker-a", 1, std::time::Duration::from_secs(10), 32)
+        .await
+        .unwrap();
+    let fence = leased[0].fence;
+
+    let stored = svc
+        .emit_event(Request::new(fenced_emit(session_id, "worker-a", fence)))
+        .await
+        .expect("the holder's write lands")
+        .into_inner()
+        .event
+        .expect("stored event");
+    assert!(stored.sequence > 0);
+
+    let status = svc
+        .emit_event(Request::new(fenced_emit(session_id, "worker-a", fence + 1)))
+        .await
+        .expect_err("a stale fence is refused");
+    assert_eq!(status.code(), tonic::Code::FailedPrecondition);
+    assert!(
+        status
+            .message()
+            .starts_with(everruns_worker::ACTOR_LEASE_LOST),
+        "{}",
+        status.message()
+    );
+    let events = db
+        .read_session_actor_journal(session_id, Some(0), 0)
+        .await
+        .unwrap()
+        .events;
+    assert_eq!(events.len(), 1, "the refused write did not land");
+}

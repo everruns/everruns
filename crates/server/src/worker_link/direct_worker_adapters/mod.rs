@@ -644,6 +644,19 @@ impl DirectWorkerAdapters {
     }
 }
 
+/// A fenced append's failure as the worker sees it: a refused fence is the
+/// lease-lost error the actor runtime stops on, anything else a store error.
+pub(crate) fn fenced_append_error(
+    fence: &everruns_worker::ActorFence,
+    error: anyhow::Error,
+) -> everruns_contracts::error::AgentLoopError {
+    if let Some(rejected) = error.downcast_ref::<crate::storage::ActorLeaseFenceRejected>() {
+        return everruns_worker::actor_lease_lost(fence.session_id, rejected.to_string());
+    }
+    tracing::error!("Failed to emit fenced events: {}", error);
+    store_error("Failed to emit event")
+}
+
 #[async_trait]
 impl WorkerAdapters for DirectWorkerAdapters {
     // =========================================================================
@@ -845,6 +858,24 @@ impl WorkerAdapters for DirectWorkerAdapters {
             tracing::error!("Failed to emit event: {}", e);
             store_error("Failed to emit event")
         })
+    }
+
+    async fn emit_events_fenced(
+        &self,
+        requests: Vec<EventRequest>,
+        fence: &everruns_worker::ActorFence,
+    ) -> Result<Option<Event>> {
+        self.event_service
+            .emit_batch_fenced(
+                requests,
+                crate::services::ActorAppendFence {
+                    holder: &fence.holder,
+                    fence: fence.fence_i64(),
+                },
+            )
+            .await
+            .map(|(_, last)| last)
+            .map_err(|e| fenced_append_error(fence, e))
     }
 
     // =========================================================================

@@ -13,13 +13,111 @@
 //! - Fences are `u64`, as in core's `SessionLease`, so a leased actor maps onto
 //!   it directly.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use everruns_contracts::error::Result;
+use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::SessionId;
 
 use crate::core::events::Event;
+
+/// The marker the control plane puts in a refused fenced append (the gRPC
+/// status message of `FAILED_PRECONDITION`).
+pub const ACTOR_LEASE_LOST: &str = "actor lease lost";
+
+/// The lease a holder's event appends are made under.
+///
+/// Decision: every event a leased turn writes carries its holder and fence,
+/// and the control plane stores it only while that is still the holder's
+/// unexpired lease, checked in the insert's transaction. A holder that lost
+/// its lease (expired, taken, released) but still has a write in flight
+/// cannot land it after another holder took the session. The refusal flips
+/// the lease lost (`on_lost`), so the turn stops as when a renew finds the
+/// fence moved.
+#[derive(Clone)]
+pub struct ActorFence {
+    pub session_id: SessionId,
+    pub holder: String,
+    pub fence: u64,
+    on_lost: Option<Arc<tokio::sync::watch::Sender<bool>>>,
+}
+
+impl std::fmt::Debug for ActorFence {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ActorFence")
+            .field("session_id", &self.session_id)
+            .field("holder", &self.holder)
+            .field("fence", &self.fence)
+            .finish_non_exhaustive()
+    }
+}
+
+impl ActorFence {
+    pub fn new(session_id: SessionId, holder: impl Into<String>, fence: u64) -> Self {
+        Self {
+            session_id,
+            holder: holder.into(),
+            fence,
+            on_lost: None,
+        }
+    }
+
+    /// Flip `lost` to `true` when an append is refused.
+    pub fn with_lost_signal(mut self, lost: Arc<tokio::sync::watch::Sender<bool>>) -> Self {
+        self.on_lost = Some(lost);
+        self
+    }
+
+    /// The fence as the control plane stores it.
+    pub fn fence_i64(&self) -> i64 {
+        i64::try_from(self.fence).unwrap_or(i64::MAX)
+    }
+
+    /// Note the outcome of an append: a refusal marks the lease lost.
+    pub fn observe<T>(&self, result: &Result<T>) {
+        if let Err(error) = result
+            && is_actor_lease_lost(error)
+            && let Some(lost) = &self.on_lost
+        {
+            lost.send_replace(true);
+        }
+    }
+}
+
+/// An append refused because the holder's actor lease is gone.
+#[derive(Debug)]
+pub struct ActorLeaseLost {
+    pub session_id: SessionId,
+    pub detail: String,
+}
+
+impl std::fmt::Display for ActorLeaseLost {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{ACTOR_LEASE_LOST}: session {} ({})",
+            self.session_id, self.detail
+        )
+    }
+}
+
+impl std::error::Error for ActorLeaseLost {}
+
+/// The error a fenced append returns when the lease is no longer the
+/// holder's. Retryable (`Internal`): the turn stops and the next holder
+/// resumes it from the log.
+pub fn actor_lease_lost(session_id: SessionId, detail: impl Into<String>) -> AgentLoopError {
+    AgentLoopError::Internal(anyhow::Error::new(ActorLeaseLost {
+        session_id,
+        detail: detail.into(),
+    }))
+}
+
+/// Whether `error` is a refused fenced append ([`actor_lease_lost`]).
+pub fn is_actor_lease_lost(error: &AgentLoopError) -> bool {
+    matches!(error, AgentLoopError::Internal(inner) if inner.downcast_ref::<ActorLeaseLost>().is_some())
+}
 
 /// An actor a worker just leased.
 #[derive(Debug, Clone, PartialEq, Eq)]

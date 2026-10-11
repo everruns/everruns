@@ -11,8 +11,13 @@
 //!   or a resolution writes into the conversation carries the turn's id, so
 //!   it is part of that turn's history, never input that starts or steers one.
 //! - Lease loss is observed, never assumed away: a renew that finds another
-//!   holder's fence, or no successful renew for a whole TTL, flips `lost`, and
-//!   the turn stops without writing anything more.
+//!   holder's fence, no successful renew for a whole TTL, or an event append
+//!   the control plane refused for its fence flips `lost`, and the turn stops
+//!   without writing anything more.
+//! - Every event the turn appends carries the lease's holder and fence
+//!   (`fence`), checked by the control plane in the insert's transaction, so
+//!   a write still in flight when the lease was lost cannot land after
+//!   another holder took the session.
 
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -23,7 +28,7 @@ use everruns_contracts::error::Result;
 use everruns_contracts::typed_id::{MessageId, SessionId};
 use tokio::sync::{Notify, watch};
 
-use crate::actor_lease_store::{ActorLeaseStore, ActorRelease, LeasedActor};
+use crate::actor_lease_store::{ActorFence, ActorLeaseStore, ActorRelease, LeasedActor};
 use crate::core::events::{Event, EventData};
 
 /// The message id of `event` when it is input that starts or steers a turn.
@@ -55,7 +60,7 @@ pub(crate) struct Lease {
     cursor: AtomicI64,
     inbox_seq: AtomicI64,
     last_renewed: Mutex<Instant>,
-    lost: watch::Sender<bool>,
+    lost: Arc<watch::Sender<bool>>,
     cancel: watch::Sender<bool>,
 }
 
@@ -77,7 +82,7 @@ impl Lease {
             cursor: AtomicI64::new(actor.consumed_seq),
             inbox_seq: AtomicI64::new(actor.inbox_seq),
             last_renewed: Mutex::new(Instant::now()),
-            lost: watch::channel(false).0,
+            lost: Arc::new(watch::channel(false).0),
             cancel: watch::channel(actor.cancel_requested).0,
         }
     }
@@ -97,6 +102,13 @@ impl Lease {
     /// Input arrived past the cursor (or the inbox moved for a resolution).
     pub(crate) fn has_pending(&self) -> bool {
         self.inbox_seq() > self.cursor()
+    }
+
+    /// The fence this lease's event appends carry; a refused append flips
+    /// the lease lost.
+    pub(crate) fn fence(&self) -> ActorFence {
+        ActorFence::new(self.session_id, self.holder.clone(), self.fence)
+            .with_lost_signal(self.lost.clone())
     }
 
     pub(crate) fn lost(&self) -> watch::Receiver<bool> {

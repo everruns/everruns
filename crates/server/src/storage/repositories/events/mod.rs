@@ -66,6 +66,102 @@ fn push_common_filters(qb: &mut sqlx::QueryBuilder<sqlx::Postgres>, params: &Lis
     }
 }
 
+/// A holder presented a session actor lease that is no longer its own (taken
+/// by another holder, released, or expired): its event append was refused and
+/// nothing was written. See [`Database::create_events_fenced`].
+#[derive(Debug, Clone, thiserror::Error)]
+#[error("session {session_id}: actor lease lost (holder {holder}, fence {fence})")]
+pub struct ActorLeaseFenceRejected {
+    pub session_id: SessionId,
+    pub holder: String,
+    pub fence: i64,
+}
+
+/// One INSERT of `inputs`, in order, with consecutive per-session sequences
+/// reserved by a single `event_sequences` bump; see `Database::create_events`.
+fn batch_insert_query(inputs: &[CreateEventRow]) -> sqlx::QueryBuilder<sqlx::Postgres> {
+    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        "WITH input (ord, session_id, event_type, ts, context, data, metadata, tags) AS (",
+    );
+    qb.push_values(inputs.iter().enumerate(), |mut row, (ord, input)| {
+        row.push_bind(ord as i64)
+            .push_unseparated("::BIGINT")
+            .push_bind(input.session_id.uuid())
+            .push_unseparated("::UUID")
+            .push_bind(&input.event_type)
+            .push_unseparated("::TEXT")
+            .push_bind(input.ts)
+            .push_unseparated("::TIMESTAMPTZ")
+            .push_bind(&input.context)
+            .push_unseparated("::JSONB")
+            .push_bind(&input.data)
+            .push_unseparated("::JSONB")
+            .push_bind(&input.metadata)
+            .push_unseparated("::JSONB")
+            .push_bind(&input.tags)
+            .push_unseparated("::TEXT[]");
+    });
+    qb.push(sql!(
+            r#"
+            ),
+            counts AS (
+                SELECT session_id, COUNT(*)::INTEGER AS n FROM input GROUP BY session_id
+            ),
+            reserved AS (
+                INSERT INTO event_sequences (session_id, next_sequence, updated_at)
+                SELECT session_id, n + 1, NOW() FROM counts ORDER BY session_id
+                ON CONFLICT (session_id) DO UPDATE
+                SET next_sequence = event_sequences.next_sequence + EXCLUDED.next_sequence - 1,
+                    updated_at = NOW()
+                RETURNING session_id, next_sequence
+            )
+            INSERT INTO events (session_id, sequence, event_type, ts, context, data, metadata, tags)
+            SELECT
+                input.session_id,
+                reserved.next_sequence - counts.n - 1
+                    + (ROW_NUMBER() OVER (PARTITION BY input.session_id ORDER BY input.ord))::INTEGER,
+                input.event_type, input.ts, input.context, input.data, input.metadata, input.tags
+            FROM input
+            JOIN counts USING (session_id)
+            JOIN reserved USING (session_id)
+            ORDER BY input.ord
+            RETURNING {EventRow}
+            "#
+        ));
+    qb
+}
+
+/// `rows` (RETURNING order, unspecified) in the order of `inputs`.
+fn order_batch_rows(inputs: &[CreateEventRow], mut rows: Vec<EventRow>) -> Result<Vec<EventRow>> {
+    anyhow::ensure!(
+        rows.len() == inputs.len(),
+        "inserted {} events for a batch of {}",
+        rows.len(),
+        inputs.len()
+    );
+
+    // RETURNING order is unspecified. Within a session the sequences follow
+    // input order, so hand each input the next lowest sequence of its session.
+    rows.sort_by_key(|row| (row.session_id.uuid(), std::cmp::Reverse(row.sequence)));
+    let mut by_session: std::collections::HashMap<Uuid, Vec<EventRow>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        by_session
+            .entry(row.session_id.uuid())
+            .or_default()
+            .push(row);
+    }
+    let mut ordered = Vec::with_capacity(inputs.len());
+    for input in inputs {
+        let row = by_session
+            .get_mut(&input.session_id.uuid())
+            .and_then(Vec::pop)
+            .ok_or_else(|| anyhow::anyhow!("batch insert lost an event row"))?;
+        ordered.push(row);
+    }
+    Ok(ordered)
+}
+
 /// Most events [`Database::create_events`] inserts in one statement.
 const MAX_EVENT_BATCH: usize = 1000;
 
@@ -218,86 +314,97 @@ impl Database {
             }
             return Ok(rows);
         }
-        let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
-            "WITH input (ord, session_id, event_type, ts, context, data, metadata, tags) AS (",
-        );
-        qb.push_values(inputs.iter().enumerate(), |mut row, (ord, input)| {
-            row.push_bind(ord as i64)
-                .push_unseparated("::BIGINT")
-                .push_bind(input.session_id.uuid())
-                .push_unseparated("::UUID")
-                .push_bind(&input.event_type)
-                .push_unseparated("::TEXT")
-                .push_bind(input.ts)
-                .push_unseparated("::TIMESTAMPTZ")
-                .push_bind(&input.context)
-                .push_unseparated("::JSONB")
-                .push_bind(&input.data)
-                .push_unseparated("::JSONB")
-                .push_bind(&input.metadata)
-                .push_unseparated("::JSONB")
-                .push_bind(&input.tags)
-                .push_unseparated("::TEXT[]");
-        });
-        qb.push(sql!(
-            r#"
-            ),
-            counts AS (
-                SELECT session_id, COUNT(*)::INTEGER AS n FROM input GROUP BY session_id
-            ),
-            reserved AS (
-                INSERT INTO event_sequences (session_id, next_sequence, updated_at)
-                SELECT session_id, n + 1, NOW() FROM counts ORDER BY session_id
-                ON CONFLICT (session_id) DO UPDATE
-                SET next_sequence = event_sequences.next_sequence + EXCLUDED.next_sequence - 1,
-                    updated_at = NOW()
-                RETURNING session_id, next_sequence
-            )
-            INSERT INTO events (session_id, sequence, event_type, ts, context, data, metadata, tags)
-            SELECT
-                input.session_id,
-                reserved.next_sequence - counts.n - 1
-                    + (ROW_NUMBER() OVER (PARTITION BY input.session_id ORDER BY input.ord))::INTEGER,
-                input.event_type, input.ts, input.context, input.data, input.metadata, input.tags
-            FROM input
-            JOIN counts USING (session_id)
-            JOIN reserved USING (session_id)
-            ORDER BY input.ord
-            RETURNING {EventRow}
-            "#
-        ));
-        let mut rows = qb
+        let rows = batch_insert_query(&inputs)
             .build_query_as::<EventRow>()
             .fetch_all(&self.pool)
             .await?;
-        anyhow::ensure!(
-            rows.len() == inputs.len(),
-            "inserted {} events for a batch of {}",
-            rows.len(),
-            inputs.len()
-        );
+        let ordered = order_batch_rows(&inputs, rows)?;
+        self.after_events_stored(&ordered).await;
+        Ok(ordered)
+    }
 
-        // RETURNING order is unspecified. Within a session the sequences follow
-        // input order, so hand each input the next lowest sequence of its session.
-        rows.sort_by_key(|row| (row.session_id.uuid(), std::cmp::Reverse(row.sequence)));
-        let mut by_session: std::collections::HashMap<Uuid, Vec<EventRow>> =
-            std::collections::HashMap::new();
-        for row in rows {
-            by_session
-                .entry(row.session_id.uuid())
-                .or_default()
-                .push(row);
+    /// Insert `inputs` as [`Self::create_events`] does, only while `holder`
+    /// holds the unexpired session actor lease `fence` on every session the
+    /// batch writes to. Otherwise nothing is written and the error downcasts
+    /// to [`ActorLeaseFenceRejected`].
+    ///
+    /// Decisions:
+    /// - The fence check and the insert share one transaction, and the check
+    ///   takes `FOR SHARE` on the actor rows: a new lease (`FOR UPDATE SKIP
+    ///   LOCKED`) cannot take the session until the append committed, and the
+    ///   new holder's journal read then sees it. A holder whose lease was
+    ///   taken, released or expired cannot land a write after the fact.
+    /// - Lock order is the one every other writer uses: the session's
+    ///   `event_sequences` row first (as `allocate_event_sequence` and message
+    ///   intake, which then marks the actor), then the actor row.
+    /// - Expiry counts: a holder past its lease is rejected even when no one
+    ///   took the session yet. Its renewer has already lost the lease too, or
+    ///   is about to; the next holder resumes from the log.
+    pub async fn create_events_fenced(
+        &self,
+        inputs: Vec<CreateEventRow>,
+        holder: &str,
+        fence: i64,
+    ) -> Result<Vec<EventRow>> {
+        if inputs.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut sessions: Vec<Uuid> = inputs.iter().map(|row| row.session_id.uuid()).collect();
+        sessions.sort();
+        sessions.dedup();
+        let mut tx = self.pool.begin().await?;
+        sqlx::query(
+            "INSERT INTO event_sequences (session_id, next_sequence, updated_at) \
+             SELECT id, 1, NOW() FROM UNNEST($1::uuid[]) AS id ORDER BY id \
+             ON CONFLICT (session_id) DO NOTHING",
+        )
+        .bind(&sessions)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "SELECT 1 FROM event_sequences WHERE session_id = ANY($1) \
+             ORDER BY session_id FOR UPDATE",
+        )
+        .bind(&sessions)
+        .execute(&mut *tx)
+        .await?;
+        let held: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT session_id FROM session_actors \
+             WHERE session_id = ANY($1) AND lease_holder = $2 AND lease_fence = $3 \
+               AND lease_expires_at > NOW() \
+             ORDER BY session_id FOR SHARE",
+        )
+        .bind(&sessions)
+        .bind(holder)
+        .bind(fence)
+        .fetch_all(&mut *tx)
+        .await?;
+        if let Some(lost) = sessions.iter().find(|id| !held.contains(id)) {
+            tx.rollback().await?;
+            return Err(ActorLeaseFenceRejected {
+                session_id: SessionId::from_uuid(*lost),
+                holder: holder.to_string(),
+                fence,
+            }
+            .into());
         }
         let mut ordered = Vec::with_capacity(inputs.len());
-        for input in &inputs {
-            let row = by_session
-                .get_mut(&input.session_id.uuid())
-                .and_then(Vec::pop)
-                .ok_or_else(|| anyhow::anyhow!("batch insert lost an event row"))?;
-            ordered.push(row);
+        for chunk in inputs.chunks(MAX_EVENT_BATCH) {
+            let rows = batch_insert_query(chunk)
+                .build_query_as::<EventRow>()
+                .fetch_all(&mut *tx)
+                .await?;
+            ordered.extend(order_batch_rows(chunk, rows)?);
         }
+        tx.commit().await?;
+        self.after_events_stored(&ordered).await;
+        Ok(ordered)
+    }
+
+    /// The reporting projection and session trace work a stored batch owes.
+    async fn after_events_stored(&self, ordered: &[EventRow]) {
         let mut traced: Vec<Uuid> = Vec::new();
-        for row in &ordered {
+        for row in ordered {
             self.enqueue_event_projection(row).await;
             if Self::is_trace_event_type(&row.event_type)
                 && !traced.contains(&row.session_id.uuid())
@@ -308,7 +415,6 @@ impl Database {
         for session_id in traced {
             self.schedule_session_trace_projection(session_id);
         }
-        Ok(ordered)
     }
 
     async fn enqueue_event_projection(&self, row: &EventRow) {

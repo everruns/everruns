@@ -11,7 +11,10 @@
 //!   actor runnable (input arrived as the turn ended) wakes the next lease.
 //! - Lease loss stops the turn where it is: the drive is dropped, events
 //!   still queued are dropped, and nothing is released. The new holder folds
-//!   the log and goes on.
+//!   the log and goes on. Every append carries the lease's fence and the
+//!   control plane refuses a stale one in the insert's transaction, so a
+//!   write already in flight when the lease was lost does not land either;
+//!   the refusal itself is a way the holder learns of the loss.
 //! - A retryable failure (a store or transport error) also lets the lease
 //!   expire, after storing what the turn emitted: the next lease resumes from
 //!   the log, and the TTL is the backoff. A non-retryable one fails the turn
@@ -122,6 +125,7 @@ impl<H: ActorHosts> ActorRuntime<H> {
         TurnSignals {
             stop,
             cancel: cancel_view,
+            fence: Some(lease.fence()),
         }
     }
 
@@ -275,12 +279,18 @@ impl<H: ActorHosts> ActorRuntime<H> {
             Cancel,
             Done(Result<crate::host::TurnResult>),
         }
-        let stopped = tokio::select! {
+        let mut stopped = tokio::select! {
             biased;
             _ = lost.wait_for(|lost| *lost) => Stopped::Lost,
             _ = cancel.wait_for(|cancel| *cancel) => Stopped::Cancel,
             result = drive_turn(host, &inbox, drive.clone(), execution, plan) => Stopped::Done(result),
         };
+        // A refused append (the control plane found another holder's fence)
+        // flips the lease lost from inside the drive, which then returns its
+        // error in the same poll: the lease is gone either way.
+        if lease.is_lost() {
+            stopped = Stopped::Lost;
+        }
         let finish = match stopped {
             Stopped::Lost => {
                 self.hosts.abandon(host);

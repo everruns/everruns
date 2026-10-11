@@ -81,3 +81,101 @@ async fn direct_adapter_leases_renews_reads_and_releases_an_actor() {
         ActorRelease::LeaseLost
     );
 }
+
+fn assistant_event(session_id: SessionId, text: &str) -> EventRequest {
+    EventRequest::new(
+        session_id,
+        everruns_core::events::EventContext::empty(),
+        everruns_core::events::OutputMessageCompletedData::new(
+            everruns_core::RuntimeMessage::assistant(text),
+        ),
+    )
+}
+
+async fn log_types(adapters: &DirectWorkerAdapters, session_id: SessionId) -> Vec<String> {
+    adapters
+        .db
+        .read_session_actor_journal(session_id, Some(0), 0)
+        .await
+        .unwrap()
+        .events
+        .into_iter()
+        .map(|row| row.event_type)
+        .collect()
+}
+
+/// Every write of a leased turn carries its fence; a holder that lost its
+/// lease cannot land an in-flight write, and its session adapter flips the
+/// lease lost so the turn stops.
+#[tokio::test]
+async fn direct_adapter_appends_only_under_the_live_lease() {
+    let adapters = test_adapters();
+    let session_id = adapters.db.create_test_session().await;
+    adapters
+        .db
+        .mark_session_actor_runnable(session_id, everruns_core::DEFAULT_ORG_ID, 1)
+        .await
+        .unwrap();
+    let store = adapters.actor_lease_store();
+    let first = store.lease_actors("worker-a", 1, TTL, None).await.unwrap();
+    let current = everruns_worker::ActorFence::new(session_id, "worker-a", first[0].fence);
+
+    let stored = adapters
+        .emit_events_fenced(
+            vec![
+                assistant_event(session_id, "one"),
+                assistant_event(session_id, "two"),
+            ],
+            &current,
+        )
+        .await
+        .expect("the holder's batch lands")
+        .expect("the last event comes back");
+    assert!(stored.sequence.is_some());
+    assert_eq!(log_types(&adapters, session_id).await.len(), 2);
+
+    // The lease is lost to another worker while a write is in flight.
+    sqlx::query(
+        "UPDATE session_actors SET lease_expires_at = NOW() - INTERVAL '1 second' \
+         WHERE session_id = $1",
+    )
+    .bind(session_id)
+    .execute(adapters.db.database().pool())
+    .await
+    .unwrap();
+    let second = store.lease_actors("worker-b", 1, TTL, None).await.unwrap();
+    assert_eq!(second.len(), 1);
+
+    let error = adapters
+        .emit_events_fenced(vec![assistant_event(session_id, "late")], &current)
+        .await
+        .expect_err("a stale fence writes nothing");
+    assert!(everruns_worker::is_actor_lease_lost(&error), "{error}");
+    assert_eq!(log_types(&adapters, session_id).await.len(), 2);
+
+    // Through the session adapter a leased host emits with: the refusal flips
+    // the lease lost.
+    let (lost_tx, lost) = tokio::sync::watch::channel(false);
+    let emitter = everruns_worker::SessionAdapter::new(adapters.clone()).with_actor_fence(Some(
+        current
+            .clone()
+            .with_lost_signal(std::sync::Arc::new(lost_tx)),
+    ));
+    let error = everruns_core::event_emitter::EventEmitter::emit(
+        &emitter,
+        assistant_event(session_id, "later"),
+    )
+    .await
+    .expect_err("refused");
+    assert!(everruns_worker::is_actor_lease_lost(&error), "{error}");
+    assert!(*lost.borrow(), "the refusal marks the lease lost");
+    assert_eq!(log_types(&adapters, session_id).await.len(), 2);
+
+    // The new holder's write lands.
+    let next = everruns_worker::ActorFence::new(session_id, "worker-b", second[0].fence);
+    adapters
+        .emit_events_fenced(vec![assistant_event(session_id, "three")], &next)
+        .await
+        .expect("the new holder writes");
+    assert_eq!(log_types(&adapters, session_id).await.len(), 3);
+}

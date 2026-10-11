@@ -72,6 +72,13 @@ impl WorkerAdapters for NoopAdapters {
     ) -> CoreResult<crate::core::events::Event> {
         unimplemented!()
     }
+    async fn emit_events_fenced(
+        &self,
+        _requests: Vec<crate::core::events::EventRequest>,
+        _fence: &crate::actor_lease_store::ActorFence,
+    ) -> CoreResult<Option<crate::core::events::Event>> {
+        unimplemented!()
+    }
     async fn get_model_spec(
         &self,
         _org_id: i64,

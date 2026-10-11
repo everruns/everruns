@@ -660,6 +660,19 @@ message EventContext {
 
 message EmitEventRequest {
     EventRequest event = 1;
+    // Set by a worker that holds the session's actor lease (every write of a
+    // leased turn). The server stores the event only while this is still the
+    // holder's unexpired lease, checked in the insert's transaction, and
+    // otherwise answers FAILED_PRECONDITION with "actor lease lost" and stores
+    // nothing. On EmitEventStream every message of the stream carries the
+    // same fence. Unset = an unleased write (lifecycle, resolutions).
+    optional ActorFence actor_fence = 2;
+}
+
+// A session actor lease, as its holder presents it.
+message ActorFence {
+    string holder = 1;
+    int64 fence = 2;
 }
 
 message EmitEventResponse {
