@@ -519,6 +519,25 @@ async fn conversation_round_trip_with_retries_and_close() {
     );
     let cursor = started["cursor"].as_str().unwrap().to_string();
 
+    // The conversation's session came through the channel port: it belongs to
+    // the channel, keeps the A2A origin, and carries the channel's tags and
+    // the caller's tag that later reads are confined by.
+    let (source, tags, on_channel): (String, Vec<String>, bool) = sqlx::query_as(
+        "SELECT s.source, s.tags, s.channel_id = c.channel_id \
+         FROM poppy_conversations c JOIN sessions s ON s.id = c.session_id",
+    )
+    .fetch_one(&server.pool)
+    .await
+    .unwrap();
+    assert_eq!(source, "a2a");
+    assert!(on_channel);
+    for prefix in ["app_channel_type:poppy", "poppy_channel:", "poppy_caller:"] {
+        assert!(
+            tags.iter().any(|tag| tag.starts_with(prefix)),
+            "{prefix} missing from {tags:?}"
+        );
+    }
+
     // A retried first message returns the same conversation, without a turn.
     let retried: Value = call(
         &server,

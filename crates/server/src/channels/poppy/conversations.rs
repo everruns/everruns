@@ -44,13 +44,11 @@ use uuid::Uuid;
 use super::events::{self, Cursor};
 use super::tokens::{Authenticated, authenticate};
 use super::{Peer, PoppyState, error, internal, json_response};
+use crate::channels::host::{ServerChannelScope, channel_command_error};
 use crate::domains::common::CommandError;
-use crate::domains::messages::CreateMessageContext;
-use crate::domains::messages::types::{CreateMessageRequest, InputMessage, MessageRole};
-use crate::domains::sessions::record::SessionSource;
-use crate::domains::sessions::types::CreateSessionRequest;
-use crate::execution_metadata;
 use crate::storage::poppy::{PoppyConversationRow, PoppyOwner};
+use everruns_contracts::runtime::message_retriever::InputMessage;
+use everruns_core::channel_runtime::{ChannelConfig, ChannelSessionPort, NewChannelSession};
 
 /// Longest `wait` honoured, in seconds (spec 7.5 lets the Company cap it).
 const MAX_WAIT_SECS: u64 = 30;
@@ -474,69 +472,44 @@ async fn accept(
     answer(state, auth, session_id, status, query).await
 }
 
-/// Start an Everruns session for a new conversation. It runs as the channel,
-/// like every other channel session.
+/// The channel as the session port sees it: a conversation's sessions carry
+/// the caller's tag, which its later reads are confined by.
+fn port_channel(auth: &Authenticated) -> ChannelConfig {
+    ServerChannelScope {
+        session_tags: vec![
+            format!("poppy_channel:{}", auth.channel.channel.public_id),
+            caller_tag(&auth.session.client_id, &auth.session.user_id),
+        ],
+        ..ServerChannelScope::new(auth.channel.context.clone(), auth.channel.channel.clone())
+    }
+    .port_channel()
+}
+
+/// Start an Everruns session for a new conversation through the channel
+/// port. It runs as the channel, like every other channel session.
 async fn create_session(state: &PoppyState, auth: &Authenticated) -> Result<Uuid, Response> {
-    let context = &auth.channel.context;
-    let channel = &auth.channel.channel;
     let client_name = super::client::load(state, &auth.session.client_id)
         .await
         .ok()
         .and_then(|client| client.name);
-    let title = Some(format!(
-        "{} conversation",
-        client_name.as_deref().unwrap_or("Personal agent")
-    ));
     let session = state
-        .session_service
-        .create_from_app(
-            &everruns_core::Caller::internal(context.org_id),
-            context.harness_id.uuid(),
-            Some(context.agent_internal_id),
-            context.agent_id,
-            context.historical_app_id,
-            Some(channel.internal_id),
-            None,
-            context.owner_principal_id,
-            context.resolved_owner_user_id,
-            SessionSource::A2a,
-            CreateSessionRequest {
-                playground_user_id: None,
-                source: None,
-                workspace_id: None,
-                harness_id: Some(context.harness_id),
-                harness_name: None,
-                agent_id: context.agent_id,
-                agent_name: None,
-                virtual_user_id: context.virtual_user_id,
-                title,
-                goal: None,
-                locale: None,
-                tags: vec![
-                    format!("poppy_channel:{}", channel.public_id),
-                    caller_tag(&auth.session.client_id, &auth.session.user_id),
-                ],
-                model_id: None,
-                capabilities: vec![],
-                sandbox: None,
-                tools: vec![],
-                mcp_servers: Default::default(),
-                system_prompt: None,
-                initial_files: vec![],
-                hints: None,
-                network_access: None,
-                max_iterations: None,
-                parallel_tool_calls: None,
-                parent_session_id: None,
-                forked_from_session_id: None,
-                budget_root_session_id: None,
-                seed: everruns_core::SessionSeedMode::Fresh,
-                fork_up_to_sequence: None,
-            },
-        )
+        .port
+        .create_session(NewChannelSession {
+            channel: port_channel(auth),
+            // The conversation table is the binding.
+            binding_key: None,
+            title: format!(
+                "{} conversation",
+                client_name.as_deref().unwrap_or("Personal agent")
+            ),
+            metadata: Value::Null,
+        })
         .await
-        .map_err(internal)?;
-    Ok(session.id.uuid())
+        .map_err(|err| internal(anyhow::anyhow!("{err}")))?;
+    session
+        .parse::<SessionId>()
+        .map(|id| id.uuid())
+        .map_err(|err| internal(anyhow::anyhow!("{err}")))
 }
 
 /// A tag naming the (personal agent, User) pair, hashed: the User ID is the
@@ -550,8 +523,8 @@ fn caller_tag(client_id: &str, user_id: &str) -> String {
     format!("poppy_caller:{}", &hex::encode(digest)[..32])
 }
 
-/// Send one user message to the session: starts a turn, or steers the
-/// running one.
+/// Send one user message to the session through the channel port: starts a
+/// turn, or steers the running one.
 async fn deliver(
     state: &PoppyState,
     auth: &Authenticated,
@@ -559,47 +532,24 @@ async fn deliver(
     text: String,
     metadata: Vec<(&str, Value)>,
 ) -> Result<(), CommandError> {
-    let context = &auth.channel.context;
-    let mut metadata: std::collections::HashMap<String, Value> = metadata
-        .into_iter()
-        .map(|(key, value)| (key.to_string(), value))
-        .collect();
-    metadata.insert("source".into(), json!("poppy_channel"));
-    metadata.insert(
-        "poppy_channel_id".into(),
-        json!(auth.channel.channel.public_id.to_string()),
+    let message = metadata.into_iter().fold(
+        InputMessage::user(text)
+            .with_metadata("source", json!("poppy_channel"))
+            .with_metadata(
+                "poppy_channel_id",
+                json!(auth.channel.channel.public_id.to_string()),
+            ),
+        |message, (key, value)| message.with_metadata(key, value),
     );
     state
-        .message_service
-        .create(
-            CreateMessageContext {
-                runtime_subject_principal_id: None,
-                org_id: context.org_id,
-                user_id: None,
-                harness_id: context.harness_id.uuid(),
-                agent_id: Some(context.agent_internal_id),
-                session_id,
-                event_metadata: Some(execution_metadata::channel_message_metadata(
-                    context.public_id,
-                    context.owner_principal_id,
-                    context.virtual_user_id,
-                )),
-                request_id: None,
-            },
-            CreateMessageRequest {
-                message: InputMessage {
-                    role: MessageRole::User,
-                    content: vec![everruns_core::InputContentPart::text(text)],
-                },
-                addressed_participant_id: None,
-                controls: None,
-                metadata: Some(metadata),
-                tags: None,
-                external_actor: None,
-                client_message_id: None,
-            },
+        .port
+        .send(
+            &port_channel(auth),
+            &SessionId::from_uuid(session_id).to_string(),
+            message,
         )
-        .await?;
+        .await
+        .map_err(channel_command_error)?;
     Ok(())
 }
 
