@@ -185,8 +185,10 @@ product behaves; a fabricated one silently misleads readers.
 4. **Deployment Platform**: Cloudflare Worker `everruns-docs` with static assets
    (`apps/docs/wrangler.jsonc`, `apps/docs/worker/index.mjs`), deployed by
    `.github/workflows/docs-deploy.yml`
-5. **CI Integration**: `ci.yml` checks the build on every PR; `docs-deploy.yml`
-   uploads a preview per PR and deploys from main
+5. **CI Integration**: `ci.yml` checks the build and the Worker on every PR;
+   `docs-deploy.yml` deploys from main only, because it holds the Doppler token.
+   A preview is a manual `wrangler versions upload --preview-alias <name>`,
+   checked with `scripts/check-live.mjs --site <preview>/docs`
 
 #### Serving under everruns.com/docs
 

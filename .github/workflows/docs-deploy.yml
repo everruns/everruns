@@ -4,19 +4,17 @@ name: Docs Deploy
 # everruns.com/docs/ (apps/docs/wrangler.jsonc, knowledge/ui/documentation.md).
 #
 # - main: deploy, then check the live site and the docs.everruns.com redirects.
-# - pull requests: upload a preview version at
-#   https://pr-<number>-everruns-docs.everruns.workers.dev/docs/
-#   (same-repository branches only; forks get no secrets).
-# - daily: re-run the live check, so a broken redirect or a missing page is
-#   noticed even when nothing in the docs changed.
+# - daily: re-run the live check, so a broken redirect, a missing page or a
+#   header that drifted from everruns.com is noticed even when nothing in the
+#   docs changed.
+#
+# Pull requests are covered by ci.yml's docs build; the deploy job holds the
+# Doppler token, so it runs only on main (scripts/test-workflow-vault-token-scope.sh)
+# and uses no actions beyond SHA-pinned ones. Node comes from the runner image
+# and pnpm from npm, at the `packageManager` version in apps/docs/package.json.
 on:
   push:
     branches: [main]
-    paths:
-      - 'apps/docs/**'
-      - 'docs/**'
-      - '.github/workflows/docs-deploy.yml'
-  pull_request:
     paths:
       - 'apps/docs/**'
       - 'docs/**'
@@ -27,7 +25,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -39,9 +37,7 @@ jobs:
   deploy:
     name: Build and deploy docs
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name != 'schedule' &&
-      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.ref == 'refs/heads/main' && github.event_name != 'schedule'
     timeout-minutes: 30
     defaults:
       run:
@@ -51,16 +47,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 10.33.0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-          cache-dependency-path: apps/docs/pnpm-lock.yaml
+        run: |
+          node --version
+          npm install --global "pnpm@$(node -p 'require("./package.json").packageManager.split("@")[1]')"
+          pnpm --version
 
       - name: Install Doppler CLI
         id: doppler_install
@@ -91,22 +81,7 @@ jobs:
 
       # CLOUDFLARE_* reach wrangler only through `doppler run` (see the AGENTS.md
       # gotcha on runtime-fetched secrets).
-      - name: Upload preview version
-        if: github.event_name == 'pull_request'
-        env:
-          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-          PREVIEW_ALIAS: pr-${{ github.event.pull_request.number }}
-        run: |
-          doppler run -- bash -c 'CLOUDFLARE_API_TOKEN="$CLOUDFLARE_API_TOKEN" CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_ACCOUNT_ID" \
-            pnpm dlx "wrangler@$WRANGLER_VERSION" versions upload --preview-alias "$PREVIEW_ALIAS"'
-          echo "Docs preview: https://$PREVIEW_ALIAS-everruns-docs.everruns.workers.dev/docs/" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Check preview
-        if: github.event_name == 'pull_request'
-        run: node scripts/check-live.mjs --site "https://pr-${{ github.event.pull_request.number }}-everruns-docs.everruns.workers.dev/docs"
-
       - name: Deploy
-        if: github.event_name != 'pull_request'
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: |
@@ -124,9 +99,6 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '22'
       - name: Check everruns.com/docs and the docs.everruns.com redirects
         run: node apps/docs/scripts/check-live.mjs --site https://everruns.com/docs --old https://docs.everruns.com
       - name: Check the docs header and footer match everruns.com
