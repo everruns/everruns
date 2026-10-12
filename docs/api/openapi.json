@@ -1109,6 +1109,54 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/avatar/set": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Set an agent's avatar from a curated preset (preset_id, see list_avatar_presets) or an image (image_base64: PNG, JPEG, GIF or WebP, at least 64x64, at most 1 MB). Replaces the previous avatar and updates the icon of the agent's one-click Slack apps.",
+        "operationId": "set_agent_avatar",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetAgentAvatarRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAvatar"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid preset or image"
+          },
+          "404": {
+            "description": "Agent not found"
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/channels": {
       "get": {
         "tags": [
@@ -26236,7 +26284,7 @@
           "error_count": {
             "type": "integer",
             "format": "int32",
-            "description": "Number of failed tool calls",
+            "description": "Number of failed tool calls. Each failure went back to the model as a\ntool result, so these are issues (severity `issue`), not turn errors;\nthe field keeps its historical name.",
             "minimum": 0
           },
           "headline": {
@@ -37002,6 +37050,14 @@
           }
         }
       },
+      "FailureSeverity": {
+        "type": "string",
+        "description": "How bad a recorded failure is, decided by whether work stopped.\n\nThe runtime assigns this, not the client: a failed tool call is reported\nback to the model as a result and the turn keeps going, so it is an\n`issue`. A failure that ends the work (a failed turn, a failed task) is an\n`error`. Clients render issues as warnings and reserve\nerror styling for `error`.",
+        "enum": [
+          "issue",
+          "error"
+        ]
+      },
       "FeatureFlagGrade": {
         "type": "string",
         "description": "Rollout policy for one feature, independent of the running deployment grade.",
@@ -46004,6 +46060,7 @@
           "tool_panicked",
           "invalid_arguments",
           "permission_denied",
+          "insufficient_scope",
           "quota_exceeded",
           "network_blocked",
           "mcp_server_unreachable",
@@ -56676,6 +56733,35 @@
           }
         }
       },
+      "SetAgentAvatarRequest": {
+        "type": "object",
+        "description": "The avatar source: exactly one of `preset_id` or `image_base64`.",
+        "properties": {
+          "content_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "MIME type of `image_base64`. Detected from the bytes when omitted.",
+            "example": "image/png"
+          },
+          "image_base64": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Image bytes as base64 (a `data:image/...;base64,` URI also works): PNG, JPEG, GIF or\nWebP, at least 64x64, at most 1 MB decoded. Center-cropped to a square."
+          },
+          "preset_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Curated preset ID from `list_avatar_presets`. Pass this or `image_base64`, not both.",
+            "example": "familiars-patch"
+          }
+        }
+      },
       "SetAgentCredentialValueRequest": {
         "type": "object",
         "description": "Request to replace a credential binding's encrypted value.",
@@ -58222,6 +58308,17 @@
               "$ref": "#/components/schemas/ContentPart"
             },
             "description": "Result content (for successful calls)"
+          },
+          "severity": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FailureSeverity",
+                "description": "Severity of a failed call; absent when `success` is true. A failed\ntool call is returned to the model, which carries on, so it is an\n`issue`. Whether the turn itself failed is reported by `turn.failed`.\nEvents recorded before this field existed omit it; read a failure\nwithout it as an `issue`."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "status": {
             "type": "string",
@@ -60176,6 +60273,15 @@
             ],
             "description": "Input message content (for observability, passed through from turn.started)"
           },
+          "issue_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Number of issues the turn recovered from: tool calls the runtime ran\nthat failed and went back to the model as results. A completed turn\nwith issues still succeeded; a turn that stops on a failure emits\n`turn.failed` instead. Absent when the host does not track it.",
+            "minimum": 0
+          },
           "iterations": {
             "type": "integer",
             "format": "int32",
@@ -60244,7 +60350,7 @@
       },
       "TurnFailedData": {
         "type": "object",
-        "description": "Data for turn.failed event",
+        "description": "Data for turn.failed event. A failed turn is always an error (severity\n`error`): the work stopped. Recoverable tool failures never produce this\nevent; they surface as `tool.completed` issues.",
         "required": [
           "turn_id",
           "error"

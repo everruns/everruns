@@ -656,13 +656,21 @@ pub enum Input {
 // ============================================================================
 
 /// URL citation annotation.
+///
+/// Fields other than `type` default when absent, so a response carrying a
+/// gateway's sparser `url_citation` (no title) or another annotation type
+/// still parses; readers check `type_` and a non-empty `url`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UrlCitation {
     #[serde(rename = "type")]
     pub type_: String,
+    #[serde(default)]
     pub url: String,
+    #[serde(default)]
     pub title: String,
+    #[serde(default)]
     pub start_index: u32,
+    #[serde(default)]
     pub end_index: u32,
 }
 
@@ -698,6 +706,10 @@ pub struct Usage {
     /// OpenAI-compatible gateways such as OpenRouter. Absent for direct OpenAI.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<f64>,
+    /// Provider-executed tool counts from gateways that report them here
+    /// (OpenRouter `server_tool_use.web_search_requests`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_tool_use: Option<serde_json::Value>,
 }
 
 /// Input token breakdown.

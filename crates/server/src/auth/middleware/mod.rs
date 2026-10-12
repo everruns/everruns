@@ -381,8 +381,9 @@ async fn extract_auth_user(
 /// THREAT[TM-MCP-006]: this is the separate validation path for the `/mcp`
 /// resource. It accepts only:
 /// - the anonymous user in `AuthMode::None` (local dev),
-/// - personal access tokens (`evr_pat_` / `ApiKey`) — intentionally full-access
-///   programmatic credentials,
+/// - personal access tokens (`evr_pat_` / `ApiKey`), carrying their scope on
+///   `AuthUser.pat_scope`; `/mcp` filters and refuses tools by it
+///   (`api::mcp_endpoint::scope`),
 /// - MCP-scoped OAuth Bearer JWTs, via `validate_mcp_token(token, resource)`.
 ///
 /// It deliberately does NOT accept regular session/access JWTs or the

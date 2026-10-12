@@ -250,6 +250,7 @@ mod tests {
                 "session_schedule",
                 "memory",
                 "citation_retrieval",
+                "citation_web",
             ] {
                 assert!(
                     !ids.contains(&opt_in),

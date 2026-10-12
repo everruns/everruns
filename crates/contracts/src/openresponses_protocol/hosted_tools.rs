@@ -14,8 +14,10 @@ use crate::error::{AgentLoopError, Result};
 use std::collections::BTreeMap;
 
 use crate::driver_registry::{HostedToolCall, HostedToolCallStatus, LlmStreamEvent};
+use crate::native_web_search::{NativeWebSearch, openai_has_native_web_search};
 use crate::openai_hosted_tools::{
-    OPENAI_MCP_APPROVAL_TOOL, OpenAiHostedTools, count_hosted_tool_calls, hosted_call_tool,
+    OPENAI_MCP_APPROVAL_TOOL, OpenAiHostedTools, WebSearchTool, count_hosted_tool_calls,
+    hosted_call_tool,
 };
 
 use super::OpenResponsesProtocolChatDriver;
@@ -34,11 +36,19 @@ impl OpenResponsesProtocolChatDriver {
         // The native computer tool rides on the same `tools` rendering, but is
         // requested through the provider-neutral option and is client-executed.
         let native_computer = self.native_computer_for(config);
-        let Some(mut requested) = requested.or_else(|| native_computer.map(|_| Default::default()))
-        else {
+        // Native web search too: the hosted `web_search` stands in for the
+        // function tool of the same name (see `native_web_search_for`).
+        let native_search = self.native_web_search_for(config);
+        let Some(mut requested) = requested.or_else(|| {
+            (native_computer.is_some() || native_search.is_some()).then(Default::default)
+        }) else {
             return Ok(Vec::new());
         };
         requested.computer = native_computer;
+        // An OpenAI Server Tools `web_search` the agent configured wins.
+        if requested.web_search.is_none() {
+            requested.web_search = native_search;
+        }
         if !self.hosted_tools {
             return Err(AgentLoopError::Configuration(
                 "OpenAI hosted tools need the OpenAI or Azure OpenAI Responses API; \
@@ -60,14 +70,44 @@ impl OpenResponsesProtocolChatDriver {
     }
 }
 
+impl OpenResponsesProtocolChatDriver {
+    /// OpenAI's hosted `web_search` in place of the `web_search` function
+    /// tool, when the call asks for native search ([`NativeWebSearch`]), the
+    /// endpoint runs OpenAI's hosted tools and the model has web search, and
+    /// OpenAI can apply the agent's domain filters. Otherwise `None`, and the
+    /// function tool stays for the next provider of the search plan.
+    pub(crate) fn native_web_search_for(&self, config: &LlmCallConfig) -> Option<WebSearchTool> {
+        if !self.hosted_tools || !openai_has_native_web_search(&config.model) {
+            return None;
+        }
+        NativeWebSearch::requested(config)?.openai_tool()
+    }
+}
+
 /// Hosted call counts from a terminal `response` object, for
 /// [`crate::driver_registry::LlmCompletionMetadata::hosted_tool_calls`].
 pub(crate) fn hosted_tool_calls(response: &Value) -> BTreeMap<String, u32> {
-    response
+    let mut counts = response
         .get("output")
         .and_then(Value::as_array)
         .map(|output| count_hosted_tool_calls(output))
-        .unwrap_or_default()
+        .unwrap_or_default();
+    add_server_tool_use(&mut counts, response.get("usage"));
+    counts
+}
+
+/// Fold a gateway's `usage.server_tool_use.web_search_requests` (OpenRouter
+/// server tools) into the counts. The same searches may also arrive as
+/// `web_search_call` items, so the larger count wins rather than the sum.
+pub(crate) fn add_server_tool_use(counts: &mut BTreeMap<String, u32>, usage: Option<&Value>) {
+    let searches = usage
+        .and_then(|usage| usage.pointer("/server_tool_use/web_search_requests"))
+        .and_then(Value::as_u64)
+        .map_or(0, |n| n.min(u32::MAX as u64) as u32);
+    if searches > 0 {
+        let entry = counts.entry("web_search_call".to_string()).or_insert(0);
+        *entry = (*entry).max(searches);
+    }
 }
 
 /// Map a hosted call's `response.output_item.added` / `.done` frame to a
@@ -94,7 +134,10 @@ pub(crate) fn hosted_call_event(event_data: &str) -> Option<LlmStreamEvent> {
         (true, false) => HostedToolCallStatus::Completed,
         (false, false) => HostedToolCallStatus::InProgress,
     };
-    let summary = call_summary(item).map(|detail| detail.chars().take(200).collect());
+    // Gateways (OpenRouter) send an empty query on the in-progress item.
+    let summary = call_summary(item)
+        .filter(|detail| !detail.trim().is_empty())
+        .map(|detail| detail.chars().take(200).collect());
     Some(LlmStreamEvent::HostedToolCall(HostedToolCall {
         id: item
             .get("id")
@@ -247,6 +290,15 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(failed.status, HostedToolCallStatus::Failed);
+
+        // OpenRouter's in-progress item carries an empty query: no summary.
+        let empty = event(json!({
+            "type": "response.output_item.added",
+            "item": { "type": "web_search_call", "id": "ws_3", "status": "in_progress",
+                      "action": { "type": "search", "query": "" } }
+        }))
+        .unwrap();
+        assert_eq!(empty.summary, None);
     }
 
     #[test]
@@ -350,6 +402,22 @@ mod tests {
         ] {
             assert!(event(frame).is_none());
         }
+    }
+
+    #[test]
+    fn gateway_server_tool_use_counts_as_web_search_calls() {
+        // OpenRouter reports server tool searches in usage only.
+        let counts = hosted_tool_calls(&json!({ "output": [],
+            "usage": { "server_tool_use": { "web_search_requests": 2 } } }));
+        assert_eq!(counts.get("web_search_call"), Some(&2));
+        // Items and usage describe the same searches: never double counted.
+        let counts = hosted_tool_calls(&json!({
+            "output": [{ "type": "web_search_call", "id": "ws_1" }],
+            "usage": { "server_tool_use": { "web_search_requests": 1 } } }));
+        assert_eq!(counts.get("web_search_call"), Some(&1));
+        let counts = hosted_tool_calls(&json!({ "output": [],
+            "usage": { "server_tool_use": { "web_search_requests": 0 } } }));
+        assert!(counts.is_empty());
     }
 
     #[test]

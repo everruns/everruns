@@ -11,7 +11,7 @@ use web_time::Instant;
 use super::ExecutionContext;
 use crate::engine::annotation_hook::{collect_annotations, verify_annotations};
 use crate::engine::capabilities::CapabilityRegistry;
-use crate::engine::driver_registry::{LlmStreamEvent, Message, MessageContent, MessageRole};
+use crate::engine::driver_registry::{LlmStreamEvent, Message, MessageRole};
 use crate::engine::error::{AgentLoopError, Result};
 use crate::engine::events::{
     EventContext, EventRequest, LlmCompactionInfo, LlmGenerationData, OutputMessageCompletedData,
@@ -59,6 +59,7 @@ mod provider_managed_compaction;
 mod reasoning_updates;
 mod request_controls;
 mod stream_state;
+mod tool_changes;
 mod transcript;
 mod truncation_gate;
 mod types;
@@ -467,12 +468,11 @@ impl ReasonAtom {
                 }
                 result
             }
+            // The session was deleted mid-call (EVE-1235): nothing to report to.
+            Err(e @ AgentLoopError::SessionNotFound(_)) => return Err(e),
             Err(e) => {
-                // Calculate reason phase duration even for failures
                 let reason_duration_ms = reason_start.elapsed().as_millis() as u64;
-
-                // LLM call failure is a "normal" result per the spec
-                // Return a result indicating failure with the error message
+                // LLM call failure is a "normal" result per the spec: report it.
                 tracing::warn!(
                     session_id = %context.session_id,
                     turn_id = %context.turn_id,
@@ -752,6 +752,12 @@ impl ReasonAtom {
             checkpoint_reasoning,
         )
         .filter(|_| native_reasoning_compaction);
+        let tool_changes = tool_changes::prepare(
+            &messages,
+            model_with_provider.provider_type.as_str(),
+            &model_with_provider.model,
+            &runtime_agent.tools,
+        );
 
         // 9. Recover a stream a lost attempt left open (EVE-532): finalize it
         // from persisted text, or restart the call under its message id.
@@ -855,19 +861,12 @@ impl ReasonAtom {
         // 11. Build LLM messages
         let mut llm_messages = Vec::new();
 
-        // Add system prompt
         let has_system_prompt = !runtime_agent.system_prompt.is_empty();
         if has_system_prompt {
-            llm_messages.push(Message {
-                native_tool_calls: Vec::new(),
-                role: MessageRole::System,
-                content: MessageContent::Text(runtime_agent.system_prompt.clone()),
-                tool_calls: None,
-                tool_call_id: None,
-                phase: None,
-                reasoning: Vec::new(),
-                configuration_update: None,
-            });
+            llm_messages.push(Message::text(
+                MessageRole::System,
+                runtime_agent.system_prompt.clone(),
+            ));
         }
 
         // Build messages for llm.generation event (includes system message)
@@ -899,6 +898,7 @@ impl ReasonAtom {
             llm_msg.configuration_update = reasoning_replay
                 .as_ref()
                 .and_then(|replay| replay.transitions.get(&msg.id).copied());
+            llm_msg.tool_changes = tool_changes.transitions.get(&msg.id).cloned();
             transcript::label_speaker(&mut llm_msg, msg);
             facts::mark_turn_scoped(&mut llm_msg, msg, supports_clear_at);
             llm_messages.push(llm_msg);
@@ -939,7 +939,6 @@ impl ReasonAtom {
             llm_config_builder = llm_config_builder.with_metadata(k, v.clone());
         }
 
-        // Add metadata for API tracking and debugging
         // These IDs help correlate API requests with Everruns entities
         // TypedId::to_string() produces prefixed format (e.g., "session_abc123")
         llm_config_builder = llm_config_builder
@@ -962,6 +961,7 @@ impl ReasonAtom {
             .capture_request(true) // stored on llm.generation (TM-LLM-039)
             .build();
         llm_config.background_call = self.background_call.clone();
+        llm_config.tool_baseline = tool_changes.baseline_for(&llm_messages);
         if let Some(replay) = &reasoning_replay {
             llm_config.reasoning_effort = replay.state.baseline;
             llm_config.reasoning_state = Some(replay.state.clone());
@@ -1077,7 +1077,6 @@ impl ReasonAtom {
             );
         }
 
-        // Also emit reason.thinking.started if extended thinking is enabled
         let thinking_enabled = reasoning_effort.is_some();
         if thinking_enabled {
             tracing::info!(
@@ -1110,7 +1109,6 @@ impl ReasonAtom {
             }
         }
 
-        // Track LLM call timing
         let llm_start = Instant::now();
 
         // Try LLM call with automatic compaction on RequestTooLarge.
@@ -1874,16 +1872,15 @@ impl ReasonAtom {
             (text, thinking, reasoning, tool_calls);
         compaction_lifecycle.record_observed(&mut llm_config, compaction_started_at);
 
-        // End-of-message citation annotation seam (see knowledge/runtime-resources/citations.md). Runs
-        // once on the finalized final-answer text to attach claim-level citations
-        // before guardrails inspect the complete client-visible payload. Skipped
-        // when a guardrail already tripped,
-        // when there are no citation providers, when there is no text, or while
-        // the message still carries tool calls (citations attach to answer
-        // prose, not intermediate tool-calling turns). The built-in feeds do not
-        // rewrite text, so streamed deltas stay valid and no buffering is needed;
-        // a future feed that rewrites (e.g. to strip inline markers) must also
-        // opt into delta buffering.
+        // End-of-message citation annotation seam (see knowledge/runtime-resources/citations.md).
+        // Runs once on the finalized final-answer text to attach claim-level citations, with any
+        // web citations the provider returned, before guardrails inspect the complete client-
+        // visible payload. Skipped when a guardrail already tripped, when there are no citation
+        // providers, when there is no text, or while the message still carries tool calls
+        // (citations attach to answer prose, not intermediate tool-calling turns). The built-in
+        // feeds do not rewrite text, so streamed deltas stay valid and no buffering is needed; a
+        // future feed that rewrites (e.g. to strip inline markers) must also opt into delta
+        // buffering.
         let mut citation_annotations: Vec<crate::engine::message::TextAnnotation> = Vec::new();
         if tripped.is_none()
             && !annotation_providers.is_empty()
@@ -1902,6 +1899,7 @@ impl ReasonAtom {
                 &runtime_agent.system_prompt,
                 &text,
                 &messages,
+                output_hooks::web_citations(&completion_metadata),
                 self.utility_llm_service.as_ref(),
             )
             .await;
@@ -2191,6 +2189,7 @@ impl ReasonAtom {
             response_id.as_deref(),
         );
         truncation.stamp(&mut metadata);
+        tool_changes.stamp(&mut metadata);
 
         // 18. Store and emit output.message.completed event with metadata and usage.
         // Apply capability-owned response filters before persisting/returning

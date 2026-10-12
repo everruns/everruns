@@ -229,3 +229,69 @@ async fn preview_rejects_bad_input_and_member_test_queries() {
         assert_eq!(error.0, StatusCode::BAD_REQUEST, "{test}");
     }
 }
+
+/// Native search is a property of the model's driver and the model: OpenAI
+/// and OpenRouter models that search natively put native first; a model of
+/// those providers without search, or a provider whose adapter is not in yet
+/// (Anthropic), does not.
+#[tokio::test]
+async fn preview_native_step_follows_the_models_driver_support() {
+    use crate::storage::{CreateModelRow, CreateProviderRow};
+    let (state, team, _) = fixture().await;
+    let model = |provider_type: &'static str, model_id: &'static str| {
+        let db = state.db.clone();
+        async move {
+            let provider = db
+                .create_provider(
+                    DEFAULT_ORG_ID,
+                    CreateProviderRow {
+                        name: format!("{provider_type} {model_id}"),
+                        provider_type: provider_type.into(),
+                        base_url: None,
+                        api_key_encrypted: None,
+                        settings: None,
+                    },
+                )
+                .await
+                .unwrap();
+            db.create_model(
+                DEFAULT_ORG_ID,
+                CreateModelRow {
+                    provider_id: provider.id,
+                    model_id: model_id.into(),
+                    display_name: model_id.into(),
+                    capabilities: vec!["chat".into()],
+                    is_favorite: false,
+                    enabled: true,
+                    source: "manual".into(),
+                    provider_metadata: None,
+                },
+            )
+            .await
+            .unwrap()
+            .id
+        }
+    };
+    let cases = [
+        ("openai", "gpt-6.1-sol", true),
+        ("openai", "gpt-3.5-turbo", false),
+        ("openrouter", "anthropic/claude-opus-5-5", true),
+        ("openrouter", "mistralai/mistral-large", false),
+        ("anthropic", "claude-opus-5-5", true),
+        ("anthropic", "claude-3-5-sonnet-20241022", false),
+        ("gemini", "gemini-3.8-flash", true),
+    ];
+    for (provider_type, model_id, native) in cases {
+        let id = model(provider_type, model_id).await;
+        let plan = preview(&state, OrgRole::Member, json!({"model_id": id}))
+            .await
+            .unwrap();
+        assert_eq!(plan.model_has_native, native, "{provider_type} {model_id}");
+        let first = if native {
+            "native".to_string()
+        } else {
+            format!("account:{team}")
+        };
+        assert_eq!(step_ids(&plan)[0], first, "{provider_type} {model_id}");
+    }
+}

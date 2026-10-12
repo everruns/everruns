@@ -50,17 +50,45 @@ impl ChatDriver for AnthropicChatDriver {
         let message_cache_enabled = prompt_cache.is_some_and(|cfg| {
             cfg.strategy != everruns_contracts::driver_registry::PromptCacheStrategy::Explicit
         }) && !wants_server_compaction;
-        let prepared = layout::keep_later_system_messages_in_place(&messages, &config.model);
-        let (system_prompt, converted_messages) = Self::convert_messages_with_options(
-            &prepared.messages,
-            Some(&prepared),
-            message_cache_enabled,
-            config.volatile_suffix_len,
-            !prefix_messages.is_empty(),
+        // Inline tool changes need every change on a system message; when one
+        // cannot be placed, the request goes out as before (see `tool_changes`).
+        let allow_unmatched_tool_results = !prefix_messages.is_empty();
+        let convert = |inline: bool| {
+            let prepared =
+                layout::keep_later_system_messages_in_place(&messages, &config.model, inline);
+            let (system, converted) = Self::convert_messages_with_options(
+                &prepared.messages,
+                Some(&prepared),
+                message_cache_enabled,
+                config.volatile_suffix_len,
+                allow_unmatched_tool_results,
+            );
+            let placed = tool_changes::all_placed(&converted, prepared.tool_definition_count());
+            (system, converted, placed)
+        };
+        let mut inline_tool_changes = tool_changes::eligible(
+            config,
+            wire_model,
+            endpoint.base_url() == Some(DEFAULT_BASE_URL),
         );
-        let wants_clear_at = converted_messages
+        let (mut system_prompt, mut converted_messages, placed) = convert(inline_tool_changes);
+        if inline_tool_changes && !placed {
+            tracing::debug!(
+                "AnthropicDriver: a tool change has no place; sending the current tools"
+            );
+            inline_tool_changes = false;
+            (system_prompt, converted_messages, _) = convert(false);
+        }
+        let mut conversation_betas = Vec::new();
+        if converted_messages
             .iter()
-            .any(|message| message.clear_at.is_some());
+            .any(|message| message.clear_at.is_some())
+        {
+            conversation_betas.push("mid-conversation-system-clear-at-2026-08-21");
+        }
+        if inline_tool_changes {
+            conversation_betas.push(tool_changes::INLINE_TOOLS_BETA);
+        }
         for message in converted_messages {
             prefix_messages.push(serde_json::to_value(message).map_err(|error| {
                 AgentLoopError::llm(format!("failed to serialize Anthropic message: {error}"))
@@ -76,6 +104,14 @@ impl ChatDriver for AnthropicChatDriver {
         if browser_toolset {
             crate::anthropic::browser_toolset::rewrite_messages(&mut prefix_messages);
         }
+        // Native web search: the server tool replaces the `web_search`
+        // function tool, and replayed search blocks are made acceptable to a
+        // request with or without it.
+        let web_search_tool = crate::anthropic::web_search::server_tool(config, wire_model);
+        crate::anthropic::web_search::rewrite_messages(
+            &mut prefix_messages,
+            web_search_tool.is_some(),
+        );
         let anthropic_messages = prefix_messages;
         let system = Self::system_prompt_for_request(system_prompt, prompt_cache_enabled);
 
@@ -94,7 +130,9 @@ impl ChatDriver for AnthropicChatDriver {
         // `claude_tool_search` / `auto_tool_search` capability — and reaches here
         // on `config.tool_search`.
         let supports_tool_search = profile.as_ref().is_some_and(|p| p.tool_search);
-        let mut tools = if config.tools.is_empty() {
+        let mut tools = if inline_tool_changes {
+            Some(tool_changes::tools(config, prompt_cache_enabled))
+        } else if config.tools.is_empty() {
             None
         } else if let Some(ref ts_config) = config.tool_search {
             if ts_config.enabled && supports_tool_search {
@@ -138,6 +176,26 @@ impl ChatDriver for AnthropicChatDriver {
                 entries[position] = AnthropicToolEntry::Raw(
                     crate::anthropic::browser_toolset::toolset_entry(cached),
                 );
+            }
+        }
+        if let Some(mut server_tool) = web_search_tool
+            && let Some(entries) = tools.as_mut()
+        {
+            // The server tool stands in for the `web_search` function tool,
+            // keeping its prompt-cache breakpoint when it carried one. A
+            // deferred function tool is replaced too: server tools load up
+            // front.
+            let position = entries.iter().position(|entry| {
+                matches!(entry, AnthropicToolEntry::Function(tool)
+                    if tool.name == everruns_contracts::native_web_search::WEB_SEARCH_FUNCTION_TOOL)
+            });
+            if let Some(position) = position {
+                if matches!(&entries[position],
+                    AnthropicToolEntry::Function(tool) if tool.cache_control.is_some())
+                {
+                    server_tool["cache_control"] = json!({ "type": "ephemeral" });
+                }
+                entries[position] = AnthropicToolEntry::Raw(server_tool);
             }
         }
 
@@ -357,7 +415,7 @@ impl ChatDriver for AnthropicChatDriver {
                         needs_interleaved_thinking,
                         wants_million_context,
                         wants_cache_diagnostics,
-                        wants_clear_at,
+                        conversation_betas: &conversation_betas,
                         wants_server_compaction,
                         max_tokens_from_profile,
                         model: &config.model,
@@ -383,6 +441,8 @@ impl ChatDriver for AnthropicChatDriver {
         let cache_read_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         let cache_creation_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         let cache_creation_1h_tokens = Arc::new(Mutex::new(Option::<u32>::None));
+        // `usage.server_tool_use.web_search_requests`: billed native searches.
+        let web_search_requests = Arc::new(Mutex::new(0u32));
         let current_tool_call = Arc::new(Mutex::new(Option::<ToolCall>::None));
         // Toolset of the tool call being streamed, when it is a member call.
         let current_is_member = Arc::new(Mutex::new(Option::<Toolset>::None));
@@ -410,6 +470,7 @@ impl ChatDriver for AnthropicChatDriver {
             let cache_read_tokens = Arc::clone(&cache_read_tokens);
             let cache_creation_tokens = Arc::clone(&cache_creation_tokens);
             let cache_creation_1h_tokens = Arc::clone(&cache_creation_1h_tokens);
+            let web_search_requests = Arc::clone(&web_search_requests);
             let current_tool_call = Arc::clone(&current_tool_call);
             let current_is_member = Arc::clone(&current_is_member);
             let current_thinking = Arc::clone(&current_thinking);
@@ -449,6 +510,11 @@ impl ChatDriver for AnthropicChatDriver {
                                         );
                                     }
                                     if let Some(usage) = data.message.usage {
+                                        if let Some(searches) = crate::anthropic::web_search::reported_searches(
+                                            usage.server_tool_use.as_ref(),
+                                        ) {
+                                            *web_search_requests.lock().unwrap() = searches;
+                                        }
                                         *input_tokens.lock().unwrap() = usage.input_tokens;
                                         if let Some(cache_read) = usage.cache_read_input_tokens {
                                             *cache_read_tokens.lock().unwrap() = Some(cache_read);
@@ -475,6 +541,27 @@ impl ChatDriver for AnthropicChatDriver {
                                         .lock()
                                         .unwrap()
                                         .insert(data.index, data.content_block.clone());
+                                    // Native web search: the server call and
+                                    // its result are hosted calls, never client
+                                    // tool calls; the raw blocks above replay.
+                                    if let Some(event) =
+                                        crate::anthropic::web_search::hosted_call_at_start(
+                                            &data.content_block,
+                                            |id| {
+                                                response_content
+                                                    .lock()
+                                                    .unwrap()
+                                                    .values()
+                                                    .find(|block| {
+                                                        block.get("id").and_then(Value::as_str)
+                                                            == Some(id)
+                                                    })
+                                                    .and_then(crate::anthropic::web_search::search_query)
+                                            },
+                                        )
+                                    {
+                                        return Ok(event);
+                                    }
                                     let member = Toolset::of_block(
                                         &data.content_block,
                                     );
@@ -589,6 +676,26 @@ impl ChatDriver for AnthropicChatDriver {
                                                 .signature = Some(signature);
                                             return Ok(LlmStreamEvent::TextDelta(String::new()));
                                         }
+                                        AnthropicDelta::CitationsDelta { citation } => {
+                                            // Kept on the raw text block: web search
+                                            // citations carry an `encrypted_index`
+                                            // the next turn sends back.
+                                            let mut blocks = response_content.lock().unwrap();
+                                            if let Some(Value::Object(block)) =
+                                                blocks.get_mut(&data.index)
+                                            {
+                                                let citations = block
+                                                    .entry("citations".to_string())
+                                                    .or_insert_with(|| Value::Array(Vec::new()));
+                                                if !citations.is_array() {
+                                                    *citations = Value::Array(Vec::new());
+                                                }
+                                                if let Value::Array(citations) = citations {
+                                                    citations.push(citation);
+                                                }
+                                            }
+                                            return Ok(LlmStreamEvent::TextDelta(String::new()));
+                                        }
                                         AnthropicDelta::CompactionDelta {
                                             content,
                                             encrypted_content,
@@ -685,6 +792,18 @@ impl ChatDriver for AnthropicChatDriver {
                                         .and_then(|value| serde_json::from_value(value).ok())
                                 });
 
+                                // A native web search's query is complete:
+                                // report it on the in-progress hosted call.
+                                if let Some(index) = stop.as_ref().map(|data| data.index) {
+                                    let mut blocks = response_content.lock().unwrap();
+                                    if let Some(event) = blocks
+                                        .get_mut(&index)
+                                        .and_then(crate::anthropic::web_search::hosted_call_at_stop)
+                                    {
+                                        return Ok(event);
+                                    }
+                                }
+
                                 let mut open = current_thinking.lock().unwrap();
                                 if let Some(mut block) = open.take() {
                                     match completed {
@@ -732,6 +851,11 @@ impl ChatDriver for AnthropicChatDriver {
                                         record_cache_diagnostics(&diagnostics_payload, diagnostics);
                                     }
                                     if let Some(usage) = data.usage {
+                                        if let Some(searches) = crate::anthropic::web_search::reported_searches(
+                                            usage.server_tool_use.as_ref(),
+                                        ) {
+                                            *web_search_requests.lock().unwrap() = searches;
+                                        }
                                         *output_tokens.lock().unwrap() = usage.output_tokens;
                                         // Cache tokens may also appear in delta
                                         if usage.cache_read_input_tokens.is_some() {
@@ -749,6 +873,10 @@ impl ChatDriver for AnthropicChatDriver {
                                     }
 
                                     if let Some(stop_reason) = data.delta.stop_reason {
+                                        // `pause_turn` (a long server-tool loop
+                                        // paused) ends the generation as a stop:
+                                        // the driver does not continue it (see
+                                        // `web_search`).
                                         let normalized = match stop_reason.as_str() {
                                             "max_tokens" => "length",
                                             "tool_use" => "tool_calls",
@@ -805,6 +933,11 @@ impl ChatDriver for AnthropicChatDriver {
                                     stop.as_deref().unwrap_or("none"),
                                 );
 
+                                let searches = crate::anthropic::web_search::search_count(
+                                    *web_search_requests.lock().unwrap(),
+                                    &content,
+                                );
+
                                 Ok(LlmStreamEvent::Done(Box::new({
                                     let mut metadata = LlmCompletionMetadata::default();
                                     metadata.total_tokens = Some(in_tokens + out_tokens);
@@ -829,6 +962,8 @@ impl ChatDriver for AnthropicChatDriver {
                                         .lock()
                                         .unwrap()
                                         .clone();
+                                    metadata.web_citations =
+                                        crate::anthropic::web_search::citations(&content);
                                     if !content.is_empty() {
                                         metadata.provider_opaque_content =
                                             Some(ProviderOpaqueContent::new(
@@ -837,6 +972,11 @@ impl ChatDriver for AnthropicChatDriver {
                                             ));
                                     }
                                     metadata.provider_checkpoint_candidate = checkpoint_candidate;
+                                    if searches > 0 {
+                                        metadata
+                                            .hosted_tool_calls
+                                            .insert("web_search_call".to_string(), searches);
+                                    }
                                     metadata
                                 })))
                             }

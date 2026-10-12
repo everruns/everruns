@@ -141,6 +141,7 @@ impl TestRun {
 
     fn tool_completed(&mut self, id: &str, name: &str, result: &str) {
         self.send(ToolCompletedData {
+            severity: None,
             details: None,
             tool_call_id: id.to_string(),
             tool_name: name.to_string(),

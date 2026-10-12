@@ -14,18 +14,36 @@
   [Execution Backends](framework/execution-backends.md),
   [Durable Execution Engine](operations/durable-execution-engine.md) and
   [Agent Reliability Tests](runtime-resources/agent-reliability-tests.md).
+* **PAT scopes step 4: read-only tokens can be created.** Creation accepts
+  `[]`, `["*"]` or `["read"]` and nothing else; the token page has a Full
+  access / Read-only picker and shows each token's scope; `GET /v1/auth/me`
+  reports `token_scope`; the creation audit event records `scopes`. Threat
+  model gains TM-AUTH-037 (mitigated) and TM-AUTH-038 (accepted). See
+  [Personal Access Token Scopes](security/pat-scopes.md).
+* **PAT scopes step 3: enforced on `/mcp` and the execution API.** A
+  read-only token lists and calls only the read-only MCP tools (an explicit
+  list kept equal to the `readOnlyHint` annotations by a test) and is refused
+  the rest with an `insufficient_scope` tool error; state-changing JSON-RPC
+  methods are refused too. `GET /v1/commands` lists only the commands a token
+  can run, and only a `*` token counts as an org member on an API channel.
+  See [Personal Access Token Scopes](security/pat-scopes.md).
 * **GitHub connection model design (awaiting approval).** One `github`
   connection per virtual user with a kind (agent App, shared Everruns app,
   person); every use declares how it acts, its repositories and permissions,
   and gets a token cut down to that; the shared app becomes an org-level
   opt-in; mentions become a GitHub channel beside triggers. See
   [GitHub Connection Model](integrations/github-model.md).
-* **Cache-stable tool changes design (awaiting approval).** The tool list
+* **Cache-stable tool changes design.** The tool list
   sent to the provider is fixed per session; reveals, MCP attaches and
   refreshes, capability switches and client tools become recorded tool
   changes in the conversation, sent as Anthropic `tool_addition` blocks or
   OpenAI `additional_tools` items, with today's behavior as the fallback. See
   [Cache-Stable Tool Changes](execution/cache-stable-tool-changes.md).
+  Accepted; step 1 (sticky deferral, sorted MCP tools, order-stable AG-UI
+  frontend tools) and step 2 (changes recorded on assistant messages and
+  replayed before each request; requests unchanged) implemented. Step 3:
+  Opus 5.5 and Sonnet 5.5 on the Claude API send the baseline as `tools` and
+  each change inline (`inline_tool_changes` profile parameter).
 * **PAT scopes step 2: enforced on REST and `/v1/commands`.** The auth
   extractor refuses a narrow token on any route outside its scope, including
   unclassified ones, with `403 insufficient_scope`; `POST /v1/commands/{name}`

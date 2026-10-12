@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Message } from "@/lib/api/types";
 import { isToolCallContent, isToolResultContent } from "@/lib/api/types";
 import { useLocale } from "@/providers/locale-provider";
+import { failureTextClass } from "./failure-severity";
 import { TodoListRenderer, isWriteTodosTool } from "./todo-list-renderer";
 import {
   extractToolCallContent,
@@ -40,6 +41,7 @@ export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
 
   const isComplete = !!toolResult;
   const hasError = resultContent?.error !== undefined && resultContent?.error !== null;
+  // Tool results returned to the model are issues; turn failures render elsewhere.
 
   // Handle missing content gracefully
   if (!content) {
@@ -75,7 +77,7 @@ export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
       {/* Result or executing state */}
       {isComplete ? (
         hasError ? (
-          <div className="text-destructive">
+          <div className={failureTextClass("issue")}>
             &gt; {t("error_prefix", { value: resultContent?.error ?? "" })}
           </div>
         ) : resultPreview ? (

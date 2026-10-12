@@ -478,6 +478,7 @@ export default defineConfig({
                         { label: "SQL Database", slug: "capabilities/sql-database" },
                         { label: "Retrieval Citations", slug: "capabilities/citation-retrieval" },
                         { label: "Citation Verification", slug: "capabilities/citation-verification" },
+                        { label: "Web Citations", slug: "capabilities/citation-web" },
                         { label: "Memory", slug: "capabilities/memory" },
                         { label: "Knowledge Base", slug: "capabilities/knowledge-base" },
                         { label: "Knowledge Index", slug: "capabilities/knowledge-index" },

@@ -321,6 +321,51 @@ async fn one_shot_delivers_once_and_disables_schedule() {
     assert_eq!(persisted.trigger_count, 1);
 }
 
+/// The embedded store reads a 5-field cron like the hosted one: weekdays count
+/// from Sunday, the minimum interval applies, and a bad cron or timezone is a
+/// rejection the tool reports to the model, not a store failure.
+#[tokio::test]
+async fn create_reads_unix_weekdays_and_rejects_bad_input() {
+    use chrono::{Datelike, Timelike};
+    use everruns_core::session_schedule::ScheduleLimitError;
+
+    let store = store(SqliteDb::open_in_memory().unwrap());
+    let session_id = SessionId::new();
+    let create = |cron: &str, timezone: &str| {
+        store.create_schedule_enforcing_limits(
+            session_id,
+            "weekly".into(),
+            Some(cron.into()),
+            None,
+            timezone.into(),
+        )
+    };
+
+    let Ok(sunday) = create("0 18 * * 0", "UTC").await else {
+        panic!("a Sunday cron is valid");
+    };
+    let next = sunday.next_trigger_at.unwrap();
+    assert_eq!((next.weekday(), next.hour()), (chrono::Weekday::Sun, 18));
+
+    for (cron, timezone, reason) in [
+        ("* * * * 0", "UTC", "no more than once every"),
+        ("not a cron", "UTC", "invalid cron expression 'not a cron'"),
+        (
+            "0 7 * * *",
+            "Mars/Base",
+            "invalid IANA timezone 'Mars/Base'",
+        ),
+    ] {
+        match create(cron, timezone).await {
+            Err(ScheduleLimitError::Rejected(message)) => {
+                assert!(message.contains(reason), "{cron} {timezone}: {message}");
+            }
+            Err(ScheduleLimitError::Store(error)) => panic!("{cron} {timezone}: store {error}"),
+            Ok(_) => panic!("{cron} {timezone}: created"),
+        }
+    }
+}
+
 #[tokio::test]
 async fn recurring_schedule_advances_and_delivers_more_than_once() {
     let store = store(SqliteDb::open_in_memory().unwrap());

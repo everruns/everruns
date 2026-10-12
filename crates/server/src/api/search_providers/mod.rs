@@ -23,7 +23,7 @@ use everruns_contracts::runtime::web_search::{
     NATIVE_WEB_SEARCH_PRICE_NOTE, SearchContext, SearchDriver, SearchFallbackMode, SearchHit,
     SearchProviderSetting, SearchRequest, WEB_SEARCH_ACCOUNT_PROVIDERS,
     WEB_SEARCH_CONNECTOR_CAPABILITY, WebSearchDefaults, WebSearchOrgSettings,
-    native_web_search_supported,
+    native_web_search_supported, native_web_search_supported_model,
 };
 use everruns_core::OrgRole;
 use everruns_integrations::web_search::{
@@ -355,7 +355,10 @@ async fn model_has_native(
         .await
         .map_err(internal("Failed to load model"))?
         .ok_or_else(|| bad_request("Model not found"))?;
-    Ok(native_web_search_supported(&model.provider_type))
+    Ok(native_web_search_supported_model(
+        &model.provider_type,
+        &model.model_id,
+    ))
 }
 
 #[utoipa::path(

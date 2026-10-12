@@ -390,10 +390,32 @@ pub fn hosted_call_tool(item_type: &str) -> Option<&'static str> {
 /// Code interpreter and shell bill per container session, not per call, and
 /// one container serves many calls across turns, so they stay unpriced here.
 /// Source: openai.com/api/pricing.
+///
+/// Native search of the other vendors counts as `web_search_call` too.
+/// Anthropic bills $10 per 1,000 searches. Gemini 3 and later bill $14 per
+/// 1,000 search queries; Gemini 2.x bills $35 per 1,000 grounded prompts, and
+/// its driver counts one call per grounded generation. Free tiers are left
+/// out: this is an estimate. Sources: Anthropic's web search tool guide and
+/// Gemini's grounding guide (2026-10).
 pub fn hosted_call_price_usd(item_type: &str, model: &str) -> Option<f64> {
+    // A gateway slug (`openai/gpt-4.1`) prices like the model it names; the
+    // gateway's reported cost, when it sends one, stays the authoritative
+    // amount.
+    let model = model.rsplit('/').next().unwrap_or(model);
     match item_type {
         "web_search_call" if model.starts_with("gpt-4o") || model.starts_with("gpt-4.1") => {
             Some(25.0 / 1000.0)
+        }
+        "web_search_call" if model.starts_with("gemini-") => {
+            let major = model["gemini-".len()..]
+                .split(['.', '-'])
+                .next()
+                .and_then(|major| major.parse::<u32>().ok());
+            Some(if major.is_some_and(|major| major >= 3) {
+                14.0 / 1000.0
+            } else {
+                35.0 / 1000.0
+            })
         }
         "web_search_call" => Some(10.0 / 1000.0),
         "file_search_call" => Some(2.5 / 1000.0),
@@ -586,6 +608,15 @@ mod tests {
         assert!((sol - 0.03).abs() < 1e-9, "{sol}");
         let legacy = hosted_calls_cost_usd(&counts, "gpt-4.1-mini").unwrap();
         assert!((legacy - 0.075).abs() < 1e-9, "{legacy}");
+        let claude = hosted_calls_cost_usd(&counts, "claude-haiku-5-5").unwrap();
+        assert!((claude - 0.03).abs() < 1e-9, "{claude}");
+        // Gemini 3 bills per query, Gemini 2.x per grounded prompt.
+        let gemini = hosted_calls_cost_usd(&counts, "gemini-3.8-flash").unwrap();
+        assert!((gemini - 0.042).abs() < 1e-9, "{gemini}");
+        let routed = hosted_calls_cost_usd(&counts, "google/gemini-3-pro").unwrap();
+        assert!((routed - 0.042).abs() < 1e-9, "{routed}");
+        let grounded = hosted_calls_cost_usd(&counts, "gemini-2.5-flash").unwrap();
+        assert!((grounded - 0.105).abs() < 1e-9, "{grounded}");
         assert_eq!(hosted_calls_cost_usd(&BTreeMap::new(), "gpt-6.1-sol"), None);
         let files = BTreeMap::from([("file_search_call".to_string(), 4)]);
         let files = hosted_calls_cost_usd(&files, "gpt-6.1-sol").unwrap();

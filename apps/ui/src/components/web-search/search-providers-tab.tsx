@@ -24,7 +24,7 @@ import { accountLabel, automaticEntries, formatSearchDuration } from "@/lib/web-
 import { cn } from "@/lib/utils";
 import { SearchProviderIcon } from "./search-provider-icon";
 
-/** Model provider types with search of their own; mirrors `NATIVE_WEB_SEARCH_PROVIDER_TYPES`. */
+/** Model provider types whose drivers run native search; mirrors `NATIVE_WEB_SEARCH_PROVIDER_TYPES`. */
 const NATIVE_TYPES: { type: string; label: string }[] = [
   { type: "openai", label: "OpenAI" },
   { type: "anthropic", label: "Anthropic" },
@@ -223,7 +223,7 @@ export function SearchProvidersTab({
               {NATIVE_TYPES.filter(
                 (entry) =>
                   nativeTypes.has(entry.type) ||
-                  ["openai", "anthropic", "gemini"].includes(entry.type),
+                  ["openai", "anthropic", "gemini", "openrouter"].includes(entry.type),
               ).map((entry) => (
                 <Badge
                   key={entry.type}
@@ -244,9 +244,17 @@ export function SearchProvidersTab({
             : []),
           ["Cost", <strong key="cost">{nativePrice}</strong>],
           ["Network", "Runs at the model provider, outside your network allowlist"],
-          // Honest until step 4 lands the driver adapters: a native step
-          // records that the model did not search and the next provider answers.
-          ["Today", "Model drivers do not run it yet; the next provider in the plan answers"],
+          // A model without native search, or one that cannot apply the
+          // agent's sites, falls through to the next provider of the plan.
+          // Gemini grounding also needs web search to be the call's only tool.
+          [
+            "Models",
+            "OpenAI models with web search, Claude 3.7 Sonnet, 3.5 Haiku and 4 or later, Gemini 2.0 Flash or later, and OpenRouter models with native search. Others use the next provider in the plan",
+          ],
+          [
+            "Limits",
+            "Gemini searches natively only when web search is the agent's only tool and no sites are allowed or blocked",
+          ],
         ]}
         footer={
           modelProviders.length > 0

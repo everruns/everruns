@@ -610,3 +610,89 @@ async fn a_crash_between_act_and_reason_does_not_rerun_the_tool() {
     assert_eq!(fixture.answers().await, vec!["Sent."]);
     fixture.assert_idle();
 }
+
+/// EVE-1235: the session is deleted while its turn runs. The holder's next
+/// renew finds it gone and the turn stops at once, quietly: no `turn.failed`
+/// (there is nowhere to store it), no answer, and no lease to release.
+#[tokio::test]
+async fn a_turn_whose_session_is_deleted_stops_at_the_next_renew() {
+    let fixture = Fixture::new(model("Never shown.", vec![vec![call("c1", "read_inbox")]])).await;
+    fixture.gate.hold_first.store(true, Ordering::SeqCst);
+    let (worker, _) = fixture.worker("w1");
+    fixture.send("Read my inbox.").await;
+
+    let running = {
+        let worker = worker.clone();
+        tokio::spawn(async move { run_once(&worker).await })
+    };
+    tokio::time::timeout(WAIT, fixture.gate.held.notified())
+        .await
+        .unwrap();
+    fixture.store.delete(fixture.session_id);
+    worker.renew_poke().notify_waiters();
+
+    // Well inside the lease TTL (3s): a deleted session is not a store error
+    // the renewer waits out.
+    tokio::time::timeout(Duration::from_millis(1500), running)
+        .await
+        .expect("the turn stops at the renew")
+        .unwrap();
+    assert_eq!(fixture.count("turn.failed").await, 0);
+    assert_eq!(fixture.count("turn.completed").await, 0);
+    assert!(fixture.answers().await.is_empty());
+    assert!(!run_once(&worker).await, "nothing left to lease");
+}
+
+/// EVE-1235: a turn whose session was deleted fails on whatever it reads next
+/// (its input message, the conversation), with errors that do not name the
+/// session. The holder asks the renew, which answers for the actor row, before
+/// treating such a failure as the turn's own.
+#[tokio::test]
+async fn a_failure_after_the_session_was_deleted_reads_as_the_delete() {
+    let fixture = Fixture::new(model("Done.", vec![])).await;
+    let (worker, _) = fixture.worker("w1");
+    fixture.send("Hello.").await;
+    let actor = worker.lease(1).await.unwrap().pop().expect("leased");
+    let lease = super::super::lease::Lease::new(
+        fixture.store.clone(),
+        "w1".to_string(),
+        &actor,
+        Duration::from_secs(3),
+        3,
+    );
+    let unrelated =
+        everruns_contracts::error::AgentLoopError::store("User message not found: message_x");
+
+    assert!(
+        !super::super::turn::session_deleted(&lease, &unrelated).await,
+        "the session is still there: the failure is the turn's"
+    );
+    fixture.store.delete(fixture.session_id);
+    assert!(super::super::turn::session_deleted(&lease, &unrelated).await);
+}
+
+/// EVE-1235, ported from the retired turn driver: the session is deleted
+/// after its actor was leased and before the turn's first step. The turn ends
+/// without error and without retry: no `turn.failed`, no answer, no seal, and
+/// nothing left to lease.
+#[tokio::test]
+async fn a_turn_whose_session_is_deleted_before_it_runs_stops_without_error() {
+    let fixture = Fixture::new(model("Never shown.", vec![])).await;
+    let (worker, _) = fixture.worker("w1");
+    fixture.send("Hello.").await;
+    let actor = worker.lease(1).await.unwrap().pop().expect("leased");
+
+    // Gone under the leased actor: its row goes with it (FK cascade), and the
+    // turn's first step finds the session missing.
+    fixture.store.delete(fixture.session_id);
+    *fixture.model.deleted_session.lock().unwrap() = Some(fixture.session_id);
+    tokio::time::timeout(WAIT, worker.run_actor(actor))
+        .await
+        .expect("the turn stops");
+
+    assert_eq!(fixture.count("turn.failed").await, 0);
+    assert_eq!(fixture.count("turn.sealed").await, 0);
+    assert_eq!(fixture.count("turn.completed").await, 0);
+    assert!(fixture.answers().await.is_empty());
+    assert!(!run_once(&worker).await, "nothing left to lease");
+}

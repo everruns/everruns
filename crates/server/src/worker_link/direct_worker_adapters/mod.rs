@@ -843,10 +843,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
     // =========================================================================
 
     async fn emit_event(&self, request: EventRequest) -> Result<Event> {
-        self.event_service.emit(request).await.map_err(|e| {
-            tracing::error!("Failed to emit event: {}", e);
-            store_error("Failed to emit event")
-        })
+        self.event_service
+            .emit(request)
+            .await
+            .map_err(EventService::worker_emit_error)
     }
 
     async fn emit_events_fenced(
@@ -1223,7 +1223,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         let session = self
             .get_turn_session(org_id, session_id)
             .await?
-            .ok_or_else(|| store_error("Session not found"))?;
+            .ok_or_else(|| AgentLoopError::session_not_found(session_id.into()))?;
 
         // session.agent_id from get_session() is the internal UUID (raw DB FK).
         // Use get_agent() which queries by internal id.

@@ -64,6 +64,7 @@ pub mod model_profiles;
 pub mod model_spec;
 pub mod native_async;
 pub mod native_computer;
+pub mod native_web_search;
 pub mod openai_compat;
 pub mod openai_computer;
 #[cfg(feature = "http")]
@@ -98,6 +99,7 @@ pub mod turn_collector;
 pub mod typed_id;
 pub mod url_validation;
 pub mod user_facing_error;
+pub mod web_citation;
 
 // ============================================================================
 // Convenience root re-exports
@@ -202,6 +204,7 @@ pub fn install_default_crypto_provider() {
 }
 
 pub mod reasoning_updates;
+pub mod tool_changes;
 
 pub mod connector;
 pub mod knowledge_store;

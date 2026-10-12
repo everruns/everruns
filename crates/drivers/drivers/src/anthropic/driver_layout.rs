@@ -24,6 +24,7 @@ use std::collections::HashSet;
 use everruns_contracts::driver_registry::{Message, MessageRole};
 use everruns_contracts::message::TURN_SCOPED_SYSTEM_MARKER;
 use everruns_contracts::model::{CLEAR_AT_PARAMETER, MID_CONVERSATION_SYSTEM_PARAMETER};
+use everruns_contracts::tool_changes::ToolChanges;
 
 use super::{
     AnthropicCacheControl, AnthropicContentBlock, AnthropicMessage, MESSAGE_CACHE_BREAKPOINTS,
@@ -46,6 +47,8 @@ pub(super) struct PreparedMessages<'a> {
     // THREAT[TM-LLM-041]: Keep system provenance out of message text so user
     // content cannot forge it and cross the provider's role boundary.
     in_place_systems: Vec<(usize, bool)>,
+    /// Carriers inserted for tool changes sent inline, by message index.
+    tool_changes: Vec<(usize, &'a ToolChanges)>,
 }
 
 impl PreparedMessages<'_> {
@@ -53,6 +56,14 @@ impl PreparedMessages<'_> {
         self.in_place_systems
             .iter()
             .find_map(|(message_index, clear_at)| (*message_index == index).then_some(*clear_at))
+    }
+
+    /// How many tool definitions this request's inline changes carry.
+    pub(super) fn tool_definition_count(&self) -> usize {
+        self.tool_changes
+            .iter()
+            .map(|(_, changes)| changes.added.len() + changes.redefined.len())
+            .sum()
     }
 }
 
@@ -75,49 +86,61 @@ pub(super) fn binds_thinking_to_conversation(model: &str) -> bool {
 /// Mark every system message after the leading run to be kept in place, on
 /// models that accept mid-conversation system messages. Other models get the
 /// messages unchanged and keep folding every system message into `system`.
+///
+/// With `inline_tool_changes`, each message carrying a tool change gets an
+/// in-place system message inserted before it to carry that change.
 pub(super) fn keep_later_system_messages_in_place<'a>(
     messages: &'a [Message],
     model: &str,
+    inline_tool_changes: bool,
 ) -> PreparedMessages<'a> {
     let leading = messages
         .iter()
         .take_while(|m| m.role == MessageRole::System)
         .count();
-    let has_later = messages[leading..]
-        .iter()
-        .any(|m| m.role == MessageRole::System);
+    let has_later = messages[leading..].iter().any(|m| {
+        m.role == MessageRole::System || (inline_tool_changes && m.tool_changes.is_some())
+    });
     if !has_later || !supports_parameter(model, MID_CONVERSATION_SYSTEM_PARAMETER) {
         return PreparedMessages {
             messages: Cow::Borrowed(messages),
             in_place_systems: Vec::new(),
+            tool_changes: Vec::new(),
         };
     }
     let supports_clear_at = supports_parameter(model, CLEAR_AT_PARAMETER);
     let mut in_place_systems = Vec::new();
-    let marked = messages
-        .iter()
-        .enumerate()
-        .map(|(index, message)| {
-            if index >= leading && message.role == MessageRole::System {
-                let text = message.content.to_text();
-                let (text, clear_at) = if supports_clear_at {
-                    match text.strip_prefix(TURN_SCOPED_SYSTEM_MARKER) {
-                        Some(text) => (text.to_string(), true),
-                        None => (text, false),
-                    }
-                } else {
-                    (text, false)
-                };
-                in_place_systems.push((index, clear_at));
-                Message::text(MessageRole::User, text)
+    let mut tool_changes = Vec::new();
+    let mut marked = Vec::with_capacity(messages.len());
+    for (index, message) in messages.iter().enumerate() {
+        if inline_tool_changes
+            && index >= leading
+            && let Some(changes) = &message.tool_changes
+        {
+            tool_changes.push((marked.len(), changes));
+            in_place_systems.push((marked.len(), false));
+            marked.push(Message::text(MessageRole::User, ""));
+        }
+        if index >= leading && message.role == MessageRole::System {
+            let text = message.content.to_text();
+            let (text, clear_at) = if supports_clear_at {
+                match text.strip_prefix(TURN_SCOPED_SYSTEM_MARKER) {
+                    Some(text) => (text.to_string(), true),
+                    None => (text, false),
+                }
             } else {
-                message.clone()
-            }
-        })
-        .collect();
+                (text, false)
+            };
+            in_place_systems.push((marked.len(), clear_at));
+            marked.push(Message::text(MessageRole::User, text));
+        } else {
+            marked.push(message.clone());
+        }
+    }
     PreparedMessages {
         messages: Cow::Owned(marked),
         in_place_systems,
+        tool_changes,
     }
 }
 
@@ -142,6 +165,19 @@ pub(super) fn in_place_system(content: Vec<AnthropicContentBlock>) -> AnthropicM
         clear_at: None,
         preserved_content: None,
     }
+}
+
+/// The in-place system message at `index`: the tool change it carries, or
+/// the message's own `content`.
+pub(super) fn carrier(
+    prepared: Option<&PreparedMessages<'_>>,
+    index: usize,
+    content: Vec<AnthropicContentBlock>,
+) -> AnthropicMessage {
+    let changes = prepared
+        .and_then(|p| p.tool_changes.iter().find(|(at, _)| *at == index))
+        .map(|(_, changes)| *changes);
+    in_place_system(changes.map_or(content, super::tool_changes::blocks))
 }
 
 /// Tool-use ids a request will actually show the model. A `tool_result` whose
@@ -170,13 +206,9 @@ pub(super) fn place_system_messages(
             .iter()
             .find(|(message_index, _)| *message_index == index)
         {
-            let text = message.content.into_iter().find_map(|block| match block {
-                AnthropicContentBlock::Text { text, .. } => Some(text),
-                _ => None,
-            });
-            if let Some(text) = text {
+            if !message.content.is_empty() {
                 pending.push(InPlaceSystem {
-                    text,
+                    blocks: message.content,
                     clear_at: *clear_at,
                 });
             }
@@ -192,11 +224,40 @@ pub(super) fn place_system_messages(
 }
 
 struct InPlaceSystem {
-    text: String,
+    blocks: Vec<AnthropicContentBlock>,
     clear_at: bool,
 }
 
-fn fold_into_system(system_prompt: &mut Option<String>, text: String) {
+/// The blocks of neighbouring system messages as one message's content, with
+/// adjacent text joined.
+fn merge(messages: Vec<InPlaceSystem>) -> Vec<AnthropicContentBlock> {
+    let mut merged: Vec<AnthropicContentBlock> = Vec::new();
+    for block in messages.into_iter().flat_map(|message| message.blocks) {
+        match (merged.last_mut(), block) {
+            (
+                Some(AnthropicContentBlock::Text { text, .. }),
+                AnthropicContentBlock::Text { text: next, .. },
+            ) => {
+                text.push_str("\n\n");
+                text.push_str(&next);
+            }
+            (_, block) => merged.push(block),
+        }
+    }
+    merged
+}
+
+/// Fold the text of `blocks` into top-level `system`. Other blocks (tool
+/// changes) have no place there and are dropped; the driver then falls back.
+fn fold_into_system(system_prompt: &mut Option<String>, blocks: Vec<AnthropicContentBlock>) {
+    let text = blocks
+        .into_iter()
+        .filter_map(|block| match block {
+            AnthropicContentBlock::Text { text, .. } => Some(text),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
     if text.is_empty() {
         return;
     }
@@ -206,13 +267,14 @@ fn fold_into_system(system_prompt: &mut Option<String>, text: String) {
     });
 }
 
-fn push_system_message(placed: &mut Vec<AnthropicMessage>, text: String, clear_at: Option<String>) {
+fn push_system_message(
+    placed: &mut Vec<AnthropicMessage>,
+    content: Vec<AnthropicContentBlock>,
+    clear_at: Option<String>,
+) {
     placed.push(AnthropicMessage {
         role: "system".to_string(),
-        content: vec![AnthropicContentBlock::Text {
-            text,
-            cache_control: None,
-        }],
+        content,
         clear_at,
         preserved_content: None,
     });
@@ -228,17 +290,24 @@ fn flush(
     }
     let (scoped, permanent): (Vec<_>, Vec<_>) =
         pending.drain(..).partition(|message| message.clear_at);
-    let permanent = permanent
-        .into_iter()
-        .map(|message| message.text)
-        .collect::<Vec<_>>()
-        .join("\n\n");
-    let scoped = scoped
-        .into_iter()
-        .map(|message| message.text)
-        .collect::<Vec<_>>()
-        .join("\n\n");
     let follows_user = placed.last().is_some_and(|message| message.role == "user");
+    // Only one system message fits a position. A tool change cannot fold into
+    // `system`, so its message takes the turn's reminders too and keeps them
+    // past the next user message; the replay is the same either way.
+    if follows_user
+        && permanent
+            .iter()
+            .flat_map(|message| &message.blocks)
+            .any(|block| !matches!(block, AnthropicContentBlock::Text { .. }))
+    {
+        push_system_message(
+            placed,
+            merge(permanent.into_iter().chain(scoped).collect()),
+            None,
+        );
+        return;
+    }
+    let (permanent, scoped) = (merge(permanent), merge(scoped));
 
     match (permanent.is_empty(), scoped.is_empty(), follows_user) {
         (false, true, true) => push_system_message(placed, permanent, None),
@@ -340,7 +409,7 @@ mod tests {
 
     /// The request `system` and `messages` as JSON, roles and text only.
     fn layout_for(model: &str, messages: &[Message]) -> (Option<String>, Value) {
-        let prepared = keep_later_system_messages_in_place(messages, model);
+        let prepared = keep_later_system_messages_in_place(messages, model, false);
         let (system, converted) = AnthropicChatDriver::convert_messages_with_options(
             &prepared.messages,
             Some(&prepared),
@@ -495,7 +564,7 @@ mod tests {
             scoped_system("loop warning"),
         ]);
 
-        let prepared_one = keep_later_system_messages_in_place(&turn_one, "claude-opus-5-5");
+        let prepared_one = keep_later_system_messages_in_place(&turn_one, "claude-opus-5-5", false);
         let (system_one, one) = AnthropicChatDriver::convert_messages_with_options(
             &prepared_one.messages,
             Some(&prepared_one),
@@ -503,7 +572,7 @@ mod tests {
             0,
             false,
         );
-        let prepared_two = keep_later_system_messages_in_place(&turn_two, "claude-opus-5-5");
+        let prepared_two = keep_later_system_messages_in_place(&turn_two, "claude-opus-5-5", false);
         let (system_two, two) = AnthropicChatDriver::convert_messages_with_options(
             &prepared_two.messages,
             Some(&prepared_two),
@@ -541,7 +610,7 @@ mod tests {
             msg(User, "next"),
             msg(System, "notice"),
         ];
-        let prepared = keep_later_system_messages_in_place(&messages, "claude-opus-5-5");
+        let prepared = keep_later_system_messages_in_place(&messages, "claude-opus-5-5", false);
         let (_, converted) = AnthropicChatDriver::convert_messages_with_options(
             &prepared.messages,
             Some(&prepared),

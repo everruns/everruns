@@ -22,7 +22,7 @@ search with no key and no setup.
 |---|---|---|
 | **Organization default** (`org_default`) | The organization's default provider (see below); Automatic for a new organization | Depends on the provider |
 | **Automatic** (`auto`) | The organization's Automatic order: the model's own search, then the organization's search accounts, then free search | Depends on the provider that answers |
-| **Model provider search** (`native`) | The model's own search. Until model provider search ships, free search answers. | Billed by the model provider |
+| **Model provider search** (`native`) | The model's own search, on OpenAI, Anthropic, Gemini and OpenRouter models that have it (see below). Other models use free search. | Billed by the model provider |
 | **Brave Search** (`brave`) | The Brave Search API with a user, session or application key, else the organization's first Brave account | Billed on the Brave key |
 | **A search account** (`account`, with `account_id`) | One organization search account, such as "Brave Search · Team" | Billed on that account's key |
 | **Free search** (`free`) | DuckDuckGo, then DuckDuckGo Lite, then Mojeek, then Wikipedia | Free |
@@ -30,6 +30,39 @@ search with no key and no setup.
 Free search is the last fallback of every setting: when the chosen provider has no key, rejects
 it, is rate limited or is unavailable, free search answers and the run records why. Set
 `fallback` to `none` to use only the chosen provider.
+
+## Model provider search
+
+When model provider search comes first in an agent's plan, the model searches with its provider's
+own search instead of calling `web_search`: the provider runs the searches inside the model call
+and the answer cites its sources. This is decided on every turn, for the model running that turn
+and the organization's current defaults, so a session that switches models keeps searching:
+
+| Model provider | Native search |
+|---|---|
+| OpenAI, Azure OpenAI, ChatGPT plan | OpenAI web search, on models that have it (GPT-4o, GPT-4.1, GPT-5 and later, o3, o4-mini) |
+| OpenRouter | The model vendor's own search, on models OpenRouter runs it for (OpenAI GPT-4.1 and GPT-5 and later, Claude, Gemini 3, Grok 4, Perplexity) |
+| Anthropic | Anthropic web search, on Claude 3.5 Haiku, Claude 3.7 Sonnet and Claude 4 and later, up to 5 searches per model call |
+| Gemini | Grounding with Google Search, on Gemini 2.0 Flash, 2.5 and 3 and later, when `web_search` is the agent's only tool |
+| Others | None: the next provider in the plan answers |
+
+The agent's domain filters and the organization's blocked domains go with each request. A provider
+that cannot apply them leaves the `web_search` tool in place, and the next provider in the plan
+answers: OpenAI search cannot exclude sites, so an agent or organization with blocked domains
+searches with its next provider on OpenAI models. Anthropic takes allowed or blocked sites but not
+both at once, and Gemini takes neither. Gemini also cannot yet search natively next to the agent's
+other tools, so an agent with more tools than `web_search` searches with its next provider on
+Gemini models. On OpenRouter, native search is only requested for models that have it, so
+OpenRouter's own fallback search never answers in place of the plan.
+
+Each native search is billed by the model provider: about $10 per 1,000 searches on OpenAI and
+Anthropic, $14 per 1,000 search queries on Gemini 3 and $35 per 1,000 grounded answers on Gemini
+2.x. The model call
+records it as a `hosted_tool` cost component (`web_search_call`, with the number of searches) and
+budgets count it. In chat, a native search shows as a **Searching the web for "…"** row.
+
+The OpenAI and OpenRouter server tools capabilities keep their own `web_search` option. When one of
+them already turns on its provider's search, that configuration is used.
 
 ## In the UI
 
@@ -124,6 +157,10 @@ Returns the query and a list of results, each with an `id`, `title`, `url`, `sit
 `published`, `snippet` and `excerpt`. The model cites a claim with the result's `url` or `id`; an
 `id` stays the same for the same URL throughout a session. Free search adds an `answer` when an
 encyclopedia abstract matches.
+
+To show those citations as numbered source chips in the chat, also add
+[Web Citations](/capabilities/citation-web/) (`citation_web`). It covers model provider search
+too, from the citations the provider returns.
 
 Which provider answered, every attempt with its reason, and each provider's raw response are kept
 on the tool call for people (the run's details and Session Trace). The model sees them only with

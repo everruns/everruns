@@ -93,6 +93,7 @@ impl CompletingTestRunner {
                 session_id,
                 everruns_core::events::EventContext::empty(),
                 everruns_core::events::TurnCompletedData {
+                    issue_count: None,
                     turn_id: everruns_contracts::typed_id::TurnId::new(),
                     iterations: 1,
                     duration_ms: None,

@@ -2,6 +2,7 @@
 //
 //   PUT    /v1/agents/{agent_id}/avatar         upload (multipart `file`), replaces
 //   DELETE /v1/agents/{agent_id}/avatar         remove
+//   POST   /v1/agents/{agent_id}/avatar/set     `set_agent_avatar` command (JSON)
 //   GET    /v1/avatars/{avatar_id}/{variant}    public, immutable PNG
 //
 // Design decisions:
@@ -13,8 +14,10 @@
 //   content is the same picture those surfaces already show publicly.
 // - `Cache-Control: immutable` is safe because an id is never reused: a new
 //   upload gets a new id and the old one stops resolving.
-// - Upload is a plain route, not a domain command: a binary multipart body has
-//   no CLI/MCP form, and the CLI contract lists commands.
+// - The multipart upload stays a plain route: a binary body has no CLI/MCP
+//   form. The CLI and MCP set avatars through the `set_agent_avatar` command,
+//   which takes a preset id or the image inline as base64 (capped at 1 MB) and
+//   shares this file's write path (`domains::agents::avatar_commands`).
 
 use axum::{
     Json, Router,
@@ -29,13 +32,15 @@ use everruns_contracts::typed_id::AvatarId;
 use everruns_core::Caller;
 
 use super::agents::AppState;
+use super::command_http::CommandRouterExt;
 use super::common::ErrorResponse;
 use crate::auth::ResolvedOrg;
 use crate::domains::agents::AGENT_MANAGE;
 use crate::domains::agents::avatar::RenderedAvatarVariant;
 use crate::domains::agents::avatar::{
-    AVATAR_CONTENT_TYPE, MAX_AVATAR_UPLOAD_BYTES, is_known_variant, render_avatar,
+    AVATAR_CONTENT_TYPE, MAX_AVATAR_UPLOAD_BYTES, is_known_variant,
 };
+use crate::domains::agents::avatar_commands::{self as avatars, MAX_INLINE_AVATAR_BYTES};
 use crate::domains::agents::avatar_presets::{AvatarPreset, PRESETS, find_preset};
 use crate::domains::agents::record::AgentAvatar;
 use serde::{Deserialize, Serialize};
@@ -58,7 +63,7 @@ pub struct AvatarPresetSelection {
     pub preset_id: Option<String>,
 }
 
-use crate::storage::{AgentAvatarVariantInput, AgentRow, SetAgentAvatar};
+use crate::storage::AgentRow;
 
 type ApiError = (StatusCode, Json<ErrorResponse>);
 
@@ -83,6 +88,14 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/v1/agents/{agent_id}/avatar/preset",
             put(select_avatar_preset).get(get_avatar_preset_selection),
+        )
+        .merge(
+            Router::new()
+                .command::<crate::domains::agents::SetAgentAvatar>()
+                // Base64 (4/3) of the largest inline image, plus the JSON around it.
+                .layer(DefaultBodyLimit::max(
+                    MAX_INLINE_AVATAR_BYTES.div_ceil(3) * 4 + 64 * 1024,
+                )),
         )
 }
 
@@ -116,21 +129,7 @@ async fn manageable_agent(
         .map_err(|_| {
             ErrorResponse::new("Permission denied").into_response(StatusCode::FORBIDDEN)
         })?;
-    let row = state
-        .db
-        .get_agent_by_public_id(org.org_id, agent_id)
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, "Failed to load agent for avatar");
-            ErrorResponse::internal_error()
-        })?
-        .filter(|row| row.status != "deleted")
-        .ok_or_else(|| ErrorResponse::not_found("Agent"))?;
-    if row.is_built_in {
-        return Err(ErrorResponse::new("Built-in agents cannot be modified")
-            .into_response(StatusCode::FORBIDDEN));
-    }
-    Ok(row)
+    Ok(avatars::manageable_agent(&state.db, org.org_id, agent_id).await?)
 }
 
 /// PUT /v1/agents/{agent_id}/avatar - Upload the agent's avatar
@@ -175,12 +174,7 @@ pub async fn upload_agent_avatar(
     }
     let (content_type, data) = upload.ok_or_else(|| bad_request("No 'file' field in request"))?;
 
-    // Decoding and resizing is CPU-bound; keep it off the async workers.
-    let variants = tokio::task::spawn_blocking(move || render_avatar(&data, &content_type))
-        .await
-        .map_err(|_| ErrorResponse::internal_error())?
-        .map_err(|error| bad_request(error.to_string()))?;
-
+    let variants = avatars::render_upload(data, content_type).await?;
     store_avatar(&state, &org, &agent, "upload".to_string(), variants).await
 }
 
@@ -192,48 +186,18 @@ async fn store_avatar(
     variants: Vec<RenderedAvatarVariant>,
 ) -> Result<Json<AgentAvatar>, ApiError> {
     let change = avatar_change(state, org, agent, "set_agent_avatar").await?;
-    let avatar_id = state
-        .db
-        .set_agent_avatar(SetAgentAvatar {
-            org_id: org.org_id,
-            agent_id: agent.id.uuid(),
-            source,
-            variants: variants
-                .into_iter()
-                .map(|v| AgentAvatarVariantInput {
-                    variant: v.variant,
-                    content_type: v.content_type.to_string(),
-                    data: v.data,
-                })
-                .collect(),
-        })
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, "Failed to store agent avatar");
-            ErrorResponse::internal_error()
-        })?
-        .ok_or_else(|| ErrorResponse::not_found("Agent"))?;
+    let avatar = avatars::store_avatar(
+        &state.db,
+        state.slack_provisioner.clone(),
+        state.encryption.clone(),
+        org.org_id,
+        agent,
+        source,
+        variants,
+    )
+    .await?;
     change.finish(&agent.public_id).await;
-
-    if let Some(provisioner) = state.slack_provisioner.clone() {
-        let (db, encryption) = (state.db.clone(), state.encryption.clone());
-        let (org_id, agent_uuid) = (org.org_id, agent.id.uuid());
-        let api_base_url = crate::domains::agents::avatar_slack::deployment_api_base();
-        tokio::spawn(async move {
-            crate::domains::agents::avatar_slack::push_avatar_to_agent_slack_apps(
-                db,
-                encryption,
-                provisioner,
-                org_id,
-                agent_uuid,
-                avatar_id,
-                &api_base_url,
-            )
-            .await;
-        });
-    }
-
-    Ok(Json(AgentAvatar::from_uuid(avatar_id)))
+    Ok(Json(avatar))
 }
 
 /// The public catalog contains presentation metadata only, never agent configuration.
@@ -288,22 +252,8 @@ pub async fn select_avatar_preset(
     Json(request): Json<SelectAvatarPreset>,
 ) -> Result<Json<AgentAvatar>, ApiError> {
     let agent = manageable_agent(&state, &org, &agent_id).await?;
-    let preset = find_preset(&request.preset_id)
-        .ok_or_else(|| bad_request("Unknown avatar preset. Choose one from the catalog."))?;
-    let variants = tokio::task::spawn_blocking(move || {
-        preset.variants().map(<[RenderedAvatarVariant]>::to_vec)
-    })
-    .await
-    .map_err(|_| ErrorResponse::internal_error())?
-    .map_err(|_| ErrorResponse::internal_error())?;
-    store_avatar(
-        &state,
-        &org,
-        &agent,
-        format!("preset:{}", preset.metadata.id),
-        variants,
-    )
-    .await
+    let (source, variants) = avatars::preset_variants(&request.preset_id).await?;
+    store_avatar(&state, &org, &agent, source, variants).await
 }
 
 /// Return the agent's current curated preset ID, or null for a custom upload or no avatar. Requires permission to manage the agent.

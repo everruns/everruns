@@ -170,6 +170,18 @@ name = "openrouter_request_wire"
 required-features = ["openrouter"]
 
 [[test]]
+name = "anthropic_web_search_wire"
+required-features = ["anthropic"]
+
+[[test]]
+name = "web_citations_wire"
+required-features = ["openai", "openrouter"]
+
+[[test]]
+name = "native_web_search_live"
+required-features = ["openai", "openrouter", "anthropic", "gemini"]
+
+[[test]]
 name = "fireworks_chat_live"
 required-features = ["fireworks"]
 

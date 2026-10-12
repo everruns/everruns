@@ -130,9 +130,11 @@ impl SessionScheduleStore for DbSessionScheduleStore {
                 .map_err(ScheduleLimitError::Rejected)?;
         }
 
+        // compute_next_trigger fails only on an invalid cron or timezone: the
+        // caller's input, which the tool reports back so the model can fix it.
         let next_trigger =
             compute_next_trigger(cron_expression.as_deref(), scheduled_at, &timezone)
-                .map_err(|e| ScheduleLimitError::Store(AgentLoopError::tool(e.to_string())))?;
+                .map_err(|e| ScheduleLimitError::Rejected(e.to_string()))?;
         let session = self
             .db
             .get_session(self.org_id, session_id)

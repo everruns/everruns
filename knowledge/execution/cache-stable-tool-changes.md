@@ -11,7 +11,7 @@ tags:
 
 # Cache-Stable Tool Changes
 
-> Status: **Proposed 2026-10-12, awaiting approval.** Nothing here is built.
+> Status: **Accepted 2026-10-12. Steps 1, 2 and the Anthropic request side of 3 implemented.**
 > Builds on the earlier analysis of Pi's approach (project notes,
 > `pi-1-0/cache-stable-tool-reveals.md`) and the caching comparison with
 > Pydantic AI (`caching/pydantic-unified-caching.md`), where this is ranked as
@@ -149,23 +149,34 @@ tools sorted by name within each server.
 
 ### 2. Recorded tool changes
 
-A new typed field on the runtime message, following the precedent of
-`configuration_update` (an Astra effort change that drivers render natively
-and is never shown as conversation text):
+One recorded entry, `ToolChanges` (`crates/contracts/src/tool_changes.rs`),
+holding
 
-- `tool_changes: Option<ToolChanges>` on a `system` message, holding
-  - `added`: full definitions of tools that become callable,
-  - `redefined`: full definitions that replace an earlier definition of the
-    same name (a stub becoming its full schema is a redefinition),
-  - `removed`: names that are no longer callable,
-  - `note`: optional prompt text that comes with the change (a capability's
-    how-to, "these tools are no longer available").
+- `baseline`: present on the first entry of an epoch, the full list sent as
+  `tools`,
+- `added`: full definitions of tools that become callable,
+- `redefined`: full definitions that replace an earlier definition of the
+  same name (a stub becoming its full schema is a redefinition),
+- `removed`: names that are no longer callable,
+- `note`: optional prompt text that comes with the change (a capability's
+  how-to, "these tools are no longer available").
 
-The entry is stored with the session's messages, hidden from chat, visible in
-Session Trace. Replaying baseline plus entries in order always yields the tool
-set the conversation has seen. That makes the conversation, not process memory,
-the record of what was revealed, which also replaces `tool_search`'s in-memory
-registry and fixes reveals being forgotten after a restart or on another worker.
+Entries are stored on the metadata of the completed assistant message whose
+request they preceded, following the precedent of Astra effort snapshots
+(`configuration_update`, rendered natively and never shown as conversation
+text). That keeps them in the immutable transcript without a new message kind
+in chat, and the reason step replays them to the input they took effect at
+(`crates/core/src/engine/execution/reason/tool_changes.rs`). The driver
+`Message` carries the entry as `tool_changes` on that input. Replaying baseline
+plus entries in order always yields the tool set the conversation has seen.
+That makes the conversation, not process memory, the record of what was
+revealed, which also lets `tool_search` drop its in-memory registry (step 5)
+and fixes reveals being forgotten after a restart or on another worker.
+
+An epoch ends where the cache restarts anyway: an answer from another model,
+or a transcript cut by a compaction checkpoint (the earlier answers, and so
+the baseline, are no longer in the loaded messages). The next request records
+a new baseline.
 
 ### 3. One comparison before each request
 
@@ -198,31 +209,47 @@ wanted:
 
 ### 4. Drivers
 
-Each driver decides per model, from a new model profile field
-`tool_changes` (`none`, `add_only`, `add_and_redefine`), set only after a live
-round trip in `llm-tests`, matching our rule for `tool_search`.
+Each driver decides per model, from model profile parameters set only after a
+live round trip, matching our rule for `tool_search`. Anthropic uses
+`inline_tool_changes` (`crates/contracts/src/model_profile_data/types.rs`);
+OpenAI adds its own in step 4, since it can add but not always redefine.
+
+The reason step hands drivers the epoch's baseline (`LlmCallConfig::tool_baseline`)
+only when every change since it rides on a message of the request. If a model
+view or trimming dropped one, the request carries no baseline and every driver
+sends the tools wanted now, as before.
 
 #### Anthropic
 
-On models with mid-conversation system messages (Fable 5 and 5.1, Opus 4.8, 5
-and 5.5, Sonnet 5.5, Haiku 5.5):
+Implemented in `crates/drivers/drivers/src/anthropic/driver_tool_changes.rs`,
+on Opus 5.5 and Sonnet 5.5 (the families our 2026-10-06 probe verified), against
+the first-party endpoint only:
 
-- Each `tool_changes` entry becomes `tool_addition` blocks carrying the full
-  definition (beta `inline-tools-2026-09-15`) and `tool_removal` blocks by
-  reference, inside the same mid-conversation system message the layout code
-  already places (`driver_layout.rs`: after the tool result, before the next
-  assistant turn). `note` goes in that message as text.
-- The baseline always holds at least one non-deferred tool, which the API
-  needs to keep the cache on the first by-value addition; if a baseline is
-  empty we add a deferred placeholder, as Pi does.
-- Hosted Claude search: tools that arrive after the baseline are added by value
-  with `defer_loading: true` so the hosted search finds them. *Unverified:* the
-  docs say any `tools` entry may be added inline, but this needs the live round
-  trip once the key has credit.
+- `tools` is the baseline followed by a deferred placeholder tool, as Pi does.
+  Pi measured a full miss on the first change without it; our probe saw no
+  difference, and it costs nothing.
+- Each `tool_changes` entry becomes a mid-conversation system message before
+  the input it took effect at: `tool_addition` blocks carrying the full
+  definition (beta `inline-tools-2026-09-15`) for added and redefined tools,
+  and one text line for `note` and removals. The layout code places it after
+  that input and before the next assistant turn (`driver_layout.rs`).
+- Removal is soft: announced in that text line, not `tool_removal`.
+- Only one system message fits a position, so when the same turn also has
+  turn-scoped reminders (`<facts>`), they join the change's message and lose
+  `clear_at` for that turn. A change has no other place to go, and the replay
+  lays it out the same way every time.
+- Fallback to the wanted tools, per request: hosted Claude search, the native
+  computer and browser toolsets, an empty baseline, a gateway endpoint, or a
+  change with no user turn before it (it would land in top-level `system`,
+  which cannot hold a definition).
+- Hosted Claude search with tools added inline (`defer_loading: true` on the
+  addition) stays unverified until the Anthropic key has credit; until then
+  hosted search keeps today's behavior.
 - Bedrock and Google Cloud have only the by-reference form; a reference must
   name a tool already in `tools`, so on those hosts only removals and
-  re-offers of baseline tools are cache-safe. The driver folds additions back
-  (the fallback below) until by-value support reaches them.
+  re-offers of baseline tools are cache-safe. Requests there fall back until
+  by-value support reaches them. OpenRouter's Anthropic endpoint likewise
+  accepts only the by-reference form (checked 2026-10-12).
 
 #### OpenAI Responses
 
@@ -286,25 +313,36 @@ therefore rewrites the system prompt.
 
 Each step is one PR and leaves `main` working.
 
-1. **Cheap stability fixes, no new mechanism.** Sticky deferral threshold and
-   `auto_tool_search` resolution per session; MCP tools sorted within a server;
-   keep last-known MCP tools on a failed fetch; AG-UI tool comparison
-   order-insensitive; keep the infinity-context notice and compaction summary
-   out of top-level `system`; the provider-free prefix-stability test (it will
-   mark reveal cases as known failures until step 3).
-2. **Recorded tool changes in contracts and core.** The `tool_changes` field,
-   baseline, the comparison in the reason step, persistence, Session Trace
-   display. Every driver uses the fallback, so requests are unchanged.
-3. **Anthropic driver** renders changes inline; profile flag for verified
-   families; live tests once the key has credit.
+1. **Cheap stability fixes, no new mechanism.** Done: the generic
+   `tool_search` keeps deferring once a session has crossed the threshold,
+   MCP tools are sorted by name within a server, and AG-UI frontend tools sent
+   in a new order keep the stored order. The driver prefix-stability test
+   landed separately (`crates/drivers/drivers/tests/prompt_prefix_wire.rs`).
+   Two items moved: keeping last-known MCP tools on a failed fetch needs the
+   recorded declarations of step 2, so it is in step 5; keeping the
+   infinity-context notice and compaction summary out of top-level `system`
+   needs them sent as something other than a leading system message, so it is
+   in step 6.
+2. **Recorded tool changes in contracts and core.** Done: the `ToolChanges`
+   entry, the baseline, the comparison in the reason step and persistence on
+   assistant messages. Every driver uses the fallback, so requests are
+   unchanged. Session Trace display moved to step 3, where changes first reach
+   a request.
+3. **Anthropic driver** renders changes inline and Session Trace shows them;
+   profile flag for verified families; live tests once the key has credit.
+   Done: the request side, with the profile flag on Opus 5.5 and Sonnet 5.5.
+   Left: Session Trace display, and the live cache test before widening the
+   flag to Fable, Opus 5 and 4.8 and Haiku 5.5.
 4. **OpenAI Responses driver** renders `additional_tools`; profile flag
    (`add_and_redefine` for GPT-6, `add_only` for 5.x) with live tests.
 5. **Sources move onto the comparison**: generic `tool_search` (drop the
    in-memory registry), deferred MCP, ARD, capability switches, AG-UI, host
-   tools, `tools_in_shell` catalogue.
+   tools, `tools_in_shell` catalogue. A failed MCP fetch keeps the last
+   declared definitions.
 6. **Prompt text with changes**: capability prompt additions that appear
    mid-session ride in the change's `note` instead of the system prompt;
-   compaction and trimming re-baseline.
+   compaction and trimming re-baseline; the infinity-context notice and
+   compaction summary stop being folded into top-level `system`.
 7. **yolop** adopts it (its reveal-gated memory how-to moves into the `note`).
 8. **Fallback experiments**: cold-moment batching, then the schema-in-result
    eval.
@@ -316,9 +354,6 @@ Each step is one PR and leaves `main` working.
   it is also cache-safe; OpenAI has no equivalent.
 - **Inline tools on Bedrock and Google Cloud.** Today only by-reference changes
   work there, so additions fall back. Revisit when Anthropic extends the beta.
-- **Pi's deferred placeholder.** Our earlier probe saw no difference with it,
-  while Anthropic's docs and Pi say an empty baseline costs one miss. We only
-  add it when the baseline would otherwise have no non-deferred tool.
 - **Anthropic hosted search with tools added inline** needs a live check.
 
 ## References

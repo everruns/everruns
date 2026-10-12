@@ -21,7 +21,10 @@ mod enforce;
 mod layer;
 pub mod routes;
 
-pub use enforce::{INSUFFICIENT_SCOPE, INSUFFICIENT_SCOPE_MESSAGE, enforce_command};
+pub use enforce::{
+    INSUFFICIENT_SCOPE, INSUFFICIENT_SCOPE_MESSAGE, enforce_command, enforce_operation,
+    scope_permits,
+};
 pub(crate) use enforce::{add_challenge, enforce_route};
 pub use layer::classify_api_routes;
 
@@ -69,6 +72,17 @@ impl PatScope {
         match serde_json::from_value::<Vec<String>>(scopes.clone()) {
             Ok(scopes) => Self::parse(&scopes),
             Err(_) => Self::NoAccess,
+        }
+    }
+
+    /// The scope as reported on `GET /v1/auth/me` (`token_scope`): `*` or
+    /// `read`. A `NoAccess` token never reaches that route (it is in scope for
+    /// none), so its `none` is only a label, never a request value.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Full => SCOPE_FULL,
+            Self::Read => SCOPE_READ,
+            Self::NoAccess => "none",
         }
     }
 

@@ -206,9 +206,55 @@ Manage personal access tokens for programmatic access. Tokens are tied to your
 user account (not an organization) and inherit access to every organization
 available to your account:
 
-- Create new personal access tokens
-- View existing tokens (values hidden)
+- Create new personal access tokens, choosing their access
+- View existing tokens (values hidden) and each token's access
 - Revoke tokens
+
+#### Token access
+
+Every token has one access level, chosen when you create it. It cannot be
+changed later; create a new token instead.
+
+| Access | API value | What it can do |
+|---|---|---|
+| **Full access** (default) | `["*"]` | Everything your account can do, in every organization you belong to. |
+| **Read-only** | `["read"]` | Read access to all your organizations, and nothing else. |
+
+A read-only token can list and view agents, sessions, messages, files and
+other resources in every organization you belong to, run read-only CLI
+commands, and use the read-only tools on the MCP endpoint. Treat it like a
+password: if it leaks, everything you can read is exposed.
+
+A read-only token can never:
+
+- create, change, run, or delete anything (including sending messages to
+  agents or calling an agent through an Agent API channel);
+- create, list, or revoke personal access tokens, or create agent keys or
+  share links;
+- change organizations, members, or invitations, or connect providers and
+  other accounts;
+- download the full export of your account data
+  (`GET /v1/users/me/export`).
+
+A request outside the token's access fails with `403 Forbidden`, a
+`WWW-Authenticate: Bearer error="insufficient_scope"` header, and a problem
+body with `"code": "insufficient_scope"`. Use a full-access token for that
+operation. `GET /v1/auth/me` reports the scope of the token you called it
+with as `token_scope` (`"*"` or `"read"`; `null` when you are signed in
+another way).
+
+Tokens are created from a signed-in session; a personal access token cannot
+create another one. Through the API, pass `scopes`:
+
+```bash
+curl -X POST "$EVERRUNS_URL/api/v1/auth/personal-access-tokens" \
+  -H "Authorization: Bearer $SESSION_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "ci-reader", "scopes": ["read"], "expires_in_days": 90}'
+```
+
+Omitting `scopes` creates a full-access token. Any value other than `["*"]`
+or `["read"]` is rejected with `400` and `"code": "unsupported_pat_scopes"`.
 
 ### Members
 

@@ -73,6 +73,9 @@ call:
 - Steering sent before a crash is answered by the resumed turn.
 - A crash after a tool's result is flushed and before the next reason does
   not rerun the tool.
+- A session deleted under its leased actor (EVE-1235) ends the turn quietly:
+  no retry, no `turn.failed`, no seal, nothing left to lease. The retired
+  turn driver dead-lettered the step for the same case.
 
 The worker stores a phase's leading events write-behind, so the recovery sees
 only what the dead worker flushed: an attempt that died before its

@@ -1171,7 +1171,8 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         input.context.session_id,
         input.agent_id,
         input.context.input_message_id,
-    ));
+    ))
+    .with_web_search_settings(adapter.connection_resolver(org_id));
     let context_resolver = match adapter.storage_store(org_id) {
         Some(store) => context_resolver.with_session_storage(store),
         None => context_resolver,

@@ -99,6 +99,28 @@ fn only_the_last_turn_counts() {
     assert_eq!(fold(events), Some((last, vec![])));
 }
 
+#[test]
+fn failed_calls_count_as_issues_the_resumed_turn_carries() {
+    let (turn_id, mut events) = turn_log(&["a", "b", "c"], &["a"], false);
+    let context = events[0].context.clone();
+    let session_id = events[0].session_id;
+    events.push(Event::new(
+        session_id,
+        context,
+        ToolCompletedData::failure(
+            "b".into(),
+            "share".into(),
+            "error".into(),
+            "boom".into(),
+            None,
+        ),
+    ));
+    let turn = TurnLogFold::from_events(events).expect("open turn");
+    assert_eq!(turn.turn_id(), turn_id);
+    assert_eq!(turn.issue_count, 1);
+    assert_eq!(turn.unfinished_calls(), vec![call("c")]);
+}
+
 fn tool(policy: ToolPolicy, class: Option<SideEffectClass>) -> ToolDefinition {
     let mut hints = everruns_contracts::tool_types::ToolHints::default();
     if let Some(class) = class {

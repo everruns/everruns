@@ -257,12 +257,7 @@ impl WebSearchTool {
 /// A short id that is the same for the same url across calls in a session,
 /// so the model can cite `w3f9a1c` and the citation feed can resolve it.
 pub(super) fn result_id(url: &str) -> String {
-    let mut hash: u32 = 0x811c_9dc5;
-    for byte in url.trim_end_matches('/').bytes() {
-        hash ^= u32::from(byte);
-        hash = hash.wrapping_mul(0x0100_0193);
-    }
-    format!("w{:06x}", hash & 0x00ff_ffff)
+    everruns_contracts::runtime::web_search::web_result_id(url)
 }
 
 fn model_hit(hit: &SearchHit) -> Value {

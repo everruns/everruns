@@ -288,6 +288,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/avatar/set": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Set an agent's avatar from a curated preset (preset_id, see list_avatar_presets) or an image (image_base64: PNG, JPEG, GIF or WebP, at least 64x64, at most 1 MB). Replaces the previous avatar and updates the icon of the agent's one-click Slack apps. */
+    post: operations["set_agent_avatar"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/channels": {
     parameters: {
       query?: never;
@@ -6869,7 +6886,9 @@ export interface components {
       duration_ms?: number | null;
       /**
        * Format: int32
-       * @description Number of failed tool calls
+       * @description Number of failed tool calls. Each failure went back to the model as a
+       *     tool result, so these are issues (severity `issue`), not turn errors;
+       *     the field keeps its historical name.
        */
       error_count: number;
       /** @description Human-readable headline for the completed batch */
@@ -12850,6 +12869,17 @@ export interface components {
       updated_at: string;
     };
     /**
+     * @description How bad a recorded failure is, decided by whether work stopped.
+     *
+     *     The runtime assigns this, not the client: a failed tool call is reported
+     *     back to the model as a result and the turn keeps going, so it is an
+     *     `issue`. A failure that ends the work (a failed turn, a failed task) is an
+     *     `error`. Clients render issues as warnings and reserve
+     *     error styling for `error`.
+     * @enum {string}
+     */
+    FailureSeverity: "issue" | "error";
+    /**
      * @description Rollout policy for one feature, independent of the running deployment grade.
      * @enum {string}
      */
@@ -17854,6 +17884,7 @@ export interface components {
       | "tool_panicked"
       | "invalid_arguments"
       | "permission_denied"
+      | "insufficient_scope"
       | "quota_exceeded"
       | "network_blocked"
       | "mcp_server_unreachable"
@@ -23771,6 +23802,24 @@ export interface components {
       /** @description New session title. */
       title: string;
     };
+    /** @description The avatar source: exactly one of `preset_id` or `image_base64`. */
+    SetAgentAvatarRequest: {
+      /**
+       * @description MIME type of `image_base64`. Detected from the bytes when omitted.
+       * @example image/png
+       */
+      content_type?: string | null;
+      /**
+       * @description Image bytes as base64 (a `data:image/...;base64,` URI also works): PNG, JPEG, GIF or
+       *     WebP, at least 64x64, at most 1 MB decoded. Center-cropped to a square.
+       */
+      image_base64?: string | null;
+      /**
+       * @description Curated preset ID from `list_avatar_presets`. Pass this or `image_base64`, not both.
+       * @example familiars-patch
+       */
+      preset_id?: string | null;
+    };
     /** @description Request to replace a credential binding's encrypted value. */
     SetAgentCredentialValueRequest: {
       /**
@@ -24573,6 +24622,7 @@ export interface components {
       narration?: string | null;
       /** @description Result content (for successful calls) */
       result?: components["schemas"]["ContentPart"][] | null;
+      severity?: components["schemas"]["FailureSeverity"] | null;
       /** @description Status: "success", "error", "timeout", "cancelled" */
       status: string;
       /** @description Whether the tool call succeeded */
@@ -25718,6 +25768,14 @@ export interface components {
       input_content?: string | null;
       /**
        * Format: int32
+       * @description Number of issues the turn recovered from: tool calls the runtime ran
+       *     that failed and went back to the model as results. A completed turn
+       *     with issues still succeeded; a turn that stops on a failure emits
+       *     `turn.failed` instead. Absent when the host does not track it.
+       */
+      issue_count?: number | null;
+      /**
+       * Format: int32
        * @description Number of iterations in this turn
        */
       iterations: number;
@@ -25753,7 +25811,11 @@ export interface components {
       turn_id: string;
       usage?: components["schemas"]["TokenUsage"] | null;
     };
-    /** @description Data for turn.failed event */
+    /**
+     * @description Data for turn.failed event. A failed turn is always an error (severity
+     *     `error`): the work stopped. Recoverable tool failures never produce this
+     *     event; they surface as `tool.completed` issues.
+     */
     TurnFailedData: {
       /** @description Error message */
       error: string;
@@ -30081,6 +30143,47 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  set_agent_avatar: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetAgentAvatarRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentAvatar"];
+        };
+      };
+      /** @description Invalid preset or image */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

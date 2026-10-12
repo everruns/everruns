@@ -18,6 +18,9 @@
 //   runtime account, so their own connections apply, exactly as in the
 //   console. Console session tokens are not accepted: their JWT shape would
 //   be ambiguous with the customer's OIDC tokens.
+// - Only a full-access (`*`) PAT counts as a member: running an agent is a
+//   write, so a read-only one is refused with `insufficient_scope`
+//   (knowledge/security/pat-scopes.md, Decision 5).
 // THREAT[TM-AGENTKEY-007]: end-user assertion spoofing.
 
 use axum::http::HeaderMap;
@@ -28,6 +31,7 @@ use super::channel_auth::{
 };
 use super::channel_ingress::{IngressChannel, IngressContext};
 use crate::auth::AuthState;
+use crate::auth::pat_scope::{RouteAccess, enforce_operation};
 use crate::auth::personal_access_token::PAT_PREFIX;
 use crate::domains::agent_channels::api_sessions::{
     ApiAuthError, ApiCaller, EndUser, api_channel_config, end_user_principal, resolve_end_user,
@@ -77,15 +81,11 @@ pub(crate) async fn resolve_caller(
         if headers.contains_key(END_USER_HEADER) {
             return Ok(Err(ApiAuthError::Forbidden));
         }
-        let member = if config.org_members {
-            org_member(checks, context, bearer).await?
-        } else {
-            None
-        };
-        return Ok(match member {
-            Some(user) => Ok(ApiCaller::end_user(None, user, config)),
-            None => Err(ApiAuthError::Unauthorized),
-        });
+        if !config.org_members {
+            return Ok(Err(ApiAuthError::Unauthorized));
+        }
+        let member = org_member(checks, context, bearer).await?;
+        return Ok(member.map(|user| ApiCaller::end_user(None, user, config)));
     }
     if !is_agent_key_shaped(bearer)
         && let Some(user) = runtime_token_user(checks, context, channel, bearer).await?
@@ -225,32 +225,37 @@ async fn runtime_token_user(
 }
 
 /// The organization member a personal access token belongs to, as the end
-/// user they run as here, or `None` for an invalid token or a non-member.
+/// user they run as here. `Unauthorized` for an invalid token or a
+/// non-member, `InsufficientScope` for a token narrower than `*`.
 async fn org_member(
     checks: &CallerChecks<'_>,
     context: &IngressContext,
     token: &str,
-) -> anyhow::Result<Option<EndUser>> {
+) -> anyhow::Result<Result<EndUser, ApiAuthError>> {
     let Some(auth) = checks.runtime_auth else {
-        return Ok(None);
+        return Ok(Err(ApiAuthError::Unauthorized));
     };
     let Ok(user) = auth.backend.validate_personal_access_token(token).await else {
-        return Ok(None);
+        return Ok(Err(ApiAuthError::Unauthorized));
     };
+    // Authentication first, then scope, then membership (Decision 6).
+    if enforce_operation(&user, "agent_api", "org_member", RouteAccess::Write).is_err() {
+        return Ok(Err(ApiAuthError::InsufficientScope));
+    }
     if !user.is_member_of(context.org_id) {
-        return Ok(None);
+        return Ok(Err(ApiAuthError::Unauthorized));
     }
     let account = checks
         .db
         .default_virtual_user(context.org_id, user.id)
         .await?;
     if account.status != "active" {
-        return Ok(None);
+        return Ok(Err(ApiAuthError::Unauthorized));
     }
     let principal = crate::domains::users::PrincipalService::new(checks.db.clone())
         .ensure_default_virtual_user_principal_for(context.org_id, user.id, &account)
         .await?;
-    Ok(Some(EndUser {
+    Ok(Ok(EndUser {
         virtual_user_id: account.id,
         principal_id: principal.id,
     }))

@@ -25,7 +25,7 @@ impl WorkerServiceImpl {
                 tracing::error!("Failed to get session: {}", e);
                 Status::internal("Failed to get session")
             })?
-            .ok_or_else(|| Status::not_found("Session not found"))?;
+            .ok_or_else(|| session_not_found_status(session_id))?;
 
         let input_message = req
             .input_message_id

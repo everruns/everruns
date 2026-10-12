@@ -11,8 +11,13 @@
 //!   a router spelling the classification layer does not resolve;
 //! - with a `*` PAT, no route ever answers `insufficient_scope`.
 //!
-//! It also checks `POST /v1/commands/{name}` per command. `read` tokens
-//! cannot be created through the API yet, so the rows are inserted directly.
+//! It also checks `POST /v1/commands/{name}` per command, and the surfaces of
+//! Tests item 6 that validate a PAT outside the route table: the
+//! `GET /v1/commands` listing and `/mcp` (`tools/list`, `tools/call`). The
+//! sweep's tokens are inserted directly; `creation` mints them through
+//! `POST /v1/auth/personal-access-tokens` instead and follows a `read` token
+//! end to end, with `token_scope` on `GET /v1/auth/me` and the creation audit
+//! event (rollout step 4).
 //!
 //! A dedicated single-test binary because the production builder reads
 //! process environment, which is installed before Tokio starts.
@@ -32,7 +37,9 @@ use everruns_server::auth::personal_access_token::generate_personal_access_token
 use everruns_server::domains::common::CommandDescriptor;
 use everruns_server::openapi::ApiDoc;
 use everruns_server::server::ServerConfig;
-use everruns_server::storage::{CreatePersonalAccessTokenRow, CreateUserRow, StorageBackend};
+use everruns_server::storage::{
+    AuditLogQuery, CreatePersonalAccessTokenRow, CreateUserRow, StorageBackend,
+};
 use utoipa::OpenApi;
 
 fn database_url() -> String {
@@ -447,6 +454,365 @@ async fn sweep(port: u16, context: ServerContext) {
     );
 }
 
+async fn list_commands(client: &reqwest::Client, base: &str, token: &str) -> Vec<String> {
+    let catalog: serde_json::Value = client
+        .get(format!("{base}/v1/commands"))
+        .bearer_auth(token)
+        .send()
+        .await
+        .expect("list commands")
+        .error_for_status()
+        .expect("list commands status")
+        .json()
+        .await
+        .expect("command catalog JSON");
+    catalog["commands"]
+        .as_array()
+        .expect("commands array")
+        .iter()
+        .map(|entry| {
+            entry["wire_name"]
+                .as_str()
+                .expect("command wire name")
+                .to_string()
+        })
+        .collect()
+}
+
+async fn mcp(
+    client: &reqwest::Client,
+    base: &str,
+    token: &str,
+    method: &str,
+    params: serde_json::Value,
+) -> serde_json::Value {
+    client
+        .post(format!("{base}/mcp"))
+        .bearer_auth(token)
+        .header("MCP-Protocol-Version", "2026-07-28")
+        .json(&serde_json::json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }))
+        .send()
+        .await
+        .expect("mcp request")
+        .error_for_status()
+        .expect("mcp status")
+        .json()
+        .await
+        .expect("mcp JSON")
+}
+
+fn tool_names(list: &serde_json::Value) -> BTreeSet<String> {
+    list["result"]["tools"]
+        .as_array()
+        .expect("tools array")
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap().to_string())
+        .collect()
+}
+
+/// The tools a `read` token may list and call on `/mcp`.
+const READ_ONLY_MCP_TOOLS: &[&str] = &[
+    "agent_get_card",
+    "discover",
+    "everruns_home",
+    "list_organizations",
+    "me",
+    "query",
+    "session_get_status",
+    "session_view",
+];
+
+/// Tests item 6: `GET /v1/commands` and `/mcp` honor a `read` token's scope
+/// and leave a `*` token as it was.
+async fn surfaces(port: u16, db: &StorageBackend) {
+    let base = format!("http://127.0.0.1:{port}");
+    let client = reqwest::Client::new();
+    let read_token = mint_pat(db, &["read"]).await;
+    let full_token = mint_pat(db, &["*"]).await;
+
+    // GET /v1/commands lists exactly the commands each token can run.
+    let read_commands = list_commands(&client, &base, &read_token).await;
+    let full_commands = list_commands(&client, &base, &full_token).await;
+    let class = |name: &str| {
+        let desc = inventory::iter::<CommandDescriptor>
+            .into_iter()
+            .find(|desc| (desc.meta)().name == name)
+            .unwrap_or_else(|| panic!("no command {name}"));
+        classify_command(desc)
+    };
+    assert!(read_commands.contains(&command("list_agents", RouteAccess::Read).to_string()));
+    for name in &read_commands {
+        assert_eq!(
+            class(name),
+            RouteAccess::Read,
+            "{name} listed to a read token"
+        );
+    }
+    let expected: Vec<&String> = full_commands
+        .iter()
+        .filter(|name| class(name) == RouteAccess::Read)
+        .collect();
+    assert_eq!(read_commands.iter().collect::<Vec<_>>(), expected);
+    assert!(full_commands.contains(&command("create_agent", RouteAccess::Write).to_string()));
+
+    // tools/list: a read token sees only the read-only tools.
+    let read_tools = tool_names(
+        &mcp(
+            &client,
+            &base,
+            &read_token,
+            "tools/list",
+            serde_json::json!({}),
+        )
+        .await,
+    );
+    let expected: BTreeSet<String> = READ_ONLY_MCP_TOOLS.iter().map(|s| s.to_string()).collect();
+    assert_eq!(read_tools, expected);
+    let full_list = mcp(
+        &client,
+        &base,
+        &full_token,
+        "tools/list",
+        serde_json::json!({}),
+    )
+    .await;
+    let full_tools = tool_names(&full_list);
+    assert!(full_tools.is_superset(&expected) && full_tools.contains("execute"));
+    assert_eq!(full_list["result"]["cacheScope"], "public");
+
+    // tools/call: execute is refused to a read token with insufficient_scope;
+    // query still runs; a * token is never refused for its scope.
+    let call = |name: &str, arguments: serde_json::Value| serde_json::json!({ "name": name, "arguments": arguments });
+    let script = serde_json::json!({ "commands": "list_agents" });
+    let denied = mcp(
+        &client,
+        &base,
+        &read_token,
+        "tools/call",
+        call("execute", script.clone()),
+    )
+    .await;
+    assert_eq!(denied["result"]["isError"], true, "{denied}");
+    assert_eq!(
+        denied["result"]["structuredContent"]["code"], INSUFFICIENT_SCOPE,
+        "{denied}"
+    );
+    let queried = mcp(
+        &client,
+        &base,
+        &read_token,
+        "tools/call",
+        call("query", script.clone()),
+    )
+    .await;
+    assert_ne!(
+        queried["result"]["structuredContent"]["code"], INSUFFICIENT_SCOPE,
+        "{queried}"
+    );
+    let executed = mcp(
+        &client,
+        &base,
+        &full_token,
+        "tools/call",
+        call("execute", script),
+    )
+    .await;
+    assert_ne!(
+        executed["result"]["structuredContent"]["code"], INSUFFICIENT_SCOPE,
+        "{executed}"
+    );
+}
+
+/// One JSON request, returning status, `code` and the body.
+async fn call(
+    client: &reqwest::Client,
+    base: &str,
+    token: &str,
+    method: reqwest::Method,
+    path: &str,
+    body: Option<serde_json::Value>,
+) -> (u16, serde_json::Value) {
+    let mut request = client
+        .request(method, format!("{base}{path}"))
+        .bearer_auth(token);
+    if let Some(body) = body {
+        request = request.json(&body);
+    }
+    let response = request.send().await.expect("request");
+    let status = response.status().as_u16();
+    let body = response.json().await.unwrap_or(serde_json::Value::Null);
+    (status, body)
+}
+
+/// Rollout step 4: a signed-in user mints a `read` token through the API, and
+/// it reads but cannot write; `token_scope` and the audit event follow the
+/// scope; every other requested shape is refused.
+async fn creation(port: u16, db: &StorageBackend) {
+    use reqwest::Method;
+    let base = format!("http://127.0.0.1:{port}");
+    let client = reqwest::Client::new();
+
+    let email = format!("pat-create-{}@example.com", uuid::Uuid::now_v7());
+    let response = client
+        .post(format!("{base}/v1/auth/register"))
+        .json(&serde_json::json!({
+            "email": email,
+            "password": "pat-scope-creation-password-1",
+            "name": "PAT creation",
+        }))
+        .send()
+        .await
+        .expect("register");
+    assert_eq!(response.status().as_u16(), 201, "register");
+    let session: serde_json::Value = response.json().await.expect("register JSON");
+    let jwt = session["access_token"].as_str().expect("access token");
+    // Signup creates no org here; join the default one so the token has one.
+    let user = db
+        .get_user_by_email(&email)
+        .await
+        .expect("lookup user")
+        .expect("registered user");
+    db.add_organization_member(DEFAULT_ORG_ID, user.id, "owner")
+        .await
+        .expect("join default org");
+
+    let create = |scopes: Option<serde_json::Value>| {
+        let mut body = serde_json::json!({ "name": format!("create {scopes:?}") });
+        if let Some(scopes) = scopes {
+            body["scopes"] = scopes;
+        }
+        call(
+            &client,
+            &base,
+            jwt,
+            Method::POST,
+            "/v1/auth/personal-access-tokens",
+            Some(body),
+        )
+    };
+
+    // Only [], ["*"] and ["read"] are creatable.
+    for rejected in [
+        serde_json::json!(["*", "read"]),
+        serde_json::json!(["read", "read"]),
+        serde_json::json!(["write"]),
+        serde_json::json!(["read", "write"]),
+    ] {
+        let (status, body) = create(Some(rejected.clone())).await;
+        assert_eq!(status, 400, "{rejected}: {body}");
+        assert_eq!(body["code"], "unsupported_pat_scopes", "{rejected}: {body}");
+    }
+    let (status, defaulted) = create(None).await;
+    assert_eq!(status, 201, "{defaulted}");
+    assert_eq!(defaulted["scopes"], serde_json::json!(["*"]));
+    let (status, full) = create(Some(serde_json::json!(["*"]))).await;
+    assert_eq!(status, 201, "{full}");
+    assert_eq!(full["scopes"], serde_json::json!(["*"]));
+    let (status, read) = create(Some(serde_json::json!(["read"]))).await;
+    assert_eq!(status, 201, "{read}");
+    assert_eq!(read["scopes"], serde_json::json!(["read"]));
+    let read_token = read["token"].as_str().expect("read token");
+    let full_token = full["token"].as_str().expect("full token");
+
+    // The list shows each token's scope.
+    let (status, list) = call(
+        &client,
+        &base,
+        jwt,
+        Method::GET,
+        "/v1/auth/personal-access-tokens",
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{list}");
+    let listed = list["data"]
+        .as_array()
+        .expect("token list")
+        .iter()
+        .find(|item| item["id"] == read["id"])
+        .expect("read token listed");
+    assert_eq!(listed["scopes"], serde_json::json!(["read"]));
+
+    // GET /v1/auth/me reports the scope of the credential, null for a JWT.
+    for (token, expected) in [
+        (read_token, serde_json::json!("read")),
+        (full_token, serde_json::json!("*")),
+        (jwt, serde_json::Value::Null),
+    ] {
+        let (status, me) = call(&client, &base, token, Method::GET, "/v1/auth/me", None).await;
+        assert_eq!(status, 200, "{me}");
+        assert_eq!(me["token_scope"], expected, "{me}");
+        assert_eq!(me["email"], email.as_str());
+    }
+
+    // The read token reads, and is refused a write with 403 insufficient_scope.
+    let (status, agents) = call(&client, &base, read_token, Method::GET, "/v1/agents", None).await;
+    assert_eq!(status, 200, "read route with a read token: {agents}");
+    let agent = serde_json::json!({ "name": "pat-scope-creation", "system_prompt": "hi" });
+    let (status, denied) = call(
+        &client,
+        &base,
+        read_token,
+        Method::POST,
+        "/v1/agents",
+        Some(agent.clone()),
+    )
+    .await;
+    assert_eq!(status, 403, "{denied}");
+    assert_eq!(denied["code"], INSUFFICIENT_SCOPE, "{denied}");
+    let (status, created) = call(
+        &client,
+        &base,
+        full_token,
+        Method::POST,
+        "/v1/agents",
+        Some(agent),
+    )
+    .await;
+    assert_ne!(created["code"], INSUFFICIENT_SCOPE, "{status} {created}");
+
+    // A PAT still cannot mint a PAT, whatever its scope.
+    let (status, _) = call(
+        &client,
+        &base,
+        full_token,
+        Method::POST,
+        "/v1/auth/personal-access-tokens",
+        Some(serde_json::json!({ "name": "from a pat" })),
+    )
+    .await;
+    assert_eq!(status, 403);
+
+    // The creation audit event records the scopes (written in the background).
+    // Token CRUD is user-level; its audit events go to the user's first org.
+    let org_id = DEFAULT_ORG_ID;
+    let read_id = read["id"].as_str().unwrap();
+    let mut recorded = None;
+    for _ in 0..40 {
+        let rows = db
+            .list_audit_logs(AuditLogQuery {
+                org_id,
+                limit: 50,
+                before: None,
+                event_type_prefix: Some("auth.personal_access_token.created"),
+                actor_id: Some(user.id),
+                domain: None,
+                action: None,
+            })
+            .await
+            .expect("audit logs");
+        recorded = rows
+            .into_iter()
+            .find(|row| row.metadata["token_id"] == read_id);
+        if recorded.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let recorded = recorded.expect("creation audit event for the read token");
+    assert_eq!(recorded.metadata["scopes"], serde_json::json!(["read"]));
+}
+
 #[test]
 fn pat_scopes_hold_on_every_route_of_the_real_router() {
     configure_server_environment();
@@ -457,6 +823,8 @@ fn pat_scopes_hold_on_every_route_of_the_real_router() {
         .unwrap()
         .block_on(async move {
             let context = start_real_server(port).await;
+            creation(port, &context.db).await;
+            surfaces(port, &context.db).await;
             sweep(port, context).await;
         });
 }

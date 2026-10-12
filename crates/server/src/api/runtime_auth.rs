@@ -144,7 +144,9 @@ async fn api_channel_principal(
             subject: identity.subject,
         }),
         Ok(None) => Err(StatusCode::BAD_REQUEST),
-        Err(ApiAuthError::Forbidden) => Err(StatusCode::FORBIDDEN),
+        Err(ApiAuthError::Forbidden | ApiAuthError::InsufficientScope) => {
+            Err(StatusCode::FORBIDDEN)
+        }
         Err(ApiAuthError::Misconfigured) => Err(StatusCode::FORBIDDEN),
         Err(ApiAuthError::Unauthorized) => Err(StatusCode::UNAUTHORIZED),
     }

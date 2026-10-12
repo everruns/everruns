@@ -85,7 +85,7 @@ pub async fn update_session_title_with_event(
     let current = session_store
         .get_session(session_id)
         .await?
-        .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
+        .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
     let previous_title = current.title.clone();
 
     let Some(event) =

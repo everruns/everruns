@@ -5,6 +5,7 @@ import { useId, useState } from "react";
 import { Check, ChevronRight, ExternalLink, Loader2, ShieldAlert } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import { failureTextClass, toolFailureSeverity } from "./failure-severity";
 import type { ToolCallContent } from "./tool-call-utils";
 
 export interface ApprovalToolContext {
@@ -27,6 +28,7 @@ export function ApprovalToolActivity({
   const detail = toolCall.arguments.detail ?? toolCall.arguments.question;
   const isRequest = toolCall.name === "request_approval";
   const failed = toolResult && (!toolResult.success || Boolean(toolResult.error));
+  const failureClass = failureTextClass(toolFailureSeverity(toolResult) ?? "issue");
   const complete = Boolean(toolResult?.success);
   const title = failed
     ? "Approval could not be recorded"
@@ -85,7 +87,7 @@ export function ApprovalToolActivity({
         )}
       </div>
       {failed && toolResult?.error && (
-        <div className="mt-1 pl-5 text-xs text-destructive [overflow-wrap:anywhere]">
+        <div className={cn("mt-1 pl-5 text-xs [overflow-wrap:anywhere]", failureClass)}>
           {toolResult.error}
         </div>
       )}

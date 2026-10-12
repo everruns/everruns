@@ -123,6 +123,9 @@ struct ModelGate {
     entered: Notify,
     /// Every model call's messages, rendered for `contains` checks.
     seen: Mutex<Vec<String>>,
+    /// When set, every model call answers that the session is gone, as the
+    /// control plane does once the session was deleted (EVE-1235).
+    deleted_session: Mutex<Option<SessionId>>,
 }
 
 impl Default for ModelGate {
@@ -132,6 +135,7 @@ impl Default for ModelGate {
             block_call: AtomicUsize::new(usize::MAX),
             entered: Notify::new(),
             seen: Mutex::default(),
+            deleted_session: Mutex::default(),
         }
     }
 }
@@ -165,6 +169,9 @@ impl ChatDriver for GatedModel {
     ) -> everruns_contracts::error::Result<LlmResponseStream> {
         self.gate.seen.lock().unwrap().push(format!("{messages:?}"));
         let call = self.gate.calls.fetch_add(1, Ordering::SeqCst);
+        if let Some(session_id) = *self.gate.deleted_session.lock().unwrap() {
+            return Err(everruns_contracts::error::AgentLoopError::session_not_found(session_id));
+        }
         if call == self.gate.block_call.load(Ordering::SeqCst) {
             self.gate.entered.notify_one();
             std::future::pending::<()>().await;

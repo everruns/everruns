@@ -12,9 +12,11 @@ tags:
 # Web Search
 
 Status: approved (2026-10-11), being built in the delivery order below. Step 1 (the
-capability, free and Brave drivers, harnesses, Framework builder) and step 2
+capability, free and Brave drivers, harnesses, Framework builder), step 2
 (organization search accounts, `web_search_defaults`, live plan resolution, the
-catalog and preview endpoints, flags removed) are in place.
+catalog and preview endpoints, flags removed), step 3 (UI) and step 4 (native
+search on OpenAI, OpenRouter, Anthropic and Gemini) are in place. Gemini native
+search next to other function tools is still open (see the driver table).
 
 ## Abstract
 
@@ -190,10 +192,12 @@ keep their natural place (native first, accounts not listed after the listed
 ones, in the organization's listing order), so connecting an account changes
 Automatic without anyone editing the order. Native is switched off with "allow
 model provider search"; an account leaves Automatic by being disconnected. With
-fallback `none`, Automatic keeps only its first available entry. Until step 4
-lands a native adapter, a native step at tool time records that the model did
-not search and the next provider answers; the preview already lists native for
-the provider types that will have it (`NATIVE_WEB_SEARCH_PROVIDER_TYPES`).
+fallback `none`, Automatic keeps only its first available entry. A native step
+that reaches tool time (the model's driver has no native search for it, or
+could not apply the agent's filters) records that the model did not search and
+the next provider answers. The preview lists native only for provider types
+whose driver runs it (`NATIVE_WEB_SEARCH_PROVIDER_TYPES`) and models that have
+it (`native_web_search_supported_model`).
 
 Resolution happens live: each turn decides whether native applies to the model
 running it (that is what makes Automatic follow a mid-session model switch), and
@@ -217,11 +221,10 @@ cost of each native call.
 
 ### Cost accounting and the Everruns LLM provider
 
-Every native call already produces a hosted-call cost component on its
-`llm.generation` (the OpenAI path does this today); the Anthropic, Gemini and
-OpenRouter adapters add theirs from the provider's usage fields
-(`server_tool_use.web_search_requests`, grounding metadata, OpenRouter's
-reported cost). Budgets count it like tokens.
+Every native call produces a hosted-call cost component (`web_search_call`) on
+its `llm.generation`: OpenAI from `web_search_call` items, OpenRouter and
+Anthropic from `usage.server_tool_use.web_search_requests`, Gemini from its
+grounding metadata. Budgets count it like tokens.
 
 When the model runs through the Everruns LLM provider (the hosted, prepaid
 service in SaaS), the provider's bill for those searches lands on Everruns'
@@ -269,16 +272,37 @@ user location. Like the native browser toolset, it is a request, not a
 requirement: a driver that cannot honor it for this model leaves the function
 tool in place and the next provider in the plan answers.
 
+As built: capability config alone cannot say whether native
+is first, because that depends on the organization's current defaults. So the
+capability writes the option for every setting that can start with native
+(`org_default`, `auto`, `native`) and carries the agent's setting in it; the
+host's turn resolver then reads the organization's settings (the same 30 second
+cache the tool uses) and drops the option for a turn whose plan does not start
+with native, or adds the organization's blocked domains
+([`native_search_first`](../../crates/contracts/src/runtime/web_search_org.rs)).
+Hosts without organization settings keep the built-in defaults. Blocked domains
+are a policy: a provider that cannot exclude domains (OpenAI) declines rather
+than searching them. Freshness is a hint no native search applies, so it never
+makes a driver decline. Which models search natively is a model-id rule per
+vendor in [`native_web_search`](../../crates/contracts/src/native_web_search.rs).
+
 | Driver | Hosted tool | Notes |
 |---|---|---|
 | OpenAI, Azure OpenAI, ChatGPT plan | Responses `web_search` | Reuses `openai_hosted_tools` wiring (`web_search_call` parsing, cost). |
-| OpenRouter | `openrouter:web_search` with engine `native` | Reuses `OpenRouterServerToolKind::WebSearch`; OpenRouter falls back to its own engine for models without native search, which we disable so the plan decides. |
-| Anthropic | server tool `web_search_*` | New: send the tool entry, parse `server_tool_use` and `web_search_tool_result` blocks, keep encrypted content for replay, map citations. Version pinned per model, like `browser_toolset_20260801`. |
-| Gemini | `google_search` | New, per-model table: only models that accept `google_search` next to function tools. |
+| OpenRouter | `openrouter:web_search` with engine `native` | Reuses `OpenRouterServerToolKind::WebSearch`. OpenRouter falls back to its own engine (Exa) for models without native search even with engine `native`, and no request field turns that off, so the driver sends the tool only for models on OpenRouter's native list; searches are counted from `usage.server_tool_use` and `web_search_call` items. |
+| Anthropic | server tool `web_search_20250305` | The basic version: later ones search from inside code execution (dynamic filtering), which is not ZDR eligible by default. Allowed or blocked domains, never both. `server_tool_use` / `web_search_tool_result` blocks are hosted calls, replayed raw (encrypted content and citation indexes) and stripped from history when a request has no server tool; searches are counted from `usage.server_tool_use`. A paused turn (`pause_turn`) is not continued, so the driver caps searches at 5 per call unless the agent sets a cap. See [`anthropic/web_search.rs`](../../crates/drivers/drivers/src/anthropic/web_search.rs). |
+| Gemini | `google_search` | No domain filters at all. Only when `web_search` is the call's only function tool: `generateContent` takes a built-in tool next to function declarations only on Gemini 3, with `includeServerSideToolInvocations` and raw `toolCall` / `toolResponse` parts replayed exactly, which the driver does not do yet (Gemini 2.x rejects the mix). Queries are counted from `groundingMetadata.webSearchQueries`: per query on Gemini 3, per grounded answer on 2.x. Citations from grounding metadata are not mapped yet. |
 | Others (Mistral, Fireworks, Bedrock, Meta, …) | none | Function tool, next provider in the plan. |
 
-`openai_server_tools` and `openrouter_server_tools` lose their `web_search`
-entries; their other hosted tools stay where they are.
+`openai_server_tools` and `openrouter_server_tools` keep their `web_search`
+entries (user decision, 2026-10-12). When one of them already turns on its
+provider's search, that entry answers for native search and the function tool
+is dropped, so the request never carries two web search tools of one provider.
+
+As built, native calls arrive as `tool.hosted_call` events with the query as
+their summary, and each per-call priced hosted call becomes a `hosted_tool`
+cost component on the `llm.generation`. The normalized result list and raw
+block for native calls in the details view are not built yet.
 
 ## Free search, improved
 
@@ -466,15 +490,26 @@ Web search is the `citation_web` feed of [Citations](../runtime-resources/citati
 
 - function results: when the capability is on, the post-generation annotation
   hook maps the URLs (or `w` ids) the model cited back to the result entries
-  and attaches `TextAnnotation`s with origin `web_search`, title, url and
-  snippet;
+  and attaches `TextAnnotation`s with origin `citation_web` (the capability id,
+  as the citations spec requires of every feed), title, url, snippet, and the
+  result id as `external_id`. Matching is exact (URL equal after normalizing
+  scheme and host case, fragment and trailing slash; or an equal id); the span
+  is the sentence holding the citation, or the sentence before a citation that
+  stands alone;
 - native results: the Anthropic adapter reads text-block `citations` of type
-  `web_search_result_location`, OpenAI reads `url_citation` annotations, Gemini
-  reads grounding supports, and each becomes the same annotation.
+  `web_search_result_location`, OpenAI and OpenRouter read `url_citation`
+  annotations, Gemini reads grounding supports. Drivers report them on the
+  completion as provider-neutral web citations with char spans; the same hook
+  turns each into the same annotation, so they too appear only with the
+  capability on. The result id is derived from the URL for these as well.
 
-The chat then shows the numbered source chips that retrieval citations already
-use, with no web-specific UI. `citation_verification` works on these the same
-way.
+The capability is opt-in, like `citation_retrieval`: the harness presets that
+turn on web search do not turn on citations. The chat then shows the numbered
+source chips that retrieval citations already use, with no web-specific UI.
+`citation_verification` works on these the same way. Results of the
+Brave-specific `brave_web_search` share the `results[].url` shape and are
+matched by URL; DuckDuckGo instant answers are not search results and are not
+cited.
 
 ## UI
 

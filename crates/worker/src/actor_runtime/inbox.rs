@@ -15,7 +15,7 @@
 //!   the next phase's setup reads.
 
 use async_trait::async_trait;
-use everruns_contracts::error::Result;
+use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::tool_types::ToolCall;
 use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 
@@ -35,8 +35,13 @@ impl<H: ActorHosts> ActorInbox<'_, H> {
     /// Renew to learn the inbox's newest input; a failed renew is the
     /// renewer's to judge, and the turn goes on with what it knows.
     async fn refresh(&self) {
-        if let Err(error) = self.lease.renew().await {
-            tracing::warn!(session_id = %self.lease.session_id, error = %error, "Actor inbox renew failed");
+        match self.lease.renew().await {
+            // The session was deleted (EVE-1235): the lease is lost and the
+            // turn stops on it.
+            Ok(()) | Err(AgentLoopError::SessionNotFound(_)) => {}
+            Err(error) => {
+                tracing::warn!(session_id = %self.lease.session_id, error = %error, "Actor inbox renew failed");
+            }
         }
     }
 }

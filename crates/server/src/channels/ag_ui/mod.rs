@@ -525,9 +525,9 @@ pub(crate) async fn run_app_agent_stream(
         .map_err(SessionError::into_response)?;
     // A consumer sends its frontend tools on every run; the turn this run
     // starts or resumes sees the current set.
-    let tools_value =
-        serde_json::to_value(&frontend_tools).map_err(|e| internal_error(e.into()))?;
-    if serde_json::to_value(&session.session.tools).ok() != Some(tools_value.clone()) {
+    if crate::channels::ag_ui::frontend_tools::changed(&session.session.tools, &frontend_tools) {
+        let tools_value =
+            serde_json::to_value(&frontend_tools).map_err(|e| internal_error(e.into()))?;
         state
             .db
             .update_session(
