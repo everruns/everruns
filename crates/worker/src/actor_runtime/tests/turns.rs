@@ -102,6 +102,43 @@ async fn a_crash_before_the_turn_starts_still_answers_after_a_renew() {
     fixture.assert_idle();
 }
 
+// Chaos harness: the queued store holding `session.activated` and
+// `turn.started` failed and was dropped, and the turn went on to complete
+// without them. A store that gives up now stops the turn before it commits
+// its input or writes anything more; the next holder resumes from the log.
+#[tokio::test]
+async fn a_queued_store_that_gives_up_ends_the_lease_without_committing_the_input() {
+    let fixture = Fixture::new(model("Done.", vec![])).await;
+    let (failing, probe) = fixture.worker("w1");
+    // The first flush is the first reason's `take`.
+    probe.fail_at_flush.store(1, Ordering::SeqCst);
+    let input = fixture.send("Hello.").await;
+    let input_seq = fixture
+        .events()
+        .await
+        .iter()
+        .find(|event| matches!(&event.data, crate::core::events::EventData::InputMessage(data) if data.message.id == input))
+        .and_then(|event| event.sequence)
+        .map(i64::from)
+        .unwrap();
+
+    assert!(run_once(&failing).await);
+    assert!(fixture.answers().await.is_empty(), "nothing after the gap");
+    let row = fixture.store.row(fixture.session_id);
+    assert_eq!(row.holder.as_deref(), Some("w1"), "not released: {row:?}");
+    assert!(
+        row.consumed_seq < input_seq,
+        "the input is not committed: {row:?}"
+    );
+
+    fixture.store.expire(fixture.session_id);
+    let (survivor, _) = fixture.worker("w2");
+    assert_eq!(run_until_idle(&survivor).await, 1);
+    assert_eq!(fixture.count("turn.completed").await, 1);
+    assert_eq!(fixture.answers().await, vec!["Done."]);
+    fixture.assert_idle();
+}
+
 #[tokio::test]
 async fn a_crash_after_the_answer_completes_the_turn_without_a_second_answer() {
     let fixture = Fixture::new(model("Only once.", vec![])).await;

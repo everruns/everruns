@@ -1436,6 +1436,10 @@ message LeasedActor {
     int64 next_input_seq = 7;
     // Leases since the last release, this one included (poison guard).
     uint32 attempts = 8;
+    // With cancel_requested: the inbox position the cancel targets. It ends
+    // the turn whose input is at or before it; later input is not cancelled.
+    // Absent from an older control plane: the cancel targets any turn.
+    optional int64 cancel_inbox_seq = 9;
 }
 
 message LeaseActorsResponse {
@@ -1458,6 +1462,8 @@ message RenewActorLeaseResponse {
     bool held = 1;
     int64 inbox_seq = 2;
     bool cancel_requested = 3;
+    // See LeasedActor.cancel_inbox_seq.
+    optional int64 cancel_inbox_seq = 4;
 }
 
 message ReleaseActorRequest {

@@ -80,7 +80,7 @@ impl ActorLeaseStore for GrpcActorLeaseStore {
                     org_id: actor.org_id,
                     fence: fence_from_wire(actor.fence)?,
                     inbox_seq: actor.inbox_seq,
-                    cancel_requested: actor.cancel_requested,
+                    cancel_inbox_seq: cancel_target(actor.cancel_requested, actor.cancel_inbox_seq),
                     consumed_seq: actor.consumed_seq,
                     next_input_seq: actor.next_input_seq,
                     attempts: actor.attempts,
@@ -113,7 +113,7 @@ impl ActorLeaseStore for GrpcActorLeaseStore {
             .into_inner();
         Ok(response.held.then_some(ActorRenewal {
             inbox_seq: response.inbox_seq,
-            cancel_requested: response.cancel_requested,
+            cancel_inbox_seq: cancel_target(response.cancel_requested, response.cancel_inbox_seq),
         }))
     }
 
@@ -174,4 +174,10 @@ impl ActorLeaseStore for GrpcActorLeaseStore {
             head_sequence: response.head_sequence,
         })
     }
+}
+
+/// The inbox position a reported cancel targets. A control plane that predates
+/// the position reports none: its cancel targets whatever turn runs, as it did.
+fn cancel_target(cancel_requested: bool, cancel_inbox_seq: Option<i64>) -> Option<i64> {
+    cancel_requested.then(|| cancel_inbox_seq.unwrap_or(i64::MAX))
 }
