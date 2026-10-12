@@ -14,6 +14,13 @@
   changes in the conversation, sent as Anthropic `tool_addition` blocks or
   OpenAI `additional_tools` items, with today's behavior as the fallback. See
   [Cache-Stable Tool Changes](execution/cache-stable-tool-changes.md).
+* **PAT scopes step 2: enforced on REST and `/v1/commands`.** The auth
+  extractor refuses a narrow token on any route outside its scope, including
+  unclassified ones, with `403 insufficient_scope`; `POST /v1/commands/{name}`
+  checks the named command. Embedders classify their own routes through
+  `ServerAppBuilder::classify_pat_routes`. A migration deletes legacy tokens
+  whose stored scopes are not exactly `["*"]` (owner decision). See
+  [Personal Access Token Scopes](security/pat-scopes.md).
 * **Docs moved to everruns.com/docs.** The docs Worker serves the Starlight
   build on the `everruns.com/docs*` route beside the landing site, with
   Markdown negotiation like landing; docs.everruns.com 301s every path there

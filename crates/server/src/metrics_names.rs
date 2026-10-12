@@ -76,6 +76,11 @@ pub const DB_QUERIES_OUTSIDE_TRANSACTION: &str =
 /// protective limit. The org is in the log line; nonzero means an org hit it.
 pub const ORG_ACTIVE_TURN_CAP_REJECTIONS_TOTAL: &str =
     "everruns_org_active_turn_cap_rejections_total";
+/// Requests and commands refused because a personal access token's scope does
+/// not cover them (`auth::pat_scope`). Label: class (read | write | never |
+/// per_command | unclassified). A steady rate points at a client using a
+/// read-only token for writes.
+pub const PAT_SCOPE_DENIED_TOTAL: &str = "everruns_pat_scope_denied_total";
 
 /// Orphaned blob objects deleted by the object-storage GC sweep (objects
 /// present in the bucket with no live sidecar pointer, older than the grace

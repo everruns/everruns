@@ -51,17 +51,18 @@ Authorization: Bearer <personal_access_token>
 - Personal access tokens are prefixed with `evr_pat_` for identification, the prefix distinguishes them from JWTs within the `Bearer` scheme
 - Auth scheme matching is case-insensitive per RFC 7235 (`bearer`, `BEARER`, `Bearer` all accepted)
 - Full token shown only at creation, stored hashed (SHA-256)
-- Expiration is supported and enforced. Scopes are **not yet enforced** on the
-  request path, a validated token authenticates with the owning user's full
-  authority regardless of stored scopes. To avoid advertising a control that is
-  not honored, token creation only accepts the full-access wildcard (`scopes`
-  omitted or `["*"]`); any narrower scope is rejected with `unsupported_pat_scopes`
-  until per-request scope enforcement exists. See EVE-701, and
+- Expiration is supported and enforced. Stored scopes are enforced on REST and
+  `/v1/commands` only, not yet on `/mcp` or as an execution API org member. To
+  avoid advertising a control that is not fully honored, token creation only
+  accepts the full-access wildcard (`scopes` omitted or `["*"]`); any narrower
+  scope is rejected with `unsupported_pat_scopes` until every surface enforces
+  it. See EVE-701, and
   [Personal Access Token Scopes](pat-scopes.md) for the approved enforcement
-  design (`*` and `read`); its first step parses scopes and classifies routes
-  without enforcing either. Under that design a `read` token can never download
-  the full personal data export (`GET /v1/users/me/export`), and legacy tokens
-  stored with any scope other than `["*"]` are deleted when enforcement ships.
+  design (`*` and `read`). REST and `/v1/commands` enforce stored scopes
+  (`403 insufficient_scope`); legacy tokens stored with any scope other than
+  `["*"]` were deleted by migration when enforcement shipped. Under that design a `read`
+  token can never download the full personal data export
+  (`GET /v1/users/me/export`).
 - Used for programmatic access
 - Non-`Bearer` formats (`Authorization: evr_pat_...`, `Authorization: ApiKey evr_pat_...`) are also accepted for non-Bearer clients
 - `metadata` JSONB column stores creation context: `source` (cli_login, web_ui, api), `hostname`, `os`, `ip`
