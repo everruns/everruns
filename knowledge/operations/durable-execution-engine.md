@@ -408,7 +408,7 @@ production and DEV_MODE alike; the worker side is
   boundary. Stream heartbeats are not needed: the lease renewer keeps a turn
   alive.
 
-**Deploy transition.** [Migration 217](../../crates/server/migrations/217_session_actor_cutover.sql)
+**Deploy transition.** [Migration 20261012014121](../../crates/server/migrations/20261012014121_session_actor_cutover.sql)
 moves in-flight work across: every session that is active or has a pending or
 running `turn_workflow` gets an actor row, runnable, with its cursor at the
 log's last turn boundary, so a turn the old path left open is resumed from

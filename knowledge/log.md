@@ -85,8 +85,8 @@
   writes; cancel has a single writer (the live holder, otherwise the server);
   a turn that keeps killing its worker is sealed after
   `DURABLE_NO_PROGRESS_SEAL_THRESHOLD` leases. Resolutions now write under the
-  open turn's id. Migration 216 adds the inbox cursor, the fresh-turn input
-  pointer and the lease count; migration 217 moves in-flight sessions onto
+  open turn's id. Migration 20261012014120 adds the inbox cursor, the fresh-turn input
+  pointer and the lease count; migration 20261012014121 moves in-flight sessions onto
   actors and cancels old-path turn tasks and runs, so the cutover wants a
   recreate deploy. The worker no longer claims `process_input`, `reason` or
   `act`, and the reaper no longer sweeps stranded `turn_workflow` runs; the

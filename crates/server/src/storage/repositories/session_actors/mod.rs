@@ -2,7 +2,7 @@
 //
 // The runnable index and the lease protocol a worker uses to run a session's
 // whole turn (step 6b), with the inbox cursor and the poison guard the
-// cutover added (step 6c, migration 216).
+// cutover added (step 6c, migration 20261012014120).
 //
 // Decisions:
 // - The session's event log is the only turn state. This table says which
