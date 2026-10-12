@@ -327,6 +327,28 @@ describe("Sidebar", () => {
     expect(mockPush).toHaveBeenCalledWith("/settings/profile");
   });
 
+  it("opens the public docs from the Documentation menu item", () => {
+    mockUseAuth.mockReturnValue({
+      user: { name: "Test User", email: "test@example.com", avatar_url: null },
+      requiresAuth: true,
+      isAuthenticated: true,
+      config: { mode: "password" },
+      isLoading: false,
+      logout: jest.fn(),
+      logoutPending: false,
+      createOrganization: undefined,
+    });
+    const open = jest.spyOn(window, "open").mockImplementation(() => null);
+
+    render(<Sidebar />);
+
+    fireEvent.click(screen.getByRole("button", { name: /test user/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Documentation" }));
+
+    expect(open).toHaveBeenCalledWith("https://everruns.com/docs", "_blank", "noopener,noreferrer");
+    open.mockRestore();
+  });
+
   it("renders all navigation items", () => {
     render(<Sidebar />);
 
