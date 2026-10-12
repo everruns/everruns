@@ -31,7 +31,7 @@
 //! runs inside one transaction that is never committed: Postgres makes DDL
 //! transactional, so the constraint is never absent for anyone else and the
 //! seeded rows never land. The statements are mirrored from
-//! `crates/server/migrations/153_agent_trigger_budget_subject.sql`; change them
+//! `crates/server/migrations/legacy/153_agent_trigger_budget_subject.sql`; change them
 //! together.
 //!
 //! Run with: cargo test -p everruns-server --test domain trigger_budget_subject_test:: -- --test-threads=1

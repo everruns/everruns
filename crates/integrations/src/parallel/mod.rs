@@ -114,11 +114,11 @@ impl Capability for ParallelCapability {
     }
 
     fn name(&self) -> &str {
-        "[Experimental] Parallel"
+        "Parallel Search and Fetch"
     }
 
     fn description(&self) -> &str {
-        "Search and fetch web content through Parallel MCP. Free by default, with optional Parallel API-key connection for authenticated usage."
+        "Search and fetch web content through Parallel MCP. Free by default, with optional Parallel API-key connection for authenticated usage. For provider-neutral web search, use Web search."
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -127,6 +127,10 @@ impl Capability for ParallelCapability {
 
     fn icon(&self) -> Option<&str> {
         Some("search")
+    }
+
+    fn web_search_source(&self, _config: &serde_json::Value) -> bool {
+        true
     }
 
     fn category(&self) -> Option<&str> {
@@ -269,11 +273,12 @@ For Parallel tool calls, generate one stable `session_id` for the conversation a
             },
             CapabilityLocalization {
                 locale: "uk",
-                name: Some("[Експериментально] Parallel"),
+                name: Some("Parallel: пошук і отримання"),
                 description: Some(
                     "Шукайте та отримуйте вебвміст через Parallel MCP. Безкоштовно за \
                      замовчуванням, з опціональним підключенням за API-ключем Parallel для \
-                     автентифікованого використання.",
+                     автентифікованого використання. Для пошуку без прив'язки до \
+                     провайдера використовуйте Вебпошук.",
                 ),
                 config_description: Some(
                     "Визначає, чи використовує Parallel безкоштовний доступ або підключення з \

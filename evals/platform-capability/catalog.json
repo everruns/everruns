@@ -9337,6 +9337,31 @@
             "display_name": {
               "type": "string"
             },
+            "github_trigger": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/DraftGitHubTrigger",
+                  "description": "GitHub events that start the agent."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "mcp_servers": {
+              "description": "Org catalog MCP servers to attach.",
+              "items": {
+                "$ref": "#/$defs/DraftMcpServer"
+              },
+              "type": "array"
+            },
+            "model_id": {
+              "description": "Model to pin, set only when the org default has no working key.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "name": {
               "description": "Addressable name (lowercase slug).",
               "type": "string"
@@ -9355,6 +9380,53 @@
               "type": "string"
             }
           },
+          "type": "object"
+        },
+        "DraftGitHubTrigger": {
+          "description": "A GitHub trigger to create once GitHub is connected on the agent.",
+          "properties": {
+            "changes_only": {
+              "description": "Run only when a CI outcome differs from the previous one for the same\nrepository and branch.",
+              "type": "boolean"
+            },
+            "events": {
+              "description": "Events from the builder's fixed list, e.g. `workflow_run.completed`.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "message": {
+              "description": "Message the agent receives for each event.",
+              "type": "string"
+            },
+            "repositories": {
+              "description": "`owner/name` repositories; empty means every repository the App sees.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "DraftMcpServer": {
+          "description": "A catalog MCP server to attach.",
+          "properties": {
+            "acts_as": {
+              "description": "Whose grant the attachment uses, set from the preset's auth.",
+              "example": "service",
+              "type": "string"
+            },
+            "name": {
+              "description": "Catalog preset name.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "acts_as"
+          ],
           "type": "object"
         },
         "DraftRole": {

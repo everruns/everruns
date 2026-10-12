@@ -606,6 +606,21 @@
       ]
     },
     {
+      "category": "Safety",
+      "dependencies": [],
+      "docs_slug": "dry-run",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "dry_run",
+      "name": "Dry Run",
+      "status": "available",
+      "tools": []
+    },
+    {
       "category": "Network",
       "dependencies": [],
       "docs_slug": null,
@@ -1051,7 +1066,7 @@
         "dev"
       ],
       "id": "parallel",
-      "name": "Parallel (Machine Payments)",
+      "name": "Parallel Paid Search (pay per call)",
       "status": "available",
       "tools": [
         "parallel_extract",
@@ -1071,7 +1086,7 @@
         "dev"
       ],
       "id": "parallel_search",
-      "name": "[Experimental] Parallel",
+      "name": "Parallel Search and Fetch",
       "status": "available",
       "tools": []
     },

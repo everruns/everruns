@@ -634,7 +634,7 @@ Acting-as-user is preserved (claims still carry the user's identity and roles); 
 ### Database Schema
 
 The OAuth tables, `oauth_clients`, `oauth_authorization_codes`, `oauth_refresh_tokens`, are defined
-in [`crates/server/migrations/009_v0.8.8.sql`](../../crates/server/migrations/009_v0.8.8.sql).
+in [`crates/server/migrations/legacy/009_v0.8.8.sql`](../../crates/server/migrations/legacy/009_v0.8.8.sql).
 
 The shapes that carry security intent: secrets and codes are stored **hashed**, never in plaintext;
 authorization codes are single-use (`consumed`) and carry the PKCE challenge and method; and both

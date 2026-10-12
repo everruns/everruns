@@ -139,7 +139,7 @@ async fn migrated_template() -> anyhow::Result<&'static str> {
             let pg = everruns_pg_embedded::EmbeddedPostgres::shared().await?;
             pg.create_database(TEMPLATE_DB, None).await?;
             let pool = PgPool::connect(&pg.url(TEMPLATE_DB)).await?;
-            sqlx::migrate!("./migrations").run(&pool).await?;
+            crate::setup::migrations::migrator().run(&pool).await?;
             // A template cannot be copied while anything is connected to it.
             pool.close().await;
             anyhow::Ok(())
@@ -244,8 +244,8 @@ pub fn create_test_database() -> (PgPool, Arc<TestDatabase>) {
     )
 }
 
-/// A database of its own on the embedded cluster, migrated up to but not
-/// including `version`, for tests that convert pre-migration data with that
+/// A database of its own on the embedded cluster, migrated through the legacy
+/// history up to but not including `version`, for tests that convert pre-migration data with that
 /// migration. Slower than [`create_test_database`]: it runs the migrations
 /// instead of copying a template.
 pub async fn create_database_migrated_before(
@@ -264,7 +264,9 @@ pub async fn create_database_migrated_before(
         .max_connections(2)
         .connect(&url)
         .await?;
-    let mut migrator = sqlx::migrate!("./migrations");
+    // Historical data conversions are tested against the legacy history the
+    // baseline replaced, so these databases replay it.
+    let mut migrator = crate::setup::migrations::legacy_migrator();
     migrator.migrations = migrator
         .migrations
         .iter()

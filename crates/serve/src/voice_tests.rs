@@ -63,11 +63,12 @@ async fn a_call_greets_hears_the_caller_and_speaks_the_answer() {
         Some("It is sunny today.")
     );
 
-    // The call's session is an ordinary session: tagged, with the utterance
-    // as a user message marked as voice.
+    // The call's session is an ordinary session of the agent's voice channel,
+    // with the utterance as a user message marked as voice.
     let session = server.session(&session_id).await;
     assert_eq!(session["agent_name"], "talker", "{session}");
-    assert_eq!(session["tags"], json!(["voice"]), "{session}");
+    assert_eq!(session["metadata"]["kind"], "voice", "{session}");
+    assert_eq!(session["metadata"]["channel"], "voice:talker", "{session}");
     let events = host.events_after(&session_id, 0).await.unwrap();
     let input = events
         .iter()
@@ -222,4 +223,144 @@ async fn the_page_manifest_and_agent_card_list_the_channel() {
     let html = page.text().await.unwrap();
     assert!(html.contains("<title>Talk to talker</title>"));
     assert_eq!(server.get("/v1/channels/nobody/voice").await.status(), 404);
+}
+
+/// The test app with a cascaded `[voice]` on the simulator.
+fn cascaded_app() -> App {
+    let config = AppConfig {
+        voice: Some(VoiceChannelConfig {
+            mode: everruns::voice::VoiceMode::Cascaded,
+            speech_model: Some("sim".into()),
+            greeting: Some("Hello!".into()),
+            ..VoiceChannelConfig::default()
+        }),
+        ..AppConfig::default()
+    };
+    let app = App::builder().discover().config(config).build();
+    assert!(app.errors().is_empty(), "{:?}", app.errors());
+    app
+}
+
+#[tokio::test]
+async fn a_cascaded_call_runs_over_a_websocket() {
+    use futures::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::Message;
+
+    let host = Host::new(cascaded_app(), Mode::Eval, None).unwrap();
+    let server = serve(host.clone()).await;
+    let url = format!(
+        "{}/v1/channels/talker/voice/ws",
+        server.base.replacen("http://", "ws://", 1)
+    );
+    let (mut socket, _) = tokio_tungstenite::connect_async(url).await.unwrap();
+
+    let next_text = async |socket: &mut tokio_tungstenite::WebSocketStream<_>| -> Value {
+        loop {
+            let message = tokio::time::timeout(Duration::from_secs(10), socket.next())
+                .await
+                .expect("message in time")
+                .expect("socket open")
+                .unwrap();
+            if let Message::Text(text) = message {
+                return serde_json::from_str(&text).unwrap();
+            }
+        }
+    };
+    let next_audio = async |socket: &mut tokio_tungstenite::WebSocketStream<_>| -> String {
+        loop {
+            let message = tokio::time::timeout(Duration::from_secs(10), socket.next())
+                .await
+                .expect("message in time")
+                .expect("socket open")
+                .unwrap();
+            if let Message::Binary(audio) = message {
+                return String::from_utf8(audio.to_vec())
+                    .unwrap()
+                    .trim_end_matches('\0')
+                    .to_string();
+            }
+        }
+    };
+
+    let hello = next_text(&mut socket).await;
+    assert_eq!(hello["type"], "call", "{hello}");
+    assert_eq!(hello["sample_rate"], 24000);
+    let session_id = hello["session_id"].as_str().unwrap().to_string();
+    assert_eq!(next_audio(&mut socket).await, "Hello!");
+
+    // Simulated audio is text: one frame, one utterance.
+    socket
+        .send(Message::Binary(b"What is the weather?".to_vec().into()))
+        .await
+        .unwrap();
+    assert_eq!(next_audio(&mut socket).await, "It is sunny today.");
+
+    let session = server.session(&session_id).await;
+    assert_eq!(session["metadata"]["kind"], "voice", "{session}");
+
+    // WebRTC calls are refused on a cascaded app, with the right route.
+    let refused = server
+        .post("/v1/channels/talker/voice/calls", json!({ "sdp": "v=0" }))
+        .await;
+    assert_eq!(refused.status(), 400);
+    let body: Value = refused.json().await.unwrap();
+    assert!(body.to_string().contains("/voice/ws"), "{body}");
+
+    socket.close(None).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_delegated_app_refuses_websocket_calls() {
+    let host = Host::new(voice_app(), Mode::Eval, None).unwrap();
+    let server = serve(host).await;
+    let url = format!(
+        "{}/v1/channels/talker/voice/ws",
+        server.base.replacen("http://", "ws://", 1)
+    );
+    let err = tokio_tungstenite::connect_async(url).await.unwrap_err();
+    assert!(err.to_string().contains("400"), "{err}");
+}
+
+#[tokio::test]
+async fn calls_with_one_conversation_key_share_a_session() {
+    let host = Host::new(voice_app(), Mode::Eval, None).unwrap();
+    let server = serve(host).await;
+    let mut sessions = Vec::new();
+    for _ in 0..2 {
+        let placed: Value = server
+            .post(
+                "/v1/channels/talker/voice/calls",
+                json!({ "sdp": "v=0", "conversation": "caller-42" }),
+            )
+            .await
+            .json()
+            .await
+            .unwrap();
+        sessions.push(placed["session_id"].as_str().unwrap().to_string());
+        let call_id = placed["call_id"].as_str().unwrap();
+        server
+            .post(
+                &format!("/v1/channels/talker/voice/calls/{call_id}/end"),
+                json!({}),
+            )
+            .await;
+    }
+    assert_eq!(sessions[0], sessions[1]);
+
+    // A call without a key gets its own session.
+    let other: Value = server
+        .post("/v1/channels/talker/voice/calls", json!({ "sdp": "v=0" }))
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_ne!(other["session_id"], sessions[0]);
+
+    let both = server
+        .post(
+            "/v1/channels/talker/voice/calls",
+            json!({ "sdp": "v=0", "conversation": "c", "session_id": sessions[0] }),
+        )
+        .await;
+    assert_eq!(both.status(), 400);
 }

@@ -317,19 +317,22 @@ same entry.
 
 ## What happens to today's capabilities
 
-Internal code needs no backward compatibility, so the old switches are removed
-and a migration rewrites agent definitions:
+Provider-specific search capabilities stay, and nothing is migrated. Some
+agents are built around one provider on purpose (a DuckDuckGo instant-answer
+agent, an agent tied to a Brave key), so Web search sits next to them instead of
+replacing them (user decision, 2026-10-11):
 
-| Today | Becomes |
+| Capability | What changes |
 |---|---|
-| `brave_search` | `web_search` with provider Brave (key from an org account, then the user's connection, then the `BRAVE_SEARCH_API_KEY` session secret, so existing setups keep working) |
-| `duckduckgo` | `web_search` with provider Free search |
-| `openai_server_tools` with `web_search` | `web_search` with Model provider search, domains and location carried over; the other hosted tools stay |
-| `openrouter_server_tools` with `web_search` | same as above |
-| `parallel_search` | kept, renamed "Parallel Search and Fetch" (see Overlap below); it also provides Parallel's fetch. Parallel as a search account uses the Search API with the org key. |
+| `brave_search` | stays; declares itself a web search source |
+| `duckduckgo` | stays; declares itself a web search source |
+| `openai_server_tools` / `openrouter_server_tools` | keep their hosted `web_search`; a source only when that tool is on |
+| `parallel_search` | renamed "Parallel Search and Fetch" (see Overlap below); it also provides Parallel's fetch. Parallel as a search account uses the Search API with the org key. |
+| `parallel` (payments) | renamed "Parallel Paid Search (pay per call)" |
 
-The seeded "web-researcher" agent switches to `web_search` with Organization
-default.
+Using one of them together with `web_search` is what the duplicate-search
+warning below is for. The seeded "web-researcher" agent drops `brave_search` and
+uses the `web_search` its Bashkit Worker harness already carries.
 
 ## Overlap with other search capabilities
 
@@ -507,15 +510,15 @@ Mockups: `/mnt/project-files/web-search/` in the project thread.
 ## Delivery
 
 1. Capability, `SearchDriver` contract and registry, free driver (ported and fixed), Brave driver, harness presets, `*.mojeek.com` allowlisted with the host coverage test,
-   Framework builder; migrate `brave_search` and `duckduckgo` agents; the
-   duplicate-search check and the renamed provider-specific capabilities.
+   Framework builder; the duplicate-search check and the renamed
+   provider-specific capabilities.
 2. Organization search accounts, `web_search_defaults`, live plan resolution,
    catalog and preview endpoints; flags removed.
 3. UI: Web search page, agent editor, chat row with details and raw views,
    Trace spans, narration, icons, public docs page.
 4. Native search: OpenAI and OpenRouter on the shared option, then Anthropic,
-   then Gemini, each with cost components and citation mapping; strip
-   `web_search` from the two hosted-tools capabilities.
+   then Gemini, each with cost components and citation mapping. The two
+   hosted-tools capabilities keep their own `web_search`.
 5. Citations: `citation_web` over function and native results.
 6. SaaS: book native searches on the org ledger for the Everruns LLM provider.
 7. Parallel Search API driver.

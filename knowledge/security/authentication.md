@@ -56,7 +56,11 @@ Authorization: Bearer <personal_access_token>
   authority regardless of stored scopes. To avoid advertising a control that is
   not honored, token creation only accepts the full-access wildcard (`scopes`
   omitted or `["*"]`); any narrower scope is rejected with `unsupported_pat_scopes`
-  until per-request scope enforcement exists. See EVE-701.
+  until per-request scope enforcement exists. See EVE-701, and
+  [Personal Access Token Scopes](pat-scopes.md) for the proposed enforcement
+  design (`*` and `read`). Under that design a `read` token can never download
+  the full personal data export (`GET /v1/users/me/export`), and legacy tokens
+  stored with any scope other than `["*"]` are deleted when enforcement ships.
 - Used for programmatic access
 - Non-`Bearer` formats (`Authorization: evr_pat_...`, `Authorization: ApiKey evr_pat_...`) are also accepted for non-Bearer clients
 - `metadata` JSONB column stores creation context: `source` (cli_login, web_ui, api), `hostname`, `os`, `ip`
@@ -488,7 +492,7 @@ None reveals account existence to an unauthenticated party.
 
 ### Database Schema
 
-See `crates/server/migrations/001_base_schema.sql` for `users`, `personal_access_tokens` (originally `api_keys`; renamed in `047_personal_access_tokens.sql`), and `refresh_tokens` table DDL.
+See `crates/server/migrations/legacy/001_base_schema.sql` for `users`, `personal_access_tokens` (originally `api_keys`; renamed in `047_personal_access_tokens.sql`), and `refresh_tokens` table DDL.
 
 #### Anonymous User (seeded at startup)
 

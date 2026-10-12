@@ -92,7 +92,12 @@ impl Capability for BraveSearchCapability {
     fn description(&self) -> &str {
         "Search the web using Brave Search API. \
          Agents can query the web and get relevant results including titles, URLs, and descriptions. \
-         EXPERIMENTAL: This capability may change."
+         EXPERIMENTAL: This capability may change. \
+         For provider-neutral web search, use Web search."
+    }
+
+    fn web_search_source(&self, _config: &serde_json::Value) -> bool {
+        true
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -127,7 +132,8 @@ impl Capability for BraveSearchCapability {
             "[Експериментально] Brave Search",
             "Шукайте в інтернеті через Brave Search API. Агенти можуть виконувати пошукові \
              запити й отримувати релевантні результати із заголовками, URL-адресами та \
-             описами. ЕКСПЕРИМЕНТАЛЬНО: ця можливість може змінитися.",
+             описами. ЕКСПЕРИМЕНТАЛЬНО: ця можливість може змінитися. Для пошуку без \
+             прив'язки до провайдера використовуйте Вебпошук.",
         )]
     }
 }

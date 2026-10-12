@@ -1,5 +1,6 @@
 ---
 import DefaultFooter from "@astrojs/starlight/components/Footer.astro";
+import { isChangelogEntry, productLabel } from "../lib/changelog";
 
 // Cross-site links surfaced on every docs page. Keeping them here (rather than
 // per-page markdown) guarantees the marketing site and the bashkit project are
@@ -9,15 +10,32 @@ const crossLinks = [
   { label: "Bashkit", href: "https://bashkit.sh" },
   { label: "GitHub", href: "https://github.com/everruns/everruns" },
 ];
+
+// A changelog entry links the products it is about instead: where each one
+// lives, so a reader can go from "what changed" to the product itself.
+const PRODUCT_HOME: Record<string, string> = {
+  cloud: "/getting-started/cloud/",
+  platform: "/getting-started/docker-compose/",
+  framework: "/framework/quickstart/",
+  sdk: "https://github.com/everruns/sdk",
+  cli: "/reference/cli/",
+  yolop: "https://github.com/everruns/yolop",
+  mira: "https://github.com/everruns/mira",
+  bashkit: "https://bashkit.sh",
+};
+const entry = Astro.locals.starlightRoute.entry;
+const links = isChangelogEntry(entry)
+  ? (entry.data.products ?? []).map((p: string) => ({ label: productLabel(p), href: PRODUCT_HOME[p] }))
+  : crossLinks;
 ---
 
 <div class="site-footer-links">
   <nav aria-label="Everruns sites">
     <ul>
       {
-        crossLinks.map((link) => (
+        links.map((link) => (
           <li>
-            <a href={link.href} rel="noopener">
+            <a href={link.href} rel={link.href.startsWith("http") ? "noopener" : undefined}>
               {link.label}
             </a>
           </li>

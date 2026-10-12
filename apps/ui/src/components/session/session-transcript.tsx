@@ -123,12 +123,12 @@ export function SessionTranscript({
   });
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       <div
         ref={scrollContainerRef}
         onScroll={handleScrollUp}
         className={cn(
-          "relative flex-1 overflow-y-auto bg-background bg-brand-dots px-3 py-4 sm:px-6",
+          "relative min-h-0 min-w-0 flex-1 overflow-y-auto bg-background bg-brand-dots px-3 py-4 sm:px-6",
           !eventsLoading && transcriptEmpty && "flex flex-col justify-center",
         )}
       >

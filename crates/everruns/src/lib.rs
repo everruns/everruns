@@ -73,6 +73,21 @@ pub mod channel_auth {
 #[cfg(feature = "channels")]
 pub mod channels;
 mod context;
+/// The app as a Personal Agent Protocol ("Poppy") personal agent: tools that
+/// find a company by domain, message its agent, read replies, ask for a
+/// person and close the conversation, for the person the app works for.
+///
+/// Stability: experimental — outside the [`stability`] promises.
+#[cfg(feature = "poppy")]
+pub mod poppy {
+    pub use everruns_capabilities::capabilities::poppy_client::protocol::{AGENT_PATH, JWKS_PATH};
+    pub use everruns_capabilities::capabilities::{PoppyKey, PoppyPersonalAgent};
+    /// What [`PoppyPersonalAgent::with_egress`] sends requests through.
+    pub use everruns_core::{
+        EgressError, EgressRequest, EgressResponse, EgressResult, EgressService,
+        EgressStreamResponse,
+    };
+}
 /// What an agent said to the conversation: the one rule every surface uses to
 /// pick an agent's answer, so commentary never counts as a reply.
 ///

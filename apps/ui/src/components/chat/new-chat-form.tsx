@@ -7,6 +7,10 @@
  * Chat Agent on its fixed runtime; Playground owns arbitrary Agent, harness,
  * identity, and Sandbox selection.
  *
+ * Dry run (proactive agents D5) adds the `dry_run` session capability: tools
+ * that only read run for real, every other call is simulated. The agent page's
+ * Test run button opens this form with it ticked; unticking runs for real.
+ *
  * An org with no model to chat with never reaches this form: both hosts own
  * their empty-state frame, so they swap the whole frame for the
  * "no intelligence available" message rather than stacking a second one here.
@@ -17,6 +21,7 @@ import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -38,10 +43,12 @@ const HARNESS_VALUE_PREFIX = "harness:";
 
 export function NewPlaygroundChatForm({
   initialAgentId,
+  initialDryRun = false,
   endUserId,
   children,
 }: {
   initialAgentId?: string;
+  initialDryRun?: boolean;
   endUserId?: string;
   children?: ReactNode;
 } = {}) {
@@ -64,6 +71,7 @@ export function NewPlaygroundChatForm({
       !isHarnessDeprecated(harness),
   );
   const [sandbox, setSandbox] = useState("");
+  const [dryRun, setDryRun] = useState(initialDryRun);
   const [error, setError] = useState<string | null>(null);
   const optionsLoading = agentsLoading || harnessesLoading;
   const selectedAgent = selection.startsWith(AGENT_VALUE_PREFIX)
@@ -103,6 +111,7 @@ export function NewPlaygroundChatForm({
           ...(selectedAgent?.sandbox_policy && selectedSandbox && sandboxMode !== "fixed"
             ? { sandbox: { use: selectedSandbox } }
             : {}),
+          ...(dryRun ? { capabilities: [{ ref: "dry_run", config: {} }] } : {}),
           source: "playground",
           playground_user_id: endUserId,
         },
@@ -199,6 +208,16 @@ export function NewPlaygroundChatForm({
           </div>
         ) : null}
         {children}
+        <div className="flex items-start gap-2">
+          <Checkbox id="dry-run" checked={dryRun} onCheckedChange={setDryRun} className="mt-0.5" />
+          <label htmlFor="dry-run" className="text-sm">
+            <span className="font-medium">Dry run</span>
+            <span className="block text-xs text-muted-foreground">
+              Tools that only read run for real. Every other action is simulated and changes
+              nothing.
+            </span>
+          </label>
+        </div>
         <Button
           variant="accent"
           onClick={start}
@@ -209,7 +228,7 @@ export function NewPlaygroundChatForm({
           ) : (
             <MessageCircle className="size-4" />
           )}
-          Start Playground chat
+          {dryRun ? "Start test run" : "Start Playground chat"}
         </Button>
       </div>
       {error && <ChatErrorAlert message={error} />}

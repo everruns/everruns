@@ -189,10 +189,11 @@ impl Database {
             " AND status NOT IN ('archived', 'deleted')"
         };
         let sql = format!(
-            r#"SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at
+            r#"SELECT {columns}
                 FROM mcp_servers
                 WHERE org_id = $1 AND owner_virtual_user_id IS NULL{status_sql}{search_sql}
-                ORDER BY created_at DESC"#
+                ORDER BY created_at DESC"#,
+            columns = McpServerRow::COLUMNS
         );
         let mut query =
             sqlx::query_as::<_, McpServerRow>(sqlx::AssertSqlSafe(sql.as_str())).bind(org_id);
@@ -421,6 +422,22 @@ impl Database {
         .await?;
 
         Ok(row)
+    }
+
+    /// Store discovered display metadata. Does not touch operator name or description.
+    pub async fn set_mcp_server_presentation(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        presentation: serde_json::Value,
+    ) -> Result<()> {
+        sqlx::query("UPDATE mcp_servers SET presentation = $3 WHERE org_id = $1 AND id = $2")
+            .bind(org_id)
+            .bind(id)
+            .bind(presentation)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     /// Update cached tools for an MCP server

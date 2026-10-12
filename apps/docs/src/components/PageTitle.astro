@@ -7,6 +7,10 @@
 // for me?" without reading the page. Pages without the field render no row:
 // availability is filled in only where it was checked against the code.
 import Default from "@astrojs/starlight/components/PageTitle.astro";
+import ChangelogMeta from "./ChangelogMeta.astro";
+import { isChangelogEntry } from "../lib/changelog";
+
+const entry = Astro.locals.starlightRoute.entry;
 
 const appliesTo: string[] | undefined =
   Astro.locals.starlightRoute.entry.data.appliesTo;
@@ -20,6 +24,8 @@ const targets = [
 ---
 
 <Default />
+
+{isChangelogEntry(entry) && <ChangelogMeta entry={entry} />}
 
 {
   appliesTo && appliesTo.length > 0 && (

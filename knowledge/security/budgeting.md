@@ -32,7 +32,7 @@ See source files for full definitions:
 - API: `crates/server/src/api/budgets.rs`
 - Capability: `crates/core/src/builtins/budgeting.rs`
 - Loop gate: `crates/core/src/host/budget_gate.rs` (applied in `execute_reason_activity_with_prompt_messages`, `crates/core/src/host/host.rs`)
-- Migrations: `crates/server/migrations/010_v0.8.9.sql`, `crates/server/migrations/020_budget_journal_ledger.sql`
+- Migrations: `crates/server/migrations/legacy/010_v0.8.9.sql`, `crates/server/migrations/legacy/020_budget_journal_ledger.sql`
 
 ## Concepts
 

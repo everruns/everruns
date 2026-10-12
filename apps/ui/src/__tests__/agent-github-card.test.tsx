@@ -89,6 +89,19 @@ describe("AgentGitHubCard", () => {
     );
   });
 
+  it("forgets an App that was never installed", async () => {
+    mocked.getAgentGitHub.mockResolvedValue({
+      ...base,
+      app_created: true,
+      identity_id: "ident_1",
+    });
+    mocked.disconnectAgentGitHub.mockResolvedValue();
+    renderCard();
+    fireEvent.click(await screen.findByRole("button", { name: "GitHub actions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Start over" }));
+    await waitFor(() => expect(mocked.disconnectAgentGitHub).toHaveBeenCalledWith("ident_1"));
+  });
+
   it("shows account and disconnects after confirmation", async () => {
     mocked.getAgentGitHub.mockResolvedValue({
       ...base,

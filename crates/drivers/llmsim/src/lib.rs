@@ -17,7 +17,6 @@
 //! use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
 //!
 //! let driver = LlmSimDriver::new(LlmSimConfig::fixed("Hello."));
-//! # let _ = driver;
 //! ```
 
 mod demo_scripts;
@@ -31,6 +30,7 @@ pub use demo_scripts::{
 pub use scenarios::builtin_scenario_names;
 #[cfg(feature = "host")]
 mod runtime_ext;
+pub mod speech;
 
 #[cfg(feature = "host")]
 pub use runtime_ext::{LLMSIM_MODEL_ID, LLMSIM_PROVIDER, LlmSimRuntimeExt, llm_sim_provider};

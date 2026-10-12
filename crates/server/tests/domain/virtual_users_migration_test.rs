@@ -15,11 +15,12 @@ async fn cutover_preserves_chats_and_never_fans_out_credentials() {
     .execute(&mut connection)
     .await
     .unwrap();
-    let mut migrations = std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/migrations"))
-        .unwrap()
-        .map(|entry| entry.unwrap().path())
-        .filter(|path| path.extension().is_some_and(|ext| ext == "sql"))
-        .collect::<Vec<_>>();
+    let mut migrations =
+        std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/migrations/legacy"))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "sql"))
+            .collect::<Vec<_>>();
     migrations.sort();
     let cutover = migrations
         .iter()

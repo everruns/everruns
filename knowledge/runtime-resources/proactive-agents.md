@@ -121,30 +121,40 @@ Revisit with a delivery channel that is known to reach the person.
   [risk label](../integrations/mcp-servers.md#tool-risk-labels)) run for real. Every other tool
   returns a simulated result naming the call and its arguments, without
   executing. The session trace marks those calls.
-- **Test run button.** The agent page gets **Test run**, which starts a
-  dry-run session. For a trigger it uses a sample event: the latest real event
-  the trigger received, else a canned sample for that event type. A **Run for
-  real** toggle turns dry run off.
+- **Test run button.** The agent page gets **Test run**, which opens a new
+  Playground chat with dry run ticked; unticking it runs for real. Dry run is
+  the `dry_run` session capability, so any client can ask for it.
+- **Deferred:** replaying a trigger's sample event (its latest real event, else
+  a canned sample). Trigger deliveries do not keep their payloads, so this needs
+  storage first; until then the tester types the prompt.
 - **Rejected:** a separate sandbox org for tests. It loses the agent's real
   connections, which are most of what a test should prove.
 
 ### D6. The builder drafts the whole agent and runs it once
 
-The "Describe it" builder (`draft.rs`) extends its draft with:
+The "Describe it" builder (`draft.rs`, `draft_resources.rs`) extends its draft
+with:
 
 - **Triggers:** a schedule (a cron expression it writes from plain words), or a
-  GitHub trigger with events, repositories and `changes_only`. Same filtering
-  rule as today's capabilities: only trigger types this org can use.
+  GitHub trigger with events from a fixed list, repositories and
+  `changes_only`. A new agent has no GitHub connected on its identity, so the
+  GitHub trigger is finished on the trigger form, prefilled from the draft,
+  which shows Connect first and returns to itself afterwards.
 - **Notify through the catalog:** when the description says "tell me",
-  "alert", "let me know" and similar, the draft attaches the org's notification
-  preset (Visti today), if the catalog has one.
-- **MCP servers:** only presets already in the org catalog. The draft never
-  adds a host or a credential.
-- **Model:** the org default, unless it has no working credential, in which case
-  the builder picks the first funded model and says why.
+  "alert", "let me know" and similar, the builder attaches a catalog preset
+  whose description says it sends notifications (Visti today), if the catalog
+  has one, and says so when it does not.
+- **MCP servers:** only presets already in the org catalog, by name. The draft
+  never adds a host or a credential. An OAuth preset acts as the agent's
+  service identity, since a proactive agent runs with nobody to sign in.
+- **Model:** never the builder model's choice. The org default, unless it has
+  no working key (the model list's `healthy`), in which case the draft pins the
+  first enabled chat model that has one and the reply says why. Whether an
+  account has credit is not knowable before a call, so it is not checked.
 
-After create, the builder starts a dry **Test run** and shows its trace inline,
-so the first thing a person sees is the agent working.
+After create, a described agent lands on the dry **Test run** setup (D5) with
+the agent selected, so the first thing a person does is watch it work without
+its actions taking effect.
 
 The CLI quirk from the build (a `$(cat <<EOF ...)` inside the MCP `execute`
 tool expanding to empty) is a Bashkit bug and is reported there, not worked

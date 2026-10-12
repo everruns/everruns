@@ -99,7 +99,7 @@ enrichment, aggregation, and backend-specific writes happen asynchronously.
 ## Async Projection
 
 Add a durable outbox, `reporting_outbox`, defined in
-[`crates/server/migrations/040_reporting_foundation.sql`](../../crates/server/migrations/040_reporting_foundation.sql).
+[`crates/server/migrations/legacy/040_reporting_foundation.sql`](../../crates/server/migrations/legacy/040_reporting_foundation.sql).
 It records what changed (source type, id, version), why (reason), and the retry state (status,
 attempts, next attempt, last error) so projection can be retried without re-reading the world.
 

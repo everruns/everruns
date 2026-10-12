@@ -31,7 +31,7 @@ payload structs, type registry, HTTP query fields, or SQL schema.
   summary response.
 - [`crates/server/src/services/event.rs`](../../crates/server/src/services/event.rs)
   owns emission and listener notification.
-- [`crates/server/migrations/001_base_schema.sql`](../../crates/server/migrations/001_base_schema.sql)
+- [`crates/server/migrations/legacy/001_base_schema.sql`](../../crates/server/migrations/legacy/001_base_schema.sql)
   and later migrations own storage columns, constraints, indexes, sequence
   allocation, and immutability triggers.
 - The tests in [`crates/contracts/src/runtime/events/mod.rs`](../../crates/contracts/src/runtime/events/mod.rs) cover

@@ -32,11 +32,11 @@ impl Capability for ParallelPaymentsCapability {
     }
 
     fn name(&self) -> &str {
-        "Parallel (Machine Payments)"
+        "Parallel Paid Search (pay per call)"
     }
 
     fn description(&self) -> &str {
-        "Paid Parallel search, extract, and async task tools backed by Everruns machine payments."
+        "Paid Parallel search, extract, and async task tools backed by Everruns machine payments. For provider-neutral web search, use Web search."
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -45,6 +45,10 @@ impl Capability for ParallelPaymentsCapability {
 
     fn risk_level(&self) -> RiskLevel {
         RiskLevel::High
+    }
+
+    fn web_search_source(&self, _config: &serde_json::Value) -> bool {
+        true
     }
 
     fn icon(&self) -> Option<&str> {
@@ -77,9 +81,10 @@ impl Capability for ParallelPaymentsCapability {
     fn localizations(&self) -> Vec<CapabilityLocalization> {
         vec![CapabilityLocalization::text(
             "uk",
-            "Parallel (машинні платежі)",
+            "Parallel: платний пошук (оплата за виклик)",
             "Платні інструменти Parallel для пошуку, вилучення даних та асинхронних завдань \
-             на основі машинних платежів Everruns.",
+             на основі машинних платежів Everruns. Для пошуку без прив'язки до провайдера \
+             використовуйте Вебпошук.",
         )]
     }
 }

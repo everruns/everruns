@@ -185,8 +185,10 @@ With the `voice` feature, every top-level agent also takes browser voice calls:
 answer, and `GET /v1/channels/{agent}/voice` is a test page with a call
 button. Each utterance becomes a user message on an ordinary session; the
 answer is spoken as it streams. `[voice]` in `serve.toml` sets the voice,
-greeting and speaking style. Speech uses OpenAI with `OPENAI_API_KEY`; `dev`
-falls back to an offline simulator.
+greeting and speaking style. With `mode = "cascaded"`, calls use separate
+speech-to-text and text-to-speech models and connect a WebSocket to
+`/v1/channels/{agent}/voice/ws`, with PCM audio both ways. Speech uses OpenAI
+with `OPENAI_API_KEY`; `dev` falls back to an offline simulator.
 
 ```toml
 everruns-serve = { version = "0.33", features = ["voice"] }

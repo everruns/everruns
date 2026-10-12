@@ -2,13 +2,13 @@
 //! the Personal Agent Protocol ("Poppy", draft 0.1,
 //! https://personalagentprotocol.org) on behalf of the person it works for.
 //!
-//! Decision: the protocol runs in the control plane, not in this crate. The
-//! deployment's signing key and each person's DPoP keys and Session Tokens
-//! stay there, encrypted at rest; a tool only names what it wants done (a
-//! [`PoppyCall`]) and hands it to the [`PoppyInvoker`] the host installed,
-//! bound to the session. A worker never holds a credential a model-chosen
-//! argument could leak. A host without that seam (a Framework registry, a
-//! terminal) gets tools that say Poppy is not available here.
+//! Decision: a tool only names what it wants done (a [`PoppyCall`]) and hands
+//! it to the [`PoppyInvoker`] the host installed, bound to the session. The
+//! protocol client itself ([`PoppyClient`], feature `poppy-client`) runs
+//! wherever the keys live: in the control plane for the hosted runtime, so a
+//! worker never holds a credential a model-chosen argument could leak; in
+//! the app for the Framework ([`PoppyPersonalAgent`]). A host with neither
+//! gets tools that say Poppy is not available here.
 //!
 //! Decision: one conversation per company per session. `poppy_send` starts it
 //! on first use and continues it after; `new_conversation` starts over. The
@@ -27,6 +27,25 @@ use everruns_core::tools::{Tool, ToolExecutionResult};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::Arc;
+
+#[cfg(feature = "poppy-client")]
+mod client;
+#[cfg(feature = "poppy-client")]
+mod framework;
+#[cfg(feature = "poppy-client")]
+mod key;
+#[cfg(feature = "poppy-client")]
+pub mod protocol;
+
+#[cfg(feature = "poppy-client")]
+pub use client::{
+    ConversationState, InMemoryPoppyStore, PoppyAccount, PoppyClient, PoppyError, PoppyStore,
+    StoredConversation,
+};
+#[cfg(feature = "poppy-client")]
+pub use framework::PoppyPersonalAgent;
+#[cfg(feature = "poppy-client")]
+pub use key::PoppyKey;
 
 pub const POPPY_CLIENT_CAPABILITY_ID: &str = "poppy_client";
 
@@ -162,7 +181,8 @@ pub enum PoppyTool {
 const COMPANY: &str = "The company's domain, for example example.com.";
 
 impl PoppyTool {
-    fn call(self, arguments: &Value, context: &ToolContext) -> Result<PoppyCall, String> {
+    /// The call `arguments` ask for; `message_id` names a sent message.
+    pub fn call(self, arguments: &Value, message_id: String) -> Result<PoppyCall, String> {
         let company = required(arguments, "company")?;
         let wait_seconds = arguments
             .get("wait_seconds")
@@ -173,7 +193,7 @@ impl PoppyTool {
             Self::Send => PoppyCall::Send {
                 company,
                 text: required(arguments, "text")?,
-                message_id: message_id(context),
+                message_id,
                 new_conversation: arguments
                     .get("new_conversation")
                     .and_then(Value::as_bool)
@@ -365,7 +385,7 @@ impl Tool for PoppyTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let call = match self.call(&arguments, context) {
+        let call = match self.call(&arguments, message_id(context)) {
             Ok(call) => call,
             Err(error) => return ToolExecutionResult::tool_error(error),
         };
@@ -401,13 +421,12 @@ mod tests {
 
     #[test]
     fn send_requires_text_and_caps_the_wait() {
-        let context = ToolContext::new(everruns_contracts::typed_id::SessionId::new());
-        let missing = PoppyTool::Send.call(&json!({ "company": "example.com" }), &context);
+        let missing = PoppyTool::Send.call(&json!({ "company": "example.com" }), "msg_1".into());
         assert_eq!(missing, Err("`text` is required".to_string()));
         let call = PoppyTool::Read
             .call(
                 &json!({ "company": "example.com", "wait_seconds": 999 }),
-                &context,
+                "msg_1".into(),
             )
             .unwrap();
         assert_eq!(

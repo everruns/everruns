@@ -402,6 +402,10 @@ impl Capability for OpenAiServerToolsCapability {
         RiskLevel::High
     }
 
+    fn web_search_source(&self, config: &Value) -> bool {
+        hosted_tools_from_config(config).web_search.is_some()
+    }
+
     async fn system_prompt_contribution(&self, _ctx: &SystemPromptContext) -> Option<String> {
         None
     }
@@ -640,6 +644,13 @@ mod tests {
             cap.driver_options(&json!({ CONTEXT_SIZE_KEY: "high" }))
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn searches_the_web_only_with_the_web_search_tool_on() {
+        let capability = OpenAiServerToolsCapability;
+        assert!(capability.web_search_source(&json!({ "tools": ["web_search"] })));
+        assert!(!capability.web_search_source(&json!({ "tools": ["code_interpreter"] })));
     }
 
     #[test]

@@ -30,6 +30,7 @@
 mod driver;
 pub(crate) mod embeddings;
 pub mod realtime;
+pub mod speech;
 mod types;
 
 #[cfg(test)]
@@ -41,6 +42,7 @@ pub use driver::{
 };
 pub use embeddings::OpenAIEmbeddingsDriver;
 pub use realtime::OpenAIRealtimeDriver;
+pub use speech::OpenAISpeechDriver;
 pub use types::{
     ChatMessage, ChatRequest, CompletionMetadata, LlmConfig, LlmStreamEvent, MessageRole,
 };

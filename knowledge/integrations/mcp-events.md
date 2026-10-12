@@ -133,13 +133,13 @@ covers the inbound callback: forged, stale, replayed or oversized deliveries.
 
 `crates/server/src/domains/mcp_servers/events.rs` (catalog, subscribe, verification,
 delivery, listener), `crates/server/src/api/mcp_endpoint/events.rs`
-(JSON-RPC), `crates/server/migrations/147_mcp_event_subscriptions.sql`, and
+(JSON-RPC), `crates/server/migrations/legacy/147_mcp_event_subscriptions.sql`, and
 the `mcp_events` flag in `crates/server/src/records/feature_flags.rs`. Tests in
 `crates/server/tests/domain/mcp_events_test.rs`.
 
 Inbound: `crates/server/src/domains/agent_triggers/mcp_event.rs` (config,
 subscribe, refresh, unsubscribe, receive), `crates/server/src/api/mcp_event_webhooks.rs`
 (callback), `crates/server/src/services/standard_webhooks.rs` (signing shared
-by both halves), `crates/server/migrations/157_agent_trigger_mcp_subscriptions.sql`.
+by both halves), `crates/server/migrations/legacy/157_agent_trigger_mcp_subscriptions.sql`.
 Tests in `crates/server/tests/domain/mcp_event_triggers_test.rs`, against an
 in-process fake MCP server.

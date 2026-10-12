@@ -42,7 +42,7 @@ organisation override remains in effect whenever the new grade permits availabil
 
 ## Organisation overrides
 
-The existing [organisation flag table](../../crates/server/migrations/046_org_feature_flags.sql)
+The existing [organisation flag table](../../crates/server/migrations/legacy/046_org_feature_flags.sql)
 stores explicit overrides in both directions. A missing record inherits the grade default;
 a stored false is a durable production opt-out, not an instruction to remove the record.
 Patch operations change only named flags. The default-organisation seeder must not enrol

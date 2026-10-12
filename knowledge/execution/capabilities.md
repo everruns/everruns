@@ -1180,7 +1180,7 @@ Capabilities are managed via the agents API (`POST /v1/agents`, `PATCH /v1/agent
 
 ### Database Schema
 
-See `crates/server/migrations/001_base_schema.sql` for the `agent_capabilities` table DDL.
+See `crates/server/migrations/legacy/001_base_schema.sql` for the `agent_capabilities` table DDL.
 
 **Note**: The `capability_id` column has no CHECK constraint, validation is at the application layer via `CapabilityRegistry`. This allows adding capabilities without database migrations.
 

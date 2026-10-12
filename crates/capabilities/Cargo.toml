@@ -70,6 +70,21 @@ a2a = ["everruns-core/a2a", "dep:url"]
 # Outbound AG-UI delegation (`ag_ui_delegation`): product-owned and optional,
 # like `a2a`. Pulls in the AG-UI SSE client and an HTTP stack.
 ag-ui = ["everruns-core/ag-ui", "everruns-core/ag-ui-client", "dep:reqwest", "dep:url", "dep:futures-util"]
+# The Poppy personal agent's protocol client (`poppy_client::PoppyClient`) and
+# its Framework capability (`PoppyPersonalAgent`). The capability's tools
+# compile without it and ask the host for a client.
+poppy-client = [
+    "everruns-core/direct-egress",
+    "everruns-contracts/definition",
+    "dep:aws-lc-rs",
+    "dep:base64",
+    "dep:jsonwebtoken",
+    "dep:parking_lot",
+    "dep:serde_urlencoded",
+    "dep:sha2",
+    "dep:url",
+    "dep:urlencoding",
+]
 container-sandbox = [
     "dep:reqwest",
     "dep:sha2",
@@ -122,6 +137,12 @@ hex = { workspace = true, optional = true }
 tar = { workspace = true, optional = true }
 urlencoding = { version = "2", optional = true }
 base64 = { workspace = true, optional = true }
+
+# Poppy personal agent protocol client (optional).
+aws-lc-rs = { version = "1", optional = true }
+jsonwebtoken = { workspace = true, optional = true }
+parking_lot = { workspace = true, optional = true }
+serde_urlencoded = { version = "0.7", optional = true }
 
 # OpenAPI schema generation (optional, enabled by everruns-server).
 utoipa = { workspace = true, optional = true }

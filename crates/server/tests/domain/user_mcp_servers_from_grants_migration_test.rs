@@ -54,7 +54,7 @@ async fn personal_catalog_sign_ins_are_listed_once() {
 
     let mut transaction = pool.begin().await.expect("begin migration");
     sqlx::raw_sql(include_str!(
-        "../../migrations/206_user_mcp_servers_from_grants.sql"
+        "../../migrations/legacy/206_user_mcp_servers_from_grants.sql"
     ))
     .execute(&mut *transaction)
     .await

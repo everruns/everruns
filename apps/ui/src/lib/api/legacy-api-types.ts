@@ -764,45 +764,13 @@ export interface ProfileResponse {
   avatar_url?: string;
 }
 
-// ============================================
-// User Connection types
-// ============================================
-export interface UserConnection {
-  provider: string;
-  connection_type: string;
-  provider_username?: string;
-  scopes?: string;
-  connected_at: string;
-}
-
-export interface ConnectionProvider {
-  provider_id: string;
-  display_name: string;
-  description: string;
-  icon: string;
-  connection_type: "oauth" | "api_key";
-  capabilities: string[];
-  form_schema?: ConnectionFormSchema;
-}
-
-export interface ConnectionFormSchema {
-  fields: ConnectionFormField[];
-  instructions_markdown: string;
-}
-
-export interface ConnectionFormField {
-  name: string;
-  label: string;
-  field_type: "password" | "text" | "url";
-  required: boolean;
-  placeholder?: string;
-  help_text?: string;
-}
-
-export interface VerifyConnectionResponse {
-  valid: boolean;
-  error?: string;
-}
+export type {
+  ConnectionFormField,
+  ConnectionFormSchema,
+  ConnectionProvider,
+  UserConnection,
+  VerifyConnectionResponse,
+} from "./connection-provider-types";
 
 // From legacy capability-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 // NOTE: CapabilityId is defined in common-types for proper ordering

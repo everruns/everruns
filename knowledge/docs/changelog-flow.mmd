@@ -1,0 +1,16 @@
+%% Source of truth for changelog-flow.svg
+flowchart LR
+  PR["Feature PR, any product repo<br/>completes the feature<br/>Changelog: &lt;entry&gt;"]
+  STEP["Step in a program<br/>Changelog: part of EVE-...<br/>no entry yet"]
+  MAINT["Maintenance sweep<br/>missed and stale entries"]
+  ENTRY["Changelog entry, everruns/everruns<br/>docs/changelog/&lt;date&gt;-&lt;slug&gt;.md<br/>kind, significance, products, surfaces<br/>links, optional visual<br/>release: and cloud: stamped later<br/>Update section or supersededBy"]
+  REL["/prepare-release<br/>release entry and card<br/>CHANGELOG.md links entries"]
+  SAAS["/release-to-saas<br/>Cloud-only entries<br/>stamps cloud: on deploy"]
+  SITE["docs.everruns.com/changelog<br/>HTML, Markdown, RSS per product, search<br/>filters: product, surface, significance"]
+
+  PR -- "1 complete" --> ENTRY
+  PR -.-> STEP
+  REL -- "2 release:" --> ENTRY
+  SAAS -- "3 cloud:" --> ENTRY
+  MAINT -- "4 fixes" --> ENTRY
+  ENTRY -- "5 docs build" --> SITE

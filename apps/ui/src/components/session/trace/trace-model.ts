@@ -99,6 +99,11 @@ const MESSAGE_KINDS = new Set(["answer", "agent", "send"]);
 const TOOL_KINDS = new Set(["tool", "approval", "agent", "send"]);
 
 /** Whether a step shows under the current view and error filter. */
+/** A dry run's simulated tool result (`dry_run` capability): the call never ran. */
+export function isSimulatedResult(result: string | null | undefined): boolean {
+  return /^\s*\{\s*"dry_run"\s*:/.test(result ?? "");
+}
+
 export function stepVisible(step: TraceStep, filters: TraceFilters): boolean {
   if (filters.errorsOnly && step.status !== "error" && step.kind !== "answer") return false;
   switch (filters.view) {

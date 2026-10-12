@@ -304,9 +304,9 @@ jobs:
               - 'crates/server/src/domains/agent_channels/**'
               - 'crates/server/src/domains/budgets/**'
               - 'crates/server/src/storage/repositories/budgets/**'
-              - 'crates/server/migrations/027_channel_budgets.sql'
-              - 'crates/server/migrations/137_endpoint_attribution.sql'
-              - 'crates/server/migrations/166_agent_channels.sql'
+              - 'crates/server/migrations/legacy/027_channel_budgets.sql'
+              - 'crates/server/migrations/legacy/137_endpoint_attribution.sql'
+              - 'crates/server/migrations/legacy/166_agent_channels.sql'
               - '.github/workflows/ci.yml'
             docs:
               - 'apps/docs/**'
@@ -815,6 +815,8 @@ jobs:
     name: Migration Immutability
     runs-on: ubuntu-latest
     needs: changes
+    # Also on main: two PRs that each pass alone can merge one migration
+    # version twice, and the push run is what reports that.
     if: needs.changes.outputs.run_ci == 'true'
     timeout-minutes: 10
 
@@ -823,7 +825,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check migrations are sequential
+      - name: Check migration names and unique versions
         run: bash scripts/lib/check-migration-ordering.sh
 
       - name: Check existing migrations are immutable

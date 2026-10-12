@@ -23,7 +23,7 @@ const TURNS: Array<{ prompt: string; reply: string }> = [
   {
     prompt: "What keeps long transcripts fast?",
     reply:
-      "Rows use content-visibility: auto with contain-intrinsic-size, so the browser skips paint for off-screen turns while keeping them in the DOM for find-in-page and accessibility. Scroll state is tracked imperatively via data-* attributes.",
+      "Rows use content-visibility: auto with a block-axis intrinsic size, so the browser skips paint for off-screen turns while keeping them in the DOM for find-in-page and accessibility. Scroll state is tracked imperatively via data-* attributes.",
   },
   {
     prompt: "Can we keep our own design system?",
