@@ -6,12 +6,40 @@
 //   `2025-06-18` gets `title`, `outputSchema`, and structured output support;
 //   `2025-03-26` omits those newer fields.
 // - Keep execution-only data such as timeout internal to the registry.
+// - A read-only personal access token lists and calls only the tools in
+//   `READ_ONLY_TOOLS` (knowledge/security/pat-scopes.md, Decision 5). The list
+//   is explicit rather than read from `readOnlyHint`, and a test keeps the two
+//   equal, so an annotation is never the only control. A tool missing from it,
+//   a new one included, is refused to a read token.
 
 use everruns_core::McpToolAnnotations;
 use serde::Serialize;
 use serde_json::{Value, json};
 
 use super::supports_rich_tool_shape;
+use crate::auth::pat_scope::RouteAccess;
+
+/// Tools that change nothing, the only ones a read-only personal access
+/// token may list or call. Everything else is `Write`.
+pub(super) const READ_ONLY_TOOLS: &[&str] = &[
+    "me",
+    "list_organizations",
+    "session_get_status",
+    "discover",
+    "query",
+    "agent_get_card",
+    "everruns_home",
+    "session_view",
+];
+
+/// Access class of an MCP tool for personal access token scopes.
+pub(super) fn tool_access(name: &str) -> RouteAccess {
+    if READ_ONLY_TOOLS.contains(&name) {
+        RouteAccess::Read
+    } else {
+        RouteAccess::Write
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -968,6 +996,33 @@ mod tests {
                 .map(|e| e.to_string())
                 .collect();
             assert!(errors.is_empty(), "{}: {errors:?}\n{result:#}", tool.name);
+        }
+    }
+
+    // The explicit read-only list is the control; the annotation is what a
+    // client sees. They must agree on every tool of every protocol version.
+    #[test]
+    fn read_only_tools_match_their_annotations() {
+        for version in super::super::SUPPORTED_PROTOCOL_VERSIONS {
+            for tool in tool_definitions(version, "org") {
+                let annotated = tool
+                    .annotations
+                    .as_ref()
+                    .is_some_and(|annotations| annotations.read_only_hint == Some(true));
+                assert_eq!(
+                    tool_access(&tool.name) == RouteAccess::Read,
+                    annotated,
+                    "{} ({version}): READ_ONLY_TOOLS disagrees with readOnlyHint",
+                    tool.name
+                );
+            }
+        }
+        let latest = tool_definitions(super::super::MCP_PROTOCOL_VERSION_LATEST, "org");
+        for name in READ_ONLY_TOOLS {
+            assert!(
+                latest.iter().any(|tool| tool.name == *name),
+                "READ_ONLY_TOOLS names {name}, which is not a tool"
+            );
         }
     }
 

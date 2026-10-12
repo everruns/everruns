@@ -15,7 +15,7 @@
 //!   the next phase's setup reads.
 
 use async_trait::async_trait;
-use everruns_contracts::error::Result;
+use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::tool_types::ToolCall;
 use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 
@@ -35,8 +35,13 @@ impl<H: ActorHosts> ActorInbox<'_, H> {
     /// Renew to learn the inbox's newest input; a failed renew is the
     /// renewer's to judge, and the turn goes on with what it knows.
     async fn refresh(&self) {
-        if let Err(error) = self.lease.renew().await {
-            tracing::warn!(session_id = %self.lease.session_id, error = %error, "Actor inbox renew failed");
+        match self.lease.renew().await {
+            // The session was deleted (EVE-1235): the lease is lost and the
+            // turn stops on it.
+            Ok(()) | Err(AgentLoopError::SessionNotFound(_)) => {}
+            Err(error) => {
+                tracing::warn!(session_id = %self.lease.session_id, error = %error, "Actor inbox renew failed");
+            }
         }
     }
 }
@@ -45,6 +50,7 @@ impl<H: ActorHosts> ActorInbox<'_, H> {
 impl<H: ActorHosts> TurnInbox for ActorInbox<'_, H> {
     async fn take(&self, _session_id: SessionId) -> Result<Vec<MessageId>> {
         self.hosts.flush(self.host).await;
+        self.lease.turn_stored();
         self.refresh().await;
         let inputs = self.lease.take_inputs().await?;
         self.hosts.begin_phase(self.host, self.drive, Phase::Reason);
@@ -65,6 +71,7 @@ impl<H: ActorHosts> TurnInbox for ActorInbox<'_, H> {
             return Ok(PendingInput::new(pending, Vec::new()));
         }
         self.hosts.flush(self.host).await;
+        self.lease.turn_stored();
         self.refresh().await;
         let inputs = self.lease.take_inputs().await?;
         Ok(PendingInput::new(inputs.len(), inputs))

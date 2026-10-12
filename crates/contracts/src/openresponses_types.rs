@@ -698,6 +698,10 @@ pub struct Usage {
     /// OpenAI-compatible gateways such as OpenRouter. Absent for direct OpenAI.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<f64>,
+    /// Provider-executed tool counts from gateways that report them here
+    /// (OpenRouter `server_tool_use.web_search_requests`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_tool_use: Option<serde_json::Value>,
 }
 
 /// Input token breakdown.

@@ -352,7 +352,15 @@ class Driver:
 
         while time.time() < deadline:
             got = stream.wait_for(lambda evs: pending(evs) or finished(evs), max(1, deadline - time.time()))
-            if got is True or got is None:
+            if got is None:
+                # Nothing answers a parked approval but this driver, so a
+                # request its stream never showed leaves the turn parked.
+                run.errors.append(
+                    f"approval: no pending request or finished turn on the stream within {T}s "
+                    f"({len(answered)} answered, {len(stream.events)} events seen)"
+                )
+                break
+            if got is True:
                 break
             if isinstance(got, list):
                 decisions = [{"tool_call_id": r, "decision": "allow_always"} for r in got]

@@ -24,11 +24,9 @@ import { accountLabel, automaticEntries, formatSearchDuration } from "@/lib/web-
 import { cn } from "@/lib/utils";
 import { SearchProviderIcon } from "./search-provider-icon";
 
-/** Model provider types with search of their own; mirrors `NATIVE_WEB_SEARCH_PROVIDER_TYPES`. */
+/** Model provider types whose drivers run native search; mirrors `NATIVE_WEB_SEARCH_PROVIDER_TYPES`. */
 const NATIVE_TYPES: { type: string; label: string }[] = [
   { type: "openai", label: "OpenAI" },
-  { type: "anthropic", label: "Anthropic" },
-  { type: "gemini", label: "Gemini" },
   { type: "openrouter", label: "OpenRouter" },
   { type: "azure_openai", label: "Azure OpenAI" },
   { type: "chatgpt", label: "ChatGPT" },
@@ -222,8 +220,7 @@ export function SearchProvidersTab({
             <div key="types" className="flex flex-wrap gap-1">
               {NATIVE_TYPES.filter(
                 (entry) =>
-                  nativeTypes.has(entry.type) ||
-                  ["openai", "anthropic", "gemini"].includes(entry.type),
+                  nativeTypes.has(entry.type) || ["openai", "openrouter"].includes(entry.type),
               ).map((entry) => (
                 <Badge
                   key={entry.type}
@@ -244,9 +241,14 @@ export function SearchProvidersTab({
             : []),
           ["Cost", <strong key="cost">{nativePrice}</strong>],
           ["Network", "Runs at the model provider, outside your network allowlist"],
-          // Honest until step 4 lands the driver adapters: a native step
-          // records that the model did not search and the next provider answers.
-          ["Today", "Model drivers do not run it yet; the next provider in the plan answers"],
+          // OpenAI and OpenRouter drivers run it today; a model without native
+          // search, or one that cannot apply the agent's blocked sites, falls
+          // through to the next provider of the plan.
+          [
+            "Models",
+            "OpenAI models with web search and OpenRouter models with native search. Others use the next provider in the plan",
+          ],
+          ["Coming next", "Anthropic and Gemini"],
         ]}
         footer={
           modelProviders.length > 0

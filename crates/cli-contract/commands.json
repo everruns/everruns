@@ -54,6 +54,76 @@
     ]
   },
   {
+    "wire_name": "list_avatar_presets",
+    "path": [
+      "agents",
+      "avatar"
+    ],
+    "verb": "presets",
+    "description": "List the curated agent avatars: stable id, name, family, suggested role, description and search keywords. Pass an id to set_agent_avatar as preset_id. Preview one at /v1/avatar-presets/{id}/square-256.png.",
+    "method": "GET",
+    "http_path": "/v1/avatar-presets",
+    "args": [],
+    "examples": [
+      {
+        "intent": "Find a curated avatar to give an agent",
+        "command": "everruns agents avatar presets"
+      }
+    ]
+  },
+  {
+    "wire_name": "set_agent_avatar",
+    "path": [
+      "agents",
+      "avatar"
+    ],
+    "verb": "set",
+    "description": "Set an agent's avatar from a curated preset (preset_id, see list_avatar_presets) or an image (image_base64: PNG, JPEG, GIF or WebP, at least 64x64, at most 1 MB). Replaces the previous avatar and updates the icon of the agent's one-click Slack apps.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/avatar/set",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      },
+      {
+        "field": "content_type",
+        "long": "content-type",
+        "kind": "string",
+        "required": false,
+        "help": "MIME type of `image_base64`."
+      },
+      {
+        "field": "image_base64",
+        "long": "image-base64",
+        "kind": "string",
+        "required": false,
+        "help": "Image bytes as base64 (a `data:image/...;base64,` URI also works): PNG, JPEG, GIF or WebP, at..."
+      },
+      {
+        "field": "preset_id",
+        "long": "preset",
+        "kind": "string",
+        "required": false,
+        "help": "Curated preset ID from `list_avatar_presets`."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Give an agent a curated avatar",
+        "command": "everruns agents avatar set agent_01h9 --preset familiars-patch --reason 'Brand the triage agent'"
+      },
+      {
+        "intent": "Use your own image, base64-encoded into a file first (base64 logo.png > logo.b64)",
+        "command": "everruns agents avatar set agent_01h9 --image-base64 @logo.b64 --reason 'Use the team logo'"
+      }
+    ]
+  },
+  {
     "wire_name": "create_agent_channel",
     "path": [
       "agents",

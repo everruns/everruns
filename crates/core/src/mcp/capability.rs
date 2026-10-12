@@ -227,10 +227,17 @@ impl Capability for McpCapability {
         if !crate::mcp_server::is_valid_mcp_server_name(&self.server_name) {
             return vec![];
         }
-        self.tools
+        // Sorted by name: a server's `tools/list` order is not guaranteed
+        // between fetches, and the tool list is the head of every cached
+        // prompt, so a reorder alone would cost a full cache miss.
+        // See knowledge/execution/cache-stable-tool-changes.md.
+        let mut definitions: Vec<ToolDefinition> = self
+            .tools
             .iter()
             .map(|t| self.mcp_tool_to_definition(t))
-            .collect()
+            .collect();
+        definitions.sort_by(|a, b| a.name().cmp(b.name()));
+        definitions
     }
 }
 
@@ -440,6 +447,36 @@ mod tests {
         assert_eq!(
             crate::parse_mcp_tool_name(definitions[0].name()),
             Some(("docs_api".into(), "read__file".into()))
+        );
+    }
+
+    #[test]
+    fn tool_definitions_do_not_follow_the_server_listing_order() {
+        let id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let tool = |name: &str| McpToolDefinition {
+            name: name.into(),
+            title: None,
+            description: None,
+            input_schema: json!({"type":"object"}),
+            annotations: None,
+        };
+        let names = |order: &[&str]| {
+            McpCapability::new(
+                id,
+                "docs".into(),
+                None,
+                order.iter().map(|n| tool(n)).collect(),
+            )
+            .tool_definitions()
+            .iter()
+            .map(|d| d.name().to_string())
+            .collect::<Vec<_>>()
+        };
+        let first = names(&["search", "fetch", "list"]);
+        assert_eq!(first, names(&["list", "search", "fetch"]));
+        assert_eq!(
+            first,
+            ["mcp_docs__fetch", "mcp_docs__list", "mcp_docs__search"]
         );
     }
 }

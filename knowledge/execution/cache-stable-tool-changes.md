@@ -11,7 +11,7 @@ tags:
 
 # Cache-Stable Tool Changes
 
-> Status: **Proposed 2026-10-12, awaiting approval.** Nothing here is built.
+> Status: **Accepted 2026-10-12. Step 1 implemented.**
 > Builds on the earlier analysis of Pi's approach (project notes,
 > `pi-1-0/cache-stable-tool-reveals.md`) and the caching comparison with
 > Pydantic AI (`caching/pydantic-unified-caching.md`), where this is ranked as
@@ -286,12 +286,16 @@ therefore rewrites the system prompt.
 
 Each step is one PR and leaves `main` working.
 
-1. **Cheap stability fixes, no new mechanism.** Sticky deferral threshold and
-   `auto_tool_search` resolution per session; MCP tools sorted within a server;
-   keep last-known MCP tools on a failed fetch; AG-UI tool comparison
-   order-insensitive; keep the infinity-context notice and compaction summary
-   out of top-level `system`; the provider-free prefix-stability test (it will
-   mark reveal cases as known failures until step 3).
+1. **Cheap stability fixes, no new mechanism.** Done: the generic
+   `tool_search` keeps deferring once a session has crossed the threshold,
+   MCP tools are sorted by name within a server, and AG-UI frontend tools sent
+   in a new order keep the stored order. The driver prefix-stability test
+   landed separately (`crates/drivers/drivers/tests/prompt_prefix_wire.rs`).
+   Two items moved: keeping last-known MCP tools on a failed fetch needs the
+   recorded declarations of step 2, so it is in step 5; keeping the
+   infinity-context notice and compaction summary out of top-level `system`
+   needs them sent as something other than a leading system message, so it is
+   in step 6.
 2. **Recorded tool changes in contracts and core.** The `tool_changes` field,
    baseline, the comparison in the reason step, persistence, Session Trace
    display. Every driver uses the fallback, so requests are unchanged.
@@ -301,10 +305,12 @@ Each step is one PR and leaves `main` working.
    (`add_and_redefine` for GPT-6, `add_only` for 5.x) with live tests.
 5. **Sources move onto the comparison**: generic `tool_search` (drop the
    in-memory registry), deferred MCP, ARD, capability switches, AG-UI, host
-   tools, `tools_in_shell` catalogue.
+   tools, `tools_in_shell` catalogue. A failed MCP fetch keeps the last
+   declared definitions.
 6. **Prompt text with changes**: capability prompt additions that appear
    mid-session ride in the change's `note` instead of the system prompt;
-   compaction and trimming re-baseline.
+   compaction and trimming re-baseline; the infinity-context notice and
+   compaction summary stop being folded into top-level `system`.
 7. **yolop** adopts it (its reveal-gated memory how-to moves into the `note`).
 8. **Fallback experiments**: cold-moment batching, then the schema-in-result
    eval.

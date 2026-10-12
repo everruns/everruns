@@ -10,13 +10,16 @@ tags:
 ---
 # Personal Access Token Scopes
 
-> Status: **Approved; rollout steps 1 (classification) and 2 (enforcement on
-> REST and `/v1/commands`) landed.** A narrow token is refused with
-> `403 insufficient_scope` on every `/v1` route outside its scope
-> ([`auth/pat_scope`](../../crates/server/src/auth/pat_scope/mod.rs)). Not yet
-> enforced: `/mcp` and the execution API's `org_member` (step 3). Creation still
-> accepts only `*` (EVE-701), and step 2 deletes the legacy narrow rows (see
-> [Legacy narrow tokens](#legacy-narrow-tokens)).
+> Status: **Approved; rollout steps 1 (classification), 2 (enforcement on
+> REST and `/v1/commands`) and 3 (enforcement on `/mcp` and the execution API)
+> landed.** A narrow token is refused with `403 insufficient_scope` on every
+> `/v1` route outside its scope
+> ([`auth/pat_scope`](../../crates/server/src/auth/pat_scope/mod.rs)), sees and
+> calls only the read-only tools on `/mcp`
+> ([`mcp_endpoint/scope.rs`](../../crates/server/src/api/mcp_endpoint/scope.rs)),
+> and is not an org member on an API channel. Remaining: step 4 opens creation,
+> which still accepts only `*` (EVE-701); step 2 deleted the legacy narrow rows
+> (see [Legacy narrow tokens](#legacy-narrow-tokens)).
 
 ## Abstract
 
@@ -391,6 +394,34 @@ Settled while building step 2:
   step 3), OAuth and install callbacks bound to their flow state, and two
   documented routes this configuration does not serve. A row that starts
   answering `insufficient_scope` fails as stale.
+
+Settled while building step 3:
+
+- **The MCP refusal has its own envelope code.** `McpErrorCode` gained
+  `insufficient_scope` (category `auth`, not retryable), and
+  `classify_mcp_execute_error` maps an `insufficient_scope:` message prefix to
+  it, the way it maps the command dispatcher's `forbidden:`.
+- **The read-only tool list names `everruns_home`, not `home`.** The MCP Apps
+  entry tool's wire name. The list is checked against the annotations of every
+  supported protocol version, and every entry must name a real tool.
+- **Every JSON-RPC method is checked, not only tools.** `/mcp` is gated once
+  before dispatch. `tasks/cancel`, `tasks/update`, `events/subscribe` and
+  `events/unsubscribe` change state outside a tool, so a read token gets a
+  JSON-RPC error (`-32003`, `data.code = "insufficient_scope"`); every other
+  method only reads. An unknown tool stays `tool_not_found`.
+- **`session_get_status` does not answer for a read token.** With a capable
+  client it can serve a parked `ask_user` question as a form elicitation and
+  apply the answer on the retry, which resumes the session. A read token gets
+  the plain status instead.
+- **A narrow token's `tools/list` is `private`.** The full catalog stays
+  `public`; a shorter one must not be served to another caller from a shared
+  cache.
+- **A `NoAccess` token gets nothing.** Like on REST, a token whose stored
+  scopes parse to no scope lists no tools and is refused every call.
+- **`org_member` checks scope after validation and before membership.** A
+  read token is `403 insufficient_scope` on an `org_members` channel, rendered
+  like the extractor's denial. A channel without `org_members` still answers
+  `401` for any PAT, so the scope is never the first thing revealed there.
 
 ## Rejected options
 

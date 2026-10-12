@@ -68,15 +68,29 @@ impl ActorLeaseStore for DirectActorLeaseStore {
         ttl: Duration,
         consumed_seq: i64,
     ) -> Result<Option<ActorRenewal>> {
-        Ok(self
+        let renewal = self
             .db
             .renew_session_actor_lease(session_id, holder, fence_to_db(fence)?, ttl, consumed_seq)
             .await
-            .map_err(|e| store_error(format!("Failed to renew actor lease: {e}")))?
-            .map(|row| ActorRenewal {
-                inbox_seq: row.inbox_seq,
-                cancel_requested: row.cancel_requested,
-            }))
+            .map_err(|e| store_error(format!("Failed to renew actor lease: {e}")))?;
+        let Some(row) = renewal else {
+            // Decision (EVE-1235): an actor row goes only with its session
+            // (FK cascade), so a lease lost to a missing row is a deleted
+            // session, which the runtime stops on quietly.
+            let actor = self
+                .db
+                .get_session_actor(session_id)
+                .await
+                .map_err(|e| store_error(format!("Failed to renew actor lease: {e}")))?;
+            return match actor {
+                Some(_) => Ok(None),
+                None => Err(AgentLoopError::session_not_found(session_id)),
+            };
+        };
+        Ok(Some(ActorRenewal {
+            inbox_seq: row.inbox_seq,
+            cancel_requested: row.cancel_requested,
+        }))
     }
 
     async fn release_actor(
@@ -145,7 +159,8 @@ impl super::DirectWorkerAdapters {
 }
 
 /// A fenced append's failure as the worker sees it: a refused fence is the
-/// lease-lost error the actor runtime stops on, anything else a store error.
+/// lease-lost error the actor runtime stops on, anything else as an unfenced
+/// append's failure (a deleted session is `SessionNotFound`, EVE-1235).
 pub(crate) fn fenced_append_error(
     fence: &everruns_worker::ActorFence,
     error: anyhow::Error,
@@ -153,6 +168,5 @@ pub(crate) fn fenced_append_error(
     if let Some(rejected) = error.downcast_ref::<crate::storage::ActorLeaseFenceRejected>() {
         return everruns_worker::actor_lease_lost(fence.session_id, rejected.to_string());
     }
-    tracing::error!(error = %error, "Failed to emit fenced events");
-    store_error("Failed to emit event")
+    EventService::worker_emit_error(error)
 }

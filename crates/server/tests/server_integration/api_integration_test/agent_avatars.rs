@@ -365,10 +365,16 @@ async fn curated_preset_selection_persists_and_shares_upload_pipeline() {
         .request_raw(Method::GET, preset["url"].as_str().unwrap(), vec![], vec![])
         .await
         .assert_status(StatusCode::NOT_FOUND);
+    // The `set_agent_avatar` command route stores the same preset selection.
     server
-        .put(&path, json!({"preset_id": "bloom-mint"}))
+        .post(
+            &format!("/v1/agents/{id}/avatar/set"),
+            json!({"preset_id": "bloom-mint"}),
+        )
         .await
         .assert_status(StatusCode::OK);
+    let current: Value = server.get(&path).await.json();
+    assert_eq!(current["preset_id"], "bloom-mint");
     server
         .delete(&format!("/v1/agents/{id}/avatar"))
         .await
@@ -471,6 +477,13 @@ mod authorization {
             .await
             .assert_status(StatusCode::FORBIDDEN);
         upload(&server, id, "image/png", &png(128, 128, [0, 0, 0]))
+            .await
+            .assert_status(StatusCode::FORBIDDEN);
+        server
+            .post(
+                &format!("/v1/agents/{id}/avatar/set"),
+                json!({"preset_id": "bloom-mint"}),
+            )
             .await
             .assert_status(StatusCode::FORBIDDEN);
         server

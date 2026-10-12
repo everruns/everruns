@@ -149,13 +149,17 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
 
         let input_items = super::computer::replay_computer_calls(input_items, &computer_call_ids);
 
-        // The native computer tool stands in for the `computer` function tool.
+        // The native computer tool stands in for the `computer` function tool,
+        // and native web search for the `web_search` one.
+        let native_search = self.native_web_search_for(config).is_some();
         let function_tools: Vec<ToolDefinition> = config
             .tools
             .iter()
             .filter(|tool| {
-                native_computer.is_none()
-                    || tool.name() != crate::native_computer::COMPUTER_TOOL_NAME
+                (native_computer.is_none()
+                    || tool.name() != crate::native_computer::COMPUTER_TOOL_NAME)
+                    && (!native_search
+                        || tool.name() != crate::native_web_search::WEB_SEARCH_FUNCTION_TOOL)
             })
             .cloned()
             .collect();
