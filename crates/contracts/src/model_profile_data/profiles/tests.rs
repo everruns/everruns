@@ -1228,6 +1228,49 @@ fn test_muse_spark_1_3_profiles_and_tiers() {
 }
 
 #[test]
+fn test_muse_wonder_profile() {
+    let wonder = get_model_profile("meta", "muse-wonder-1.0").unwrap();
+    assert_eq!(wonder.name, "Muse Wonder");
+    assert_eq!(wonder.family, "muse-wonder");
+    assert_eq!(wonder.limits.as_ref().unwrap().context, 1_048_576);
+    assert!(wonder.tool_call);
+    assert!(wonder.tool_search);
+    assert!(wonder.supports_phases);
+    let cost = wonder.cost.unwrap();
+    assert_eq!(cost.input, 4.00);
+    assert_eq!(cost.cache_read, Some(0.20));
+    assert_eq!(cost.output, 20.00);
+    // No Contributor tier on pay-as-you-go.
+    assert!(get_model_profile("meta", "muse-wonder-1.0-contributor").is_none());
+}
+
+#[test]
+fn test_muse_reasoning_effort_matches_what_meta_accepts() {
+    let levels = |model: &str| -> Vec<ReasoningEffort> {
+        get_model_profile("meta", model)
+            .unwrap()
+            .reasoning_effort
+            .expect("Muse models expose effort levels")
+            .values
+            .into_iter()
+            .map(|value| value.value)
+            .collect()
+    };
+    use ReasoningEffort::*;
+    let with_max = vec![Minimal, Low, Medium, High, Xhigh, Max];
+    for model in [
+        "muse-wonder-1.0",
+        "muse-spark-1.3",
+        "muse-spark-1.3-contributor",
+    ] {
+        assert_eq!(levels(model), with_max, "{model}");
+    }
+    for model in ["muse-spark-1.2", "muse-spark-1.2-contributor"] {
+        assert_eq!(levels(model), with_max[..5], "{model}");
+    }
+}
+
+#[test]
 fn test_muse_spark_1_2_profiles_stay_resolvable() {
     // 1.2 remains served by Meta and referenced by existing model records,
     // so it keeps its own family and profile next to 1.3.
