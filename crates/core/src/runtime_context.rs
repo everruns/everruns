@@ -173,7 +173,13 @@ pub async fn assemble_resolved_turn_context(
     let resolved_locale = extract_locale_override(&messages).or_else(|| snapshot.locale.clone());
     let file_store =
         file_store.map(|fs| crate::mount_fs::scoped_prompt_file_store(fs, snapshot.workspace_id));
+    // Only the generic `tool_search` (a builtin) defers schemas.
+    #[cfg(feature = "builtins")]
+    let tool_disclosure = crate::builtins::tool_search::tool_disclosure(&messages);
+    #[cfg(not(feature = "builtins"))]
+    let tool_disclosure = Default::default();
     let prompt_ctx = SystemPromptContext {
+        tool_disclosure,
         session_id: snapshot.session_id,
         locale: resolved_locale.clone(),
         file_store,
