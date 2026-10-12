@@ -27,8 +27,8 @@ use everruns_server::{
     api, auth, domains, services,
     setup::seed,
     storage::{EncryptionService, StorageBackend},
+    turns::ActorTurnBackend,
 };
-use everruns_worker::DurableRunner;
 
 // Relative to this file's directory; a sibling `tests/*.rs` would be its own
 // test binary, so support modules live under `tests/test_harness/`.
@@ -672,11 +672,10 @@ impl TestServer {
             auth_state.permission_resolver = permission_resolver;
         }
 
-        // Use the requested test runner or a mode-appropriate default.
-        let runner = match runner_override {
-            Some(runner) => runner,
-            None => Arc::new(DurableRunner::new_with_pool(pool.clone())),
-        };
+        // The requested runner, or production's: turns start as session actors.
+        // No worker runs here, so a started turn stays runnable until cancelled.
+        let runner =
+            runner_override.unwrap_or_else(|| Arc::new(ActorTurnBackend::new(db.clone(), None)));
 
         // Create driver registry
         let driver_registry = Arc::new(host_composition.driver_registry().clone());

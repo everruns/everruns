@@ -57,6 +57,7 @@ mod entity_changes;
 mod evals;
 pub use evals::rows::*;
 mod events;
+pub use events::ActorLeaseFenceRejected;
 pub use events::rows::*;
 mod files;
 pub use files::rows::*;
@@ -105,7 +106,8 @@ pub use schedules::rows::*;
 mod session_actors;
 pub use session_actors::rows::*;
 pub use session_actors::{
-    DEFAULT_ACTOR_LEASES_PER_ORG, MAX_ACTOR_LEASE_BATCH, mark_session_actor_runnable,
+    DEFAULT_ACTOR_LEASES_PER_ORG, LEGACY_TURN_ACTIVITY_TYPES, LegacyTurnSweep,
+    MAX_ACTOR_LEASE_BATCH, mark_session_actor_resumable, mark_session_actor_runnable,
 };
 mod session_databases;
 pub use session_databases::{CreateSessionDatabase, SessionDatabaseRow};

@@ -51,6 +51,14 @@ struct AgentEventMetadata {
     agent_revision: Option<i64>,
 }
 
+/// The session actor lease a worker's event append is made under: the
+/// holder id and the fence it leased (see `EventService::emit_batch_fenced`).
+#[derive(Debug, Clone, Copy)]
+pub struct ActorAppendFence<'a> {
+    pub holder: &'a str,
+    pub fence: i64,
+}
+
 #[derive(Clone)]
 pub struct EventService {
     db: Arc<StorageBackend>,
@@ -529,18 +537,24 @@ impl EventService {
 
     /// Store a run of durable events in one insert, then publish and notify
     /// each in order.
-    async fn emit_durable_run(&self, requests: Vec<EventRequest>) -> Result<Option<Event>> {
+    async fn emit_durable_run(
+        &self,
+        requests: Vec<EventRequest>,
+        fence: Option<ActorAppendFence<'_>>,
+    ) -> Result<Option<Event>> {
         let rows = requests
             .into_iter()
             .map(Self::create_row)
             .collect::<Result<Vec<_>>>()?;
-        let events: Vec<Event> = self
-            .db
-            .create_events(rows)
-            .await?
-            .into_iter()
-            .map(Self::row_to_event)
-            .collect();
+        let stored = match fence {
+            Some(fence) => {
+                self.db
+                    .create_events_fenced(rows, fence.holder, fence.fence)
+                    .await?
+            }
+            None => self.db.create_events(rows).await?,
+        };
+        let events: Vec<Event> = stored.into_iter().map(Self::row_to_event).collect();
         let last = events.last().cloned();
         self.publish_after_commit(events).await;
         Ok(last)
@@ -590,6 +604,29 @@ impl EventService {
         &self,
         requests: Vec<EventRequest>,
     ) -> Result<(i32, Option<Event>)> {
+        self.emit_batch_inner(requests, None).await
+    }
+
+    /// [`Self::emit_batch_returning_last`] for the holder of a session actor
+    /// lease: each run of durable events is stored only while `fence` is
+    /// still the holder's live lease on the session, checked in the insert's
+    /// transaction (`Database::create_events_fenced`). A stale holder's batch
+    /// fails with [`crate::storage::ActorLeaseFenceRejected`] and from that
+    /// run on nothing lands. Ephemeral events that skip PostgreSQL are not
+    /// log appends and are delivered unchecked.
+    pub async fn emit_batch_fenced(
+        &self,
+        requests: Vec<EventRequest>,
+        fence: ActorAppendFence<'_>,
+    ) -> Result<(i32, Option<Event>)> {
+        self.emit_batch_inner(requests, Some(fence)).await
+    }
+
+    async fn emit_batch_inner(
+        &self,
+        requests: Vec<EventRequest>,
+        fence: Option<ActorAppendFence<'_>>,
+    ) -> Result<(i32, Option<Event>)> {
         let mut prepared = Vec::with_capacity(requests.len());
         for mut request in requests {
             self.prepare_request(&mut request).await?;
@@ -607,7 +644,7 @@ impl EventService {
             count += 1;
             if request.is_ephemeral() && skip_ephemeral {
                 if !durable_run.is_empty() {
-                    self.emit_durable_run(std::mem::take(&mut durable_run))
+                    self.emit_durable_run(std::mem::take(&mut durable_run), fence)
                         .await?;
                 }
                 last = Some(self.emit_ephemeral(request).await?);
@@ -616,7 +653,7 @@ impl EventService {
             }
         }
         if !durable_run.is_empty() {
-            last = self.emit_durable_run(durable_run).await?;
+            last = self.emit_durable_run(durable_run, fence).await?;
         }
 
         Ok((count, last))

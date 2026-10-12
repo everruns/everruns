@@ -1026,8 +1026,21 @@ impl Command for CancelSession {
             });
         }
 
-        if let Err(error) = q::runner(ctx)?.cancel(session_id).await {
-            tracing::error!(session_id = %session_id, error = %error, "Failed to cancel workflow");
+        // One writer for the cancel's events: a worker running the turn ends
+        // it and records them itself (`true`); otherwise nothing runs the turn
+        // and this command records them (see `crate::turns::ActorTurnBackend`).
+        let recorded_by_worker = match q::runner(ctx)?.cancel(session_id).await {
+            Ok(recorded_by_worker) => recorded_by_worker,
+            Err(error) => {
+                tracing::error!(session_id = %session_id, error = %error, "Failed to cancel the session's turn");
+                false
+            }
+        };
+        if recorded_by_worker {
+            return Ok(CancelTurnResponse {
+                status: CancelStatus::Cancelled,
+                message: "Turn cancelled successfully".to_string(),
+            });
         }
 
         // Name the turn being stopped so clients can mark that turn stopped.
@@ -1069,9 +1082,7 @@ impl Command for CancelSession {
             }
 
             // EVE-708: emit the `session.idled` lifecycle event for parity with the
-            // normal turn-completion path. The cancelled workflow short-circuits in
-            // the worker before the runtime reaches its `session.idled` emission, so
-            // without this the lifecycle would silently stop at `turn.cancelled`.
+            // normal turn-completion path: no turn runs to emit it.
             let idled_event = EventRequest::new(
                 session_id,
                 EventContext::turn(turn_id, input_message_id),
@@ -1086,12 +1097,10 @@ impl Command for CancelSession {
             }
         }
 
-        // EVE-708: settle the session status. Cancelling marks the durable workflow
-        // `Cancelled`, which makes the worker fail the task and return early — so the
-        // runtime turn loop never reaches a terminal `TurnPlan` and never transitions
-        // the session back to `idle`. Session status is a stored column that is not
-        // derived from events, so we must set it here or the session stays `active`
-        // indefinitely, blocking clean follow-up turns.
+        // EVE-708: settle the session status. No turn runs to reach a terminal
+        // `TurnPlan` and set it back to `idle`, and session status is a stored
+        // column that is not derived from events, so we must set it here or the
+        // session stays `active` indefinitely, blocking clean follow-up turns.
         if let Err(error) = q::session_service(ctx)?
             .update_status(&ctx.caller, session_id.uuid(), "idle".to_string())
             .await

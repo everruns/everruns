@@ -59,7 +59,8 @@ own backends through the same contracts.
 - `everruns-durable` is a generic durable-execution engine (persistence,
   retries, task queue, schedules) with no agent or turn semantics and no
   `everruns-*` dependency. `everruns-durable-engine` owns the `TurnTaskDriver` that runs each turn step and checkpoints its
-  `TurnExecution` state between steps,
+  `TurnExecution` state between steps (platform turns left it for session
+  actors on 2026-10-11; the worker still runs its non-turn activities through it),
   and the turn conventions layered on durable tasks; it implements host's
   experimental `TurnBackend` seam (see
   [Execution Backends](../framework/execution-backends.md)).
@@ -206,12 +207,14 @@ Required behavior:
 6. Persist assistant messages and tool-result messages from emitted events so
    subsequent turns see the same history shape as the durable/server-backed
    runtime.
-7. Durable/server-backed workers must execute their per-phase host composition
+7. Platform workers must execute their per-phase host composition
    through `everruns-core` (`host` feature) instead of maintaining a separate execution loop in
-   the worker crate.
-8. Durable/server-backed workers must use engine-owned turn planning
-   for `process_input -> reason -> act`, steering continuation,
-   dependency-blocked completion, and `waiting_for_tool_results` pause/resume.
+   the worker crate: since the actor cutover they run a whole turn with
+   core's `drive_turn` and resume one with its log fold
+   ([`actor_runtime`](../../crates/worker/src/actor_runtime/mod.rs)).
+8. Platform workers must use engine-owned turn planning for input, reason
+   and act, steering continuation, dependency-blocked completion, and
+   `waiting_for_tool_results` pause/resume.
 9. Provider recovery must reuse the assembled reason input in place. It must
    not persist a second user message, schedule another act for already-completed
    tools, or discard provider continuation state that remains valid. Terminal

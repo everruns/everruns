@@ -10,8 +10,8 @@ use crate::capabilities::{
     Capability, CapabilityRegistry, CapabilityStatus, resolve_capability_configs,
 };
 use crate::config_layer::AgentConfigOverlay;
-use crate::engine::{ActivityOutcome, Execution, HostFacts, TurnPlan, TurnState};
-use crate::engine::{InputAtomInput, ReasonInput};
+use crate::engine::ReasonInput;
+use crate::engine::{TurnPlan, TurnState};
 use crate::events::{
     Event, EventContext, EventRequest, InputMessageData, SessionStartedData, ToolCompletedData,
 };
@@ -25,8 +25,7 @@ use crate::host::events::{
 };
 use crate::host::in_memory::{InMemorySessionFileStore, InMemorySessionFileSystemFactory};
 use crate::host::runtime_host::{
-    ResolvedTurnInputs, RuntimeHostAdapter, execute_input_activity,
-    run_user_prompt_submit_for_message,
+    ResolvedTurnInputs, RuntimeHostAdapter, run_user_prompt_submit_for_message,
 };
 use crate::host::{
     HostComposition, InProcessExecution, SessionFileSystemFactoryContext, SessionMutator,

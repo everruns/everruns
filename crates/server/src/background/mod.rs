@@ -17,6 +17,10 @@ pub mod durable_failure;
 pub mod durable_reaper;
 pub mod durable_seal;
 
+// TEMPORARY (step 7 deletes it): hands old-path turn tasks created during a
+// rolling deploy to session actors.
+pub mod legacy_turn_sweep;
+
 // Event and sandbox-history retention jobs
 pub mod event_retention;
 pub mod sandbox_history_retention;

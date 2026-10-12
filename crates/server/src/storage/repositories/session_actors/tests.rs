@@ -145,7 +145,7 @@ async fn an_expired_lease_is_taken_over_with_a_higher_fence() {
     assert!(new.fence > old.fence);
 
     assert_eq!(
-        db.renew_session_actor_lease(id, "worker-a", old.fence, TTL)
+        db.renew_session_actor_lease(id, "worker-a", old.fence, TTL, 0)
             .await
             .unwrap(),
         None,
@@ -159,7 +159,7 @@ async fn an_expired_lease_is_taken_over_with_a_higher_fence() {
         "the stalled holder cannot release the new holder's lease"
     );
     assert!(
-        db.renew_session_actor_lease(id, "worker-b", new.fence, TTL)
+        db.renew_session_actor_lease(id, "worker-b", new.fence, TTL, 0)
             .await
             .unwrap()
             .is_some()
@@ -177,7 +177,7 @@ async fn an_expired_lease_nobody_took_is_still_renewable() {
         .remove(0);
     expire_lease(&db, id).await;
     assert!(
-        db.renew_session_actor_lease(id, "worker-a", lease.fence, TTL)
+        db.renew_session_actor_lease(id, "worker-a", lease.fence, TTL, 0)
             .await
             .unwrap()
             .is_some()
@@ -197,7 +197,7 @@ async fn release_with_a_moved_inbox_keeps_the_actor_runnable() {
     // A message lands while the turn for input 4 finishes.
     db.mark_session_actor_runnable(id, ORG_A, 7).await.unwrap();
     let renewal = db
-        .renew_session_actor_lease(id, "worker-a", lease.fence, TTL)
+        .renew_session_actor_lease(id, "worker-a", lease.fence, TTL, 0)
         .await
         .unwrap()
         .unwrap();
@@ -264,9 +264,12 @@ async fn renew_reports_a_cancel_and_release_consumes_it() {
         .unwrap()
         .remove(0);
 
-    assert!(db.request_session_actor_cancel(id).await.unwrap());
+    assert_eq!(
+        db.request_session_actor_cancel(id).await.unwrap(),
+        ActorCancel::Requested
+    );
     let renewal = db
-        .renew_session_actor_lease(id, "worker-a", lease.fence, TTL)
+        .renew_session_actor_lease(id, "worker-a", lease.fence, TTL, 0)
         .await
         .unwrap()
         .unwrap();
@@ -283,8 +286,9 @@ async fn renew_reports_a_cancel_and_release_consumes_it() {
         row.cancel_requested_at.is_none(),
         "the reported cancel is done"
     );
-    assert!(
-        !db.request_session_actor_cancel(id).await.unwrap(),
+    assert_eq!(
+        db.request_session_actor_cancel(id).await.unwrap(),
+        ActorCancel::Idle,
         "an idle actor has no turn to cancel"
     );
 }
@@ -300,7 +304,10 @@ async fn a_cancel_the_holder_never_saw_survives_release() {
         .remove(0);
 
     // Lands after the holder's last renew.
-    assert!(db.request_session_actor_cancel(id).await.unwrap());
+    assert_eq!(
+        db.request_session_actor_cancel(id).await.unwrap(),
+        ActorCancel::Requested
+    );
     assert_eq!(
         db.release_session_actor(id, "worker-a", lease.fence, 1)
             .await
@@ -322,56 +329,199 @@ async fn a_cancel_the_holder_never_saw_survives_release() {
 }
 
 #[tokio::test]
-async fn a_cancel_on_a_waiting_actor_is_reported_by_its_lease() {
+async fn a_cancel_on_a_waiting_actor_withdraws_it() {
     let db = StorageBackend::test_database();
-    let id = runnable(&db, ORG_A, 1).await;
-    assert!(db.request_session_actor_cancel(id).await.unwrap());
+    let id = runnable(&db, ORG_A, 4).await;
+    assert_eq!(
+        db.request_session_actor_cancel(id).await.unwrap(),
+        ActorCancel::Withdrawn,
+        "nothing runs the turn, so the caller records the cancel"
+    );
+    let row = db.get_session_actor(id).await.unwrap().unwrap();
+    assert!(row.runnable_since.is_none());
+    assert_eq!(row.consumed_seq, 4, "the pending input counts as consumed");
+    assert!(row.cancel_requested_at.is_none());
+    assert!(
+        db.lease_session_actors("worker-a", 1, TTL, DEFAULT_ACTOR_LEASES_PER_ORG)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn a_cancel_on_an_expired_lease_withdraws_it_from_the_stalled_holder() {
+    let db = StorageBackend::test_database();
+    let id = runnable(&db, ORG_A, 2).await;
     let lease = db
         .lease_session_actors("worker-a", 1, TTL, DEFAULT_ACTOR_LEASES_PER_ORG)
         .await
         .unwrap()
         .remove(0);
-    assert!(lease.cancel_requested);
+    expire_lease(&db, id).await;
+    assert_eq!(
+        db.request_session_actor_cancel(id).await.unwrap(),
+        ActorCancel::Withdrawn
+    );
+    assert_eq!(
+        db.renew_session_actor_lease(id, "worker-a", lease.fence, TTL, 2)
+            .await
+            .unwrap(),
+        None,
+        "the stalled holder lost the lease and stops without writing"
+    );
 }
 
 #[tokio::test]
-async fn the_per_org_cap_limits_a_batch() {
+async fn a_fresh_turn_starts_at_the_first_input_marked_after_the_cursor() {
+    let db = StorageBackend::test_database();
+    let id = runnable(&db, ORG_A, 4).await;
+    let row = db.get_session_actor(id).await.unwrap().unwrap();
+    assert_eq!((row.consumed_seq, row.next_input_seq), (0, 4));
+
+    // A second message queues behind the first: the start does not move.
+    db.mark_session_actor_runnable(id, ORG_A, 6).await.unwrap();
+    let lease = db
+        .lease_session_actors("worker-a", 1, TTL, DEFAULT_ACTOR_LEASES_PER_ORG)
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(
+        (lease.consumed_seq, lease.next_input_seq, lease.inbox_seq),
+        (0, 4, 6)
+    );
+
+    // The turn consumed the first only; the second keeps the actor runnable.
+    db.renew_session_actor_lease(id, "worker-a", lease.fence, TTL, 3)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        db.release_session_actor(id, "worker-a", lease.fence, 5)
+            .await
+            .unwrap(),
+        Some(true)
+    );
+    let row = db.get_session_actor(id).await.unwrap().unwrap();
+    assert_eq!(row.consumed_seq, 5, "the cursor only moves forward");
+
+    // The next mark after the cursor moved names the next turn's input.
+    db.mark_session_actor_runnable(id, ORG_A, 8).await.unwrap();
+    let row = db.get_session_actor(id).await.unwrap().unwrap();
+    assert_eq!(row.next_input_seq, 8);
+}
+
+#[tokio::test]
+async fn a_resolution_mark_points_the_inbox_at_the_log_head() {
+    let db = StorageBackend::test_database();
+    let id = session(&db, ORG_A).await;
+    event(&db, id, "turn.started").await;
+    let head = event(&db, id, "tool.completed").await;
+    db.mark_session_actor_resumable(id).await.unwrap();
+    let row = db.get_session_actor(id).await.unwrap().unwrap();
+    assert_eq!(row.inbox_seq, i64::from(head));
+    assert_eq!(
+        row.next_input_seq, 0,
+        "a resolution continues the open turn"
+    );
+    assert!(row.runnable_since.is_some());
+    assert_eq!(row.org_id, ORG_A);
+}
+
+#[tokio::test]
+async fn attempts_count_leases_until_a_release() {
+    let db = StorageBackend::test_database();
+    let id = runnable(&db, ORG_A, 1).await;
+    for attempt in 1..=3 {
+        let lease = db
+            .lease_session_actors("worker-a", 1, TTL, DEFAULT_ACTOR_LEASES_PER_ORG)
+            .await
+            .unwrap()
+            .remove(0);
+        assert_eq!(lease.attempts, attempt);
+        expire_lease(&db, id).await;
+    }
+    let lease = db
+        .lease_session_actors("worker-a", 1, TTL, DEFAULT_ACTOR_LEASES_PER_ORG)
+        .await
+        .unwrap()
+        .remove(0);
+    db.release_session_actor(id, "worker-a", lease.fence, 1)
+        .await
+        .unwrap();
+    assert_eq!(db.get_session_actor(id).await.unwrap().unwrap().attempts, 0);
+}
+
+#[tokio::test]
+async fn leased_actors_are_counted() {
+    let db = StorageBackend::test_database();
+    let before = db.count_leased_session_actors().await.unwrap();
+    runnable(&db, ORG_B, 1).await;
+    let leased = db
+        .lease_session_actors("worker-a", 100, TTL, DEFAULT_ACTOR_LEASES_PER_ORG)
+        .await
+        .unwrap();
+    assert!(db.count_leased_session_actors().await.unwrap() >= before + leased.len() as i64);
+}
+
+/// Lease up to `limit` actors as `holder`, oldest first.
+async fn lease_order(db: &StorageBackend, holder: &str, limit: i64, cap: i64) -> Vec<SessionId> {
+    db.lease_session_actors(holder, limit, TTL, cap)
+        .await
+        .unwrap()
+        .iter()
+        .map(|row| row.session_id)
+        .collect()
+}
+
+#[tokio::test]
+async fn the_per_org_cap_puts_other_orgs_first() {
+    let db = StorageBackend::test_database();
+    let mut org_a = Vec::new();
+    for _ in 0..5 {
+        org_a.push(runnable(&db, ORG_A, 1).await);
+    }
+    let mut org_b = Vec::new();
+    for _ in 0..2 {
+        org_b.push(runnable(&db, ORG_B, 1).await);
+    }
+
+    // Under the cap, oldest first: org A's first three are older than B's.
+    let first = lease_order(&db, "worker-a", 4, 3).await;
+    assert_eq!(first, vec![org_a[0], org_a[1], org_a[2], org_b[0]]);
+
+    // Held leases count toward the cap on the next call: org A is at it, so
+    // B's newer actor goes before A's older ones.
+    let second = lease_order(&db, "worker-b", 2, 3).await;
+    assert_eq!(
+        second.into_iter().collect::<HashSet<_>>(),
+        HashSet::from([org_b[1], org_a[3]])
+    );
+    // What is left is over the cap, and still leased when there is room.
+    assert_eq!(lease_order(&db, "worker-c", 10, 3).await, vec![org_a[4]]);
+}
+
+#[tokio::test]
+async fn the_per_org_cap_never_leaves_room_unused() {
     let db = StorageBackend::test_database();
     let mut org_a = HashSet::new();
     for _ in 0..5 {
         org_a.insert(runnable(&db, ORG_A, 1).await);
     }
-    let mut org_b = HashSet::new();
-    for _ in 0..2 {
-        org_b.insert(runnable(&db, ORG_B, 1).await);
-    }
 
+    // Only one org has work: the cap orders it, it does not hold it back.
     let leased = db
-        .lease_session_actors("worker-a", 10, TTL, 3)
+        .lease_session_actors("worker-a", 10, TTL, 2)
         .await
         .unwrap();
-    let from_a = leased.iter().filter(|row| row.org_id == ORG_A).count();
-    let from_b = leased.iter().filter(|row| row.org_id == ORG_B).count();
-    assert_eq!((from_a, from_b), (3, 2));
-
-    // Held leases count toward the cap on the next call.
+    assert_eq!(ids(&leased), org_a);
     assert!(
-        db.lease_session_actors("worker-b", 10, TTL, 3)
+        db.lease_session_actors("worker-b", 10, TTL, 2)
             .await
             .unwrap()
-            .is_empty()
+            .is_empty(),
+        "every actor is leased once"
     );
-    // Releasing one frees one slot for the org.
-    let done = leased.iter().find(|row| row.org_id == ORG_A).unwrap();
-    db.release_session_actor(done.session_id, "worker-a", done.fence, 1)
-        .await
-        .unwrap();
-    let more = db
-        .lease_session_actors("worker-b", 10, TTL, 3)
-        .await
-        .unwrap();
-    assert_eq!(more.len(), 1);
-    assert!(org_a.contains(&more[0].session_id));
 }
 
 #[tokio::test]
@@ -505,4 +655,244 @@ async fn deleting_the_session_removes_its_actor() {
         .await
         .unwrap();
     assert!(db.get_session_actor(id).await.unwrap().is_none());
+}
+
+// --- Fenced log appends -------------------------------------------------------
+
+fn row(session_id: SessionId, event_type: &str) -> CreateEventRow {
+    CreateEventRow {
+        session_id,
+        event_type: event_type.to_string(),
+        ts: chrono::Utc::now(),
+        context: serde_json::json!({}),
+        data: serde_json::json!({}),
+        metadata: None,
+        tags: None,
+    }
+}
+
+async fn log_len(db: &StorageBackend, session_id: SessionId) -> usize {
+    db.read_session_actor_journal(session_id, Some(0), 0)
+        .await
+        .unwrap()
+        .events
+        .len()
+}
+
+fn rejected(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<crate::storage::ActorLeaseFenceRejected>()
+        .is_some()
+}
+
+#[tokio::test]
+async fn a_fenced_append_lands_only_under_the_holders_live_lease() {
+    let db = StorageBackend::test_database();
+    let id = runnable(&db, ORG_A, 1).await;
+    let first = db.lease_session_actors("w1", 1, TTL, 32).await.unwrap();
+    let f1 = first[0].fence;
+
+    let stored = db
+        .create_events_fenced(
+            vec![row(id, "turn.started"), row(id, "reason.started")],
+            "w1",
+            f1,
+        )
+        .await
+        .expect("the current holder's batch lands");
+    assert_eq!(stored.len(), 2);
+    assert_eq!(stored[1].sequence, stored[0].sequence + 1, "in order");
+    assert_eq!(log_len(&db, id).await, 2);
+
+    // Another holder's id with the right fence, or the right holder with a
+    // wrong fence: refused, nothing lands.
+    for (holder, fence) in [("w2", f1), ("w1", f1 + 1)] {
+        let error = db
+            .create_events_fenced(vec![row(id, "tool.completed")], holder, fence)
+            .await
+            .expect_err("not this holder's lease");
+        assert!(rejected(&error), "{error:#}");
+    }
+    assert_eq!(log_len(&db, id).await, 2);
+
+    // The lease runs out and another worker takes the session: the stale
+    // holder's in-flight write is refused; the new holder's lands.
+    expire_lease(&db, id).await;
+    let error = db
+        .create_events_fenced(vec![row(id, "tool.completed")], "w1", f1)
+        .await
+        .expect_err("an expired lease writes nothing");
+    assert!(rejected(&error), "{error:#}");
+    let second = db.lease_session_actors("w2", 1, TTL, 32).await.unwrap();
+    let f2 = second[0].fence;
+    assert!(f2 > f1);
+    let error = db
+        .create_events_fenced(
+            vec![row(id, "tool.completed"), row(id, "turn.completed")],
+            "w1",
+            f1,
+        )
+        .await
+        .expect_err("the stale holder's batch is refused whole");
+    assert!(rejected(&error), "{error:#}");
+    assert_eq!(
+        log_len(&db, id).await,
+        2,
+        "nothing of the stale batch landed"
+    );
+
+    db.create_events_fenced(vec![row(id, "turn.completed")], "w2", f2)
+        .await
+        .expect("the new holder's write lands");
+    assert_eq!(log_len(&db, id).await, 3);
+
+    // After release no fence is live.
+    db.release_session_actor(id, "w2", f2, 1).await.unwrap();
+    let error = db
+        .create_events_fenced(vec![row(id, "turn.completed")], "w2", f2)
+        .await
+        .expect_err("a released lease writes nothing");
+    assert!(rejected(&error), "{error:#}");
+}
+
+#[tokio::test]
+async fn a_session_without_an_actor_takes_no_fenced_append() {
+    let db = StorageBackend::test_database();
+    let id = session(&db, ORG_A).await;
+    let error = db
+        .create_events_fenced(vec![row(id, "turn.started")], "w1", 1)
+        .await
+        .expect_err("no lease exists");
+    assert!(rejected(&error), "{error:#}");
+    assert_eq!(log_len(&db, id).await, 0);
+    assert!(
+        db.create_events_fenced(Vec::new(), "w1", 1)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+// --- The rolling-deploy sweep (TEMPORARY, step 7 deletes it) -----------------
+
+async fn legacy_task(
+    db: &StorageBackend,
+    session_id: SessionId,
+    activity_type: &str,
+    status: &str,
+) -> uuid::Uuid {
+    let pool = &db.database().pool;
+    sqlx::query(
+        "INSERT INTO durable_workflow_instances (id, workflow_type, status, input) \
+         VALUES ($1, 'turn_workflow', 'running', '{}'::jsonb) ON CONFLICT (id) DO NOTHING",
+    )
+    .bind(session_id)
+    .execute(pool)
+    .await
+    .expect("workflow");
+    sqlx::query_scalar(
+        "INSERT INTO durable_task_queue (workflow_id, activity_id, activity_type, input, \
+             options, status, max_attempts, schedule_to_start_timeout_ms, \
+             start_to_close_timeout_ms, claimed_by, claimed_at, heartbeat_at) \
+         VALUES ($1, $2, $3, '{}'::jsonb, '{}'::jsonb, $4, 3, 60000, 60000, \
+             CASE WHEN $4 = 'claimed' THEN 'old-worker' END, \
+             CASE WHEN $4 = 'claimed' THEN NOW() END, \
+             CASE WHEN $4 = 'claimed' THEN NOW() END) \
+         RETURNING id",
+    )
+    .bind(session_id)
+    .bind(format!("{activity_type}-{}", uuid::Uuid::now_v7()))
+    .bind(activity_type)
+    .bind(status)
+    .fetch_one(pool)
+    .await
+    .expect("task")
+}
+
+async fn task_status(db: &StorageBackend, id: uuid::Uuid) -> String {
+    sqlx::query_scalar("SELECT status FROM durable_task_queue WHERE id = $1")
+        .bind(id)
+        .fetch_one(&db.database().pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn old_path_turn_tasks_become_runnable_actors_once() {
+    let db = StorageBackend::test_database();
+    // An old server started a turn (a pending `process_input`) after the
+    // cutover migration ran; the turn's input is in the log.
+    let started = session(&db, ORG_A).await;
+    event(&db, started, "turn.completed").await;
+    let boundary = event(&db, started, "turn.started").await;
+    let head = event(&db, started, "input.message").await;
+    let pending = legacy_task(&db, started, "process_input", "pending").await;
+    // An old worker is still running a step of another session: live claims
+    // are left to it.
+    let live = session(&db, ORG_B).await;
+    let claimed = legacy_task(&db, live, "reason", "claimed").await;
+    // Other durable work is never touched.
+    let unrelated = legacy_task(&db, live, "invoke_agent_trigger", "pending").await;
+
+    let sweep = db
+        .convert_legacy_turn_tasks(100, Duration::from_secs(120))
+        .await
+        .unwrap();
+    assert_eq!(
+        sweep,
+        LegacyTurnSweep {
+            retired_tasks: 1,
+            marked_actors: 1
+        }
+    );
+    let actor = db
+        .get_session_actor(started)
+        .await
+        .unwrap()
+        .expect("marked");
+    assert!(actor.runnable_since.is_some());
+    assert_eq!(actor.org_id, ORG_A);
+    assert_eq!(actor.inbox_seq, i64::from(head));
+    assert_eq!(actor.consumed_seq, i64::from(boundary));
+    assert_eq!(task_status(&db, pending).await, "cancelled");
+    let workflow: String =
+        sqlx::query_scalar("SELECT status FROM durable_workflow_instances WHERE id = $1")
+            .bind(started)
+            .fetch_one(&db.database().pool)
+            .await
+            .unwrap();
+    assert_eq!(workflow, "cancelled");
+    assert_eq!(task_status(&db, claimed).await, "claimed");
+    assert_eq!(task_status(&db, unrelated).await, "pending");
+    assert!(db.get_session_actor(live).await.unwrap().is_none());
+
+    // Idempotent: nothing left to convert, and the actor keeps its place.
+    let again = db
+        .convert_legacy_turn_tasks(100, Duration::from_secs(120))
+        .await
+        .unwrap();
+    assert_eq!(again, LegacyTurnSweep::default());
+    let same = db.get_session_actor(started).await.unwrap().unwrap();
+    assert_eq!(same.runnable_since, actor.runnable_since);
+
+    // A claim whose old worker went silent is converted too.
+    let silent = db
+        .convert_legacy_turn_tasks(100, Duration::ZERO)
+        .await
+        .unwrap();
+    assert_eq!(silent.retired_tasks, 1);
+    assert_eq!(task_status(&db, claimed).await, "cancelled");
+    assert!(
+        db.get_session_actor(live)
+            .await
+            .unwrap()
+            .unwrap()
+            .runnable_since
+            .is_some()
+    );
+    assert_eq!(task_status(&db, unrelated).await, "pending");
+
+    // A worker leases the converted actor like any other.
+    let leased = db.lease_session_actors("w1", 10, TTL, 32).await.unwrap();
+    assert_eq!(ids(&leased), HashSet::from([started, live]));
 }

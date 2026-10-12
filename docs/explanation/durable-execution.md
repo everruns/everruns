@@ -1,6 +1,6 @@
 ---
 title: Durable execution
-description: Why Everruns persists every step of agent execution to PostgreSQL, what guarantees that provides, and the trade-offs of avoiding Temporal-style infrastructure.
+description: Why Everruns persists every step of agent execution to PostgreSQL and runs each session as a leased actor, what guarantees that provides, and the trade-offs of avoiding Temporal-style infrastructure.
 sidebar:
   order: 4
 ---
@@ -21,24 +21,25 @@ Anywhere in that chain, the worker process can crash, the container can be reape
 
 ## The mechanism
 
-Everruns runs every step as a **durable task**. Each task:
+Everruns treats each session as an **actor** whose state is its event log. Every message, model response, tool call and tool result is appended to the session's log in PostgreSQL before anything acts on it. A turn is never held anywhere else: the log is enough to pick it up again.
 
-- Has a typed input and output.
-- Persists its result to PostgreSQL before acknowledging completion.
-- Has retry and timeout policies.
-- Heartbeats while running, so the control plane can detect a crashed worker.
+- Sending a message stores it and marks the session runnable, in one transaction.
+- A worker leases the runnable session and runs the whole turn: reason, act, reason again, until the model answers or the turn waits on a person.
+- The worker renews its lease every few seconds while the turn runs, and gives it back when the turn ends.
 
 ![Durable Execution Pipeline](../images/concepts/durable-execution-pipeline.svg)
 
-A turn is a small state machine over those tasks. Each step (`process_input`, `reason`, `act`) is one task on the queue. When a step completes, the turn's state is checkpointed and handed to the next step's task, and the workflow's history (`durable_workflow_events`, an append-only log per workflow) records what was scheduled and how it ended. A step that is retried starts from the checkpoint of the step before it, so recovery never replays the whole turn or the whole conversation.
+Messages that arrive while a turn runs reach that turn before its next model call. A message that arrives just as the turn ends starts the next turn. A turn waiting on a person (a client-side tool, an approval, a question) holds no worker: the answer is recorded in the log and the session becomes runnable again.
 
-When a worker crashes mid-turn, the control plane sees the missed heartbeats, marks the in-flight task as failed, and re-queues it. Another worker picks it up. The application sees a momentary stall in the SSE stream, then it continues.
+When a worker crashes mid-turn, its lease stops being renewed and expires after about ten seconds. Another worker leases the session, reads the turn's part of the log and continues the turn where it stopped. The application sees a momentary stall in the SSE stream, then it continues.
 
-![Worker crash and reclaim: worker A claims a task and heartbeats every 10 seconds, commits a step result, then crashes mid-step; the control plane finds the task with no heartbeat for 30 seconds and returns it to pending; worker B claims it as attempt 2, reruns only the interrupted step, and completes it. A task that runs out of attempts or makes no progress across reclaims is marked dead.](../images/concepts/worker-reclaim.svg)
+![Worker crash and takeover: worker A leases the session, renews the lease every few seconds and appends the turn's events, then crashes during a tool call; its lease expires after ten seconds without renewal; worker B leases the session with a higher fence, reads the turn's log tail, resumes the open turn (recorded results stand, the cut-off call is settled or rerun) and releases the session when the turn ends. A turn whose workers keep dying is sealed after a few leases.](../images/concepts/worker-reclaim.svg)
+
+A worker that stalls instead of crashing cannot interfere: each lease has a fence number, and a worker whose lease was taken over stops the turn without writing anything more.
 
 ## Why a custom engine
 
-The obvious alternative is Temporal (or Cadence, or Restate). Everruns deliberately built its own minimal durable engine, `everruns-durable`, instead. It is a generic, published Rust crate (task queue, event log, signals, timers, schedules, retries, dead letter queue, circuit breakers) with no agent concepts; the agent turn driver on top of it lives in `everruns-durable-engine`. The reasoning:
+The obvious alternative is Temporal (or Cadence, or Restate). Everruns deliberately built its own minimal durable execution instead: session leases and the event log for turns, and `everruns-durable`, a generic, published Rust crate (task queue, event log, signals, schedules, retries, dead letter queue, circuit breakers) with no agent concepts, for the background work around them. The reasoning:
 
 1. **Single dependency.** PostgreSQL is the only required stateful infrastructure (Valkey and NATS are optional). Operators don't need to run a second cluster with its own ops story.
 2. **Co-located with the rest of the platform.** Workflow events and session events live in the same database, in the same transaction when needed. There's no eventual consistency between "what happened" and "what was reported."
@@ -50,19 +51,20 @@ The trade-off: no multi-region replication beyond what PostgreSQL itself offers,
 
 What durable execution gives you:
 
-- **No work lost on crash.** If a worker dies, another worker resumes from the last persisted step. Tokens already paid for are not paid for again.
-- **Persisted tool results.** Tool calls are persisted by their result, not their attempt, so a tool whose result was recorded is not re-run. Execution is at-least-once: see the caveat below for a tool that completes but crashes before its result is persisted.
+- **No work lost on crash.** If a worker dies, another worker resumes the turn from its log. A model response already recorded is not requested again, and an answer already recorded is not given twice.
+- **Persisted tool results.** Tool calls are persisted by their result, not their attempt, so a tool whose result was recorded is not re-run. A call cut off before its result was recorded runs again only when its tool declares that safe (read-only or idempotent); otherwise it is recorded as interrupted and the model is told its outcome is unknown.
+- **One worker per session.** A session's lease keeps two workers from ever running its turn at once.
 - **Authoritative history.** Reloading a session reads back the same persisted message sequence, which makes traces and exports authoritative.
 
 What it doesn't give you:
 
-- **Idempotence of side effects.** If your tool POSTs to an external API, the external API will see one call per *successful* execution but a retried-task scenario can still cause duplicates if a tool completes externally and crashes before persisting. Tools that have external side effects must include their own idempotency keys.
-- **Real-time latency guarantees.** Persisting every step adds tens of milliseconds per task. For agent workloads (already dominated by LLM latency) this is invisible; for hot-loop workloads it would be costly.
+- **Idempotence of side effects.** A tool that declares itself idempotent is run again after a crash, so if it POSTs to an external API it must make the repeat harmless, for example with its own idempotency key. A tool that declares nothing is never run twice, but a crash after it acted and before its result was recorded leaves its outcome unknown.
+- **Real-time latency guarantees.** Persisting every event adds a few milliseconds per write. For agent workloads (already dominated by LLM latency) this is invisible; for hot-loop workloads it would be costly.
 
 ## Durability in the Framework
 
-Rust applications that embed the [Framework](/framework/) get durability from
-the session's event log rather than a turn queue. With `LocalConfig` the log
+Rust applications that embed the [Framework](/framework/) get durability the
+same way: from the session's event log. With `LocalConfig` the log
 outlives the process, and a turn a restart cut off continues from it: calls
 that are safe to repeat run again, the rest are recorded as interrupted. Each
 session runs as an actor that holds its lease while a turn runs, so processes

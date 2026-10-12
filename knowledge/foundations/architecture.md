@@ -322,8 +322,8 @@ The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/wor
 
 ### Execution Layer
 
-1. **Turn Entry Point**: the server starts, continues and cancels turns through core's `TurnBackend` trait, the same one the framework uses; `DurableRunner` implements it ([Execution Backends](../framework/execution-backends.md))
-2. **Durable Execution**: Workflows run via PostgreSQL-backed durable execution engine
+1. **Turn Entry Point**: the server starts, continues and cancels turns through core's `TurnBackend` trait, the same one the framework uses; `ActorTurnBackend` implements it ([Execution Backends](../framework/execution-backends.md))
+2. **Sessions as actors**: a worker leases a runnable session and runs its whole turn; the session event log is the only turn state ([Durable Execution Engine](../operations/durable-execution-engine.md#session-actors-turn-execution)). Queued activities that are not turns run on the PostgreSQL-backed durable task queue
 3. **Workflow Isolation**: Backend concepts (workflow IDs, task queues) never exposed in public API
 4. **Event Streaming**: SSE for real-time event delivery via PostgreSQL-backed durable events plus `EventDelivery` push channels
 

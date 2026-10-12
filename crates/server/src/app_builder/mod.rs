@@ -386,6 +386,7 @@ impl ServerAppBuilder {
             database_url,
             database_unpooled_url,
             task_broadcaster,
+            actor_wakeups,
         } = crate::setup::storage_init::init_storage(&self.config, migrations).await?;
 
         // Background loops draw from a pool of their own (EVE-1081). Prod had
@@ -1393,6 +1394,14 @@ impl ServerAppBuilder {
                 )),
             );
 
+            // TEMPORARY (step 7 deletes it): old-path turn tasks a previous
+            // release still creates during a rolling deploy become actors.
+            crate::background::legacy_turn_sweep::spawn_legacy_turn_sweep(
+                &mut supervisor,
+                db.clone(),
+                task_broadcaster.clone(),
+            );
+
             background::spawn_model_sync(
                 &mut supervisor,
                 db.clone(),
@@ -1413,6 +1422,7 @@ impl ServerAppBuilder {
                         &auth_config,
                         host_composition.egress_service(),
                     ),
+                    actor_wakeups,
                 },
             );
         } else {

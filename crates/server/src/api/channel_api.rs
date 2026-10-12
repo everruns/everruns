@@ -141,11 +141,17 @@ pub(crate) async fn cancel_session_turn_for(
     session_id: everruns_contracts::typed_id::SessionId,
     reason: &str,
 ) -> anyhow::Result<()> {
-    use everruns_contracts::typed_id::{MessageId, TurnId};
-    use everruns_core::events::{EventContext, EventRequest, TurnCancelledData};
+    use everruns_contracts::typed_id::TurnId;
+    use everruns_core::events::{EventRequest, TurnCancelledData};
 
-    if let Err(err) = message_service.runner().cancel(session_id).await {
-        tracing::warn!(session_id = %session_id, error = %err, "{reason}: cancel failed");
+    // A worker running the turn records the cancel itself; see
+    // `crate::turns::ActorTurnBackend`.
+    match message_service.runner().cancel(session_id).await {
+        Ok(true) => return Ok(()),
+        Ok(false) => {}
+        Err(err) => {
+            tracing::warn!(session_id = %session_id, error = %err, "{reason}: cancel failed");
+        }
     }
 
     // Skip emission if the turn already reached a terminal state, so a real
@@ -154,12 +160,16 @@ pub(crate) async fn cancel_session_turn_for(
         return Ok(());
     }
 
-    let turn_id = TurnId::from_uuid(session_id.uuid());
-    let input_message_id = MessageId::new();
+    // The open turn is the one cancelled; a session whose message had not
+    // started a turn yet falls back to ids derived from the session.
+    let context = crate::turns::open_turn_context(db, session_id).await?;
+    let turn_id = context
+        .turn_id
+        .unwrap_or_else(|| TurnId::from_uuid(session_id.uuid()));
     let event_service = message_service.event_service();
     let cancelled_event = EventRequest::new(
         session_id,
-        EventContext::turn(turn_id, input_message_id),
+        context.clone(),
         TurnCancelledData {
             turn_id,
             reason: Some(reason.to_string()),

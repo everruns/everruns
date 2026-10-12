@@ -81,6 +81,9 @@ impl ActorLeaseStore for GrpcActorLeaseStore {
                     fence: fence_from_wire(actor.fence)?,
                     inbox_seq: actor.inbox_seq,
                     cancel_requested: actor.cancel_requested,
+                    consumed_seq: actor.consumed_seq,
+                    next_input_seq: actor.next_input_seq,
+                    attempts: actor.attempts,
                 })
             })
             .collect()
@@ -92,6 +95,7 @@ impl ActorLeaseStore for GrpcActorLeaseStore {
         holder: &str,
         fence: u64,
         ttl: std::time::Duration,
+        consumed_seq: i64,
     ) -> Result<Option<ActorRenewal>> {
         let response = self
             .client
@@ -102,6 +106,7 @@ impl ActorLeaseStore for GrpcActorLeaseStore {
                 holder: holder.to_string(),
                 fence: fence_to_wire(fence)?,
                 ttl_ms: ttl_ms(ttl),
+                consumed_seq,
             })
             .await
             .map_err(grpc_status_to_error)?
