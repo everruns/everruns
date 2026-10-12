@@ -177,7 +177,7 @@ no subscription upkeep.
 |---|---|---|
 | 1 | PR review bot that talks, takes pings, reads comments and discussions, has a name | `agent_app` identity with its own name and avatar; GitHub channel for mentions; triggers for automatic reviews; tools act as `service` |
 | 2 | Listener of GitHub activity | Trigger on the identity's App webhook; no token needed. MCP Events only if GitHub adds them |
-| 3 | Sync knowledge and agents with a repository | Repository sync use on the org's service identity (`agent_app` or `everruns_app`); reads on push events, writes as pull requests. Own design later |
+| 3 | Sync knowledge and agents with a repository | Accounted for, not built here: a repository sync use on the org's service identity (`agent_app` or `everruns_app`); reads on push events, writes as pull requests |
 | 4 | Repositories in sandboxes | Sandbox template lists repositories and read or write; the token is injected at the egress proxy where the provider supports it, else a cut-down token in a credential helper |
 | 5 | GitHub MCP | Existing preset; `service` uses the agent identity, `user` uses the person's `person` connection instead of a separate MCP login (D5) |
 | 6 | Personal agents act as the person | `person` identity; the agent's uses act as `user` |
@@ -301,9 +301,6 @@ Each step is one PR unless noted, and leaves everything working.
    template, injected at the egress proxy (Modal, saas egress proxy) or
    through a credential helper with a cut-down token.
 7. **Usage report** (D6).
-8. **Repository sync for knowledge and agents**: separate design, built on the
-   org identity from step 3.
-
 ## Open questions
 
 1. ~~Who may link a shared App installation?~~ Decided (user, 2026-10-12):
@@ -314,13 +311,13 @@ Each step is one PR unless noted, and leaves everything working.
    2026-10-12): yes, it may. A personal agent can hold both the person's
    connection and a bot identity; each use still says which one it acts as,
    so posting as the bot is an explicit setting, never a fallback.
-3. **Repository sync direction.** Read-only first (memories and indexes from
-   a repository, as today) or two-way with pull requests for agent definitions
-   from the start. Proposed: read first, write in the step 8 design.
 
 ## Out of scope
 
 - Public per-agent Apps installable on many GitHub accounts (separate thread).
+- Building repository sync for knowledge and agents (user, 2026-10-12). The
+  model only accounts for it: a sync is a `service` use on the org identity,
+  so it needs nothing new from this design when it is built.
 - GitHub Enterprise Server hosts.
 - Organization-wide policy on which repositories agents may touch beyond what
   the installation grants.
