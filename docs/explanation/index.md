@@ -20,3 +20,4 @@ Read these when:
 - [Architecture](/explanation/architecture/), control plane, workers, and the API-first design.
 - [Durable execution](/explanation/durable-execution/), why agents survive crashes, and the trade-offs of a PostgreSQL-backed engine.
 - [Events as the primary store](/explanation/events/), why an append-only event log is the source of truth, not a side-channel.
+- [Command path](/explanation/command-path/), how the REST API, CLI, MCP and agents all reach the same platform commands, and where they differ.

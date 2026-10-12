@@ -2,7 +2,7 @@
 title: Command Path
 description: How the REST API, the CLI, MCP, the Platform capability and workers all reach the same platform commands, and where each surface differs.
 sidebar:
-  order: 26
+  order: 6
 ---
 
 Everruns has one set of platform commands, such as `create_agent`, `update_harness` or `list_sessions`, and several ways to reach them: the REST API, the `everruns` CLI, the `/mcp` endpoint, the [Platform capability](/capabilities/platform/), and the `everruns` command inside an agent's shell. This page shows how each of those surfaces gets to a command, so you can tell what behaves the same everywhere and what does not.

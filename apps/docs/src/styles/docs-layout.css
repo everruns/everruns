@@ -381,18 +381,20 @@ body:has(#starlight__sidebar:popover-open) .er-menu-button {
     position: sticky;
     top: calc(var(--er-docs-bar-height) + 1px);
     align-self: start;
-    max-height: calc(100vh - var(--er-docs-bar-height) - 1px);
-    overflow-y: auto;
-    scrollbar-width: thin;
   }
 
+  /* The pane (#starlight__sidebar) is the scroller, not the <nav>: Starlight
+     saves and restores the sidebar's scroll position on that element, so a
+     link clicked far down the list opens with the sidebar where it was. */
   .sidebar-pane {
     position: static;
     display: block;
     width: auto;
+    max-height: calc(100vh - var(--er-docs-bar-height) - 1px);
     border: 0;
     background: transparent;
-    overflow: visible;
+    overflow-y: auto;
+    scrollbar-width: thin;
   }
 
   .sidebar-content {
