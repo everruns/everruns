@@ -1,0 +1,123 @@
+//! Where message attachments live in a session's file storage.
+//!
+//! Every attachment gets a stable path under `/attachments`, derived from its
+//! id and file name, so the model can be told where to open it again after
+//! compaction drops its bytes from the request. The host writes these files
+//! read-only; the model can read them but not change them.
+
+/// Root of the session file storage that holds message attachments.
+pub const ATTACHMENTS_ROOT: &str = "/attachments";
+
+/// Longest file name kept in an attachment path, in characters.
+const MAX_FILE_NAME_CHARS: usize = 100;
+
+/// Stable session path for an attachment: `/attachments/<id>/<file name>`.
+///
+/// `id` is the attachment's public id (`img_...`, `file_...`). The file name is
+/// reduced to letters, digits, `.`, `-` and `_`, so it is safe in a path and in
+/// a shell command; `fallback_name` is used when nothing is left.
+pub fn attachment_path(id: &str, filename: Option<&str>, fallback_name: &str) -> String {
+    let id = sanitize(id, usize::MAX);
+    let name = filename
+        .map(|name| {
+            sanitize(
+                name.rsplit(['/', '\\']).next().unwrap_or(name),
+                MAX_FILE_NAME_CHARS,
+            )
+        })
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| fallback_name.to_string());
+    format!("{ATTACHMENTS_ROOT}/{id}/{name}")
+}
+
+/// Text label that introduces an attachment to the model.
+///
+/// Example: `Attached file /attachments/file_01.../report.pdf (application/pdf)`.
+pub fn attachment_label(kind: &str, path: &str, media_type: Option<&str>) -> String {
+    match media_type {
+        Some(media_type) => format!("Attached {kind} {path} ({media_type})"),
+        None => format!("Attached {kind} {path}"),
+    }
+}
+
+/// Whether `text` is a label produced by [`attachment_label`].
+pub fn is_attachment_label(text: &str) -> bool {
+    ["Attached image ", "Attached file "].iter().any(|prefix| {
+        text.strip_prefix(prefix)
+            .is_some_and(|rest| rest.starts_with(ATTACHMENTS_ROOT))
+    })
+}
+
+fn sanitize(value: &str, max_chars: usize) -> String {
+    let cleaned: String = value
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .take(max_chars)
+        .collect();
+    cleaned.trim_start_matches('.').to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn path_keeps_safe_file_names() {
+        assert_eq!(
+            attachment_path("file_01ab", Some("report-2026.pdf"), "file"),
+            "/attachments/file_01ab/report-2026.pdf"
+        );
+    }
+
+    #[test]
+    fn path_cleans_unsafe_file_names() {
+        assert_eq!(
+            attachment_path("img_01", Some("../My Photo (1).png"), "image"),
+            "/attachments/img_01/My_Photo__1_.png"
+        );
+        assert_eq!(
+            attachment_path("img_01", Some("dir/sub/x;rm -rf.png"), "image"),
+            "/attachments/img_01/x_rm_-rf.png"
+        );
+    }
+
+    #[test]
+    fn path_falls_back_when_no_name_is_left() {
+        assert_eq!(
+            attachment_path("img_01", None, "image"),
+            "/attachments/img_01/image"
+        );
+        assert_eq!(
+            attachment_path("img_01", Some("..."), "image"),
+            "/attachments/img_01/image"
+        );
+    }
+
+    #[test]
+    fn path_bounds_long_names() {
+        let long = format!("{}.pdf", "a".repeat(300));
+        let path = attachment_path("file_01", Some(&long), "file");
+        assert_eq!(path.len(), "/attachments/file_01/".len() + 100);
+    }
+
+    #[test]
+    fn labels_round_trip() {
+        let label = attachment_label(
+            "file",
+            "/attachments/file_01/a.pdf",
+            Some("application/pdf"),
+        );
+        assert_eq!(
+            label,
+            "Attached file /attachments/file_01/a.pdf (application/pdf)"
+        );
+        assert!(is_attachment_label(&label));
+        assert!(!is_attachment_label("Attached file somewhere else"));
+    }
+}

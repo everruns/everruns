@@ -8,6 +8,7 @@
 //! from being `From` impls in core (both the `From` trait and the driver types
 //! are foreign to core), so they are plain functions.
 
+use everruns_contracts::runtime::attachments::{attachment_label, attachment_path};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -143,7 +144,20 @@ pub fn llm_message_from_message_with_attachments(
                 }
             }
             ContentPart::ImageFile(img_file) => {
+                // A label with the attachment's stable session path goes
+                // before the bytes, so the model can reopen the image after
+                // compaction drops them (session-attachments.md).
+                let path = attachment_path(
+                    &img_file.image_id.to_string(),
+                    img_file.filename.as_deref(),
+                    "image",
+                );
                 if let Some(resolved) = resolved_images.get(&img_file.image_id.uuid()) {
+                    parts.push(LlmContentPart::text(attachment_label(
+                        "image",
+                        &path,
+                        Some(&resolved.media_type),
+                    )));
                     parts.push(LlmContentPart::Image {
                         url: resolved.to_data_url(),
                     });
@@ -154,7 +168,17 @@ pub fn llm_message_from_message_with_attachments(
                 }
             }
             ContentPart::File(file_part) => {
+                let path = attachment_path(
+                    &file_part.file_id.to_string(),
+                    file_part.filename.as_deref(),
+                    "file",
+                );
                 if let Some(resolved) = resolved_files.get(&file_part.file_id.uuid()) {
+                    parts.push(LlmContentPart::text(attachment_label(
+                        "file",
+                        &path,
+                        Some(&resolved.media_type),
+                    )));
                     parts.push(LlmContentPart::file(
                         resolved.to_data_url(),
                         resolved.filename.clone().or(file_part.filename.clone()),
@@ -468,8 +492,15 @@ mod tests {
         let llm = llm_message_from_message_with_attachments(&message, &HashMap::new(), &resolved);
         match &llm.content {
             MessageContent::Parts(parts) => {
-                assert_eq!(parts.len(), 2);
+                assert_eq!(parts.len(), 3);
                 match &parts[1] {
+                    LlmContentPart::Text { text } => assert_eq!(
+                        text,
+                        &format!("Attached file /attachments/{file_id}/file (application/pdf)")
+                    ),
+                    other => panic!("expected label, got {:?}", other),
+                }
+                match &parts[2] {
                     LlmContentPart::File { url, filename } => {
                         assert_eq!(url, "data:application/pdf;base64,JVBERi0=");
                         assert_eq!(filename.as_deref(), Some("stored.pdf"));
@@ -541,9 +572,11 @@ mod tests {
         assert_eq!(actual.role, MessageRole::User);
         assert!(
             matches!(&actual.content, MessageContent::Parts(parts) if matches!(&parts[..],
-            [LlmContentPart::Text { text: a }, LlmContentPart::Image { url: b },
-             LlmContentPart::Text { text: c }, LlmContentPart::Image { url: d }]
-            if a == "Look at this" && b == "data:image/png;base64,first-data" && c == "and this" && d == "data:image/jpeg;base64,second-data"))
+            [LlmContentPart::Text { text: a }, LlmContentPart::Text { text: la }, LlmContentPart::Image { url: b },
+             LlmContentPart::Text { text: c }, LlmContentPart::Text { text: lc }, LlmContentPart::Image { url: d }]
+            if a == "Look at this" && b == "data:image/png;base64,first-data" && c == "and this" && d == "data:image/jpeg;base64,second-data"
+                && *la == format!("Attached image /attachments/{first}/image (image/png)")
+                && *lc == format!("Attached image /attachments/{second}/image (image/jpeg)")))
         );
     }
 

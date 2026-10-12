@@ -9,6 +9,7 @@ use crate::*;
 
 pub mod agent_definition;
 pub mod annotation_hook;
+pub mod attachments;
 pub mod background;
 pub mod browser_use;
 pub mod budget;

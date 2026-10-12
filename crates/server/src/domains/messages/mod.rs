@@ -2,6 +2,7 @@
 //
 // See knowledge/foundations/domains.md for the pattern.
 
+mod attachments;
 pub mod commands;
 pub mod feedback;
 pub mod queries;
