@@ -148,7 +148,7 @@ knows what it registered.
 | `dev` (default) | Serves the API with local SQLite under `.serve/` and a live console. Models fall back to the simulator, and Markdown prompts and skills hot-reload. |
 | `start` | Production mode. Every model must route through a gateway, and every declared secret must be set. With `--store s3://bucket/prefix` (or `SERVE_STORE`) the data lives in a bucket; see [Keep the data in a bucket](#keep-the-data-in-a-bucket). |
 | `manifest` | Prints the host contract as JSON: agents, models, tool schemas, skills, channels, cron entries, secrets, sandbox, evals and a build id. |
-| `eval [--against URL]` | Runs the evals in-process, or against a running deployment as a gate before promotion. |
+| `eval [--against URL]` | Runs the evals in-process, or against a running deployment as a gate before promotion. Against an app that requires a credential, set `SERVE_CREDENTIAL` (or pass `--credential`) and every request carries it as a bearer token. |
 | `deploy` | Prints what a host would provision from the manifest. The one supported deployment target is [Amazon Bedrock AgentCore](/framework/serve-agentcore/). |
 
 ## Keep the data in a bucket
@@ -249,10 +249,21 @@ in the binary, so keep real keys in the environment.
 
 A few routes stay public so clients can find the agent: `GET /health`, each
 agent's card at `GET /v1/channels/{agent}` (its `auth` list names the accepted
-methods), the A2A Agent Card and the voice test page. Messaging channel
+methods), the A2A Agent Card (its `securitySchemes` and `securityRequirements`
+name the same methods, as an Everruns A2A endpoint's card does) and the voice
+test page. Messaging channel
 webhooks stay public too, because Slack and webhook callers cannot send a serve
 credential; each channel verifies its platform's own signature. Auth does not
 separate callers: every authenticated caller can reach every session.
+
+With auth on, the `dev` console's sample requests and its approval and question
+hints include `-H 'authorization: Bearer <credential>'`; substitute your own
+key. To run evals against a protected deployment, give `eval` the credential
+through the environment, which keeps it out of the process list:
+
+```sh
+SERVE_CREDENTIAL=key-for-ci ./revenue-analyst eval --against https://preview.example.com
+```
 
 ## AG-UI and CopilotKit
 

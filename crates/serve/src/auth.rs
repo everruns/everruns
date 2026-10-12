@@ -239,6 +239,81 @@ impl Auth {
         auth
     }
 
+    /// The A2A Agent Card's `securitySchemes` and its requirements, one
+    /// requirement per scheme since any one method lets a caller in.
+    ///
+    /// Scheme names and shapes match the everruns server's A2A card, so a
+    /// caller sees the same scheme for the same method on either host:
+    /// `apiKey` (HTTP bearer) for static keys, `oidc` / `googleOidc` (OpenID
+    /// Connect discovery) for JWT issuers, and `oauth2Bearer` (HTTP bearer) for introspection, which
+    /// has no token URL to publish as an OAuth flow. A second issuer gets a
+    /// numbered name (`oidc2`).
+    #[cfg(feature = "a2a")]
+    pub(crate) fn a2a_security(
+        &self,
+    ) -> (
+        std::collections::HashMap<String, ::a2a::SecurityScheme>,
+        Vec<::a2a::SecurityRequirement>,
+    ) {
+        use ::a2a::{HttpAuthSecurityScheme, OpenIdConnectSecurityScheme, SecurityScheme};
+
+        let bearer = || {
+            SecurityScheme::HttpAuth(HttpAuthSecurityScheme {
+                scheme: "bearer".to_string(),
+                description: None,
+                bearer_format: None,
+            })
+        };
+        let discovery = |issuer: &str| {
+            SecurityScheme::OpenIdConnect(OpenIdConnectSecurityScheme {
+                open_id_connect_url: format!(
+                    "{}/.well-known/openid-configuration",
+                    issuer.trim_end_matches('/')
+                ),
+                description: None,
+            })
+        };
+        let mut entries: Vec<(&str, SecurityScheme, Vec<String>)> = Vec::new();
+        if !self.key_digests.is_empty() {
+            entries.push(("apiKey", bearer(), Vec::new()));
+        }
+        for config in &self.tokens {
+            let scopes = config.requirements.scopes.clone();
+            entries.push(match &config.provider {
+                Some(ChannelAuthProviderConfig::Oidc { issuer, .. }) => {
+                    ("oidc", discovery(issuer), scopes)
+                }
+                Some(ChannelAuthProviderConfig::GoogleOidc { .. }) => {
+                    ("googleOidc", discovery(GOOGLE_ISSUER), scopes)
+                }
+                _ => ("oauth2Bearer", bearer(), scopes),
+            });
+        }
+        let mut schemes = std::collections::HashMap::new();
+        let mut requirements: Vec<::a2a::SecurityRequirement> = Vec::new();
+        for (base, scheme, scopes) in entries {
+            let mut name = base.to_string();
+            let mut n = 1;
+            loop {
+                match schemes.get(&name) {
+                    None => break,
+                    // The same method listed twice is one scheme.
+                    Some(existing) if *existing == scheme => break,
+                    Some(_) => {
+                        n += 1;
+                        name = format!("{base}{n}");
+                    }
+                }
+            }
+            let requirement = std::collections::HashMap::from([(name.clone(), scopes)]);
+            if !requirements.contains(&requirement) {
+                requirements.push(requirement);
+            }
+            schemes.insert(name, scheme);
+        }
+        (schemes, requirements)
+    }
+
     async fn check(&self, headers: &axum::http::HeaderMap) -> Result<Caller, ChannelAuthError> {
         let Some(token) = extract_bearer(headers) else {
             return Err(ChannelAuthError::Unauthorized);
@@ -438,6 +513,39 @@ mod tests {
                 AgentCardAuth::OAuth2,
             ]
         );
+    }
+
+    #[cfg(feature = "a2a")]
+    #[test]
+    fn a2a_schemes_follow_the_server_names_and_number_a_second_issuer() {
+        let auth = Auth::new(
+            vec![
+                AuthMethod::oidc("https://one.example.com/", ["serve"]),
+                AuthMethod::oidc("https://one.example.com", ["other"]),
+                AuthMethod::oidc("https://two.example.com", ["serve"]),
+                AuthMethod::oauth2_introspection("https://one.example.com/introspect", None),
+            ],
+            None,
+        )
+        .unwrap()
+        .unwrap();
+        let (schemes, requirements) = auth.a2a_security();
+        let mut names: Vec<&String> = schemes.keys().collect();
+        names.sort();
+        assert_eq!(names, ["oauth2Bearer", "oidc", "oidc2"]);
+        assert!(matches!(
+            &schemes["oidc2"],
+            ::a2a::SecurityScheme::OpenIdConnect(scheme)
+                if scheme.open_id_connect_url == "https://two.example.com/.well-known/openid-configuration"
+        ));
+        // Two methods for one issuer are one scheme and one requirement.
+        let named: Vec<Vec<&String>> = requirements
+            .iter()
+            .map(|requirement| requirement.keys().collect())
+            .collect();
+        assert_eq!(named, [["oidc"], ["oidc2"], ["oauth2Bearer"]]);
+        // No key, so no apiKey scheme.
+        assert!(!schemes.contains_key("apiKey"));
     }
 
     #[test]
