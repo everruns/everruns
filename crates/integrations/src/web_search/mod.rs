@@ -108,6 +108,10 @@ impl Capability for WebSearchCapability {
         RiskLevel::Medium
     }
 
+    fn web_search_source(&self, _config: &serde_json::Value) -> bool {
+        true
+    }
+
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
             "Use `web_search` for current facts, documentation and anything you are unsure \

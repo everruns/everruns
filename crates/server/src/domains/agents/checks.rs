@@ -512,6 +512,56 @@ pub fn check_superseded_capabilities(
     findings
 }
 
+/// More than one way to search the web makes the model guess which to use,
+/// and each one may cost money. Capabilities declare their search through
+/// `Capability::web_search_source`, so the rule needs no list of search
+/// capabilities. `external_tools` are the tools that do not come from a
+/// capability (attached MCP servers, client tools); one counts when its name
+/// ends in `web_search` or `search_web`. Advisory only: a warning, never a
+/// block.
+pub fn check_duplicate_web_search(
+    capabilities: &[AgentCapabilityConfig],
+    registry: &everruns_contracts::runtime::capabilities::CapabilityRegistry,
+    external_tools: &[ToolDefinition],
+) -> Vec<Finding> {
+    let mut sources: Vec<String> = capabilities
+        .iter()
+        .filter_map(|config| {
+            let capability = registry.get(config.capability_id())?;
+            capability
+                .web_search_source(config.config_value())
+                .then(|| capability.name().to_string())
+        })
+        .collect();
+    for tool in external_tools {
+        let name = tool.name();
+        let bare = name.rsplit("__").next().unwrap_or(name);
+        if (bare.ends_with("web_search") || bare.ends_with("search_web"))
+            && !sources.iter().any(|source| source == name)
+        {
+            sources.push(name.to_string());
+        }
+    }
+    let Some((last, rest)) = sources.split_last().filter(|(_, rest)| !rest.is_empty()) else {
+        return Vec::new();
+    };
+    let (listed, verb) = match rest {
+        [only] => (format!("{only} and {last}"), "both search"),
+        _ => (format!("{} and {last}", rest.join(", ")), "all search"),
+    };
+    vec![
+        Finding::builtin(
+            "capabilities.duplicate_web_search",
+            FindingSeverity::Warning,
+            FindingCategory::Cost,
+            format!(
+                "{listed} {verb} the web, so the model has to guess which one to use. Keep one."
+            ),
+        )
+        .at("capabilities", None),
+    ]
+}
+
 // ============================================================================
 // Org-configurable rules (knowledge/evaluation/agent-checks.md, phase 4)
 // ============================================================================
@@ -590,6 +640,12 @@ pub fn builtin_rule_catalog() -> &'static [BuiltinRuleInfo] {
             default_severity: Suggestion,
             category: Cost,
             description: "A capability that another enabled capability replaces does nothing.",
+        },
+        BuiltinRuleInfo {
+            rule_id: "capabilities.duplicate_web_search",
+            default_severity: Warning,
+            category: Cost,
+            description: "More than one capability or tool searches the web.",
         },
     ]
 }
@@ -941,6 +997,102 @@ mod tests {
 
         let one = [capability("tool_search")];
         assert!(check_superseded_capabilities(&one, &registry).is_empty());
+    }
+
+    /// Searches the web when its config says `{"search": true}`.
+    struct Searcher(&'static str, &'static str);
+
+    impl everruns_contracts::runtime::capabilities::Capability for Searcher {
+        fn id(&self) -> &str {
+            self.0
+        }
+        fn name(&self) -> &str {
+            self.1
+        }
+        fn description(&self) -> &str {
+            "stub"
+        }
+        fn web_search_source(&self, config: &serde_json::Value) -> bool {
+            config["search"] == true
+        }
+    }
+
+    fn search_registry() -> everruns_contracts::runtime::capabilities::CapabilityRegistry {
+        let mut registry = everruns_contracts::runtime::capabilities::CapabilityRegistry::new();
+        registry.register(Searcher("web_search", "Web search"));
+        registry.register(Searcher("parallel_search", "Parallel Search and Fetch"));
+        registry.register(Searcher("openai_server_tools", "OpenAI Server Tools"));
+        registry
+    }
+
+    fn searching(id: &str, search: bool) -> AgentCapabilityConfig {
+        AgentCapabilityConfig::with_config(id, serde_json::json!({ "search": search }))
+    }
+
+    #[test]
+    fn two_web_search_capabilities_warn_and_name_both() {
+        let registry = search_registry();
+        let caps = [
+            searching("web_search", true),
+            searching("parallel_search", true),
+        ];
+        let findings = check_duplicate_web_search(&caps, &registry, &[]);
+        assert_eq!(
+            rule_ids(&findings),
+            vec!["capabilities.duplicate_web_search"]
+        );
+        assert_eq!(findings[0].severity, FindingSeverity::Warning);
+        assert_eq!(findings[0].category, FindingCategory::Cost);
+        assert_eq!(
+            findings[0].message,
+            "Web search and Parallel Search and Fetch both search the web, so the model has to \
+             guess which one to use. Keep one."
+        );
+    }
+
+    #[test]
+    fn one_web_search_source_is_fine() {
+        let registry = search_registry();
+        assert!(
+            check_duplicate_web_search(&[searching("web_search", true)], &registry, &[]).is_empty()
+        );
+        // A capability whose search part is off does not count.
+        let caps = [
+            searching("web_search", true),
+            searching("openai_server_tools", false),
+        ];
+        assert!(check_duplicate_web_search(&caps, &registry, &[]).is_empty());
+        // Neither does a lone MCP search tool.
+        assert!(
+            check_duplicate_web_search(&[], &registry, &[client_tool("mcp_exa__web_search")])
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn mcp_search_tools_count_next_to_capabilities() {
+        let registry = search_registry();
+        let tools = [
+            client_tool("mcp_exa__web_search"),
+            client_tool("mcp_docs__search_web"),
+            client_tool("mcp_docs__web_search_settings"),
+        ];
+        let findings =
+            check_duplicate_web_search(&[searching("web_search", true)], &registry, &tools);
+        assert_eq!(
+            findings[0].message,
+            "Web search, mcp_exa__web_search and mcp_docs__search_web all search the web, so the \
+             model has to guess which one to use. Keep one."
+        );
+    }
+
+    #[test]
+    fn duplicate_web_search_rule_is_in_the_catalog() {
+        assert!(
+            builtin_rule_catalog()
+                .iter()
+                .any(|r| r.rule_id == "capabilities.duplicate_web_search")
+        );
     }
 
     #[test]
