@@ -210,9 +210,12 @@ sites build and deploy independently and no request passes through both.
    text/markdown` (or a known AI user agent, never a search crawler) on a page
    URL returns its `index.md` twin, with `Vary: Accept, User-Agent`. Every page
    response carries `Link` headers for `llms.txt` and the API reference
-4. docs.everruns.com keeps a zone redirect rule that 301s every path, query
-   included, to the same path under https://everruns.com/docs. It stays
-   forever: published crate docs, plugins and old posts link the old host
+4. docs.everruns.com 301s every path, query included, to the same path under
+   https://everruns.com/docs. It stays forever: published crate docs, plugins
+   and old posts link the old host. The old Pages project still owns the host
+   and builds from this repo, so the rule is the `pages-only` block of
+   `public/_redirects` (Pages redirects win over files at the same path); a
+   zone redirect rule may replace it once that project is retired
 5. `apps/docs/scripts/check-live.mjs` checks every sitemap page and its
    Markdown twin, the agent files, content negotiation and, with `--old`, each
    old URL's redirect. It runs after every deploy and daily

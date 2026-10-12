@@ -9,7 +9,7 @@
 import { appendFileSync, cpSync, existsSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { BASE } from "../site.config.mjs";
+import { BASE, SITE } from "../site.config.mjs";
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.join(appRoot, "dist");
@@ -23,12 +23,18 @@ rmSync(out, { recursive: true, force: true });
 cpSync(dist, docs, { recursive: true });
 const redirects = path.join(out, "_redirects");
 if (existsSync(path.join(docs, "_redirects"))) renameSync(path.join(docs, "_redirects"), redirects);
-// The pages-only block serves the old docs.everruns.com Pages build (see
-// public/_redirects); in the Worker it would map /docs/x to a missing /x.
+// The pages-only block 301s the old docs.everruns.com Pages build to
+// everruns.com/docs (see public/_redirects); in the Worker it would redirect
+// every request to itself.
 writeFileSync(
   redirects,
   readFileSync(redirects, "utf8").replace(/# BEGIN pages-only[\s\S]*?# END pages-only\n?/, ""),
 );
+// A rule left pointing at the live docs would redirect everruns.com/docs to itself.
+const loop = readFileSync(redirects, "utf8")
+  .split("\n")
+  .find((line) => !line.startsWith("#") && line.includes(`${SITE}${BASE}`));
+if (loop) throw new Error(`_redirects for the Worker redirects to its own site: ${loop}`);
 
 const REFRESH = /<meta http-equiv="refresh" content="0;url=([^"]+)"/;
 const pages = (directory) =>
