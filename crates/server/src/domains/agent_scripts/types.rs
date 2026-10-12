@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
 
-pub use crate::storage::models::{AgentScriptRow, CreateAgentScriptRow, UpdateAgentScript};
+pub use crate::storage::{AgentScriptRow, CreateAgentScriptRow, UpdateAgentScript};
 
 /// Request to create a saved script on an agent.
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]

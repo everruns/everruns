@@ -50,8 +50,10 @@ globset
 ignore
 inventory
 jsonschema
+jsonwebtoken
 landlock
 libc
+moka
 opentelemetry
 opentelemetry-otlp
 opentelemetry_sdk
@@ -92,8 +94,10 @@ eventsource-stream
 fs2
 futures-util
 ignore
+jsonwebtoken
 landlock
 libc
+moka
 opentelemetry
 opentelemetry-otlp
 opentelemetry_sdk
@@ -112,7 +116,8 @@ if [ "$OPTIONAL" != "$EXPECTED_OPTIONAL" ]; then
 fi
 
 DEV_DEPENDENCIES=$(printf '%s' "$CORE_PACKAGE" | jq -r '.dependencies[] | select(.kind == "dev") | .name' | sort -u)
-EXPECTED_DEV='insta
+EXPECTED_DEV='aws-lc-rs
+insta
 tempfile
 tokio
 wiremock'

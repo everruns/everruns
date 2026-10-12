@@ -291,7 +291,7 @@ export function TaskCard({
         {childSessionId ? (
           <div>
             <Link
-              href={`/sessions/${childSessionId}/transcript`}
+              href={`/sessions/${childSessionId}/trace`}
               className="text-primary underline-offset-4 hover:underline"
             >
               View child session

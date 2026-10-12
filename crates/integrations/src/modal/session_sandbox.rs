@@ -26,10 +26,11 @@ use std::time::Duration;
 use base64::Engine as _;
 use everruns_contracts::runtime::exec_tool_result::ExecToolResultPayload;
 use everruns_contracts::session_sandbox::{
-    SessionSandboxConfig, SessionSandboxContext, SessionSandboxExecRequest,
-    SessionSandboxExecResponse, SessionSandboxInstance, SessionSandboxLease,
-    SessionSandboxProvider, SessionSandboxReadFileResponse, SessionSandboxState,
-    SessionSandboxStatus, SessionSandboxStatusResponse, SessionSandboxWriteFileResponse,
+    OwnedSandbox, SandboxAdminError, SessionSandboxConfig, SessionSandboxContext,
+    SessionSandboxExecRequest, SessionSandboxExecResponse, SessionSandboxInstance,
+    SessionSandboxLease, SessionSandboxProvider, SessionSandboxReadFileResponse,
+    SessionSandboxState, SessionSandboxStatus, SessionSandboxStatusResponse,
+    SessionSandboxWriteFileResponse,
 };
 use everruns_contracts::tools::ToolExecutionResult;
 use serde::{Deserialize, Serialize};
@@ -208,6 +209,13 @@ fn is_not_found(err: &str) -> bool {
     err.contains("not found")
 }
 
+/// Session-free client for the orphan scan, from the raw connection string.
+fn admin_client(token: &str) -> Result<ModalClient, SandboxAdminError> {
+    let credentials = ModalCredentials::parse(token)
+        .map_err(|e| SandboxAdminError::Provider(format!("Invalid Modal token pair: {e}")))?;
+    ModalClient::new(credentials).map_err(SandboxAdminError::Provider)
+}
+
 async fn refresh_lease(
     context: &dyn SessionSandboxContext,
     config: &SessionSandboxConfig,
@@ -272,13 +280,12 @@ async fn boot(
 
     let (egress_secret_id, header_replacements) =
         options.egress.prepare(client, &app_id, context).await?;
-    let mut tags: Vec<(String, String)> = context
-        .resource_labels()
+    let tags: Vec<(String, String)> = context
+        .managed_resource_labels()
         .await
         .into_iter()
         .filter_map(|(key, value)| value.as_str().map(|v| (key, v.to_string())))
         .collect();
-    tags.push(("everruns.managed".to_string(), "true".to_string()));
     let params = CreateSandboxParams {
         image_id,
         runtime: Some(options.runtime.clone()),
@@ -376,6 +383,22 @@ fn exit_code_hint(exit_code: i32) -> Option<&'static str> {
 impl SessionSandboxProvider for ModalSessionSandboxProvider {
     fn id(&self) -> &str {
         MODAL_PROVIDER
+    }
+
+    async fn list_owned(
+        &self,
+        token: &str,
+        labels: &std::collections::BTreeMap<String, String>,
+    ) -> Result<Vec<OwnedSandbox>, SandboxAdminError> {
+        super::owned::list_owned(&admin_client(token)?, labels).await
+    }
+
+    async fn stop_by_id(&self, token: &str, external_id: &str) -> Result<(), SandboxAdminError> {
+        super::owned::terminate(&admin_client(token)?, external_id).await
+    }
+
+    async fn delete_by_id(&self, token: &str, external_id: &str) -> Result<(), SandboxAdminError> {
+        super::owned::terminate(&admin_client(token)?, external_id).await
     }
 
     async fn create(

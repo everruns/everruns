@@ -61,6 +61,8 @@ mod request_controls;
 mod stream_state;
 mod transcript;
 mod truncation_gate;
+mod types;
+pub use types::{NativeExecutionCounts, ReasonInput, ReasonResult};
 
 use compaction::{
     ProactiveCompactionContext, ReactiveCompactionContext, apply_proactive_compaction,
@@ -81,111 +83,6 @@ use transcript::repair_dangling_tool_calls;
 
 fn unix_now_secs() -> u64 {
     everruns_contracts::rt::unix_now_secs()
-}
-
-/// Input for ReasonAtom
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ReasonInput {
-    /// Atom execution context
-    pub context: ExecutionContext,
-    /// Harness ID for loading base configuration
-    pub harness_id: HarnessId,
-    /// Agent ID for loading configuration (optional)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub agent_id: Option<AgentId>,
-    /// Organization ID for multi-tenancy tracking
-    #[serde(default)]
-    pub org_id: i64,
-    /// MCP tool definitions from agent's MCP capabilities (pre-resolved)
-    /// These are passed from the control-plane since MCP capabilities
-    /// are not in the CapabilityRegistry.
-    #[serde(default)]
-    pub mcp_tool_definitions: Vec<ToolDefinition>,
-    /// Previous LLM response ID for stateful continuation.
-    /// Enables server-side context caching across reason iterations.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub previous_response_id: Option<String>,
-    /// Current iteration number within this turn (1-based).
-    /// Used for output.message.started events so UI can show progress.
-    #[serde(default = "default_iteration")]
-    pub iteration: u32,
-}
-
-fn default_iteration() -> u32 {
-    1
-}
-
-/// Internal continuations accounted as part of one scheduled Reason activity.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NativeExecutionCounts {
-    pub llm_calls: u32,
-    pub tool_calls: u32,
-}
-
-/// Result of the ReasonAtom
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ReasonResult {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub native_counts: Option<NativeExecutionCounts>,
-    /// Whether the LLM call succeeded
-    pub success: bool,
-    /// Text response from the model
-    pub text: String,
-    /// Tool calls requested by the model
-    #[serde(default)]
-    pub tool_calls: Vec<ToolCall>,
-    /// Whether tool execution is needed
-    pub has_tool_calls: bool,
-    /// Tool definitions from applied capabilities (for tool execution)
-    #[serde(default)]
-    pub tool_definitions: Vec<ToolDefinition>,
-    /// Maximum iterations configured for the agent
-    #[serde(default = "default_max_iterations")]
-    pub max_iterations: usize,
-    /// Error message if the call failed
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-    /// Disclosed user-facing decision of the failure, already filtered
-    /// through the resolved error-disclosure mode. Hosts must prefer this over
-    /// re-classifying `error`/`text` strings so disclosure stays consistent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub user_facing_error: Option<UserFacingError>,
-    /// Error-disclosure mode that was applied to `user_facing_error`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub error_disclosure: Option<ErrorDisclosure>,
-    /// Token usage from the LLM call
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub usage: Option<TokenUsage>,
-    /// Assistant message emitted by `output.message.completed` for this generation.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub output_message_id: Option<MessageId>,
-    /// Streaming latency for this LLM call, when available.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub time_to_first_token_ms: Option<u64>,
-    /// LLM provider's response ID for chaining with `previous_response_id`
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<String>,
-    /// Raw provider finish reason for this generation.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub finish_reason: Option<String>,
-    /// Resolved locale used for this turn's prompt and backend-authored strings.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub locale: Option<String>,
-    /// Merged network access list for URL filtering in tools.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub network_access: Option<crate::engine::network_access::NetworkAccessList>,
-    /// Request-level parallel tool calling preference (EVE-598), carried from
-    /// the resolved agent config into `ActInput` so the act scheduler can honor
-    /// `Some(false)` (force serialize). `None` preserves the default schedule.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub parallel_tool_calls: Option<bool>,
-    /// A remote tool loop (OpenAI Agents API) paused on a tool call; the turn parks (EVE-1124).
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub waiting_for_tool_results: bool,
-    /// The generation lost tool calls to truncation and the output-truncation
-    /// gate retries: the turn runs another reason step even without calls.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub truncation_retry: bool,
 }
 
 fn default_max_iterations() -> usize {
@@ -242,6 +139,8 @@ pub struct ReasonAtom {
     /// calibrated number rather than text to parse. When absent, those checks
     /// fail open exactly like the utility-model-backed ones.
     decisions: Option<Arc<dyn crate::engine::DecisionsService>>,
+    /// Optional scoped MCP invoker for `mcp` checks on the output seam (EVE-572).
+    mcp_invoker: Option<Arc<dyn crate::engine::McpToolInvoker>>,
     /// Optional session schedule store. Used by the `usage_limit_auto_continue`
     /// capability to schedule a one-shot continuation after a provider usage
     /// limit resets. When absent, the capability degrades to a no-op (no
@@ -286,6 +185,7 @@ impl ReasonAtom {
             reasoning_effort_handle: None,
             utility_llm_service: None,
             decisions: None,
+            mcp_invoker: None,
             schedule_store: None,
             compaction_checkpoint_store: None,
             background_call: Default::default(),
@@ -310,18 +210,8 @@ impl ReasonAtom {
         self
     }
 
-    /// Set the image resolver for resolving image_file content parts
-    ///
-    /// When set, image_file references in messages will be resolved to actual
-    /// image data before being sent to the LLM. This is required for multimodal
-    /// conversations that include image attachments.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let resolver = Arc::new(GrpcImageResolver::new(client));
-    /// let atom = ReasonAtom::new(/* ... */).with_image_resolver(resolver);
-    /// ```
+    /// Set the image resolver: image_file references are resolved to image
+    /// data before the LLM call (required for multimodal attachments).
     pub fn with_image_resolver(mut self, resolver: Arc<dyn ImageResolver>) -> Self {
         self.image_resolver = Some(resolver);
         self
@@ -354,11 +244,9 @@ impl ReasonAtom {
         self
     }
 
-    /// Set the durable tool result store for transcript repair (EVE-533).
-    ///
-    /// When provided, transcript repair consults this store to replay settled tool
-    /// results or synthesize appropriate interrupted placeholders rather than always
-    /// emitting a generic "cancelled" message.
+    /// Set the durable tool result store for transcript repair (EVE-533): repair
+    /// replays settled results or synthesizes interrupted placeholders from it
+    /// rather than always emitting a generic "cancelled" message.
     pub fn with_durable_tool_result_store(
         mut self,
         store: Arc<dyn DurableToolResultStore>,
@@ -401,6 +289,12 @@ impl ReasonAtom {
     /// answers. When unset, those checks fail open.
     pub fn with_decisions(mut self, service: Arc<dyn crate::engine::DecisionsService>) -> Self {
         self.decisions = Some(service);
+        self
+    }
+
+    /// Set the scoped MCP invoker used by output-stage `mcp` guardrail checks.
+    pub fn with_mcp_invoker(mut self, invoker: Arc<dyn crate::engine::McpToolInvoker>) -> Self {
+        self.mcp_invoker = Some(invoker);
         self
     }
 }
@@ -1076,10 +970,10 @@ impl ReasonAtom {
         if let Some(model_id) = &resolved_model_id {
             llm_config_builder = llm_config_builder.with_metadata("model_id", model_id.to_string());
         }
-
         let mut llm_config = llm_config_builder
             .previous_response_id(previous_response_id.clone())
             .volatile_suffix_len(volatile_suffix_len)
+            .capture_request(true) // stored on llm.generation (TM-LLM-039)
             .build();
         llm_config.background_call = self.background_call.clone();
         if let Some(replay) = &reasoning_replay {
@@ -1129,6 +1023,12 @@ impl ReasonAtom {
         // 13. Emit output.message.started event BEFORE starting LLM call
         // This allows UI to show a thinking indicator immediately
         let streaming_event_context = EventContext::from_execution_context(context);
+        // An agent that talks explicitly writes working notes, never replies:
+        // its assistant text is commentary from the first streamed byte, and
+        // what people see arrives as `conversation.message` from send_message.
+        let explicit_communication = runtime_agent.communication.is_explicit();
+        let notes_phase =
+            explicit_communication.then_some(everruns_contracts::ExecutionPhase::Commentary);
 
         // Arm output guardrails for this stream. Each guardrail sees the
         // assembled system prompt and its own per-capability config (already
@@ -1174,8 +1074,9 @@ impl ReasonAtom {
                         model: Some(runtime_agent.model.clone()),
                         iteration: Some(iteration),
                         // Emitted before the LLM call — phase is not yet known, so the
-                        // streamed hint starts `None` (treat as assistant text).
-                        phase: None,
+                        // streamed hint starts `None` (treat as assistant text),
+                        // except for explicit agents, whose text is always notes.
+                        phase: notes_phase,
                     },
                 ))
                 .await
@@ -1268,8 +1169,9 @@ impl ReasonAtom {
             .await?;
         }
 
-        // 14. Process stream with batched output.message.delta emissions
-        // Batch deltas every 100ms to reduce event volume while providing real-time feedback
+        // 14. Process stream, batching output.message.delta every 100ms. The
+        // host's execution slot is free while we wait on the model (model_wait).
+        let model_wait = super::model_wait::begin();
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
         let retry_config = self.provider_retry_config.clone();
         let has_provider_executed_tools =
@@ -1280,7 +1182,7 @@ impl ReasonAtom {
         // classified — treat as assistant text") and is refined monotonically
         // once a provider reveals a native phase mid-stream. Declared outside the
         // retry loop so it is available to the post-loop guarded delta emission.
-        let mut streamed_phase: Option<everruns_contracts::ExecutionPhase> = None;
+        let mut streamed_phase: Option<everruns_contracts::ExecutionPhase> = notes_phase;
         let mut native_calls = std::collections::BTreeMap::new();
         let mut compaction_started_at: Option<Instant> = None;
         let (
@@ -1458,17 +1360,15 @@ impl ReasonAtom {
                 ));
             }
             let mut text = String::new();
-            // Reasoning artifacts in emission order. One entry per provider
-            // block, each keeping its own signature/id, so interleaved thinking
-            // and per-call thought signatures survive replay.
+            // Reasoning artifacts in emission order, one per provider block with its own
+            // signature/id, so interleaved thinking and thought signatures survive replay.
             let mut reasoning: Vec<ReasoningContentPart> = Vec::new();
             // Live-render buffer only; the durable text lives on the artifacts.
             let mut thinking = String::new();
             let mut tool_calls = Vec::new();
             let mut termination = StreamTermination::Exhausted;
             let mut replay_state = StreamReplayState::for_request(has_provider_executed_tools);
-            let mut pending_delta = String::new();
-            let mut pending_thinking_delta = String::new();
+            let (mut pending_delta, mut pending_thinking_delta) = (String::new(), String::new());
             let mut last_delta_emit: Option<Instant> = None;
             let mut last_thinking_delta_emit: Option<Instant> = None;
             let mut time_to_first_token_ms: Option<u64> = None;
@@ -1785,10 +1685,13 @@ impl ReasonAtom {
                         // count as stream output. The completed message's phase stays
                         // authoritative, and the hint is deliberately not derived
                         // from later tool-call presence (EVE-448 anti-pattern).
-                        streamed_phase = everruns_contracts::ExecutionPhase::refine_streamed_hint(
-                            streamed_phase,
-                            phase,
-                        );
+                        if !explicit_communication {
+                            streamed_phase =
+                                everruns_contracts::ExecutionPhase::refine_streamed_hint(
+                                    streamed_phase,
+                                    phase,
+                                );
+                        }
                     }
                     LlmStreamEvent::ProviderCompactionStarted => {
                         compaction_lifecycle.start(&mut compaction_started_at).await;
@@ -1961,7 +1864,8 @@ impl ReasonAtom {
                             err.to_string(),
                             Some(llm_duration_ms),
                             time_to_first_token_ms,
-                        );
+                        )
+                        .with_provider_id(Some(model_with_provider.provider.to_string()));
                         let _ = self
                             .event_emitter
                             .emit(EventRequest::new(
@@ -1975,11 +1879,8 @@ impl ReasonAtom {
                         }
                         return Err(AgentLoopError::llm_kind(err.kind(), err.to_string()));
                     }
-                    // `LlmStreamEvent` is `#[non_exhaustive]`, so a driver may
-                    // emit a kind this build does not know. Ignoring it keeps
-                    // the turn streaming rather than aborting; unreachable
-                    // in-workspace, where every crate shares one provider
-                    // version.
+                    // `LlmStreamEvent` is `#[non_exhaustive]`: ignore kinds this build does
+                    // not know so the turn keeps streaming (unreachable in-workspace).
                     _ => {}
                 }
                 // Per-event heartbeat after processing the event, so accumulated_len
@@ -2015,6 +1916,7 @@ impl ReasonAtom {
                 tripped,
             );
         };
+        drop(model_wait);
         let (mut text, mut thinking, mut reasoning, mut tool_calls) =
             (text, thinking, reasoning, tool_calls);
         compaction_lifecycle.record_observed(&mut llm_config, compaction_started_at);
@@ -2067,6 +1969,7 @@ impl ReasonAtom {
                     message_text: &guarded_output,
                     utility_llm_service: self.utility_llm_service.as_ref(),
                     decisions: self.decisions.as_ref(),
+                    mcp_invoker: self.mcp_invoker.as_ref(),
                 };
                 tripped = evaluate_post_generation_guardrails(&post_output_providers, &ctx).await;
             }
@@ -2100,6 +2003,7 @@ impl ReasonAtom {
                 message_text: &guarded_output,
                 utility_llm_service: self.utility_llm_service.as_ref(),
                 decisions: self.decisions.as_ref(),
+                mcp_invoker: self.mcp_invoker.as_ref(),
             };
             tripped = evaluate_post_generation_guardrails(&post_output_providers, &ctx).await;
         }
@@ -2282,6 +2186,7 @@ impl ReasonAtom {
                 generation_outcome::retry_info(meta),
             ))
             .with_response_model(served)
+            .with_provider_id(Some(model_with_provider.provider.to_string()))
             .with_truncation_gate(truncation.label());
         if let Some(info) = compaction_info {
             generation_data = generation_outcome::with_compaction(generation_data, info);
@@ -2382,6 +2287,10 @@ impl ReasonAtom {
             .and_then(|meta| meta.phase.as_deref())
             .and_then(everruns_contracts::ExecutionPhase::from_provider_str);
         let (phase, phase_source) = match provider_phase {
+            _ if explicit_communication => (
+                everruns_contracts::ExecutionPhase::Commentary,
+                everruns_contracts::PhaseSource::Communication,
+            ),
             Some(phase) => (phase, everruns_contracts::PhaseSource::Provider),
             None => (
                 everruns_contracts::ExecutionPhase::from_has_tool_calls(has_tool_calls),
@@ -2434,6 +2343,7 @@ impl ReasonAtom {
             native_counts: None,
             success: true,
             text,
+            commentary: explicit_communication,
             tool_calls,
             has_tool_calls,
             tool_definitions: runtime_agent.tools.clone(),

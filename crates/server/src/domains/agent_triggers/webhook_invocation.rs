@@ -7,10 +7,10 @@ use super::commands::{WebhookCompatibilityContext, parse_agent_id};
 use super::events;
 use super::queries as q;
 use crate::domains::agent_channels::invocation::render_message_template;
+use crate::domains::agent_triggers::record::AgentTriggerType;
 use crate::domains::common::CommandError;
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
-use crate::records::AgentTriggerType;
 use crate::storage::StorageBackend;
 use chrono::Utc;
 use serde_json::{Value, json};
@@ -135,7 +135,7 @@ pub async fn invoke_webhook_agent_trigger(
             message_template: &config.message,
             session_mode: config.session_mode,
             filter: config.filter.as_ref(),
-            session_source: crate::records::SessionSource::Webhook,
+            session_source: crate::domains::sessions::record::SessionSource::Webhook,
             webhook_compat: webhook_context.as_ref(),
             script: config.script.as_ref(),
         },

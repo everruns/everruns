@@ -1,12 +1,12 @@
 ---
 title: TypeSafe
-description: "Typed decision from TypeSafe's System One model: calibrated probabilities, single-choice routing, and graded scores. Uses a configured TypeSafe, OpenRouter, or OpenAI account."
+description: "Typed decision from TypeSafe's System One model: calibrated probabilities, single-choice routing, and graded scores. Uses a configured TypeSafe, OpenRouter, OpenAI, or Microsoft Foundry account."
 appliesTo: [framework, platform]
 ---
 
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="52.0" height="52.0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="float: right; margin-left: 16px;"><path d="M12 3v18M7 21h10M3 8l4-3 4 3M3 8a4 4 0 0 0 8 0M13 8l4-3 4 3M13 8a4 4 0 0 0 8 0M12 5l5-2M12 5 7 3"/></svg>
 
-> **Status:** Experimental, behind the `typesafe` feature flag at the `prod` rollout grade: available to every organisation. `FEATURE_TYPESAFE` can override the grade.
+> **Status:** Experimental. Available to every organisation; adding the capability and a TypeSafe connection is the opt-in.
 
 Everruns integrates with [TypeSafe](https://typesafe.ai) so agents can ask for a
 **judgment** rather than an opinion. TypeSafe's System One model answers typed
@@ -38,6 +38,17 @@ same calibrated questions on GPT-6 Luna. In **Models**, enable the **GPT-6 Luna 
 under your OpenAI provider (model ID `gpt-6-luna-decisions`, sent to OpenAI as `gpt-6-luna`).
 It sits next to the `gpt-6-luna` chat model and uses the same saved OpenAI key. OpenAI bills
 input tokens only, at $0.10 per million.
+
+## Use an existing Microsoft Foundry account
+
+[Microsoft-Decision-1](https://ai.azure.com/catalog/models/microsoft-decision-1) answers the
+same questions on Microsoft Foundry. Deploy it in the Foundry portal, then, in **Models**, add a
+**Decisions** model under your Microsoft MAI provider whose model ID is the deployment name.
+Foundry routes calls by deployment, so a deployment named `Decision-1` is model ID `Decision-1`.
+The names `Microsoft-Decision-1` and `Decision-1` pick the **Microsoft Decision 1** profile on
+their own; another name needs that profile chosen by hand. The provider's saved Foundry API key
+and resource endpoint serve both chat and decisions. Microsoft bills input tokens only, at
+$0.042 per million, and a request (content plus questions) fits in 32,768 tokens.
 
 Set the organization decision default in Models, or select an exact model in the **Jev Decisions**
 capability settings. The tool uses that model's account. A disabled model or missing credential

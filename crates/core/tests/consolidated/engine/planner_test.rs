@@ -49,6 +49,7 @@ fn reason_result() -> ReasonResult {
         native_counts: None,
         success: true,
         text: String::new(),
+        commentary: false,
         tool_calls: vec![],
         has_tool_calls: false,
         tool_definitions: vec![],

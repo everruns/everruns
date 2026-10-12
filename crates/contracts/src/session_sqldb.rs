@@ -115,8 +115,8 @@ impl SessionSqlDbError {
 /// Async trait for session-scoped SQL database operations.
 ///
 /// Implementations:
-/// - InMemorySqlDbBackend (DEV_MODE) in session-sqldb crate
-/// - Future: PostgreSQL VFS backend
+/// - `PostgresSqlDbStore` (server): in-memory cache persisted as page diffs
+/// - `InMemorySqlDbStore` (server): unpersisted, for tests and embedded uses
 #[async_trait]
 pub trait SessionSqlDbStore: Send + Sync {
     /// Create a named database in the session.

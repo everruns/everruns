@@ -2,10 +2,19 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronDown, Cpu, Globe, PlugZap, ShieldAlert, TriangleAlert } from "lucide-react";
+import {
+  ChevronDown,
+  Cpu,
+  Globe,
+  ListChecks,
+  PlugZap,
+  ShieldAlert,
+  TriangleAlert,
+} from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useHealthIssueAction } from "@/hooks/use-health-issues";
 import { usePublishAgentChannel } from "@/hooks/use-agent-channels";
+import { templateSetupPath } from "@/lib/agent-template-setup";
 import type { AttentionItem, AttentionKind } from "@/lib/agents-home";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +23,7 @@ const KIND_ICON: Record<AttentionKind, typeof Cpu> = {
   permission: ShieldAlert,
   connection: PlugZap,
   "public-access": Globe,
+  setup: ListChecks,
 };
 
 /**
@@ -150,6 +160,17 @@ function AttentionActions({ item }: { item: AttentionItem }) {
           )}
           <Link href={channelHref} className={linkClass}>
             Fix channel
+          </Link>
+        </div>
+      );
+    case "setup":
+      return (
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Link
+            href={templateSetupPath(item.agentId, item.exampleName ?? "")}
+            className={linkClass}
+          >
+            Finish setup
           </Link>
         </div>
       );

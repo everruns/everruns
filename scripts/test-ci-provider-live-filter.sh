@@ -138,7 +138,7 @@ for probe in [
 
 for probe in [
     "crates/contracts/src/model_profile_data/profiles/gpt6.rs",
-    "crates/server/src/seed/models.rs",
+    "crates/server/src/setup/seed/models.rs",
     "crates/server/src/platform.rs",
 ]:
     assert any(matches(pattern, probe) for pattern in patterns), probe

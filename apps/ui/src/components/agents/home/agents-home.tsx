@@ -1,6 +1,6 @@
 "use client";
 
-// Agents home (flag `agents_home`): the Agents page as the place where a team
+// Agents home: the Agents page as the place where a team
 // runs its agents rather than a registry of definitions. It answers, for every
 // agent, what it is doing now, how it is reached, and how the last day went,
 // and it carries the org's channels in a second view that replaces the
@@ -13,7 +13,7 @@ import { ArrowRight, Plus, Radio, Upload } from "lucide-react";
 import { AgentImportDialog } from "@/components/agents/agent-import-dialog";
 import { ExampleCard } from "@/components/agents";
 import { NewAgentLink } from "@/components/agents/new-agent-link";
-import { AgentsIcon } from "@/components/icons/agents-icon";
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import {
@@ -42,6 +42,8 @@ import {
   attentionItems,
   channelShortName,
   channelState,
+  fastestFirstReply,
+  formatReplyTime,
   matchesAgentTab,
   sortAgents,
   sortChannels,
@@ -51,7 +53,7 @@ import {
 } from "@/lib/agents-home";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import { formatCompactNumber, pluralize } from "@/lib/formatting";
-import type { AgentActivity, ChannelActivity } from "@/lib/api/types";
+import type { AgentActivity, AgentActivityTotals, ChannelActivity } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { AgentRow } from "./agent-row";
 import { ChannelRow } from "./channel-row";
@@ -71,8 +73,11 @@ export function AgentsHome() {
   const { can } = usePolicies("agents");
   const canManage = can("agent.manage");
 
-  const { data: agents, isLoading: agentsLoading } = useAgents({ includeArchived: true });
+  const { data: agents, isLoading: agentsLoading } = useAgents({
+    includeArchived: true,
+  });
   const { data: activity } = useAgentActivity();
+  const { data: examples } = useAgentExamples();
   const { exposures, isLoading: exposuresLoading } = useOrgExposures();
   const { data: healthIssues } = useHealthIssues();
   const { data: models } = useModels();
@@ -117,8 +122,15 @@ export function AgentsHome() {
         exposures: channels,
         healthIssues: healthIssues?.data ?? [],
         models: new Map((models ?? []).map((model) => [model.id, model])),
+        guidedExamples: new Map(
+          (examples ?? [])
+            .filter((example) => example.setup)
+            .map((example) => [example.name, example]),
+        ),
+        // Without activity there is no trigger list, so setup is not judged.
+        activity: activity ? activityById : undefined,
       }),
-    [agents, channels, healthIssues, models],
+    [agents, channels, healthIssues, models, examples, activity, activityById],
   );
   const attentionByAgent = useMemo(() => {
     const map = new Map<string, AttentionItem[]>();
@@ -210,7 +222,7 @@ export function AgentsHome() {
       <PageBreadcrumb items={[{ label: "Agents" }]} />
 
       <PageMasthead
-        icon={<AgentsIcon />}
+        icon={<AgentIcon />}
         title="Agents"
         description={`Agents that work for ${orgName}: what each one is doing, how it is reached, and what is misconfigured.`}
         meta={
@@ -279,7 +291,7 @@ export function AgentsHome() {
               <ViewButton
                 active={view === "agents"}
                 onClick={() => setView("agents")}
-                icon={<AgentsIcon className="size-4" />}
+                icon={<AgentIcon className="size-4" />}
                 label="Agents"
               />
               <ViewButton
@@ -302,10 +314,22 @@ export function AgentsHome() {
                 onValueChange={(value) => setAgentTab(value as AgentTab)}
                 items={[
                   { value: "all", label: "All", count: agentCounts.all },
-                  { value: "running", label: "Running", count: agentCounts.running },
-                  { value: "attention", label: "Needs attention", count: agentCounts.attention },
+                  {
+                    value: "running",
+                    label: "Running",
+                    count: agentCounts.running,
+                  },
+                  {
+                    value: "attention",
+                    label: "Needs attention",
+                    count: agentCounts.attention,
+                  },
                   { value: "idle", label: "Idle", count: agentCounts.idle },
-                  { value: "archived", label: "Archived", count: agentCounts.archived },
+                  {
+                    value: "archived",
+                    label: "Archived",
+                    count: agentCounts.archived,
+                  },
                 ]}
               />
             ) : (
@@ -315,9 +339,21 @@ export function AgentsHome() {
                 items={[
                   { value: "all", label: "All", count: channelCounts.all },
                   { value: "live", label: "Live", count: channelCounts.live },
-                  { value: "draft", label: "Draft", count: channelCounts.draft },
-                  { value: "paused", label: "Paused", count: channelCounts.paused },
-                  { value: "public", label: "Public access", count: channelCounts.public },
+                  {
+                    value: "draft",
+                    label: "Draft",
+                    count: channelCounts.draft,
+                  },
+                  {
+                    value: "paused",
+                    label: "Paused",
+                    count: channelCounts.paused,
+                  },
+                  {
+                    value: "public",
+                    label: "Public access",
+                    count: channelCounts.public,
+                  },
                 ]}
               />
             )}
@@ -327,7 +363,7 @@ export function AgentsHome() {
             agentsLoading ? (
               <p className="text-sm text-muted-foreground">Loading agents…</p>
             ) : visibleAgents.length === 0 ? (
-              <EmptyState icon={<AgentsIcon />} title="No agents match your filters." />
+              <EmptyState icon={<AgentIcon />} title="No agents match your filters." />
             ) : (
               <ul className="divide-y border bg-card">
                 {visibleAgents.map((agent) => (
@@ -345,7 +381,7 @@ export function AgentsHome() {
               <ChannelStats
                 channels={channels}
                 channelActivity={channelActivityById}
-                channelSessions={totals?.channel_sessions}
+                totals={totals}
               />
               {exposuresLoading ? (
                 <p className="text-sm text-muted-foreground">Loading channels…</p>
@@ -419,15 +455,18 @@ function ViewButton({
 function ChannelStats({
   channels,
   channelActivity,
-  channelSessions,
+  totals,
 }: {
   channels: ReturnType<typeof useOrgExposures>["exposures"];
   channelActivity: Map<string, ChannelActivity>;
-  channelSessions: number | undefined;
+  totals: AgentActivityTotals | undefined;
 }) {
   const live = channels.filter((exposure) => channelState(exposure) === "live");
   const busiest = channels
-    .map((exposure) => ({ exposure, sessions: channelActivity.get(exposure.channel.id)?.sessions }))
+    .map((exposure) => ({
+      exposure,
+      sessions: channelActivity.get(exposure.channel.id)?.sessions,
+    }))
     .filter((entry): entry is { exposure: (typeof channels)[number]; sessions: number } =>
       Boolean(entry.sessions),
     )
@@ -435,19 +474,19 @@ function ChannelStats({
   const silent = live.filter(
     (exposure) => (channelActivity.get(exposure.channel.id)?.sessions ?? 0) <= 1,
   ).length;
-  const publicLive = channels.filter((exposure) => exposure.publiclyReachable).length;
+  const fastest = fastestFirstReply(live, channelActivity);
 
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
       <StatCard
         label="Sessions via channels"
-        value={channelSessions === undefined ? "–" : formatCompactNumber(channelSessions)}
+        value={totals ? formatCompactNumber(totals.channel_sessions) : "–"}
         hint="Last 7 days"
       />
       <StatCard
-        label="Live channels"
-        value={String(live.length)}
-        hint={`of ${channels.length} ${pluralize(channels.length, "channel")}`}
+        label="People reached"
+        value={totals ? formatCompactNumber(totals.people_reached) : "–"}
+        hint="Distinct signed-in or returning callers, 7 days"
       />
       <StatCard
         label="Busiest channel"
@@ -469,10 +508,15 @@ function ChannelStats({
         }
       />
       <StatCard
-        label="Public access"
-        value={String(publicLive)}
-        hint="Live with no sign-in"
-        className={publicLive > 0 ? "text-destructive" : undefined}
+        label="Fastest first reply"
+        value={fastest ? <span className="text-lg">{formatReplyTime(fastest.ms)}</span> : "–"}
+        hint={
+          fastest
+            ? `Median · ${channelShortName(fastest.exposure.channel.channel_type)}${
+                fastest.exposure.agent ? ` · ${getDisplayName(fastest.exposure.agent)}` : ""
+              }`
+            : "No replies on live channels in 7 days"
+        }
       />
       <StatCard
         label="Live but silent"
@@ -503,7 +547,7 @@ function FreshOrganization() {
   return (
     <div className="flex flex-col gap-6">
       <EmptyState
-        icon={<AgentsIcon />}
+        icon={<AgentIcon />}
         title="No agents yet"
         description="Create an agent for a job your team repeats. Its channels start as drafts and take no traffic until you publish them."
         action={

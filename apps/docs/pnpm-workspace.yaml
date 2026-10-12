@@ -7,7 +7,9 @@ overrides:
   lodash: 4.17.23
   nanoid: 3.3.18
   postcss: 8.5.23
-  smol-toml: 1.8.0
+  smol-toml: 1.9.0
+  source-map-js: 1.2.2
+  postcss-selector-parser: 7.1.6
   yaml: 2.8.4
 onlyBuiltDependencies:
   - esbuild
@@ -32,6 +34,10 @@ minimumReleaseAgeStrict: true
 # the advisory. 3.3.18 is the actual fix. Exact-pinned via overrides.
 # smol-toml 1.8.0 (GHSA-7w5x-hrqm-74c2 — DoS via malformed TOML in every release
 # through 1.7.0, reached via @astrojs/markdown-satteri > @astrojs/internal-helpers)
-# unifies the tree because sibling copies already resolve to 1.8.0.
+# unifies the tree because sibling copies already resolve to 1.8.0. 1.9.0
+# supersedes it for GHSA-r4xh-jqrq-34v2, which covers every release through 1.8.0.
+# source-map-js 1.2.2 (GHSA-68fv-2mgg-jv7q) and postcss-selector-parser 7.1.6
+# (GHSA-rj75-hqrm-r3gf) are reached via expressive-code; 6.x has no patched
+# release, so the override lifts postcss-nested's copy onto the 7.x line.
 allowBuilds:
   esbuild: true

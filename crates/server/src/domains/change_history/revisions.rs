@@ -88,7 +88,7 @@ impl Command for ShowEntityRevision {
     type Output = EntityRevision;
 
     fn output_shape() -> &'static str {
-        "{revision, change, snapshot}"
+        "unknown"
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<EntityRevision, CommandError> {
@@ -137,7 +137,7 @@ impl Command for DiffEntityRevisions {
     }
 
     fn output_shape() -> &'static str {
-        "array of {field, from, to}"
+        "array"
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<FieldDiff>, CommandError> {
@@ -188,7 +188,7 @@ impl Command for RestoreEntityRevision {
     type Output = RestoreResult;
 
     fn output_shape() -> &'static str {
-        "{restored_revision, entity, warnings}"
+        "unknown"
     }
 
     fn change() -> super::Change {

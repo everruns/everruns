@@ -14,13 +14,15 @@
 </head>
 <body>
 <h1>Talk to {{agent}}</h1>
-<p>Your microphone goes straight to the speech provider. The agent answers
-every utterance; talk over it to interrupt.</p>
+<p id="intro">The agent answers every utterance; talk over it to interrupt.</p>
 <button id="talk">Start call</button><span id="status"></span>
 <div id="log"></div>
 <script>
-// The whole client: a WebRTC offer with the microphone, POSTed to serve,
-// and the SDP answer applied. The same steps work from any app.
+// The whole client, in two transports. Delegated: a WebRTC offer with the
+// microphone, POSTed to serve, and the SDP answer applied. Cascaded: a
+// WebSocket carrying 16-bit PCM at 24 kHz both ways. The same steps work
+// from any app.
+const mode = "{{mode}}";
 const base = location.pathname.replace(/\/$/, "");
 const button = document.getElementById("talk");
 const status = document.getElementById("status");
@@ -29,8 +31,11 @@ let call = null;
 
 function say(line) { log.textContent += line + "\n"; }
 
-async function start() {
-  status.textContent = "connecting";
+document.getElementById("intro").textContent = mode === "cascaded"
+  ? "Your microphone streams to this app, which transcribes it and speaks the agent's answers. Talk over it to interrupt."
+  : "Your microphone goes straight to the speech provider. The agent answers every utterance; talk over it to interrupt.";
+
+async function startWebRtc() {
   const pc = new RTCPeerConnection();
   const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
   pc.addTrack(mic.getTracks()[0]);
@@ -52,12 +57,10 @@ async function start() {
   await pc.setRemoteDescription({ type: "answer", sdp: body.answer_sdp });
   call = { ...body, pc, mic };
   say(`call ${body.call_id} on session ${body.session_id} (${body.model}, ${body.voice})`);
-  status.textContent = "on the line";
-  button.textContent = "Hang up";
 }
 
-async function stop() {
-  const { pc, mic, call_id, session_id } = call;
+async function stopWebRtc() {
+  const { pc, mic, call_id } = call;
   mic.getTracks().forEach((track) => track.stop());
   pc.close();
   const response = await fetch(`${base}/calls/${call_id}/end`, { method: "POST" });
@@ -65,14 +68,106 @@ async function stop() {
     const summary = await response.json();
     say(`ended: ${summary.utterances} utterances, ${summary.interruptions} interruptions`);
   }
+}
+
+async function startSocket() {
+  const ctx = new AudioContext({ sampleRate: 24000 });
+  const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const url = new URL(base + "/ws", location.href);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  if (call?.session_id) url.searchParams.set("session_id", call.session_id);
+  const ws = new WebSocket(url);
+  ws.binaryType = "arraybuffer";
+  let playAt = 0;
+  const playing = new Set();
+  ws.onmessage = (event) => {
+    if (typeof event.data !== "string") {
+      // Speech: queue it right after what is already scheduled.
+      const pcm = new Int16Array(event.data);
+      const buffer = ctx.createBuffer(1, pcm.length, 24000);
+      const samples = buffer.getChannelData(0);
+      for (let i = 0; i < pcm.length; i++) samples[i] = pcm[i] / 32768;
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      playAt = Math.max(playAt, ctx.currentTime);
+      source.start(playAt);
+      playAt += buffer.duration;
+      playing.add(source);
+      source.onended = () => playing.delete(source);
+      return;
+    }
+    const message = JSON.parse(event.data);
+    if (message.type === "clear") {
+      // The caller talked over the answer: drop what has not played.
+      playing.forEach((source) => source.stop());
+      playing.clear();
+      playAt = 0;
+    } else if (message.type === "call") {
+      if (call) call.session_id = message.session_id;
+      say(`call ${message.call_id} on session ${message.session_id}`);
+    } else if (message.type === "transcript") {
+      say(`${message.role}: ${message.text}`);
+    } else if (message.type === "interrupted") {
+      say("(interrupted)");
+    } else if (message.type === "ended") {
+      say(message.error ? "ended: " + message.error : `ended: ${message.utterances} utterances, ${message.interruptions} interruptions`);
+    }
+  };
+  ws.onclose = () => { if (call?.ws === ws) finish(); };
+  await new Promise((resolve, reject) => {
+    ws.onopen = resolve;
+    ws.onerror = () => reject(new Error("the voice socket did not open"));
+  });
+  // Microphone: float samples at 24 kHz to 16-bit PCM frames.
+  const source = ctx.createMediaStreamSource(mic);
+  const tap = ctx.createScriptProcessor(2048, 1, 1);
+  tap.onaudioprocess = (event) => {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    const input = event.inputBuffer.getChannelData(0);
+    const pcm = new Int16Array(input.length);
+    for (let i = 0; i < input.length; i++) {
+      pcm[i] = Math.max(-1, Math.min(1, input[i])) * 0x7fff;
+    }
+    ws.send(pcm.buffer);
+  };
+  source.connect(tap);
+  tap.connect(ctx.destination);
+  call = { ...call, ws, ctx, mic, tap };
+}
+
+async function stopSocket() {
+  // Closing the socket hangs up; serve answers with an "ended" line first.
+  call.ws.close();
+  finish();
+}
+
+function finish() {
+  const { ctx, mic, tap, session_id } = call;
+  tap?.disconnect();
+  mic?.getTracks().forEach((track) => track.stop());
+  ctx?.close();
   // The next call continues the same session.
   call = { session_id };
   status.textContent = "";
   button.textContent = "Start call";
 }
 
+async function start() {
+  status.textContent = "connecting";
+  await (mode === "cascaded" ? startSocket() : startWebRtc());
+  status.textContent = "on the line";
+  button.textContent = "Hang up";
+}
+
+async function stop() {
+  if (mode === "cascaded") return stopSocket();
+  await stopWebRtc();
+  finish();
+}
+
 button.onclick = () => {
-  const action = call?.pc ? stop : start;
+  const action = call?.pc || call?.ws ? stop : start;
   button.disabled = true;
   action()
     .catch((err) => { status.textContent = ""; say("error: " + err.message); })

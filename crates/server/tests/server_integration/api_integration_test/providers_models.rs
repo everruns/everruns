@@ -3,10 +3,10 @@
 use super::support::*;
 use crate::test_harness;
 use axum::http::StatusCode;
-use everruns_server::records::Agent;
-use everruns_server::records::Model;
-use everruns_server::records::Session;
-use everruns_server::records::provider::Provider;
+use everruns_server::domains::agents::record::Agent;
+use everruns_server::domains::models::record::Model;
+use everruns_server::domains::providers::record::Provider;
+use everruns_server::domains::sessions::record::Session;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
@@ -104,11 +104,12 @@ async fn test_feature_flags_endpoint() {
 
     // Should return a JSON object with boolean flags
     assert!(body.is_object());
-    assert!(body.get("notifications").is_some());
+    assert!(body.get("chat_threads").is_some());
+    assert!(body.get("webmcp").is_none());
     assert!(body.get("mcp_endpoint").is_none());
     assert_eq!(body["machine_payments"], Value::Bool(false));
     // Deployment availability is separate from the default-off org opt-in.
-    assert_eq!(body["notifications"], Value::Bool(true));
+    assert_eq!(body["chat_threads"], Value::Bool(true));
 }
 
 #[tokio::test]
@@ -125,31 +126,31 @@ async fn test_org_feature_flags_opt_in() {
     let flags = settings["flags"].as_array().expect("flags array");
     assert!(flags.iter().all(|flag| flag["name"] != "mcp_endpoint"));
     assert!(flags.iter().all(|flag| flag["label"] != "Platform Chat"));
-    let notifications = flags
+    let chat_threads = flags
         .iter()
-        .find(|flag| flag["name"] == "notifications")
-        .expect("notifications adoption setting");
-    assert_eq!(notifications["grade"], "adoption");
-    assert_eq!(notifications["default_enabled"], false);
-    assert_eq!(notifications["effective"], false);
-    assert_eq!(notifications["can_manage"], true);
+        .find(|flag| flag["name"] == "chat_threads")
+        .expect("chat_threads adoption setting");
+    assert_eq!(chat_threads["grade"], "adoption");
+    assert_eq!(chat_threads["default_enabled"], false);
+    assert_eq!(chat_threads["effective"], false);
+    assert_eq!(chat_threads["can_manage"], true);
 
     let patched: serde_json::Value = server
         .patch(
             &format!("/v1/orgs/{org_id}/feature-flags"),
-            serde_json::json!({ "flags": { "notifications": true } }),
+            serde_json::json!({ "flags": { "chat_threads": true } }),
         )
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(patched["notifications"], true);
+    assert_eq!(patched["chat_threads"], true);
 
     let effective: serde_json::Value = server
         .get(&format!("/v1/orgs/{org_id}/feature-flags"))
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(effective["notifications"], true);
+    assert_eq!(effective["chat_threads"], true);
     assert!(effective.get("mcp_endpoint").is_none());
     assert_eq!(
         effective["machine_payments"],
@@ -159,7 +160,7 @@ async fn test_org_feature_flags_opt_in() {
     server
         .patch(
             &format!("/v1/orgs/{org_id}/feature-flags"),
-            json!({ "flags": { "notifications": false } }),
+            json!({ "flags": { "chat_threads": false } }),
         )
         .await
         .assert_status(StatusCode::OK);
@@ -168,7 +169,7 @@ async fn test_org_feature_flags_opt_in() {
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(disabled["notifications"], false);
+    assert_eq!(disabled["chat_threads"], false);
 
     server
         .patch(
@@ -180,13 +181,14 @@ async fn test_org_feature_flags_opt_in() {
 }
 
 #[tokio::test]
-async fn test_notifications_routes_disabled_by_default() {
+async fn test_notifications_routes_always_mounted() {
     let server = TestServer::new().await;
 
+    // Notifications are not feature-flagged: the inbox exists for every org.
     server
         .get("/v1/notifications")
         .await
-        .assert_status(StatusCode::NOT_FOUND);
+        .assert_status(StatusCode::OK);
 }
 
 // ============================================
@@ -406,7 +408,7 @@ async fn test_events_do_not_publish_reasoning_replay_state() {
 
     server
         .db
-        .create_event(everruns_server::storage::models::CreateEventRow {
+        .create_event(everruns_server::storage::CreateEventRow {
             session_id,
             event_type: "output.message.completed".to_string(),
             ts: chrono::Utc::now(),

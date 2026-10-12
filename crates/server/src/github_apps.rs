@@ -28,13 +28,22 @@ use uuid::Uuid;
 
 use crate::storage::EncryptionService;
 
+/// Connection provider an agent App's installation is stored under.
+pub const GITHUB_PROVIDER: &str = "github";
+/// Connection type of an agent App's installation.
+pub const GITHUB_APP_CONNECTION_TYPE: &str = "github_app";
+
 /// How long a started connect flow stays valid.
 const SETUP_STATE_TTL_SECONDS: i64 = 60 * 60;
 
 /// Permissions every agent App requests. Contents and metadata are read-only;
-/// pull requests and issues are writable so the agent can comment.
+/// pull requests and issues are writable so the agent can comment. Actions and
+/// checks are read-only so CI results can trigger the agent
+/// (knowledge/runtime-resources/proactive-agents.md, D1).
 pub fn default_permissions() -> Value {
     json!({
+        "actions": "read",
+        "checks": "read",
         "contents": "read",
         "metadata": "read",
         "pull_requests": "write",
@@ -43,7 +52,57 @@ pub fn default_permissions() -> Value {
 }
 
 /// Webhook events every agent App subscribes to.
-pub const DEFAULT_EVENTS: &[&str] = &["pull_request", "issue_comment", "issues"];
+pub const DEFAULT_EVENTS: &[&str] = &[
+    "pull_request",
+    "issue_comment",
+    "issues",
+    "workflow_run",
+    "check_suite",
+];
+
+/// `name:level` pairs, sorted and comma-joined, as stored in a GitHub App
+/// connection's `scopes`. `None` when the installation grants nothing.
+pub fn scopes_from_permissions(permissions: &Value) -> Option<String> {
+    permissions
+        .as_object()
+        .map(|permissions| {
+            let mut scopes: Vec<String> = permissions
+                .iter()
+                .map(|(name, level)| format!("{name}:{}", level.as_str().unwrap_or("?")))
+                .collect();
+            scopes.sort();
+            scopes.join(",")
+        })
+        .filter(|scopes| !scopes.is_empty())
+}
+
+/// Permissions an installation lacks compared with what new Apps request, as
+/// `name:level`. An App created before a permission was added keeps its old
+/// set until its owner updates it on GitHub and the installation accepts.
+pub fn missing_permissions(scopes: Option<&str>) -> Vec<String> {
+    let granted: std::collections::HashMap<&str, &str> = scopes
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|scope| scope.trim().split_once(':'))
+        .collect();
+    let rank = |level: &str| match level {
+        "write" | "admin" => 2,
+        "read" => 1,
+        _ => 0,
+    };
+    let mut missing: Vec<String> = default_permissions()
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter_map(|(name, level)| {
+            let wanted = level.as_str().unwrap_or("read");
+            let have = granted.get(name.as_str()).copied().unwrap_or("");
+            (rank(have) < rank(wanted)).then(|| format!("{name}:{wanted}"))
+        })
+        .collect();
+    missing.sort();
+    missing
+}
 
 /// GitHub endpoints. Overridable for GitHub Enterprise and for tests.
 #[derive(Clone, Debug)]
@@ -265,6 +324,10 @@ pub struct ManifestConversion {
 pub struct GitHubAccount {
     pub id: i64,
     pub login: String,
+    /// `User` or `Organization`. Recorded on connections so the agent page
+    /// can tell organizations apart when suggesting where an App lives.
+    #[serde(default, rename = "type")]
+    pub account_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -292,6 +355,29 @@ pub struct Repository {
 pub struct AppCredentials {
     pub app_id: i64,
     pub private_key_pem: String,
+}
+
+/// What an installation token is limited to. Empty fields leave that side
+/// unlimited (everything the installation holds).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TokenScope {
+    /// Repository names (without the owner) under the installation's account.
+    pub repositories: Vec<String>,
+    /// Permission name to level.
+    pub permissions: std::collections::BTreeMap<String, String>,
+}
+
+impl TokenScope {
+    fn body(&self) -> Value {
+        let mut body = json!({});
+        if !self.repositories.is_empty() {
+            body["repositories"] = json!(self.repositories);
+        }
+        if !self.permissions.is_empty() {
+            body["permissions"] = json!(self.permissions);
+        }
+        body
+    }
 }
 
 /// Thin GitHub REST client for App operations.
@@ -377,11 +463,24 @@ impl GitHubAppApi {
         read_json(response, "reading installation").await
     }
 
-    /// Mint a one-hour installation access token.
+    /// Mint a one-hour installation access token with everything the
+    /// installation was granted.
     pub async fn mint_installation_token(
         &self,
         credentials: &AppCredentials,
         installation_id: i64,
+    ) -> Result<String> {
+        self.mint_scoped_installation_token(credentials, installation_id, &TokenScope::default())
+            .await
+    }
+
+    /// Mint a one-hour installation access token limited to `scope`. GitHub
+    /// refuses (422) a scope that asks for more than the installation holds.
+    pub async fn mint_scoped_installation_token(
+        &self,
+        credentials: &AppCredentials,
+        installation_id: i64,
+        scope: &TokenScope,
     ) -> Result<String> {
         #[derive(Deserialize)]
         struct Token {
@@ -394,6 +493,7 @@ impl GitHubAppApi {
                 &format!("/app/installations/{installation_id}/access_tokens"),
             )
             .bearer_auth(jwt)
+            .json(&scope.body())
             .send()
             .await
             .context("GitHub installation token request failed")?;
@@ -455,6 +555,53 @@ impl GitHubAppApi {
     }
 }
 
+/// What connecting and disconnecting an agent App needs: the GitHub client and
+/// the public URLs GitHub sends the App's hooks and the browser to.
+///
+/// Every command context carries one. The defaults come from the environment;
+/// the REST and MCP states replace the URLs with their auth config's, so a
+/// manifest names the same URLs whichever surface built it.
+#[derive(Clone)]
+pub struct GitHubAppContext {
+    pub api: GitHubAppApi,
+    /// Public base URL of this API, as GitHub must call it.
+    pub api_base_url: String,
+    /// Public UI origin; where the browser returns when a flow ends.
+    pub frontend_url: String,
+}
+
+impl GitHubAppContext {
+    /// The process-wide default, so contexts share one HTTP client.
+    pub fn from_env() -> Self {
+        static DEFAULT: std::sync::LazyLock<GitHubAppContext> =
+            std::sync::LazyLock::new(|| GitHubAppContext {
+                api: GitHubAppApi::new(GitHubEndpoints::from_env()),
+                api_base_url: crate::auth::AuthConfig::api_base_url_from_env(),
+                frontend_url: crate::auth::AuthConfig::frontend_url_from_env(),
+            });
+        DEFAULT.clone()
+    }
+
+    /// The same client with the public URLs of one auth config.
+    pub fn with_public_urls(mut self, api_base_url: &str, frontend_url: &str) -> Self {
+        self.api_base_url = api_base_url.to_string();
+        self.frontend_url = frontend_url.to_string();
+        self
+    }
+}
+
+/// Decrypt an App's private key for one GitHub call.
+pub fn app_credentials(
+    encryption: Option<&EncryptionService>,
+    app: &crate::storage::GitHubAppRow,
+) -> Result<AppCredentials> {
+    let encryption = encryption.context("encryption not configured")?;
+    Ok(AppCredentials {
+        app_id: app.app_id,
+        private_key_pem: encryption.decrypt_to_string(&app.private_key_encrypted)?,
+    })
+}
+
 async fn read_json<T: serde::de::DeserializeOwned>(
     response: reqwest::Response,
     action: &str,
@@ -475,6 +622,37 @@ async fn read_json<T: serde::de::DeserializeOwned>(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn missing_permissions_compares_levels_with_new_apps() {
+        let all =
+            "actions:read,checks:read,contents:read,issues:write,metadata:read,pull_requests:write";
+        assert!(missing_permissions(Some(all)).is_empty());
+        // An App created before CI triggers.
+        assert_eq!(
+            missing_permissions(Some(
+                "contents:read,issues:write,metadata:read,pull_requests:write"
+            )),
+            vec!["actions:read", "checks:read"]
+        );
+        // Write covers read; read does not cover write.
+        assert_eq!(
+            missing_permissions(Some(
+                "actions:write,checks:read,contents:write,issues:read,metadata:read,pull_requests:write"
+            )),
+            vec!["issues:write"]
+        );
+        assert_eq!(missing_permissions(None).len(), 6);
+    }
+
+    #[test]
+    fn scopes_are_sorted_name_level_pairs() {
+        assert_eq!(
+            scopes_from_permissions(&json!({"metadata": "read", "actions": "read"})).as_deref(),
+            Some("actions:read,metadata:read")
+        );
+        assert_eq!(scopes_from_permissions(&json!({})), None);
+    }
+
     use super::*;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};

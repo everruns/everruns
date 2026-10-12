@@ -16,6 +16,10 @@ name = "reencrypt-secrets"
 path = "src/bin/reencrypt_secrets.rs"
 
 [[bin]]
+name = "everruns-migrate"
+path = "src/bin/migrate.rs"
+
+[[bin]]
 name = "export-openapi"
 path = "src/bin/export_openapi.rs"
 
@@ -26,7 +30,7 @@ path = "src/bin/export_openapi.rs"
 lua = ["everruns-capabilities/lua"]
 
 [dependencies]
-everruns-integrations = { workspace = true, features = ["typesafe", "bashkit", "web-fetch", "github"] }
+everruns-integrations = { workspace = true, features = ["typesafe", "bashkit", "web-fetch", "web-search", "github", "slack-channel"] }
 
 mimalloc.workspace = true
 axum.workspace = true
@@ -52,6 +56,7 @@ sqlx.workspace = true
 const_format.workspace = true
 sqlx-core.workspace = true
 chrono.workspace = true
+chrono-tz = "0.10"
 dotenvy.workspace = true
 clap.workspace = true
 jsonwebtoken.workspace = true
@@ -103,7 +108,7 @@ everruns-contracts = { workspace = true, default-features = false, features = ["
 # sqlx Postgres encode/decode for TypedId lives on everruns-contracts (EVE-888).
 # The kernel never used sqlx, so the server asks the crate that owns the impls.
 # Backend identity entities (Organization, Principal) — moved out of core in EVE-837.
-everruns-capabilities = { path = "../capabilities", features = ["openapi", "environment-capabilities", "hosted-integration-catalog", "portable-builtins", "a2a", "ag-ui", "container-sandbox"] }
+everruns-capabilities = { path = "../capabilities", features = ["openapi", "environment-capabilities", "hosted-integration-catalog", "portable-builtins", "a2a", "ag-ui", "container-sandbox", "poppy-client"] }
 # Observability exporters are enabled through everruns-host below; core retains
 # neutral event-listener contracts only.
 everruns-cli-contract.workspace = true
@@ -121,10 +126,12 @@ prost-types.workspace = true
 serde_urlencoded = "0.7.1"
 url = "2"
 
-everruns-core = { path = "../core", features = ["agent-package", "ag-ui", "ag-ui-projection", "builtins", "direct-egress", "host", "mcp", "observability", "openai-agents-api", "openapi", "tree-sitter-outlines", "ui-capabilities", "voice"], default-features = false }
+everruns-core = { path = "../core", features = ["agent-package", "ag-ui", "ag-ui-projection", "builtins", "channel-auth", "channels", "direct-egress", "host", "mcp", "observability", "openai-agents-api", "openapi", "tree-sitter-outlines", "ui-capabilities", "voice"], default-features = false }
 everruns = { workspace = true, default-features = false, features = ["utility-llm"] }
 [dev-dependencies]
 everruns-llmsim.workspace = true
+# The OpenAI provider for the gated real-model Poppy test.
+everruns = { workspace = true, default-features = false, features = ["utility-llm", "openai"] }
 a2a.workspace = true
 a2a-client.workspace = true
 reqwest = { workspace = true, default-features = false, features = ["json", "stream", "rustls", "blocking", "http2"] }

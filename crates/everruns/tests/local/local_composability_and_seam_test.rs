@@ -150,7 +150,7 @@ async fn embedder_bus_and_fs_factory_are_used() {
 
     // Seam: the adapter returns the injected stores (not None).
     assert!(
-        runtime.session_task_registry().is_some(),
+        runtime.session_task_registry(local.org_id()).is_some(),
         "injected task registry must be visible via the adapter"
     );
     assert!(
@@ -206,7 +206,9 @@ async fn seam_task_lifecycle_round_trips_through_injected_registry() {
         .await
         .unwrap();
 
-    let registry = runtime.session_task_registry().expect("registry injected");
+    let registry = runtime
+        .session_task_registry(local.org_id())
+        .expect("registry injected");
 
     let task = registry
         .create(CreateSessionTask {

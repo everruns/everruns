@@ -15,7 +15,7 @@ pub use crate::domains::workspaces::types::{
     CreateWorkspaceRequest, ListWorkspacesQuery, UpdateWorkspaceRequest, WorkspaceResponse,
 };
 use crate::domains::workspaces::{WORKSPACE_MANAGE, WORKSPACE_VIEW};
-use crate::storage::models::{CreateWorkspaceRow, UpdateWorkspace};
+use crate::storage::{CreateWorkspaceRow, UpdateWorkspace};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},

@@ -1,10 +1,10 @@
 // Agent-triggers domain types — request shapes for the HTTP/MCP surface.
 //
-// Storage row types are re-exported from `storage::models`. The stored `config`
+// Storage row types are re-exported from `crate::storage`. The stored `config`
 // column is a JSONB blob parsed through its trigger-specific config type; the
 // request DTOs below are the flat shape callers send, which commands normalize.
 
-use crate::records::{AgentTriggerType, TriggerEventFilter};
+use crate::domains::agent_triggers::record::{AgentTriggerType, TriggerEventFilter};
 use chrono::{DateTime, Utc};
 use everruns_contracts::runtime::saved_scripts::ScriptRun;
 use everruns_core::channel::SessionBinding;
@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
 
-pub use crate::storage::models::{AgentTriggerRow, CreateAgentTriggerRow, UpdateAgentTrigger};
+pub use crate::storage::{AgentTriggerRow, CreateAgentTriggerRow, UpdateAgentTrigger};
 
 /// One recent durable execution of an agent schedule trigger.
 #[derive(Debug, Clone, Serialize, ToSchema)]

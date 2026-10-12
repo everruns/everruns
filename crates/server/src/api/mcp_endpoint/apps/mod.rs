@@ -28,11 +28,9 @@ use super::{
     AppState, ResolvedOrg, dispatch_command, form_elicitation, link_builder, mcp_ctx,
     resource_error,
 };
-use crate::channels::slack::approvals::{
-    ApprovalDecision, ApprovalRequest, extract_approval_request,
-};
+use crate::channels::slack::approvals::{ApprovalDecision, ApprovalPrompt, approval_prompt};
 use crate::domains::common::Command;
-use crate::records::SessionStatus;
+use crate::domains::sessions::record::SessionStatus;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::Caller;
 use everruns_core::builtins::ask_user::{AskUserAnswer, AskUserQuestionKind, AskUserStatus};
@@ -381,6 +379,7 @@ pub(super) async fn session_view(
             &[
                 "input.message".to_string(),
                 "output.message.completed".to_string(),
+                "conversation.message".to_string(),
                 "tool.completed".to_string(),
             ],
             &[],
@@ -432,16 +431,20 @@ fn message_text(event_data: &Value) -> Option<String> {
     (!text.trim().is_empty()).then_some(text)
 }
 
-fn transcript_tail(events: &[crate::storage::models::EventRow]) -> Vec<Value> {
+fn transcript_tail(events: &[crate::storage::EventRow]) -> Vec<Value> {
     let mut messages: Vec<Value> = events
         .iter()
         .filter_map(|event| {
-            let role = match event.event_type.as_str() {
-                "input.message" => "user",
-                "output.message.completed" => "agent",
-                _ => return None,
+            // What the agent said, never its commentary: its text in direct
+            // communication, its sent messages in explicit communication.
+            let (role, text) = match event.event_type.as_str() {
+                "input.message" => ("user", message_text(&event.data)?),
+                other => (
+                    "agent",
+                    everruns_core::conversation::said_in_event(other, &event.data)?,
+                ),
             };
-            Some(json!({ "role": role, "text": message_text(&event.data)? }))
+            Some(json!({ "role": role, "text": text }))
         })
         .collect();
     let skip = messages.len().saturating_sub(VIEW_MESSAGE_LIMIT);
@@ -523,7 +526,7 @@ async fn pending_input(
 async fn pending_approval(
     session_id: SessionId,
     state: &AppState,
-) -> Result<Option<ApprovalRequest>, String> {
+) -> Result<Option<ApprovalPrompt>, String> {
     let events = state
         .db
         .list_events(
@@ -540,15 +543,13 @@ async fn pending_approval(
     Ok(latest_unanswered_approval(&events))
 }
 
-fn latest_unanswered_approval(
-    events: &[crate::storage::models::EventRow],
-) -> Option<ApprovalRequest> {
+fn latest_unanswered_approval(events: &[crate::storage::EventRow]) -> Option<ApprovalPrompt> {
     let mut pending = None;
     for event in events {
         match event.event_type.as_str() {
             "input.message" => pending = None,
             "tool.completed" => {
-                if let Some(request) = extract_approval_request(&event.data) {
+                if let Some(request) = approval_prompt(&event.data) {
                     pending = Some(request);
                 }
             }
@@ -727,7 +728,7 @@ async fn decide_approval(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::models::EventRow;
+    use crate::storage::EventRow;
 
     fn event(sequence: i32, event_type: &str, data: Value) -> EventRow {
         EventRow {

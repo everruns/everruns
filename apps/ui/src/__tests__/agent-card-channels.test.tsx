@@ -45,7 +45,9 @@ it("names channels and their states accessibly and links to integrations", () =>
   expect(
     screen.getByRole("link", { name: "Webhook: Draft — not accepting traffic" }),
   ).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Public chat: Paused" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("link", { name: "Public chat: Draft — not accepting traffic" }),
+  ).toBeInTheDocument();
 });
 
 it("does not advertise suspended or archived agents as live", () => {
@@ -87,7 +89,7 @@ it("provides accurate overflow counts for each container width", () => {
           channel("chat", "public_chat"),
           channel("hook", "webhook"),
           channel("a2a", "a2a"),
-          channel("api", "api_endpoint"),
+          channel("api", "api"),
         ],
       }}
     />,

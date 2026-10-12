@@ -3,6 +3,7 @@ import type {
   HostedToolCallData,
   ToolCallSummary,
   ToolCompletedData,
+  ToolNestedCallData,
 } from "@/lib/api/types";
 import { getEventData } from "@/lib/api/types";
 import { formatMessage, getSupportedLocale } from "@/lib/i18n";
@@ -76,6 +77,17 @@ export function hostedToolLabel(data: HostedToolCallData, locale = "en"): string
         : formatMessage(uiLocale, "search_files");
     default:
       return fallbackToolLabel(data.tool_name);
+  }
+}
+
+function nestedCallState(status: string): TimelineToolRow["state"] {
+  switch (status) {
+    case "completed":
+      return "completed";
+    case "needs_approval":
+      return "waiting";
+    default:
+      return "error";
   }
 }
 
@@ -268,6 +280,18 @@ export function buildToolActivityGroups(
       const row = ensureRow(group, hosted.call_id, hostedToolLabel(hosted, locale), state);
       row.label = hostedToolLabel(hosted, locale);
       narratedToolCallIds.add(hosted.call_id);
+      groupedEventIds.add(event.id);
+      continue;
+    }
+
+    // A tool a shell script called through `tools`: a row under the shell call.
+    if (event.type === "tool.nested_call") {
+      const nested = event.data as ToolNestedCallData;
+      const parent = nested.parent_tool_call_id;
+      const key = groupKeyByToolCallId.get(parent) ?? execKey ?? `tool:${parent}`;
+      const group = ensureGroup(key, event);
+      ensureRow(group, nested.call_id, nested.command, nestedCallState(nested.status));
+      narratedToolCallIds.add(nested.call_id);
       groupedEventIds.add(event.id);
       continue;
     }

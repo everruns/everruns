@@ -65,7 +65,6 @@ describe("inline Slack channel configuration", () => {
       channel_type: "slack",
       channel_config: {
         session_strategy: "per_channel",
-        reply_mode: "all_messages",
         team_id: "T1",
         signing_secret_configured: true,
         bot_token_configured: true,

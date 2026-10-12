@@ -191,7 +191,7 @@ async fn parked_a2a_task(
 
     server
         .db
-        .create_event(everruns_server::storage::models::CreateEventRow {
+        .create_event(everruns_server::storage::CreateEventRow {
             session_id: task_id.parse::<SessionId>().unwrap(),
             event_type: "tool.call_requested".to_string(),
             ts: chrono::Utc::now(),
@@ -213,7 +213,7 @@ async fn parked_a2a_task(
         .update_session(
             DEFAULT_ORG_ID,
             task_id.parse::<SessionId>().unwrap(),
-            everruns_server::storage::models::UpdateSession {
+            everruns_server::storage::UpdateSession {
                 status: Some("waiting_for_tool_results".to_string()),
                 ..Default::default()
             },

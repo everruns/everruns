@@ -248,20 +248,31 @@ where
 
 /// OpenAPI operation of one `#[command(http = ..)]` command.
 pub struct CommandOpenApi {
+    /// The command's name, so the set of command-backed routes is known
+    /// (personal access token scopes classify them from the command).
+    name: &'static str,
     add: fn(&mut utoipa::openapi::OpenApi),
 }
 
 inventory::collect!(CommandOpenApi);
 
 impl CommandOpenApi {
-    pub const fn of<P>() -> Self
+    pub const fn of<P>(name: &'static str) -> Self
     where
         P: utoipa::Path + utoipa::__dev::SchemaReferences + for<'t> utoipa::__dev::Tags<'t>,
     {
         Self {
+            name,
             add: add_operation::<P>,
         }
     }
+}
+
+/// Names of every command served by the generic handler (`http = ..`).
+pub fn http_command_names() -> impl Iterator<Item = &'static str> {
+    inventory::iter::<CommandOpenApi>
+        .into_iter()
+        .map(|entry| entry.name)
 }
 
 fn add_operation<P>(openapi: &mut utoipa::openapi::OpenApi)

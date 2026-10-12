@@ -411,9 +411,17 @@ pub fn declared(name: &str) -> Change {
         "suspend_agent_exposures" => on(K::Agent, Suspended, ID),
         "resume_agent_exposures" => on(K::Agent, Resumed, ID),
         "create_agent_credential_binding" => on(K::Agent, Attached, Param("agent_id")),
+        "disconnect_agent_github" => on(K::Agent, Detached, Param("agent_id")),
+        "connect_agent_github" => {
+            Change::Exempt("starts GitHub's install flow; GitHub's callback records the connection")
+        }
         "upsert_agent_check_rule" => on(K::CheckRule, Updated, Param("rule_id")),
         "delete_agent_check_rule" => on(K::CheckRule, Deleted, Param("rule_id")),
-        "analyze_agent" | "preview_agent" | "diff_agent_package" | "validate_agent_package" => {
+        "analyze_agent"
+        | "draft_agent"
+        | "preview_agent"
+        | "diff_agent_package"
+        | "validate_agent_package" => {
             Change::Exempt("advisory: computes a result without changing anything")
         }
         "trigger_agent_health_check" => Change::Exempt("a health-check run, not a change"),
@@ -425,6 +433,10 @@ pub fn declared(name: &str) -> Change {
         "unpublish_agent_channel" => on(K::AgentChannel, Unpublished, ID),
         "delete_agent_channel" => on(K::AgentChannel, Deleted, Param("channel_id")),
         "trigger_agent_channel" => Change::Exempt("a manual fire, not a change"),
+        // Agent keys are recorded on the channel they open; the secret never is.
+        "create_agent_key" => on(K::AgentChannel, Attached, Param("channel_id")),
+        "rotate_agent_key" => on(K::AgentChannel, Updated, Param("channel_id")),
+        "revoke_agent_key" => on(K::AgentChannel, Detached, Param("channel_id")),
 
         "create_agent_trigger" => on(K::AgentTrigger, Created, ID),
         "update_agent_trigger" => on(K::AgentTrigger, Updated, ID),
@@ -488,10 +500,16 @@ pub fn declared(name: &str) -> Change {
         "delete_provider" => on(K::Provider, Deleted, Param("id")),
         "check_provider_credentials" => Change::Exempt("a credential check, not a change"),
         "sync_provider_models" => Change::Exempt("a sync run refreshes the model list"),
+        "review_provider_models" => {
+            Change::Exempt("marks discovered models as seen, not a configuration change")
+        }
 
         "create_model" => on(K::Model, Created, ID),
         "update_model" => on(K::Model, Updated, ID),
         "delete_model" => on(K::Model, Deleted, Param("id")),
+        "set_org_egress_allowlist" | "set_org_egress_allowlist_grant" => {
+            Change::Exempt("an organization setting, recorded in the management audit log")
+        }
         "set_default_decision_model" => {
             Change::Exempt("an organization setting, not a change to one model")
         }
@@ -499,6 +517,12 @@ pub fn declared(name: &str) -> Change {
         "create_mcp_server" => on(K::McpServer, Created, ID),
         "update_mcp_server" => on(K::McpServer, Updated, ID),
         "delete_mcp_server" | "destroy_mcp_server" => on(K::McpServer, Deleted, Param("id")),
+        "check_mcp_server_connection" => Change::Exempt("a reachability check, not a change"),
+        // A tool's risk label is part of the server's configuration.
+        "set_mcp_tool_label" => on(K::McpServer, Updated, Param("id")),
+        "suggest_mcp_tool_labels" => {
+            Change::Exempt("advisory: stores suggestions a person must confirm")
+        }
 
         "install_plugin" => on(K::Plugin, Created, ID),
         "patch_installed_plugin" | "update_plugin" => on(K::Plugin, Updated, ID),
@@ -578,6 +602,9 @@ pub fn declared(name: &str) -> Change {
         "create_message" | "submit_tool_results" => {
             Change::Exempt("conversation traffic, kept in the session's events")
         }
+        "set_message_feedback" => {
+            Change::Exempt("a person's rating of a reply, not a change to the session")
+        }
         "cancel_session_task"
         | "post_session_task_message"
         | "create_task_push_config"
@@ -590,6 +617,40 @@ pub fn declared(name: &str) -> Change {
         | "grep_workspace_files"
         | "search_workspace_files"
         | "stat_workspace_file" => Change::Exempt("session files are the session's working state"),
+        "worker_create_session_schedule" | "worker_cancel_session_schedule" => {
+            Change::Exempt("the agent's own schedules are the session's working state")
+        }
+        "worker_register_session_resource"
+        | "worker_update_session_resource_status"
+        | "worker_deregister_session_resource" => {
+            Change::Exempt("the runtime's resource registry is the session's working state")
+        }
+        "worker_upsert_leased_resource" | "worker_release_leased_resource" => {
+            Change::Exempt("the runtime's leased resources are the session's working state")
+        }
+        "worker_set_session_storage_value"
+        | "worker_take_session_storage_value"
+        | "worker_delete_session_storage_value"
+        | "worker_set_session_secret"
+        | "worker_delete_session_secret" => {
+            Change::Exempt("the runtime's session storage is the session's working state")
+        }
+        // Never `Subject`: a recorded change captures the params, and these
+        // carry credential material (TM-AUTHZ-023).
+        "worker_invalidate_mcp_connection" => {
+            Change::Exempt("drops a grant the remote server rejected; credential state")
+        }
+        "worker_create_session_task"
+        | "worker_update_session_task"
+        | "worker_request_cancel_session_task"
+        | "worker_record_session_task_message" => {
+            Change::Exempt("the runtime's own tasks are the session's working state")
+        }
+        // Never `Subject`: the agent's Poppy traffic to a company, with keys
+        // and tokens the params must not carry into history.
+        "worker_poppy_call" => {
+            Change::Exempt("the agent's own conversation with a company, not configuration")
+        }
         "create_session_database"
         | "delete_session_database"
         | "manage_session_sandbox"
@@ -623,6 +684,9 @@ pub fn transactional(read_only: bool, name: &str, change: Change) -> bool {
         name,
         // Inline model discovery against the provider's API.
         "create_provider" | "update_provider"
+        // OAuth catalog presets: discovery and client registration against the
+        // server, recorded by a task on its own connection after the save.
+        | "create_mcp_server" | "update_mcp_server"
         // Git or URL fetches through egress.
         | "install_plugin" | "update_plugin"
         | "create_plugin_marketplace" | "update_plugin_marketplace"
@@ -632,6 +696,8 @@ pub fn transactional(read_only: bool, name: &str, change: Change) -> bool {
         | "create_agent_trigger" | "update_agent_trigger" | "delete_agent_trigger"
         // Session lifecycle: workflows, sandboxes and starter turns.
         | "create_session" | "fork_session" | "delete_session"
+        // Uninstalls the agent's GitHub App through GitHub's API.
+        | "disconnect_agent_github"
         // Composes channel and trigger creation from a package.
         | "import_agent"
     )

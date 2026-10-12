@@ -2,7 +2,7 @@ use super::*;
 use crate::domains::mcp_servers::user_layer::tests::{Fixture, MESSAGE, custom};
 use crate::domains::mcp_servers::user_layer::{UserMcpTurn, user_mcp_layer};
 use crate::kernel_imports::ScopedMcpServer;
-use crate::storage::models::CreateMcpServerRow;
+use crate::storage::CreateMcpServerRow;
 use everruns_core::DEFAULT_ORG_ID;
 use serde_json::json;
 
@@ -329,7 +329,7 @@ async fn acts_only_on_the_initiating_persons_own_list() {
     let other = fixture.db.create_test_user(Uuid::now_v7()).await;
     fixture
         .db
-        .create_virtual_user(crate::storage::models::CreateVirtualUserRow {
+        .create_virtual_user(crate::storage::CreateVirtualUserRow {
             org_id: DEFAULT_ORG_ID,
             id: everruns_contracts::typed_id::VirtualUserId::from_uuid(other),
             usage: "end_user".to_string(),
@@ -346,6 +346,7 @@ async fn acts_only_on_the_initiating_persons_own_list() {
         encryption: Some(&fixture.encryption),
         org_id: DEFAULT_ORG_ID,
         owner: other,
+        egress: None,
     };
     others
         .add(custom("notes", McpServerAuthMode::None, None))
@@ -410,7 +411,7 @@ async fn agent_servers_acting_as_the_person_connect_without_manage() {
 
     fixture
         .db
-        .upsert_virtual_user_connection(crate::storage::models::CreateVirtualUserConnectionRow {
+        .upsert_virtual_user_connection(crate::storage::CreateVirtualUserConnectionRow {
             virtual_user_id: everruns_contracts::typed_id::VirtualUserId::from_uuid(fixture.person),
             provider,
             connection_type: "oauth".into(),
@@ -477,7 +478,7 @@ async fn agent_servers_acting_as_the_agent_route_to_the_agents_sheet() {
     let identity = everruns_contracts::typed_id::VirtualUserId::from_seed(9);
     fixture
         .db
-        .create_virtual_user(crate::storage::models::CreateVirtualUserRow {
+        .create_virtual_user(crate::storage::CreateVirtualUserRow {
             org_id: DEFAULT_ORG_ID,
             id: identity,
             usage: "service".into(),
@@ -491,7 +492,7 @@ async fn agent_servers_acting_as_the_agent_route_to_the_agents_sheet() {
         .unwrap();
     fixture
         .db
-        .upsert_virtual_user_connection(crate::storage::models::CreateVirtualUserConnectionRow {
+        .upsert_virtual_user_connection(crate::storage::CreateVirtualUserConnectionRow {
             virtual_user_id: identity,
             provider: "github".into(),
             connection_type: "github_app".into(),

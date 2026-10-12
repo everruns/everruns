@@ -370,7 +370,7 @@ impl Setup {
             .server
             .request_raw(
                 Method::POST,
-                &format!("/v1/a2a/{}/message:send", self.f.channel),
+                &format!("/v1/channels/{}/a2a/pact/message:send", self.f.channel),
                 headers,
                 send_body(text, message_id, context_id).into_bytes(),
             )
@@ -383,7 +383,10 @@ impl Setup {
         let jwks: jsonwebtoken::jwk::JwkSet = self
             .f
             .server
-            .get(&format!("/v1/a2a/{}/oauth/jwks.json", self.f.channel))
+            .get(&format!(
+                "/v1/channels/{}/a2a/pact/oauth/jwks.json",
+                self.f.channel
+            ))
             .await
             .assert_status(StatusCode::OK)
             .json();
@@ -482,7 +485,7 @@ async fn a_delegated_turn_acts_as_the_user_and_signs_a_receipt() {
         claims["brand"]
             .as_str()
             .unwrap()
-            .ends_with(&format!("/v1/a2a/{}", s.f.channel))
+            .ends_with(&format!("/v1/channels/{}/a2a/pact", s.f.channel))
     );
     assert_eq!(claims["scopesUsed"], json!(["flights:upcoming:read"]));
     assert_eq!(

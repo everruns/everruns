@@ -477,6 +477,11 @@ When `context.compacted` fires, render in the chat timeline:
 ─────── Context compacted · 180K → 95K tokens ───────
 ```
 
+For native compaction the divider shows tokens, never message counts: the
+provider replaces the transcript with its own output items, and
+`messages_after` counts those items, so it can exceed `messages_before` after a
+successful compaction.
+
 Expandable on click to show:
 - Strategy used (with cascade steps if `auto`)
 - Duration

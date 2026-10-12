@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +9,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { CopyButton } from "@/components/ui/copy-button";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import {
-  Bot,
   User,
   Wrench,
   Clock,
@@ -73,6 +73,14 @@ function ToolResultContentPart({
     if (value === undefined || value === null) {
       return "null";
     }
+    // Tools usually return text parts; read them as the text they carry.
+    if (
+      Array.isArray(value) &&
+      value.length > 0 &&
+      value.every((p) => p?.type === "text" && typeof p.text === "string")
+    ) {
+      return formatResult(value.map((p: { text: string }) => p.text).join("\n"));
+    }
     if (typeof value === "string") {
       // Try to parse and format if it's a JSON string
       try {
@@ -125,7 +133,7 @@ function ImageContentPart({ imageId, filename }: { imageId?: string; filename?: 
   );
 }
 
-function ContentPartRenderer({ part }: { part: ContentPart }) {
+export function ContentPartRenderer({ part }: { part: ContentPart }) {
   switch (part.type) {
     case "text":
       return <TextContentPart text={part.text} />;
@@ -163,7 +171,7 @@ function MessageCard({ message, index }: { message: Message; index: number }) {
       label: "User",
     },
     agent: {
-      icon: Bot,
+      icon: AgentIcon,
       label: "Assistant",
     },
     tool_result: {

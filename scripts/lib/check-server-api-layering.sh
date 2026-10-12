@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Layering guard: the server's domain, storage, services and records layers
+# Layering guard: the server's domain, storage, services, records and listeners layers
 # must not reach up into the HTTP layer (`crate::api`).
 #
 # Why: `api` is the transport. Shared shapes it used to own (the error body,
@@ -39,7 +39,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
 SRC="${1:-crates/server/src}"
-LAYERS=(domains storage services records)
+LAYERS=(domains storage services records listeners)
 
 TREES=()
 for layer in "${LAYERS[@]}"; do

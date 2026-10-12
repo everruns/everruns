@@ -37,6 +37,7 @@ let mockWorkspaces: SlackWorkspace[] = [workspace("T1", "Acme")];
 jest.mock("next/navigation", () => ({
   usePathname: () => "/agents/agent_123/channels/new",
   useRouter: () => ({ push, replace }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 jest.mock("next/link", () => ({
@@ -191,6 +192,19 @@ describe("Slack channel first run", () => {
     expect(screen.getByRole("button", { name: "Opening Slack…" })).toBeDisabled();
   });
 
+  it("does not offer a separate enable switch on the channel form", () => {
+    render(
+      <ChannelForm
+        state={getDefaultChannelFormState("slack")}
+        onChange={jest.fn()}
+        mode="edit"
+        channelId="appchan_123"
+      />,
+    );
+
+    expect(screen.queryByRole("switch", { name: "Enabled" })).not.toBeInTheDocument();
+  });
+
   it("starts with manual Slack credentials collapsed", () => {
     render(
       <ChannelForm state={getDefaultChannelFormState("slack")} onChange={jest.fn()} mode="new" />,
@@ -199,7 +213,7 @@ describe("Slack channel first run", () => {
     expect(screen.queryByLabelText("Signing secret")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Bot token")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Session strategy")).toBeVisible();
-    expect(screen.getByLabelText("Reply mode")).toBeVisible();
+    expect(screen.queryByLabelText("Reply mode")).not.toBeInTheDocument();
   });
 
   it("keeps saved credentials and manual-only setup collapsed until requested", () => {
@@ -430,6 +444,19 @@ describe("Slack channel first run", () => {
 
     expect(beginSlackInstall).not.toHaveBeenCalled();
     expect(push).toHaveBeenCalledWith("/agents/agent_123/channels/appchan_123");
+  });
+
+  it("explains publish as the only way to open a channel", async () => {
+    await renderEditChannelPage("unused");
+
+    expect(
+      screen.getByText("Publish opens this channel to callers. Unpublish closes it."),
+    ).toBeVisible();
+    expect(screen.queryByRole("switch", { name: "Enabled" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Publish" })).toHaveAttribute(
+      "title",
+      "Publish opens this channel to callers.",
+    );
   });
 
   it("lands on the saved channel with a visible install failure reason", async () => {

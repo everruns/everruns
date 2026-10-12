@@ -10,6 +10,7 @@ pub mod commands;
 #[cfg(test)]
 mod cost_component_tests;
 pub mod queries;
+pub mod record;
 #[cfg(test)]
 mod refusal_traceability_tests;
 #[cfg(test)]

@@ -164,12 +164,13 @@ removal (D1) leaves absent.
 
 Each command runs its tool through `ToolContext::nested_tool_policy`, as Lua
 code mode and `spawn_background` do: pre-tool hooks, the schema check and
-post-tool hooks run per call. In step 1 a nested call is traced
-(`bashkit.tools`) but, as in Lua code mode, not emitted as its own
+post-tool hooks run per call. A nested call is not emitted as its own
 `tool.started`/`tool.completed`: those events materialize as conversation
 messages, and a call the model never made would break the tool-call pairing
-the conversation history relies on. Recording each call in the session
-timeline lands with D7, whose stop report needs the same record. A per-execution cap on calls (the forwarding
+the conversation history relies on. Each call is recorded instead as one
+`tool.nested_call` event when it ends (completed, failed, refused, or held for
+approval), naming the `bash` call it ran in, so the session timeline and the
+chat show every call without the model seeing it. A per-execution cap on calls (the forwarding
 builtin's 50) stops runaway loops, and the error points at list-style tools.
 
 ### D6. All MCP servers, including the ones that appear later
@@ -221,7 +222,21 @@ when it first appears, "does this tool change or delete anything outside the
 session?", and the answer is cached per tool and schema. It is not called per
 script, and it can only make a tool more cautious: it never removes an approval
 an admin or the tool itself asked for. Files the script writes stay in the
-session workspace and need no approval.
+session workspace and need no approval. As built (`tools_in_shell/ratings.rs`): only a
+tool with an `Auto` policy and none of the readonly, destructive, idempotent
+or open-world hints is rated, by the context's decision service, lazily at its
+first call or early-stop preview; a "yes" adds `destructive` to the definition
+the gate judges, and the answer is cached process-wide per tool name and a hash
+of its description and schema. An unavailable service or failed rating
+changes nothing and is not cached. An approval raised only because of a rating
+says so: its `risk` reads `rated_changes` instead of `destructive`, so the card
+and `tools plan` can tell a person the tool declared nothing and merely looks
+like it changes things (user, 2026-10-10: ratings must be visible, then
+correctable per tool, then switchable per agent). The per-agent switch is the
+capability's `rate_unlabeled_tools` config (on by default): the host marks an
+off turn's tool context (`UnlabeledToolRatingsOff`) and every rating path (run
+time, early-stop preview, `tools plan`) skips the rating, so the tool is judged
+by its absent hints exactly as with no decision service configured.
 
 **1. Analyse before running, to stop early.** Bashkit's `analyze()` parses the
 script without running it and lists every `tools` call it can see. If one of
@@ -284,8 +299,12 @@ work and calls `request_approval` before critical actions. With the shell the
 unit is the script: the agent asks before running a script with critical
 steps. `tools plan` takes a script and prints the calls analysis can see, with
 each one's risk, without running anything, so the agent can describe the
-script accurately. Soft approval never skips a hard approval; the two layers
-stay separate.
+script accurately. As built (`tools_in_shell/plan.rs`), it reads the script
+with the same analysis and asks the pre-tool chain the same `preview` question
+as the early stop, so a call it marks `needs_approval` is the call that would
+hold the script; a call whose input is built at run time is judged on the tool
+alone, and `complete: false` flags dynamic commands or `eval`. Soft approval
+never skips a hard approval; the two layers stay separate.
 
 **Saved scripts and unattended runs.** A saved script (D8) follows the same
 rules inside its body. A scheduled run (D9) has no one to answer, so a call that
@@ -340,7 +359,9 @@ swaps the model's driver for one that answers the first reason with a single
 line (`crates/core/src/host/script_run.rs`). The turn engine is unchanged, so the
 call keeps its approval gate, events and transcript. Waking the agent hands the
 second reason to the real model. Only schedule and webhook triggers take a
-script (`crates/server/src/domains/agent_triggers/script_target.rs`).
+script (`crates/server/src/domains/agent_triggers/script_target.rs`). Input
+strings are templates over the event context; a lone placeholder keeps the
+value's JSON type, which is how a webhook payload reaches the script.
 
 ## Not adopted
 
@@ -357,6 +378,20 @@ publishing or copying apps between people. Storage per app is covered by
   task, wrong-tool calls reported. The capability stays opt-in until it passes.
 - Every nested call is visible in the session events and audit log.
 - No tool is reachable through `tools` that the agent could not call directly.
+
+## Discovery eval
+
+Whether a model finds a tool it cannot see is measured, not assumed, by the
+[Tools in Shell study](../../evals/tools-in-shell/README.md): a Framework agent
+with the shipped capability over a small fake registry, offline apart from a
+model key. Its cases cover finding a tool by need and by source, choosing
+between two similar tools, passing a JSON object with an enum and an array,
+and recovering from a tool name that does not exist. Shell calls are counted
+the way the [command tree](command-tree.md)'s eval counts them (help reads,
+rejected calls, real calls), with the same classifier, so `tools` help can be
+tuned with the same loop as `everruns` help. It is a precondition for the
+success bar above, not the bar itself: it shows a tool can be found in few
+calls, not that a 50 to 300 tool slice beats tool search.
 
 ## Risks
 

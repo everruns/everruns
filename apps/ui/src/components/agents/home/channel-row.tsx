@@ -9,12 +9,15 @@ import type { OrgExposure } from "@/hooks/use-org-exposures";
 import { RunBars } from "./run-bars";
 import { StateDot } from "./state-dot";
 import {
+  agentChannelHref,
   channelContext,
+  channelTrafficLine,
   channelShortName,
   channelState,
   channelStateLabel,
   initials,
 } from "@/lib/agents-home";
+import { channelPublishControl } from "@/lib/channel-display";
 import type { ChannelActivity } from "@/lib/api/types";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import { formatRelativeTime, pluralize } from "@/lib/formatting";
@@ -55,7 +58,20 @@ export function ChannelRow({
         <ChannelIcon kind={channel.channel_type} className="size-4 shrink-0" />
         <div className="min-w-0">
           <p className="truncate">
-            <span className="font-medium">{channelShortName(channel.channel_type)}</span>
+            {agent ? (
+              <Link
+                href={agentChannelHref(agent.id, channel.id)}
+                className="inline-flex max-w-full items-center gap-1 font-medium hover:underline"
+              >
+                {channelShortName(channel.channel_type)}
+                <ArrowUpRight
+                  className="size-3 shrink-0 text-muted-foreground"
+                  aria-hidden="true"
+                />
+              </Link>
+            ) : (
+              <span className="font-medium">{channelShortName(channel.channel_type)}</span>
+            )}
             {context && <span className="text-muted-foreground"> {context}</span>}
           </p>
           <p className="truncate font-mono text-xs text-muted-foreground">{channel.id}</p>
@@ -85,11 +101,7 @@ export function ChannelRow({
           label={`${sessions} ${pluralize(sessions, "session")} in the last 7 days`}
           className="h-4"
         />
-        <p className="mt-1 text-xs text-muted-foreground">
-          {sessions === 0
-            ? "No traffic in 7d"
-            : `${sessions} ${pluralize(sessions, "session")} · 7d`}
-        </p>
+        <p className="mt-1 text-xs text-muted-foreground">{channelTrafficLine(activity)}</p>
       </div>
 
       <p className="flex items-center gap-2">
@@ -142,11 +154,16 @@ function PublishButton({
   live: boolean;
 }) {
   const publish = usePublishAgentChannel(agentId);
+  const hint = channelPublishControl({
+    enabled: true,
+    status: live ? "live" : "draft",
+  }).hint;
   return (
     <Button
       variant="outline"
       size="sm"
       disabled={publish.isPending}
+      title={hint}
       onClick={() => publish.mutate({ channelId, publish: !live })}
     >
       {live ? "Unpublish" : "Publish"}

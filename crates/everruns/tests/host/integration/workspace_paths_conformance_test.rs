@@ -76,6 +76,7 @@ async fn assert_output_pointers_follow_store(store: Arc<dyn SessionFileSystem>) 
     let stdout_path = format!("{root}/outputs/call_paths.stdout");
     let stderr_path = format!("{root}/outputs/call_paths.stderr");
     let mut result = ToolResult {
+        details: None,
         tool_call_id: "call_paths".to_string(),
         result: Some(json!({
             "stdout": "stdout preview",
@@ -127,6 +128,7 @@ async fn assert_distillation_pointer_follows_store(store: Arc<dyn SessionFileSys
         .map(|i| json!({"id": i, "name": format!("row-{i}")}))
         .collect();
     let mut result = ToolResult {
+        details: None,
         tool_call_id: "call_paths".to_string(),
         result: Some(json!({"rows": rows})),
         images: None,

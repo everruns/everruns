@@ -5,12 +5,12 @@ use super::types::{
 use super::validation::{limit_validation_error, validation_error};
 use super::{platform_chat_starter as starter, queries as q};
 use crate::domains::common::*;
-use crate::records::ANONYMOUS_USER_ID;
-use crate::records::{
+use crate::domains::organizations::record::ANONYMOUS_USER_ID;
+use crate::domains::sessions::record::{
     Session, SessionActivity, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
     SessionSource,
 };
-use crate::services::PrincipalService;
+use crate::domains::users::PrincipalService;
 use crate::storage::backend::MAX_SESSION_PARTICIPANT_HISTORY;
 use chrono::{DateTime, Utc};
 use everruns_capabilities::capabilities::session_title_updated_event;
@@ -19,7 +19,7 @@ use everruns_contracts::provider::DriverId;
 use everruns_contracts::typed_id::{AgentId, MessageId, SessionParticipantId, TurnId};
 use everruns_core::events::{
     EventContext, EventData, EventRequest, InputMessageData, LLM_GENERATION, SessionIdledData,
-    TurnCancelledData, deserialize_event_data,
+    TurnCancelledData, TurnStartedData, deserialize_event_data,
 };
 use everruns_core::{RuntimeMessage, SessionContextReport};
 use serde::Deserialize;
@@ -42,7 +42,7 @@ impl CommandSchema for CreateSession {
     method = "POST",
     path = "/v1/sessions",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions"], "create").with_args(&[CliArg::new("agent_id").short('a').long("agent"), CliArg::new("harness_name").short('H').long("harness"), CliArg::new("tag").short('t'),]).with_examples(&[CliExample::new("Start a session for an agent", "everruns sessions create --agent agt_01h9 --reason 'Investigate the failed release'",)]),
+    cli = CliRoute::new(&["sessions"], "create").with_args(&[CliArg::new("agent_id").short('a').long("agent"), CliArg::new("harness_name").short('H').long("harness"), CliArg::new("tag").short('t'),]).with_examples(&[CliExample::new("Start a session for an agent", "everruns sessions create --agent agent_01h9 --reason 'Investigate the failed release'",)]),
 )]
 impl Command for CreateSession {
     type Output = Session;
@@ -287,7 +287,7 @@ pub struct ListSessionParticipants {
     method = "GET",
     path = "/v1/sessions/{session_id}/participants",
     policy = super::SESSION_VIEW,
-    cli = CliRoute::new(&["sessions", "participants"], "list").with_args(&[CliArg::new("session_id").long("session")]).with_examples(&[CliExample::new("See who is attached to a session", "everruns sessions participants list --session ses_01h9",)]),
+    cli = CliRoute::new(&["sessions", "participants"], "list").with_args(&[CliArg::new("session_id").long("session")]).with_examples(&[CliExample::new("See who is attached to a session", "everruns sessions participants list --session session_01h9",)]),
 )]
 impl Command for ListSessionParticipants {
     type Output = Vec<SessionParticipant>;
@@ -325,7 +325,7 @@ pub struct AddSessionParticipant {
     method = "POST",
     path = "/v1/sessions/{session_id}/participants",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions", "participants"], "add").with_args(&[CliArg::new("session_id").long("session")]).with_examples(&[CliExample::new("Bring a user into a running session", "everruns sessions participants add --session ses_01h9 --kind user --reason 'Bring in the on-call reviewer'",)]),
+    cli = CliRoute::new(&["sessions", "participants"], "add").with_args(&[CliArg::new("session_id").long("session")]).with_examples(&[CliExample::new("Bring a user into a running session", "everruns sessions participants add --session session_01h9 --kind user --reason 'Bring in the on-call reviewer'",)]),
 )]
 impl Command for AddSessionParticipant {
     type Output = SessionParticipant;
@@ -407,7 +407,7 @@ impl Command for AddSessionParticipant {
             (session.owner_principal_id, None)
         };
 
-        let input = crate::storage::models::CreateSessionParticipantRow {
+        let input = crate::storage::CreateSessionParticipantRow {
             org_id: ctx.org_id(),
             session_id,
             kind: self.req.kind,
@@ -443,7 +443,7 @@ pub struct LeaveSessionParticipant {
     method = "DELETE",
     path = "/v1/sessions/{session_id}/participants/{participant_id}",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions", "participants"], "leave").with_args(&[CliArg::new("session_id").long("session")]).with_examples(&[CliExample::new("Remove one participant from a session", "everruns sessions participants leave --session ses_01h9 --participant-id par_01h9 --reason 'Review finished'",)]),
+    cli = CliRoute::new(&["sessions", "participants"], "leave").with_args(&[CliArg::new("session_id").long("session")]).with_examples(&[CliExample::new("Remove one participant from a session", "everruns sessions participants leave --session session_01h9 --participant-id part_01h9 --reason 'Review finished'",)]),
 )]
 impl Command for LeaveSessionParticipant {
     type Output = SessionParticipant;
@@ -483,7 +483,7 @@ impl Command for LeaveSessionParticipant {
 async fn ensure_session_exists(
     ctx: &Ctx,
     session_id: everruns_contracts::typed_id::SessionId,
-) -> Result<crate::storage::models::SessionRow, CommandError> {
+) -> Result<crate::storage::SessionRow, CommandError> {
     ctx.db
         .get_session(ctx.org_id(), session_id)
         .await?
@@ -507,7 +507,7 @@ pub struct ForkSession {
     method = "POST",
     path = "/v1/sessions/{session_id}/fork",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions"], "fork").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Branch from a session to try a different direction", "everruns sessions fork ses_01h9 --reason 'Try the rollback path'",)]),
+    cli = CliRoute::new(&["sessions"], "fork").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Branch from a session to try a different direction", "everruns sessions fork session_01h9 --reason 'Try the rollback path'",)]),
 )]
 impl Command for ForkSession {
     type Output = Session;
@@ -564,6 +564,7 @@ impl Command for ForkSession {
                     agent_id: overrides.agent_id,
                     locale: overrides.locale,
                     system_prompt: overrides.system_prompt,
+                    up_to_message_id: overrides.up_to_message_id,
                 },
             )
             .await
@@ -680,7 +681,7 @@ pub struct GetSession {
     path = "/v1/sessions/{session_id}",
     policy = super::SESSION_VIEW,
     positional = "session_id",
-    cli = CliRoute::new(&["sessions"], "get").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Show one session's state and configuration", "everruns sessions get ses_01h9",)]),
+    cli = CliRoute::new(&["sessions"], "get").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Show one session's state and configuration", "everruns sessions get session_01h9",)]),
 )]
 impl Command for GetSession {
     type Output = Session;
@@ -705,7 +706,7 @@ pub struct GetSessionContextReport {
     path = "/v1/sessions/{session_id}/context-report",
     policy = super::SESSION_VIEW,
     positional = "session_id",
-    cli = CliRoute::new(&["sessions"], "context").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("See what is filling a session's context window", "everruns sessions context ses_01h9",)]),
+    cli = CliRoute::new(&["sessions"], "context").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("See what is filling a session's context window", "everruns sessions context session_01h9",)]),
 )]
 impl Command for GetSessionContextReport {
     type Output = SessionContextReport;
@@ -783,7 +784,7 @@ pub struct UpdateSessionCmd {
     method = "PATCH",
     path = "/v1/sessions/{session_id}",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions"], "update").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Retitle a session so it is findable later", "everruns sessions update ses_01h9 --title 'Release triage' --reason 'Clarify the session topic'",)]),
+    cli = CliRoute::new(&["sessions"], "update").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Retitle a session so it is findable later", "everruns sessions update session_01h9 --title 'Release triage' --reason 'Clarify the session topic'",)]),
 )]
 impl Command for UpdateSessionCmd {
     type Output = Session;
@@ -836,7 +837,7 @@ pub struct DeleteSession {
     method = "DELETE",
     path = "/v1/sessions/{session_id}",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions"], "delete").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Archive a session, keeping it restorable", "everruns sessions delete ses_01h9 --reason 'Duplicate of the release session'",)]),
+    cli = CliRoute::new(&["sessions"], "delete").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Archive a session, keeping it restorable", "everruns sessions delete session_01h9 --reason 'Duplicate of the release session'",)]),
 )]
 impl Command for DeleteSession {
     type Output = bool;
@@ -890,7 +891,7 @@ pub struct PinSession {
     method = "PUT",
     path = "/v1/sessions/{session_id}/pin",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions"], "pin").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Keep a session at the top of the list", "everruns sessions pin ses_01h9 --reason 'Active incident'",)]),
+    cli = CliRoute::new(&["sessions"], "pin").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Keep a session at the top of the list", "everruns sessions pin session_01h9 --reason 'Active incident'",)]),
 )]
 impl Command for PinSession {
     type Output = bool;
@@ -920,7 +921,7 @@ pub struct UnpinSession {
     method = "DELETE",
     path = "/v1/sessions/{session_id}/pin",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions"], "unpin").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Stop keeping a session at the top of the list", "everruns sessions unpin ses_01h9 --reason 'Incident resolved'",)]),
+    cli = CliRoute::new(&["sessions"], "unpin").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Stop keeping a session at the top of the list", "everruns sessions unpin session_01h9 --reason 'Incident resolved'",)]),
 )]
 impl Command for UnpinSession {
     type Output = bool;
@@ -950,7 +951,7 @@ pub struct ArchiveSession {
     method = "PUT",
     path = "/v1/sessions/{session_id}/archive",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions"], "archive").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Move a finished session out of the active list", "everruns sessions archive ses_01h9 --reason 'Release shipped'",)]),
+    cli = CliRoute::new(&["sessions"], "archive").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Move a finished session out of the active list", "everruns sessions archive session_01h9 --reason 'Release shipped'",)]),
 )]
 impl Command for ArchiveSession {
     type Output = bool;
@@ -981,7 +982,7 @@ pub struct UnarchiveSession {
     method = "DELETE",
     path = "/v1/sessions/{session_id}/archive",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions"], "unarchive").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Bring an archived session back to the active list", "everruns sessions unarchive ses_01h9 --reason 'Release reopened'",)]),
+    cli = CliRoute::new(&["sessions"], "unarchive").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Bring an archived session back to the active list", "everruns sessions unarchive session_01h9 --reason 'Release reopened'",)]),
 )]
 impl Command for UnarchiveSession {
     type Output = bool;
@@ -1009,7 +1010,7 @@ pub struct CancelSession {
     method = "POST",
     path = "/v1/sessions/{session_id}/cancel",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions"], "cancel").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Stop a session that is running away", "everruns sessions cancel ses_01h9",)]),
+    cli = CliRoute::new(&["sessions"], "cancel").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Stop a session that is running away", "everruns sessions cancel session_01h9",)]),
 )]
 impl Command for CancelSession {
     type Output = CancelTurnResponse;
@@ -1018,19 +1019,44 @@ impl Command for CancelSession {
         let session_id = q::parse_session_id(&self.session_id)?;
         let session = q::get_session(ctx, session_id, None).await?;
 
-        if session.status != crate::records::SessionStatus::Active {
+        if session.status != crate::domains::sessions::record::SessionStatus::Active {
             return Ok(CancelTurnResponse {
                 status: CancelStatus::NoOp,
                 message: "No turn currently running".to_string(),
             });
         }
 
-        if let Err(error) = q::runner(ctx)?.cancel(session_id).await {
-            tracing::error!(session_id = %session_id, error = %error, "Failed to cancel workflow");
+        // One writer for the cancel's events: a worker running the turn ends
+        // it and records them itself (`true`); otherwise nothing runs the turn
+        // and this command records them (see `crate::turns::ActorTurnBackend`).
+        let recorded_by_worker = match q::runner(ctx)?.cancel(session_id).await {
+            Ok(recorded_by_worker) => recorded_by_worker,
+            Err(error) => {
+                tracing::error!(session_id = %session_id, error = %error, "Failed to cancel the session's turn");
+                false
+            }
+        };
+        if recorded_by_worker {
+            return Ok(CancelTurnResponse {
+                status: CancelStatus::Cancelled,
+                message: "Turn cancelled successfully".to_string(),
+            });
         }
 
-        let turn_id = TurnId::from_uuid(session_id.uuid());
-        let input_message_id = MessageId::new();
+        // Name the turn being stopped so clients can mark that turn stopped.
+        // A session that is active only because a message is waiting to start
+        // its turn has no turn.started yet; fall back to placeholder ids.
+        let open_turn = match ctx.db.find_open_turn_started(session_id).await {
+            Ok(data) => data.and_then(|data| serde_json::from_value::<TurnStartedData>(data).ok()),
+            Err(error) => {
+                tracing::warn!(session_id = %session_id, error = %error, "Failed to read the running turn");
+                None
+            }
+        };
+        let (turn_id, input_message_id) = match open_turn {
+            Some(started) => (started.turn_id, started.input_message_id),
+            None => (TurnId::from_uuid(session_id.uuid()), MessageId::new()),
+        };
 
         if let Some(event_service) = &ctx.event_service {
             let cancelled_event = EventRequest::new(
@@ -1056,9 +1082,7 @@ impl Command for CancelSession {
             }
 
             // EVE-708: emit the `session.idled` lifecycle event for parity with the
-            // normal turn-completion path. The cancelled workflow short-circuits in
-            // the worker before the runtime reaches its `session.idled` emission, so
-            // without this the lifecycle would silently stop at `turn.cancelled`.
+            // normal turn-completion path: no turn runs to emit it.
             let idled_event = EventRequest::new(
                 session_id,
                 EventContext::turn(turn_id, input_message_id),
@@ -1073,12 +1097,10 @@ impl Command for CancelSession {
             }
         }
 
-        // EVE-708: settle the session status. Cancelling marks the durable workflow
-        // `Cancelled`, which makes the worker fail the task and return early — so the
-        // runtime turn loop never reaches a terminal `TurnPlan` and never transitions
-        // the session back to `idle`. Session status is a stored column that is not
-        // derived from events, so we must set it here or the session stays `active`
-        // indefinitely, blocking clean follow-up turns.
+        // EVE-708: settle the session status. No turn runs to reach a terminal
+        // `TurnPlan` and set it back to `idle`, and session status is a stored
+        // column that is not derived from events, so we must set it here or the
+        // session stays `active` indefinitely, blocking clean follow-up turns.
         if let Err(error) = q::session_service(ctx)?
             .update_status(&ctx.caller, session_id.uuid(), "idle".to_string())
             .await

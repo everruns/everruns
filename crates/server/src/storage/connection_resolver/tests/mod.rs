@@ -1,6 +1,6 @@
 use super::*;
 use crate::kernel_imports::{DEFAULT_ORG_ID, PrincipalId};
-use crate::storage::models::{CreateMcpServerRow, CreateSessionRow, CreateUserConnectionRow};
+use crate::storage::{CreateMcpServerRow, CreateSessionRow, CreateUserConnectionRow};
 use everruns_core::connection_services::UserConnectionResolver;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -57,7 +57,7 @@ fn encryption() -> EncryptionService {
 fn session_input(owner_user_id: Option<Uuid>) -> CreateSessionRow {
     CreateSessionRow {
         playground_user_id: None,
-        source: crate::records::SessionSource::Api,
+        source: crate::domains::sessions::record::SessionSource::Api,
         org_id: DEFAULT_ORG_ID,
         workspace_id: None,
         app_id: None,
@@ -160,7 +160,7 @@ async fn setup(
 // ---------------------------------------------------------------
 
 use crate::kernel_imports::VirtualUserId;
-use crate::storage::models::{CreatePrincipalRow, CreateVirtualUserConnectionRow};
+use crate::storage::{CreatePrincipalRow, CreateVirtualUserConnectionRow};
 use everruns_core::McpServerActsAs;
 
 /// A session whose owner principal really is a person.
@@ -219,7 +219,7 @@ async fn mcp_setup(
     let agent = db
         .create_agent(
             DEFAULT_ORG_ID,
-            crate::storage::models::CreateAgentRow {
+            crate::storage::CreateAgentRow {
                 public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: "Responder".into(),
                 display_name: None,
@@ -237,6 +237,7 @@ async fn mcp_setup(
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -1107,7 +1108,7 @@ async fn github_token_is_minted_from_the_identitys_own_app() {
         env!("CARGO_MANIFEST_DIR")
     ))
     .unwrap();
-    db.create_github_app(crate::storage::github_app_rows::CreateGitHubAppRow {
+    db.create_github_app(crate::storage::CreateGitHubAppRow {
         id: Uuid::now_v7(),
         org_id: DEFAULT_ORG_ID,
         virtual_user_id: identity_id,
@@ -1192,7 +1193,7 @@ async fn github_token_is_minted_from_the_identitys_own_app() {
 }
 
 async fn seed_runtime_user(db: &StorageBackend, id: VirtualUserId, usage: &str) {
-    db.create_virtual_user(crate::storage::models::CreateVirtualUserRow {
+    db.create_virtual_user(crate::storage::CreateVirtualUserRow {
         org_id: DEFAULT_ORG_ID,
         id,
         usage: usage.into(),
@@ -1246,7 +1247,7 @@ async fn playground_and_delegated_runs_never_resolve_private_user_grants() {
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
             parent_session_id: Some(fixture.session_id),
-            source: crate::records::SessionSource::Subagent,
+            source: crate::domains::sessions::record::SessionSource::Subagent,
             agent_id: Some(fixture.agent_id),
             virtual_user_id: Some(fixture.identity_id),
             owner_principal_id: PrincipalId::from_seed(1),
@@ -1278,6 +1279,7 @@ async fn playground_and_delegated_runs_never_resolve_private_user_grants() {
     );
 }
 
+mod github;
 mod user_or_service;
 
 async fn agentmail_grant(fixture: &McpFixture, service: bool, key: &str) {

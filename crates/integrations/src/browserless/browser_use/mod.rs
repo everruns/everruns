@@ -490,7 +490,15 @@ async fn act(
                 }
             }
             settle().await;
-            Ok(Done::text(format!("Pressed {text}.")))
+            // Report where focus landed so keyboard testing needs no re-read.
+            let focus = match page::capture(display.session_mut(), viewport).await {
+                Ok(tree) => page::focused_label(&tree).map_or_else(
+                    || " Focus is on the page itself.".to_string(),
+                    |label| format!(" Focus is on {label}."),
+                ),
+                Err(_) => String::new(),
+            };
+            Ok(Done::text(format!("Pressed {text}.{focus}")))
         }
         BrowserAction::HoldKey { text, duration } => {
             display
@@ -802,11 +810,12 @@ impl Tool for BrowserTool {
     }
 
     fn hints(&self) -> ToolHints {
-        // One browser per session: actions must apply in order.
+        // One browser per session, shared with the `browserless_*` tools:
+        // actions must apply in order.
         ToolHints::default()
             .with_open_world(true)
             .with_long_running(true)
-            .with_concurrency_class(BROWSER_TOOL_NAME)
+            .with_concurrency_class(crate::browserless::SESSION_BROWSER_CONCURRENCY_CLASS)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

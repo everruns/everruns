@@ -52,7 +52,7 @@ pub(super) fn patch(
 mod tests {
     use super::super::tests::{provisioner, stored};
     use super::*;
-    use crate::records::slack_provisioning::SlackAppProvisioner;
+    use crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner;
     use serde_json::{Value, json};
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -141,13 +141,13 @@ mod tests {
                     .count(),
                 35
             );
+            // Slack counts the short description in bytes: 46 three-byte chars.
             assert_eq!(
                 manifest["display_information"]["description"]
                     .as_str()
                     .unwrap()
-                    .chars()
-                    .count(),
-                140
+                    .len(),
+                138
             );
             assert_eq!(
                 manifest["display_information"]["long_description"]
@@ -264,7 +264,7 @@ mod tests {
         db.upsert_org_slack_connection(stored(DEFAULT_ORG_ID, "T1", chrono::Duration::hours(1)))
             .await
             .unwrap();
-        crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
+        crate::setup::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
             .await
             .unwrap();
         let ctx = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db.clone(), None);
@@ -350,7 +350,7 @@ mod tests {
             .await;
         assert!(
             matches!(provisioner.update_branding(1, Some("T1"), "A1", "Bot", None).await,
-            Err(crate::records::slack_provisioning::SlackProvisioningError::Rejected(code)) if code == "ratelimited")
+            Err(crate::domains::agent_channels::record::slack_provisioning::SlackProvisioningError::Rejected(code)) if code == "ratelimited")
         );
     }
     #[test]

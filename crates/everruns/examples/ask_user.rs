@@ -3,7 +3,7 @@
 //! Run with:
 //!
 //! ```text
-//! cargo run -p everruns --example ask_user
+//! cargo run -p everruns --features openai --example ask_user
 //! ```
 //!
 //! `ask_user` lets a model collect one small batch of decisions without ending
@@ -20,7 +20,7 @@ use everruns::ask_user::{
     Answer, AnsweredBy, AskUser, DefaultsResponder, Outcome, Question, QuestionKind, Status,
     async_trait,
 };
-use everruns::{Agent, InMemoryEngine, LlmSimConfig, Model, ToolCall};
+use everruns::{Agent, InMemoryEngine, OpenAI};
 use serde_json::json;
 
 /// A responder that answers from what the host already knows.
@@ -107,22 +107,16 @@ fn deployment_questions() -> serde_json::Value {
     ])
 }
 
-/// A model that asks that set, then answers. `llmsim` keeps the example
-/// deterministic offline.
-fn asking_model() -> Model {
-    Model::simulated_with_config(
-        LlmSimConfig::sequence(vec![
-            "Let me confirm how you want this deployed.".into(),
-            "Deploying to Staging with lint and tests.".into(),
-        ])
-        .with_tool_call_sequence(vec![
-            vec![ToolCall {
-                id: "call_ask_1".into(),
-                name: "ask_user".into(),
-                arguments: json!({ "questions": deployment_questions() }),
-            }],
-            vec![],
-        ]),
+/// Instructions that make the model ask that set before it acts.
+///
+/// A real model writes its own questions; pinning them here keeps the two
+/// responders above and the turn below comparable.
+fn asking_instructions() -> String {
+    format!(
+        "Confirm deployment choices before acting. Before anything else, call ask_user \
+         exactly once with these questions, unchanged: {}. Then state in one sentence \
+         where you will deploy and which checks run, based only on the answers.",
+        deployment_questions()
     )
 }
 
@@ -151,15 +145,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The responder runs inside the tool call, so the turn never enters
     // `waiting_for_tool_results` and needs no browser to come back.
     let agent = Agent::builder()
-        .instructions("Confirm deployment choices before acting.")
-        .model(asking_model())
+        .instructions(asking_instructions())
+        .provider(OpenAI::from_env()?)
+        .model("gpt-6.1-sol")
         .ask_user(HouseRules)
         .build()?;
 
     let turn = InMemoryEngine::new().create(agent).run("Ship it.").await?;
     println!("turn: {}", turn.response);
     assert!(turn.success);
-    assert_eq!(turn.tool_calls, 1);
+    assert!(turn.tool_calls >= 1, "the model never called ask_user");
 
     Ok(())
 }

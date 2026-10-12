@@ -19,7 +19,7 @@ use tower::ServiceExt;
 use everruns_server::auth::cli_auth::{CliAuthState, cli_auth_routes};
 use everruns_server::auth::config::{AuthConfig, AuthMode, JwtConfig};
 use everruns_server::auth::{AuthState, BuiltinAuthBackend};
-use everruns_server::seed;
+use everruns_server::setup::seed;
 use everruns_server::storage::{
     CreateCliAuthSessionRow, CreateOrganizationRow, CreateUserRow, StorageBackend,
 };

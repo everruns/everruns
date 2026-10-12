@@ -20,7 +20,7 @@ fn test_ctx(db: Arc<StorageBackend>, max_sessions_per_org: i64) -> Ctx {
     let session_service = Arc::new(crate::domains::sessions::SessionService::new(db.clone()));
     let event_service = Arc::new(crate::services::EventService::new(
         db.clone(),
-        crate::event_delivery::EventDelivery::in_memory(),
+        crate::live_updates::event_delivery::EventDelivery::in_memory(),
     ));
     let capability_service = Arc::new(crate::services::CapabilityService::new(db.clone(), None));
     // Internal caller: the owner principal resolves to the system principal,
@@ -87,6 +87,7 @@ fn create_request(harness_id: HarnessId) -> CreateSessionRequest {
         forked_from_session_id: None,
         budget_root_session_id: None,
         seed: everruns_core::SessionSeedMode::Fresh,
+        fork_up_to_sequence: None,
     }
 }
 
@@ -233,8 +234,74 @@ async fn cancel_active_session_transitions_to_idle() {
         .expect("reload session");
     assert_eq!(
         after.status,
-        crate::records::SessionStatus::Idle,
+        crate::domains::sessions::record::SessionStatus::Idle,
         "cancelled session must settle to idle"
+    );
+}
+
+// Clients mark "Stopped after Ns" on the turn a cancel names, so the cancel
+// events must carry the running turn's ids, not placeholders.
+#[tokio::test]
+async fn cancel_names_the_running_turn() {
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = test_ctx(db.clone(), 100).with_runner(Arc::new(CancelTestRunner));
+    let harness_id = seed_harness(&ctx).await;
+    let session = CreateSession(create_request(harness_id))
+        .execute(&ctx)
+        .await
+        .expect("create session");
+    q::session_service(&ctx)
+        .unwrap()
+        .update_status(&ctx.caller, session.id.uuid(), "active".to_string())
+        .await
+        .expect("mark active");
+
+    let turn_id = everruns_contracts::typed_id::TurnId::new();
+    let input_message_id = everruns_contracts::typed_id::MessageId::new();
+    let events = ctx.event_service.as_ref().expect("event service");
+    events
+        .emit(everruns_core::events::EventRequest::new(
+            session.id,
+            everruns_core::events::EventContext::turn(turn_id, input_message_id),
+            everruns_core::events::TurnStartedData {
+                turn_id,
+                input_message_id,
+                input_content: None,
+                agent_id: None,
+                agent_name: None,
+                agent_description: None,
+            },
+        ))
+        .await
+        .expect("emit turn.started");
+
+    CancelSession {
+        session_id: session.id.to_string(),
+    }
+    .execute(&ctx)
+    .await
+    .expect("cancel");
+
+    let cancelled = events
+        .list(
+            session.id.uuid(),
+            None,
+            None,
+            &["turn.cancelled".to_string()],
+            &[],
+            None,
+            None,
+        )
+        .await
+        .expect("list events");
+    assert_eq!(cancelled.len(), 1);
+    match &cancelled[0].data {
+        EventData::TurnCancelled(data) => assert_eq!(data.turn_id, turn_id),
+        data => panic!("unexpected event data: {data:?}"),
+    }
+    assert_eq!(
+        cancelled[0].context.input_message_id,
+        Some(input_message_id)
     );
 }
 
@@ -317,7 +384,7 @@ async fn create_session_with_non_internal_owner_sets_parent_session_id() {
     let internal_ctx = test_ctx(db.clone(), 10);
     let harness_id = seed_harness(&internal_ctx).await;
     let owner = db
-        .create_user(crate::storage::models::CreateUserRow {
+        .create_user(crate::storage::CreateUserRow {
             email: format!("owner-{}@example.com", Uuid::now_v7()),
             name: "Owner".to_string(),
             avatar_url: None,
@@ -352,7 +419,7 @@ async fn seed_agent(ctx: &Ctx, harness_id: HarnessId, name: &str) -> AgentId {
         .db
         .create_agent(
             ctx.org_id(),
-            crate::storage::models::CreateAgentRow {
+            crate::storage::CreateAgentRow {
                 public_id: public_id.clone(),
                 name: name.to_string(),
                 display_name: None,
@@ -370,6 +437,7 @@ async fn seed_agent(ctx: &Ctx, harness_id: HarnessId, name: &str) -> AgentId {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -430,6 +498,44 @@ async fn create_session_from_agent_inherits_agent_harness() {
 }
 
 #[tokio::test]
+async fn worker_session_read_sends_the_same_wire_session_as_the_full_read() {
+    // The worker read skips owner and feature hydration; nothing it skips may
+    // reach the wire, and the agent id must still be the public one.
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = test_ctx(db.clone(), 10);
+    let harness_id = seed_harness(&ctx).await;
+    let agent_id = seed_agent(&ctx, harness_id, "worker-read").await;
+    let mut req = create_request(harness_id);
+    req.agent_id = Some(agent_id);
+    let session = CreateSession(req).execute(&ctx).await.expect("create");
+
+    let service = q::session_service(&ctx).unwrap();
+    let full = service
+        .get(&ctx.caller, session.id.uuid(), None)
+        .await
+        .unwrap()
+        .expect("full read");
+    let lean = service
+        .get_for_worker(&ctx.caller, session.id.uuid())
+        .await
+        .unwrap()
+        .expect("worker read");
+
+    assert_eq!(lean.agent_id, Some(agent_id));
+    assert_eq!(
+        crate::records::wire::schema_session_to_proto(&lean),
+        crate::records::wire::schema_session_to_proto(&full)
+    );
+    assert!(
+        service
+            .get_for_worker(&ctx.caller, Uuid::now_v7())
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
 async fn create_session_rejects_both_agent_id_and_agent_name() {
     let db = Arc::new(StorageBackend::test_database());
     let ctx = test_ctx(db, 10);
@@ -454,7 +560,7 @@ async fn participant_commands_list_add_and_leave_history() {
     let host_agent = db
         .create_agent(
             DEFAULT_ORG_ID,
-            crate::storage::models::CreateAgentRow {
+            crate::storage::CreateAgentRow {
                 public_id: host_public_id.to_string(),
                 name: "participant-host".to_string(),
                 display_name: None,
@@ -472,6 +578,7 @@ async fn participant_commands_list_add_and_leave_history() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -482,7 +589,7 @@ async fn participant_commands_list_add_and_leave_history() {
     let member_agent = db
         .create_agent(
             DEFAULT_ORG_ID,
-            crate::storage::models::CreateAgentRow {
+            crate::storage::CreateAgentRow {
                 public_id: member_public_id.to_string(),
                 name: "participant-member".to_string(),
                 display_name: None,
@@ -500,6 +607,7 @@ async fn participant_commands_list_add_and_leave_history() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },

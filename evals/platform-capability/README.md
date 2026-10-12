@@ -259,6 +259,47 @@ So inlining the map is worth keeping on its own merits, and it is not a fix for
 the tool-call budgets. Those remain a question about what the budget is for
 rather than about what the model does.
 
+## Friction: what the calls were spent on
+
+Models do not know this command tree from training, so the calls an agent
+spends walking `--help` and recovering from refused guesses are a cost the help
+text controls. On the shell arm every `bash` call is classified
+([`src/friction.rs`](src/friction.rs)):
+
+| Class | Meaning |
+|---|---|
+| `help` | every `everruns` invocation only read help: `--help`/`-h`, or a bare group such as `everruns agents` |
+| `rejected` | the tree refused something: a clap `error:` line (unknown flag, missing or invalid value), `unknown command`, or `command not found` for a guessed flat name |
+| `real` | at least one real command ran and nothing was refused |
+| `other` | the call never invoked `everruns` (`jq` on a file, `cat` a doc) |
+
+A refusal wins over everything else in the same call, because the refusal is
+what tuning has to remove. The counts land in three places:
+
+- transcript metrics `friction.calls`, `friction.help_reads`,
+  `friction.rejected`, `friction.real`, `friction.other`, so a Mira host's JSON
+  and CSV exports carry them (live and offline subjects both record them);
+- the `cli_friction` scorer, informational and never failing: its value is the
+  share of command-line calls that did real work, its reason the breakdown;
+- a per-case and overall table printed after `--run`: mean calls, help reads,
+  rejections, real and other calls per run, and passes.
+
+`--friction-report <path>` (or `EVERRUNS_EVAL_FRICTION_REPORT`) writes one JSON
+line per run: the case, target, trial, pass, the commands tried in order with
+their outcome, the refusal each rejected one got, and the help pages read. That
+file is the input to the help-tuning loop (the `tune-cli-help` agent skill).
+
+```bash
+export EVERRUNS_EVAL_MODE=offline EVERRUNS_EVAL_TRIALS=3
+export EVERRUNS_EVAL_TARGETS=meta/muse-spark-1.3-contributor
+doppler run --command './target/debug/platform_capability --run --filter cli- \
+  --friction-report friction.jsonl'
+```
+
+A run whose subject failed (missing key, provider outage) has a non-null
+`error` in the report and no breakdown; drop it rather than reading it as zero
+friction. The legacy arm has no `bash` calls and reports no friction.
+
 ## Offline checks
 
 `cargo test` in this directory runs no model and needs no credentials. It

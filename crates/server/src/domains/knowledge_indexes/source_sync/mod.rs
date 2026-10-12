@@ -25,12 +25,12 @@ use tempfile::TempDir;
 use tokio::task;
 use uuid::Uuid;
 
-use crate::cluster_jobs::ClusterJob;
+use crate::background::cluster_jobs::ClusterJob;
 use crate::domains::git_fetch::{self, FetchRequest};
 use crate::domains::git_sources::{github_clone_url, safe_git_clone_error};
 use crate::services::ProviderResolverService;
 use crate::storage::StorageBackend;
-use crate::storage::models::{
+use crate::storage::{
     CreateKnowledgeIndexChunkRow, CreateKnowledgeIndexDocumentWithChunks, KnowledgeIndexRow,
 };
 
@@ -459,6 +459,9 @@ impl KnowledgeIndexSyncService {
                 // No single provider response id: this aggregates many calls.
                 // Reconciliation skips rows without one.
                 None,
+                // The embedder is resolved by provider type, not a stored
+                // provider row, so there is no account to record.
+                crate::storage::repositories::GenerationProvider::default(),
                 chrono::Utc::now(),
             )
             .await

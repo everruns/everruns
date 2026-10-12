@@ -1,9 +1,9 @@
 //! Configure every capability kind through one open Framework entrypoint.
 //!
-//! Run offline with:
-//! `cargo run -p everruns --example capability_configuration`
+//! Run with:
+//! `cargo run -p everruns --features openai --example capability_configuration`
 
-use everruns::{Agent, CapabilityRef, CompactionConfig, Engine, Model, ToolSearch, capability};
+use everruns::{Agent, CapabilityRef, CompactionConfig, Engine, OpenAI, ToolSearch, capability};
 
 #[derive(capability::Deserialize, capability::JsonSchema)]
 #[serde(crate = "everruns::capability::serde")]
@@ -56,8 +56,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .tool(Weather);
 
     let agent = Agent::builder()
-        .instructions("Use configured capabilities when relevant.")
-        .model(Model::simulated("Configured."))
+        .instructions("Use configured capabilities when relevant. Be terse.")
+        .provider(OpenAI::from_env()?)
+        .model("gpt-6.1-sol")
         .capability(CompactionConfig::new().budget_percent(0.85))
         .capability(ToolSearch::automatic())
         .capability(weather_definition)
@@ -69,8 +70,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let turn = Engine::new()
         .create(agent)
-        .run("Confirm the agent is configured.")
+        .run("What is the forecast for Lisbon? Use weather_forecast.")
         .await?;
     println!("{}", turn.response);
+    println!("tool calls: {}", turn.tool_calls);
     Ok(())
 }

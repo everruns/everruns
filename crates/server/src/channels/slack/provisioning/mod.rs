@@ -3,7 +3,7 @@ mod branding;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::records::slack_provisioning::{
+use crate::domains::agent_channels::record::slack_provisioning::{
     SlackAppCredentials, SlackAppProvisioner, SlackProvisioningConnectionStatus,
     SlackProvisioningError, SlackProvisioningResult,
 };
@@ -16,7 +16,7 @@ use crate::storage::{
     UpsertOrgSlackConnection,
 };
 
-const SLACK_API_BASE: &str = "https://slack.com/api";
+use everruns_integrations::slack_channel::web_api::SLACK_API_BASE;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 const ROTATE_BEFORE_EXPIRY: chrono::Duration = chrono::Duration::minutes(5);
 const ROTATION_WAIT_ATTEMPTS: usize = 40;
@@ -34,7 +34,7 @@ pub struct SlackProvisioningSetup {
 }
 
 pub fn configure(
-    supervisor: &mut crate::supervised_task::TaskSupervisor,
+    supervisor: &mut crate::background::supervised_task::TaskSupervisor,
     db: Arc<StorageBackend>,
     encryption: Option<Arc<EncryptionService>>,
     custom: Option<Arc<dyn SlackAppProvisioner>>,
@@ -599,6 +599,23 @@ impl SlackAppProvisioner for SlackApiProvisioner {
         }
     }
 
+    async fn set_app_icon_url(
+        &self,
+        org_id: i64,
+        team_id: Option<&str>,
+        app_id: &str,
+        icon_url: &str,
+    ) -> SlackProvisioningResult<()> {
+        let row = self.connection_for(org_id, team_id).await?;
+        self.manifest_call(
+            row,
+            "/apps.icon.set",
+            serde_json::json!({"app_id": app_id, "url": icon_url}),
+        )
+        .await?;
+        Ok(())
+    }
+
     async fn update_permissions(
         &self,
         org_id: i64,
@@ -891,6 +908,42 @@ mod tests {
         assert!(body.contains("A1"));
         assert!(body.contains("name=\"file\"; filename=\"avatar.png\""));
         assert!(body.contains("PNG-bytes"));
+    }
+
+    #[tokio::test]
+    async fn app_icon_can_be_set_from_a_public_url() {
+        let server = MockServer::start().await;
+        let (provisioner, db) = provisioner(&server);
+        db.upsert_org_slack_connection(stored(1, "T1", chrono::Duration::hours(1)))
+            .await
+            .unwrap();
+        Mock::given(method("POST"))
+            .and(path("/apps.icon.set"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok":true})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let icon_url = "https://api.example.com/v1/avatars/avatar_1/square-512.png";
+        provisioner
+            .set_app_icon_url(1, Some("T1"), "A1", icon_url)
+            .await
+            .unwrap();
+        let requests = server.received_requests().await.unwrap();
+        let request = &requests[0];
+        let content_type = request
+            .headers
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(
+            content_type.starts_with("application/json"),
+            "{content_type}"
+        );
+        assert!(request.headers.get("authorization").is_some());
+        let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+        assert_eq!(body["app_id"], "A1");
+        assert_eq!(body["url"], icon_url);
     }
 
     #[tokio::test]

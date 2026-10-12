@@ -9,8 +9,7 @@
 //!   the tool resolution before it starts the turn, and the turn task reads
 //!   it from the session store. The runner holds no session runtime to write
 //!   input through, so `Message`, `ToolResults` and `ResumeInterrupted` fail
-//!   with a configuration error; a framework session's input goes through
-//!   [`DurableBackend`](crate::DurableBackend), which records it itself.
+//!   with a configuration error.
 //! - A stored message needs the request's [`TurnScope`]: the runner cannot
 //!   look the session's organization, harness and agent up. The turn's id is
 //!   minted by its input step, as the platform's turns always were; the
@@ -28,9 +27,8 @@
 //!   re-reading the status every [`TICKET_FALLBACK_POLL_INTERVAL`] in case a
 //!   wakeup is missed. The memory store has one: every path that ends a
 //!   workflow (driver completion, task failure, cancel, dead task) writes the
-//!   status through it, so its status writes are the one hook, and a
-//!   [`DurableBackend`](crate::DurableBackend) turn reports back as soon as
-//!   it ends. The PostgreSQL store has none, since another process may end
+//!   status through it, so its status writes are the one hook, and a turn
+//!   reports back as soon as it ends. The PostgreSQL store has none, since another process may end
 //!   the workflow, so its tickets poll every [`TICKET_POLL_INTERVAL`]; the
 //!   server mostly drops those tickets.
 //! - The request's steering handle is closed at start: durable turns take
@@ -138,18 +136,9 @@ impl DurableRunner {
     }
 
     /// Start a new run of `workflow_id` whose first task is the input step
-    /// of `input`, and wake the workers. Returns `false`, starting nothing,
-    /// when the workflow still runs a turn.
-    pub(crate) async fn start_workflow(
-        &self,
-        workflow_id: Uuid,
-        input: &DurableTurnInput,
-    ) -> anyhow::Result<bool> {
-        self.start_workflow_steered(workflow_id, input, None).await
-    }
-
-    /// [`Self::start_workflow`], steering a running turn with `steer` as
-    /// its `USER_MESSAGE` signal payload.
+    /// of `input`, steering a running turn with `steer` as its
+    /// `USER_MESSAGE` signal payload. Returns `false`, starting nothing, when
+    /// the workflow still runs a turn.
     async fn start_workflow_steered(
         &self,
         workflow_id: Uuid,
@@ -164,23 +153,6 @@ impl DurableRunner {
             steer,
         )
         .await
-    }
-
-    /// Start a new run of `workflow_id` whose first task is `activity_type`
-    /// with `input_json`, and wake the workers. Returns `false`, starting
-    /// nothing, when the workflow still runs a turn.
-    ///
-    /// A turn usually starts at its input step; a turn resumed from the
-    /// session log after a process exit starts at the act it was cut off in.
-    pub(crate) async fn start_workflow_at(
-        &self,
-        workflow_id: Uuid,
-        activity_id: String,
-        activity_type: &str,
-        input_json: serde_json::Value,
-    ) -> anyhow::Result<bool> {
-        self.start_workflow_with(workflow_id, activity_id, activity_type, input_json, None)
-            .await
     }
 
     async fn start_workflow_with(

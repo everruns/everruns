@@ -22,7 +22,11 @@
 // tools(), but no channel adapter contributes tools yet. Tracked for future
 // work — see TODO(platform-tools) below.
 
-use crate::runtime::message::ExternalActor;
+pub use crate::runtime::channel_driver::{
+    ChannelDriver, ChannelError, ChannelRequest, ChannelResponse, ControlAction, Inbound,
+    InboundControl, InboundDecision, InboundMessage, InboundRoute,
+};
+pub use crate::runtime::message::ExternalActor;
 use crate::runtime::typed_id::SessionId;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -290,6 +294,10 @@ pub struct InboundChannelEvent {
     pub thread_ref: Option<String>,
     /// Platform-specific metadata for session tag construction.
     pub routing_metadata: HashMap<String, String>,
+    /// Platform facts kept on the input message's metadata (Slack's
+    /// `slack_ts`, `slack_thread_ts`), for history, approvals and recovery
+    /// to read from one place.
+    pub message_metadata: serde_json::Map<String, serde_json::Value>,
 }
 
 /// Attachment from an inbound platform message.
@@ -332,20 +340,6 @@ pub struct OutboundChannelMessage {
 // ============================================
 // Channel delivery adapter (async agent responses)
 // ============================================
-
-/// Reply mode for channel delivery — controls which agent output reaches the channel.
-///
-/// Generalizes SlackReplyMode to work across all platforms.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum ChannelReplyMode {
-    /// Forward all completed assistant messages to the channel.
-    #[default]
-    AllMessages,
-    /// Only publish messages explicitly posted through channel_post_message.
-    #[serde(alias = "report_progress_only")]
-    ToolOnly,
-}
 
 /// Trait for platform-specific delivery of agent responses.
 ///
@@ -406,6 +400,65 @@ pub trait ChannelDeliveryAdapter: Send + Sync {
     fn agent_surface(&self) -> Option<&dyn ChannelAgentSurface> {
         None
     }
+
+    /// Approval prompts, when the platform draws them.
+    ///
+    /// `None`, the default, leaves a `request_approval` pause to the agent's
+    /// own reply: the model asks, the person answers in the thread.
+    fn approvals(&self) -> Option<&dyn ChannelApprovalPrompt> {
+        None
+    }
+
+    /// One task-progress message per turn, edited in place, when the platform
+    /// can edit a message. `None`, the default, reports no task progress.
+    fn progress(&self) -> Option<&dyn ChannelProgressSurface> {
+        None
+    }
+}
+
+/// A `request_approval` pause, as a channel shows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApprovalPrompt {
+    /// What the agent wants to do.
+    pub action: String,
+    /// The agent's question, when it asked one beyond the action.
+    pub question: Option<String>,
+    /// The turn that raised the pause, when the tool result names it.
+    pub turn_id: Option<String>,
+}
+
+impl ApprovalPrompt {
+    /// The prompt as plain text, for a platform or a thread that cannot draw
+    /// buttons.
+    pub fn text(&self) -> String {
+        match &self.question {
+            Some(question) => format!("Approval needed: {}\n{question}", self.action),
+            None => format!("Approval needed: {}", self.action),
+        }
+    }
+}
+
+/// Draws an approval prompt in a conversation. An answer comes back as the
+/// next user message on the session, so no answer path is needed here.
+#[async_trait]
+pub trait ChannelApprovalPrompt: Send + Sync {
+    async fn prompt(
+        &self,
+        session_id: SessionId,
+        prompt: &ApprovalPrompt,
+        context: &DeliveryContext,
+    ) -> DeliveryResult;
+}
+
+/// One message a delivery posts once and then edits, such as a turn's task
+/// progress.
+#[async_trait]
+pub trait ChannelProgressSurface: Send + Sync {
+    /// Post the message. Returns a handle for later edits.
+    async fn post(&self, text: &str, context: &DeliveryContext) -> Result<String, String>;
+
+    /// Replace the text of a posted message.
+    async fn update(&self, handle: &str, text: &str, context: &DeliveryContext) -> DeliveryResult;
 }
 
 /// The agent-pane affordances a platform may offer alongside the reply itself:
@@ -449,6 +502,45 @@ pub trait ChannelStreamDelivery: Send + Sync {
     async fn stop(&self, handle: &str, context: &DeliveryContext) -> DeliveryResult;
 }
 
+/// Where one conversation's replies go, without credentials.
+///
+/// A driver derives it from an inbound message and turns it back into a
+/// [`DeliveryContext`] when posting. It is the part of a delivery that is safe
+/// to persist: a pending delivery survives a restart by its target, and the
+/// driver re-supplies the token.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeliveryTarget {
+    /// Platform channel or conversation id.
+    pub channel_id: String,
+    /// Thread reference for reply targeting; empty for a top-level post.
+    #[serde(default)]
+    pub thread_ref: String,
+    /// Platform extras (team id, recipient user id).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub extra: HashMap<String, String>,
+}
+
+impl DeliveryTarget {
+    /// A target in `channel_id`, threaded under `thread_ref` when non-empty.
+    pub fn new(channel_id: impl Into<String>, thread_ref: impl Into<String>) -> Self {
+        Self {
+            channel_id: channel_id.into(),
+            thread_ref: thread_ref.into(),
+            extra: HashMap::new(),
+        }
+    }
+
+    /// The delivery context for this target.
+    pub fn context(&self, auth_token: impl Into<String>) -> DeliveryContext {
+        DeliveryContext {
+            auth_token: auth_token.into(),
+            channel_id: self.channel_id.clone(),
+            thread_ref: self.thread_ref.clone(),
+            extra: self.extra.clone(),
+        }
+    }
+}
+
 /// Context needed by a delivery adapter to post messages.
 ///
 /// Stored when a delivery is registered, consumed when events arrive.
@@ -461,8 +553,6 @@ pub struct DeliveryContext {
     pub channel_id: String,
     /// Thread reference for reply targeting.
     pub thread_ref: String,
-    /// Reply mode controlling which output is delivered.
-    pub reply_mode: ChannelReplyMode,
     /// Platform-specific extra context (e.g. team_id, workspace URL).
     pub extra: HashMap<String, String>,
 }
@@ -473,7 +563,6 @@ impl std::fmt::Debug for DeliveryContext {
             .field("auth_token", &"[REDACTED]")
             .field("channel_id", &self.channel_id)
             .field("thread_ref", &self.thread_ref)
-            .field("reply_mode", &self.reply_mode)
             .field("extra", &self.extra)
             .finish()
     }
@@ -765,25 +854,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_channel_reply_mode_wire_contract() {
-        assert_eq!(ChannelReplyMode::default(), ChannelReplyMode::AllMessages);
-        for (mode, wire) in [
-            (ChannelReplyMode::AllMessages, "\"all_messages\""),
-            (ChannelReplyMode::ToolOnly, "\"tool_only\""),
-        ] {
-            assert_eq!(serde_json::to_string(&mode).unwrap(), wire);
-            assert_eq!(
-                serde_json::from_str::<ChannelReplyMode>(wire).unwrap(),
-                mode
-            );
-        }
-    }
-
-    /// EVE-1005: every value persisted in `channel_config` JSONB before the
-    /// enums were unified must still deserialize, and must still serialize back
-    /// to the same string. This is what makes the change migration-free; if it
-    /// fails, stored channel configs are unreadable.
     #[test]
     fn test_session_binding_wire_contract() {
         assert_eq!(SessionBinding::default(), SessionBinding::Thread);

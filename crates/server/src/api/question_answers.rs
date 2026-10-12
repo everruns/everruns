@@ -19,11 +19,11 @@
 // turn, and the answer is parked in session storage for the retried tool call
 // to send back to the server. Anything but an answer declines (D5).
 
-pub(crate) use crate::services::ask_user_result::{build_result_with_source, default_answered_by};
-use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
-use crate::storage::models::{
-    ClaimWaitingTurnResult, WaitingTurnResolutionPlan, WaitingTurnSessionValue,
+pub(crate) use crate::domains::tool_results::ask_user_result::{
+    build_result_with_source, default_answered_by,
 };
+use crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution;
+use crate::storage::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan, WaitingTurnSessionValue};
 use everruns_contracts::tool_types::{FORM_ELICITATION_CALL_ID_PREFIX, MCP_ELICITATION_ARGUMENT};
 use everruns_core::builtins::ask_user::{
     ASK_USER_TOOL_NAME, AskUserAnswer, AskUserAnsweredBy, AskUserQuestion, AskUserQuestionKind,
@@ -223,7 +223,7 @@ pub(crate) fn validate_answers(
 /// `tool_call_id` is optional because some answer surfaces rely on the current
 /// pending question set instead of carrying a rendered card's call id.
 pub(crate) fn pending_from_events(
-    events: &[crate::storage::models::EventRow],
+    events: &[crate::storage::EventRow],
     tool_call_id: Option<&str>,
 ) -> Option<PendingQuestions> {
     let event = events.last()?;
@@ -400,8 +400,10 @@ pub(crate) async fn resolve_question_answers_with_source(
 
     let result = build_result_with_source(status, answered_by, answers);
 
-    let turn_id = everruns_contracts::typed_id::TurnId::from_uuid(session_id.uuid());
-    let event_message_id = everruns_contracts::typed_id::MessageId::from_uuid(session_id.uuid());
+    // The answer is recorded under the waiting turn, which the worker resumes.
+    let context = crate::turns::open_turn_context(state.db, session_id)
+        .await
+        .map_err(|error| ResolveError::Internal(error.to_string()))?;
     let payload = serde_json::to_value(&result).unwrap_or_default();
 
     // The tool result alone. `ask_user` is called by the model, so the
@@ -444,15 +446,16 @@ pub(crate) async fn resolve_question_answers_with_source(
         // the person was talking to (same reasoning as `mcp_url_consent`).
         let mut message = everruns_core::message::RuntimeMessage::user(spoken);
         message.controls = latest_user_controls(state.db, session_id).await;
+        // Part of the waiting turn, not input that starts or steers one.
         events.push(everruns_core::events::EventRequest::new(
             session_id,
-            everruns_core::events::EventContext::empty(),
+            context.clone(),
             everruns_core::events::InputMessageData::new(message),
         ));
     }
     events.push(everruns_core::events::EventRequest::new(
         session_id,
-        everruns_core::events::EventContext::turn(turn_id, event_message_id),
+        context,
         completed_event,
     ));
     let plan = WaitingTurnResolutionPlan {
@@ -746,7 +749,20 @@ pub async fn submit_question_answers(
         &submitted,
     )
     .await
-    .map_err(|error| match error {
+    .map_err(resolve_error_response)?;
+
+    Ok(question_answers_response(&result))
+}
+
+/// The HTTP answer for a resolution that did not happen. Shared by every
+/// surface that serves `POST …/question-answers`.
+pub(crate) fn resolve_error_response(
+    error: ResolveError,
+) -> (
+    axum::http::StatusCode,
+    axum::Json<super::common::ErrorResponse>,
+) {
+    match error {
         ResolveError::NotWaiting(detail) => super::common::ErrorResponse::new(format!(
             "Session is not waiting for tool results (current status: {detail})"
         ))
@@ -770,9 +786,13 @@ pub async fn submit_question_answers(
             super::common::ErrorResponse::new("Internal server error".to_string())
                 .into_response(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
         }
-    })?;
+    }
+}
 
-    Ok(axum::Json(QuestionAnswersResponse {
+pub(crate) fn question_answers_response(
+    result: &AskUserResult,
+) -> axum::Json<QuestionAnswersResponse> {
+    axum::Json(QuestionAnswersResponse {
         status: serde_json::to_value(result.status)
             .ok()
             .and_then(|v| v.as_str().map(str::to_string))
@@ -782,22 +802,20 @@ pub async fn submit_question_answers(
             .and_then(|v| v.as_str().map(str::to_string))
             .unwrap_or_default(),
         session_status: "active".to_string(),
-    }))
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::ask_user_result::build_result;
+    use crate::domains::tool_results::ask_user_result::build_result;
     use everruns_core::builtins::ask_user::{AskUserOption, AskUserQuestionKind};
 
     /// A `tool.call_requested` row carrying one `ask_user` call, shaped the way
     /// the event stream stores it.
-    fn event_with_ask_user_arguments(
-        arguments: serde_json::Value,
-    ) -> crate::storage::models::EventRow {
+    fn event_with_ask_user_arguments(arguments: serde_json::Value) -> crate::storage::EventRow {
         let now = chrono::Utc::now();
-        crate::storage::models::EventRow {
+        crate::storage::EventRow {
             id: everruns_contracts::typed_id::EventId::new(),
             session_id: everruns_contracts::typed_id::SessionId::new(),
             sequence: 1,
@@ -842,10 +860,7 @@ mod tests {
         .expect("an in-profile schema")
     }
 
-    fn with_call_id(
-        mut event: crate::storage::models::EventRow,
-        id: &str,
-    ) -> crate::storage::models::EventRow {
+    fn with_call_id(mut event: crate::storage::EventRow, id: &str) -> crate::storage::EventRow {
         event.data["tool_calls"][0]["id"] = serde_json::json!(id);
         event
     }

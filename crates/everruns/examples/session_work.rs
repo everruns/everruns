@@ -1,16 +1,17 @@
-//! Run with: `cargo run -p everruns --example session_work`
+//! Run with: `cargo run -p everruns --features openai --example session_work`
 
 use std::time::Duration;
 
 use everruns::work::{TaskOutcome, TaskRequest, WakePolicy, WakeReason, WorkQueue};
-use everruns::{Agent, Engine, Model};
+use everruns::{Agent, Engine, OpenAI};
 use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
-        .instructions("You summarize completed background work.")
-        .model(Model::simulated("Background work handled."))
+        .instructions("You summarize completed background work in one sentence.")
+        .provider(OpenAI::from_env()?)
+        .model("gpt-6.1-sol")
         .build()?;
     let session = Engine::new().create(agent.clone());
 
@@ -41,9 +42,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for delivery in queue.claim_wakes(Duration::from_secs(30), 16).await? {
         if let WakeReason::TaskFinished { outcome, .. } = &delivery.wake.reason {
-            session
+            let turn = session
                 .run(format!("Background task completed: {outcome:?}"))
                 .await?;
+            println!("{}", turn.response);
         }
         queue.acknowledge_wake(&delivery).await?;
     }

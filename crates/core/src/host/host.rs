@@ -18,6 +18,7 @@ use crate::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use crate::message_retriever::MessageRetriever;
 use crate::runtime_context::AssembledTurnContext;
 use crate::session::SessionExecutionState;
+use crate::session_task::SessionTaskRegistry;
 use crate::{
     CapabilityRegistry, DecisionsService, DependencyBlocker, EgressService,
     ResolvedExecutionSnapshot, TokenUsage, ToolRegistry, UtilityLlmService,
@@ -47,7 +48,6 @@ use tracing::warn;
 
 #[path = "host/message_filter_only.rs"]
 mod message_filter_only;
-use message_filter_only::MessageFilterOnlyCapability;
 
 /// Resolved inputs loaded in one batched call for runtime host execution.
 ///
@@ -67,14 +67,11 @@ pub struct ResolvedTurnInputs {
 
 /// Public adapter contract for server-backed or durable runtime hosts.
 ///
-/// `everruns_core::host` owns shared orchestration for both embedded and durable
-/// execution. That includes phase execution (`input -> reason -> act`),
-/// lifecycle emission, and the generic turn-strategy decisions used by durable
-/// or custom hosts.
+/// `everruns_core::host` owns shared orchestration for embedded and durable execution:
+/// phase execution (`input -> reason -> act`), lifecycle emission, and generic turn strategy.
 ///
-/// Host crates implement this trait to provide persistence, session-lifecycle
-/// plumbing, event delivery, and their own orchestration backend. The durable
-/// engine itself remains outside this crate.
+/// Host crates implement this trait to provide persistence, session-lifecycle plumbing, event
+/// delivery, and their own orchestration backend. The durable engine stays outside this crate.
 #[async_trait]
 pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     /// Durable task cancellation/ownership loss, scoped to this execution.
@@ -191,7 +188,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
-    fn connection_resolver(&self) -> Option<Arc<dyn UserConnectionResolver>> {
+    fn connection_resolver(&self, _org_id: i64) -> Option<Arc<dyn UserConnectionResolver>> {
         None
     }
 
@@ -217,15 +214,15 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
-    fn leased_resource_store(&self) -> Option<Arc<dyn LeasedResourceStore>> {
+    fn leased_resource_store(&self, _org_id: i64) -> Option<Arc<dyn LeasedResourceStore>> {
         None
     }
 
-    fn session_resource_registry(&self) -> Option<Arc<dyn SessionResourceRegistry>> {
+    fn session_resource_registry(&self, _org_id: i64) -> Option<Arc<dyn SessionResourceRegistry>> {
         None
     }
 
-    fn session_task_registry(&self) -> Option<Arc<dyn crate::session_task::SessionTaskRegistry>> {
+    fn session_task_registry(&self, _org_id: i64) -> Option<Arc<dyn SessionTaskRegistry>> {
         None
     }
 
@@ -1068,10 +1065,12 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         ));
     }
 
-    // A `Block` aborts the turn by reusing the same failure path as
-    // `dependency_blocked`. Hosts pass the original input on iteration one and
-    // any synthetic user messages injected later, ensuring every provider-bound
-    // user message crosses this policy boundary.
+    if let Some(stopped) = crate::host::budget_gate::before_reason(adapter, org_id, &input).await? {
+        return Ok(stopped);
+    }
+
+    // A `Block` aborts the turn via the `dependency_blocked` failure path. Hosts pass the
+    // original input and later synthetic user messages, so every one crosses this boundary.
     let mut user_prompt_message_overrides = Vec::new();
     for message_id in prompt_message_ids {
         let mut hook_input = input.clone();
@@ -1154,41 +1153,15 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
             input.context.input_message_id,
         )
         .await?;
-    if let Some(augmentor) = adapter.tool_augmentor() {
-        augmentor
-            .augment_reason_tools(
-                input.context.session_id,
-                adapter.session_store(org_id),
-                adapter.session_task_registry(),
-                &mut turn_inputs.mcp_tool_definitions,
-            )
-            .await?;
-    }
-
-    let reason_capability_registry = {
-        let mut registry = adapter.capability_registry();
-        if !query_history_allowed {
-            // Persisted history may contain raw text removed by earlier prompt
-            // hooks. Preserve the owning capability's message filter while
-            // suppressing its prompt/tool contributions for this turn. Tool
-            // ownership is discovered through the neutral capability contract;
-            // host does not depend on a concrete implementation or capability ID.
-            let query_history_owner = registry
-                .list()
-                .into_iter()
-                .find(|capability| {
-                    capability
-                        .tool_definitions()
-                        .iter()
-                        .any(|tool| tool.name() == "query_history")
-                })
-                .map(Arc::clone);
-            if let Some(capability) = query_history_owner {
-                registry.register(MessageFilterOnlyCapability(capability));
-            }
-        }
-        registry
-    };
+    reason_surface::augment_reason_tools(
+        adapter,
+        org_id,
+        input.context.session_id,
+        &mut turn_inputs.mcp_tool_definitions,
+    )
+    .await?;
+    let reason_capability_registry =
+        reason_surface::reason_capability_registry(adapter, query_history_allowed);
     let context_resolver = crate::host::runtime_context::StoreTurnContextResolver::new(
         adapter.harness_store(org_id),
         adapter.agent_store(org_id),
@@ -1249,6 +1222,18 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
     let decisions = crate::system_decisions::for_turn(&validation_services, &input.context);
     if let Some(decisions) = decisions {
         atom = atom.with_decisions(decisions);
+    }
+    // Output-stage `mcp` guardrail checks call the session's scoped MCP servers,
+    // scoped to the same tool definitions the act phase allows (EVE-572).
+    if !turn_inputs.mcp_tool_definitions.is_empty()
+        && let Some(mcp) = adapter
+            .mcp_executor(org_id, input.context.session_id, input.agent_id)
+            .await
+    {
+        atom = atom.with_mcp_invoker(Arc::new(crate::ScopedMcpToolInvoker::new(
+            &turn_inputs.mcp_tool_definitions,
+            mcp,
+        )));
     }
     // Schedule store powers the `usage_limit_auto_continue` capability, which
     // schedules a continuation after a provider usage limit resets.
@@ -1429,7 +1414,7 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
             .augment_act_tools(
                 input.context.session_id,
                 adapter.session_store(org_id),
-                adapter.session_task_registry(),
+                adapter.session_task_registry(org_id),
                 adapter.file_store(org_id),
                 &input.tool_definitions,
                 &mut tool_registry,
@@ -1497,3 +1482,6 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
 #[path = "host/execution_capabilities.rs"]
 mod execution_capabilities;
 use execution_capabilities::load_execution_capabilities;
+#[path = "host/reason_surface.rs"]
+mod reason_surface;
+pub(crate) use reason_surface::reason_turn_context;

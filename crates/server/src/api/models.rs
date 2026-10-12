@@ -365,7 +365,10 @@ async fn profiles_for_caller(
         let provider = provider.ok_or_else(|| {
             ErrorResponse::new("Provider not found").into_response(StatusCode::NOT_FOUND)
         })?;
-        if !crate::services::chatgpt::visible(&provider.settings, &Caller::from(org)) {
+        if !crate::domains::user_connections::chatgpt::visible(
+            &provider.settings,
+            &Caller::from(org),
+        ) {
             return Err(
                 ErrorResponse::new("Provider not found").into_response(StatusCode::NOT_FOUND)
             );

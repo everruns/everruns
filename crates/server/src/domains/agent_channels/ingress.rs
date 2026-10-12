@@ -1,49 +1,20 @@
 use std::sync::Arc;
 
-use crate::records::agent_channel::{ScheduleChannelConfig, WebhookChannelConfig};
-use crate::records::{
-    A2aChannelConfig, AgUiChannelConfig, AgentChannel, AgentChannelId, ApiChannelConfig,
-    ChannelAuthConfig, ChannelStatus, ChannelType, FcpChannelConfig, PublicChatChannelConfig,
-    SlackChannelConfig,
+use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
+use crate::domains::agent_channels::record::{
+    A2aChannelConfig, AgUiChannelConfig, AgentChannel, ChannelAuthConfig, ChannelStatus,
+    ChannelType, FcpChannelConfig, PublicChatChannelConfig,
 };
+use crate::domains::agent_channels::record::{ScheduleChannelConfig, WebhookChannelConfig};
+use crate::records::AgentChannelId;
 use everruns_contracts::typed_id::{AgentId, AppId, HarnessId, PrincipalId, VirtualUserId};
 use uuid::Uuid;
 
-use crate::storage::{EncryptionService, IngressChannelRow, SessionRow, StorageBackend};
+use crate::storage::{EncryptionService, IngressChannelRow, StorageBackend};
 
 impl IngressContext {
     pub(crate) fn agent_is_active(&self) -> bool {
         self.agent_status == "active"
-    }
-
-    /// Find an existing session carrying these routing tags.
-    ///
-    /// Which key identifies "the same conversation" depends on what is serving
-    /// the request. A historical app owned its sessions outright, so the app is
-    /// the key. A native channel is shared between callers, so the channel
-    /// alone would hand one caller another's thread — the owner principal is
-    /// what separates them.
-    pub async fn find_session_by_tags(
-        &self,
-        db: &StorageBackend,
-        channel_internal_id: Uuid,
-        routing_tags: &[String],
-    ) -> anyhow::Result<Option<SessionRow>> {
-        match self.historical_app_id {
-            Some(app_id) => {
-                db.find_app_session_by_tags(self.org_id, app_id, routing_tags)
-                    .await
-            }
-            None => {
-                db.find_channel_session_by_tags_and_owner(
-                    self.org_id,
-                    channel_internal_id,
-                    self.owner_principal_id,
-                    routing_tags,
-                )
-                .await
-            }
-        }
     }
 }
 
@@ -161,8 +132,8 @@ impl IngressChannel {
         self.config(ChannelType::A2a)
     }
 
-    pub fn api_channel_config(&self) -> Option<ApiChannelConfig> {
-        self.config(ChannelType::ApiEndpoint)
+    pub fn poppy_config(&self) -> Option<super::record::poppy::PoppyChannelConfig> {
+        self.config(ChannelType::Poppy)
     }
 
     pub fn public_chat_config(&self) -> Option<PublicChatChannelConfig> {
@@ -220,10 +191,6 @@ pub(crate) fn row_to_ingress(
         row.channel_config_encrypted.as_deref(),
         &row.channel_config,
         "channel configuration",
-    );
-    crate::domains::agent_channels::queries::normalize_slack_reply_mode(
-        &row.channel_type,
-        &mut channel_config,
     );
     let legacy_auth = channel_config
         .as_object_mut()

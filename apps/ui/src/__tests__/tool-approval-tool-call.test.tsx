@@ -53,6 +53,13 @@ describe("ToolApprovalRequests", () => {
     expect(submitToolApprovals).not.toHaveBeenCalled();
   });
 
+  it("says when only a rating, not the tool, asked for approval", () => {
+    const rated = request("call_1", "cfo@example.com");
+    rated.arguments.risk = "rated_changes";
+    renderCards([rated]);
+    expect(screen.getByText(/says nothing about its risk/)).toBeInTheDocument();
+  });
+
   it("submits a single decision straight away", async () => {
     renderCards();
     fireEvent.click(screen.getByRole("button", { name: /allow once/i }));

@@ -3,7 +3,7 @@ use crate::auth::backend::AuthBackend;
 use crate::auth::config::{AuthConfig, AuthMode, JwtConfig};
 use crate::auth::middleware::{AuthError, AuthMethod};
 use crate::auth::routes::AuthConfigResponse;
-use crate::records::OrgMembership;
+use crate::domains::organizations::record::OrgMembership;
 use axum::body::Body;
 use axum::http::Request;
 use http_body_util::BodyExt;
@@ -34,6 +34,7 @@ impl AuthBackend for MockAuthBackend {
                 name: "Default Organization".to_string(),
                 role: OrgRole::Owner,
             }],
+            pat_scope: None,
         })
     }
 
@@ -173,7 +174,7 @@ async fn organization_settings_require_database_admin_role() {
 
 #[tokio::test]
 async fn organization_name_update_requires_database_admin_role() {
-    use crate::storage::models::CreateOrganizationRow;
+    use crate::storage::CreateOrganizationRow;
 
     let (app, db, user_id) = create_org_app(None).await;
     let public_id = generate_org_public_id();
@@ -224,7 +225,7 @@ async fn organization_rejects_stale_default_model() {
 
 #[tokio::test]
 async fn organization_rejects_personal_model_and_service_defaults() {
-    use crate::storage::models::{CreateModelRow, CreateProviderRow};
+    use crate::storage::{CreateModelRow, CreateProviderRow};
     let (app, db, user_id) = create_org_app(None).await;
     db.add_organization_member(DEFAULT_ORG_ID, user_id, "owner")
         .await
@@ -314,6 +315,114 @@ async fn organization_chooses_who_answers_system_decisions() {
 }
 
 #[tokio::test]
+async fn organization_sets_validated_web_search_defaults() {
+    let (app, db, user_id) = create_org_app(None).await;
+    db.add_organization_member(DEFAULT_ORG_ID, user_id, "owner")
+        .await
+        .unwrap();
+    let account = |provider: &str, name: &str| crate::storage::CreateOrganizationConnectionRow {
+        org_id: DEFAULT_ORG_ID,
+        name: name.to_string(),
+        provider: provider.to_string(),
+        access_token_encrypted: vec![1, 2, 3],
+        provider_username: None,
+        provider_metadata: None,
+    };
+    let brave = db
+        .create_organization_connection(account("brave_search", "Team"))
+        .await
+        .unwrap()
+        .id;
+    let daytona = db
+        .create_organization_connection(account("daytona", "Sandboxes"))
+        .await
+        .unwrap()
+        .id;
+    let send = |body: serde_json::Value| {
+        let app = app.clone();
+        async move {
+            let response = app
+                .oneshot(update_default_org_json_request(body.to_string()))
+                .await
+                .unwrap();
+            let status = response.status();
+            let bytes = response.into_body().collect().await.unwrap().to_bytes();
+            let body = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+            (status, body)
+        }
+    };
+    // A new organization reads the built-in defaults: Automatic.
+    let (status, org) = send(serde_json::json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(org["web_search_defaults"]["provider"], "auto");
+    assert_eq!(
+        org["web_search_defaults"]["automatic_order"],
+        serde_json::json!(["native", "free"])
+    );
+    assert_eq!(org["web_search_defaults"]["allow_native"], true);
+
+    let (status, org) = send(serde_json::json!({"web_search_defaults": {
+        "provider": "account", "account_id": brave,
+        "automatic_order": [brave, "native"], "allow_native": false,
+        "fallback": "none", "results_per_search": 12, "blocked_domains": ["Pinterest.com"]
+    }}))
+    .await;
+    assert_eq!(status, StatusCode::OK, "{org}");
+    let defaults = &org["web_search_defaults"];
+    assert_eq!(defaults["provider"], "account");
+    assert_eq!(defaults["account_id"], brave.to_string());
+    assert_eq!(
+        defaults["automatic_order"],
+        serde_json::json!([brave.to_string(), "native", "free"])
+    );
+    assert_eq!(defaults["fallback"], "none");
+    assert_eq!(defaults["results_per_search"], 12);
+    assert_eq!(
+        defaults["blocked_domains"],
+        serde_json::json!(["pinterest.com"])
+    );
+    // Unrelated updates keep them.
+    let (_, org) = send(serde_json::json!({})).await;
+    assert_eq!(org["web_search_defaults"]["provider"], "account");
+
+    for (body, expected) in [
+        (
+            serde_json::json!({"provider": "org_default"}),
+            "org_default",
+        ),
+        (
+            serde_json::json!({"results_per_search": 21}),
+            "between 1 and 20",
+        ),
+        (
+            serde_json::json!({"provider": "account", "account_id": daytona}),
+            "not found",
+        ),
+        (
+            serde_json::json!({"automatic_order": [daytona]}),
+            "not found",
+        ),
+        (
+            serde_json::json!({"automatic_order": ["free", "native"]}),
+            "always last",
+        ),
+        (
+            serde_json::json!({"blocked_domains": ["https://x.com/"]}),
+            "bare host",
+        ),
+    ] {
+        let (status, error) = send(serde_json::json!({"web_search_defaults": body})).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}: {error}");
+        assert!(error.to_string().contains(expected), "{body}: {error}");
+    }
+    let (status, _) = send(serde_json::json!({"web_search_defaults": {"provder": "free"}})).await;
+    assert!(status.is_client_error());
+    // Rejected writes left the stored defaults alone.
+    let stored = db.org_web_search_defaults(DEFAULT_ORG_ID).await.unwrap();
+    assert_eq!(stored.account_id, Some(brave));
+}
+
+#[tokio::test]
 async fn create_organization_rejects_empty_name() {
     let (app, db, user_id) = create_org_app(None).await;
 
@@ -345,7 +454,7 @@ async fn create_organization_rejects_whitespace_only_name() {
 
 #[tokio::test]
 async fn update_organization_rejects_whitespace_only_name() {
-    use crate::storage::models::CreateOrganizationRow;
+    use crate::storage::CreateOrganizationRow;
 
     let (app, db, user_id) = create_org_app(None).await;
     let public_id = generate_org_public_id();
@@ -435,7 +544,7 @@ async fn org_create_policy_allows_creation() {
 // Post-create org initializers (EVE-811)
 // ------------------------------------------------------------------------
 
-use crate::org_init::{OrgInitContext, OrgInitializer};
+use crate::setup::org_init::{OrgInitContext, OrgInitializer};
 
 /// Build a create-org router with the given post-create initializers.
 async fn create_org_app_with_initializers(
@@ -563,7 +672,7 @@ async fn optional_org_initializer_failure_is_non_fatal() {
 
 #[tokio::test]
 async fn mark_org_onboarding_complete_is_idempotent() {
-    use crate::storage::models::CreateOrganizationRow;
+    use crate::storage::CreateOrganizationRow;
 
     let db = StorageBackend::test_database();
     let creator = db.create_test_user(Uuid::now_v7()).await;
@@ -590,7 +699,7 @@ async fn mark_org_onboarding_complete_is_idempotent() {
 
 #[tokio::test]
 async fn seeded_org_is_created_already_onboarded() {
-    use crate::storage::models::CreateOrganizationRow;
+    use crate::storage::CreateOrganizationRow;
 
     let db = StorageBackend::test_database();
 
@@ -706,7 +815,7 @@ fn test_update_request_partial() {
 
 #[tokio::test]
 async fn admins_set_and_clear_the_agentid_owner_cap() {
-    use crate::storage::models::CreateOrganizationRow;
+    use crate::storage::CreateOrganizationRow;
 
     let (app, db, user_id) = create_org_app(None).await;
     let public_id = generate_org_public_id();

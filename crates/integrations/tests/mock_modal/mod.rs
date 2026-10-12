@@ -32,6 +32,8 @@ pub struct MockState {
     pub url: String,
     pub image_builds: Vec<Vec<String>>,
     pub sandboxes: HashMap<String, pb::Sandbox>,
+    /// Tags each sandbox was created with.
+    pub tags: HashMap<String, Vec<pb::SandboxTag>>,
     pub terminated: Vec<String>,
     pub files: HashMap<String, Vec<u8>>,
     pub execs: HashMap<String, ExecRecord>,
@@ -229,6 +231,7 @@ impl pb::modal_client_server::ModalClient for MockModal {
         let request = request.into_inner();
         let mut state = self.lock();
         let id = format!("sb-mock{}", state.sandboxes.len() + 1);
+        state.tags.insert(id.clone(), request.tags);
         state
             .sandboxes
             .insert(id.clone(), request.definition.unwrap_or_default());
@@ -324,6 +327,39 @@ impl pb::modal_client_server::ModalClient for MockModal {
         }
         state.deleted_secrets.push(id);
         Ok(Response::new(()))
+    }
+
+    /// Running sandboxes carrying every requested tag, newest first, one per
+    /// page so callers exercise paging. `created_at` is the creation order.
+    async fn sandbox_list(
+        &self,
+        request: Request<pb::SandboxListRequest>,
+    ) -> std::result::Result<Response<pb::SandboxListResponse>, Status> {
+        check_control(&request)?;
+        let request = request.into_inner();
+        let state = self.lock();
+        let mut sandboxes: Vec<pb::SandboxInfo> = state
+            .tags
+            .iter()
+            .filter(|(id, _)| request.include_finished || !state.terminated.contains(id))
+            .filter(|(_, tags)| request.tags.iter().all(|wanted| tags.contains(wanted)))
+            .map(|(id, tags)| pb::SandboxInfo {
+                id: id.clone(),
+                created_at: id
+                    .trim_start_matches("sb-mock")
+                    .parse::<f64>()
+                    .unwrap_or(0.0)
+                    + 1_700_000_000.0,
+                tags: tags.clone(),
+                ..Default::default()
+            })
+            .filter(|info| {
+                request.before_timestamp == 0.0 || info.created_at < request.before_timestamp
+            })
+            .collect();
+        sandboxes.sort_by(|a, b| b.created_at.total_cmp(&a.created_at));
+        sandboxes.truncate(1);
+        Ok(Response::new(pb::SandboxListResponse { sandboxes }))
     }
 
     async fn sandbox_terminate(

@@ -231,8 +231,8 @@ PACT Identity profile. Add `pact` to an A2A channel's config to serve it:
 | `personal_agents[].jwks_uri` or `jwks` | Where its public keys are: an HTTPS URL, or the JWKS document inline. |
 | `personal_agents[].enabled` | `false` refuses that personal agent. Defaults to `true`. |
 
-The channel is then also served at `/v1/a2a/{channel_id}`, with its PACT Agent
-Card at `/v1/a2a/{channel_id}/.well-known/agent-card.json`. Each request
+The channel is then also served at `/v1/channels/{channel_id}/a2a/pact`, with its PACT Agent
+Card at `/v1/channels/{channel_id}/a2a/pact/.well-known/agent-card.json`. Each request
 carries a short-lived ES256 or RS256 JWT that the personal agent signs for one
 of its users (`sub`). `message:send` answers with the agent's reply as a
 Message. Its `contextId` continues the conversation for that same user only,
@@ -281,7 +281,7 @@ delegation token for exactly those permissions (OAuth 2.0 device code).
 Login and connected pages may use plain `http://` on `localhost` for local
 development.
 
-The OAuth endpoints live under `/v1/a2a/{channel_id}/oauth/`, with metadata
+The OAuth endpoints live under `/v1/channels/{channel_id}/a2a/pact/oauth/`, with metadata
 at `.well-known/oauth-authorization-server` and the signing keys at
 `jwks.json`. Your account API verifies the delegation tokens against those
 keys: `typ` is `at+jwt`, `iss` is the `oauth` URL, `aud` the endpoint URL,

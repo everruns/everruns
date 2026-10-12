@@ -7,12 +7,18 @@ use std::sync::Mutex;
 
 #[path = "deferred_tests.rs"]
 mod deferred;
+#[path = "plan_tests.rs"]
+mod plan;
 #[path = "preflight_tests.rs"]
 mod preflight;
+#[path = "ratings_tests.rs"]
+mod ratings;
 #[path = "scripts_tests.rs"]
 mod scripts;
 #[path = "stop_tests.rs"]
 mod stop;
+#[path = "timeline_tests.rs"]
+mod timeline;
 
 /// Echoes its input, so a test sees exactly the object the command built.
 struct EchoTool {
@@ -65,6 +71,9 @@ struct Policy {
     /// Whether the gate can tell, before a script starts, that it would hold
     /// `approval_for`, as the durable approval gate can.
     previews: bool,
+    /// Hold every call to a tool whose definition says it is destructive, as
+    /// the approval gate does at its default level.
+    approval_for_destructive: bool,
     after: Mutex<Vec<String>>,
 }
 
@@ -89,10 +98,11 @@ impl NestedToolPolicy for Policy {
     async fn authorize(
         &self,
         tool_call: ToolCall,
-        _tool_def: &ToolDefinition,
+        tool_def: &ToolDefinition,
         _context: &ToolContext,
     ) -> Result<ToolCall, ToolResult> {
         let refuse = |result, error| ToolResult {
+            details: None,
             tool_call_id: tool_call.id.clone(),
             result,
             images: None,
@@ -103,7 +113,9 @@ impl NestedToolPolicy for Policy {
         if Some(tool_call.name.as_str()) == self.blocked {
             return Err(refuse(None, Some("blocked by guardrail".to_string())));
         }
-        if Some(tool_call.name.as_str()) == self.approval_for {
+        if Some(tool_call.name.as_str()) == self.approval_for
+            || (self.approval_for_destructive && tool_def.hints().destructive == Some(true))
+        {
             return Err(refuse(Some(approval_payload(&tool_call)), None));
         }
         Ok(tool_call)
@@ -122,10 +134,13 @@ impl NestedToolPolicy for Policy {
     async fn preview(
         &self,
         tool_call: &ToolCall,
-        _tool_def: &ToolDefinition,
+        tool_def: &ToolDefinition,
         _context: &ToolContext,
     ) -> Option<ToolResult> {
-        (self.previews && Some(tool_call.name.as_str()) == self.approval_for).then(|| ToolResult {
+        let held = Some(tool_call.name.as_str()) == self.approval_for
+            || (self.approval_for_destructive && tool_def.hints().destructive == Some(true));
+        (self.previews && held).then(|| ToolResult {
+            details: None,
             tool_call_id: tool_call.id.clone(),
             result: Some(approval_payload(tool_call)),
             images: None,
@@ -414,4 +429,24 @@ fn capability_contract() {
     );
     assert!(manage_scripts(&json!({"manage_scripts": true})));
     assert!(!manage_scripts(&json!({})));
+    assert!(
+        capability
+            .validate_config(&json!({"rate_unlabeled_tools": false}))
+            .is_ok()
+    );
+    assert!(
+        capability
+            .validate_config(&json!({"rate_unlabeled_tools": "no"}))
+            .is_err()
+    );
+    assert!(rate_unlabeled_tools(&json!({})), "on by default");
+    assert!(rate_unlabeled_tools(&Value::Null));
+    assert!(!rate_unlabeled_tools(
+        &json!({"rate_unlabeled_tools": false})
+    ));
+    let schema = capability.config_schema().unwrap();
+    assert_eq!(
+        schema["properties"]["rate_unlabeled_tools"]["default"],
+        true
+    );
 }

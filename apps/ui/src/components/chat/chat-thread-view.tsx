@@ -11,9 +11,10 @@
  */
 "use client";
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Bot } from "lucide-react";
+
 import {
   SessionProvider,
   useSessionContext,
@@ -99,7 +100,7 @@ function ThreadContent({
       <ResourceNotFound
         title="Thread not found"
         description="This session is available as a recording. Use Playground to test its Agent."
-        backHref={`/sessions/${threadId}/transcript`}
+        backHref={`/sessions/${threadId}/trace`}
         backLabel="Open recording"
         resourceId={threadId}
       />
@@ -107,7 +108,7 @@ function ThreadContent({
   }
 
   return (
-    <div className="flex h-full flex-col bg-background bg-brand-dots">
+    <div className="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col bg-background bg-brand-dots">
       <ChatThreadHeader
         session={session}
         extraActions={extraActions}
@@ -123,7 +124,7 @@ function ThreadContent({
               href={`/agents/${agentId}`}
               className="inline-flex items-center gap-1 hover:text-foreground"
             >
-              <Bot className="icon-sharp size-3" />
+              <AgentIcon className="icon-sharp size-3" />
               {counterpart}
             </Link>
           ) : undefined

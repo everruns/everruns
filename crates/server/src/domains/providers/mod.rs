@@ -7,6 +7,7 @@ use everruns_core::{Permission, Policy, Rule};
 pub mod commands;
 pub mod credential_check;
 pub mod queries;
+pub mod record;
 pub mod service;
 pub mod types;
 
@@ -16,9 +17,9 @@ pub use service::*;
 
 pub const LLM_PROVIDER_VIEW: Policy = Policy {
     id: "provider.view",
-    rules: &[Rule::UserHasPermission(Permission::OrgProvidersView)],
+    rules: &[Rule::UserHasPermission(Permission::OrgModelsView)],
 };
 pub const LLM_PROVIDER_MANAGE: Policy = Policy {
     id: "provider.manage",
-    rules: &[Rule::UserHasPermission(Permission::OrgProvidersManage)],
+    rules: &[Rule::UserHasPermission(Permission::OrgModelsManage)],
 };

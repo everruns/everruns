@@ -145,7 +145,7 @@ export function ChatWorkspace() {
   if (!thread) return <Skeleton className="m-6 h-64" />;
 
   const panel = (
-    <div className="flex h-full min-h-0 flex-col bg-background">
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col bg-background">
       <div className="flex items-center gap-2 border-b border-border/70 px-3 py-2">
         {selected && (
           <Button variant="ghost" size="icon" aria-label="Back to threads" onClick={back}>
@@ -276,9 +276,15 @@ export function ChatWorkspace() {
         openTask: (id) => router.push(`/chats?task=${encodeURIComponent(id)}`),
       }}
     >
-      <div className="flex h-full min-h-0 min-w-0">
+      <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
+        {/* Isolate and clip the conversation. Transcript rows are positioned
+            and can remember a full-width inline size; without this they paint
+            over the threads pane when it opens. */}
         <div
-          className={cn("min-h-0 min-w-0 flex-1", !compact && panelOpen && expanded && "hidden")}
+          className={cn(
+            "isolate flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+            !compact && panelOpen && expanded && "hidden",
+          )}
         >
           <ChatThreadView
             threadId={thread.id}
@@ -312,7 +318,7 @@ export function ChatWorkspace() {
             <section
               aria-label="Threads"
               className={cn(
-                "hidden min-h-0 min-w-0 border-l border-border xl:block",
+                "relative z-10 hidden min-h-0 min-w-0 overflow-hidden border-l border-border bg-background xl:flex xl:flex-col",
                 expanded ? "flex-1" : "w-1/2 min-w-[360px]",
               )}
             >

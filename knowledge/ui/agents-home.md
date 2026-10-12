@@ -13,11 +13,11 @@ tags:
 
 ## Abstract
 
-Behind the `agents_home` flag (org adoption), the Agents page stops being a registry of
-definitions and becomes the place where a team runs its agents. Each row answers three
+The Agents page is not a registry of
+definitions; it is the place where a team runs its agents. Each row answers three
 questions at a glance: what the agent is doing now, how it is reached, and how the last 24
 hours went. A second view on the same page lists every channel in the organization and
-replaces the Exposures page. Definitions (prompt, model, harness) stay on the
+replaced the Exposures page. Definitions (prompt, model, harness) stay on the
 [Agent Page](agent-page.md). Source: `apps/ui/src/components/agents/home/`, the pure rules in
 `apps/ui/src/lib/agents-home.ts`, and `GET /v1/agents/activity`
 (`crates/server/src/api/agent_activity.rs`).
@@ -45,13 +45,34 @@ replaces the Exposures page. Definitions (prompt, model, harness) stay on the
   resolved the same way as the Exposures view (see [Agent Exposure](../integrations/agent-exposure.md)),
   so a live channel on a paused or archived agent never reads as Live. Public live channels sort
   first and are tinted. Publish and Unpublish sit on the row; nothing goes live except by that
-  explicit step. Schedules are triggers and show on the agent row, not in the channel list.
-- **Change little outside the page.** With the flag on, the sidebar loses Exposures and
-  `/exposures` redirects to `/agents?view=channels`; the agent view and edit pages are unchanged.
+  explicit step. A channel that is turned off is a draft, and Publish opens it (see
+  [Agent Exposure](../integrations/agent-exposure.md)). The channel name, and each channel on
+  an agent row, links to that channel on its agent (`?tab=integrations&channel=`). Schedules
+  are triggers and show on the agent row, not in the channel list.
+- **No flag, one page.** It shipped behind `agents_home` and graduated with the old registry,
+  single-form New agent page and Exposures page deleted. `/exposures` redirects to
+  `/agents?view=channels`; the agent view and edit pages are unchanged.
+- **People are counted only where a channel names them.** "People reached" counts distinct
+  end-user principals behind a channel's sessions: Slack senders recorded as session participants,
+  and the virtual user stamped on each `input.message` (public chat, signed-in AG-UI, PACT A2A).
+  Webhook, API, FCP, anonymous AG-UI and plain A2A carry no person, so those channels show
+  sessions only rather than an estimated head count. The org figure counts each person once.
+- **First reply is the median of each session's first exchange.** The time from a session's first
+  `input.message` to its first `output.message.completed`, median per channel over 7 days. The
+  strip shows the fastest live channel.
+- **Setup not finished comes from provenance, not a stored flag.** Adopting a guided example tags
+  the agent `example:<name>`. An adopted guided example with no active trigger is a Needs
+  attention item linking back to the setup page. Agents adopted before the tag existed are not
+  flagged.
+- **Describe first, and every path makes a normal agent.** The New agent page opens on the agent
+  builder (`POST /v1/agents/draft`), which edits a draft and never creates anything; the
+  browser creates the agent with the ordinary calls on confirm. Examples, a Blank form sharing the
+  same draft, and package import are the other tabs. Ways in become draft channels and the
+  schedule a schedule trigger, so nothing takes traffic until published. Slack needs a workspace
+  choice, so a draft that asks for it lands on the Slack channel form after create. The builder may
+  only pick capabilities the org offers that need no config and are not high risk; see
+  `crates/server/src/domains/agents/draft.rs`.
 
 ## Not built yet
 
-- Describe-the-job agent creation and the tabbed New agent page from the same design.
-- "People reached" and "fastest first reply" channel stats: sessions do not record the external
-  caller or first-reply latency in a form this read can count without guessing.
-- Detecting an unfinished guided setup after adopting an example; setup completion is not stored.
+- Test in Playground from an unsaved draft: the playground needs a saved agent.

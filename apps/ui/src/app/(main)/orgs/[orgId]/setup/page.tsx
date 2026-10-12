@@ -109,7 +109,7 @@ const MORE_PROVIDERS = ["Gemini", "Azure OpenAI", "Bedrock"];
 const MORE_PROVIDERS_EXTRA = 5; // openrouter, openai_completions, mai, fireworks, meta (mistral is flag-gated)
 
 // Docs base used elsewhere in the app (see capabilities page).
-const DOCS_URL = "https://docs.everruns.com";
+const DOCS_URL = "https://everruns.com/docs";
 
 function getProviderName(providerType: SetupProviderType): string {
   switch (providerType) {
@@ -597,7 +597,7 @@ export default function OrgSetupPage() {
 
                   {/* Breadth strip: the two featured cards must not read as
                       the whole catalog. Informational only — the full picker
-                      lives in Settings → Providers after setup. */}
+                      lives in Models → Providers after setup. */}
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <span className="text-xs text-muted-foreground">Also supported</span>
                     {MORE_PROVIDERS.map((name) => (

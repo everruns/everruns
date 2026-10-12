@@ -91,7 +91,7 @@ The user-facing requirement was clear: FCP must not share infrastructure
 with anything else.
 
 1. **Auth stack is FCP-only.** Token verification lives inside
-   `crates/server/src/api/fcp.rs::check_token` and never delegates to
+   `crates/server/src/channels/fcp.rs::check_token` and never delegates to
    `ChannelAuthVerifier`. Adding new auth modes is intentionally a
    breaking design decision, not a config flag.
 2. **Rate limiter is FCP-only.** `app_builder` constructs a dedicated
@@ -152,14 +152,17 @@ its contents.
 
 FCP sessions are reused via the `fcp_session` cookie:
 
-- First `POST` creates a session tagged `fcp:app:{app_id}`. The response
-  sets `fcp_session=<uuid>; Path=/; HttpOnly; SameSite=Lax`, plus
-  `Max-Age` when `session_expiration_seconds > 0`.
-- Subsequent `POST`s with the cookie resume that session if it still
-  matches the tag and has not expired.
-- A stale or unknown cookie is silently ignored, the next `POST`
-  creates a fresh session. This avoids stranding clients on the wrong
-  side of an operator config change.
+- The cookie carries a conversation token, not a session id. The first
+  `POST` starts a conversation on the shared channel host, which binds a
+  new token to a new session for this channel. The response sets
+  `fcp_session=<token>; Path=/; HttpOnly; SameSite=Lax`, plus `Max-Age`
+  when `session_expiration_seconds > 0`.
+- Subsequent `POST`s with the cookie resume the session the token is bound
+  to on this channel, if it has not expired. Cookies set before the host
+  carried session ids; those ids were bound as tokens, so they keep working.
+- A stale or unknown token is silently ignored, the next `POST` starts a
+  fresh conversation under a new token (never one the client picked). This
+  avoids stranding clients on the wrong side of an operator config change.
 - Expired sessions return `410 Gone` with body instructing the client to
   drop the cookie.
 
@@ -175,7 +178,7 @@ migration is needed, existing rows are unaffected.
 
 ## Testing
 
-Coverage in `crates/server/src/api/fcp.rs::tests` includes:
+Coverage in `crates/server/src/channels/fcp.rs::tests` includes:
 
 1. Handshake renderer: name + description, token-advertised, anonymous,
    expiration-disabled, rate-limit-advertised, custom override.

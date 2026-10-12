@@ -415,6 +415,9 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             }
             Err(error) => return Err(error),
         };
+        // The body as finally sent (background may have been switched off
+        // above), captured only when the call asked for it.
+        let captured_request = config.capture_request.then(|| request_body.clone());
         let event_stream = match background_responses.filter(|_| background) {
             Some(responses) => super::background::resumable(event_stream, responses, attached_id),
             None => event_stream,
@@ -881,7 +884,10 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 },
             ))));
         }
-        Ok(converted_stream)
+        Ok(crate::driver_helpers::attach_request_body(
+            converted_stream,
+            captured_request,
+        ))
     }
 
     fn supports_compact(&self) -> bool {

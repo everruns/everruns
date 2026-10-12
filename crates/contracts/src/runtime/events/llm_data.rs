@@ -81,6 +81,11 @@ pub struct LlmPromptCacheInfo {
     /// Provider-specific prompt-cache mode used by the driver.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_mode: Option<String>,
+    /// Cache retention the driver requested after snapping to what the
+    /// provider supports (`5m`, `30m`, `1h`). Absent when the provider's
+    /// retention is not configurable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retention: Option<String>,
 }
 
 /// Request-side tool_search settings for an LLM generation.
@@ -105,6 +110,18 @@ pub struct LlmGenerationMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(example = "anthropic"))]
     pub provider: Option<String>,
+
+    /// The provider account that served the call: the id of the org's
+    /// provider row (`provider_...`) when the host resolves models from
+    /// stored providers. Usage tracking reads it to record which provider row
+    /// was billed and whether that row is host-managed, which is what tells
+    /// managed spend apart from the org's own keys (BYOK).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "provider_01933b5a00007000800000000000001")
+    )]
+    pub provider_id: Option<String>,
 
     /// Model the provider reported actually serving the request.
     ///
@@ -348,6 +365,82 @@ pub struct LlmGenerationData {
 
     /// Metadata about the generation
     pub metadata: LlmGenerationMetadata,
+
+    /// The request body exactly as the driver serialized it for the
+    /// provider, when the driver captures it (see
+    /// [`crate::driver_registry::LlmCallConfig::capture_request`]).
+    ///
+    /// `messages` above is the runtime's view of the prompt; this is the
+    /// provider's: its roles, its content blocks, its tool schemas and cache
+    /// markers. Absent for drivers that do not capture.
+    ///
+    /// THREAT[TM-LLM-039]: the body repeats the prompt `messages` already
+    /// carries, so it widens nothing beyond this event's existing audience.
+    /// Credentials travel in headers and are never part of it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub request_body: Option<Value>,
+}
+
+/// Inline media longer than this is replaced in a captured request body.
+const INLINE_MEDIA_KEEP_BYTES: usize = 1024;
+
+/// Replace base64 payloads (`data:` URLs, and long `data` fields as in
+/// Anthropic image sources and Gemini `inline_data`) with a size note.
+fn omit_inline_media(value: &mut Value, key: Option<&str>) {
+    match value {
+        Value::String(text)
+            if text.len() > INLINE_MEDIA_KEEP_BYTES
+                && (text.starts_with("data:") || key == Some("data")) =>
+        {
+            let kind = text
+                .split_once(',')
+                .filter(|_| text.starts_with("data:"))
+                .map_or("base64", |(head, _)| head);
+            *text = format!("[{kind}, {} bytes omitted]", text.len());
+        }
+        Value::Array(items) => items.iter_mut().for_each(|v| omit_inline_media(v, None)),
+        Value::Object(map) => map
+            .iter_mut()
+            .for_each(|(k, v)| omit_inline_media(v, Some(k.as_str()))),
+        _ => {}
+    }
+}
+
+/// Keys whose values are provider replay state: reasoning signatures and
+/// encrypted reasoning or compaction blobs. Never published.
+const REPLAY_STATE_KEYS: &[&str] = &[
+    "signature",
+    "encrypted_content",
+    "thought_signature",
+    "thoughtSignature",
+];
+
+/// The publishable form of a captured request body: replay state (the same
+/// artifacts [`RuntimeMessage::into_public`] drops from messages) replaced by
+/// a placeholder, wherever in the provider's shape it appears.
+pub fn public_request_body(mut body: Value) -> Value {
+    fn walk(value: &mut Value) {
+        match value {
+            Value::Array(items) => items.iter_mut().for_each(walk),
+            Value::Object(map) => {
+                let redacted_block =
+                    map.get("type").and_then(Value::as_str) == Some("redacted_thinking");
+                for (key, v) in map.iter_mut() {
+                    if REPLAY_STATE_KEYS.contains(&key.as_str())
+                        || (redacted_block && key == "data")
+                    {
+                        *v = Value::String("[omitted]".to_string());
+                    } else {
+                        walk(v);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    walk(&mut body);
+    body
 }
 
 impl LlmGenerationData {
@@ -372,6 +465,7 @@ impl LlmGenerationData {
         };
 
         Self {
+            request_body: None,
             messages,
             tools,
             output: LlmGenerationOutput { text, tool_calls },
@@ -379,6 +473,7 @@ impl LlmGenerationData {
                 model,
                 provider,
                 response_model: None,
+                provider_id: None,
                 usage,
                 duration_ms,
                 time_to_first_token_ms,
@@ -414,6 +509,7 @@ impl LlmGenerationData {
         response_id: Option<String>,
     ) -> Self {
         Self {
+            request_body: None,
             messages,
             tools,
             output: LlmGenerationOutput { text, tool_calls },
@@ -421,6 +517,7 @@ impl LlmGenerationData {
                 model,
                 provider,
                 response_model: None,
+                provider_id: None,
                 usage,
                 duration_ms,
                 time_to_first_token_ms,
@@ -457,6 +554,7 @@ impl LlmGenerationData {
         retry: Option<LlmRetryInfo>,
     ) -> Self {
         Self {
+            request_body: None,
             messages,
             tools,
             output: LlmGenerationOutput { text, tool_calls },
@@ -464,6 +562,7 @@ impl LlmGenerationData {
                 model,
                 provider,
                 response_model: None,
+                provider_id: None,
                 usage,
                 duration_ms,
                 time_to_first_token_ms,
@@ -494,6 +593,7 @@ impl LlmGenerationData {
         time_to_first_token_ms: Option<u64>,
     ) -> Self {
         Self {
+            request_body: None,
             messages,
             tools,
             output: LlmGenerationOutput {
@@ -504,6 +604,7 @@ impl LlmGenerationData {
                 model,
                 provider,
                 response_model: None,
+                provider_id: None,
                 usage: None,
                 duration_ms,
                 time_to_first_token_ms,
@@ -536,8 +637,28 @@ impl LlmGenerationData {
     /// A builder rather than another positional argument: the `success_*`
     /// constructors already carry a `too_many_arguments` waiver, and the
     /// serving model is only known once the completion metadata comes back.
+    /// Attach the request body the driver captured, with inline media cut.
+    ///
+    /// The runtime's messages refer to images and files by id; a provider
+    /// body carries them inline as base64, which would turn one event into
+    /// megabytes. Those strings are replaced by a note of their size.
+    pub fn with_request_body(mut self, request_body: Option<Value>) -> Self {
+        self.request_body = request_body.map(|mut body| {
+            omit_inline_media(&mut body, None);
+            body
+        });
+        self
+    }
+
     pub fn with_response_model(mut self, response_model: Option<String>) -> Self {
         self.metadata.response_model = response_model;
+        self
+    }
+
+    /// Record the provider account that served the call (see
+    /// [`LlmGenerationMetadata::provider_id`]).
+    pub fn with_provider_id(mut self, provider_id: Option<String>) -> Self {
+        self.metadata.provider_id = provider_id;
         self
     }
 

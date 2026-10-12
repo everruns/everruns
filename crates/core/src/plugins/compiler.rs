@@ -1024,30 +1024,25 @@ mod tests {
     }
 
     #[test]
-    fn compile_first_party_portable_plugins() {
-        for (name, url) in [
-            ("everruns", "https://app.everruns.com/mcp"),
-            ("resend", "https://mcp.resend.com/mcp"),
-        ] {
-            let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../plugins")
-                .join(name);
-            let file_set = PluginFileSet::from_dir(&fixture).expect("load first-party plugin");
-            let compiled = compile_plugin(&file_set).expect("compile first-party plugin");
+    fn compile_vendored_resend_plugin() {
+        // The everruns plugin moved to github.com/everruns/plugins; resend is
+        // the only portable plugin still vendored in this repo.
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/resend");
+        let file_set = PluginFileSet::from_dir(&fixture).expect("load first-party plugin");
+        let compiled = compile_plugin(&file_set).expect("compile first-party plugin");
 
-            assert!(compiled.manifest.is_agent_plugins_v1());
-            assert_eq!(compiled.definition.name, name);
-            let server = compiled
-                .definition
-                .mcp_servers
-                .as_ref()
-                .and_then(|servers| servers.get(name))
-                .expect("portable MCP server");
-            assert_eq!(server.auth_mode, McpServerAuthMode::OAuth);
-            assert_eq!(server.acts_as, McpServerActsAs::User);
-            assert_eq!(server.url, url);
-            assert!(server.oauth_provider_id.is_none());
-        }
+        assert!(compiled.manifest.is_agent_plugins_v1());
+        assert_eq!(compiled.definition.name, "resend");
+        let server = compiled
+            .definition
+            .mcp_servers
+            .as_ref()
+            .and_then(|servers| servers.get("resend"))
+            .expect("portable MCP server");
+        assert_eq!(server.auth_mode, McpServerAuthMode::OAuth);
+        assert_eq!(server.acts_as, McpServerActsAs::User);
+        assert_eq!(server.url, "https://mcp.resend.com/mcp");
+        assert!(server.oauth_provider_id.is_none());
     }
 
     #[test]

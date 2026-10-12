@@ -45,6 +45,9 @@ async fn main() -> serve::Result {
 }
 ```
 
+For a guided start, [Tutorial: Serve an Agent and Call It from Code](/framework/serve-tutorial/)
+builds an agent, protects it with an API key, and calls it from the SDKs.
+
 ## Install
 
 ```sh
@@ -125,7 +128,7 @@ expression or a filter naming an unknown tool.
 | --- | --- | --- |
 | `#[agent]`, `#[agent(default)]`, `#[agent(sub)]` | `fn() -> Agent` | An agent. New sessions use the default one; a subagent becomes an `ask_<name>` tool on the others. |
 | `#[tool]`, `#[tool(needs_approval)]`, `#[tool(needs_approval = \|a: &Args\| …)]` | `async fn([cx: &Cx,] args…) -> Result<T>` | A tool named after the function, described by its doc comment. It also generates an arguments struct (`run_sql` → `RunSql`) with a JSON Schema. |
-| `#[channel]` | `fn() -> impl Channel` | `POST /v1/channels/{name}`. Each external thread maps to one session, and replies are delivered back. |
+| `#[channel]` | `fn() -> impl Into<Channel>` (a driver such as `Slack` or `Webhook`) | `POST /v1/channels/{name}`. Each external thread maps to one session, and replies are delivered back while the turn runs. `agent = "…"` picks the agent. |
 | `#[schedule("0 9 * * MON")]` | `async fn(&Cx) -> Result` | A cron entry. |
 | `#[connection]` | `fn() -> T` or `fn() -> Result<T>` | A value tools read with `cx.connection::<T>()`. An `McpServer` connection is attached to every agent. |
 | `#[eval]` | `async fn(&mut EvalCx) -> Result` | A conversation with assertions, run in-process or against a deployment. |
@@ -143,10 +146,37 @@ knows what it registered.
 | Command | What it does |
 | --- | --- |
 | `dev` (default) | Serves the API with local SQLite under `.serve/` and a live console. Models fall back to the simulator, and Markdown prompts and skills hot-reload. |
-| `start` | Production mode. Every model must route through a gateway, and every declared secret must be set. |
+| `start` | Production mode. Every model must route through a gateway, and every declared secret must be set. With `--store s3://bucket/prefix` (or `SERVE_STORE`) the data lives in a bucket; see [Keep the data in a bucket](#keep-the-data-in-a-bucket). |
 | `manifest` | Prints the host contract as JSON: agents, models, tool schemas, skills, channels, cron entries, secrets, sandbox, evals and a build id. |
 | `eval [--against URL]` | Runs the evals in-process, or against a running deployment as a gate before promotion. |
 | `deploy` | Prints what a host would provision from the manifest. The one supported deployment target is [Amazon Bedrock AgentCore](/framework/serve-agentcore/). |
+
+## Keep the data in a bucket
+
+`start --store s3://bucket/prefix` keeps a daemon's data in an S3 bucket, or
+in any S3-compatible store that supports conditional writes (R2, MinIO, GCS,
+Tigris, SeaweedFS). The data directory becomes a local working copy:
+
+- At boot the daemon takes the bucket's lease, then rebuilds the data
+  directory from the bucket. Files the bucket does not have are removed.
+- While it runs, every change is copied to the bucket within about a fifth of
+  a second: databases by the pages that changed, other files (the agents'
+  workspace) whole.
+- A daemon started on another machine with the same `--store` waits for the
+  old one's lease to expire (15 seconds), rebuilds the data directory, and
+  resumes the turns the old one was running. While the old daemon is still
+  alive and renewing, the new one refuses to start. If the old one wakes up
+  after it was replaced, its next write fails and it stops.
+- A clean shutdown (Ctrl+C) copies what is left and releases the lease, so
+  the next daemon starts at once.
+
+Credentials, region and endpoint come from the standard `AWS_*` environment
+variables. For an S3-compatible store set `AWS_ENDPOINT`, and `AWS_ALLOW_HTTP=true`
+for a plain-HTTP endpoint. Keep the data directory at the same absolute path
+on every machine (`SERVE_DATA_DIR`), because a session's workspace records it.
+
+A crash can lose the changes of its last fifth of a second. One daemon holds
+a bucket prefix at a time; give each daemon its own prefix.
 
 ## Wire API
 
@@ -158,10 +188,71 @@ request and response bodies:
 - `POST /v1/sessions/{id}/cancel`
 - `GET /v1/sessions/{id}/sse` (resume with `since_id` or `after_sequence`) and `GET /v1/sessions/{id}/events`
 - `POST /v1/sessions/{id}/question-answers`, for [`ask_user`](/framework/ask-user/) questions
+- `POST /v1/sessions/{id}/tool-approvals`, to allow or reject pending tool calls
 
 It adds a few routes of its own: `GET /health`, `GET /v1/agent` (the agent
 card), channel webhooks, the [AG-UI](#ag-ui-and-copilotkit), [A2A](#a2a) and [voice](#voice) routes, and `POST /v1/sessions/{id}/approvals/{tool_call_id}`
-to approve or deny a pending tool call. Errors are `application/problem+json`.
+to approve or deny one pending tool call. Errors are `application/problem+json`.
+
+### One agent's API
+
+Every top-level agent also has its own base URL, `/v1/channels/{agent}`, with
+the same session routes rooted under it: `GET` returns the agent's card,
+`POST /v1/channels/{agent}/sessions` starts a session that runs that agent,
+and `/v1/channels/{agent}/sessions/{id}/…` carries messages, events,
+cancellation, questions and approvals. A session is reachable only under its
+own agent's URL. This is the API an Everruns agent exposes through an API
+channel, so code written against one agent works against either host.
+Every SDK's `AgentClient` calls this API; see the
+[tutorial](/framework/serve-tutorial/#6-call-it-from-code).
+
+### Authentication
+
+By default the wire API has no authentication and no organizations: run it
+locally, or behind a host that authenticates requests. Configure one or more
+methods and every agent route requires `Authorization: Bearer <credential>`;
+anything else gets `401` with `WWW-Authenticate: Bearer`. The methods are the
+ones an Everruns API channel accepts, checked by the same verifier:
+
+- **API keys.** Static keys, compared in constant time. Set them in
+  `SERVE_API_KEYS`, comma separated.
+- **OpenID Connect.** JWTs from an issuer, checked against the keys its
+  discovery document publishes, with a required audience.
+- **OAuth 2.0 introspection.** Opaque tokens checked at an RFC 7662 endpoint.
+
+Token methods take the same requirements as a channel: audiences, scopes,
+subjects, groups, email domains and exact claim values. Methods add up from
+code, `serve.toml` and the environment:
+
+```rust ignore
+use serve::auth::AuthMethod;
+
+let server = serve::Server::builder(app, serve::Mode::Start)
+    .auth([AuthMethod::oidc("https://login.example.com", ["support-agent"])])
+    .build()?;
+```
+
+```toml
+# serve.toml
+[[auth.methods]]
+mode = "oidc"
+provider = { type = "oidc", issuer = "https://login.example.com" }
+requirements = { audiences = ["support-agent"], scopes = ["agent:call"] }
+```
+
+```sh
+SERVE_API_KEYS=key-for-ci,key-for-the-web-app ./revenue-analyst start
+```
+
+`serve.toml` also takes `api_keys = [...]` under `[auth]`, but it is embedded
+in the binary, so keep real keys in the environment.
+
+A few routes stay public so clients can find the agent: `GET /health`, each
+agent's card at `GET /v1/channels/{agent}` (its `auth` list names the accepted
+methods), the A2A Agent Card and the voice test page. Messaging channel
+webhooks stay public too, because Slack and webhook callers cannot send a serve
+credential; each channel verifies its platform's own signature. Auth does not
+separate callers: every authenticated caller can reach every session.
 
 ## AG-UI and CopilotKit
 
@@ -234,9 +325,6 @@ finishes the turn. A turn cut off while a tool executed is not re-run. A
 session pinned to a different build gets
 `409 Conflict` with an `x-serve-build` header, so a host can route it to the
 build that owns it.
-
-> **No authentication.** The wire API has no authentication and no
-> organizations. Run it locally, or behind a host that authenticates requests.
 
 
 ## Voice

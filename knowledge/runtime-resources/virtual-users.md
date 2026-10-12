@@ -36,7 +36,7 @@ beside human connections, agent connections, and synthetic external principals.
 | Principal | Org-scoped durable resource ownership and execution provenance | A `user` principal can refer to either a real management account or a synthetic external speaker. Human lineage is also consumed as runtime identity. |
 | Agent identity | Persistent service actor, separate from Agent behavior; profile, lifecycle, connections | Already close to the required runtime aggregate, but currently centered on unattended execution. |
 | External actor | Per-message channel speaker, such as a Slack user | Slack ensures a synthetic principal; the speaker has no first-class connection/settings account. |
-| Public Chat visitor | Verified endpoint-auth subject or anonymous visitor cookie | Visitor identity is represented in routing tags; sessions retain endpoint ownership. |
+| Public Chat visitor | Verified endpoint-auth subject or anonymous visitor cookie | Visitor identity is part of the thread's conversation key on the channel host; the visitor's virtual user owns their sessions. |
 | Persona | Agent instructions or plugin prompt contribution | No standalone Persona entity, persistence, or ownership API was found. |
 
 Two meanings of “external user” must stay distinct. `AUTH_MODE=external` and
@@ -46,15 +46,15 @@ without becoming console members.
 
 Evidence and implementation entry points:
 
-- [Auth account storage](../../crates/server/src/storage/models/mod.rs),
+- [Auth account storage](../../crates/server/src/storage/repositories/users/rows.rs),
   [AuthUser](../../crates/server/src/auth/middleware/mod.rs), and
   [external auth contract](../../crates/server/src/auth/backend.rs).
 - [Principal value types](../../crates/contracts/src/runtime/principal.rs),
-  [principal aggregate](../../crates/server/src/records/principal.rs), and
-  [principal service](../../crates/server/src/services/principal.rs).
+  [principal aggregate](../../crates/server/src/domains/users/record.rs), and
+  [principal service](../../crates/server/src/domains/users/principal.rs).
   External principal identity currently hashes `source:actor_id`; provider realm
   metadata is not part of that key.
-- [Agent identity](../../crates/server/src/records/virtual_user.rs), its
+- [Agent identity](../../crates/server/src/domains/virtual_users/record.rs), its
   [current contract](agent-identities.md), and
   [identity connections](../../crates/server/src/api/virtual_user_connections.rs).
   API-key connections exist, and MCP service OAuth also writes identity grants
@@ -68,7 +68,7 @@ Evidence and implementation entry points:
   session's resolved management owner.
 - [Slack participants](../../crates/server/src/channels/slack/events/inbound.rs),
   [ExternalActor](../../crates/contracts/src/runtime/message.rs), and
-  [Public Chat visitor binding](../../crates/server/src/api/public_chat.rs).
+  [Public Chat visitor binding](../../crates/server/src/channels/public_chat.rs).
 - [Chats](../../apps/ui/src/hooks/use-chat-threads.ts) are ordinary sessions.
   [Client selection](../../apps/ui/src/lib/chat-threads.ts) uses the auth user;
   [server `mine` filtering](../../crates/server/src/domains/sessions/commands/mod.rs)
@@ -79,8 +79,8 @@ Evidence and implementation entry points:
 - [Private memory](../../crates/server/src/domains/session_files/memory_mounts.rs)
   resolves from the management owner today. Memory functionality is outside
   this proposal's feature scope.
-- [Platform command authorization](../../crates/server/src/grpc_service/worker/commands.rs)
-  and [policy resolution](../../crates/server/src/grpc_service/worker/policy.rs)
+- [Platform command authorization](../../crates/server/src/worker_link/grpc_service/worker/commands.rs)
+  and [policy resolution](../../crates/server/src/worker_link/grpc_service/worker/policy.rs)
   reconstruct the management caller from session ownership.
 - [Plugin agents](../integrations/plugins.md) contribute persona/instructions;
   they are behavior, not a credential-bearing identity.
@@ -249,7 +249,7 @@ Remote-resource cleanup stores the creating virtual user and provider, and
 retains pending grant provenance during cutover. It cannot resolve the session's current owner or
 fall back after account replacement. This replaces the human-only assumptions
 in [leased resources](../../crates/contracts/src/runtime/leased_resource.rs) and
-[worker connection RPCs](../../crates/server/src/grpc_service/worker/connections.rs).
+[worker connection commands](../../crates/server/src/domains/user_connections/commands/worker/mod.rs).
 
 ## Console proxy and settings
 

@@ -1,8 +1,10 @@
 // Identity sync belongs to the shared mutation path, including upserts and rollbacks.
 // Like avatar propagation, Slack failures never undo a saved agent edit.
+use crate::domains::agent_channels::record::slack_provisioning::{
+    SlackAppProvisioner, SlackProvisioningError,
+};
+use crate::domains::agents::record::Agent;
 use crate::domains::common::Ctx;
-use crate::records::Agent;
-use crate::records::slack_provisioning::{SlackAppProvisioner, SlackProvisioningError};
 use crate::storage::{EncryptionService, IngressChannelRow, StorageBackend};
 use std::sync::Arc;
 use uuid::Uuid;

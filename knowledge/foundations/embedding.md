@@ -499,8 +499,8 @@ Those may be added later, but they are outside the current embedding contract.
 - `crates/server/src/api/organizations/mod.rs`
 - `crates/server/src/app_builder/mod.rs`
 - `crates/server/src/platform.rs`
-- `crates/server/src/seed/mod.rs`
-- `crates/server/src/org_init/mod.rs`
+- `crates/server/src/setup/seed/mod.rs`
+- `crates/server/src/setup/org_init/mod.rs`
 - `crates/worker/src/app_builder.rs`
 - `crates/worker/src/platform.rs`
 - `crates/worker/src/unified_worker.rs`

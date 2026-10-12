@@ -6,7 +6,7 @@
 //! the OSS preset, filter `everruns_capabilities::integrations_catalog::CATALOG`, or
 //! construct a `HostComposition` manually.
 
-use crate::records::BuiltInHarnessDefinition;
+use crate::domains::harnesses::record::BuiltInHarnessDefinition;
 use crate::records::email::{EmailSender, SystemEmailConfig};
 use everruns::utility_llm::SystemUtilityLlmConfig;
 use everruns_contracts::connector::ConnectorRegistry;
@@ -39,7 +39,7 @@ pub fn oss_host_composition() -> HostComposition {
 pub fn oss_host_composition_for_grade(grade: DeploymentGrade) -> HostComposition {
     let capability_registry = oss_capability_registry_for_grade(grade);
     let driver_registry = everruns_worker::create_driver_registry();
-    // Runtime egress honors EVERRUNS_SYSTEM_ALLOWLIST_ENABLED for tenant/agent
+    // Runtime egress honors EVERRUNS_EGRESS_POLICY for tenant/agent
     // paths.
     let egress_service = Arc::new(DirectEgressService::for_runtime_traffic_from_env());
     let utility_llm_service = SystemUtilityLlmConfig::from_env().into_service();
@@ -81,6 +81,50 @@ pub fn oss_host_composition_for_grade(grade: DeploymentGrade) -> HostComposition
     )));
 
     builder.build()
+}
+
+/// Org egress grants (open egress, allowlist extensions) read straight from the control-plane
+/// database, for runtime egress in the server process.
+///
+/// Installed once at startup with
+/// `everruns_core::host::install_runtime_org_egress_allowlist`, so every
+/// runtime `DirectEgressService` the server builds (host composition, MCP,
+/// plugins) honors granted extensions. Distributed workers install the gRPC
+/// counterpart (`everruns_worker::CommandOrgEgressAllowlist`).
+pub struct DbOrgEgressAllowlist {
+    db: Arc<crate::storage::StorageBackend>,
+}
+
+impl DbOrgEgressAllowlist {
+    pub fn new(db: Arc<crate::storage::StorageBackend>) -> Self {
+        Self { db }
+    }
+
+    /// Install this resolver for every runtime egress service the process
+    /// builds, whenever it was built.
+    pub fn install(db: Arc<crate::storage::StorageBackend>) {
+        everruns_core::host::install_runtime_org_egress_allowlist(Arc::new(Self::new(db)));
+    }
+}
+
+#[async_trait::async_trait]
+impl everruns_contracts::runtime::OrgEgressAllowlist for DbOrgEgressAllowlist {
+    async fn grant(
+        &self,
+        org_id: &everruns_contracts::typed_id::OrgId,
+    ) -> Result<everruns_contracts::runtime::OrgEgressGrant, String> {
+        let org_id = everruns_core::organization::org_internal_id_from_public(*org_id);
+        let row = self
+            .db
+            .org_egress_allowlist(org_id)
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(everruns_contracts::runtime::org_egress_grant(
+            row.open,
+            row.granted,
+            &row.patterns,
+        ))
+    }
 }
 
 /// Build a Turbopuffer-backed vector store from the environment, or `None` when

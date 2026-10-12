@@ -617,6 +617,18 @@ pub trait Capability: Send + Sync {
         vec![]
     }
 
+    /// Whether this capability, with `config`, gives the model a way to
+    /// search the web.
+    ///
+    /// The agent checks warn when an agent has more than one web search
+    /// source, because the model then has to guess which one to use. A
+    /// capability whose search is optional answers for the config it is given.
+    ///
+    /// By default, returns `false`.
+    fn web_search_source(&self, _config: &serde_json::Value) -> bool {
+        false
+    }
+
     /// Returns UI feature strings that this capability contributes to.
     ///
     /// Features are open-ended strings indicating what user-facing functionality

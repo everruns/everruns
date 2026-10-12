@@ -1,5 +1,5 @@
 use super::*;
-use crate::storage::models::CreateModelRow;
+use crate::storage::CreateModelRow;
 use crate::storage::{CreateOrganizationRow, CreateProviderRow};
 use everruns_core::{DEFAULT_ORG_ID, PolicyError};
 

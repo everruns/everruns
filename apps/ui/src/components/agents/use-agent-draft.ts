@@ -21,6 +21,7 @@ import {
   type FieldErrors,
 } from "@/lib/form-validation";
 import { joinTags } from "@/lib/tags";
+import { DEFAULT_COMMUNICATION, normalizeCommunication } from "@/lib/agent-communication";
 import type {
   Agent,
   AgentCapabilityConfig,
@@ -41,6 +42,8 @@ export interface AgentDraftFields {
   tags: string;
   harness_id: string;
   default_model_id: string;
+  /** `direct` | `explicit`; see `@/lib/agent-communication`. */
+  communication: string;
 }
 
 const EMPTY_FIELDS: AgentDraftFields = {
@@ -53,6 +56,7 @@ const EMPTY_FIELDS: AgentDraftFields = {
   tags: "",
   harness_id: "",
   default_model_id: "",
+  communication: DEFAULT_COMMUNICATION,
 };
 
 /** Fields edited in the Branding sheet; a validation error on one opens it. */
@@ -77,6 +81,7 @@ function fieldsFromAgent(agent: Agent | undefined): AgentDraftFields {
     tags: joinTags(agent.tags),
     harness_id: agent.effective_harness?.id || agent.harness_id || "",
     default_model_id: agent.default_model_id || "",
+    communication: normalizeCommunication(agent.communication),
   };
 }
 
@@ -137,6 +142,7 @@ export function useAgentDraft(agent: Agent | undefined) {
     !same(normalizeNetworkAccess(networkAccess), normalizeNetworkAccess(initialNetworkAccess));
   const sandboxPolicyChanged =
     sandboxPolicy !== undefined && !same(sandboxPolicy, initialSandboxPolicy);
+  const communicationChanged = fields.communication !== initialFields.communication;
   const harnessChanged =
     fieldChanges.harness_id !== undefined && fieldChanges.harness_id !== initialFields.harness_id;
 
@@ -182,6 +188,9 @@ export function useAgentDraft(agent: Agent | undefined) {
         tags: parseTagList(data.tags),
         ...(harnessChanged && { harness_id: data.harness_id }),
         default_model_id: data.default_model_id,
+        ...(communicationChanged && {
+          communication: normalizeCommunication(fields.communication),
+        }),
         ...(capabilitiesChanged && { capabilities: values.capabilities }),
         ...(filesChanged && { initial_files: values.files }),
         ...(networkAccessChanged && { network_access: networkAccess }),

@@ -14,7 +14,15 @@ import type {
   SessionFacetsResponse,
   PaginatedResponse,
   PaginationParams,
+  AgentCapabilityConfig,
 } from "./types";
+
+declare module "./legacy-api-types" {
+  interface CreateSessionRequest {
+    /** Session-level capabilities, added to the agent's (e.g. `dry_run` for a test run). */
+    capabilities?: AgentCapabilityConfig[];
+  }
+}
 
 // Re-export message and event functions for convenience
 export { createMessage, listMessages, sendUserMessage } from "./messages";

@@ -138,6 +138,7 @@ async fn accepts_multimodal_input() {
     let session = InMemoryEngine::new().create(agent.clone());
     // A rich, multi-part InputMessage goes through unchanged.
     let message = InputMessage {
+        external_actor: None,
         role: RuntimeMessageRole::User,
         content: vec![
             ContentPart::text("describe"),

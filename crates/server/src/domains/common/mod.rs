@@ -1,4 +1,5 @@
 mod context_services;
+pub mod public_error;
 
 // Domain command infrastructure.
 //
@@ -327,6 +328,20 @@ impl From<CommandError> for (StatusCode, Json<ErrorResponse>) {
 // CommandMeta — static metadata for catalog generation
 // ============================================================================
 
+/// Path prefix marking a command as internal worker plumbing.
+///
+/// Decision: worker operations that are not user-facing (session schedule
+/// store calls, for one) are still domain commands, so the gRPC worker and the
+/// in-process worker reach them through the same `dispatch` instead of a
+/// bespoke RPC plus a direct adapter each. The prefix keeps them off every
+/// public surface: no REST route (`/v1/` only), no OpenAPI entry, no MCP
+/// discover/query/execute, no `/v1/commands`, no command tree. `Command::run`
+/// refuses them to any caller but `Caller::internal`, so a worker token acting
+/// for a user cannot reach them either. A path rather than a new `#[command]`
+/// argument because exposure is already decided by path (`/v1/durable/`,
+/// `/test/`), and one rule is easier to audit than two.
+pub const INTERNAL_COMMAND_PATH_PREFIX: &str = "/internal/";
+
 #[derive(Debug, Clone)]
 pub struct CommandMeta {
     pub name: &'static str,
@@ -337,6 +352,12 @@ pub struct CommandMeta {
 }
 
 impl CommandMeta {
+    /// Whether this is internal worker plumbing; see
+    /// [`INTERNAL_COMMAND_PATH_PREFIX`].
+    pub fn is_internal(&self) -> bool {
+        self.path.starts_with(INTERNAL_COMMAND_PATH_PREFIX)
+    }
+
     /// Feature flag required for this operation to exist in an organization's
     /// API-derived command surfaces.
     pub fn required_feature(&self) -> Option<&'static str> {
@@ -347,7 +368,6 @@ impl CommandMeta {
             "knowledge_indexes" | "knowledge_bases" => Some("knowledge"),
             "plugins" => Some("plugins"),
             "observers" => Some("observers"),
-            "notifications" => Some("notifications"),
             "payments" => Some("machine_payments"),
             _ => None,
         }
@@ -394,7 +414,9 @@ pub struct Ctx {
     /// command contexts do not inspect connector discovery.
     pub connector_registry: Option<everruns_contracts::connector::ConnectorRegistry>,
     pub feature_flags: FeatureFlags,
-    pub slack_provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
+    pub slack_provisioner: Option<
+        Arc<dyn crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner>,
+    >,
     pub capability_service: Arc<crate::services::CapabilityService>,
     pub encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
     /// Cross-transport resource-creation throttles. Commands that enforce a
@@ -423,10 +445,14 @@ pub struct Ctx {
     pub notification_service: Option<Arc<crate::domains::notifications::NotificationService>>,
     pub model_service: Option<Arc<crate::domains::models::ModelService>>,
     pub provider_service: Option<Arc<crate::domains::providers::ProviderService>>,
-    pub model_sync_service: Option<Arc<crate::services::ModelSyncService>>,
+    pub model_sync_service: Option<Arc<crate::domains::models::ModelSyncService>>,
     pub eval_service: Option<Arc<crate::domains::evals::EvalService>>,
     pub reporting_service: Option<Arc<crate::domains::reporting::ReportingService>>,
     pub sqldb_store: Option<Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>>,
+    /// Decrypts and refreshes provider connection grants for the worker's
+    /// internal connection commands. `None` without encryption.
+    pub connection_resolver:
+        Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>>,
     pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     pub runner: Option<Arc<dyn everruns_core::host::TurnBackend>>,
     pub fallback_harness_name: Option<String>,
@@ -434,10 +460,18 @@ pub struct Ctx {
     pub egress_service: Option<Arc<dyn EgressService>>,
     /// System utility LLM for internal analysis.
     pub utility_llm_service: Option<Arc<dyn everruns_core::UtilityLlmService>>,
+    /// The deployment's decisions service, for commands that ask typed questions.
+    pub decisions: Option<Arc<dyn everruns_core::DecisionsService>>,
     /// Agent health check service.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
+    /// Runs the OAuth catalog preset connection check; `None` on surfaces
+    /// without the API layer's OAuth client (presets stay `not_checked`).
+    pub mcp_oauth_checker:
+        Option<Arc<dyn crate::domains::mcp_servers::connection_check::McpOAuthConnectionChecker>>,
     /// MCP event trigger subscriptions; `None` on surfaces that cannot subscribe.
     pub mcp_event_triggers: Option<Arc<crate::domains::agent_triggers::McpEventTriggers>>,
+    /// GitHub client and public URLs for agents' own GitHub Apps.
+    pub github_apps: crate::github_apps::GitHubAppContext,
     /// Per-org/per-user resource caps enforced in create paths (harnesses, agents, sessions).
     /// Resolved from env so SaaS plan overrides apply across every entry path (HTTP/MCP/gRPC).
     pub resource_limits: crate::server::ResourceLimitsConfig,
@@ -492,13 +526,17 @@ impl Ctx {
             eval_service: None,
             reporting_service: None,
             sqldb_store: None,
+            connection_resolver: None,
             workflow_store: None,
             runner: None,
             fallback_harness_name: None,
             egress_service: None,
             utility_llm_service: None,
+            decisions: None,
             health_check_service: None,
             mcp_event_triggers: None,
+            mcp_oauth_checker: None,
+            github_apps: crate::github_apps::GitHubAppContext::from_env(),
             resource_limits: crate::server::ResourceLimitsConfig::from_env(),
         }
     }
@@ -629,7 +667,9 @@ pub trait Command: DeserializeOwned + Serialize + Send + 'static + CommandSchema
         })
     }
 
-    /// Short jq-oriented output shape hint for MCP scripting callers.
+    /// Short jq-oriented output shape hint for MCP scripting callers. Must be
+    /// one of [`OUTPUT_SHAPES`]: MCP `discover` declares that enum in its
+    /// output schema, and strict clients reject the whole result otherwise.
     fn output_shape() -> &'static str {
         "unknown"
     }
@@ -676,6 +716,11 @@ pub trait Command: DeserializeOwned + Serialize + Send + 'static + CommandSchema
             let started_at = std::time::Instant::now();
 
             let result: Result<Self::Output, CommandError> = async {
+                // THREAT[TM-AUTHZ-002]: internal commands serve the worker's own
+                // stores; no person reaches them, whatever their role.
+                if meta.is_internal() && !ctx.caller.is_internal {
+                    return Err(CommandError::forbidden("Internal command"));
+                }
                 if let Some(flag) = meta.required_feature()
                     && !ctx.feature_flags.is_enabled(flag)
                 {
@@ -1003,6 +1048,7 @@ pub fn catalog_entries() -> Vec<CommandMeta> {
     inventory::iter::<CommandDescriptor>
         .into_iter()
         .map(|desc| (desc.meta)())
+        .filter(|meta| !meta.is_internal())
         .collect()
 }
 
@@ -1026,13 +1072,20 @@ pub struct CommandCatalogEntry {
     pub output_shape: &'static str,
 }
 
+/// Every value [`Command::output_shape`] may return. `unknown` covers single
+/// objects and anything without a stable jq path; `output_fields` names them.
+pub const OUTPUT_SHAPES: [&str; 3] = ["array", "paginated", "unknown"];
+
 pub fn catalog_entries_with_schemas(
     include_schemas: bool,
     feature_flags: &FeatureFlags,
 ) -> Vec<CommandCatalogEntry> {
     inventory::iter::<CommandDescriptor>
         .into_iter()
-        .filter(|desc| (desc.meta)().is_enabled(feature_flags))
+        .filter(|desc| {
+            let meta = (desc.meta)();
+            !meta.is_internal() && meta.is_enabled(feature_flags)
+        })
         .map(|desc| {
             let meta = (desc.meta)();
             CommandCatalogEntry {
@@ -1066,7 +1119,7 @@ pub fn catalog_entries_with_schemas(
 
 /// Validate an addressable name (agent, harness, etc.)
 pub fn validate_name(entity: &str, name: &str) -> Result<(), CommandError> {
-    crate::records::validate_addressable_name(name)
+    crate::domains::agents::record::validate_addressable_name(name)
         .map_err(|msg| CommandError::bad_request(format!("{entity} {msg}")))
 }
 
@@ -1235,6 +1288,19 @@ mod lenient_tests {
     struct FlagInput {
         #[serde(default, deserialize_with = "deserialize_bool_lenient")]
         include_archived: bool,
+    }
+
+    #[test]
+    fn every_command_output_shape_is_in_the_declared_enum() {
+        let bad: Vec<String> = inventory::iter::<CommandDescriptor>
+            .into_iter()
+            .filter(|desc| !OUTPUT_SHAPES.contains(&(desc.output_shape)()))
+            .map(|desc| format!("{}: {:?}", (desc.meta)().name, (desc.output_shape)()))
+            .collect();
+        assert!(
+            bad.is_empty(),
+            "output_shape outside {OUTPUT_SHAPES:?}: {bad:?}"
+        );
     }
 
     #[test]

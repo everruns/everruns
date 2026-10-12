@@ -1,11 +1,8 @@
 use super::*;
+use crate::domains::agent_channels::record::ChannelType;
 use crate::domains::agent_channels::{CreateAgentChannel, types::CreateAgentChannelRequest};
 use crate::domains::common::*;
-use crate::records::ChannelType;
-use crate::storage::{
-    ObserveHealthIssue, StorageBackend,
-    models::{CreateAgentRow, CreateHarnessRow},
-};
+use crate::storage::{CreateAgentRow, CreateHarnessRow, ObserveHealthIssue, StorageBackend};
 use chrono::Utc;
 use everruns_contracts::typed_id::AgentId;
 use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole, Permission, PermissionResolver};
@@ -62,6 +59,7 @@ async fn seed_agent(db: &StorageBackend) -> String {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            communication: Default::default(),
             environments: None,
             is_built_in: false,
         },
@@ -325,7 +323,7 @@ async fn denied_policy_revoked_membership_and_other_org_cannot_read_health() {
 async fn granted_scopes_verify_without_mutating_slack() {
     let (db, ctx, row) = fixture().await;
     let mock = MockServer::start().await;
-    let scopes = crate::records::slack_channel::slack_bot_scopes(false);
+    let scopes = crate::domains::agent_channels::record::slack_channel::slack_bot_scopes(false);
     Mock::given(method("POST"))
         .and(path("/auth.test"))
         .respond_with(
@@ -375,16 +373,11 @@ async fn absent_scope_header_and_wrong_workspace_never_report_healthy() {
 }
 
 #[tokio::test]
-async fn notification_flag_does_not_disable_health_and_due_reminder_is_once() {
-    let (db, mut ctx, row) = fixture().await;
+async fn open_issue_notifies_and_due_reminder_is_once() {
+    let (db, ctx, row) = fixture().await;
     db.observe_health_issue(observation(&row, "open"))
         .await
         .unwrap();
-    ctx.feature_flags.notifications = false;
-    let first = list(&ctx).await;
-    assert_eq!(first.total, 1);
-    assert!(first.data[0].notification_id.is_none());
-    ctx.feature_flags.notifications = true;
     let issue = list(&ctx).await.data.remove(0);
     let notification = issue.notification_id.unwrap().parse().unwrap();
     let user = ctx.caller.user_id.unwrap();

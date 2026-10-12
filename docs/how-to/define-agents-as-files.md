@@ -237,8 +237,8 @@ Packages preserve channel descriptions; Framework applications bind
 transports separately. Platform environment declarations need explicit session
 bindings and are rejected by the generic package builder.
 
-`package.create` resolves the standard `base`, `conversation`, `worker-base` and
-`worker` harnesses. For custom harnesses, use `Engine::create(agent).harness(...)`.
+`package.create` resolves the standard `base`, `conversation`, `worker` and
+`bashkit-worker` harnesses. For custom harnesses, use `Engine::create(agent).harness(...)`.
 
 ## Serve a file or folder
 
@@ -264,7 +264,7 @@ validation limits and compatibility rules. The
 Add its editor directive at the top of `agent.toml`:
 
 ```toml
-#:schema https://docs.everruns.com/schemas/agent/v1.json
+#:schema https://everruns.com/docs/schemas/agent/v1.json
 schema_version = 1
 name = "my-agent"
 ```

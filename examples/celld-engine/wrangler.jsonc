@@ -9,7 +9,7 @@
   // OPENAI_API_KEY is a secret: `.dev.vars` locally.
   "vars": {
     "OPENAI_BASE_URL": "https://api.openai.com/v1",
-    "MODEL": "gpt-5-mini",
+    "MODEL": "gpt-6-luna",
     "TOOL_DELAY_MS": "2000",
     "LEASE_MS": "30000"
   }

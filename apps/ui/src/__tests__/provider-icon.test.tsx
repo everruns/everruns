@@ -58,15 +58,10 @@ describe("ProviderIcon", () => {
     expect(svg?.querySelectorAll("path")).toHaveLength(2);
   });
 
-  it("renders fallback Server icon for unknown provider type", () => {
-    // Cast to simulate an unknown provider type
+  it("uses the shared Facet provider fallback for an unknown provider type", () => {
     const { container } = render(<ProviderIcon providerType={"unknown" as DriverId} />);
-    // Should not render an SVG from our icon set
-    const svg = container.querySelector("svg");
-    // lucide-react Server icon renders as SVG too, so just confirm no <img>
-    const img = container.querySelector("img");
-    expect(img).not.toBeInTheDocument();
-    expect(svg).toBeInTheDocument(); // Server icon from lucide
+    expect(container.querySelector("img")).not.toBeInTheDocument();
+    expect(container.querySelector("svg")).toHaveAttribute("data-facet-icon", "provider");
   });
 
   it("applies showBackground styles when true", () => {

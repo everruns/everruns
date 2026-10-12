@@ -179,15 +179,26 @@ Each capability card shows:
 - Description
 - Category tag
 
+## Models
+
+**Registries → Models** has three tabs:
+
+- **Models**: every model from every connected provider, filtered by service,
+  provider and status. Enabled models are shown by default. Choose models for a
+  provider in bulk, and review models a sync discovered.
+- **Providers**: connected provider accounts. Connect a provider, paste or
+  rotate its key, sync its models and open its settings. Several providers of
+  one kind can be connected under different names; model pickers show
+  "Model (Provider name)".
+- **Defaults**: the organization's default model, default decision model,
+  system decisions source, and default provider for realtime, embeddings,
+  images and rerank.
+
+Connecting, rotating and deleting providers and enabling models need the
+organization models permission (`org:models:manage`, admins by default).
+Other members see the page read-only.
+
 ## Settings
-
-### LLM Providers
-
-Configure language model providers:
-
-- Add provider credentials (API keys)
-- Enable/disable specific models
-- Set default models for agents
 
 ### Personal access tokens
 

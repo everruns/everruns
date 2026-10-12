@@ -81,7 +81,7 @@ other providers.
 - Durable compaction checkpoints already store encrypted provider/model-specific
   state beside the immutable event log
   (`crates/core/src/compaction_checkpoint.rs:11-61`,
-  `crates/server/src/storage/compaction_checkpoint_store.rs:10-108`).
+  `crates/server/src/storage/runtime/compaction_checkpoint.rs:10-108`).
 
 A byte-stable notice would fix only the notice entry. The recent window would
 still move, so the full prior prefix would still change.

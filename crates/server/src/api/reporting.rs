@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::records::reporting::{DatasetCatalog, ReportQuery, ReportResult};
+use crate::domains::reporting::record::{DatasetCatalog, ReportQuery, ReportResult};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},

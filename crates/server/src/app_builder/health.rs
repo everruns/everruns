@@ -1,6 +1,6 @@
+use crate::background::supervised_task::TaskSupervisor;
 use crate::domains::health_issues::service::SlackHealthService;
 use crate::storage::{EncryptionService, StorageBackend};
-use crate::supervised_task::TaskSupervisor;
 use axum::{Json, extract::State};
 use serde::Serialize;
 use std::sync::Arc;

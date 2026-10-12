@@ -27,6 +27,7 @@ use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 use everruns_contracts::tool_types::ToolHints;
 use serde_json::{Value, json};
 
+use crate::github::GitHubActsAs;
 use crate::github::client::{GitHubClient, PullRequestFile};
 use crate::github::pull_requests::{github_token, target, target_schema, valid_marker};
 
@@ -305,7 +306,10 @@ fn review_marker(commit: &str) -> String {
     format!("{REVIEW_PREFIX}{commit} -->")
 }
 
-pub struct SubmitGitHubReviewTool;
+#[derive(Default)]
+pub struct SubmitGitHubReviewTool {
+    pub(crate) acts_as: GitHubActsAs,
+}
 
 #[async_trait]
 impl Tool for SubmitGitHubReviewTool {
@@ -428,10 +432,11 @@ impl Tool for SubmitGitHubReviewTool {
         if body.is_empty() && drafts.is_empty() {
             return ToolExecutionResult::tool_error("Provide a body, comments, or both");
         }
-        let client = match github_token(context).await {
-            Ok(token) => crate::github::tools::github_client(token),
-            Err(e) => return e,
-        };
+        let client =
+            match github_token(context, self.acts_as, &repo, &[("pull_requests", "write")]).await {
+                Ok(token) => crate::github::tools::github_client(token),
+                Err(e) => return e,
+            };
         match submit(&client, &repo, number, &arguments, body, event, drafts).await {
             Ok(result) => ToolExecutionResult::success(result),
             Err(e) => ToolExecutionResult::tool_error(e),

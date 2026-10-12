@@ -2,8 +2,9 @@
 //
 // No policy checks, no input validation. Pure data access + mapping.
 
-use super::service::{McpServerService, McpServerSettings};
-use crate::records::{McpServer, McpServerStatus};
+use super::presentation::McpServerPresentation;
+use super::service::McpServerService;
+use crate::domains::mcp_servers::record::{McpServer, McpServerStatus};
 use crate::storage::StorageBackend;
 use everruns_core::{McpServerAuthMode, McpServerTransportType};
 // `settings.protocol_mode` is read below.
@@ -28,6 +29,13 @@ pub fn row_to_mcp_server(row: &McpServerRow) -> McpServer {
     let settings = McpServerService::settings_from_row(row);
     let oauth_provider_id = (settings.auth_mode == McpServerAuthMode::OAuth)
         .then(|| McpServerService::oauth_provider_id(row.id.uuid()));
+    // Only OAuth presets have a sign-in service to check.
+    let connection_check = (settings.auth_mode == McpServerAuthMode::OAuth).then(|| {
+        settings
+            .connection_check
+            .clone()
+            .unwrap_or_else(crate::domains::mcp_servers::record::McpConnectionCheck::not_checked)
+    });
 
     McpServer {
         id: row.id,
@@ -40,9 +48,11 @@ pub fn row_to_mcp_server(row: &McpServerRow) -> McpServer {
         protocol_mode: settings.protocol_mode,
         elicitation_policy: settings.elicitation_policy,
         oauth_provider_id,
+        connection_check,
         service_connection_provider: settings.service_connection_provider,
         api_key_set: row.api_key_set,
         headers,
+        presentation: McpServerPresentation::for_api(&row.presentation),
         created_at: row.created_at,
         updated_at: row.updated_at,
         archived_at: row.archived_at,
@@ -74,9 +84,4 @@ pub async fn get_row(
     id: Uuid,
 ) -> anyhow::Result<Option<McpServerRow>> {
     db.get_mcp_server(org_id, id).await
-}
-
-/// Build settings from a row, delegating to McpServerService.
-pub fn settings_from_row(row: &McpServerRow) -> McpServerSettings {
-    McpServerService::settings_from_row(row)
 }

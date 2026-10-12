@@ -151,7 +151,7 @@ export function ChatThreadHeader({
         readOnly={!!session.archived_at}
       />
       <LinkButton
-        href={`/sessions/${session.id}/transcript`}
+        href={`/sessions/${session.id}/trace`}
         variant="outline"
         size="sm"
         aria-label="Open session"
@@ -187,7 +187,7 @@ export function ChatThreadHeader({
     );
   }
   return (
-    <div className="flex items-center gap-3 border-b border-border/70 bg-background/70 px-4 py-3 backdrop-blur-[1px] sm:px-6">
+    <div className="flex min-w-0 items-center gap-3 border-b border-border/70 bg-background/70 px-4 py-3 backdrop-blur-[1px] sm:px-6">
       <AgentAvatar name={counterpart} />
       <div className="flex min-w-0 flex-col">
         <span className="flex min-w-0 items-center gap-2">

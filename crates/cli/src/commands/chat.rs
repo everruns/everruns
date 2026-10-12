@@ -114,22 +114,15 @@ pub async fn run(
         };
 
         if output.is_text() {
-            // Handle output.message.completed events
-            if event.event_type == "output.message.completed" {
-                // Content may be at data.content or data.message.content
-                let content = event
-                    .data
-                    .get("content")
-                    .or_else(|| event.data.get("message").and_then(|m| m.get("content")));
-                if let Some(content) = content
-                    && let Some(parts) = content.as_array()
-                {
-                    for part in parts {
-                        if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                            agent_content.push_str(text);
-                        }
-                    }
+            // What the agent said: its text, or a message it sent in explicit
+            // communication. Never its commentary.
+            if let Some(text) =
+                everruns_core::conversation::said_in_event(&event.event_type, &event.data)
+            {
+                if !agent_content.is_empty() {
+                    agent_content.push_str("\n\n");
                 }
+                agent_content.push_str(&text);
             }
 
             // Handle tool.progress event

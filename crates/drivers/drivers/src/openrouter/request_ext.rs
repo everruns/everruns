@@ -10,6 +10,7 @@
 //     `{"type":"openrouter:<name>"}` entries
 //   - `session_id` — OpenRouter session grouping (the Everruns session id)
 //   - `reasoning.exclude` — keep provider reasoning private by default
+//   - `cache_control` — Anthropic automatic prompt caching (see below)
 //   - `HTTP-Referer` / `X-Title` — app attribution headers
 
 use std::borrow::Cow;
@@ -21,7 +22,7 @@ use crate::openrouter::options::{
     OpenRouterRoutingConfig,
 };
 use everruns_contracts::OpenResponsesRequestExtension;
-use everruns_contracts::driver_registry::LlmCallConfig;
+use everruns_contracts::driver_registry::{LlmCallConfig, PromptCacheStrategy};
 use everruns_contracts::error::{AgentLoopError, BillingPressureReason, LlmErrorKind, Result};
 use everruns_contracts::llm_retry::{RateLimitInfo, RateLimitType};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, RETRY_AFTER};
@@ -52,6 +53,7 @@ impl OpenResponsesRequestExtension for OpenRouterRequestExtension {
         remove_attribution_metadata(obj);
 
         apply_private_reasoning_policy(obj, config);
+        apply_anthropic_cache_control(obj, config);
 
         let Some(routing) = effective_routing(config)? else {
             return Ok(());
@@ -315,6 +317,29 @@ fn apply_private_reasoning_policy(
     obj.insert("reasoning".to_string(), Value::Object(reasoning));
 }
 
+/// Claude models cache nothing unless the request marks content, and
+/// OpenRouter's Responses API does not take per-block `cache_control`. A
+/// top-level `cache_control` turns on Anthropic's automatic caching instead:
+/// OpenRouter places the breakpoint on the last cacheable block and moves it
+/// forward as the conversation grows, which is the incremental caching the
+/// direct Anthropic driver gets from its message breakpoints. Only the `auto`
+/// strategy asks for it, since automatic caching always covers the
+/// conversation. Other vendors on OpenRouter cache implicitly and are left
+/// alone; the `prompt_cache_key` the base driver sends keeps routing sticky.
+fn apply_anthropic_cache_control(obj: &mut serde_json::Map<String, Value>, config: &LlmCallConfig) {
+    let Some(cache) = config.prompt_cache.as_ref().filter(|cache| cache.enabled) else {
+        return;
+    };
+    if cache.strategy != PromptCacheStrategy::Auto || !config.model.starts_with("anthropic/") {
+        return;
+    }
+    let mut control = json!({ "type": "ephemeral" });
+    if let Some(ttl) = cache.retention.anthropic_ttl() {
+        control["ttl"] = json!(ttl);
+    }
+    obj.insert("cache_control".to_string(), control);
+}
+
 /// Apply routing presets, then the capacity strategy, returning the resolved
 /// config used to build the wire request. Borrows the original when both steps
 /// are no-ops (the common case) and only allocates when a step changes routing.
@@ -386,6 +411,49 @@ mod tests {
     use crate::openrouter::options::{
         OpenRouterFilePlugin, OpenRouterWebSearchPlugin, insert_routing_option,
     };
+
+    #[test]
+    fn claude_models_get_automatic_caching_with_the_requested_ttl() {
+        use everruns_contracts::driver_registry::{PromptCacheConfig, PromptCacheRetention};
+        let decorate = |model: &str, cache: Option<PromptCacheConfig>| {
+            let mut config = LlmCallConfig::new(model);
+            config.prompt_cache = cache;
+            let mut body = json!({ "model": model });
+            OpenRouterRequestExtension
+                .decorate(&mut body, &config)
+                .unwrap();
+            body.get("cache_control").cloned()
+        };
+        let cache = PromptCacheConfig {
+            enabled: true,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            decorate("anthropic/claude-sonnet-5.5", Some(cache.clone())),
+            Some(json!({ "type": "ephemeral" }))
+        );
+        let mut hour = cache.clone();
+        hour.retention = PromptCacheRetention::OneHour;
+        assert_eq!(
+            decorate("anthropic/claude-sonnet-5.5", Some(hour)),
+            Some(json!({ "type": "ephemeral", "ttl": "1h" }))
+        );
+
+        // Explicit caches only the stable prefix; automatic caching cannot.
+        let mut explicit = cache.clone();
+        explicit.strategy = PromptCacheStrategy::Explicit;
+        assert_eq!(
+            decorate("anthropic/claude-sonnet-5.5", Some(explicit)),
+            None
+        );
+        // Implicit-caching vendors and caching off are left alone.
+        assert_eq!(decorate("openai/gpt-6.1-sol", Some(cache.clone())), None);
+        assert_eq!(decorate("anthropic/claude-sonnet-5.5", None), None);
+        let mut off = cache;
+        off.enabled = false;
+        assert_eq!(decorate("anthropic/claude-sonnet-5.5", Some(off)), None);
+    }
 
     #[test]
     fn billing_classifier_requires_402_and_a_supported_machine_reason() {

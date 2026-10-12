@@ -29,7 +29,7 @@ use everruns::{Agent, OpenAI};
 let agent = Agent::builder()
     .instructions("Be concise.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-5.6-terra")
+    .model("gpt-6.1-sol")
     .build()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
@@ -119,7 +119,7 @@ The set below is what ships today. The boundary is open, so a
 | AWS Bedrock | `everruns-drivers` (`bedrock`) | Bedrock `ConverseStream` (SigV4) | chat | no |
 | OpenRouter | `everruns-drivers` (`openrouter`) | OpenAI Responses-compatible, System One | chat, decisions | yes |
 | TypeSafe | `everruns-drivers` (`typesafe`) | System One | decisions | curated Jev profiles |
-| Microsoft MAI | `everruns-drivers` (`mai`) | OpenAI Chat Completions (Azure AI Foundry) | chat | yes |
+| Microsoft MAI | `everruns-drivers` (`mai`) | OpenAI Chat Completions, System One (Azure AI Foundry) | chat, decisions | yes |
 | Fireworks AI | `everruns-drivers` (`fireworks`) | OpenAI Chat Completions-compatible | chat | yes |
 | Meta | `everruns-drivers` (`meta`) | OpenAI Responses-compatible | chat | yes |
 | Mistral AI | `everruns-drivers` (`mistral`) | OpenAI Chat Completions-compatible | chat | yes |
@@ -437,7 +437,7 @@ The profile registry is static data, so a model's identity can be read offline:
 ```rust
 use everruns::{DriverId, models};
 
-let profile = models::profile(&DriverId::OpenAI, "gpt-5.6-terra");
+let profile = models::profile(&DriverId::OpenAI, "gpt-6.1-sol");
 assert!(profile.is_some());
 ```
 

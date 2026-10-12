@@ -16,7 +16,9 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
 use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::runtime::events::EventData;
 use everruns_contracts::typed_id::{PrincipalId, ScheduleId, SessionId};
+use everruns_core::host::EventLog;
 use everruns_core::session_schedule::{
     DEFAULT_MAX_SCHEDULES_PER_ORG, DEFAULT_MIN_INTERVAL_SECONDS, MAX_ACTIVE_SCHEDULES_PER_SESSION,
     ScheduleLimitError, SessionSchedule, validate_cron_min_interval_with,
@@ -25,6 +27,7 @@ use everruns_core::session_services::SessionScheduleStore;
 use rusqlite::{OptionalExtension, TransactionBehavior};
 use serde_json::Value;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
 
 fn schedule_limits() -> (i64, i64) {
@@ -43,6 +46,7 @@ fn schedule_limits() -> (i64, i64) {
 
 use super::db::SqliteDb;
 use super::error::LocalError;
+use super::schedule_journal::{self as journal, JournalTimer};
 
 /// SQLite-backed schedule store for local embedded hosts.
 #[derive(Clone)]
@@ -52,6 +56,20 @@ pub struct LocalScheduleStore {
     org_id: i64,
     /// Principal stamped on created schedules.
     owner_principal_id: PrincipalId,
+    /// Session log the schedules are recorded in. `None` keeps the index only
+    /// (a store built without a runtime, e.g. in a unit test).
+    journal: Option<Arc<dyn EventLog>>,
+}
+
+/// What [`LocalScheduleStore::reconcile_journal`] changed.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ScheduleReconcileReport {
+    /// Rows rebuilt from timers the log has and the index lacked.
+    pub restored: usize,
+    /// Rows moved forward to occurrences or cancellations the log records.
+    pub advanced: usize,
+    /// Enabled rows written into a log that had no timer for them.
+    pub journaled: usize,
 }
 
 #[derive(Debug)]
@@ -176,6 +194,22 @@ impl LocalScheduleStore {
             db,
             org_id,
             owner_principal_id,
+            journal: None,
+        }
+    }
+
+    /// Record schedules in `log` as `timer.*` entries of their session, so the
+    /// log is enough to rebuild them (see
+    /// [`reconcile_journal`](Self::reconcile_journal)).
+    pub fn with_journal(mut self, log: Arc<dyn EventLog>) -> Self {
+        self.journal = Some(log);
+        self
+    }
+
+    async fn record(&self, session_id: SessionId, data: impl Into<EventData>) -> Result<()> {
+        match &self.journal {
+            Some(log) => journal::append(log.as_ref(), session_id, data).await,
+            None => Ok(()),
         }
     }
 
@@ -284,6 +318,8 @@ impl LocalScheduleStore {
             scheduled_at,
             timezone,
         )?;
+        self.record(session_id, journal::timer_set(&schedule, &metadata))
+            .await?;
         self.insert(&schedule, &metadata)?;
         Ok(schedule)
     }
@@ -423,7 +459,7 @@ impl LocalScheduleStore {
             .map_err(AgentLoopError::from)
     }
 
-    pub(crate) fn complete_delivery(
+    pub(crate) async fn complete_delivery(
         &self,
         claim: &ClaimedSchedule,
         runner_id: &str,
@@ -439,6 +475,11 @@ impl LocalScheduleStore {
             schedule.enabled = false;
             schedule.next_trigger_at = None;
         }
+        self.record(
+            schedule.session_id,
+            journal::timer_fired(&schedule, delivered_at),
+        )
+        .await?;
         let snapshot = serde_json::to_string(&schedule)
             .map_err(|e| AgentLoopError::from(LocalError::from(e)))?;
         let next_ms = schedule.next_trigger_at.map(|time| time.timestamp_millis());
@@ -524,6 +565,135 @@ impl LocalScheduleStore {
                 claim.claim_id
             )));
         }
+        Ok(())
+    }
+}
+
+impl LocalScheduleStore {
+    fn delete_row(&self, schedule_id: ScheduleId) -> Result<()> {
+        let id = schedule_id.to_string();
+        let org_id = self.org_id;
+        self.db
+            .with_conn(|conn| {
+                conn.execute(
+                    "DELETE FROM local_schedules WHERE id = ?1 AND org_id = ?2",
+                    rusqlite::params![id, org_id],
+                )
+            })
+            .map_err(AgentLoopError::from)?;
+        Ok(())
+    }
+
+    /// Sessions whose log or index may hold schedules: every session in the
+    /// local catalog plus every session the index names.
+    fn reconcile_sessions(&self) -> Result<Vec<SessionId>> {
+        let org_id = self.org_id;
+        let ids: Vec<String> = self
+            .db
+            .with_conn(|conn| {
+                let catalog: bool = conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_master
+                     WHERE type = 'table' AND name = 'framework_sessions')",
+                    [],
+                    |row| row.get(0),
+                )?;
+                let sql = if catalog {
+                    "SELECT session_id FROM local_schedules WHERE org_id = ?1
+                     UNION SELECT session_id FROM framework_sessions"
+                } else {
+                    "SELECT DISTINCT session_id FROM local_schedules WHERE org_id = ?1"
+                };
+                let mut stmt = conn.prepare(sql)?;
+                stmt.query_map(rusqlite::params![org_id], |row| row.get(0))?
+                    .collect::<rusqlite::Result<Vec<String>>>()
+            })
+            .map_err(AgentLoopError::from)?;
+        Ok(ids
+            .into_iter()
+            .filter_map(|id| SessionId::from_str(&id).ok())
+            .collect())
+    }
+
+    /// Make the index agree with the session logs; the log wins where it has
+    /// the schedule. The runner calls this before it first polls. A store
+    /// without a journal has nothing to reconcile.
+    pub async fn reconcile_journal(&self) -> Result<ScheduleReconcileReport> {
+        let mut report = ScheduleReconcileReport::default();
+        let Some(log) = self.journal.clone() else {
+            return Ok(report);
+        };
+        for session_id in self.reconcile_sessions()? {
+            let timers = match journal::read_timers(log.as_ref(), session_id).await {
+                Ok(timers) => timers,
+                Err(error) => {
+                    tracing::warn!(%session_id, %error, "Skipping schedule reconcile for a session whose log could not be read");
+                    continue;
+                }
+            };
+            let mut journaled = std::collections::HashSet::new();
+            for timer in &timers {
+                journaled.insert(timer.set.timer_id.clone());
+                self.reconcile_timer(session_id, timer, &mut report)?;
+            }
+            for schedule in self.list_schedules(session_id).await? {
+                if schedule.enabled && !journaled.contains(&schedule.id.to_string()) {
+                    let metadata = self
+                        .get_metadata(schedule.id)
+                        .await?
+                        .unwrap_or_else(|| Value::Object(Default::default()));
+                    self.record(session_id, journal::timer_set(&schedule, &metadata))
+                        .await?;
+                    report.journaled += 1;
+                }
+            }
+        }
+        if report != ScheduleReconcileReport::default() {
+            tracing::info!(?report, "Local schedules reconciled with session logs");
+        }
+        Ok(report)
+    }
+
+    fn reconcile_timer(
+        &self,
+        session_id: SessionId,
+        timer: &JournalTimer,
+        report: &mut ScheduleReconcileReport,
+    ) -> Result<()> {
+        let rebuilt = timer.schedule(session_id, self.owner_principal_id)?;
+        let Some(mut row) = self.load(rebuilt.id)? else {
+            self.insert(&rebuilt, &timer.metadata())?;
+            report.restored += 1;
+            return Ok(());
+        };
+        let newer_fires = timer.fired_since(row.last_triggered_at);
+        let cancel = timer.cancelled && row.enabled;
+        if newer_fires == 0 && !cancel {
+            return Ok(());
+        }
+        if newer_fires > 0 {
+            row.trigger_count = row.trigger_count.saturating_add(newer_fires);
+            row.last_triggered_at = rebuilt.last_triggered_at;
+            row.next_trigger_at = rebuilt.next_trigger_at;
+            row.enabled = row.enabled && rebuilt.next_trigger_at.is_some();
+        }
+        if cancel {
+            row.enabled = false;
+        }
+        row.updated_at = Utc::now();
+        let metadata = self
+            .db
+            .with_conn(|conn| {
+                conn.query_row(
+                    "SELECT metadata FROM local_schedules WHERE id = ?1 AND org_id = ?2",
+                    rusqlite::params![row.id.to_string(), self.org_id],
+                    |r| r.get::<_, String>(0),
+                )
+            })
+            .map_err(AgentLoopError::from)?;
+        let metadata: Value = serde_json::from_str(&metadata)
+            .map_err(|e| AgentLoopError::from(LocalError::from(e)))?;
+        self.insert(&row, &metadata)?;
+        report.advanced += 1;
         Ok(())
     }
 }
@@ -644,6 +814,13 @@ impl SessionScheduleStore for LocalScheduleStore {
             .map_err(|e| ScheduleLimitError::Store(AgentLoopError::from(e)))?;
 
         if inserted {
+            let entry = journal::timer_set(&schedule, &Value::Object(Default::default()));
+            if let Err(error) = self.record(session_id, entry).await {
+                // The limit check needs the row first; a create the log refused
+                // must not stay behind as a schedule the log never heard of.
+                let _ = self.delete_row(schedule.id);
+                return Err(ScheduleLimitError::Store(error));
+            }
             Ok(schedule)
         } else if self
             .count_active_schedules(session_id)
@@ -669,6 +846,10 @@ impl SessionScheduleStore for LocalScheduleStore {
         let mut schedule = self
             .load(schedule_id)?
             .ok_or_else(|| AgentLoopError::tool("schedule not found".to_string()))?;
+        if schedule.enabled {
+            self.record(schedule.session_id, journal::timer_cancelled(schedule_id))
+                .await?;
+        }
         schedule.enabled = false;
         schedule.updated_at = Utc::now();
         // Preserve existing metadata across the snapshot rewrite.

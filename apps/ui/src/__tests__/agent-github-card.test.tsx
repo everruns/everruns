@@ -16,10 +16,20 @@ const base: api.AgentGitHubStatus = {
   app_url: null,
   account: null,
   repository_selection: null,
+  missing_permissions: [],
+  suggested_owners: [],
 };
 
+/** Opens the Connect GitHub menu and picks `item`. */
+async function connectVia(item: string) {
+  fireEvent.click(await screen.findByRole("button", { name: "Connect GitHub" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: item }));
+}
+
 function renderCard() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   return render(
     <QueryClientProvider client={client}>
       <AgentGitHubCard agentId="agent_1" />
@@ -30,7 +40,7 @@ function renderCard() {
 describe("AgentGitHubCard", () => {
   beforeEach(() => jest.resetAllMocks());
 
-  it("submits a manifest form for create_app", async () => {
+  it("submits a manifest form for the personal account", async () => {
     mocked.getAgentGitHub.mockResolvedValue(base);
     mocked.connectAgentGitHub.mockResolvedValue({
       kind: "create_app",
@@ -39,7 +49,8 @@ describe("AgentGitHubCard", () => {
     });
     const submit = jest.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(() => {});
     renderCard();
-    fireEvent.click(await screen.findByRole("button", { name: "Connect GitHub" }));
+    expect(screen.queryByLabelText("GitHub organization")).not.toBeInTheDocument();
+    await connectVia("Personal account");
     await waitFor(() => expect(submit).toHaveBeenCalled());
     expect(mocked.connectAgentGitHub).toHaveBeenCalledWith("agent_1", {
       return_to: "/agents/agent_1?tab=integrations",
@@ -48,6 +59,59 @@ describe("AgentGitHubCard", () => {
     expect(form.method).toBe("post");
     expect(form.action).toBe("https://github.com/settings/apps/new");
     expect((form.elements.namedItem("manifest") as HTMLInputElement).value).toBe('{"name":"x"}');
+    submit.mockRestore();
+  });
+
+  it("offers organizations the org already knows, without personal accounts", async () => {
+    mocked.getAgentGitHub.mockResolvedValue({
+      ...base,
+      suggested_owners: [
+        { login: "acme", kind: "organization" },
+        { login: "octocat", kind: "user" },
+        { login: "beta-labs", kind: "unknown" },
+      ],
+    });
+    mocked.connectAgentGitHub.mockResolvedValue({
+      kind: "create_app",
+      action: "https://github.com/organizations/beta-labs/settings/apps/new",
+      manifest: '{"name":"x"}',
+    });
+    const submit = jest.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(() => {});
+    renderCard();
+    fireEvent.click(await screen.findByRole("button", { name: "Connect GitHub" }));
+    expect(
+      (await screen.findAllByRole("menuitem")).map((item) => item.textContent?.trim()),
+    ).toEqual(["Personal account", "acme", "beta-labs", "Another organization…"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "beta-labs" }));
+    await waitFor(() => expect(submit).toHaveBeenCalled());
+    expect(mocked.connectAgentGitHub).toHaveBeenCalledWith("agent_1", {
+      return_to: "/agents/agent_1?tab=integrations",
+      owner_org: "beta-labs",
+    });
+    submit.mockRestore();
+  });
+
+  it("creates the App in another organization the user names", async () => {
+    mocked.getAgentGitHub.mockResolvedValue(base);
+    mocked.connectAgentGitHub.mockResolvedValue({
+      kind: "create_app",
+      action: "https://github.com/organizations/acme/settings/apps/new",
+      manifest: '{"name":"x"}',
+    });
+    const submit = jest.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(() => {});
+    renderCard();
+    await connectVia("Another organization…");
+    const connectButton = await screen.findByRole("button", { name: "Connect" });
+    expect(connectButton).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("GitHub organization"), {
+      target: { value: " acme " },
+    });
+    fireEvent.click(connectButton);
+    await waitFor(() => expect(submit).toHaveBeenCalled());
+    expect(mocked.connectAgentGitHub).toHaveBeenCalledWith("agent_1", {
+      return_to: "/agents/agent_1?tab=integrations",
+      owner_org: "acme",
+    });
     submit.mockRestore();
   });
 
@@ -63,6 +127,19 @@ describe("AgentGitHubCard", () => {
     await waitFor(() =>
       expect(navigateTo).toHaveBeenCalledWith("https://github.com/apps/x/installations/new"),
     );
+  });
+
+  it("forgets an App that was never installed", async () => {
+    mocked.getAgentGitHub.mockResolvedValue({
+      ...base,
+      app_created: true,
+      identity_id: "ident_1",
+    });
+    mocked.disconnectAgentGitHub.mockResolvedValue();
+    renderCard();
+    fireEvent.click(await screen.findByRole("button", { name: "GitHub actions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Start over" }));
+    await waitFor(() => expect(mocked.disconnectAgentGitHub).toHaveBeenCalledWith("ident_1"));
   });
 
   it("shows account and disconnects after confirmation", async () => {
@@ -83,8 +160,32 @@ describe("AgentGitHubCard", () => {
       "/agents/agent_1/triggers/new?type=github",
     );
     fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
-    const buttons = await screen.findAllByRole("button", { name: "Disconnect" });
+    const buttons = await screen.findAllByRole("button", {
+      name: "Disconnect",
+    });
     fireEvent.click(buttons[buttons.length - 1]);
     await waitFor(() => expect(mocked.disconnectAgentGitHub).toHaveBeenCalledWith("ident_1"));
+  });
+
+  it("asks for permissions an older App lacks", async () => {
+    mocked.getAgentGitHub.mockResolvedValue({
+      ...base,
+      connected: true,
+      identity_id: "ident_1",
+      missing_permissions: ["actions:read", "checks:read"],
+    });
+    renderCard();
+    expect(await screen.findByRole("status")).toHaveTextContent("actions:read, checks:read");
+  });
+
+  it("stays quiet when the App has every permission", async () => {
+    mocked.getAgentGitHub.mockResolvedValue({
+      ...base,
+      connected: true,
+      account: "acme",
+    });
+    renderCard();
+    expect(await screen.findByText("acme")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });

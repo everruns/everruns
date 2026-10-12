@@ -1,8 +1,9 @@
 "use client";
 
+import { VirtualUserIcon } from "@/components/icons/facet-icons";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Check, UserRound } from "lucide-react";
+import { Check } from "lucide-react";
 import { useCreateVirtualUser } from "@/hooks/use-virtual-users";
 import { usePageTitle } from "@/hooks";
 import { Button } from "@/components/ui/button";
@@ -67,7 +68,7 @@ export default function NewVirtualUserPage() {
       />
 
       <PageMasthead
-        icon={<UserRound />}
+        icon={<VirtualUserIcon />}
         title="New virtual user"
         description="Create an end user profile or an agent service account."
         actions={

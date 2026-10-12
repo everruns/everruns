@@ -73,6 +73,15 @@ pub struct ChannelActivity {
     pub daily: Vec<u64>,
     /// When the channel last started a session inside the window.
     pub last_session_at: Option<DateTime<Utc>>,
+    /// Distinct end users behind the channel's sessions in the window.
+    pub people: u64,
+    /// Sessions that carried an end-user identity. Zero means the channel
+    /// cannot tell people apart (webhook, API, anonymous callers), so
+    /// `people` says nothing about its audience.
+    pub identified_sessions: u64,
+    /// Median milliseconds from a session's first user message to the agent's
+    /// first completed reply, over sessions that got one.
+    pub median_first_reply_ms: Option<u64>,
 }
 
 /// Org-wide totals for the page masthead.
@@ -88,6 +97,8 @@ pub struct AgentActivityTotals {
     pub failed: u64,
     /// Sessions channels started in the last 7 days.
     pub channel_sessions: u64,
+    /// Distinct end users across every channel in the last 7 days.
+    pub people_reached: u64,
 }
 
 /// Activity for every agent and channel in the organization.
@@ -168,11 +179,28 @@ pub fn build_overview(
                 sessions: 0,
                 daily: vec![0; days],
                 last_session_at: None,
+                people: 0,
+                identified_sessions: 0,
+                median_first_reply_ms: None,
             });
         channel.last_session_at = channel.last_session_at.max(Some(bucket.last_session_at));
         let sessions = bucket.sessions.max(0) as u64;
         channel.daily[index] += sessions;
         channel.sessions += sessions;
+    }
+
+    for audience in rows.channel_audience {
+        // Audience rows cover the same window as the buckets, so a channel
+        // without buckets had no sessions there and has nothing to report.
+        let Some(channel) = channels.get_mut(&audience.channel_id) else {
+            continue;
+        };
+        channel.people = audience.people.max(0) as u64;
+        channel.identified_sessions = audience.identified_sessions.max(0) as u64;
+        channel.median_first_reply_ms = audience
+            .median_first_reply_ms
+            .filter(|ms| ms.is_finite() && *ms >= 0.0)
+            .map(|ms| ms.round() as u64);
     }
 
     // An agent whose sessions never ran a turn and that has no trigger carries
@@ -193,6 +221,7 @@ pub fn build_overview(
         runs: agents.iter().map(|agent| agent.runs).sum(),
         failed: agents.iter().map(|agent| agent.failed).sum(),
         channel_sessions: channels.iter().map(|channel| channel.sessions).sum(),
+        people_reached: rows.people_reached.max(0) as u64,
     };
 
     AgentActivityOverview {
@@ -243,7 +272,8 @@ pub async fn get_agent_activity(
 mod tests {
     use super::*;
     use crate::storage::{
-        AgentLoadRow, AgentRunBucketRow, AgentTriggerSummaryRow, ChannelSessionBucketRow,
+        AgentLoadRow, AgentRunBucketRow, AgentTriggerSummaryRow, ChannelAudienceRow,
+        ChannelSessionBucketRow,
     };
 
     fn rows() -> AgentActivityRows {
@@ -300,6 +330,24 @@ mod tests {
                     last_session_at: recent() - chrono::Duration::days(6),
                 },
             ],
+            channel_audience: vec![
+                ChannelAudienceRow {
+                    channel_id: "appchan_a".into(),
+                    people: 2,
+                    identified_sessions: 4,
+                    median_first_reply_ms: Some(1499.6),
+                    replied_sessions: 4,
+                },
+                // No sessions in the window: dropped rather than invented.
+                ChannelAudienceRow {
+                    channel_id: "appchan_quiet".into(),
+                    people: 1,
+                    identified_sessions: 1,
+                    median_first_reply_ms: None,
+                    replied_sessions: 0,
+                },
+            ],
+            people_reached: 2,
         }
     }
 
@@ -327,6 +375,10 @@ mod tests {
             Some(recent()),
             "newest bucket wins"
         );
+        assert_eq!((channel.people, channel.identified_sessions), (2, 4));
+        assert_eq!(channel.median_first_reply_ms, Some(1500));
+        assert_eq!(overview.channels.len(), 1, "appchan_quiet had no sessions");
+        assert_eq!(overview.totals.people_reached, 2);
     }
 
     #[test]

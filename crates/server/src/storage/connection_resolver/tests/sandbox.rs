@@ -75,44 +75,41 @@ async fn sandbox_credentials_reject_private_and_cross_org_owner_substitution() {
                 .unwrap(),
             Some(expected_token.to_string()),
         );
-        let db = Arc::new(fixture.db.clone());
-        let event_service = crate::services::EventService::with_listeners(
-            db.clone(),
-            crate::EventDelivery::in_memory(),
-            vec![],
-        );
-        let worker_service = crate::grpc_service::WorkerServiceImpl::new(
-            event_service,
-            db,
+        // The worker reaches the same resolver through the internal command,
+        // which must authorize the binding exactly as the resolver does.
+        let command_ctx = crate::domains::common::Ctx::minimal_for_test(
+            everruns_core::Caller::internal(DEFAULT_ORG_ID),
+            Arc::new(fixture.db.clone()),
             Some(Arc::new(fixture.encryption.clone())),
-            None,
-            crate::oss_host_composition_for_grade(everruns_core::DeploymentGrade::Dev),
-        );
-        let rpc_request = |binding: &SessionSandboxCredential| {
-            tonic::Request::new(
-                everruns_internal_protocol::proto::GetSandboxConnectionTokenRequest {
-                    session_id: Some(everruns_internal_protocol::proto::Uuid {
-                        value: fixture.session_id.uuid().to_string(),
-                    }),
-                    provider: fixture.provider.clone(),
-                    credential_json: serde_json::to_string(binding).unwrap(),
-                },
-            )
+        )
+        .with_connection_resolver(Some(Arc::new(resolver_for(&fixture))));
+        let worker_lookup = |binding: &SessionSandboxCredential| {
+            let params = serde_json::json!({
+                "session_id": fixture.session_id.to_string(),
+                "provider": fixture.provider,
+                "credential": binding,
+            });
+            let ctx = &command_ctx;
+            async move {
+                let json = crate::domains::common::dispatch(
+                    "worker_get_sandbox_connection_token",
+                    params,
+                    ctx,
+                )
+                .await
+                .unwrap();
+                serde_json::from_str::<Option<String>>(&json).unwrap()
+            }
         };
         assert_eq!(
-            worker_service
-                .handle_get_sandbox_connection_token(rpc_request(&credential))
-                .await
-                .unwrap()
-                .into_inner()
-                .token,
+            worker_lookup(&credential).await,
             Some(expected_token.to_string()),
         );
         for org_id in [DEFAULT_ORG_ID, 2] {
             let victim = VirtualUserId::from_uuid(Uuid::now_v7());
             fixture
                 .db
-                .create_virtual_user(crate::storage::models::CreateVirtualUserRow {
+                .create_virtual_user(crate::storage::CreateVirtualUserRow {
                     org_id,
                     id: victim,
                     usage: "end_user".into(),
@@ -147,15 +144,7 @@ async fn sandbox_credentials_reject_private_and_cross_org_owner_substitution() {
                 virtual_user_id: Some(victim.uuid()),
                 ..credential.clone()
             };
-            assert!(
-                worker_service
-                    .handle_get_sandbox_connection_token(rpc_request(&forged))
-                    .await
-                    .unwrap()
-                    .into_inner()
-                    .token
-                    .is_none()
-            );
+            assert!(worker_lookup(&forged).await.is_none());
             assert!(
                 context
                     .sandbox_connection_token(&fixture.provider, &forged)
@@ -178,10 +167,11 @@ async fn pin_sandbox_binding(
     fixture: &McpFixture,
     credential: everruns_contracts::session_sandbox::SessionSandboxCredential,
 ) {
-    let template: crate::records::SandboxTemplateSpec = serde_json::from_value(
-        serde_json::json!({"target": {"kind": "managed", "provider": "daytona"}}),
-    )
-    .unwrap();
+    let template: crate::domains::sandbox_templates::record::SandboxTemplateSpec =
+        serde_json::from_value(
+            serde_json::json!({"target": {"kind": "managed", "provider": "daytona"}}),
+        )
+        .unwrap();
     let mut spec = crate::domains::sandbox_templates::resolution::resolve_spec(&template).unwrap();
     spec.target.provider = Some(fixture.provider.clone());
     spec.target.credential = credential;

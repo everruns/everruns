@@ -11,6 +11,7 @@
 //! - Migrations applied (run migrations from crates/server/migrations/)
 
 mod agent_avatars;
+mod agent_mcp_oauth_attach;
 mod agents;
 mod apps;
 mod audit_logs;

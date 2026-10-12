@@ -65,9 +65,9 @@ assert!(result.contains("4"));
 
 - [API reference (docs.rs)](https://docs.rs/everruns-test-support)
 - [Simulator API reference](https://docs.rs/everruns-llmsim)
-- [Framework testing and simulation](https://docs.everruns.com/framework/testing-and-simulation/)
-- [Core concepts and execution model](https://docs.everruns.com/getting-started/concepts/)
-- [Everruns documentation](https://docs.everruns.com)
+- [Framework testing and simulation](https://everruns.com/docs/framework/testing-and-simulation/)
+- [Core concepts and execution model](https://everruns.com/docs/getting-started/concepts/)
+- [Everruns documentation](https://everruns.com/docs)
 
 Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents.

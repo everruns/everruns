@@ -22,7 +22,7 @@ starts (or reuses) a session on the agent's own harness, as the agent's own
 identity.
 
 Field shapes, SQL, and route handlers live in code, see
-`crates/server/src/records/agent_trigger.rs` (`AgentTrigger`, `AgentTriggerType`,
+`crates/server/src/domains/agent_triggers/record.rs` (`AgentTrigger`, `AgentTriggerType`,
 `ScheduleTriggerConfig`), migration `104_agent_triggers.sql`, the
 `crates/server/src/domains/agent_triggers/` domain, and the
 `/v1/agents/{agent_id}/triggers` API.
@@ -106,7 +106,11 @@ optional **event id**, **type** and **subject**, plus the template context. The
 pipeline then, for every source alike:
 
 1. **filters** on the trigger's conditions (a dotted path into the context must
-   equal one of a set of values); a miss starts nothing;
+   equal one of a set of values) and, with `changes_only`, on whether the value
+   at a path differs from the last one recorded for the same subject; a miss
+   starts nothing. The first value for a subject only records, an event with
+   no value there is ignored, and a failed run puts the previous value back so
+   a retry still reads as a change ([D2](proactive-agents.md));
 2. **deduplicates** on the event id, so a redelivery is logged instead of run
    twice;
 3. **routes** to a session: `shared_session`, `session_per_invocation`, or
@@ -139,6 +143,14 @@ scoped to repositories, and gets the GitHub delivery id as event id and
 request or issue. Unsubscribed events are not recorded; a repository outside
 the scope is a recorded filter miss. Events the App itself caused are dropped so
 an agent commenting on a pull request does not wake itself.
+CI results (`workflow_run.completed`, `check_suite.completed`) are events too:
+they carry a normalized `github.ci` context (workflow, branch, outcome `success`
+or `failure`, run URL) and the subject `owner/repo@branch:workflow`, so
+`per_thread` means one session per workflow on a branch. A conclusion that says
+nothing about health (cancelled, skipped, neutral) has no outcome, so a filter
+on `github.ci.outcome` drops it. See
+[proactive-agents.md](proactive-agents.md) for why CI arrives as an event rather
+than by polling.
 
 **MCP event triggers** (`trigger_type: mcp_event`) subscribe to an event on one
 of the agent's MCP servers through MCP Events (`events/subscribe`), using the

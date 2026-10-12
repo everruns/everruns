@@ -5,7 +5,7 @@
 use serde::Deserialize;
 use utoipa::IntoParams;
 
-pub use crate::storage::models::AppRow;
+pub use crate::storage::AppRow;
 
 /// Query parameters for deprecated archival App listings.
 #[derive(Debug, Clone, Deserialize, IntoParams)]

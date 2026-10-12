@@ -7,6 +7,8 @@ use super::common::{
 };
 use crate::auth::{AuthState, ResolvedOrg, rate_limit::OrgRateLimiter};
 use crate::domains::common::{Command, Ctx};
+use crate::domains::harnesses::record::BuiltInHarnessRole;
+use crate::domains::sessions::record::{Session, SessionParticipant};
 pub use crate::domains::sessions::types::CreateSessionRequest;
 pub(crate) use crate::domains::sessions::types::filter_or_reject_client_side_tools;
 pub use crate::domains::sessions::types::{
@@ -24,8 +26,6 @@ use crate::domains::sessions::{
 use crate::kernel_imports::{
     Caller, ResourceConfigResponse, SessionContextReport, SessionSeedMode, evaluate_policies_with,
 };
-use crate::records::BuiltInHarnessRole;
-use crate::records::{Session, SessionParticipant};
 use crate::services::EventService;
 use crate::storage::StorageBackend;
 use axum::{
@@ -93,7 +93,7 @@ impl AppState {
             auth,
             &crate::platform::oss_host_composition(),
             &crate::platform::oss_built_in_harnesses(),
-            crate::event_delivery::EventDelivery::in_memory(),
+            crate::live_updates::event_delivery::EventDelivery::in_memory(),
         )
     }
 
@@ -102,8 +102,8 @@ impl AppState {
         runner: Arc<dyn TurnBackend>,
         auth: AuthState,
         host_composition: &HostComposition,
-        built_in_harnesses: &[crate::records::BuiltInHarnessDefinition],
-        event_delivery: crate::event_delivery::EventDelivery,
+        built_in_harnesses: &[crate::domains::harnesses::record::BuiltInHarnessDefinition],
+        event_delivery: crate::live_updates::event_delivery::EventDelivery,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::with_registry(
@@ -114,7 +114,7 @@ impl AppState {
             db,
             runner,
             auth,
-            fallback_default_harness_name: crate::records::harness_for_role(
+            fallback_default_harness_name: crate::domains::harnesses::record::harness_for_role(
                 built_in_harnesses,
                 BuiltInHarnessRole::Default,
             )
@@ -243,7 +243,7 @@ pub async fn session_config(
             description = "Harness, Agent, or Model not found",
             body = ErrorResponse,
             example = json!({
-                "type": "https://docs.everruns.com/errors/harness_not_found",
+                "type": "https://everruns.com/docs/errors/harness_not_found",
                 "title": "Not Found",
                 "status": 404,
                 "detail": "Harness 'generic' not found in org org_00000000000000000000000000000001.",
@@ -810,7 +810,7 @@ pub async fn unarchive_session(
             description = "Session not found",
             body = ErrorResponse,
             example = json!({
-                "type": "https://docs.everruns.com/errors/session_not_found",
+                "type": "https://everruns.com/docs/errors/session_not_found",
                 "title": "Not Found",
                 "status": 404,
                 "detail": "Session session_01933b5a000070008000000000000001 not found in org org_00000000000000000000000000000001.",

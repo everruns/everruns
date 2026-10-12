@@ -85,7 +85,7 @@ schema the command already publishes, and both consumers build their
 
 ## Documentation
 
-- [Command tree](https://docs.everruns.com/)
+- [Command tree](https://everruns.com/docs/)
 - [API reference](https://docs.rs/everruns-cli-contract)
 
 ## License

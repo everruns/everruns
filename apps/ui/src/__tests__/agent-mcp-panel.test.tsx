@@ -161,7 +161,9 @@ describe("AgentMcpPanel", () => {
       "aria-checked",
       "true",
     );
-    const custom = screen.getByRole("switch", { name: "Allow servers outside the catalog" });
+    const custom = screen.getByRole("switch", {
+      name: "Allow servers outside the catalog",
+    });
     expect(custom).toHaveAttribute("aria-checked", "false");
 
     const skipped = screen.getByRole("list", { name: "Skipped user servers" });
@@ -173,7 +175,12 @@ describe("AgentMcpPanel", () => {
       expect(mockUpdateAgent).toHaveBeenCalledWith({
         agentId: "agent-1",
         request: {
-          capabilities: [{ ref: "user_mcp", config: { manage: true, allow_custom_urls: true } }],
+          capabilities: [
+            {
+              ref: "user_mcp",
+              config: { manage: true, allow_custom_urls: true },
+            },
+          ],
         },
       }),
     );
@@ -215,6 +222,29 @@ describe("AgentMcpPanel", () => {
     );
     expect(screen.queryByText("Ask an admin")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Connect" })).not.toBeInTheDocument();
+  });
+
+  it("explains a failed Authorize the server returned to the MCP tab", () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/agents/agent-1?tab=mcp&connect_error=blocked_by_network_policy&provider=mcp_oauth_x",
+    );
+    showAttachments({
+      ...attachment,
+      acts_as: "service",
+      state: "connection_missing",
+      action: "authorize",
+      connected_as: null,
+    });
+
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Couldn't connect: this server's host isn't on the organization's allowed network list.",
+    );
+    expect(window.location.search).toBe("?tab=mcp");
+    window.history.replaceState(null, "", "/");
   });
 
   it("shows ask-an-admin without an unusable service action", () => {
@@ -375,6 +405,7 @@ describe("AgentMcpPanel", () => {
   it("shows a repair path for missing presets without hiding the row", () => {
     showAttachments({
       ...attachment,
+      acts_as: "none",
       state: "preset_missing",
       action: "none",
       connected_as: null,
@@ -391,6 +422,21 @@ describe("AgentMcpPanel", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /Tools 0 Unavailable/ }));
     expect(screen.getByText("No cached tools are available.")).toBeInTheDocument();
+  });
+
+  it("explains that sign-in servers list their tools per chat", () => {
+    showAttachments({
+      ...attachment,
+      acts_as: "service",
+      connected_as: "visti",
+      tools_available: false,
+      tools: [],
+    });
+
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getByText("Tools are listed when a chat signs in.")).toBeInTheDocument();
+    expect(screen.queryByText("Unavailable")).not.toBeInTheDocument();
   });
 
   it("calls out attachment names with colliding tool prefixes", () => {
@@ -480,7 +526,11 @@ describe("AgentMcpPanel", () => {
         request: {
           mcpServers: {
             ...agent.mcpServers,
-            github: { use: "catalog:github", actsAs: "user", connectInChat: "never" },
+            github: {
+              use: "catalog:github",
+              actsAs: "user",
+              connectInChat: "never",
+            },
           },
         },
       }),
@@ -497,7 +547,9 @@ describe("AgentMcpPanel", () => {
     } as Agent;
     const { rerender } = render(<AgentMcpPanel agent={withGithub} />);
 
-    const toggle = screen.getByRole("switch", { name: "Ask to connect in chat" });
+    const toggle = screen.getByRole("switch", {
+      name: "Ask to connect in chat",
+    });
     expect(toggle).toHaveAttribute("aria-checked", "true");
     fireEvent.click(toggle);
     await waitFor(() =>
@@ -506,7 +558,11 @@ describe("AgentMcpPanel", () => {
         request: {
           mcpServers: {
             ...agent.mcpServers,
-            github: { use: "catalog:github", actsAs: "user", connectInChat: "never" },
+            github: {
+              use: "catalog:github",
+              actsAs: "user",
+              connectInChat: "never",
+            },
           },
         },
       }),
@@ -521,7 +577,11 @@ describe("AgentMcpPanel", () => {
             ...withGithub,
             mcpServers: {
               ...withGithub.mcpServers,
-              github: { use: "catalog:github", actsAs: "user", connectInChat: "never" },
+              github: {
+                use: "catalog:github",
+                actsAs: "user",
+                connectInChat: "never",
+              },
             },
           } as Agent
         }
@@ -598,7 +658,12 @@ describe("AgentMcpPanel", () => {
   });
 
   it("labels a read-only attachment whose tools load on demand", () => {
-    showAttachments({ ...attachment, source: "harness", editable: false, deferred: true });
+    showAttachments({
+      ...attachment,
+      source: "harness",
+      editable: false,
+      deferred: true,
+    });
     render(<AgentMcpPanel agent={agent} />);
 
     expect(screen.getByText("Tools load on demand")).toBeInTheDocument();
@@ -717,7 +782,7 @@ describe("AgentMcpPanel", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Add server" }));
 
     expect(
-      await within(dialog).findByText("An MCP attachment named “existing” already exists."),
+      await within(dialog).findByText("This agent already has an MCP server named “existing”."),
     ).toBeInTheDocument();
     expect(mockUpdateAgent).not.toHaveBeenCalled();
   });

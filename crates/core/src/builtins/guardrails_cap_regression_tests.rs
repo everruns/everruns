@@ -1,6 +1,6 @@
     fn utility_checks_before_jev(stage: &str, check_type: &str) -> serde_json::Value {
         let utility_cap = if check_type == "moderation" {
-            MAX_MODERATION_CALLS_PER_INVOCATION
+            output::MAX_MODERATION_CALLS_PER_INVOCATION
         } else {
             MAX_JUDGE_CALLS_PER_INVOCATION
         };
@@ -78,6 +78,7 @@
             .with_utility_llm_service(StubJudge::allow())
             .with_decisions(StubJudgment::noul(1.0));
         let mut result = ToolResult {
+            details: None,
             tool_call_id: "call_1".to_string(),
             result: Some(json!("blocked content")),
             images: None,

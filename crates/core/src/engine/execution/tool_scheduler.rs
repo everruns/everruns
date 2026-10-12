@@ -36,6 +36,9 @@ use std::sync::Arc;
 use futures::future::join_all;
 use tokio::sync::Semaphore;
 
+use super::act::ToolCallResult;
+use crate::engine::tool_types::{ToolCall, ToolResult};
+
 /// Default cap on simultaneously executing tool calls within a single act.
 ///
 /// Chosen to comfortably cover normal fan-out (handfuls of parallel reads or
@@ -51,6 +54,61 @@ pub fn configured_max_tool_concurrency() -> usize {
         .and_then(|v| v.parse::<usize>().ok())
         .map(|v| v.max(1))
         .unwrap_or(DEFAULT_MAX_TOOL_CONCURRENCY)
+}
+
+/// Default cap on server tool calls executed from a single model response.
+///
+/// THREAT[TM-AGENT-007]: the concurrency cap above only bounds how many calls
+/// run at once, so one response with thousands of calls still ran all of them.
+/// Calls past this cap get an error result and never run, which tells the
+/// model to split the work across turns. Override per-process with
+/// `EVERRUNS_ACT_MAX_TOOL_CALLS`.
+pub const DEFAULT_MAX_TOOL_CALLS_PER_ACT: usize = 64;
+
+/// Resolve the effective per-act tool call cap, honoring the
+/// `EVERRUNS_ACT_MAX_TOOL_CALLS` env override (clamped to >= 1).
+pub fn configured_max_tool_calls_per_act() -> usize {
+    std::env::var("EVERRUNS_ACT_MAX_TOOL_CALLS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .map(|v| v.max(1))
+        .unwrap_or(DEFAULT_MAX_TOOL_CALLS_PER_ACT)
+}
+
+/// Split a batch at the configured per-act cap: the calls to execute, and an
+/// error result for every call past the cap. Rejected calls emit no events,
+/// like rate-limited ones, so no started/completed pair is left unmatched.
+pub(super) fn split_at_call_cap(tool_calls: Vec<ToolCall>) -> (Vec<ToolCall>, Vec<ToolCallResult>) {
+    split_at_cap(tool_calls, configured_max_tool_calls_per_act())
+}
+
+fn split_at_cap(mut tool_calls: Vec<ToolCall>, cap: usize) -> (Vec<ToolCall>, Vec<ToolCallResult>) {
+    if tool_calls.len() <= cap {
+        return (tool_calls, Vec::new());
+    }
+    let total = tool_calls.len();
+    let rejected = tool_calls
+        .split_off(cap)
+        .into_iter()
+        .map(|tool_call| {
+            let error = format!(
+                "Not executed: this response requested {total} tool calls and at most {cap} run per response. Request the remaining calls in a later turn."
+            );
+            ToolCallResult {
+                result: ToolResult {
+                    tool_call_id: tool_call.id.clone(),
+                    error: Some(error),
+                    ..ToolResult::error("")
+                },
+                tool_call,
+                success: false,
+                status: "error".to_string(),
+                connection_required: None,
+                determinism_fatal: None,
+            }
+        })
+        .collect();
+    (tool_calls, rejected)
 }
 
 /// Configuration for a single scheduling pass.
@@ -187,6 +245,42 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn calls(n: usize) -> Vec<ToolCall> {
+        (0..n)
+            .map(|i| ToolCall {
+                id: format!("c{i}"),
+                name: "t".to_string(),
+                arguments: serde_json::json!({}),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn batch_within_the_cap_runs_whole() {
+        let (kept, rejected) = split_at_cap(calls(3), 3);
+        assert_eq!(kept.len(), 3);
+        assert!(rejected.is_empty());
+    }
+
+    #[test]
+    fn calls_past_the_cap_get_an_error_result_each() {
+        let (kept, rejected) = split_at_cap(calls(5), 3);
+        assert_eq!(
+            kept.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
+            ["c0", "c1", "c2"]
+        );
+        assert_eq!(rejected.len(), 2);
+        for (result, id) in rejected.iter().zip(["c3", "c4"]) {
+            assert_eq!(result.tool_call.id, id);
+            assert_eq!(result.result.tool_call_id, id);
+            assert!(!result.success);
+            assert_eq!(result.status, "error");
+            let error = result.result.error.as_deref().unwrap_or_default();
+            assert!(error.contains("requested 5 tool calls"), "{error}");
+            assert!(error.contains("at most 3"), "{error}");
+        }
+    }
 
     /// Records start/finish ordering so tests can assert on concurrency.
     #[derive(Default)]
@@ -338,3 +432,7 @@ mod tests {
         assert_eq!(tracker.max_in_flight.load(Ordering::SeqCst), 1);
     }
 }
+
+#[cfg(test)]
+#[path = "act_call_cap_tests.rs"]
+mod act_call_cap_tests;

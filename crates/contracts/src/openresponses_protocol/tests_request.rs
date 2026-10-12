@@ -36,6 +36,7 @@ fn explicit_cache_wire_options_are_model_gated() {
         ..Default::default()
     };
     config.prompt_cache = Some(crate::driver_registry::PromptCacheConfig {
+        retention: Default::default(),
         enabled: true,
         strategy: crate::driver_registry::PromptCacheStrategy::Explicit,
         ..Default::default()

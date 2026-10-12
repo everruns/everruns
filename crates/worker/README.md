@@ -27,8 +27,8 @@ just start-all
 
 ## Documentation
 
-- [Architecture](https://docs.everruns.com/explanation/architecture/)
-- [Everruns documentation](https://docs.everruns.com)
+- [Architecture](https://everruns.com/docs/explanation/architecture/)
+- [Everruns documentation](https://everruns.com/docs)
 
 ## License
 

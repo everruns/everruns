@@ -26,6 +26,8 @@ export const queryKeys = {
     all: (agentId: string) => ["agent-channels", agentId] as const,
     list: (agentId: string) => ["agent-channels", agentId, "list"] as const,
     detail: (agentId: string, channelId: string) => ["agent-channels", agentId, channelId] as const,
+    keys: (agentId: string, channelId: string) =>
+      ["agent-channels", agentId, channelId, "keys"] as const,
   },
 
   agentTriggers: {
@@ -86,6 +88,8 @@ export const queryKeys = {
       ["session", org, sessionId, "approval-audit"] as const,
     participants: (org?: string, sessionId?: string) =>
       ["session", org, sessionId, "participants"] as const,
+    messageFeedback: (org?: string, sessionId?: string) =>
+      ["session", org, sessionId, "message-feedback"] as const,
     stats: (org?: string) => ["sessions", "stats", org] as const,
   },
 
@@ -151,6 +155,7 @@ export const queryKeys = {
     list: () => ["capabilities"] as const,
     detail: (capabilityId: string) => ["capability", capabilityId] as const,
     available: () => ["capabilities", "available"] as const,
+    guardrailExamples: () => ["capabilities", "guardrail-examples"] as const,
   },
 
   declarativeCapabilities: {
@@ -182,6 +187,7 @@ export const queryKeys = {
     list: (includeArchived = false) => ["mcp-servers", { includeArchived }] as const,
     catalog: (org?: string) => ["mcp-servers", "catalog", org] as const,
     usage: (serverId: string) => ["mcp-server", serverId, "usage"] as const,
+    tools: (serverId: string) => ["mcp-server", serverId, "tools"] as const,
     detail: (serverId: string) => ["mcp-server", serverId] as const,
   },
 
@@ -191,6 +197,7 @@ export const queryKeys = {
     detail: (orgId: string) => ["organization", orgId] as const,
     members: (orgId: string) => ["organization", orgId, "members"] as const,
     invitations: (orgId: string) => ["organization", orgId, "invitations"] as const,
+    egressAllowlist: (orgId: string) => ["organization", orgId, "egress-allowlist"] as const,
   },
 
   invitations: {
@@ -214,9 +221,17 @@ export const queryKeys = {
   userMcpServers: {
     all: ["user-mcp-servers"] as const,
     list: (org?: string, identityId = "me") => ["user-mcp-servers", org, identityId] as const,
+    tools: (org: string | undefined, identityId: string, serverId: string) =>
+      ["user-mcp-servers", org, identityId, "tools", serverId] as const,
   },
 
   // User preference (key/value) queries
+  // External AI clients approved to act as the person on /mcp (user-scoped)
+  connectedClients: {
+    all: ["connected-clients"] as const,
+    list: () => ["connected-clients"] as const,
+  },
+
   userPreferences: {
     all: ["user-preferences"] as const,
     list: () => ["user-preferences"] as const,

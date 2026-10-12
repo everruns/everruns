@@ -10,8 +10,8 @@ pub use responses::{
 
 use crate::auth::rate_limit::OrgRateLimiter;
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::records::Agent;
-use crate::records::BuiltInHarnessRole;
+use crate::domains::agents::record::Agent;
+use crate::domains::harnesses::record::BuiltInHarnessRole;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
@@ -57,11 +57,13 @@ pub struct AppState {
     pub grade: DeploymentGrade,
     pub host_composition: Arc<HostComposition>,
     /// Operator-composed built-in harness templates (EVE-881).
-    pub built_in_harnesses: Arc<Vec<crate::records::BuiltInHarnessDefinition>>,
+    pub built_in_harnesses: Arc<Vec<crate::domains::harnesses::record::BuiltInHarnessDefinition>>,
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
     pub org_rate_limiter: OrgRateLimiter,
     /// Pushes agent identity and avatar changes to the agent's one-click Slack apps.
-    pub slack_provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
+    pub slack_provisioner: Option<
+        Arc<dyn crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner>,
+    >,
 }
 
 impl AppState {
@@ -72,7 +74,7 @@ impl AppState {
         auth: AuthState,
         grade: DeploymentGrade,
         host_composition: Arc<HostComposition>,
-        built_in_harnesses: Arc<Vec<crate::records::BuiltInHarnessDefinition>>,
+        built_in_harnesses: Arc<Vec<crate::domains::harnesses::record::BuiltInHarnessDefinition>>,
     ) -> Self {
         Self {
             db,
@@ -98,7 +100,11 @@ impl AppState {
 
     pub fn with_slack_provisioner(
         mut self,
-        provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
+        provisioner: Option<
+            Arc<
+                dyn crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner,
+            >,
+        >,
     ) -> Self {
         self.slack_provisioner = provisioner;
         self
@@ -121,8 +127,11 @@ impl AppState {
         .with_slack_provisioner(self.slack_provisioner.clone())
         .with_feature_flags(org.feature_flags.clone())
         .with_fallback_harness_name(
-            crate::records::harness_for_role(&self.built_in_harnesses, BuiltInHarnessRole::Default)
-                .map(|harness| harness.name.clone()),
+            crate::domains::harnesses::record::harness_for_role(
+                &self.built_in_harnesses,
+                BuiltInHarnessRole::Default,
+            )
+            .map(|harness| harness.name.clone()),
         )
         .with_utility_llm_service(self.host_composition.utility_llm_service());
         if let Some(service) = &self.health_check_service {
@@ -247,6 +256,7 @@ pub fn routes(state: AppState) -> Router {
         )
         .route("/v1/agents/{agent_id}/stats", get(get_agent_stats))
         .command::<crate::domains::agents::DestroyAgent>()
+        .command::<crate::domains::agents::DraftAgent>()
         .route("/v1/agents/{agent_id}/export", get(export_agent))
         .route("/v1/agents/{agent_id}/copy", post(copy_agent))
         .route(
@@ -332,9 +342,11 @@ pub async fn list_agents(
 
     authorize_effective_harness_view(state.auth.permission_resolver.as_ref(), &Caller::from(&org))?;
 
-    let fallback_harness_name =
-        crate::records::harness_for_role(&state.built_in_harnesses, BuiltInHarnessRole::Default)
-            .map(|harness| harness.name.as_str());
+    let fallback_harness_name = crate::domains::harnesses::record::harness_for_role(
+        &state.built_in_harnesses,
+        BuiltInHarnessRole::Default,
+    )
+    .map(|harness| harness.name.as_str());
     let data = add_agents_counts(&state.db, org.org_id, result.data, fallback_harness_name).await?;
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(
@@ -371,9 +383,11 @@ pub async fn get_agent(
     .run(&state.ctx(&org))
     .await?;
     authorize_effective_harness_view(state.auth.permission_resolver.as_ref(), &Caller::from(&org))?;
-    let fallback_harness_name =
-        crate::records::harness_for_role(&state.built_in_harnesses, BuiltInHarnessRole::Default)
-            .map(|harness| harness.name.as_str());
+    let fallback_harness_name = crate::domains::harnesses::record::harness_for_role(
+        &state.built_in_harnesses,
+        BuiltInHarnessRole::Default,
+    )
+    .map(|harness| harness.name.as_str());
     let agent = add_agents_counts(&state.db, org.org_id, vec![agent], fallback_harness_name)
         .await?
         .pop()
@@ -637,6 +651,7 @@ pub async fn upsert_agent(
                     network_access: req.network_access,
                     max_iterations: req.max_iterations,
                     parallel_tool_calls: req.parallel_tool_calls,
+                    communication: Some(req.communication),
                     status: None,
                 };
                 let agent = crate::domains::agents::UpdateAgentCmd {
@@ -791,6 +806,9 @@ pub async fn import_agent(
 }
 
 /// Import an agent from a built-in example by name.
+/// Tag prefix that records the example an agent was adopted from.
+pub const EXAMPLE_TAG_PREFIX: &str = "example:";
+
 async fn import_from_example(
     org: ResolvedOrg,
     state: &AppState,
@@ -883,7 +901,18 @@ async fn import_from_example(
         default_model_id: None,
         harness_id: None,
         harness_name: Some(seed.harness_name.to_string()),
-        tags: seed.tags.iter().map(|s| s.to_string()).collect(),
+        // `example:<name>` records which example the agent was adopted from,
+        // so the Agents page can tell a guided example whose setup never
+        // finished (no trigger yet) from an agent someone built by hand.
+        tags: seed
+            .tags
+            .iter()
+            .map(|s| s.to_string())
+            .chain(std::iter::once(format!(
+                "{EXAMPLE_TAG_PREFIX}{}",
+                seed.name
+            )))
+            .collect(),
         capabilities,
         sandbox_policy: None,
         initial_files: vec![],
@@ -892,6 +921,7 @@ async fn import_from_example(
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        communication: Default::default(),
     };
 
     let agent = crate::domains::agents::CreateAgent(req)

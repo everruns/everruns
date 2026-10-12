@@ -8,7 +8,7 @@
 
 use crate::agent_templates::{REPOSITORY_PLACEHOLDER, TemplateSetup, agent_examples};
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::seed::SeedAgent;
+use crate::setup::seed::SeedAgent;
 use axum::{Json, Router, extract::State, routing::get};
 use everruns_core::DeploymentGrade;
 use everruns_core::host::HostComposition;
@@ -186,7 +186,7 @@ pub async fn list_examples(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::seed::SEED_AGENTS;
+    use crate::setup::seed::SEED_AGENTS;
 
     #[test]
     fn templates_carry_their_setup_and_plain_examples_do_not() {

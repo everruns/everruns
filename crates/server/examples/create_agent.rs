@@ -6,7 +6,7 @@
 // 2. Run migrations: just migrate
 // 3. Start the API: just api (in another terminal)
 
-use everruns_server::records::Agent;
+use everruns_server::domains::agents::record::Agent;
 use serde_json::json;
 
 const API_BASE_URL: &str = "http://localhost:9000";
@@ -74,7 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nNext steps:");
     println!("   - Create a session: POST /v1/sessions (with agent_id in body)");
     println!("   - Send a message: POST /v1/sessions/<session_id>/messages");
-    println!("   - View API docs: https://docs.everruns.com");
+    println!("   - View API docs: https://everruns.com/docs");
 
     Ok(())
 }

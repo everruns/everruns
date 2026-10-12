@@ -17,13 +17,20 @@
 //! use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
 //!
 //! let driver = LlmSimDriver::new(LlmSimConfig::fixed("Hello."));
-//! # let _ = driver;
 //! ```
 
+mod demo_scripts;
 mod model_names;
 pub mod realtime;
+mod scenarios;
+
+pub use demo_scripts::{
+    auditor_demo_script, guarded_bash_demo_script, monitor_demo_script, session_tasks_demo_script,
+};
+pub use scenarios::builtin_scenario_names;
 #[cfg(feature = "host")]
 mod runtime_ext;
+pub mod speech;
 
 #[cfg(feature = "host")]
 pub use runtime_ext::{LLMSIM_MODEL_ID, LLMSIM_PROVIDER, LlmSimRuntimeExt, llm_sim_provider};
@@ -453,6 +460,8 @@ pub struct LlmSimDriver {
     response_counter: Arc<AtomicUsize>,
     /// Counter for sequence-based tool calls
     tool_call_counter: Arc<AtomicUsize>,
+    /// Attempt counts for scenario steps that fail first
+    scenario_attempts: scenarios::Attempts,
 }
 
 struct GeneratedTurn {
@@ -468,6 +477,7 @@ impl LlmSimDriver {
             config,
             response_counter: Arc::new(AtomicUsize::new(0)),
             tool_call_counter: Arc::new(AtomicUsize::new(0)),
+            scenario_attempts: scenarios::Attempts::default(),
         }
     }
 
@@ -648,7 +658,7 @@ impl LlmSimDriver {
                 };
                 SimMessage {
                     role,
-                    content: Some(m.content_as_text()),
+                    content: Some(m.content_as_text().into()),
                     name: None,
                     tool_calls: None,
                     tool_call_id: m.tool_call_id.clone(),
@@ -674,6 +684,7 @@ impl LlmSimDriver {
             tool_choice: None,
             seed: None,
             response_format: None,
+            reasoning_effort: None,
         }
     }
 
@@ -736,6 +747,18 @@ impl ChatDriver for LlmSimDriver {
             tokio::time::sleep(delay).await;
         }
 
+        // A scenario marker in the user message (or an `llmsim-scenario-*`
+        // model) takes over the whole call, pacing included.
+        if let Some(played) = scenarios::play(
+            &messages,
+            &config.tools,
+            &config.model,
+            self.resolve_latency_profile(&config.model),
+            &self.scenario_attempts,
+        ) {
+            return played;
+        }
+
         let generated_turn = model_names::realistic_turn(self, &messages, config)
             .map_or_else(|| self.generate_turn(&messages), Ok)?;
         if generated_turn.stream_stall {
@@ -759,6 +782,7 @@ impl ChatDriver for LlmSimDriver {
             prompt_tokens,
             completion_tokens,
             total_tokens: prompt_tokens + completion_tokens,
+            completion_tokens_details: None,
         };
 
         let chunk_stream = TokenStreamBuilder::new(&model_name, &response_text)
@@ -927,155 +951,6 @@ pub fn register_driver_with_config(registry: &mut DriverRegistry, config: LlmSim
 /// ```
 pub fn create_chat_driver(config: LlmSimConfig) -> BoxedChatDriver {
     Box::new(LlmSimDriver::new(config))
-}
-
-// ============================================================================
-// Pre-baked demo scripts
-// ============================================================================
-
-/// Scripted multi-turn config that drives the Cloud Cost & Security Auditor
-/// example agent through a small, deterministic AWS audit using only the
-/// `fake_aws` capability's tools. Useful for the `user_hooks` end-to-end
-/// demo (and any operator who wants to exercise the auditor without an LLM
-/// API key).
-///
-/// Sequence of assistant turns:
-///   1. Call `aws_list_ec2_instances`.
-///   2. Call `aws_list_s3_buckets`.
-///   3. Write a short audit summary as plain text.
-///
-/// After turn 3 the script repeats the final turn, matching the default
-/// `OnExhausted::RepeatLast` behavior.
-pub fn auditor_demo_script() -> LlmSimConfig {
-    let turns = vec![
-        SimTurn::Mixed {
-            text: "Starting the audit. Listing EC2 instances first.".to_string(),
-            tool_calls: vec![SimToolCall {
-                name: "aws_list_ec2_instances".to_string(),
-                arguments: serde_json::json!({}),
-                id: Some("call_demo_ec2".to_string()),
-            }],
-        },
-        SimTurn::Mixed {
-            text: "EC2 inventory captured. Listing S3 buckets next.".to_string(),
-            tool_calls: vec![SimToolCall {
-                name: "aws_list_s3_buckets".to_string(),
-                arguments: serde_json::json!({}),
-                id: Some("call_demo_s3".to_string()),
-            }],
-        },
-        SimTurn::Assistant(
-            "Audit complete: inventoried EC2 instances and S3 buckets. \
-             See /workspace/.audit.log for the per-tool-call audit trail \
-             written by the post_tool_use hook bundle."
-                .to_string(),
-        ),
-    ];
-    LlmSimConfig::scripted(turns)
-}
-
-/// Scripted scenario that exercises the `pre_tool_use` block path. The
-/// scripted agent first issues a destructive `bash` call (`rm -rf /`)
-/// followed by a benign one (`ls -la`). When combined with a `pre_tool_use`
-/// hook bundle that denies `rm -rf` patterns, the first tool call gets
-/// blocked (the tool is not invoked) and the second succeeds — the agent
-/// observes the difference in tool results.
-///
-/// Used by `LLMSIM_DEMO=guarded` to demonstrate `pre_tool_use` without an
-/// LLM API key.
-pub fn guarded_bash_demo_script() -> LlmSimConfig {
-    let turns = vec![
-        SimTurn::Mixed {
-            text: "Step 1: attempting a destructive command.".to_string(),
-            tool_calls: vec![SimToolCall {
-                name: "bash".to_string(),
-                arguments: serde_json::json!({ "commands": "rm -rf /" }),
-                id: Some("call_demo_rm".to_string()),
-            }],
-        },
-        SimTurn::Mixed {
-            text: "Step 2: trying a safe command.".to_string(),
-            tool_calls: vec![SimToolCall {
-                name: "bash".to_string(),
-                arguments: serde_json::json!({ "commands": "ls -la /workspace" }),
-                id: Some("call_demo_ls".to_string()),
-            }],
-        },
-        SimTurn::Assistant(
-            "Guarded-bash demo complete. The first tool call should be \
-             blocked by the pre_tool_use hook; the second should succeed."
-                .to_string(),
-        ),
-    ];
-    LlmSimConfig::scripted(turns)
-}
-
-/// Scripted scenario that exercises the session task registry end-to-end
-/// without an LLM API key. The scripted agent starts a background bash run
-/// via `spawn_background` (which creates a `background_tool` session task),
-/// then inspects the registry with `list_tasks`.
-///
-/// Used by `LLMSIM_DEMO=tasks`. Requires an agent with the `bashkit_shell`
-/// and `session_tasks` capabilities.
-pub fn session_tasks_demo_script() -> LlmSimConfig {
-    let turns = vec![
-        SimTurn::Mixed {
-            text: "Kicking off a background bash run.".to_string(),
-            tool_calls: vec![SimToolCall {
-                name: "spawn_background".to_string(),
-                arguments: serde_json::json!({
-                    "tool": "bash",
-                    "args": { "commands": "echo task demo start; echo task demo done" },
-                    "title": "Demo background run",
-                    "signal_on_completion": false,
-                }),
-                id: Some("call_demo_spawn".to_string()),
-            }],
-        },
-        SimTurn::Mixed {
-            text: "Checking the session task registry.".to_string(),
-            tool_calls: vec![SimToolCall {
-                name: "list_tasks".to_string(),
-                arguments: serde_json::json!({}),
-                id: Some("call_demo_list".to_string()),
-            }],
-        },
-        SimTurn::Assistant(
-            "Session tasks demo complete: a background run was started and \
-             tracked as a session task. Inspect it via \
-             GET /v1/sessions/{session_id}/tasks."
-                .to_string(),
-        ),
-    ];
-    LlmSimConfig::scripted(turns)
-}
-
-/// Scripted scenario for the monitor task kind: spawns a recurring scheduled
-/// monitor (cron fires at second 0 every minute) so the session scheduler
-/// creates the schedule and a linked `monitor` task. Used by
-/// `LLMSIM_DEMO=monitor` for end-to-end verification without an LLM API key.
-pub fn monitor_demo_script() -> LlmSimConfig {
-    let turns = vec![
-        SimTurn::Mixed {
-            text: "Setting up a recurring monitor.".to_string(),
-            tool_calls: vec![SimToolCall {
-                name: "spawn_background".to_string(),
-                arguments: serde_json::json!({
-                    "tool": "bash",
-                    "args": { "commands": "echo monitor check" },
-                    "title": "Demo monitor",
-                    "signal_on_completion": false,
-                    "schedule": { "cron_expression": "0 * * * * * *", "timezone": "UTC" },
-                }),
-                id: Some("call_demo_monitor".to_string()),
-            }],
-        },
-        SimTurn::Assistant(
-            "Monitor demo complete: a recurring monitor was scheduled and tracked as a session task. Inspect it via GET /v1/sessions/{session_id}/tasks."
-                .to_string(),
-        ),
-    ];
-    LlmSimConfig::scripted(turns)
 }
 
 // ============================================================================

@@ -13,7 +13,7 @@ let agent = Agent::builder()
     .name("researcher")
     .instructions("Research carefully and cite the evidence you used.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-5.6-terra")
+    .model("gpt-6.1-sol")
     .file("brief.md", "Investigate the supplied question.")
     .readonly_file("policy.md", "Never expose secrets.")
     .mcp_server(McpServer::http("catalog", "https://example.com/mcp"))
@@ -30,9 +30,9 @@ dynamic references through the single `capability(...)` entrypoint; see
 
 ## Harness foundations
 
-Choose `Harness::base()` for zero capabilities, `conversation()` for dialogue,
-`worker_base()` for files and bash, or `worker()` for skills, long context,
-budgeting and task coordination. These constructors share the hosted platform's
+Choose `Harness::base()` for the system essentials only, `conversation()` for
+dialogue, `worker()` for files, skills, long context, budgeting and task
+coordination without a shell, or `bashkit_worker()` to add the Bashkit shell. These constructors share the hosted platform's
 [preset definitions](/features/harnesses/).
 
 ```rust
@@ -121,7 +121,7 @@ async fn add(left: i64, right: i64) -> Result<i64, String> {
 let agent = Agent::builder()
     .instructions("Use the add tool for arithmetic.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-5.6-terra")
+    .model("gpt-6.1-sol")
     .tool(add())
     .build()?;
 # Ok::<(), Box<dyn std::error::Error>>(())

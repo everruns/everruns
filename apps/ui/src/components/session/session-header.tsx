@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import type { ComponentType } from "react";
 import Link from "next/link";
 import type { Agent, ModelWithProvider, Session, SessionStatus, TokenUsage } from "@/lib/api/types";
@@ -28,16 +29,15 @@ import { formatCompactNumber, formatTokens } from "@/lib/formatting";
 import { cn, shortenId } from "@/lib/utils";
 import {
   Activity,
-  Bot,
   Coins,
   Download,
   ExternalLink,
   Folder,
-  ListTree,
   MessageSquare,
   ShieldCheck,
   Sparkles,
   Waypoints,
+  Workflow,
   Zap,
 } from "lucide-react";
 
@@ -46,14 +46,7 @@ import {
  * recording actually has. `files` keeps its route id — the label is
  * "Files"; its stable route preserves existing links.
  */
-export type SessionNavKey =
-  | "transcript"
-  | "timeline"
-  | "approvals"
-  | "work"
-  | "events"
-  | "files"
-  | "cost";
+export type SessionNavKey = "trace" | "approvals" | "work" | "events" | "files" | "cost";
 
 export interface SessionNavItem {
   key: SessionNavKey;
@@ -181,16 +174,10 @@ export function buildSessionNavigation({
 
   return [
     {
-      key: "transcript",
-      label: "Transcript",
-      href: `${basePath}/transcript`,
-      icon: MessageSquare,
-    },
-    {
-      key: "timeline",
-      label: "Timeline",
-      href: `${basePath}/timeline`,
-      icon: ListTree,
+      key: "trace",
+      label: "Trace",
+      href: `${basePath}/trace`,
+      icon: Workflow,
     },
     // Approvals pairs each request with the grant recorded for it. The count
     // is not a denormalized session counter, so the tab stays unbadged rather
@@ -375,14 +362,14 @@ export function SessionHeader({
                     href={`/agents/${agentId}`}
                     className="inline-flex items-center gap-1 hover:text-foreground"
                   >
-                    <Bot className="icon-sharp h-3 w-3" />
+                    <AgentIcon className="icon-sharp h-3 w-3" />
                     <span className={getEntityReferenceClassName(agentReferenceStatus)}>
                       {agentReferenceLabel}
                     </span>
                   </Link>
                 ) : (
                   <span className="inline-flex items-center gap-1">
-                    <Bot className="icon-sharp h-3 w-3" />
+                    <AgentIcon className="icon-sharp h-3 w-3" />
                     <span className={getEntityReferenceClassName(agentReferenceStatus)}>
                       {agentReferenceLabel}
                     </span>

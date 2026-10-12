@@ -1,6 +1,6 @@
 #![deny(missing_docs)]
 
-//! The application-facing crate for the [Everruns Framework](https://docs.everruns.com/framework/).
+//! The application-facing crate for the [Everruns Framework](https://everruns.com/docs/framework/).
 //!
 //! Build agents, attach provider configuration, select model ids, add typed
 //! tools, run isolated multi-turn sessions, bind backend-owned workspace heads
@@ -62,16 +62,49 @@ pub mod ask_user;
 #[cfg(feature = "capabilities")]
 pub mod capability;
 mod capability_config;
+/// Credential verification for agent endpoints: OIDC/JWKS, OAuth 2.0
+/// introspection, claim requirements. The everruns server's channel verifier.
+///
+/// Stability: experimental — outside the [`stability`] promises.
+#[cfg(feature = "channel-auth")]
+pub mod channel_auth {
+    pub use everruns_core::channel_auth::*;
+}
+#[cfg(feature = "channels")]
+pub mod channels;
 mod context;
+/// The app as a Personal Agent Protocol ("Poppy") personal agent: tools that
+/// find a company by domain, message its agent, read replies, ask for a
+/// person and close the conversation, for the person the app works for.
+///
+/// Stability: experimental — outside the [`stability`] promises.
+#[cfg(feature = "poppy")]
+pub mod poppy {
+    pub use everruns_capabilities::capabilities::poppy_client::protocol::{AGENT_PATH, JWKS_PATH};
+    pub use everruns_capabilities::capabilities::{PoppyKey, PoppyPersonalAgent};
+    /// What [`PoppyPersonalAgent::with_egress`] sends requests through.
+    pub use everruns_core::{
+        EgressError, EgressRequest, EgressResponse, EgressResult, EgressService,
+        EgressStreamResponse,
+    };
+}
+/// What an agent said to the conversation: the one rule every surface uses to
+/// pick an agent's answer, so commentary never counts as a reply.
+///
+/// Stability: alpha — may change without a major bump; see [`stability`].
+pub mod conversation {
+    pub use everruns_core::conversation::*;
+}
 /// Stability: alpha — may change without a major bump; see [`stability`].
 pub mod decisions;
 mod default_workspace;
-/// Stability: experimental — outside the [`stability`] promises until the
-/// backend conformance suite passes on every backend.
-#[cfg(feature = "durable")]
-pub mod durable;
 mod engine;
 mod events;
+/// Wire types of the Agent Execution API, the per-agent session API that the
+/// everruns server and serve both expose.
+///
+/// Stability: experimental — outside the [`stability`] promises.
+pub use everruns_contracts::execution_api;
 mod harness;
 mod history;
 mod hooks;
@@ -168,6 +201,8 @@ pub use everruns_integrations::filesystem::FileSystem;
 pub use everruns_integrations::typesafe::{Jev, TypeSafeAI};
 #[cfg(feature = "web-fetch")]
 pub use everruns_integrations::web_fetch::WebFetch;
+#[cfg(feature = "web-search")]
+pub use everruns_integrations::web_search::WebSearch;
 pub use harness::{
     Harness, HarnessBuildError, HarnessBuilder, HarnessEnvironmentSessionBuilder,
     HarnessSessionBuilder,
@@ -379,6 +414,8 @@ pub mod prelude {
     pub use crate::LocalGitWorkspaceProvider;
     #[cfg(feature = "web-fetch")]
     pub use crate::WebFetch;
+    #[cfg(feature = "web-search")]
+    pub use crate::WebSearch;
     #[cfg(feature = "capabilities")]
     pub use crate::capability;
     pub use crate::models;

@@ -15,11 +15,13 @@
 //! # let _ = accepts_inputs;
 //! ```
 
+mod actor;
 mod ask_user_lifecycle;
 pub mod native_async;
 
 mod backends;
 mod background_call;
+mod budget_gate;
 mod builders;
 pub mod capabilities;
 mod command_host;
@@ -30,6 +32,10 @@ pub mod containment;
 pub mod decisions;
 #[cfg(feature = "direct-egress")]
 mod egress;
+#[cfg(feature = "direct-egress")]
+mod egress_proxy;
+#[cfg(feature = "direct-egress")]
+mod egress_reputation;
 pub mod environment_preamble;
 mod event_cursor;
 pub mod events;
@@ -47,6 +53,8 @@ mod mcp_cache;
 pub mod observability;
 #[cfg(feature = "openai-agents-api")]
 pub mod openai_agents_api;
+#[cfg(feature = "direct-egress")]
+mod org_egress_allowlist;
 mod partial_stream;
 #[cfg(feature = "process")]
 mod process_command;
@@ -60,6 +68,8 @@ mod script_run;
 mod session_file_system_factory;
 pub mod session_services;
 mod turn_backend;
+mod turn_loop;
+mod turn_resume;
 mod turn_strategy;
 mod turn_tool_context;
 mod workspace;
@@ -67,6 +77,10 @@ mod workspace;
 pub use crate::AssembledTurnContext;
 pub use crate::task_observer::{TaskTransition, TaskTransitionObserver};
 pub use crate::turn::TurnStopReason;
+pub use actor::{
+    ActorRunner, DEFAULT_SESSION_LEASE_TTL, InMemorySessionLeases, SessionLease, SessionLeases,
+    session_held_elsewhere,
+};
 pub use backends::{
     HostBackends, RuntimeAgentStore, RuntimeHarnessStore, RuntimeProviderStore,
     RuntimeSessionStore, ScheduleStoreFactory,
@@ -84,6 +98,10 @@ pub use compute::{
 pub use compute::{HostCompute, HostComputeSession};
 #[cfg(feature = "direct-egress")]
 pub use egress::DirectEgressService;
+#[cfg(feature = "direct-egress")]
+pub use egress_proxy::{EGRESS_PROXY_SECRET_ENV, EGRESS_PROXY_URL_ENV, TenantEgressProxy};
+#[cfg(feature = "direct-egress")]
+pub use egress_reputation::{DomainReputation, EGRESS_REPUTATION_ENV};
 pub use events::{
     DEFAULT_EVENT_READ_LIMIT, EventCursor, EventDeliveryStats, EventDurability, EventHistory,
     EventHistoryPage, EventHistoryReadLimit, EventHistoryReadRequest, EventLog, EventLogError,
@@ -106,6 +124,10 @@ pub(crate) use file_store_decorators::apply_workspace_policy;
 pub use file_store_decorators::{
     ApprovalGatingFileStore, FileApprovalGate, PolicyFileStore, WriteBlocklistFileStore,
 };
+#[cfg(feature = "direct-egress")]
+pub use org_egress_allowlist::{
+    ORG_EGRESS_ALLOWLIST_CACHE_TTL, install_runtime_org_egress_allowlist,
+};
 
 pub use capabilities::{
     compose_runtime_capability_registry, runtime_capability_registry, runtime_egress_service,
@@ -121,9 +143,8 @@ pub use in_process_execution::InProcessExecution;
 pub use process_command::ProcessCommandExecutor;
 pub use real_disk::{RealDiskFileStore, RealDiskSessionFileSystemFactory, multi_root_file_system};
 pub use runtime::{
-    AcceptedTurnInput, CapabilityDelta, InProcessRuntime, InProcessRuntimeBuilder,
-    InterruptedToolCalls, ParkedToolCalls, TurnResult, TurnSteering, TurnSteeringPushError,
-    in_process_internal_org_id,
+    AcceptedTurnInput, CapabilityDelta, InProcessRuntime, InProcessRuntimeBuilder, ParkedToolCalls,
+    TurnSteering, TurnSteeringPushError, in_process_internal_org_id,
 };
 pub use runtime_context::{
     StoreTurnContextResolver, assemble_turn_context, assemble_turn_context_from_snapshot,
@@ -147,6 +168,11 @@ pub use session_services::{
 };
 pub use turn_backend::{
     InProcessBackend, TurnBackend, TurnInput, TurnRequest, TurnScope, TurnTicket,
+};
+pub use turn_loop::{PendingInput, TurnDrive, TurnInbox, TurnResult, drive_turn, turn_entry_plan};
+pub use turn_resume::{
+    InterruptedToolCalls, OpenTurn, TurnLogFold, WaitsOnPerson, WaitsOnPersonFn,
+    interrupted_tool_calls, resume_entry_plan, resume_open_turn, resume_plan_from_log,
 };
 pub use turn_strategy::advance_host_execution;
 #[deprecated(note = "use WorkspaceBackend")]

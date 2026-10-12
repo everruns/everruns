@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Durable Execution Engine Specification"
-description: "PostgreSQL-backed durable workflow engine."
+description: "PostgreSQL-backed durable task queue, event log, signals and schedules."
 tags:
   - everruns
   - operations
@@ -10,20 +10,25 @@ tags:
 
 ## Abstract
 
-Custom PostgreSQL-backed durable execution engine for workflow orchestration with automatic retries, circuit breakers, and distributed task execution.
+Custom PostgreSQL-backed durable execution engine: a distributed task queue with automatic retries, circuit breakers, signals, an event log, and schedules.
 
-`everruns-durable` is a generic engine: workflows, activities, tasks, signals,
-and schedules, with no `everruns-*` dependency (enforced by
-`scripts/lib/check-durable-isolation.sh`). Agent semantics live above it. Turns
-use `everruns-durable-engine`: its `TurnTaskDriver` runs each claimed turn step
-over `everruns_core::engine::TurnExecution`, restored from and checkpointed to
-the task input between steps; its `durable_turn` module owns the
-turn-level conventions (the `user_message` signal, idempotent waiting-turn
-resolution tasks via `ActivityOptions::dedupe_by_activity_id`); and the server
-turns a sealed task into `turn.sealed`. The durable crate owns persistence,
-retries, and activity scheduling. The worker reaches these through
-`everruns-durable-engine`, which is also published as the facade's experimental
-durable turn backend ([Execution Backends](../framework/execution-backends.md)).
+`everruns-durable` is a generic core: workflow records, activities, tasks,
+signals, and schedules, with no `everruns-*` dependency (enforced by
+`scripts/lib/check-durable-isolation.sh`). Agent semantics live above it.
+
+Platform turns no longer run on it. Since the actor cutover (step 6c,
+2026-10-11) a turn is a session actor: intake marks the session runnable, a
+worker leases it and runs the whole turn, and the session's event log is the
+only turn state ([Session actors](#session-actors-turn-execution)). The queue
+still carries the activities that are not turns: leased-resource cleanup, the
+session task reaper, and scheduled channel and agent-trigger invocations.
+`everruns-durable-engine` (the `TurnTaskDriver` that ran a turn as one queued
+task per step, checkpointing `everruns_core::engine::TurnExecution` between
+them, and the `durable_turn` conventions) still runs those activities and is
+still published as the facade's experimental durable turn backend
+([Execution Backends](../framework/execution-backends.md)); its turn-step code
+on the platform is dead and goes in step 7. The durable crate owns
+persistence, retries, and activity scheduling.
 The worker owns no database driver; database connection construction
 belongs only to server, durable, and the `everruns` facade (embedded SQLite), enforced by
 [`check-database-driver-isolation.sh`](../../scripts/lib/check-database-driver-isolation.sh).
@@ -34,7 +39,7 @@ belongs only to server, durable, and the `everruns` facade (embedded SQLite), en
 2. **PostgreSQL-only** - No additional infrastructure required
 3. **Testable** - Unit tests, integration tests, load/stress tests
 4. **Reliable** - Retries, circuit breakers, timeouts, dead letter queues
-5. **Simple** - Event-sourced workflows with explicit state machines
+5. **Simple** - Callers drive workflows step by step over the queue; no replayed state machines
 6. **Scalable** - Support 1000+ concurrent workers
 7. **Observable** - OpenTelemetry integration
 
@@ -52,8 +57,8 @@ belongs only to server, durable, and the `everruns` facade (embedded SQLite), en
 │                            everruns-durable                                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐   │
-│  │   Workflow   │  │   Activity   │  │   Worker     │  │   Scheduler   │   │
-│  │   Engine     │  │   Executor   │  │   Pool       │  │               │   │
+│  │   Task       │  │   Stale-task │  │   Worker     │  │   Scheduler   │   │
+│  │   Queue      │  │   Reaper     │  │   Pool       │  │               │   │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └───────┬───────┘   │
 │         │                 │                 │                   │           │
 │  ┌──────┴─────────────────┴─────────────────┴───────────────────┴────────┐ │
@@ -63,7 +68,7 @@ belongs only to server, durable, and the `everruns` facade (embedded SQLite), en
 │  └────────────────────────────────────────────────────────────────────────┘ │
 │                                                                              │
 │  ┌────────────────────────────────────────────────────────────────────────┐ │
-│  │  Reliability: RetryPolicy, CircuitBreaker, TimeoutManager, DLQ        │ │
+│  │  Reliability: RetryPolicy, CircuitBreaker, DLQ                        │ │
 │  └────────────────────────────────────────────────────────────────────────┘ │
 │                                                                              │
 │  ┌────────────────────────────────────────────────────────────────────────┐ │
@@ -74,79 +79,25 @@ belongs only to server, durable, and the `everruns` facade (embedded SQLite), en
 
 `WorkflowEventStore` is an umbrella over focused traits (`EventLog`, `TaskQueue`, `SignalStore`, `WorkerRegistry`, `DeadLetters`, `CircuitBreakers`, `Schedules`, `DurableAdmin`), blanket-implemented, so a component can bound on only the slice it needs (a worker: `TaskQueue + SignalStore + WorkerRegistry`). Store methods have no silently-succeeding defaults; both stores implement every method, and only derived defaults (for example `count_events` via `load_events`) remain. See `crates/durable/src/persistence/store.rs`.
 
-### Workflow engine feature
+### No replayed workflow engine
 
-The crate has two halves. The core (store contract, task queue, signals,
-reliability, `DurableScheduler`) is what Everruns runs in production: the
-worker and server drive the queue directly, and turns use durable-engine's
-checkpoints rather than replay. The generic workflow engine (`Workflow`,
-`Activity`, `WorkflowExecutor` with timers, child workflows and system tasks,
-`TimeoutManager`) has no production caller in this repository. `WorkerPool`
-is core, not engine: the server's cluster-once maintenance jobs run on it.
-
-Decision: keep the engine, so the crate stays usable and optimizable in
-isolation, but put it behind the experimental `workflows` feature. The feature
-is on by default for crates.io users, so `cargo add everruns-durable` gets
-what the README documents; the workspace dependency sets
-`default-features = false`, so server, durable-engine, the facade and the
-serve hosts compile only the core. The record types the engine shares with the
-queue (`WorkflowEvent`, `ActivityOptions`, `WorkflowError`, `ActivityError`,
-`WorkflowSignal`) stay in the core. The engine is proven by the crate's own
-suites, benches and
-[`examples/order_pipeline.rs`](../../crates/durable/examples/order_pipeline.rs),
-which has no Everruns dependency and runs on the in-memory store in the
-`durable` CI shard. See `[features]` in
-[`crates/durable/Cargo.toml`](../../crates/durable/Cargo.toml).
+Decision (2026-10-10): the crate has no generic replayed workflow engine. It
+once carried one (`Workflow` and `Activity` traits, `WorkflowExecutor` with
+timers, child workflows and system tasks, `TimeoutManager`) behind an
+experimental `workflows` feature. Nothing in production ran it: the worker and
+server drive the queue directly, and turns use durable-engine's checkpoints
+rather than replay. The actor-based execution design retires it, so it was
+removed instead of maintained. The record types it shared with the queue
+(`WorkflowEvent`, `ActivityOptions`, `WorkflowError`, `ActivityError`,
+`WorkflowSignal`) stay. `WorkerPool` is core: the server's cluster-once
+maintenance jobs run on it.
 
 ## Requirements
 
 ### Core Abstractions
 
-Items 1-3 are the experimental `workflows` feature.
-
-1. **Workflow** - Deterministic state machine driven by events
-   - Unique type identifier
-   - Input/Output types (serializable)
-   - Event handlers: `on_start`, `on_activity_completed`, `on_activity_failed`, `on_timer_fired`, `on_child_workflow_completed`, `on_child_workflow_failed`, `on_signal`
-
-2. **WorkflowAction** - Actions a workflow can request
-   - `ScheduleActivity` - Queue activity with retry policy, timeouts, priority
-   - `StartTimer` - Delayed execution (fires once, after its duration)
-   - `CompleteWorkflow` / `FailWorkflow` - Terminal states
-   - `ScheduleChildWorkflow` - Nested workflows; the parent hears the child's outcome
-   - `CancelActivity` - Cancel pending work
-
-3. **Activity** - Unit of work that may fail and be retried
-   - Unique type identifier
-   - Input/Output types
-   - Access to `ActivityContext` (attempt info, heartbeat, cancellation)
-
-4. **WorkflowSignal** - External signals to running workflows
+1. **WorkflowSignal** - External signals to running workflows
    - Types: `cancel`, `shutdown`, custom
-
-### Timers and Child Workflows
-
-Timers and child workflows are tasks on the ordinary queue, claimed by a worker
-registered for `SYSTEM_ACTIVITY_TYPES` that calls
-`WorkflowExecutor::run_system_tasks`. A timer is a task held back by
-`ActivityOptions::start_delay`; both stores honor that delay, and the store
-conformance suite checks it. Starting a child and reporting its outcome to the
-parent are tasks too. The queue already gives crash survival and retry, and a
-task keeps the executor from re-entering a parent while that parent's own
-actions are still being applied, which would race its optimistic sequence.
-
-Delivery is at least once, so each step is idempotent: a timer fires once per
-`TimerStarted`, a child's UUID is v5 of the parent UUID and the parent's id for
-the child, and a parent records each child's outcome once. A child knows its
-parent from the `parent` field of its `WorkflowStarted` event. A child whose
-type is not registered fails the parent with code `child_not_started`.
-
-Known gaps: a crash between recording a child's terminal status and enqueueing
-its result leaves the parent waiting, and cancelling a child does not notify
-the parent. Agent turns in Everruns do not use timers or child workflows yet:
-workers talk to the store over gRPC, which exposes only the task operations, and
-turns are driven by `TurnExecution` checkpoints in durable-engine rather than
-replay.
 
 ### Persistence
 
@@ -182,20 +133,19 @@ difference is `durable_tool_results`, which belongs to the server's tool-call
 idempotency storage and is never touched by the crate.
 
 `everruns-durable` is part of the crates.io publish set. Its benchmark support
-module and bench binaries sit behind the off-by-default `bench` feature (which
-implies `workflows`), and bench checkpoints are excluded from the package.
+module and bench binaries sit behind the off-by-default `bench` feature, and
+bench checkpoints are excluded from the package.
 
 Workflow statuses: `pending`, `running`, `completed`, `failed`, `cancelled`, `continued_as_new`.
 
-### Replay Safety
+### History Bounds
 
-- **Pre-load count check (full path):** `count_events()` before `load_events()` rejects oversized histories without allocating.
-- **Pre-load count check (snapshot path):** `count_events_after()` before `load_events_after()` rejects stale snapshots. Deletes the stale snapshot on rejection.
-- **Continue-as-new:** When a workflow exceeds `max_events_per_workflow`, it can roll over via `continue_as_new()`. This snapshots current state, creates a new workflow from the snapshot, archives old events, and marks the old workflow `continued_as_new` with a reference to the new workflow ID (`continued_as_new_id` column).
-
-- **Action application:** replay re-runs every handler, so the workflow re-issues every action it ever requested. `process_workflow` applies only those without a recording event in history yet (`ActivityScheduled`, `TimerStarted`, `WorkflowCompleted`, and so on), counted per occurrence. This is how the follow-up to a just-appended completion gets scheduled, and it makes re-processing after a crash between appending an event and applying its actions idempotent.
-
-See `crates/durable/src/engine/executor.rs` for `load_workflow_state()`, `unrecorded_actions()`, and `continue_as_new()`.
+The store keeps per-workflow history bounded without replaying it:
+`count_events()` and `count_events_after()` let a caller reject an oversized
+history before loading it, and `continue_as_new()` rolls a workflow over into a
+new one, archiving old events and marking the old workflow `continued_as_new`
+with a reference to the new ID (`continued_as_new_id` column). See
+`crates/durable/src/persistence/store.rs`.
 
 ### Task Claiming
 
@@ -213,7 +163,9 @@ behind green unit tests.
 
 Push-based via gRPC streaming (`SubscribeTaskNotifications`), backed by NATS when available and PostgreSQL `NOTIFY` otherwise. The standalone worker subscribes at startup (`crates/worker/src/task_wakeup.rs`) and every notification cuts its poll backoff short; a worker that finishes a task also wakes its own loop, because that task usually enqueued the next turn phase. Polling stays as the fallback, so a lost notification or a dropped stream costs at most one backoff interval (`WORKER_POLL_BACKOFF_MAX_MS`), and the worker resubscribes with a 1s to 30s backoff.
 
-Why it matters: every turn phase (`process_input`, `reason`, `act`) is its own queued task. Before the worker consumed these notifications, an idle worker sat in a backoff of up to 5s, so a new message waited up to 5s to start and each tool call paid that wait twice (reason to act, act to reason). Measured locally on a two-tool turn: pickup fell from about 1.5s to about 70ms and each phase hand-off from up to 1.5s to under 200ms. `crates/server/tests/workflow_test/latency.rs` guards the pickup end to end.
+Session actors ride the same channel with their own payloads: `session_actor` when an actor becomes leasable and `session_actor_cancel` when a cancel lands on a leased one. The worker subscribes to each under its own subscriber id (the control plane keeps one subscription per id): the first wakes the actor lease loop, the second makes every running lease renew at once, which is how its holder learns of the cancel. Under PostgreSQL a trigger on `session_actors` notifies on commit; under NATS the server's turn backend publishes after the intake transaction commits. The in-process DEV_MODE worker has no channel: the turn backend wakes its lease loop and its running leases directly, also after the commit (`ActorWakeups`). A release that leaves the actor runnable wakes the releasing worker's own loop once the turn's slot is free. A lease that expires sends nothing, so the actor loop's poll backoff is capped at 1 s (`ACTOR_POLL_BACKOFF_MAX`), which bounds how long past its TTL a dead holder's turn waits.
+
+The rest of this section is the history of the per-step turn path the actor cutover retired; its measurements explain choices the actor runtime kept (the push wake-up, per-phase setup reads, the per-turn read cache, write-behind events). Why it mattered then: every turn phase (`process_input`, `reason`, `act`) was its own queued task. Before the worker consumed these notifications, an idle worker sat in a backoff of up to 5s, so a new message waited up to 5s to start and each tool call paid that wait twice (reason to act, act to reason). Measured locally on a two-tool turn: pickup fell from about 1.5s to about 70ms and each phase hand-off from up to 1.5s to under 200ms. `crates/server/tests/workflow_test/latency.rs` guards the pickup end to end.
 
 Once a phase is claimed, its own setup is the next cost: before a reason phase calls the model, host setup reads the session, harness, and agent several times over (dependency check, capability loading, snapshot projection, tool augmentation), and each read from a gRPC worker is a control-plane round trip plus database queries. With the production database a few milliseconds away, that setup took about 600 ms of each ~700 ms hand-off, against about 130 ms locally. The worker memoizes those reads for the length of the setup (`crates/worker/src/phase_reads.rs`) and logs `phase setup` with `setup_ms` and the reads fetched and saved, once per phase.
 
@@ -243,20 +195,22 @@ Reasoning:
 
 ### Worker Concurrency & Sizing
 
-External/gRPC workers and the in-process worker both run `crates/worker/src/unified_worker.rs`, which exposes three independent knobs so concurrency, claim batch size, and idle polling can be tuned separately:
+External/gRPC workers and the in-process worker both run `crates/worker/src/unified_worker.rs`, which exposes three independent knobs so concurrency, claim batch size, and idle polling can be tuned separately. The session actor loop and the queue loop share them: a leased actor takes an execution slot like a claimed task, `CLAIM_BATCH_SIZE` also bounds one lease call, and a turn waiting on the model hands its slot back the same way:
 
 | Setting | Env var | Default | Purpose |
 | --- | --- | --- | --- |
 | Execution concurrency | `MAX_CONCURRENT_TASKS` | `50` | Tasks a worker runs at once / advertised capacity. |
+| Model waits | `MAX_CONCURRENT_MODEL_WAITS` | `200` | Reason steps that hand their slot back while waiting on the model; `0` turns it off. |
 | Claim batch size | `CLAIM_BATCH_SIZE` | `50` (clamped to concurrency) | Upper bound on `claim_task max_tasks`, regardless of free slots. |
 | Fallback poll interval | `WORKER_POLL_INTERVAL_MS` | `100` | Base interval when push notifications are unavailable. |
 | Fallback poll backoff cap | `WORKER_POLL_BACKOFF_MAX_MS` | `5000` | Idle polling backs off exponentially from the base up to this cap. |
-| Step chaining | `WORKER_CHAIN_STEPS` | `true` | Run a turn's next step on the same worker, enqueued already claimed, instead of through the queue. |
+| Step chaining | `WORKER_CHAIN_STEPS` | `true` | Retired path: chained a queued turn's next step on the same worker. Turns no longer queue steps. |
 | Shutdown grace | `WORKER_SHUTDOWN_GRACE_SECS` | `25` | How long a stopping worker lets in-flight tasks finish before it aborts them. Keep it under the orchestrator's kill timeout. |
 
 Guidance:
 
 - **The default concurrency is intentionally modest (50, matching the default DB pool).** Historically it was `1000`, so a few replicas advertised thousands of slots and a single idle poll issued `claim_task max_tasks=1000`; when the DB was already slow this amplified pool pressure into acquire timeouts (EVE-606). 1000-way concurrency is now opt-in via `MAX_CONCURRENT_TASKS`.
+- **A slot is for work, not for waiting on the model.** A reason step spends most of its time on the model's stream, doing little DB or CPU work, so it hands its slot back for that wait (`crates/core/src/engine/execution/model_wait.rs`). Without this, `MAX_CONCURRENT_TASKS` capped how many turns could talk to a model at once: on prod, 3 workers x 20 slots added about 2 s of queueing at 100 concurrent sessions (load test, 2026-10-08). Waits have their own cap because each open stream still costs memory, a connection and batched delta writes; past it a wait keeps its slot.
 - **Raising concurrency does not raise claim cost:** the claim batch is bounded by `CLAIM_BATCH_SIZE` independently, so a high-concurrency worker still claims in modest batches.
 - **Pool sizing, not pool inflation, is the lever.** Size against `pg_max_connections / replicas − margin`; do not raise the pool to mask worker over-claiming. Worker-side concurrency and claim batch should be tuned down first for small instances.
 - **Size against the total, not `DATABASE_POOL_MAX` alone (EVE-1081).** A control-plane instance opens two pools: the request pool (`DATABASE_POOL_MAX`) and a smaller background pool for sweeps (`DATABASE_BACKGROUND_POOL_MAX`, default 8). The number to compare against `pg_max_connections / replicas` is their sum — `DatabasePoolConfig::total_max_connections()` in `crates/server/src/storage/repositories/mod.rs`, which is also what the startup sizing warning uses. An instance previously tuned so `DATABASE_POOL_MAX` exactly filled the budget will over-subscribe Postgres by the background pool's size per replica and start getting connection refusals, so reduce `DATABASE_POOL_MAX` by that much when upgrading. Setting `DATABASE_BACKGROUND_POOL_MAX=0` restores the single-pool budget exactly, at the cost of the isolation it buys.
@@ -267,7 +221,9 @@ Guidance:
 A worker is drained two ways, and both end in the same registry state (`status = 'draining'`), so the queue hands it no new claims and no chained steps:
 
 - **Operator drain.** `POST /v1/durable/workers/{id}/drain` (and `/resume`) flips the registry row. The worker learns it from its next heartbeat, whose reply carries `draining`, and stops claiming; a heartbeat that reports the drain lifted wakes the poll loop at once. Running tasks are left alone.
-- **Shutdown.** SIGTERM or Ctrl+C stops the poll loop, and the worker drains itself (`DrainDurableWorker`), so the next step of every in-flight turn goes back to the queue for another worker instead of staying here. It keeps heartbeating while in-flight tasks finish, waits up to `WORKER_SHUTDOWN_GRACE_SECS`, aborts what is left, then deregisters, which returns the aborted tasks to the queue. A second signal exits at once.
+- **Shutdown.** SIGTERM or Ctrl+C stops the poll loop and the actor lease loop, and the worker drains itself (`DrainDurableWorker`). It keeps heartbeating while in-flight tasks and running turns finish, waits up to `WORKER_SHUTDOWN_GRACE_SECS`, aborts what is left, then deregisters, which returns the aborted tasks to the queue. An aborted turn keeps its actor lease until it expires (10 s); another worker then leases the session and resumes the turn from the log. A second signal exits at once.
+
+A drained worker leases no actors either; turns it already runs go on.
 
 The grace period must fit inside the orchestrator's kill timeout (Kubernetes `terminationGracePeriodSeconds`, Compose `stop_grace_period`), or the worker is killed mid-drain and its tasks wait for claim expiry instead. See `crates/worker/src/unified_worker.rs` and `crates/worker/src/app_builder.rs`.
 
@@ -329,7 +285,7 @@ the host. One pass reclaims stale claims, then for each dead task records
 compare-and-set; for each sealed task it records `ActivityFailed` and marks the
 workflow failed (`task sealed: no_progress (N recoveries)`). The host plugs in
 a `ReapHandler` for what that means in its domain: the server's
-(`crates/server/src/durable_reaper.rs`) emits the failed or sealed turn
+(`crates/server/src/background/durable_reaper.rs`) emits the failed or sealed turn
 lifecycle, and only the reaper that won the workflow transition calls it, so
 replicas racing the same reap notify once. The server reaps every 10 s with a
 30 s stale threshold. `WorkerPool` runs the same pass with a no-op handler, and
@@ -337,6 +293,10 @@ replicas racing the same reap notify once. The server reaps every 10 s with a
 already runs a reaper with a real handler.
 
 ### Step hand-off and stranded runs
+
+Retired by the actor cutover: this describes the per-step turn path, kept in
+the code until step 7. The reaper no longer sweeps stranded `turn_workflow`
+runs (`stranded_workflow_type: None`), because no live code creates them.
 
 A turn step moves its workflow to the next step in one store write
 (`TaskQueue::complete_task_and_hand_off`, carried over gRPC as `hand_off` on
@@ -366,7 +326,151 @@ caller steers it. `crates/durable-engine/src/turn_recovery_matrix_tests.rs`
 crashes a turn at every step boundary, on both write shapes, in memory and on
 PostgreSQL.
 
+### Session actors (turn execution)
+
+Turns run on the actor model the framework already runs
+([Execution Backends](../framework/execution-backends.md#the-default-sessions-as-actors)):
+each session is an actor, a worker leases a session and runs its whole turn,
+and the session event log is the only turn state, so resume is a fold of the
+log. The control plane keeps the `session_actors` runnable index
+([migrations 215](../../crates/server/migrations/legacy/215_session_actors.sql) and
+[20261012014120](../../crates/server/migrations/20261012014120_session_actor_inbox_cursor.sql),
+[repository](../../crates/server/src/storage/repositories/session_actors/mod.rs))
+and serves four worker-link calls, `LeaseActors`, `RenewActorLease`,
+`ReleaseActor` and `ReadActorJournal`, over gRPC and, in DEV_MODE, through
+`DirectWorkerAdapters` on the same repository. Workers still never touch the
+database. The server's turn backend is
+[`ActorTurnBackend`](../../crates/server/src/turns/actor_backend.rs) in
+production and DEV_MODE alike; the worker side is
+[`actor_runtime`](../../crates/worker/src/actor_runtime/mod.rs).
+
+- **Intake marks the actor runnable in the input's transaction.** Starting a
+  turn is an upsert the caller runs in the transaction that persists the
+  input, so the input and the marker commit together and a rolled-back message
+  starts nothing. `inbox_seq` (the newest input's event sequence) only moves
+  forward. A stored message also records `next_input_seq`, the input the next
+  fresh turn starts from, when the previous one was consumed, so queued
+  messages start turns in arrival order and history written without a mark (a
+  channel's backfill) never starts one. A resolution (tool results, an answer,
+  an approval decision, a consent) marks the inbox at the log head instead: it
+  continues the open turn.
+- **One turn per lease.** The worker folds the log's tail from the latest
+  `turn.started`. An open turn is resumed: unfinished calls rerun when their
+  tool declares that safe (pure, idempotent, client-side, approval-gated,
+  `ask_user`, or a synthetic person-facing call) and are otherwise settled as
+  `interrupted`; an open turn whose answer is already in the log is completed
+  without another model call. With no open turn, the first unconsumed input
+  starts a fresh turn through core's `turn_entry_plan`, the entry step the
+  in-process runtime uses.
+- **The inbox is the log; the cursor is `consumed_seq`.** A turn input is an
+  `input.message` without a turn id; everything a turn or a resolution writes
+  carries the turn's id. Before each reason (and when a reason would finish)
+  the turn renews, which reports the inbox head, and input past the cursor
+  becomes steering for that reason. Renew and release commit the cursor, so a
+  holder that dies mid-turn leaves its successor only the input the model
+  never saw. Input that reaches a turn parked on a person resolves the pause
+  as intake does for a waiting session: the pending calls are settled as
+  cancelled and the turn goes on to the input.
+- **Lease, fence, expiry.** A lease call takes runnable actors whose lease is
+  free or expired, oldest first, with `FOR UPDATE SKIP LOCKED`, so concurrent
+  workers take disjoint sets without waiting. Every lease raises the fence.
+  The holder renews every third of the 10-second TTL. A holder whose renew
+  finds the fence moved, or that renewed nothing for a whole TTL, has lost the
+  lease: it stops the turn, drops its unwritten events and releases nothing.
+  A retryable failure (a store or transport error) also lets the lease
+  expire; the TTL is the backoff before another worker resumes from the log.
+  Expiry is database time.
+- **Every log append is fenced.** Stopping on a lost renew leaves a window: a
+  write already in flight when the lease ran out could land after another
+  holder took the session. So every event a leased turn appends carries its
+  holder and fence (`actor_fence` on `EmitEvent`/`EmitEventStream`,
+  `WorkerAdapters::emit_events_fenced` on gRPC and `DirectWorkerAdapters`),
+  and the control plane stores a batch only while that is still the holder's
+  unexpired lease ([`create_events_fenced`](../../crates/server/src/storage/repositories/events/mod.rs)).
+  The check runs in the insert's transaction, after the session's
+  `event_sequences` lock (the order message intake takes them in) and under
+  `FOR SHARE` on the actor row, so a new lease cannot take the session until
+  the append committed and its journal read then sees it. A refused append
+  stores nothing and answers `FAILED_PRECONDITION` "actor lease lost"; the
+  worker maps it to a distinct lease-lost error that flips the lease lost, and
+  the turn stops exactly as on a lost renew. Ephemeral deltas that skip
+  PostgreSQL under NATS are not log appends and go unfenced. Writes the server
+  makes for a session (intake, resolutions, a withdrawn cancel) are not
+  leased and carry no fence.
+- **Release never loses input.** Release clears the runnable marker only when
+  the holder consumed input up to `inbox_seq`. A message that lands as a turn
+  finishes moves `inbox_seq` past it, so the actor stays runnable and the next
+  lease runs the next turn.
+- **Cancel has one writer.** One statement under the row lock decides: on an
+  actor a live holder leases, the request is recorded on the row and the
+  holder ends the turn and writes `turn.cancelled`, the person's request and
+  `session.idled` (the server writes nothing); on an actor that only waits to
+  run, or whose holder's lease expired, the actor is withdrawn and the server
+  records the cancel as before. Lease and renew report a pending cancel, and
+  release clears it only once the holder was told, so a cancel that lands
+  after the last renew reaches the next holder. Either way the turn ends with
+  exactly one terminal event. A cancel the holder records is answered only
+  once the holder ended the turn (bounded by two lease lives); inside a
+  command transaction that wait runs after the commit, when the holder can
+  first see the request, still before the command answers. Past the bound the
+  answer means "acknowledged": the request stays on the row for the holder,
+  or the next one, to record.
+- **Poison guard.** `attempts` counts leases since the last release. A lease
+  that finds more than `DURABLE_NO_PROGRESS_SEAL_THRESHOLD` (default 3) seals
+  the turn instead of running it: a user-facing processing error,
+  `turn.sealed { no_progress }`, `session.idled`, and the pending input
+  consumed. A turn that kills its worker cannot loop forever, and the session
+  is usable afterwards: the release resets the count, and the next message
+  starts a fresh turn.
+- **Per-org fairness order.** A lease call counts each org's held leases and
+  takes actors of orgs under the cap (default 32) first, oldest first; an
+  org's actors past it fill only the room left. It orders, it never holds
+  work back: a lease runs a whole turn, model and tool waits included, so a
+  hard cap of 32 was a fleet-wide cap on one org's concurrent turns. The
+  chaos harness (one org, 50 live sessions) sat at exactly 32 leases with
+  worker slots free, and pickup rose from 38 ms to 1.3 s at p50 (p95 3.2 s);
+  ordering instead of capping brought it to 102 ms (p95 604 ms), with 50
+  leases held at once. Admission
+  stays with `ORG_MAX_ACTIVE_TURNS` when the input is accepted.
+- **Resolutions carry the open turn's id.** Tool results, answers, approval
+  decisions, MCP URL consents, the tool-result timeout, a message's
+  cancellation of pending client calls and the server-recorded cancel all
+  write under the session's open turn (`turns::open_turn_context`, read from
+  its `turn.started`). The worker's fold counts a `tool.completed` only under
+  the open turn's id, and a turn input is one without a turn id, so a
+  resolution written under another id would be lost.
+- **The worker host is the one queued phases used.** `WorkerRuntimeHost` with
+  its per-phase setup reads, the per-turn read cache, write-behind events and
+  the model-wait slot release, built once per turn and re-armed at each phase
+  boundary. Stream heartbeats are not needed: the lease renewer keeps a turn
+  alive.
+
+**Deploy transition.** [Migration 20261012014121](../../crates/server/migrations/20261012014121_session_actor_cutover.sql)
+moves in-flight work across: every session that is active or has a pending or
+running `turn_workflow` gets an actor row, runnable, with its cursor at the
+log's last turn boundary, so a turn the old path left open is resumed from
+the log by the first worker that leases it. Pending and claimed
+`process_input`, `reason` and `act` tasks and pending and running
+`turn_workflow` runs are cancelled. Old servers and workers still running
+during a rolling deploy can create old-path work after the migration ran (an
+old server starting a turn as `process_input`, an old worker enqueueing the
+next step). A temporary sweep on every server
+([`legacy_turn_sweep`](../../crates/server/src/background/legacy_turn_sweep.rs),
+every 5 s) converts them the same way: pending tasks, and claimed ones whose
+old worker went silent for 2 minutes, mark their session's actor runnable,
+and the tasks and their `turn_workflow` are cancelled, in one idempotent
+statement. The other direction needs nothing: old workers claim durable
+activities by type and never see a turn of this release, which is a
+`session_actors` row handed out only by the lease RPCs. During the overlap an
+old worker may still be running an old-path step of a session a new worker
+also leases, and its writes carry no fence; a recreate deploy (stop every
+server and worker, migrate, start) avoids that window. Step 7 deletes the
+sweep with the per-step workflow.
+
 ### Forward-progress guard and Sealed terminal (EVE-534)
+
+Turns now have the actor poison guard ([Session actors](#session-actors-turn-execution));
+this guard still covers queued tasks.
 
 `RetryPolicy.max_attempts` bounds *how many times* a task may run, but a turn
 that crashes and is reclaimed repeatedly without ever advancing can still loop,

@@ -2,10 +2,11 @@ use super::redact_channel_for_response;
 use super::types::{CreateAgentChannelRequest, UpdateAgentChannelRequest};
 use super::validation::{merge_preserved_secret_fields, normalize_and_validate_channel_config};
 use crate::domains::agent_channels::ingress::{channel_liveness, row_to_ingress};
+use crate::domains::agent_channels::record::{AgentChannel, ChannelType};
 use crate::domains::agents::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
 use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
-use crate::records::{AgentChannel, AgentChannelId, ChannelType};
+use crate::records::AgentChannelId;
 use crate::storage::UpdateField;
 use crate::storage::{CreateAgentChannelRow, IngressChannelRow, UpdateAgentChannelRow};
 use everruns_contracts::typed_id::AgentId;
@@ -16,7 +17,7 @@ use utoipa::ToSchema;
 async fn resolve_agent(
     ctx: &Ctx,
     id_or_name: &str,
-) -> Result<crate::storage::models::AgentRow, CommandError> {
+) -> Result<crate::storage::AgentRow, CommandError> {
     let row = find_agent(ctx, id_or_name).await?;
     if row.status != "active" {
         return Err(CommandError::bad_request(
@@ -29,7 +30,7 @@ async fn resolve_agent(
 pub(crate) async fn find_agent(
     ctx: &Ctx,
     id_or_name: &str,
-) -> Result<crate::storage::models::AgentRow, CommandError> {
+) -> Result<crate::storage::AgentRow, CommandError> {
     let row = if let Ok(agent_id) = id_or_name.parse::<AgentId>() {
         ctx.db
             .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
@@ -107,6 +108,7 @@ pub(crate) async fn preflight_package_channel_config(
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListAgentChannels {
+    /// Agent's prefixed public identifier, or its name.
     pub agent_id: String,
 }
 
@@ -117,6 +119,7 @@ pub struct ListAgentChannels {
     method = "GET",
     path = "/v1/agents/{agent_id}/channels",
     policy = AGENT_VIEW,
+    cli = CliRoute::new(&["agents", "channels"], "list").with_examples(&[CliExample::new("See every way an agent can be reached before adding another", "everruns agents channels list --agent-id agent_01h9",)]),
 )]
 impl Command for ListAgentChannels {
     type Output = Vec<AgentChannel>;
@@ -134,7 +137,9 @@ impl Command for ListAgentChannels {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetAgentChannel {
+    /// Agent's prefixed public identifier, or its name.
     pub agent_id: String,
+    /// Channel's prefixed public identifier.
     pub channel_id: String,
 }
 
@@ -145,6 +150,7 @@ pub struct GetAgentChannel {
     method = "GET",
     path = "/v1/agents/{agent_id}/channels/{channel_id}",
     policy = AGENT_VIEW,
+    cli = CliRoute::new(&["agents", "channels"], "get").with_examples(&[CliExample::new("Inspect one channel's configuration and whether it is live", "everruns agents channels get --agent-id agent_01h9 --channel-id appchan_01h9",)]),
 )]
 impl Command for GetAgentChannel {
     type Output = AgentChannel;
@@ -162,6 +168,7 @@ impl Command for GetAgentChannel {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateAgentChannel {
+    /// Agent's prefixed public identifier, or its name.
     pub agent_id: String,
     #[serde(flatten)]
     pub req: CreateAgentChannelRequest,
@@ -174,6 +181,7 @@ pub struct CreateAgentChannel {
     method = "POST",
     path = "/v1/agents/{agent_id}/channels",
     policy = AGENT_MANAGE,
+    cli = CliRoute::new(&["agents", "channels"], "create").with_examples(&[CliExample::new("Add a weekday-morning schedule that starts the agent on its own", "everruns agents channels create --agent-id agent_01h9 --channel-type schedule --channel-config '{\"cron_expression\":\"0 9 * * 1-5\",\"message\":\"Summarize overnight alerts\"}' --reason 'Daily alert digest'",)]),
 )]
 impl Command for CreateAgentChannel {
     type Output = AgentChannel;
@@ -232,7 +240,9 @@ impl Command for CreateAgentChannel {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateAgentChannelCmd {
+    /// Agent's prefixed public identifier, or its name.
     pub agent_id: String,
+    /// Channel's prefixed public identifier.
     pub channel_id: String,
     #[serde(flatten)]
     pub req: UpdateAgentChannelRequest,
@@ -245,6 +255,7 @@ pub struct UpdateAgentChannelCmd {
     method = "PATCH",
     path = "/v1/agents/{agent_id}/channels/{channel_id}",
     policy = AGENT_MANAGE,
+    cli = CliRoute::new(&["agents", "channels"], "update").with_examples(&[CliExample::new("Pause a channel without deleting it", "everruns agents channels update --agent-id agent_01h9 --channel-id appchan_01h9 --enabled false --reason 'Pause during the migration'",)]),
 )]
 impl Command for UpdateAgentChannelCmd {
     type Output = AgentChannel;
@@ -344,7 +355,9 @@ impl Command for UpdateAgentChannelCmd {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct PublishAgentChannel {
+    /// Agent's prefixed public identifier, or its name.
     pub agent_id: String,
+    /// Channel's prefixed public identifier.
     pub channel_id: String,
 }
 
@@ -355,6 +368,7 @@ pub struct PublishAgentChannel {
     method = "POST",
     path = "/v1/agents/{agent_id}/channels/{channel_id}/publish",
     policy = AGENT_DANGEROUS,
+    cli = CliRoute::new(&["agents", "channels"], "publish").with_examples(&[CliExample::new("Make a reviewed channel live so it accepts traffic", "everruns agents channels publish --agent-id agent_01h9 --channel-id appchan_01h9 --reason 'Config reviewed'",)]),
 )]
 impl Command for PublishAgentChannel {
     type Output = AgentChannel;
@@ -366,7 +380,9 @@ impl Command for PublishAgentChannel {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UnpublishAgentChannel {
+    /// Agent's prefixed public identifier, or its name.
     pub agent_id: String,
+    /// Channel's prefixed public identifier.
     pub channel_id: String,
 }
 
@@ -377,6 +393,7 @@ pub struct UnpublishAgentChannel {
     method = "POST",
     path = "/v1/agents/{agent_id}/channels/{channel_id}/unpublish",
     policy = AGENT_DANGEROUS,
+    cli = CliRoute::new(&["agents", "channels"], "unpublish").with_examples(&[CliExample::new("Take a channel offline without deleting its configuration", "everruns agents channels unpublish --agent-id agent_01h9 --channel-id appchan_01h9 --reason 'Pause while the integration is reworked'",)]),
 )]
 impl Command for UnpublishAgentChannel {
     type Output = AgentChannel;
@@ -413,7 +430,9 @@ async fn set_channel_status(
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteAgentChannel {
+    /// Agent's prefixed public identifier, or its name.
     pub agent_id: String,
+    /// Channel's prefixed public identifier.
     pub channel_id: String,
 }
 
@@ -424,6 +443,7 @@ pub struct DeleteAgentChannel {
     method = "DELETE",
     path = "/v1/agents/{agent_id}/channels/{channel_id}",
     policy = AGENT_DANGEROUS,
+    cli = CliRoute::new(&["agents", "channels"], "delete").with_examples(&[CliExample::new("Remove a channel the agent should no longer be reachable through", "everruns agents channels delete --agent-id agent_01h9 --channel-id appchan_01h9 --reason 'Schedule replaced by a webhook'",)]),
 )]
 impl Command for DeleteAgentChannel {
     type Output = Value;
@@ -444,7 +464,9 @@ impl Command for DeleteAgentChannel {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct TriggerAgentChannel {
+    /// Agent's prefixed public identifier, or its name.
     pub agent_id: String,
+    /// Prefixed public identifier of a schedule channel.
     pub channel_id: String,
 }
 
@@ -464,6 +486,7 @@ pub struct TriggerAgentChannelOutput {
     method = "POST",
     path = "/v1/agents/{agent_id}/channels/{channel_id}/trigger",
     policy = AGENT_MANAGE,
+    cli = CliRoute::new(&["agents", "channels"], "trigger").with_examples(&[CliExample::new("Run a schedule channel now instead of waiting for its next fire time", "everruns agents channels trigger --agent-id agent_01h9 --channel-id appchan_01h9 --reason 'Check the digest before the first scheduled run'",)]),
 )]
 impl Command for TriggerAgentChannel {
     type Output = TriggerAgentChannelOutput;
@@ -504,6 +527,9 @@ impl Command for TriggerAgentChannel {
         })
     }
 }
+
+mod keys;
+pub use keys::*;
 
 #[cfg(test)]
 mod tests;

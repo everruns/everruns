@@ -2,16 +2,19 @@
 //
 // Decision: Single worker implementation generic over WorkerAdapters
 // Decision: Works with both gRPC (external) and Direct (in-process) adapters
-// Decision: Replaces both InProcessWorker and DurableWorker
 //
-// TaskWorker executes activities (input, reason, act) from the durable task queue.
-// It unifies the two worker implementations into one, eliminating code duplication
-// while preserving the different deployment models (in-process vs external).
+// TaskWorker runs two loops over one set of execution slots:
+// - the session actor loop (`actor_runtime`): leases runnable sessions and
+//   runs each one's whole turn. Turns run only here (actor-based design,
+//   step 6c); no turn step is a queued task any more.
+// - the durable task queue loop: claims the activities that are not turns
+//   (leased-resource cleanup, the session task reaper, scheduled channel and
+//   agent-trigger invocations) and runs them through durable-engine's
+//   `TurnTaskDriver` with `WorkerTurnHost`.
 //
-// Decision: the worker owns the poll loop, registration, heartbeats and
-// concurrency; durable-engine's `TurnTaskDriver` runs each claimed task (turn
-// steps, checkpoints, wake drains, failure sealing). `WorkerTurnHost` plugs
-// the worker's adapters and non-turn activities into that driver.
+// Decision: the worker owns registration, heartbeats, operator drain and
+// concurrency for both loops: they share `in_flight` (the advertised load),
+// the model-wait slot release, and the shutdown grace.
 
 use crate::durable::WorkerInfo;
 use anyhow::Result;
@@ -24,6 +27,9 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::activities::activity_types;
+use crate::actor_runtime::{ActorRuntime, ActorRuntimeConfig, ActorSlots, WorkerActorHosts};
+use crate::engine::model_wait::{self, ModelWaitSlots};
+use crate::model_wait_slots::{DEFAULT_MAX_CONCURRENT_MODEL_WAITS, WorkerModelWaitSlots};
 use crate::task_error::summarize_task_failure;
 use crate::task_wakeup::spawn_wakeup_listener;
 use crate::turn_driver::TurnTaskDriver;
@@ -83,6 +89,10 @@ pub struct TaskWorkerConfig {
     pub max_concurrent_tasks: usize,
     /// Maximum tasks claimed in a single request, regardless of available slots.
     pub claim_batch_size: usize,
+    /// How many reason steps may hand their slot back while they wait on the
+    /// model (`MAX_CONCURRENT_MODEL_WAITS`; 0 turns it off). See
+    /// `model_wait_slots`.
+    pub max_concurrent_model_waits: usize,
     /// Base poll interval when no tasks available
     pub poll_interval: Duration,
     /// Cap for the exponential poll backoff while the queue is empty.
@@ -114,10 +124,8 @@ impl Default for TaskWorkerConfig {
     fn default() -> Self {
         Self {
             worker_id: format!("worker-{}", Uuid::now_v7()),
+            // Turns are not queued activities: the actor loop runs them.
             activity_types: vec![
-                "process_input".to_string(),
-                "reason".to_string(),
-                "act".to_string(),
                 "leased_resource_cleanup".to_string(),
                 "session_task_reaper".to_string(),
                 activity_types::INVOKE_SCHEDULED_CHANNEL.to_string(),
@@ -125,6 +133,7 @@ impl Default for TaskWorkerConfig {
             ],
             max_concurrent_tasks: DEFAULT_MAX_CONCURRENT_TASKS,
             claim_batch_size: DEFAULT_CLAIM_BATCH_SIZE,
+            max_concurrent_model_waits: DEFAULT_MAX_CONCURRENT_MODEL_WAITS,
             poll_interval: DEFAULT_POLL_INTERVAL,
             poll_backoff_max: DEFAULT_POLL_BACKOFF_MAX,
             heartbeat_interval: Duration::from_secs(10),
@@ -184,6 +193,10 @@ impl TaskWorkerConfig {
             worker_id,
             max_concurrent_tasks,
             claim_batch_size,
+            max_concurrent_model_waits: env_or(
+                "MAX_CONCURRENT_MODEL_WAITS",
+                defaults.max_concurrent_model_waits,
+            ),
             poll_interval: env_duration_ms("WORKER_POLL_INTERVAL_MS", defaults.poll_interval),
             poll_backoff_max: env_duration_ms(
                 "WORKER_POLL_BACKOFF_MAX_MS",
@@ -231,11 +244,15 @@ where
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
     in_flight: Arc<AtomicUsize>,
+    /// Lets reason steps hand their slot back while waiting on the model.
+    model_waits: Arc<dyn ModelWaitSlots>,
     /// Cuts the poll backoff short when new work may be claimable.
     wake: Arc<Notify>,
     /// The registry reported this worker draining (operator drain): claim
     /// nothing until a heartbeat says it is resumed.
     draining: Arc<AtomicBool>,
+    /// Leases session actors and runs their turns.
+    actors: ActorRuntime<WorkerActorHosts<A>>,
 }
 
 impl<S, A> TaskWorker<S, A>
@@ -250,6 +267,7 @@ where
         info!(
             worker_id = %config.worker_id,
             max_concurrent_tasks = config.max_concurrent_tasks,
+            max_concurrent_model_waits = config.max_concurrent_model_waits,
             claim_batch_size = config.claim_batch_size,
             poll_interval_ms = config.poll_interval.as_millis(),
             poll_backoff_max_ms = config.poll_backoff_max.as_millis(),
@@ -258,6 +276,11 @@ where
             "Initialized unified worker"
         );
 
+        let actors = ActorRuntime::new(
+            WorkerActorHosts::new(adapters.clone()),
+            adapters.actor_lease_store(),
+            ActorRuntimeConfig::new(config.worker_id.clone()),
+        );
         let driver = TurnTaskDriver::new(
             store.clone(),
             WorkerTurnHost::new(adapters),
@@ -266,16 +289,34 @@ where
         )
         .chain_steps(config.chain_steps);
 
+        let in_flight = Arc::new(AtomicUsize::new(0));
+        let wake = Arc::new(Notify::new());
+        let model_waits = Arc::new(WorkerModelWaitSlots::new(
+            in_flight.clone(),
+            config.max_concurrent_model_waits,
+            wake.clone(),
+        ));
         Self {
             config,
             store,
             driver,
             shutdown_tx,
             shutdown_rx,
-            in_flight: Arc::new(AtomicUsize::new(0)),
-            wake: Arc::new(Notify::new()),
+            in_flight,
+            model_waits,
+            wake,
             draining: Arc::new(AtomicBool::new(false)),
+            actors,
         }
+    }
+
+    /// Wake the session actor loop from `wakeups`, for a worker whose store
+    /// has no push channel but shares a process with the control plane
+    /// (DEV_MODE). Remote workers hear the same wake-ups through
+    /// `subscribe_task_wakeups`.
+    pub fn with_actor_wakeups(mut self, wakeups: &crate::actor_runtime::ActorWakeups) -> Self {
+        self.actors = self.actors.with_wakeups(wakeups);
+        self
     }
 
     /// Run the worker (blocking until shutdown)
@@ -337,6 +378,8 @@ where
             self.shutdown_rx.clone(),
         );
 
+        let actor_handles = self.spawn_actor_loop();
+
         // Adaptive poll backoff: doubles from `poll_interval` up to
         // `poll_backoff_max` while the queue is empty, so an idle worker stops
         // issuing tight-loop `claim_task` requests. Reset to base on any work.
@@ -382,6 +425,9 @@ where
         let _ = self.shutdown_tx.send(true);
         shutting_down.store(true, Ordering::SeqCst);
         self.finish_in_flight(&mut task_handles).await;
+        for handle in actor_handles {
+            let _ = handle.await;
+        }
         let _ = heartbeat_stop_tx.send(true);
         let _ = heartbeat_handle.await;
         let _ = wakeup_handle.await;
@@ -394,6 +440,57 @@ where
 
         info!("Unified worker stopped");
         Ok(())
+    }
+
+    /// Start the session actor loop and its wake-ups: `session_actor` wakes
+    /// the loop, `session_actor_cancel` makes every running lease renew now
+    /// (which is how its holder learns of the cancel). Each listener
+    /// subscribes under its own id: the control plane keeps one subscription
+    /// per id.
+    fn spawn_actor_loop(&self) -> Vec<tokio::task::JoinHandle<()>> {
+        let slots = ActorSlots {
+            in_flight: self.in_flight.clone(),
+            max_concurrent: self.config.max_concurrent_tasks,
+            claim_batch: self.config.claim_batch_size,
+            model_waits: self.model_waits.clone(),
+            draining: self.draining.clone(),
+            poll_interval: self.config.poll_interval,
+            // An expired lease sends no wake-up; see `ACTOR_POLL_BACKOFF_MAX`.
+            poll_backoff_max: self
+                .config
+                .poll_backoff_max
+                .min(crate::actor_runtime::ACTOR_POLL_BACKOFF_MAX),
+            shutdown_grace: self.config.shutdown_grace,
+        };
+        let actors = self.actors.clone();
+        let shutdown = self.shutdown_rx.clone();
+        let run = tokio::spawn(async move { actors.run(slots, shutdown).await });
+        let wakeups = spawn_wakeup_listener(
+            self.store.clone(),
+            format!("{}:actors", self.config.worker_id),
+            vec![crate::actor_runtime::SESSION_ACTOR_NOTIFICATION.to_string()],
+            self.actors.wake(),
+            self.shutdown_rx.clone(),
+        );
+        let cancels = Arc::new(Notify::new());
+        let cancel_wakeups = spawn_wakeup_listener(
+            self.store.clone(),
+            format!("{}:actor-cancels", self.config.worker_id),
+            vec![crate::actor_runtime::SESSION_ACTOR_CANCEL_NOTIFICATION.to_string()],
+            cancels.clone(),
+            self.shutdown_rx.clone(),
+        );
+        let poke = self.actors.renew_poke();
+        let mut shutdown = self.shutdown_rx.clone();
+        let forward = tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = cancels.notified() => poke.notify_waiters(),
+                    _ = shutdown.changed() => return,
+                }
+            }
+        });
+        vec![run, wakeups, cancel_wakeups, forward]
     }
 
     /// Signal the worker to shutdown
@@ -503,10 +600,11 @@ where
             let driver = self.driver.clone();
             let in_flight_guard = InFlightTaskGuard::increment(self.in_flight.clone());
             let wake = self.wake.clone();
+            let model_waits = self.model_waits.clone();
 
             task_handles.spawn(async move {
                 let _in_flight_guard = in_flight_guard;
-                let result = driver.execute_task(&task).await;
+                let result = model_wait::scope(model_waits, driver.execute_task(&task)).await;
                 // A finished phase usually enqueued the next one (reason -> act
                 // -> reason); claim it now instead of after the poll backoff.
                 wake.notify_one();
@@ -691,6 +789,8 @@ mod tests {
         finished: Arc<AtomicUsize>,
         /// Registry calls in order, to check drain-before-deregister.
         calls: Arc<std::sync::Mutex<Vec<&'static str>>>,
+        /// Spend `fail_delay` as a model wait, like a reason step streaming.
+        model_wait: bool,
     }
 
     #[async_trait::async_trait]
@@ -820,7 +920,9 @@ mod tests {
         ) -> Result<TaskFailureOutcome, StoreError> {
             let current = self.current.fetch_add(1, Ordering::SeqCst) + 1;
             self.max.fetch_max(current, Ordering::SeqCst);
+            let wait = self.model_wait.then(model_wait::begin);
             tokio::time::sleep(self.fail_delay).await;
+            drop(wait);
             self.current.fetch_sub(1, Ordering::SeqCst);
             self.finished.fetch_add(1, Ordering::SeqCst);
             Ok(TaskFailureOutcome::MovedToDlq)
@@ -900,6 +1002,42 @@ mod tests {
             store.max.load(Ordering::SeqCst) > 1,
             "store calls were serialized"
         );
+    }
+
+    async fn in_flight_while_waiting_on_the_model(max_concurrent_model_waits: usize) -> usize {
+        let store = Arc::new(ConcurrentStore {
+            fail_delay: Duration::from_millis(300),
+            model_wait: true,
+            ..Default::default()
+        });
+        let config = TaskWorkerConfig {
+            max_concurrent_tasks: 2,
+            claim_batch_size: 2,
+            max_concurrent_model_waits,
+            heartbeat_interval: Duration::from_secs(60),
+            ..Default::default()
+        };
+        let worker = TaskWorker::new(config, store.clone(), NoopAdapters);
+        let mut task_handles = JoinSet::new();
+        worker
+            .poll_and_execute(&mut task_handles)
+            .await
+            .expect("poll succeeds");
+        wait_until("both tasks waiting", || {
+            store.current.load(Ordering::SeqCst) == 2
+        })
+        .await;
+        let waiting = worker.in_flight.load(Ordering::SeqCst);
+        while task_handles.join_next().await.is_some() {}
+        assert_eq!(worker.in_flight.load(Ordering::SeqCst), 0);
+        waiting
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn model_waits_hand_their_slot_back() {
+        assert_eq!(in_flight_while_waiting_on_the_model(10).await, 0);
+        assert_eq!(in_flight_while_waiting_on_the_model(1).await, 1);
+        assert_eq!(in_flight_while_waiting_on_the_model(0).await, 2);
     }
 
     fn shutdown_config(grace: Duration) -> TaskWorkerConfig {

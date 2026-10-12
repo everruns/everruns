@@ -48,7 +48,9 @@ Providers are configured by organization admins under **Settings** →
 Click **Connect with OpenRouter** and authorize in the browser. OpenRouter's
 one-click [PKCE](https://openrouter.ai/docs/use-cases/oauth-pkce) flow returns a
 user-controlled API key that Everruns stores org-wide, no key copy-pasting, and
-no app registration. An admin authorizes once; everyone in the org then uses the
+no app registration. The consent screen's key label is preset to
+`Everruns <organization name>`, which is also the name of the key OpenRouter
+creates. An admin authorizes once; everyone in the org then uses the
 models the provider serves against the single stored credential. The key is
 encrypted at rest and never returned by the API.
 

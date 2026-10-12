@@ -3,13 +3,16 @@
 //
 // No policy checks, no input validation. Pure data access + mapping.
 
-use crate::records::{AgentChannel, AgentChannelId, ChannelAuthConfig, ChannelStatus, ChannelType};
+use crate::domains::agent_channels::record::{
+    AgentChannel, ChannelAuthConfig, ChannelStatus, ChannelType,
+};
+use crate::records::AgentChannelId;
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::storage::models::AgentChannelRow;
+use crate::storage::AgentChannelRow;
 
 // ============================================================================
 // Encryption helpers
@@ -228,7 +231,6 @@ pub fn channel_row_to_channel(
         row.channel_config_encrypted.as_deref(),
         &row.channel_config,
     );
-    normalize_slack_reply_mode(&row.channel_type, &mut channel_config);
     let legacy_auth = channel_config
         .as_object_mut()
         .and_then(|object| object.remove("auth"));
@@ -248,13 +250,6 @@ pub fn channel_row_to_channel(
         status: ChannelStatus::from(row.status.as_str()),
         created_at: row.created_at,
         updated_at: row.updated_at,
-    }
-}
-
-/// Normalize after decryption on both native and archival endpoint reads.
-pub(crate) fn normalize_slack_reply_mode(channel_type: &str, config: &mut serde_json::Value) {
-    if channel_type == "slack" && config["reply_mode"] == "report_progress_only" {
-        config["reply_mode"] = serde_json::json!("tool_only");
     }
 }
 
@@ -310,35 +305,6 @@ mod tests {
         Arc::new(
             EncryptionService::new(&generate_encryption_key("channel-auth-test"), &[]).unwrap(),
         )
-    }
-
-    #[test]
-    fn stored_slack_progress_modes_are_normalized_after_decryption() {
-        let encryption = encryption();
-        let legacy =
-            serde_json::json!({"reply_mode":"report_progress_only", "bot_token":"xoxb-test"});
-        for encrypted in [false, true] {
-            let mut stored = row(
-                if encrypted {
-                    serde_json::json!({})
-                } else {
-                    legacy.clone()
-                },
-                if encrypted {
-                    encrypt_channel_config(Some(&encryption), &legacy).unwrap()
-                } else {
-                    None
-                },
-                None,
-                None,
-            );
-            stored.channel_type = "slack".into();
-            let endpoint = channel_row_to_channel(Some(&encryption), stored);
-            assert_eq!(
-                endpoint.channel_config,
-                serde_json::json!({"reply_mode":"tool_only", "bot_token":"xoxb-test"})
-            );
-        }
     }
 
     #[test]
@@ -412,7 +378,7 @@ mod tests {
         let channel = channel_row_to_channel(None, row);
         assert_eq!(
             channel.auth.map(|auth| auth.mode),
-            Some(crate::records::ChannelAuthMode::GoogleOidc)
+            Some(crate::domains::agent_channels::record::ChannelAuthMode::GoogleOidc)
         );
         assert!(channel.channel_config.get("auth").is_none());
     }
@@ -429,7 +395,7 @@ mod tests {
         let channel = channel_row_to_channel(Some(&encryption()), row);
         assert_eq!(
             channel.auth.map(|auth| auth.mode),
-            Some(crate::records::ChannelAuthMode::HttpBasic)
+            Some(crate::domains::agent_channels::record::ChannelAuthMode::HttpBasic)
         );
         assert!(channel.channel_config.get("auth").is_none());
     }

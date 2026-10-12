@@ -19,11 +19,10 @@
 // observability integrations (OTel spans, metrics, etc.). Listeners are
 // called synchronously but should be non-blocking.
 
-use crate::event_delivery::EventDelivery;
-use crate::records::SessionParticipantKind;
+use crate::domains::sessions::record::SessionParticipantKind;
+use crate::live_updates::event_delivery::EventDelivery;
 use crate::storage::{
-    EventRow, StorageBackend,
-    models::{CreateEventRow, EventsSummary as EventsSummaryRow, ListEventsParams},
+    CreateEventRow, EventRow, EventsSummary as EventsSummaryRow, ListEventsParams, StorageBackend,
 };
 use anyhow::{Context, Result, bail};
 use everruns_contracts::error::AgentLoopError;
@@ -79,6 +78,14 @@ struct AgentEventMetadata {
     agent_id: Option<AgentId>,
     /// The agent history revision the session started on.
     agent_revision: Option<i64>,
+}
+
+/// The session actor lease a worker's event append is made under: the
+/// holder id and the fence it leased (see `EventService::emit_batch_fenced`).
+#[derive(Debug, Clone, Copy)]
+pub struct ActorAppendFence<'a> {
+    pub holder: &'a str,
+    pub fence: i64,
 }
 
 #[derive(Clone)]
@@ -212,6 +219,40 @@ impl EventService {
         self.emit_durable(request).await
     }
 
+    /// Emit a durable event only if the session's log currently ends at
+    /// `expected_last_sequence` (`None`: the session has no events).
+    ///
+    /// The single-writer primitive of the canonical session log: the check and
+    /// the sequence assignment happen in one transaction
+    /// (`Database::create_event_if_last`). On a mismatch nothing is written or
+    /// published and the error downcasts to
+    /// [`everruns_core::host::EventLogError::SequenceConflict`], carrying the
+    /// actual last sequence. Ephemeral requests are rejected: they have no
+    /// sequence to condition on.
+    pub async fn emit_conditional(
+        &self,
+        mut request: EventRequest,
+        expected_last_sequence: Option<i32>,
+    ) -> Result<Event> {
+        if request.is_ephemeral() {
+            return Err(everruns_core::host::EventLogError::InvalidAppend {
+                detail: format!(
+                    "ephemeral event {} has no sequence to condition on",
+                    request.event_type
+                ),
+            }
+            .into());
+        }
+        self.prepare_request(&mut request).await?;
+        let row = self
+            .db
+            .create_event_if_last(Self::create_row(request)?, expected_last_sequence)
+            .await?;
+        let event = Self::row_to_event(row);
+        self.publish_after_commit(vec![event.clone()]).await;
+        Ok(event)
+    }
+
     pub async fn emit_waiting_turn_resolution(
         &self,
         mut request: EventRequest,
@@ -272,6 +313,7 @@ impl EventService {
             .ok_or_else(|| AgentLoopError::session_not_found(request.session_id))?;
 
         let mut effective = ScopedMcpServers::new();
+        let mut agent_identity = None;
         if let Some(harness_id) = session.harness_id {
             let harness = self
                 .db
@@ -293,6 +335,7 @@ impl EventService {
             let servers = serde_json::from_value::<ScopedMcpServers>(agent.mcp_servers)
                 .context("invalid agent MCP server configuration")?;
             effective = merge_scoped_mcp_servers(&effective, &servers);
+            agent_identity = agent.virtual_user_id;
         }
         let servers = serde_json::from_value::<ScopedMcpServers>(session.mcp_servers.clone())
             .context("invalid session MCP server configuration")?;
@@ -311,9 +354,13 @@ impl EventService {
         if !is_service {
             return Ok(());
         }
-        let identity_id = session
-            .virtual_user_id
-            .context("service MCP event session has no virtual user")?;
+        // The service grant belongs to the agent's identity (the connection
+        // resolver reads `agents.virtual_user_id`), so that identity is the
+        // actor. Sessions a person starts carry no resident virtual user;
+        // requiring one dropped the events of calls that had already run.
+        let identity_id = agent_identity
+            .or(session.virtual_user_id)
+            .context("service MCP event session has no agent identity")?;
         let acting = self
             .db
             .get_principal_by_subject(session.org_id, "virtual_user", identity_id.uuid())
@@ -451,16 +498,11 @@ impl EventService {
         matches_participant: F,
     ) -> Option<everruns_contracts::typed_id::SessionParticipantId>
     where
-        F: Fn(&crate::storage::models::SessionParticipantRow) -> bool,
+        F: Fn(&crate::storage::SessionParticipantRow) -> bool,
     {
-        let session = self
-            .db
-            .get_session_unscoped(session_id)
-            .await
-            .ok()
-            .flatten()?;
+        let lineage = self.db.session_lineage(session_id).await.ok().flatten()?;
         self.db
-            .list_session_participants(session.org_id, session_id)
+            .list_session_participants(lineage.org_id, session_id)
             .await
             .ok()?
             .into_iter()
@@ -531,20 +573,26 @@ impl EventService {
 
     /// Store a run of durable events in one insert, then publish and notify
     /// each in order.
-    async fn emit_durable_run(&self, requests: Vec<EventRequest>) -> Result<Option<Event>> {
+    async fn emit_durable_run(
+        &self,
+        requests: Vec<EventRequest>,
+        fence: Option<ActorAppendFence<'_>>,
+    ) -> Result<Option<Event>> {
         let rows = requests
             .into_iter()
             .map(Self::create_row)
             .collect::<Result<Vec<_>>>()?;
         let session_id = single_session(&rows);
-        let events: Vec<Event> = self
-            .db
-            .create_events(rows)
-            .await
-            .map_err(|error| session_gone(error, session_id))?
-            .into_iter()
-            .map(Self::row_to_event)
-            .collect();
+        let stored = match fence {
+            Some(fence) => {
+                self.db
+                    .create_events_fenced(rows, fence.holder, fence.fence)
+                    .await
+            }
+            None => self.db.create_events(rows).await,
+        }
+        .map_err(|error| session_gone(error, session_id))?;
+        let events: Vec<Event> = stored.into_iter().map(Self::row_to_event).collect();
         let last = events.last().cloned();
         self.publish_after_commit(events).await;
         Ok(last)
@@ -594,6 +642,29 @@ impl EventService {
         &self,
         requests: Vec<EventRequest>,
     ) -> Result<(i32, Option<Event>)> {
+        self.emit_batch_inner(requests, None).await
+    }
+
+    /// [`Self::emit_batch_returning_last`] for the holder of a session actor
+    /// lease: each run of durable events is stored only while `fence` is
+    /// still the holder's live lease on the session, checked in the insert's
+    /// transaction (`Database::create_events_fenced`). A stale holder's batch
+    /// fails with [`crate::storage::ActorLeaseFenceRejected`] and from that
+    /// run on nothing lands. Ephemeral events that skip PostgreSQL are not
+    /// log appends and are delivered unchecked.
+    pub async fn emit_batch_fenced(
+        &self,
+        requests: Vec<EventRequest>,
+        fence: ActorAppendFence<'_>,
+    ) -> Result<(i32, Option<Event>)> {
+        self.emit_batch_inner(requests, Some(fence)).await
+    }
+
+    async fn emit_batch_inner(
+        &self,
+        requests: Vec<EventRequest>,
+        fence: Option<ActorAppendFence<'_>>,
+    ) -> Result<(i32, Option<Event>)> {
         let mut prepared = Vec::with_capacity(requests.len());
         for mut request in requests {
             self.prepare_request(&mut request).await?;
@@ -611,7 +682,7 @@ impl EventService {
             count += 1;
             if request.is_ephemeral() && skip_ephemeral {
                 if !durable_run.is_empty() {
-                    self.emit_durable_run(std::mem::take(&mut durable_run))
+                    self.emit_durable_run(std::mem::take(&mut durable_run), fence)
                         .await?;
                 }
                 last = Some(self.emit_ephemeral(request).await?);
@@ -620,7 +691,7 @@ impl EventService {
             }
         }
         if !durable_run.is_empty() {
-            last = self.emit_durable_run(durable_run).await?;
+            last = self.emit_durable_run(durable_run, fence).await?;
         }
 
         Ok((count, last))
@@ -804,12 +875,10 @@ impl everruns_core::event_emitter::EventEmitter for EventService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::event_delivery::EventDelivery;
-    use crate::records::SessionParticipantRole;
+    use crate::domains::sessions::record::SessionParticipantRole;
+    use crate::live_updates::event_delivery::EventDelivery;
     use crate::storage::StorageBackend;
-    use crate::storage::models::{
-        CreatePrincipalRow, CreateSessionParticipantRow, CreateSessionRow,
-    };
+    use crate::storage::{CreatePrincipalRow, CreateSessionParticipantRow, CreateSessionRow};
     use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId, VirtualUserId};
     use everruns_core::events::{
         EventContext, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
@@ -859,7 +928,7 @@ mod tests {
     fn test_session_input(agent_id: AgentId) -> CreateSessionRow {
         CreateSessionRow {
             playground_user_id: None,
-            source: crate::records::SessionSource::Api,
+            source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
@@ -1083,6 +1152,173 @@ mod tests {
         );
     }
 
+    fn sequence_conflict(error: &anyhow::Error) -> Option<(Option<i32>, Option<i32>)> {
+        match error.downcast_ref::<everruns_core::host::EventLogError>() {
+            Some(everruns_core::host::EventLogError::SequenceConflict {
+                expected, actual, ..
+            }) => Some((*expected, *actual)),
+            _ => None,
+        }
+    }
+
+    /// A conditional emit commits at the expected last sequence and returns
+    /// the next one; a stale expectation fails with the conflict carrying the
+    /// actual last sequence and writes nothing.
+    #[tokio::test]
+    async fn emit_conditional_commits_only_at_the_expected_last_sequence() {
+        let db = Arc::new(StorageBackend::test_database());
+        let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
+        let agent_id = AgentId::from_uuid(
+            db.create_test_agent(DEFAULT_ORG_ID, uuid::Uuid::now_v7())
+                .await,
+        );
+        let session = db
+            .create_session(test_session_input(agent_id))
+            .await
+            .unwrap()
+            .id;
+        let said = |text: &str| {
+            EventRequest::new(
+                session,
+                EventContext::empty(),
+                OutputMessageCompletedData::new(RuntimeMessage::assistant(text)),
+            )
+        };
+        let stored = || async {
+            event_service
+                .list(session.uuid(), None, None, &[], &[], None, None)
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|event| event.sequence.unwrap())
+                .collect::<Vec<_>>()
+        };
+
+        // An empty log ends at `None`.
+        let error = event_service
+            .emit_conditional(said("stale"), Some(1))
+            .await
+            .unwrap_err();
+        assert_eq!(sequence_conflict(&error), Some((Some(1), None)));
+        let first = event_service
+            .emit_conditional(said("one"), None)
+            .await
+            .unwrap();
+        assert_eq!(first.sequence, Some(1));
+
+        // An unconditional emit moves the end; the conditional path sees it.
+        event_service.emit(said("two")).await.unwrap();
+        for stale in [None, Some(1), Some(3)] {
+            let error = event_service
+                .emit_conditional(said("stale"), stale)
+                .await
+                .unwrap_err();
+            assert_eq!(sequence_conflict(&error), Some((stale, Some(2))));
+        }
+        assert_eq!(stored().await, vec![1, 2]);
+
+        let third = event_service
+            .emit_conditional(said("three"), Some(2))
+            .await
+            .unwrap();
+        assert_eq!(third.sequence, Some(3));
+        // Rejected attempts consumed no sequence: plain emits continue at 4.
+        let fourth = event_service.emit(said("four")).await.unwrap();
+        assert_eq!(fourth.sequence, Some(4));
+        assert_eq!(stored().await, vec![1, 2, 3, 4]);
+        let summary = db
+            .get_session(DEFAULT_ORG_ID, session)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(summary.event_count, 4);
+    }
+
+    /// Writers racing with the same expectation: exactly one commits.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn emit_conditional_admits_exactly_one_of_concurrent_writers() {
+        let db = Arc::new(StorageBackend::test_database());
+        let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
+        let agent_id = AgentId::from_uuid(
+            db.create_test_agent(DEFAULT_ORG_ID, uuid::Uuid::now_v7())
+                .await,
+        );
+        for seeded in [false, true] {
+            let session = db
+                .create_session(test_session_input(agent_id))
+                .await
+                .unwrap()
+                .id;
+            let said = move |text: String| {
+                EventRequest::new(
+                    session,
+                    EventContext::empty(),
+                    OutputMessageCompletedData::new(RuntimeMessage::assistant(text)),
+                )
+            };
+            // Both the first event of a session (no event_sequences row yet)
+            // and a later one.
+            let expected = if seeded {
+                event_service.emit(said("seed".into())).await.unwrap();
+                Some(1)
+            } else {
+                None
+            };
+            let writers = (0..8)
+                .map(|writer| {
+                    let event_service = event_service.clone();
+                    tokio::spawn(async move {
+                        event_service
+                            .emit_conditional(said(format!("writer {writer}")), expected)
+                            .await
+                    })
+                })
+                .collect::<Vec<_>>();
+            let mut won = Vec::new();
+            for writer in writers {
+                match writer.await.unwrap() {
+                    Ok(event) => won.push(event.sequence),
+                    Err(error) => assert_eq!(
+                        sequence_conflict(&error),
+                        Some((expected, Some(expected.unwrap_or(0) + 1))),
+                        "{error:#}"
+                    ),
+                }
+            }
+            assert_eq!(won, vec![Some(expected.unwrap_or(0) + 1)]);
+            let events = event_service
+                .list(session.uuid(), None, None, &[], &[], None, None)
+                .await
+                .unwrap();
+            assert_eq!(events.len(), expected.unwrap_or(0) as usize + 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn emit_conditional_rejects_ephemeral_requests() {
+        let db = Arc::new(StorageBackend::test_database());
+        let event_service = EventService::new(db, EventDelivery::in_memory());
+        let delta = EventRequest::new(
+            SessionId::new(),
+            EventContext::empty(),
+            everruns_core::events::OutputMessageDeltaData {
+                turn_id: everruns_contracts::typed_id::TurnId::new(),
+                message_id: everruns_contracts::typed_id::MessageId::new(),
+                delta: "x".into(),
+                accumulated: "x".into(),
+                phase: None,
+            },
+        );
+        let error = event_service
+            .emit_conditional(delta, None)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error.downcast_ref::<everruns_core::host::EventLogError>(),
+            Some(everruns_core::host::EventLogError::InvalidAppend { .. })
+        ));
+    }
+
     #[tokio::test]
     async fn service_mcp_event_preserves_initiator_and_overrides_acting_principal() {
         let db = Arc::new(StorageBackend::test_database());
@@ -1139,6 +1375,57 @@ mod tests {
             .unwrap();
         assert_ne!(acting_principal_id, wrong_actor);
         assert_eq!(acting.kind, "virtual_user");
+        assert_eq!(acting.subject_id, Some(identity_id.uuid()));
+    }
+
+    #[tokio::test]
+    async fn service_mcp_event_acts_as_agent_identity_in_person_started_session() {
+        let db = Arc::new(StorageBackend::test_database());
+        let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
+        let identity_id = db.create_test_virtual_user(DEFAULT_ORG_ID).await;
+        db.create_principal(CreatePrincipalRow {
+            id: PrincipalId::new(),
+            org_id: DEFAULT_ORG_ID,
+            kind: "virtual_user".to_string(),
+            subject_id: Some(identity_id.uuid()),
+            parent_principal_id: None,
+            resolved_user_id: None,
+            metadata: serde_json::json!({}),
+        })
+        .await
+        .unwrap();
+        let agent_id = db
+            .create_test_agent(DEFAULT_ORG_ID, uuid::Uuid::now_v7())
+            .await;
+        sqlx::query("UPDATE agents SET virtual_user_id = $1 WHERE id = $2")
+            .bind(identity_id.uuid())
+            .bind(agent_id)
+            .execute(db.database().pool())
+            .await
+            .unwrap();
+        // A chat or API run a person starts has no resident virtual user.
+        let mut input = service_session_input(None);
+        input.agent_id = Some(AgentId::from_uuid(agent_id));
+        let session = db.create_session(input).await.unwrap();
+
+        let event = event_service
+            .emit(service_tool_event(session.id))
+            .await
+            .unwrap();
+
+        let acting_principal_id: PrincipalId = event
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("acting_principal_id"))
+            .and_then(|value| value.as_str())
+            .unwrap()
+            .parse()
+            .unwrap();
+        let acting = db
+            .get_principal(DEFAULT_ORG_ID, acting_principal_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(acting.subject_id, Some(identity_id.uuid()));
     }
 

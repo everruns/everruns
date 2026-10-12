@@ -4,6 +4,7 @@ use everruns_core::{Permission, Policy, Rule};
 
 pub mod commands;
 pub mod files;
+pub mod record;
 pub mod source_sync;
 pub mod types;
 

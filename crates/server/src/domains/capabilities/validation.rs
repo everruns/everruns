@@ -179,9 +179,9 @@ pub(crate) async fn validate_resolved_capability_refs(
                 .await?
                 .ok_or_else(|| ResourceNotFoundError::new("Decision model"))?;
             if !model.enabled
-                || crate::services::model_catalog::service(model.provider_metadata.as_ref())
+                || crate::domains::models::catalog::service(model.provider_metadata.as_ref())
                     != everruns_contracts::ServiceKind::Decisions
-                || crate::services::model_catalog::profile(model.provider_metadata.as_ref())
+                || crate::domains::models::catalog::profile(model.provider_metadata.as_ref())
                     .and_then(|p| p.decisions)
                     .is_none_or(|p| {
                         !p.calibrated
@@ -367,9 +367,8 @@ mod tests {
     }
 
     use super::*;
-    use crate::storage::models::{
-        CreateDeclarativeCapabilityRow, CreateMcpServerRow, CreatePluginInstallRow, CreateSkillRow,
-    };
+    use crate::storage::CreateMcpServerRow;
+    use crate::storage::{CreateDeclarativeCapabilityRow, CreatePluginInstallRow, CreateSkillRow};
     use everruns_contracts::plugin_capability_id;
     use everruns_contracts::typed_id::PluginInstallId;
     use everruns_core::DEFAULT_ORG_ID;
@@ -416,19 +415,44 @@ mod tests {
 
     #[test]
     fn feature_gated_capability_requires_effective_flag() {
-        let capabilities = vec![AgentCapabilityConfig::new("agent_handoff")];
+        let capabilities = vec![AgentCapabilityConfig::new("skills")];
         let error = validate_feature_gated_capability_refs(
             &crate::records::FeatureFlags::default(),
             &capabilities,
         )
         .unwrap_err();
-        assert_eq!(error.message(), "Feature 'agent_delegation' is not enabled");
+        assert_eq!(error.message(), "Feature 'skills' is not enabled");
 
         let enabled = crate::records::FeatureFlags {
-            agent_delegation: true,
+            skills: true,
             ..crate::records::FeatureFlags::default()
         };
         validate_feature_gated_capability_refs(&enabled, &capabilities).unwrap();
+    }
+
+    #[test]
+    fn delegation_needs_no_feature_flag() {
+        // Adding the capability to an agent is the opt-in.
+        let capabilities = vec![
+            AgentCapabilityConfig::new("agent_handoff"),
+            AgentCapabilityConfig::new("a2a_agent_delegation"),
+        ];
+        validate_feature_gated_capability_refs(
+            &crate::records::FeatureFlags::default(),
+            &capabilities,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn coordination_needs_no_feature_flag() {
+        // Adding the capability to an agent is the opt-in.
+        let capabilities = vec![AgentCapabilityConfig::new("coordination")];
+        validate_feature_gated_capability_refs(
+            &crate::records::FeatureFlags::default(),
+            &capabilities,
+        )
+        .unwrap();
     }
 
     #[tokio::test]
@@ -616,7 +640,7 @@ mod tests {
         db.update_plugin_install(
             DEFAULT_ORG_ID,
             plugin.id,
-            crate::storage::models::UpdatePluginInstall {
+            crate::storage::UpdatePluginInstall {
                 definition: Some(definition.clone()),
                 ..Default::default()
             },

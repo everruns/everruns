@@ -11,31 +11,29 @@
 // entity to a group.
 
 import {
-  Boxes,
-  Brain,
-  Calendar,
-  ChartColumn,
-  CircuitBoard,
-  ArrowRight,
-  Plus,
-  ClipboardCheck,
-  Cog,
-  FlaskConical,
-  Library,
-  ListTodo,
-  MessageCircle,
-  MessageSquare,
-  Radio,
-  Server,
-  Container,
-  Cpu,
-  KeyRound,
-  Settings,
-  Shield,
-  Telescope,
-  UserRound,
-  Workflow,
-} from "lucide-react";
+  AgentIcon,
+  ChatIcon,
+  CircuitBreakerIcon,
+  DurableIcon,
+  EvalsIcon,
+  HarnessDomainIcon,
+  KnowledgeIcon,
+  MemoryIcon,
+  ObserverIcon,
+  PlaygroundIcon,
+  ProviderAccountIcon,
+  QueueIcon,
+  ReportIcon,
+  SandboxIcon,
+  SandboxTemplateIcon,
+  ScheduleIcon,
+  SessionIcon,
+  SettingsIcon,
+  VirtualUserIcon,
+  WorkerIcon,
+  WorkflowIcon,
+} from "@/components/icons/facet-icons";
+import { ArrowRight, Plus } from "lucide-react";
 import type { IconComponent } from "@/lib/capability-icons";
 import { registryNavigationItems, type RegistryNavigationItem } from "@/lib/registry-navigation";
 import type { FeatureFlags } from "@/lib/api/types";
@@ -50,8 +48,6 @@ export type NavigationItem = {
   /** Set false to disable the shared hover/focus prefetch in addition to automatic prefetch. */
   prefetch?: boolean;
   flag?: keyof FeatureFlags;
-  /** Hide this destination once the named flag is on (a page it replaces). */
-  hiddenByFlag?: keyof FeatureFlags;
   exact?: boolean;
   /** Keep a primary destination visibly actionable even when another route is open. */
   prominent?: boolean;
@@ -79,7 +75,7 @@ export const defaultChatsNavigation: NavigationItem[] = [
   {
     name: "Chat",
     href: "/chats",
-    icon: MessageCircle,
+    icon: ChatIcon,
     exact: true,
     prominent: true,
     keywords: ["chats", "global chat", "conversation"],
@@ -101,29 +97,28 @@ export const defaultOperationalNavigation: NavigationItem[] = [
   {
     name: "Sessions",
     href: "/sessions",
-    icon: MessageSquare,
+    icon: SessionIcon,
     keywords: ["recordings", "conversation", "transcript"],
   },
-  // "What in this org is reachable from outside right now" is a question
-  // security and ops ask, and no agent page can answer it — it shows one agent
-  // (EVE-1010). It sits here rather than under Building because reading it is
-  // an operational act; the editing it links to lives on the agent.
-  // Agents home (`agents_home`) moves channels onto the Agents page.
-  { name: "Exposures", href: "/exposures", icon: Radio, hiddenByFlag: "agents_home" },
 ];
 
 export const defaultBuildingNavigation: NavigationItem[] = [
-  { name: "Agents", href: "/agents", icon: Boxes, keywords: ["bot", "assistant"] },
+  { name: "Agents", href: "/agents", icon: AgentIcon, keywords: ["bot", "assistant"] },
   {
     name: "Playground",
     href: "/playground",
-    icon: FlaskConical,
+    icon: PlaygroundIcon,
   },
-  { name: "Harnesses", href: "/harnesses", icon: Shield, keywords: ["template", "config"] },
+  {
+    name: "Harnesses",
+    href: "/harnesses",
+    icon: HarnessDomainIcon,
+    keywords: ["template", "config"],
+  },
   {
     name: "Virtual Users",
     href: "/virtual-users",
-    icon: UserRound,
+    icon: VirtualUserIcon,
     keywords: ["persona", "principal", "identity"],
   },
 ];
@@ -138,7 +133,7 @@ export const defaultRegistriesNavigation: NavigationItem[] = [
   {
     name: "Knowledge indexes",
     href: "/knowledge-indexes",
-    icon: Library,
+    icon: KnowledgeIcon,
     flag: "knowledge",
     experimental: true,
     keywords: ["knowledge", "index", "search", "retrieval"],
@@ -146,7 +141,7 @@ export const defaultRegistriesNavigation: NavigationItem[] = [
   {
     name: "Memory",
     href: "/memory",
-    icon: Brain,
+    icon: MemoryIcon,
     keywords: ["workspace", "files", "storage"],
     flag: "memory",
     experimental: true,
@@ -157,7 +152,7 @@ export const defaultQualityNavigation: NavigationItem[] = [
   {
     name: "Evals",
     href: "/evals",
-    icon: ClipboardCheck,
+    icon: EvalsIcon,
     keywords: ["evaluation", "test", "benchmark", "score"],
     flag: "evals",
     experimental: true,
@@ -165,7 +160,7 @@ export const defaultQualityNavigation: NavigationItem[] = [
   {
     name: "Observers",
     href: "/observers",
-    icon: Telescope,
+    icon: ObserverIcon,
     keywords: ["monitor", "score", "production eval"],
     flag: "observers",
     experimental: true,
@@ -173,7 +168,7 @@ export const defaultQualityNavigation: NavigationItem[] = [
   {
     name: "Reports",
     href: "/reports",
-    icon: ChartColumn,
+    icon: ReportIcon,
     flag: "reports",
     experimental: true,
     keywords: ["analytics", "saved report"],
@@ -184,7 +179,7 @@ export const defaultBottomNavigation: NavigationItem[] = [
   {
     name: "Settings",
     href: "/settings/organization",
-    icon: Settings,
+    icon: SettingsIcon,
     activePrefix: "/settings",
     prefetch: false,
     keywords: ["preferences", "config"],
@@ -197,40 +192,40 @@ export const defaultSandboxesNavigation: NavigationItem[] = [
   {
     name: "Fleet",
     href: "/sandboxes",
-    icon: Cpu,
+    icon: SandboxIcon,
     keywords: ["sandboxes", "compute", "daytona", "modal", "containers", "running"],
   },
   {
     name: "Templates",
     href: "/sandbox-templates",
-    icon: Container,
+    icon: SandboxTemplateIcon,
     keywords: ["sandbox templates", "environment", "compute", "workspace"],
   },
   {
     name: "Provider Accounts",
     href: "/sandbox-provider-accounts",
-    icon: KeyRound,
+    icon: ProviderAccountIcon,
     keywords: ["sandbox credentials", "daytona", "modal", "e2b", "organization accounts"],
     minimumRole: "admin",
   },
 ];
 
 export const defaultDurableNavigation: NavigationItem[] = [
-  { name: "Overview", href: "/durable", icon: Cog, exact: true },
-  { name: "Workers", href: "/durable/workers", icon: Server },
-  { name: "Workflows", href: "/durable/workflows", icon: Workflow },
-  { name: "Queues", href: "/durable/queues", icon: ListTodo },
-  { name: "Schedules", href: "/durable/schedules", icon: Calendar },
+  { name: "Overview", href: "/durable", icon: DurableIcon, exact: true },
+  { name: "Workers", href: "/durable/workers", icon: WorkerIcon },
+  { name: "Workflows", href: "/durable/workflows", icon: WorkflowIcon },
+  { name: "Queues", href: "/durable/queues", icon: QueueIcon },
+  { name: "Schedules", href: "/durable/schedules", icon: ScheduleIcon },
   {
     name: "Circuit Breakers",
     href: "/durable/circuit-breakers",
-    icon: CircuitBoard,
+    icon: CircuitBreakerIcon,
     keywords: ["failure", "resilience"],
   },
 ];
 
 export const defaultDevNavigation: NavigationItem[] = [
-  { name: "Dev Tools", href: "/dev", icon: FlaskConical },
+  { name: "Dev Tools", href: "/dev", icon: PlaygroundIcon },
 ];
 
 export const defaultNavigationSections: NavigationSection[] = [
@@ -294,7 +289,6 @@ export function visibleNavigationSections(
       items: section.items.filter(
         (item) =>
           (!item.flag || featureFlags[item.flag]) &&
-          (!item.hiddenByFlag || !featureFlags[item.hiddenByFlag]) &&
           (!item.minimumRole || hasRole(item.minimumRole)) &&
           (!item.policy || (can?.(item.policy) ?? false)),
       ),

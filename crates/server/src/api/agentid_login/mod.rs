@@ -22,10 +22,10 @@
 //!   AgentID has no refresh token, so a new sign-in renews it.
 //!
 //! See knowledge/integrations/agentid.md.
-use crate::api::ag_ui::AgUiState;
 use crate::api::channel_auth::verify_agentid_claims;
 use crate::api::channel_ingress::{IngressChannel, IngressContext};
-use crate::records::{AGENTID_ISSUER, ChannelAuthConfig, ChannelType};
+use crate::channels::ag_ui::AgUiState;
+use crate::domains::agent_channels::record::{AGENTID_ISSUER, ChannelAuthConfig, ChannelType};
 use crate::storage::agentid::{AgentIdAgent, AgentIdLoginState, AgentIdSignIn};
 use axum::{
     Router,

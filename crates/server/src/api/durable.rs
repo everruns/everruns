@@ -56,7 +56,7 @@ pub struct AppState {
     metrics: MetricsCollector,
     auth: AuthState,
     /// Task notification broadcaster for NATS publish on enqueue (optional)
-    task_broadcaster: Option<Arc<crate::task_notifications::TaskBroadcaster>>,
+    task_broadcaster: Option<Arc<crate::live_updates::task_notifications::TaskBroadcaster>>,
     /// Event delivery backend name for health endpoint
     event_delivery_backend: String,
 }
@@ -98,7 +98,7 @@ impl AppState {
     pub fn new(
         store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
         auth: AuthState,
-        task_broadcaster: Option<Arc<crate::task_notifications::TaskBroadcaster>>,
+        task_broadcaster: Option<Arc<crate::live_updates::task_notifications::TaskBroadcaster>>,
         event_delivery_backend: String,
     ) -> Self {
         Self {
@@ -492,9 +492,8 @@ pub struct WorkersListResponse {
     pub summary: WorkersSummaryResponse,
 }
 
-/// Compute the aggregate counts/capacity for a page of workers. Shared by the
-/// `list_workers` handler and its tests so the summary rules are exercised for
-/// real, not re-derived in the test.
+/// Compute the aggregate counts/capacity for a page of workers. Shared by the `list_workers`
+/// handler and its tests so the summary rules are exercised for real, not re-derived in the test.
 fn workers_summary(workers: &[WorkerResponse]) -> WorkersSummaryResponse {
     WorkersSummaryResponse {
         active: workers.iter().filter(|w| w.status == "active").count(),
@@ -3224,7 +3223,7 @@ mod tests {
         use crate::auth::config::{AuthConfig, AuthMode};
         use crate::auth::middleware::{AuthError, AuthMethod, AuthUser};
         use crate::auth::routes::AuthConfigResponse;
-        use crate::records::OrgMembership;
+        use crate::domains::organizations::record::OrgMembership;
         use async_trait::async_trait;
         use axum::body::{Body, to_bytes};
         use axum::http::Request;
@@ -3253,6 +3252,7 @@ mod tests {
                         name: "Test Org".to_string(),
                         role: OrgRole::Owner,
                     }],
+                    pat_scope: None,
                 })
             }
 

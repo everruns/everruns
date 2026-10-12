@@ -10,6 +10,6 @@ describe("isDriverOffered", () => {
     expect(isDriverOffered("mistral", undefined)).toBe(false);
     expect(isDriverOffered("mistral", [{ driver: "openai" }])).toBe(false);
     expect(isDriverOffered("mistral", [{ driver: "mistral" }])).toBe(true);
-    expect(isDriverOffered("chatgpt", [{ driver: "mistral" }])).toBe(false);
+    expect(isDriverOffered("chatgpt", undefined)).toBe(true);
   });
 });

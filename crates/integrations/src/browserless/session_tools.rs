@@ -135,6 +135,7 @@ impl Tool for BrowserlessOpenBrowserTool {
 
     fn hints(&self) -> ToolHints {
         ToolHints::default()
+            .with_concurrency_class(crate::browserless::SESSION_BROWSER_CONCURRENCY_CLASS)
             .with_open_world(true)
             .with_requires_secrets(true)
             .with_long_running(true)
@@ -372,6 +373,7 @@ impl Tool for BrowserlessCloseBrowserTool {
 
     fn hints(&self) -> ToolHints {
         ToolHints::default()
+            .with_concurrency_class(crate::browserless::SESSION_BROWSER_CONCURRENCY_CLASS)
             .with_open_world(true)
             .with_requires_secrets(true)
             .with_destructive(true)
@@ -489,6 +491,8 @@ pub async fn try_get_cdp_session(context: &ToolContext) -> Option<CdpSession> {
 pub struct ToolBrowser {
     session: CdpSession,
     persistent: bool,
+    /// A tab this call opened in the persistent browser, closed on release.
+    scratch_page: Option<String>,
 }
 
 /// How a tool reaches a browser for one call.
@@ -535,9 +539,33 @@ impl ToolBrowser {
         }
     }
 
+    /// Read a URL without moving the persistent browser's page.
+    ///
+    /// Decision: `browserless_content`, `_scrape` and `_screenshot` take a URL
+    /// and only read it. On the persistent browser they used to navigate its
+    /// page, the one `browserless_navigate`, `_interact` and the `browser`
+    /// tool are working in, so a read silently moved the agent's page (a Tab
+    /// press then landed on the page last scraped). They now read in a tab of
+    /// their own in the same guarded context, so cookies and logins still
+    /// apply, and the tab is closed on release. A one-shot browser has no
+    /// page to protect.
+    pub async fn use_scratch_page(&mut self) -> Result<(), String> {
+        if !self.persistent || self.scratch_page.is_some() {
+            return Ok(());
+        }
+        let target_id = self.session.open_page().await?;
+        self.scratch_page = Some(target_id);
+        Ok(())
+    }
+
     /// Keep the persistent browser alive, then disconnect. A one-shot browser
     /// is destroyed by the disconnect.
     pub async fn release(mut self, context: &ToolContext) {
+        if let Some(target_id) = self.scratch_page.take()
+            && let Err(e) = self.session.close_page(&target_id).await
+        {
+            warn!("Failed to close the scratch tab: {e}");
+        }
         if self.persistent {
             keep_session_alive(context, &mut self.session).await;
         }
@@ -565,6 +593,7 @@ pub async fn acquire_browser(context: &ToolContext) -> Result<Acquired, ToolExec
         return Ok(Acquired::Browser(ToolBrowser {
             session,
             persistent: true,
+            scratch_page: None,
         }));
     }
 
@@ -582,6 +611,7 @@ pub async fn acquire_browser(context: &ToolContext) -> Result<Acquired, ToolExec
             Ok(Acquired::Browser(ToolBrowser {
                 session,
                 persistent: false,
+                scratch_page: None,
             }))
         }
         Err(e) if is_cdp_refused(&e) && unguarded_rest_allowed() => {

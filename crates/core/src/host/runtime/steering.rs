@@ -1,15 +1,27 @@
 //! Steering: user input that joins a running turn at its next reason
-//! boundary.
+//! boundary, and the in-process [`TurnInbox`] the generic turn loop takes it
+//! through.
+//!
+//! Decision: the in-process inbox is the turn's [`TurnSteering`] plus the
+//! session wake queue plus the in-memory parked turns. Wakes are counted at
+//! the end of every reason but only taken at the start of the next one, and
+//! a pending wake keeps steering from being taken or closed, exactly as the
+//! loop did before it was host-generic.
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
+use async_trait::async_trait;
 use everruns_contracts::error::Result;
-use everruns_contracts::typed_id::{MessageId, SessionId};
+use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 
-use super::{AcceptedTurnInput, InProcessRuntime};
+use super::{AcceptedTurnInput, InProcessRuntime, message_from_input};
+use crate::InputMessage;
+use crate::engine::TurnState;
 use crate::event_emitter::EventEmitter;
 use crate::events::{EventContext, EventRequest, InputMessageData};
+use crate::host::turn_loop::{PendingInput, TurnInbox};
 
 /// Concurrency-safe ingress for messages sent while an in-process turn runs.
 ///
@@ -145,5 +157,130 @@ impl InProcessRuntime {
             ))
             .await?;
         Ok(message_id)
+    }
+
+    async fn inject_steering_inputs(
+        &self,
+        session_id: SessionId,
+        inputs: Vec<AcceptedTurnInput>,
+    ) -> Result<Vec<MessageId>> {
+        let mut message_ids = Vec::with_capacity(inputs.len());
+        for input in inputs {
+            message_ids.push(self.persist_accepted_input(session_id, input).await?);
+        }
+        Ok(message_ids)
+    }
+
+    /// Drain any queued task wakes for `session_id` and inject them into the
+    /// conversation as user messages so the next reason reacts to them
+    /// (EVE-681, part A). Returns the ids of the injected messages so prompt
+    /// hooks can inspect them before the next provider call.
+    ///
+    /// Called at the top of every reason iteration — before the LLM call — so a
+    /// task completion that landed during the previous act (or while idle) is
+    /// visible to the very next iteration. `SessionWakeQueue::drain` is the
+    /// exactly-once claim point: a drained wake is removed and never delivered
+    /// twice, so a wake is delivered mid-turn XOR on the next turn's first
+    /// drain, never both.
+    async fn drain_and_inject_wakes(&self, session_id: SessionId) -> Result<Vec<MessageId>> {
+        let Some(queue) = &self.session_wake_queue else {
+            return Ok(vec![]);
+        };
+        let wakes = queue.drain(session_id);
+        if wakes.is_empty() {
+            return Ok(vec![]);
+        }
+        let mut message_ids = Vec::with_capacity(wakes.len());
+        for wake in wakes {
+            // Append one canonical input event; history is reconstructed from it.
+            let message = message_from_input(InputMessage::user(wake.text));
+            message_ids.push(message.id);
+            self.event_emitter
+                .emit(EventRequest::new(
+                    session_id,
+                    EventContext::empty(),
+                    InputMessageData::new(message),
+                ))
+                .await?;
+        }
+        Ok(message_ids)
+    }
+}
+
+/// The in-process [`TurnInbox`]: one turn's steering, the session's wake
+/// queue, and this runtime's parked turns.
+pub(super) struct InProcessInbox<'a> {
+    runtime: &'a InProcessRuntime,
+    steering: TurnSteering,
+}
+
+impl<'a> InProcessInbox<'a> {
+    pub(super) fn new(runtime: &'a InProcessRuntime, steering: TurnSteering) -> Self {
+        Self { runtime, steering }
+    }
+}
+
+#[async_trait]
+impl TurnInbox for InProcessInbox<'_> {
+    async fn take(&self, session_id: SessionId) -> Result<Vec<MessageId>> {
+        let mut message_ids = self
+            .runtime
+            .inject_steering_inputs(session_id, self.steering.drain())
+            .await?;
+        // Draining wakes here also delivers wakes that arrived while the
+        // session was idle, on the next turn's first iteration (between-turn
+        // fallback).
+        message_ids.extend(self.runtime.drain_and_inject_wakes(session_id).await?);
+        Ok(message_ids)
+    }
+
+    async fn after_reason(
+        &self,
+        session_id: SessionId,
+        would_finish: bool,
+    ) -> Result<PendingInput> {
+        // A pending wake is delivered by the next `take`, so it neither takes
+        // nor closes steering here.
+        let pending_wakes = usize::from(
+            self.runtime
+                .session_wake_queue
+                .as_ref()
+                .is_some_and(|queue| queue.has_pending(session_id)),
+        );
+        let steering = if would_finish && pending_wakes == 0 {
+            self.steering.drain_or_close()
+        } else {
+            vec![]
+        };
+        let count = pending_wakes + steering.len();
+        let message_ids = self
+            .runtime
+            .inject_steering_inputs(session_id, steering)
+            .await?;
+        Ok(PendingInput::new(count, message_ids))
+    }
+
+    async fn close(&self, _session_id: SessionId) -> Result<()> {
+        self.steering.close();
+        Ok(())
+    }
+
+    async fn park(
+        &self,
+        session_id: SessionId,
+        turn_id: TurnId,
+        client_tool_calls: Vec<ToolCall>,
+        resume: TurnState,
+    ) -> Result<()> {
+        // No reason boundary remains, so accepted steering is appended with
+        // its prompt hooks applied now; the park waits in memory for
+        // `resume_steerable_turn`.
+        self.steering.close();
+        self.runtime
+            .append_accepted_inputs(session_id, turn_id, self.steering.drain())
+            .await?;
+        self.runtime
+            .park_turn(session_id, turn_id, client_tool_calls, resume);
+        Ok(())
     }
 }

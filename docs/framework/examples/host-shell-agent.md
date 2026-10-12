@@ -7,7 +7,7 @@ description: Fix a failing Rust test suite by compiling and running it, inside a
 
 Fix a failing Rust test suite by compiling and running it, through the [Host
 Shell](/capabilities/host-shell/) capability: real processes on this machine,
-bounded by a kernel policy. This is a real `gpt-5.6-terra` agent, not a scripted
+bounded by a kernel policy. This is a real `gpt-6.1-sol` agent, not a scripted
 turn.
 
 ## What you learn

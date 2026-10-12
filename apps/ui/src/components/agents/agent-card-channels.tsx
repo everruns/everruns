@@ -16,8 +16,8 @@ function channelLabel(channel: AgentChannelSummary) {
       return "FCP";
     case "public_chat":
       return "Public chat";
-    case "api_endpoint":
-      return "API";
+    case "api":
+      return "Agent API";
     default:
       return getChannelTypeDisplayName(channel.channel_type);
   }

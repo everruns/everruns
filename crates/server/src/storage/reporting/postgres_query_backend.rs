@@ -1,4 +1,4 @@
-use crate::records::reporting::{
+use crate::domains::reporting::record::{
     ReportColumn, ReportColumnKind, ReportFilterOp, ReportOrderDirection, ReportQuery,
     ReportResult, ReportScope, ReportingQueryBackend,
 };

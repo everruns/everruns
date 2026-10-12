@@ -41,9 +41,9 @@ assert_eq!(capability.tools().len(), 1);
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-integrations)
-- [DuckDuckGo integration](https://docs.everruns.com/integrations/duckduckgo/)
-- [Give an agent web access](https://docs.everruns.com/how-to/give-an-agent-web-access/)
-- [Everruns documentation](https://docs.everruns.com)
+- [DuckDuckGo integration](https://everruns.com/docs/integrations/duckduckgo/)
+- [Give an agent web access](https://everruns.com/docs/how-to/give-an-agent-web-access/)
+- [Everruns documentation](https://everruns.com/docs)
 
 ## License
 

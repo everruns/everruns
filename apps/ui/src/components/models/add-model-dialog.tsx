@@ -53,7 +53,8 @@ export function AddModelDialog({
       ? ["chat", "embeddings", "decisions"]
       : selectedProvider?.provider_type === "typesafe"
         ? ["decisions"]
-        : selectedProvider?.provider_type === "openrouter"
+        : selectedProvider?.provider_type === "openrouter" ||
+            selectedProvider?.provider_type === "mai"
           ? ["chat", "decisions"]
           : ["chat"]);
 

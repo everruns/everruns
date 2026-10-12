@@ -90,7 +90,7 @@ pub struct SessionSandboxResponse {
     pub source_capability: Option<String>,
     /// Immutable resolved specification pinned when the Session was created.
     #[serde(skip_serializing_if = "Option::is_none", alias = "profile")]
-    pub spec: Option<crate::records::ResolvedSandboxSpec>,
+    pub spec: Option<crate::domains::sandbox_templates::record::ResolvedSandboxSpec>,
     /// Control-plane lifecycle intent and latest observed physical state.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub desired_state: Option<String>,

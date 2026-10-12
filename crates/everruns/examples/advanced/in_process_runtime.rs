@@ -4,20 +4,19 @@
 //! Framework instead; this example is for advanced hosts that assemble the
 //! platform, capability registry, and per-type builders themselves.
 //!
+//! The agent runs against OpenAI `gpt-6.1-sol`; set `OPENAI_API_KEY`.
+//!
 //! Run it:
 //!
 //! ```text
-//! cargo run -p everruns --example in_process_runtime
+//! cargo run -p everruns --features openai --example in_process_runtime
 //! ```
 
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::model_spec::ModelSpec;
-use everruns_contracts::provider::DriverId;
 use everruns_core::CapabilityRegistry;
 use everruns_core::host::HostComposition;
 use everruns_core::host::{AgentBuilder, HarnessBuilder, SessionBuilder};
-use everruns_llmsim::LlmSimConfig;
-use everruns_llmsim::LlmSimRuntimeExt;
 use everruns_test_support::TestMathCapability;
 
 #[tokio::main]
@@ -47,24 +46,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         session_builder.build(),
     );
 
-    // The runtime below uses the compact convenience.
+    // The runtime below uses the compact convenience. The OpenAI provider is
+    // registered under the provider key `openai`, which the default model
+    // spec selects.
     let runtime = everruns::batteries::runtime_builder()
         .host_composition(platform)
-        .llm_sim_as_default(
-            LlmSimConfig::fixed("Let me calculate that.").with_tool_call_sequence(vec![
-                vec![everruns_contracts::tool_types::ToolCall {
-                    id: "call_mul_1".into(),
-                    name: "multiply".into(),
-                    arguments: serde_json::json!({"a": 6, "b": 7}),
-                }],
-                vec![],
-            ]),
-        )
-        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
+        .provider(everruns::OpenAI::from_env()?.into())
+        .default_model(ModelSpec::on("openai", "gpt-6.1-sol"))
         .single_session(|s| {
             s.harness("math", "You are a math assistant.")
                 .with_capability("test_math")
-                .agent("math-agent", "Use tools when they help.")
+                .agent(
+                    "math-agent",
+                    "Always use the math tools for arithmetic instead of computing in your head.",
+                )
                 .agent_display_name("Math Agent")
                 .agent_max_iterations(8)
                 .session_title("Embedded Math Session")
@@ -78,6 +73,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("success: {}", result.success);
     println!("iterations: {}", result.iterations);
     println!("response: {}", result.response);
+
+    // The demonstrated effect: the turn went through the `multiply` tool from
+    // the registered capability, not just the model's own arithmetic.
+    let messages = runtime.messages(session_id).await?;
+    let tool_calls: Vec<String> = messages
+        .iter()
+        .flat_map(|m| m.tool_calls())
+        .map(|c| c.name.clone())
+        .collect();
+    println!("tool calls: {tool_calls:?}");
+    assert!(result.success, "turn should succeed");
+    assert!(
+        tool_calls.iter().any(|n| n == "multiply"),
+        "expected the agent to call `multiply`, got {tool_calls:?}"
+    );
+    assert!(result.response.contains("42"), "expected 42 in the answer");
 
     Ok(())
 }

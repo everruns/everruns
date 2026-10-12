@@ -1081,6 +1081,7 @@ async fn astra_cache_wire_and_usage_buckets() {
         cfg.reasoning_effort = Some(everruns_contracts::ReasoningEffort::Low);
         cfg.reasoning_state = Some(astra_state(Some(everruns_contracts::ReasoningEffort::High)));
         cfg.prompt_cache = Some(PromptCacheConfig {
+            retention: Default::default(),
             enabled: true,
             strategy: PromptCacheStrategy::Explicit,
             ..Default::default()

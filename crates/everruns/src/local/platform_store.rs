@@ -146,6 +146,7 @@ impl PlatformStore for LocalPlatformStore {
         &self,
         _session_id: SessionId,
         _agent_id: AgentId,
+        _reason: &str,
     ) -> Result<SessionParticipantId> {
         Err(unsupported("add_agent_session_participant"))
     }

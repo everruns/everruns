@@ -20,6 +20,15 @@ organisations. Adoption features let organisation owners/admins or platform oper
 features start enabled for every organisation, while owners and admins may opt out.
 An off feature is unavailable regardless of existing organisation records or actor.
 
+A platform feature that is already opt-in, because someone has to add a capability or a
+channel before anything happens, gets no feature flag; a flag on top would gate the same
+opt-in twice. Flags stay for surfaces that appear on their own (pages, panels, behaviour
+changes), for what a deployment must keep unavailable (off/dev/internal grades), and where
+the product owner chose an org opt-in on purpose: third-party integrations that call or
+bill an outside service (Brave Search, Browserless, DuckDuckGo, Modal, Parallel search,
+the computer-use capabilities) and outbound agent delegation. Removed flag names left in
+the organisation table are ignored: resolution only reads names the catalog defines.
+
 Feature defaults live in the [catalog](../../crates/server/src/records/feature_flags.rs).
 An environment override replaces a feature's rollout grade at process startup. Invalid
 values disable the feature rather than silently promoting it. The shared
@@ -33,7 +42,7 @@ organisation override remains in effect whenever the new grade permits availabil
 
 ## Organisation overrides
 
-The existing [organisation flag table](../../crates/server/migrations/046_org_feature_flags.sql)
+The existing [organisation flag table](../../crates/server/migrations/legacy/046_org_feature_flags.sql)
 stores explicit overrides in both directions. A missing record inherits the grade default;
 a stored false is a durable production opt-out, not an instruction to remove the record.
 Patch operations change only named flags. The default-organisation seeder must not enrol
