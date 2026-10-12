@@ -1,11 +1,23 @@
 "use client";
 
 // Prompt of one model call split the way providers bill it: read from the
-// prompt cache, written to it, and uncached. One stacked bar plus a legend.
+// prompt cache, written to it, and uncached. One stacked bar plus a legend,
+// and a note when the call lost the previous call's cache or ran a long prompt
+// with caching off.
 
 import type { TraceRequestUsage } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { formatCount } from "./trace-model";
+
+// Why a cache reset happened, in the words a reader acts on.
+const RESET_REASONS: Record<string, string> = {
+  model_changed: "the model changed since the previous call",
+  tools_changed: "the tool definitions changed since the previous call",
+  system_changed: "the system prompt changed since the previous call",
+  history_changed: "earlier messages were rewritten, for example by compaction",
+  expired: "the cache expired while the session was idle",
+  unknown: "the provider did not say why",
+};
 
 const SEGMENTS = [
   { key: "cache_read_tokens", label: "Cache read", swatch: "bg-success" },
@@ -50,6 +62,27 @@ export function CacheBar({ usage, className }: { usage: TraceRequestUsage; class
           </li>
         ))}
       </ul>
+      {usage.cache_reset && (
+        <p className="text-[11px] text-warning" role="note">
+          Cache reset: {formatCount(usage.cache_reset.lost_tokens)} cached tokens not reused because{" "}
+          {RESET_REASONS[usage.cache_reset.reason] ?? RESET_REASONS.unknown}
+          {usage.cache_reset.reason === "expired" &&
+            ` (idle ${formatIdle(usage.cache_reset.idle_seconds)})`}
+          .
+        </p>
+      )}
+      {usage.caching_would_help && (
+        <p className="text-[11px] text-muted-foreground" role="note">
+          This long prompt was sent with caching off. The Prompt Caching capability would let later
+          calls reuse it.
+        </p>
+      )}
     </div>
   );
+}
+
+function formatIdle(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+  return `${(seconds / 3600).toFixed(1)}h`;
 }

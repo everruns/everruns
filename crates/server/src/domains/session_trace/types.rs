@@ -349,6 +349,35 @@ pub struct TraceRequestUsage {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = "auto")]
     pub prompt_cache: Option<String>,
+    /// Set when this call lost most of the prompt prefix the previous model
+    /// call had cached.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_reset: Option<TraceCacheReset>,
+    /// A long prompt sent with caching off that neither read nor wrote the
+    /// cache: turning on prompt caching would likely make calls like it
+    /// cheaper.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub caching_would_help: bool,
+}
+
+/// A prompt-cache reset: the cache read fell to under half of what the
+/// previous model call left cached.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct TraceCacheReset {
+    /// Prompt tokens the previous call left in the cache (read plus written).
+    #[schema(example = 18420)]
+    pub previous_cached_tokens: i64,
+    /// How many of those this call did not read back.
+    #[schema(example = 18420)]
+    pub lost_tokens: i64,
+    /// Likely cause, the first difference found: `model_changed`,
+    /// `tools_changed`, `system_changed`, `history_changed`, `expired` (idle
+    /// longer than the cache retention), or `unknown`.
+    #[schema(example = "tools_changed")]
+    pub reason: String,
+    /// Seconds between the end of the previous call and the start of this one.
+    #[schema(example = 42)]
+    pub idle_seconds: i64,
 }
 
 /// A tool offered to a model call.

@@ -58377,6 +58377,41 @@
           }
         }
       },
+      "TraceCacheReset": {
+        "type": "object",
+        "description": "A prompt-cache reset: the cache read fell to under half of what the\nprevious model call left cached.",
+        "required": [
+          "previous_cached_tokens",
+          "lost_tokens",
+          "reason",
+          "idle_seconds"
+        ],
+        "properties": {
+          "idle_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds between the end of the previous call and the start of this one.",
+            "example": 42
+          },
+          "lost_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many of those this call did not read back.",
+            "example": 18420
+          },
+          "previous_cached_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Prompt tokens the previous call left in the cache (read plus written).",
+            "example": 18420
+          },
+          "reason": {
+            "type": "string",
+            "description": "Likely cause, the first difference found: `model_changed`,\n`tools_changed`, `system_changed`, `history_changed`, `expired` (idle\nlonger than the cache retention), or `unknown`.",
+            "example": "tools_changed"
+          }
+        }
+      },
       "TraceEventRef": {
         "type": "object",
         "description": "An event in the session log.",
@@ -58880,6 +58915,17 @@
             "description": "Prompt tokens read from the provider's cache.",
             "example": 12529
           },
+          "cache_reset": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TraceCacheReset",
+                "description": "Set when this call lost most of the prompt prefix the previous model\ncall had cached."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "cached_through": {
             "type": [
               "integer",
@@ -58888,6 +58934,10 @@
             "format": "int32",
             "description": "Estimated index of the last message inside the cached prefix: the\ncache-read share of the prompt laid over the messages by size. `-1`\nwhen only the tools fit; absent when nothing was read from cache.",
             "example": 11
+          },
+          "caching_would_help": {
+            "type": "boolean",
+            "description": "A long prompt sent with caching off that neither read nor wrote the\ncache: turning on prompt caching would likely make calls like it\ncheaper."
           },
           "input_tokens": {
             "type": "integer",
