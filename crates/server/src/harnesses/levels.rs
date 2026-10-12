@@ -13,7 +13,7 @@ pub fn definition(preset: BuiltInHarnessPreset) -> BuiltInHarnessDefinition {
         BuiltInHarnessPreset::Base => (
             "Base",
             "square-dashed",
-            "System essentials every agent needs: compaction, error disclosure, tool-call repair, loop detection and approval guidance. Best for custom harnesses that pick their own tools.",
+            "System essentials: compaction, error disclosure, tool-call repair, loop detection and approval guidance. Best for custom harnesses that pick their own tools.",
         ),
         BuiltInHarnessPreset::Conversation => (
             "Conversation",
@@ -28,7 +28,7 @@ pub fn definition(preset: BuiltInHarnessPreset) -> BuiltInHarnessDefinition {
         BuiltInHarnessPreset::BashkitWorker => (
             "Bashkit Worker",
             "terminal",
-            "Worker plus the Bashkit virtual shell. Needs no sandbox provider, but has no native packages, processes or ports. Best for light automation and scripting.",
+            "Worker plus the Bashkit virtual shell. No sandbox provider needed, but no native packages, processes or ports. Best for light automation and scripting.",
         ),
     };
     let mut definition = BuiltInHarnessDefinition::new(

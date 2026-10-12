@@ -13,7 +13,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         NAME,
         "Sandbox Worker",
-        "Worker plus a full sandbox: real processes, packages and builds. Needs an Agent sandbox policy that picks a container or managed provider. Best for coding.",
+        "Worker plus a full sandbox for real processes, packages and builds. Needs an Agent sandbox policy naming a container or provider. Best for coding.",
         "",
     )
     .with_icon("container")
