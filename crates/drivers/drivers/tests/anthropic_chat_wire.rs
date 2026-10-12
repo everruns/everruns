@@ -18,10 +18,11 @@
 
 use everruns_contracts::driver_registry::{
     CacheDiagnosticsConfig, LlmCallConfig, LlmCompletionMetadata, LlmResponseStream,
-    LlmStreamEvent, Message, MessageRole,
+    LlmStreamEvent, Message, MessageRole, PromptCacheConfig, PromptCacheRetention,
+    PromptCacheStrategy,
 };
 use everruns_contracts::model::ReasoningEffort;
-use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
 use everruns_contracts::{Provider, StaticHeaderAuth};
 use everruns_drivers::anthropic::AnthropicChatDriver;
 use futures::StreamExt;
@@ -1084,5 +1085,120 @@ async fn captured_request_body_is_the_body_on_the_wire() {
         let sent: serde_json::Value = requests.last().unwrap().body_json().unwrap();
         assert_eq!(sent["messages"][0]["role"], "user");
         assert_eq!(response.metadata.request_body, capture.then_some(sent));
+    }
+}
+
+/// Send one cached request and return the body on the wire plus the
+/// completion metadata. The response reports a cache write split by TTL.
+async fn cached_round_trip(
+    strategy: PromptCacheStrategy,
+    retention: PromptCacheRetention,
+) -> (serde_json::Value, LlmCompletionMetadata) {
+    let server = MockServer::start().await;
+    let body = [
+        sse_event(
+            "message_start",
+            r#"{"type":"message_start","message":{"id":"msg_1","model":"claude","usage":{"input_tokens":10,"cache_creation_input_tokens":300,"cache_creation":{"ephemeral_5m_input_tokens":100,"ephemeral_1h_input_tokens":200}}}}"#,
+        ),
+        sse_event(
+            "message_delta",
+            r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}"#,
+        ),
+        sse_event("message_stop", r#"{"type":"message_stop"}"#),
+    ]
+    .concat();
+    mount_sse(&server, body).await;
+
+    let mut call_config = config("claude-sonnet-5-5");
+    let mut cache = PromptCacheConfig::default();
+    cache.enabled = true;
+    cache.strategy = strategy;
+    cache.retention = retention;
+    call_config.prompt_cache = Some(cache);
+    call_config.tools = vec![ToolDefinition::function(
+        "lookup",
+        "look something up",
+        serde_json::json!({"type":"object"}),
+    )];
+    let messages = vec![
+        Message::text(MessageRole::System, "stable instructions"),
+        Message::text(MessageRole::User, "first question"),
+        Message::text(MessageRole::Assistant, "first answer"),
+        Message::text(MessageRole::User, "second question"),
+    ];
+
+    let mut stream = driver(&server)
+        .chat_completion_stream(messages, &call_config)
+        .await
+        .expect("stream should start");
+    let mut metadata = None;
+    while let Some(item) = stream.next().await {
+        if let LlmStreamEvent::Done(meta) = item.expect("no transport error") {
+            metadata = Some(*meta);
+        }
+    }
+    let requests = server.received_requests().await.expect("recorded requests");
+    let sent = serde_json::from_slice(&requests[0].body).expect("json body");
+    (sent, metadata.expect("stream should finish with Done"))
+}
+
+/// Every `cache_control` object in the request, in wire order.
+fn breakpoints(body: &serde_json::Value) -> Vec<serde_json::Value> {
+    let mut found = Vec::new();
+    for tool in body["tools"].as_array().into_iter().flatten() {
+        found.extend(tool.get("cache_control").cloned());
+    }
+    for block in body["system"].as_array().into_iter().flatten() {
+        found.extend(block.get("cache_control").cloned());
+    }
+    for message in body["messages"].as_array().into_iter().flatten() {
+        for block in message["content"].as_array().into_iter().flatten() {
+            found.extend(block.get("cache_control").cloned());
+        }
+    }
+    found
+}
+
+#[tokio::test]
+async fn one_hour_retention_sets_ttl_on_every_breakpoint_and_reports_the_long_writes() {
+    let (body, metadata) =
+        cached_round_trip(PromptCacheStrategy::Auto, PromptCacheRetention::OneHour).await;
+    let marks = breakpoints(&body);
+    assert_eq!(marks.len(), 4, "tools, system and two messages: {body}");
+    for mark in marks {
+        assert_eq!(mark, serde_json::json!({"type":"ephemeral","ttl":"1h"}));
+    }
+    assert_eq!(metadata.cache_creation_tokens, Some(300));
+    assert_eq!(metadata.cache_creation_1h_tokens, Some(200));
+}
+
+#[tokio::test]
+async fn default_and_short_retentions_keep_the_five_minute_default() {
+    for retention in [
+        PromptCacheRetention::Default,
+        PromptCacheRetention::FiveMinutes,
+        PromptCacheRetention::ThirtyMinutes,
+    ] {
+        let (body, _) = cached_round_trip(PromptCacheStrategy::Auto, retention).await;
+        for mark in breakpoints(&body) {
+            assert_eq!(
+                mark,
+                serde_json::json!({"type":"ephemeral"}),
+                "{retention:?}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn explicit_strategy_caches_tools_and_system_but_not_the_conversation() {
+    let (body, _) =
+        cached_round_trip(PromptCacheStrategy::Explicit, PromptCacheRetention::Default).await;
+    assert!(body["tools"][0]["cache_control"].is_object(), "{body}");
+    assert!(body["system"][0]["cache_control"].is_object(), "{body}");
+    for message in body["messages"].as_array().unwrap() {
+        for block in message["content"].as_array().into_iter().flatten() {
+            assert!(block.get("cache_control").is_none(), "{body}");
+        }
     }
 }

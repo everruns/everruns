@@ -1460,6 +1460,7 @@ mod tests {
             config.max_tokens = limit;
             config.prompt_cache = cache.map(|(enabled, handle)| {
                 everruns_contracts::driver_registry::PromptCacheConfig {
+                    retention: Default::default(),
                     enabled,
                     strategy: Default::default(),
                     gemini_cached_content: handle.map(str::to_string),

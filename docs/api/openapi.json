@@ -45091,6 +45091,13 @@
             ],
             "description": "Provider-specific prompt-cache mode used by the driver."
           },
+          "retention": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cache retention the driver requested after snapping to what the\nprovider supports (`5m`, `30m`, `1h`). Absent when the provider's\nretention is not configurable."
+          },
           "strategy": {
             "$ref": "#/components/schemas/PromptCacheStrategy",
             "description": "Strategy used to enable prompt caching."

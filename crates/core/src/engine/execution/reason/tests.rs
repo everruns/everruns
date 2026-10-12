@@ -2,7 +2,8 @@ use super::compaction::materially_reduced;
 use super::generation_outcome::add_compaction_cost;
 use super::*;
 use crate::engine::driver_registry::{
-    LlmCallConfig, LlmCompletionMetadata, PromptCacheConfig, PromptCacheStrategy,
+    LlmCallConfig, LlmCompletionMetadata, PromptCacheConfig, PromptCacheRetention,
+    PromptCacheStrategy,
 };
 use crate::engine::events::CapabilityUsageKind;
 use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
@@ -682,6 +683,7 @@ fn test_build_request_options_for_openai_prompt_cache() {
     let mut config = LlmCallConfig::new("gpt-5.4");
     config.previous_response_id = Some("resp_123".to_string());
     config.prompt_cache = Some(PromptCacheConfig {
+        retention: Default::default(),
         enabled: true,
         strategy: PromptCacheStrategy::Auto,
         gemini_cached_content: None,
@@ -714,9 +716,36 @@ fn test_build_request_options_for_openai_prompt_cache() {
 }
 
 #[test]
+fn request_options_record_the_retention_each_provider_actually_gets() {
+    let mut config = LlmCallConfig::new("claude-sonnet-5-5");
+    let mut cache = PromptCacheConfig::default();
+    cache.enabled = true;
+    config.prompt_cache = Some(cache);
+    let retention = |config: &LlmCallConfig, provider: &str| {
+        build_request_options(config, provider)
+            .and_then(|options| options.prompt_cache)
+            .and_then(|info| info.retention)
+    };
+    for (requested, anthropic) in [
+        (PromptCacheRetention::Default, "5m"),
+        (PromptCacheRetention::ThirtyMinutes, "5m"),
+        (PromptCacheRetention::OneHour, "1h"),
+    ] {
+        config.prompt_cache.as_mut().unwrap().retention = requested;
+        assert_eq!(retention(&config, "anthropic").as_deref(), Some(anthropic));
+    }
+    config.model = "gpt-6-astra".into();
+    assert_eq!(retention(&config, "openai").as_deref(), Some("30m"));
+    config.model = "gpt-5.4".into();
+    assert_eq!(retention(&config, "openai"), None);
+    assert_eq!(retention(&config, "gemini"), None);
+}
+
+#[test]
 fn test_build_request_options_for_gemini_explicit_cache() {
     let mut config = LlmCallConfig::new("gemini-2.5-pro");
     config.prompt_cache = Some(PromptCacheConfig {
+        retention: Default::default(),
         enabled: true,
         strategy: PromptCacheStrategy::Auto,
         gemini_cached_content: Some("cachedContents/demo-cache".to_string()),
@@ -739,6 +768,7 @@ fn test_build_request_options_for_gemini_explicit_cache() {
 fn test_build_request_options_omits_gemini_cache_flag_when_disabled() {
     let mut config = LlmCallConfig::new("gemini-2.5-pro");
     config.prompt_cache = Some(PromptCacheConfig {
+        retention: Default::default(),
         enabled: false,
         strategy: PromptCacheStrategy::Auto,
         gemini_cached_content: Some("cachedContents/demo-cache".to_string()),

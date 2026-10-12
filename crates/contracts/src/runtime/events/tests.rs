@@ -520,6 +520,7 @@ fn test_llm_generation_data_with_request_options() {
             enabled: true,
             strategy: PromptCacheStrategy::Auto,
             provider_mode: Some("prompt_cache_key".to_string()),
+            retention: None,
         }),
         tool_search: Some(LlmToolSearchInfo {
             enabled: true,

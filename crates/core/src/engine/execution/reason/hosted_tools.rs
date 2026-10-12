@@ -63,6 +63,18 @@ pub(super) fn completion_usage(
         meta.cache_creation_tokens.unwrap_or(0),
         meta.service_tier.as_deref(),
     );
+    let prompt = input
+        .saturating_add(meta.cache_read_tokens.unwrap_or(0))
+        .saturating_add(meta.cache_creation_tokens.unwrap_or(0));
+    let tokens = match crate::engine::model_profiles::cache_write_1h_surcharge_usd(
+        provider_type,
+        model,
+        prompt,
+        meta.cache_creation_1h_tokens.unwrap_or(0),
+    ) {
+        Some(surcharge) => tokens.map(|tokens| tokens + surcharge),
+        None => tokens,
+    };
     let hosted = hosted_calls_cost_usd(&meta.hosted_tool_calls, model);
     let estimated = match (tokens, hosted) {
         (Some(tokens), Some(hosted)) => Some(tokens + hosted),
@@ -162,6 +174,31 @@ mod tests {
             .estimated_cost_usd
             .unwrap();
         assert!((unknown - 0.02).abs() < 1e-9, "{unknown}");
+    }
+
+    #[test]
+    fn one_hour_cache_writes_raise_the_estimate_to_twice_the_input_rate() {
+        let model = "claude-sonnet-5-5";
+        let mut meta = LlmCompletionMetadata::default();
+        meta.prompt_tokens = Some(0);
+        meta.completion_tokens = Some(0);
+        meta.cache_creation_tokens = Some(50_000);
+        let short = completion_usage(&meta, &DriverId::Anthropic, model)
+            .unwrap()
+            .estimated_cost_usd
+            .unwrap();
+        meta.cache_creation_1h_tokens = Some(50_000);
+        let long = completion_usage(&meta, &DriverId::Anthropic, model)
+            .unwrap()
+            .estimated_cost_usd
+            .unwrap();
+        let input_rate =
+            crate::engine::model_profiles::get_model_profile(&DriverId::Anthropic, model)
+                .and_then(|profile| profile.cost)
+                .unwrap()
+                .input;
+        assert!(long > short, "{long} vs {short}");
+        assert!((long - 0.05 * 2.0 * input_rate).abs() < 1e-9, "{long}");
     }
 
     #[test]

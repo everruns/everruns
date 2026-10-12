@@ -948,6 +948,7 @@ mod tests {
         for model in ["gpt-5.4", "gemini-3-pro", "custom-model"] {
             for enabled in [false, true] {
                 let config = PromptCacheConfig {
+                    retention: Default::default(),
                     enabled,
                     strategy: crate::runtime::driver_registry::PromptCacheStrategy::Auto,
                     gemini_cached_content: Some("cachedContents/review-fixture".into()),
@@ -995,6 +996,7 @@ mod tests {
         }
         fn prompt_cache_config(&self, config: &serde_json::Value) -> Option<PromptCacheConfig> {
             Some(PromptCacheConfig {
+                retention: Default::default(),
                 enabled: config["cache_enabled"].as_bool().unwrap(),
                 strategy: crate::runtime::driver_registry::PromptCacheStrategy::Auto,
                 gemini_cached_content: config["cache"].as_str().map(str::to_owned),
@@ -1061,6 +1063,7 @@ mod tests {
             assert_eq!(
                 agent.prompt_cache,
                 Some(PromptCacheConfig {
+                    retention: Default::default(),
                     enabled: false,
                     strategy: crate::runtime::driver_registry::PromptCacheStrategy::Auto,
                     gemini_cached_content: Some("cachedContents/configured".into())
