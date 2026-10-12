@@ -34,6 +34,7 @@ pub mod a2ui;
 pub mod agent_instructions;
 pub mod ask_user;
 pub mod attach_skill;
+pub(crate) mod attachment_labels;
 pub mod auto_tool_search;
 pub mod btw;
 pub mod budgeting;
