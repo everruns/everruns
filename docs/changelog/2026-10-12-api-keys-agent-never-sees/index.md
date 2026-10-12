@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui, api]
 links:
   docs: [/capabilities/bashkit-shell/#api-keys-the-agent-never-sees, /capabilities/session-storage/]
-  prs: [everruns/everruns#PR]
+  prs: [everruns/everruns#4609]
 visual: "Agent Credentials tab with an HTTP API credential row ($JEV_API_KEY → https://api.typesafe.ai) next to an MCP tool credential (/agents/<id>?tab=credentials)"
 ---
 
