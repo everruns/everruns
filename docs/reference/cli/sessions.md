@@ -1,6 +1,6 @@
 ---
 title: everruns sessions
-description: "Running and archived sessions, their state and participants. CLI reference for everruns sessions."
+description: "Running and archived sessions, their state and participants. CLI reference for everruns sessions: usage, flags and examples."
 sidebar:
   label: sessions
 appliesTo: [platform, cloud]

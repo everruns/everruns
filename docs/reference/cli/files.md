@@ -1,6 +1,6 @@
 ---
 title: everruns files
-description: "Sync files between a local folder and a session. CLI reference for everruns files."
+description: "Sync files between a local folder and a session. CLI reference for everruns files: usage, flags and examples."
 sidebar:
   label: files
 appliesTo: [platform, cloud]

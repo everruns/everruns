@@ -1,6 +1,6 @@
 ---
 title: everruns agents
-description: "Agent definitions and their configuration. CLI reference for everruns agents."
+description: "Agent definitions and their configuration. CLI reference for everruns agents: usage, flags and examples."
 sidebar:
   label: agents
 appliesTo: [platform, cloud]

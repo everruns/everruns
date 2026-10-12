@@ -1,6 +1,6 @@
 ---
 title: TypeSafe
-description: "Typed decision from TypeSafe's System One model: calibrated probabilities, single-choice routing, and graded scores. Uses a configured TypeSafe, OpenRouter, OpenAI, or Microsoft Foundry account."
+description: "Typed decisions from TypeSafe's System One: calibrated probabilities, routing and graded scores, via TypeSafe, OpenRouter, OpenAI or Microsoft Foundry."
 appliesTo: [framework, platform]
 ---
 

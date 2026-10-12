@@ -48,7 +48,15 @@ export const onRequest = defineRouteMiddleware((context) => {
   // Update both entry.data.title (affects h1) and the <title> head entry.
   if (isApiOperation) {
     const cleanTitle = route.entry.data.title.replace(methodPathPrefix, "");
-    updateRouteTitle(route, cleanTitle);
+    // A legacy alias shares its successor's summary; keep the two titles apart.
+    const legacy = slug.endsWith("_legacy") && !/legacy/i.test(cleanTitle);
+    updateRouteTitle(route, legacy ? `${cleanTitle.replace(/\.$/, "")} (legacy)` : cleanTitle);
+  }
+
+  // starlight-openapi titles every tag page "Overview"; 29 identical <title>s
+  // compete in search. Name each after its tag instead.
+  if (slug.startsWith("api/operations/tags/")) {
+    updateRouteTitle(route, `${tagLabel(slug)} API`);
   }
 
   // starlight-openapi derives the overview title from the spec's `info.title`.
@@ -202,13 +210,18 @@ function updateRouteTitle(
 function deriveDescription(slug: string, title: string): string {
   // API tag group pages: derive tag name from slug (e.g. "api/operations/tags/agents" → "agents")
   if (slug.startsWith("api/operations/tags/")) {
-    const tagName = slug.split("/").pop() ?? title;
-    return `Everruns REST API endpoints for ${tagName}.`;
+    return `Everruns REST API endpoints for ${tagLabel(slug).toLowerCase()}: requests, parameters, response schemas and status codes for each operation.`;
   }
 
-  // API operation pages (title is already cleaned of method+path prefix)
+  // API operation pages (title is already cleaned of method+path prefix).
+  // Keep it within a search snippet (~160 characters): the suffix goes only
+  // where it fits.
   if (slug.startsWith("api/operations/")) {
-    return `${title}. Parameters, request and response schemas, and status codes for this Everruns REST API endpoint.`;
+    const summary = title.replace(/\.$/, "");
+    const full = `${summary}. Parameters, request and response schemas, and status codes for this Everruns REST API endpoint.`;
+    if (full.length <= 160) return full;
+    const short = `${summary}. Everruns REST API reference.`;
+    return short.length <= 160 ? short : `${summary.slice(0, 157).replace(/\s+\S*$/, "")}...`;
   }
 
   // API overview page
@@ -223,6 +236,15 @@ function deriveDescription(slug: string, title: string): string {
 
   // Generic fallback
   return `${title} — Everruns documentation.`;
+}
+
+/** "api/operations/tags/knowledge_bases" → "Knowledge Bases"; "mcp-servers" → "MCP Servers". */
+const TAG_WORDS: Record<string, string> = { mcp: "MCP" };
+function tagLabel(slug: string): string {
+  return (slug.split("/").pop() ?? "")
+    .split(/[-_]/)
+    .map((word) => TAG_WORDS[word] ?? word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 /** Map page slug to its pre-generated OG image path, or null for fallback. */

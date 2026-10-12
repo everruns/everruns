@@ -1,6 +1,6 @@
 ---
 title: everruns models
-description: "LLM models available to agents, and organization defaults. CLI reference for everruns models."
+description: "LLM models available to agents, and organization defaults. CLI reference for everruns models: usage, flags and examples."
 sidebar:
   label: models
 appliesTo: [platform, cloud]

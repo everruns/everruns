@@ -98,7 +98,7 @@ fn group_page(group: &Command) -> String {
     let mut page = format!(
         "---\ntitle: everruns {name}\ndescription: {description}\nsidebar:\n  label: {name}\nappliesTo: [platform, cloud]\n---\n\n",
         description = yaml_line(&format!(
-            "{} CLI reference for everruns {name}.",
+            "{} CLI reference for everruns {name}: usage, flags and examples.",
             sentence(&summary)
         )),
     );

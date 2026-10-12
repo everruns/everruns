@@ -1,6 +1,6 @@
 ---
 title: Durable execution
-description: Why Everruns persists every step of agent execution to PostgreSQL and runs each session as a leased actor, what guarantees that provides, and the trade-offs of avoiding Temporal-style infrastructure.
+description: "Why Everruns persists every step of agent execution to PostgreSQL and runs each session as a leased actor: the guarantees that gives, and the trade-offs."
 sidebar:
   order: 4
 ---

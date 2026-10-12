@@ -4,6 +4,7 @@
 //   3. Per docs page        → public/og/{slug}.png
 //   4. Changelog index      → public/og/changelog.png, listing the latest releases
 //   5. Changelog entries    → public/og/changelog/{folder}.png, with date and products
+//      Product pages        → public/og/changelog/{product}.png, the latest entries
 //
 // Cards follow the docs redesign: flat navy, the gold mark, Geist type, square
 // corners. Text is rendered by sharp (librsvg) through fontconfig, pointed at
@@ -332,13 +333,42 @@ async function changelogIndexCard(entries) {
   return releases.length;
 }
 
+/** One card per product page (changelog/<product>/): its five latest entries. */
+async function changelogProductCards(entries) {
+  let cards = 0;
+  for (const [id, label] of Object.entries(PRODUCTS)) {
+    const latest = entries
+      .filter((e) => (e.fm.products ?? []).includes(id))
+      .sort((a, b) => String(b.fm.date).localeCompare(String(a.fm.date)))
+      .slice(0, 5);
+    const rows = latest
+      .map((e, i) => {
+        const y = 284 + i * 58;
+        return `<rect x="${PAD}" y="${y - 38}" width="${W - PAD * 2}" height="1" fill="${RULE}"/>
+  <text x="${PAD}" y="${y}" font-family="${MONO}" font-size="19" fill="${MUTED}">${escXml(formatDate(e.fm.date))}</text>
+  <text x="${PAD + 190}" y="${y}" font-family="${SANS}" font-size="23" fill="${SILVER}">${escXml(truncate(String(e.fm.title ?? ""), charsFor(W - PAD * 2 - 190, 23)))}</text>`;
+      })
+      .join("\n  ");
+    const content = `
+  <text x="${PAD}" y="196" font-family="${SANS}" font-size="64" font-weight="600" letter-spacing="-1.3" fill="${WHITE}">${escXml(label)} changelog</text>
+  <text x="${W - PAD}" y="196" text-anchor="end" font-family="${MONO}" font-size="17" font-weight="500" letter-spacing="2" fill="${MUTED}">LATEST</text>
+  ${rows}`;
+    await svgToPng(
+      frame(content, { eyebrow: "", url: `everruns.com/docs/changelog/${id}` }),
+      path.join(root, `public/og/changelog/${id}.png`),
+    );
+    cards++;
+  }
+  return cards;
+}
+
 // ─── Docs walk ──────────────────────────────────────────────────────────────
 
 async function generateDocCards() {
   const docsDir = path.join(repoRoot, "docs");
   if (!existsSync(docsDir)) {
     console.log("  ⚠ docs/ directory not found, skipping doc cards");
-    return { pages: 0, heroes: 0, entries: 0, releases: 0 };
+    return { pages: 0, heroes: 0, entries: 0, releases: 0, products: 0 };
   }
   const files = [];
   (function scan(dir, prefix) {
@@ -374,7 +404,8 @@ async function generateDocCards() {
     pages++;
   }
   const releases = await changelogIndexCard(entries);
-  return { pages, heroes, entries: entries.length, releases };
+  const products = await changelogProductCards(entries);
+  return { pages, heroes, entries: entries.length, releases, products };
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────
@@ -385,5 +416,5 @@ const apiCount = await generateApiCards();
 console.log(`  ✓ ${apiCount} API operation cards`);
 const docs = await generateDocCards();
 console.log(`  ✓ ${docs.pages} doc page cards (${docs.heroes} with hero images)`);
-console.log(`  ✓ ${docs.entries} changelog entry cards, changelog index with ${docs.releases} releases`);
+console.log(`  ✓ ${docs.entries} changelog entry cards, changelog index with ${docs.releases} releases, ${docs.products} product cards`);
 console.log("Done.");

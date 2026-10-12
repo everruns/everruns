@@ -1,6 +1,6 @@
 ---
 title: everruns reports
-description: "Usage and cost reporting: queries, saved reports, catalog. CLI reference for everruns reports."
+description: "Usage and cost reporting: queries, saved reports, catalog. CLI reference for everruns reports: usage, flags and examples."
 sidebar:
   label: reports
 appliesTo: [platform, cloud]

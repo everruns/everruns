@@ -351,12 +351,15 @@ No internal links should produce 404 errors.
 
 Every page gets a per-page Open Graph image for rich link previews on Twitter, Slack, Discord, etc. Images are generated at prebuild time by `apps/docs/scripts/generate-og-image.mjs` and output to `public/og/`.
 
-**Three card types:**
+**Card types:**
 
 | Type | Path | Content |
 |------|------|---------|
 | API operation | `public/og/api/operations/{operationId}.png` | Method badge, path, description, curl example |
 | Doc page | `public/og/{slug}.png` | Title, breadcrumb, description |
+| Changelog index | `public/og/changelog.png` | The five latest releases |
+| Changelog entry | `public/og/changelog/{folder}.png` | Date, products, title, description |
+| Changelog product page | `public/og/changelog/{product}.png` | That product's five latest entries |
 | Fallback | `public/og-image.png` | Generic Everruns branded card |
 
 **Hero images on doc pages:**
@@ -399,8 +402,24 @@ SEO improvements for auto-generated pages are handled by Starlight route middlew
 5. Leaves `og:image` alone for routes with no generated card — `generate-og-image.mjs` skips
    `docs/api/`, so the `api` overview and the schema and tag pages fall back to `public/og-image.png`
 
-Generated descriptions are held to the same house style as hand-authored ones above; the fallback
-appends nothing beyond the page title.
+6. Names each API tag page after its tag ("MCP Servers API"), since `starlight-openapi` titles
+   them all "Overview", and marks a `_legacy` operation's title "(legacy)" so it does not
+   duplicate its successor's
+7. Keeps API operation descriptions within a search snippet: the reference suffix goes on only
+   where it fits in 160 characters
+
+Generated descriptions are held to the same house style as hand-authored ones above.
+
+#### Build Verification
+
+`apps/docs/scripts/verify-seo.mjs` runs after every build and fails it when a page has no
+canonical or `og:url` naming its own address, a `<title>` another page shares, a description
+outside 50-170 characters, an `og:image` the build does not contain, or other than one `<h1>`, or
+when `404.html` is indexable. Two pages on one subject (a feature page and its capability page)
+keep distinct `<title>`s through a frontmatter `head` title override.
+
+The docs Worker answers a page URL without its trailing slash with a 301 to the slashed URL;
+Workers static assets would answer 307, which tells search engines the move is temporary.
 
 ### Sitemap Requirements
 

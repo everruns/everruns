@@ -1,6 +1,6 @@
 ---
 title: Deploying a Framework App
-description: Ship a Framework app as a binary or a container, keep its data directory on persistent storage, pass provider keys through the environment, and know when to use serve instead.
+description: "Ship a Framework app as a binary or container: persistent storage for its data directory, provider keys from the environment, and when to use serve instead."
 ---
 
 A Framework app is your own Rust binary. The `everruns` crate needs no

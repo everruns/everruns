@@ -4,8 +4,6 @@ description: Advisory quality checks for agent configurations, structural proble
 appliesTo: [platform, cloud]
 ---
 
-# Agent Checks
-
 Agent checks review an agent configuration and surface advisory findings while you build: structural problems (duplicated instructions, conflicting style guidance), completeness gaps (tool references that do not exist), and cost warnings (oversized prompts).
 
 Checks are advisory only. Findings never block saving, publishing, or version creation.

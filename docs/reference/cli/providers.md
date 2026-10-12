@@ -1,6 +1,6 @@
 ---
 title: everruns providers
-description: "LLM providers and their credentials. CLI reference for everruns providers."
+description: "LLM providers and their credentials. CLI reference for everruns providers: usage, flags and examples."
 sidebar:
   label: providers
 appliesTo: [platform, cloud]
