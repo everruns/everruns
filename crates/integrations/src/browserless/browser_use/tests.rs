@@ -454,3 +454,54 @@ async fn reads_acts_by_ref_and_manages_tabs_on_a_real_browser() {
     session.display.into_session().disconnect().await;
     let _ = browser.child.kill().await;
 }
+
+#[tokio::test]
+async fn a_key_press_reports_where_focus_landed_on_a_real_browser() {
+    let Some(mut browser) = launch_chromium().await else {
+        eprintln!("skipping: no local Chromium found (set CHROMIUM_PATH to run)");
+        return;
+    };
+    let cdp = connect_guarded(&browser, BrowserEgress::new(None)).await;
+    let (context, _) = context();
+    let tool = BrowserTool::new(BrowserUseConfig::from_value(&json!({})).unwrap());
+    let mut session = Connected {
+        display: CdpDisplay::detached(cdp, [0, 0]),
+    };
+    session
+        .display
+        .session_mut()
+        .navigate(&data_url(FORM_PAGE))
+        .await
+        .unwrap();
+
+    let first = ok(
+        &tool,
+        &context,
+        &mut session,
+        json!({"action": "key", "text": "Tab"}),
+    )
+    .await;
+    assert_eq!(first, "Pressed Tab. Focus is on textbox \"Name\".");
+    let second = ok(
+        &tool,
+        &context,
+        &mut session,
+        json!({"action": "key", "text": "Tab"}),
+    )
+    .await;
+    assert_eq!(second, "Pressed Tab. Focus is on combobox \"Color\".");
+    // A re-read agrees with the key report.
+    let page = ok(
+        &tool,
+        &context,
+        &mut session,
+        json!({"action": "read_page", "filter": "interactive"}),
+    )
+    .await;
+    assert!(
+        page.lines()
+            .any(|line| line.starts_with("combobox \"Color\"") && line.contains("focused")),
+        "{page}"
+    );
+    let _ = browser.child.kill().await;
+}

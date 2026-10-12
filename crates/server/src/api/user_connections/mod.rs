@@ -646,9 +646,14 @@ pub async fn create_api_key_connection(
         .await
         .is_connector_enabled(&provider_id)
     {
+        // The connector exists but its feature flag is off for this org. Say
+        // so: "Unknown connector" sent people looking for a typo.
         return Err((
             StatusCode::NOT_FOUND,
-            format!("Unknown connector: {provider_id}"),
+            format!(
+                "{} is turned off for this organization. An organization admin can turn it on in Settings > Features.",
+                provider.display_name()
+            ),
         ));
     }
 

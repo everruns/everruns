@@ -108,7 +108,7 @@ pub(crate) async fn evaluate_request(
         event_context,
     )
     .await?;
-    attempt.outcome.map_err(Into::into)
+    attempt.outcome
 }
 
 /// A decision made before any session exists, such as whether Slack should
@@ -133,7 +133,7 @@ pub async fn evaluate_unmetered(
         decisions.cost_usd = usage.and_then(|u| u["cost"].as_f64()),
         "unmetered organization decision"
     );
-    attempt.outcome.map_err(Into::into)
+    attempt.outcome
 }
 
 /// One provider round trip. `value` is the provider's JSON when it returned
@@ -141,15 +141,15 @@ pub async fn evaluate_unmetered(
 struct Attempt {
     requested_model: String,
     value: Option<Value>,
-    outcome: Result<DecisionOutcome, &'static str>,
+    outcome: Result<DecisionOutcome, String>,
 }
 
 impl Attempt {
-    fn failed(requested_model: String, reason: &'static str) -> Self {
+    fn failed(requested_model: String, reason: impl Into<String>) -> Self {
         Self {
             requested_model,
             value: None,
-            outcome: Err(reason),
+            outcome: Err(reason.into()),
         }
     }
 }
@@ -254,10 +254,28 @@ async fn attempt(
             }
             body
         }
-        _ => {
+        // Say why without echoing the provider's body or the resolved URL: the
+        // status (400 = request shape, 401/402/403 = account, 429/5xx = retry)
+        // is what the agent and an operator need to tell the cases apart.
+        Ok(response) => {
             return Ok(Attempt::failed(
                 requested_model,
-                "Decision provider request failed",
+                format!(
+                    "Decision provider request failed (HTTP {})",
+                    response.status
+                ),
+            ));
+        }
+        Err(everruns_contracts::runtime::EgressError::NetworkAccessDenied { .. }) => {
+            return Ok(Attempt::failed(
+                requested_model,
+                "Decision provider request was blocked by network access policy",
+            ));
+        }
+        Err(_) => {
+            return Ok(Attempt::failed(
+                requested_model,
+                "Decision provider request failed (transport error)",
             ));
         }
     };
@@ -275,7 +293,7 @@ async fn attempt(
     Ok(Attempt {
         requested_model,
         value: Some(value),
-        outcome: outcome.map_err(|_| "Invalid calibrated decision response"),
+        outcome: outcome.map_err(|_| "Invalid calibrated decision response".to_string()),
     })
 }
 

@@ -187,6 +187,15 @@ const MAX_TOOL_RESULT_BYTES: usize = 64 * 1024;
 const TRUNCATION_SUFFIX: &str =
     "\n\n[Output truncated — exceeded 64 KiB limit. Try quiet flags, pipes, or redirect to file.]";
 
+/// Cumulative ceiling on native image payloads (base64 bytes) per tool result.
+///
+/// Decision: images get their own budget instead of the 64 KiB text ceiling.
+/// They are stored as artifacts and reach the model as image parts, priced by
+/// pixels rather than bytes, so a text-sized cap only made every ordinary
+/// screenshot (a 1280x800 PNG is ~100-200 KiB) vanish. 5 MiB matches the
+/// strictest per-image provider limit (Anthropic) and still bounds storage.
+const MAX_TOOL_IMAGE_BYTES: usize = 5 * 1024 * 1024;
+
 /// Infrastructure hook that enforces a hard 64 KiB ceiling on tool result text.
 ///
 /// Always registered as a `final_post_tool_hook` in ActAtom — cannot be removed
@@ -284,11 +293,11 @@ impl PostToolExecHook for OutputHardLimitHook {
             let mut cumulative = 0usize;
             images.retain(|img| {
                 let len = img.base64.len();
-                if len > MAX_TOOL_RESULT_BYTES {
+                if len > MAX_TOOL_IMAGE_BYTES {
                     return false;
                 }
                 match cumulative.checked_add(len) {
-                    Some(total) if total <= MAX_TOOL_RESULT_BYTES => {
+                    Some(total) if total <= MAX_TOOL_IMAGE_BYTES => {
                         cumulative = total;
                         true
                     }
@@ -303,9 +312,32 @@ impl PostToolExecHook for OutputHardLimitHook {
                     dropped_images = dropped,
                     kept_images = images.len(),
                     kept_bytes = cumulative,
-                    limit = MAX_TOOL_RESULT_BYTES,
+                    limit = MAX_TOOL_IMAGE_BYTES,
                     "Tool images exceeded hard limit and were dropped"
                 );
+                // Say so in the result: a silently missing screenshot reads as
+                // a tool that returned nothing.
+                let note = format!(
+                    "[{dropped} image(s) dropped: over the {} MiB image limit for one tool result.]",
+                    MAX_TOOL_IMAGE_BYTES / (1024 * 1024)
+                );
+                result.result = Some(match result.result.take() {
+                    Some(serde_json::Value::String(text)) if text.is_empty() => {
+                        serde_json::Value::String(note)
+                    }
+                    Some(serde_json::Value::String(text)) => {
+                        serde_json::Value::String(format!("{text}\n\n{note}"))
+                    }
+                    Some(serde_json::Value::Object(mut map)) => {
+                        map.insert(
+                            "images_dropped".to_string(),
+                            serde_json::Value::String(note),
+                        );
+                        serde_json::Value::Object(map)
+                    }
+                    Some(other) => serde_json::json!({ "result": other, "images_dropped": note }),
+                    None => serde_json::Value::String(note),
+                });
             }
             if images.is_empty() {
                 result.images = None;
@@ -1257,7 +1289,7 @@ mod tests {
                     media_type: "image/png".to_string(),
                 },
                 everruns_contracts::ToolResultImage {
-                    base64: "b".repeat(MAX_TOOL_RESULT_BYTES + 1),
+                    base64: "b".repeat(MAX_TOOL_IMAGE_BYTES + 1),
                     media_type: "image/png".to_string(),
                 },
             ]),
@@ -1281,8 +1313,8 @@ mod tests {
         let ctx = ToolContext::new(SessionId::new());
 
         // Each image is half the limit, so the third one tips the cumulative
-        // budget past MAX_TOOL_RESULT_BYTES and must be dropped.
-        let half = MAX_TOOL_RESULT_BYTES / 2;
+        // budget past MAX_TOOL_IMAGE_BYTES and must be dropped.
+        let half = MAX_TOOL_IMAGE_BYTES / 2;
         let mut result = ToolResult {
             details: None,
             tool_call_id: "call_test".into(),
@@ -1329,7 +1361,7 @@ mod tests {
             tool_call_id: "call_test".into(),
             result: Some(json!({"ok": true})),
             images: Some(vec![everruns_contracts::ToolResultImage {
-                base64: "a".repeat(MAX_TOOL_RESULT_BYTES + 1),
+                base64: "a".repeat(MAX_TOOL_IMAGE_BYTES + 1),
                 media_type: "image/png".to_string(),
             }]),
             error: None,
@@ -1343,6 +1375,43 @@ mod tests {
             result.images.is_none(),
             "images vec emptied by retain should normalize to None"
         );
+        assert_eq!(
+            result
+                .result
+                .as_ref()
+                .and_then(|r| r.get("images_dropped"))
+                .and_then(|v| v.as_str()),
+            Some("[1 image(s) dropped: over the 5 MiB image limit for one tool result.]"),
+            "the model must be told the image was dropped"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_output_hard_limit_keeps_screenshot_sized_images() {
+        // A 1280x800 PNG screenshot is well over the 64 KiB text ceiling; it
+        // must still reach the model (regression: screenshots vanished).
+        let hook = OutputHardLimitHook;
+        let tc = make_tool_call();
+        let td = make_tool_def();
+        let ctx = ToolContext::new(SessionId::new());
+
+        let mut result = ToolResult {
+            details: None,
+            tool_call_id: "call_test".into(),
+            result: Some(json!("")),
+            images: Some(vec![everruns_contracts::ToolResultImage {
+                base64: "a".repeat(200 * 1024),
+                media_type: "image/png".to_string(),
+            }]),
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+
+        hook.after_exec(&tc, &td, &mut result, &ctx).await;
+
+        assert_eq!(result.images.map(|images| images.len()), Some(1));
+        assert_eq!(result.result, Some(json!("")));
     }
 
     #[test]

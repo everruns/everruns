@@ -30,6 +30,11 @@ closer `AGENTS.md` (`apps/ui/`, `crates/server/migrations/`, `plugins/`, `.deeps
   `llmsim` or another simulated model: that belongs in tests, and an example must show real
   agent behavior. Use `gpt-6.1-sol` (or `gpt-6-luna` for a lighter model), never a `gpt-5`
   model.
+- Changelog is part of done. A PR that completes a user-facing feature or fix, or closes a
+  significant incident, adds its public changelog entry (`docs/changelog/<date>-<slug>/`) in the
+  same PR and fills the PR template's `Changelog:` line; a PR that changes behavior an older entry
+  describes updates that entry. Rules: `knowledge/docs/changelog.md`; how: the ship skill's
+  `references/changelog-entry.md`.
 
 ### Gotchas
 
