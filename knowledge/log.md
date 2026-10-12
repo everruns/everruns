@@ -2,6 +2,14 @@
 
 ## 2026-10-12
 
+* **Session attachments design (awaiting approval).** Stored history keeps
+  attachments, but compaction drops them from the request with no trace, most
+  surfaces (Slack files, AG-UI inline parts, A2A file parts, the execution API)
+  never deliver them, and file resolution fails all PDFs past 8 files or
+  11 MiB. Proposes one intake path, a label with an `/attachments/...` path on
+  every attachment, a read-only `/attachments` mount the agent can reopen, and
+  a sticky per-request byte budget. See
+  [Session Attachments](runtime-resources/session-attachments.md).
 * **PAT scopes step 4: read-only tokens can be created.** Creation accepts
   `[]`, `["*"]` or `["read"]` and nothing else; the token page has a Full
   access / Read-only picker and shows each token's scope; `GET /v1/auth/me`
