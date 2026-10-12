@@ -1833,8 +1833,7 @@ impl AnthropicModelInfo {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
-            // Only curated direct Anthropic profiles can prove server compaction.
-            supports_server_compaction: false,
+            supports_server_compaction: false, // only curated direct profiles prove it
             model_card_url: None,
             decisions: None,
         }
