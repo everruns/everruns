@@ -67,6 +67,7 @@ pub async fn effective_session_capabilities(
     Ok(Some(
         crate::domains::sandbox_templates::resolution::apply_sandbox_to_capabilities(
             &merged,
+            &[],
             sandbox.as_ref().map(|record| &record.spec),
         ),
     ))

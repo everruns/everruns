@@ -435,9 +435,23 @@ impl SessionService {
         crate::domains::capabilities::validation::validate_caller_sandbox_capabilities(
             &req.capabilities,
         )?;
+        // Agent-cap lookup failures propagate (sandbox auto-start treats them
+        // as fatal), unlike the best-effort `resolve_session_capability_configs`
+        // used by the advisory delete path.
+        let agent_capabilities = if let Some(agent_id) = agent_id {
+            self.db
+                .get_agent_capabilities(agent_id.uuid())
+                .await?
+                .into_iter()
+                .map(|row| AgentCapabilityConfig::with_config(row.capability_id, row.config))
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
         let session_capabilities =
             crate::domains::sandbox_templates::resolution::apply_sandbox_to_capabilities(
                 &req.capabilities,
+                &merge_capabilities(&effective_harness.capabilities, &agent_capabilities),
                 resolved_sandbox.as_ref().map(|sandbox| &sandbox.spec),
             );
 
@@ -671,20 +685,7 @@ impl SessionService {
 
         // Effective capability list (harness + agent + session), resolved once
         // and shared by sandbox auto-start and the session_start hook so the
-        // merge rule lives in exactly one place per call. Agent-cap lookup
-        // failures propagate here (sandbox auto-start treats them as fatal),
-        // unlike the best-effort `resolve_session_capability_configs` used by
-        // the advisory delete path.
-        let agent_capabilities = if let Some(agent_id) = agent_id {
-            self.db
-                .get_agent_capabilities(agent_id.uuid())
-                .await?
-                .into_iter()
-                .map(|row| AgentCapabilityConfig::with_config(row.capability_id, row.config))
-                .collect::<Vec<_>>()
-        } else {
-            Vec::new()
-        };
+        // merge rule lives in exactly one place per call.
         let effective_capabilities = merge_capabilities(
             &merge_capabilities(&effective_harness.capabilities, &agent_capabilities),
             &session_capabilities,
