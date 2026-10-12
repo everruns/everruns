@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui, api]
 links:
   docs: [/how-to/summarize-github-pull-requests/]
-  prs: [everruns/everruns#PRNUM]
+  prs: [everruns/everruns#4665]
 ---
 
 **In the UI:** the agent's **Integrations** tab now has a **GitHub** section
