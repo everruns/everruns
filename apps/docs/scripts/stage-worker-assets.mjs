@@ -6,7 +6,7 @@
 // Astro writes each `redirects` entry in astro.config.mjs as an HTML page with
 // a meta refresh. Search engines treat that as a soft signal, so every such
 // page also becomes a real 301 in _redirects. See wrangler.jsonc.
-import { appendFileSync, cpSync, existsSync, readFileSync, readdirSync, renameSync, rmSync } from "node:fs";
+import { appendFileSync, cpSync, existsSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { BASE } from "../site.config.mjs";
@@ -23,6 +23,12 @@ rmSync(out, { recursive: true, force: true });
 cpSync(dist, docs, { recursive: true });
 const redirects = path.join(out, "_redirects");
 if (existsSync(path.join(docs, "_redirects"))) renameSync(path.join(docs, "_redirects"), redirects);
+// The pages-only block serves the old docs.everruns.com Pages build (see
+// public/_redirects); in the Worker it would map /docs/x to a missing /x.
+writeFileSync(
+  redirects,
+  readFileSync(redirects, "utf8").replace(/# BEGIN pages-only[\s\S]*?# END pages-only\n?/, ""),
+);
 
 const REFRESH = /<meta http-equiv="refresh" content="0;url=([^"]+)"/;
 const pages = (directory) =>
