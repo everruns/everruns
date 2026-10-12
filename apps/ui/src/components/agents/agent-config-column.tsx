@@ -21,6 +21,7 @@ import { getCommunicationOption, normalizeCommunication } from "@/lib/agent-comm
 import type { AgentDraft } from "@/components/agents/use-agent-draft";
 import type { Agent, Capability, ModelWithProvider } from "@/lib/api/types";
 import { AgentCapabilityList } from "./agent-capability-list";
+import { CapabilityEditorContext } from "./capability-editor-context";
 import { normalizeTags } from "@/lib/tags";
 import { MoreSettingsNav, type MoreSettingsRow } from "@/components/workspace/more-settings-nav";
 import { cn } from "@/lib/utils";
@@ -96,13 +97,15 @@ export function AgentConfigColumn({
 
         <div className="flex flex-col gap-1.5">
           {editing ? (
-            <CapabilitySelector
-              capabilities={allCapabilities}
-              selected={draft.capabilities}
-              onChange={draft.setCapabilities}
-              label="Capabilities"
-              compact
-            />
+            <CapabilityEditorContext.Provider value={{ modelId: draft.fields.default_model_id }}>
+              <CapabilitySelector
+                capabilities={allCapabilities}
+                selected={draft.capabilities}
+                onChange={draft.setCapabilities}
+                label="Capabilities"
+                compact
+              />
+            </CapabilityEditorContext.Provider>
           ) : (
             <>
               <div className="flex items-center gap-2">

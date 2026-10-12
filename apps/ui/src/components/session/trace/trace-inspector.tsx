@@ -16,6 +16,7 @@ import { JsonView, formatBytes } from "./json-view";
 import { CacheBar } from "./cache-bar";
 import { ROLE_COLOR, ROLE_HINT, RequestSheet } from "./request-sheet";
 import { formatClock, formatCount, formatDuration } from "./trace-model";
+import { WebSearchTraceSection } from "./web-search-trace";
 
 export type InspectorTarget =
   /** `sessionId` is set for a sub-agent's step shown inline. */
@@ -343,6 +344,9 @@ function StepDetail({
             onOpenChange={setSheetOpen}
           />
         </Section>
+      )}
+      {step.name === "web_search" && (
+        <WebSearchTraceSection sessionId={sessionId} detail={detail} />
       )}
       {detail.input && <Payload title="Input" payload={detail.input} onLoadFull={onLoadFull} />}
       {detail.output && (
