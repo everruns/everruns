@@ -13,8 +13,8 @@ appliesTo: [framework, platform, cloud]
 
 Web Search gives an agent one `web_search` tool. Where a search goes is a setting on the
 capability, not a different tool: the agent keeps the same tool, prompts and history when you
-switch providers or models. The Conversation and Worker harnesses include it, so a new agent can
-search with no key and no setup.
+switch providers or models. The Worker harnesses include it, so a new worker agent can search with
+no key and no setup; a Conversation agent adds it on the agent.
 
 ## Providers
 

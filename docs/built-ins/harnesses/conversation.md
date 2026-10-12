@@ -5,8 +5,8 @@ description: The default harness for simple dialogue, with no workspace and no s
 
 Conversation inherits [Base](/built-ins/harnesses/base/) and adds the two chat affordances,
 `ask_user` for structured questions and `message_metadata` so the model sees when each message was
-sent, plus [Web Search](/capabilities/web-search/) on the organization's default provider. It
-provides no filesystem, bash, storage or delegation tools.
+sent. It provides no filesystem, bash, storage, delegation or web search tools. Add
+[Web Search](/capabilities/web-search/) on the agent when an assistant should search.
 
 It is the organization default. Use it for chat assistants, support bots and Q&A. Dad Jokes uses
 this harness plus `current_time`. Add task-specific capabilities on the agent when needed.
