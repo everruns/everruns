@@ -8,21 +8,19 @@ products: [platform, cloud, framework]
 surfaces: [ui, api, code]
 links:
   docs: [/capabilities/web-search/]
-  prs: [everruns/everruns#4551, everruns/everruns#4584, everruns/everruns#4605]
+  prs: [everruns/everruns#4551, everruns/everruns#4584, everruns/everruns#4605, everruns/everruns#4611, everruns/everruns#4614]
 ---
 
 Agents now search with one `web_search` tool, whichever provider answers. The Conversation and
 Worker harnesses include it, and keyless free search answers whenever the chosen provider cannot.
-On OpenAI and OpenRouter models that have their own search, Automatic uses it first: the model
-searches through its provider, billed by the provider, and each search is counted on the model
-call's cost. Anthropic and Gemini native search come next.
+On OpenAI and OpenRouter models with their own search, Automatic uses it first, billed by the
+provider and counted on the model call's cost. Anthropic and Gemini come next.
 
 **In the UI:** **Registers > Web search** lists the providers (model provider search with its
-price, connected Brave Search accounts, free search) and holds the organization defaults: the
-default provider, the Automatic order, fallback, results per search and blocked domains. In the
-agent editor, **Web search** picks a provider and says how the agent will search. Chat shows each
-search as one row with the provider that answered, and a details view with every attempt and the
-raw response. An agent with two search tools gets a duplicate-search warning.
+price, Brave Search accounts, free search) and holds the organization defaults: default provider,
+Automatic order, fallback, results per search and blocked domains. In the agent editor, **Web
+search** picks a provider and says how the agent will search. Chat shows each search as one row,
+with every attempt and the raw response a click away. Two search tools on one agent get a warning.
 
 **In code:** `WebSearch::auto()` in the Framework.
 
