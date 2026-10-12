@@ -1,6 +1,6 @@
 ---
-title: "Start over on an agent's GitHub App, and manage it from the CLI"
-description: "An agent's GitHub App that was never installed can be removed to create it in an organization, and everruns agents github manages the connection."
+title: "Choose where an agent's GitHub App lives, and manage it from the CLI"
+description: "Connect GitHub suggests the organizations your team already uses for an agent's App, an uninstalled App can start over, and the CLI manages it."
 date: 2026-10-12
 kind: improvement
 significance: minor
@@ -11,10 +11,14 @@ links:
   prs: [everruns/everruns#4579, everruns/everruns#4592]
 ---
 
-An agent's GitHub App can only be installed on the account that created it. If it
-was created on a personal account by mistake, the GitHub card on the agent's
-Integrations tab now has **… > Start over**, which forgets the uninstalled App and
-brings back the organization field.
+An agent's GitHub App can only be installed on the account that created it, so
+**Connect GitHub** on the agent's Integrations tab now asks where to create it:
+**Personal account**, one of the GitHub organizations your Everruns organization
+already connected (from other agents' Apps and GitHub connections), or **Another
+organization…**. This replaces the free-text organization field.
+
+If the App was created on the wrong account, the card now has **… > Start
+over**, which forgets the uninstalled App so the next connect can choose again.
 
 The same connection is now available from the CLI and the MCP `execute` tool:
 

@@ -1,11 +1,7 @@
 "use client";
 
-import {
-  useAgentGitHub,
-  useConnectAgentGitHub,
-  useGitHubRepositories,
-} from "@/hooks/use-agent-github";
-import { Button } from "@/components/ui/button";
+import { useAgentGitHub, useGitHubRepositories } from "@/hooks/use-agent-github";
+import { ConnectGitHubButton } from "@/components/agents/connect-github-button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
@@ -99,6 +95,15 @@ export function githubFormFromParams(params: URLSearchParams | null): GitHubTrig
   return withOutcomeChanges(form, params.get("changes_only") === "1");
 }
 
+/// What a GitHub trigger listens to, for its page subtitle.
+export function githubEventsLabel(events: string[]): string {
+  if (events.length > 0 && events.every((event) => CI_EVENTS.includes(event))) return "CI events";
+  if (events.length > 0 && !events.some((event) => CI_EVENTS.includes(event))) {
+    return "Pull request events";
+  }
+  return "GitHub events";
+}
+
 export function isGitHubFormValid(form: GitHubTriggerFormState): boolean {
   return form.events.length > 0 && form.message.trim().length > 0;
 }
@@ -123,7 +128,6 @@ export function GitHubTriggerForm({
   returnTo?: string;
 }) {
   const { data: status, isLoading } = useAgentGitHub(agentId);
-  const connect = useConnectAgentGitHub(agentId, returnTo);
   const { data: repos = [] } = useGitHubRepositories(status?.identity_id, !!status?.connected);
 
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading GitHub status…</p>;
@@ -132,11 +136,16 @@ export function GitHubTriggerForm({
     return (
       <div className="space-y-3 border p-4">
         <p className="text-sm text-muted-foreground">
-          Connect GitHub to this agent before adding a pull request trigger.
+          Connect GitHub to this agent before adding a GitHub trigger.
+          {!status?.app_created && " The App can only be installed where it is created."}
         </p>
-        <Button type="button" onClick={() => connect.mutate()} disabled={connect.isPending}>
-          {status?.app_created ? "Finish installing" : "Connect GitHub"}
-        </Button>
+        <ConnectGitHubButton
+          agentId={agentId}
+          status={status}
+          returnTo={returnTo}
+          size="default"
+          variant="default"
+        />
       </div>
     );
   }

@@ -310,6 +310,8 @@ pub struct GitHubInstallationResult {
     pub account_id: String,
     /// Account login (username or org name)
     pub account_login: String,
+    /// GitHub's `account.type`: `User` or `Organization`.
+    pub account_type: Option<String>,
     /// Permissions granted to the installation (e.g. "contents: read")
     pub permissions: String,
 }
@@ -443,6 +445,7 @@ impl GitHubAppService {
             installation_id,
             account_id: installation.account.id.to_string(),
             account_login: installation.account.login,
+            account_type: installation.account.account_type,
             permissions,
         })
     }
@@ -609,6 +612,8 @@ struct GitHubInstallation {
 struct GitHubInstallationAccount {
     id: i64,
     login: String,
+    #[serde(default, rename = "type")]
+    account_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
