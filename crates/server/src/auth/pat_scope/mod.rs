@@ -21,7 +21,10 @@ mod enforce;
 mod layer;
 pub mod routes;
 
-pub use enforce::{INSUFFICIENT_SCOPE, INSUFFICIENT_SCOPE_MESSAGE, enforce_command};
+pub use enforce::{
+    INSUFFICIENT_SCOPE, INSUFFICIENT_SCOPE_MESSAGE, enforce_command, enforce_operation,
+    scope_permits,
+};
 pub(crate) use enforce::{add_challenge, enforce_route};
 pub use layer::classify_api_routes;
 

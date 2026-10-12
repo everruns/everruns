@@ -35,6 +35,7 @@ pub mod elicitation;
 mod events;
 mod form_elicitation;
 mod resources;
+mod scope;
 mod skills;
 mod tasks;
 mod tool_registry;
@@ -660,6 +661,9 @@ async fn handle_mcp(
     // their wrapper across all success paths. See `caching`.
     let negotiated_version = protocol_version.unwrap_or(MCP_PROTOCOL_VERSION_FALLBACK);
     let root = state.elicitation_base_url.as_deref();
+    if let Some(denied) = scope::request_denial(&req, negotiated_version, &auth_user) {
+        return Json(denied).into_response();
+    }
     let response = match req.method.as_str() {
         "initialize" => discovery::handle_initialize(req.id, req.params, root),
         // MCP 2026-07-28 replaces `initialize` with a stateless discovery call.
@@ -668,16 +672,15 @@ async fn handle_mcp(
             discovery::handle_server_discover(req.id, events::enabled(&org, &state), root)
         }
         "tools/list" => {
-            let mut response = handle_tools_list(req.id, negotiated_version);
+            let mut response =
+                scope::handle_tools_list(req.id, negotiated_version, auth_user.pat_scope);
             if let Some(result) = response.result.as_mut() {
                 caching::mark_cacheable(
                     result,
                     negotiated_version,
                     caching::TOOLS_LIST_TTL_MS,
-                    // The catalog is static per protocol version — identical
-                    // for every caller — so it is safe to share across
-                    // authorization contexts.
-                    caching::CacheScope::Public,
+                    // Public for the full catalog, static per protocol version.
+                    scope::tools_list_cache_scope(auth_user.pat_scope),
                 );
             }
             response
@@ -773,10 +776,6 @@ async fn handle_mcp(
 // Protocol handlers
 // ============================================================================
 
-fn handle_tools_list(id: Option<Value>, protocol_version: &str) -> JsonRpcResponse {
-    JsonRpcResponse::success(id, json!({ "tools": tool_definitions(protocol_version) }))
-}
-
 fn resource_error(resource: &str, e: CommandError) -> String {
     match e.kind {
         CommandErrorKind::Forbidden(msg)
@@ -850,6 +849,7 @@ async fn handle_tools_call(
     // A parked `ask_user` question set is served to a capable client as a form
     // mode elicitation, and answered on the retry. See `form_elicitation`.
     if tool_name == "session_get_status"
+        && scope::may_write(auth_user.pat_scope) // Answering resumes the session.
         && let Some(response) = form_elicitation::ask_user_form_elicitation(
             &id,
             &params,

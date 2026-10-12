@@ -117,8 +117,15 @@ async fn the_daily_limit_must_be_positive() {
     }
 }
 
-/// A member of the default organization and a personal access token of theirs.
+/// A member of the default organization and a full-access personal access
+/// token of theirs.
 async fn member_token(server: &TestServer, member: bool) -> String {
+    member_token_with_scopes(server, member, &["*"]).await
+}
+
+/// Like `member_token`, with the token's stored `scopes`. Creation accepts
+/// only `*` until rollout step 4, so a narrow token is inserted directly.
+async fn member_token_with_scopes(server: &TestServer, member: bool, scopes: &[&str]) -> String {
     let user = server
         .db
         .create_user(CreateUserRow {
@@ -149,7 +156,7 @@ async fn member_token(server: &TestServer, member: bool) -> String {
             name: "cli".to_string(),
             token_hash: generated.token_hash.clone(),
             token_prefix: generated.token_prefix.clone(),
-            scopes: vec![],
+            scopes: scopes.iter().map(|scope| scope.to_string()).collect(),
             expires_at: None,
             metadata: json!({}),
         })
@@ -236,4 +243,62 @@ async fn members_call_with_their_token_only_when_the_channel_allows() {
         )
         .await
         .assert_status(StatusCode::FORBIDDEN);
+}
+
+/// knowledge/security/pat-scopes.md, Decision 5: only a `*` token counts as an
+/// org member; running an agent is a write, so a `read` token is refused with
+/// `insufficient_scope` on every route of the channel.
+#[tokio::test]
+async fn only_a_full_access_token_calls_as_an_org_member() {
+    let server = TestServer::in_memory().await;
+    let open = api_channel(&server, json!({ "org_members": true }), true).await;
+    let closed = api_channel(&server, json!({}), true).await;
+    let full = member_token(&server, true).await;
+    let read = member_token_with_scopes(&server, true, &["read"]).await;
+    let base = format!("/v1/channels/{}", open.channel_id);
+
+    for (method, path) in [
+        (Method::GET, base.clone()),
+        (Method::GET, format!("{base}/sessions")),
+        (Method::POST, format!("{base}/sessions")),
+    ] {
+        let response = call(&server, method.clone(), &path, Some(&read), None)
+            .await
+            .assert_status(StatusCode::FORBIDDEN);
+        assert_eq!(
+            response
+                .headers()
+                .get("www-authenticate")
+                .and_then(|value| value.to_str().ok()),
+            Some("Bearer error=\"insufficient_scope\""),
+            "{method} {path}"
+        );
+        let body: Value = response.json();
+        assert_eq!(
+            body["code"], "insufficient_scope",
+            "{method} {path}: {body}"
+        );
+    }
+
+    // The same member's `*` token is accepted.
+    call(
+        &server,
+        Method::POST,
+        &format!("{base}/sessions"),
+        Some(&full),
+        None,
+    )
+    .await
+    .assert_status(StatusCode::CREATED);
+
+    // A channel that does not admit members says nothing about the scope.
+    call(
+        &server,
+        Method::GET,
+        &format!("/v1/channels/{}/sessions", closed.channel_id),
+        Some(&read),
+        None,
+    )
+    .await
+    .assert_status(StatusCode::UNAUTHORIZED);
 }

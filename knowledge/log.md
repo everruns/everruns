@@ -2,6 +2,13 @@
 
 ## 2026-10-12
 
+* **PAT scopes step 3: enforced on `/mcp` and the execution API.** A
+  read-only token lists and calls only the read-only MCP tools (an explicit
+  list kept equal to the `readOnlyHint` annotations by a test) and is refused
+  the rest with an `insufficient_scope` tool error; state-changing JSON-RPC
+  methods are refused too. `GET /v1/commands` lists only the commands a token
+  can run, and only a `*` token counts as an org member on an API channel.
+  See [Personal Access Token Scopes](security/pat-scopes.md).
 * **GitHub connection model design (awaiting approval).** One `github`
   connection per virtual user with a kind (agent App, shared Everruns app,
   person); every use declares how it acts, its repositories and permissions,
