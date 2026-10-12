@@ -10615,7 +10615,7 @@
         "tags": [
           "Files"
         ],
-        "summary": "Upload a PDF file for use as model input.",
+        "summary": "Upload a PDF or zip file as a message attachment.",
         "operationId": "upload_file",
         "parameters": [
           {
@@ -37245,7 +37245,7 @@
         "properties": {
           "content_type": {
             "type": "string",
-            "description": "MIME type of the stored file (currently always application/pdf).",
+            "description": "MIME type of the stored file: application/pdf or application/zip.",
             "example": "application/pdf"
           },
           "created_at": {
@@ -37361,7 +37361,7 @@
         "properties": {
           "content_type": {
             "type": "string",
-            "description": "MIME type of the stored file (currently always application/pdf).",
+            "description": "MIME type of the stored file: application/pdf or application/zip.",
             "example": "application/pdf"
           },
           "created_at": {

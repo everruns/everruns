@@ -8,7 +8,9 @@
 //! from being `From` impls in core (both the `From` trait and the driver types
 //! are foreign to core), so they are plain functions.
 
-use everruns_contracts::runtime::attachments::{attachment_label, attachment_path};
+use everruns_contracts::runtime::attachments::{
+    ZIP_MEDIA_TYPE, attachment_label, attachment_path, unpacked_dir,
+};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -181,15 +183,21 @@ pub fn llm_message_from_message_with_attachments(
                     "file",
                 );
                 if let Some(resolved) = resolved_files.get(&file_part.file_id.uuid()) {
-                    parts.push(LlmContentPart::text(attachment_label(
-                        "file",
-                        &path,
-                        Some(&resolved.media_type),
-                    )));
-                    parts.push(LlmContentPart::file(
-                        resolved.to_data_url(),
-                        resolved.filename.clone().or(file_part.filename.clone()),
-                    ));
+                    let label = attachment_label("file", &path, Some(&resolved.media_type));
+                    // Models read PDFs; a zip is unpacked into session files
+                    // instead, so the model gets the folder, not the bytes.
+                    if resolved.media_type == ZIP_MEDIA_TYPE {
+                        parts.push(LlmContentPart::text(format!(
+                            "{label}, unpacked to {}/",
+                            unpacked_dir(&path)
+                        )));
+                    } else {
+                        parts.push(LlmContentPart::text(label));
+                        parts.push(LlmContentPart::file(
+                            resolved.to_data_url(),
+                            resolved.filename.clone().or(file_part.filename.clone()),
+                        ));
+                    }
                 } else {
                     parts.push(LlmContentPart::Text {
                         text: format!("[File not found: {}]", file_part.file_id),
@@ -476,6 +484,42 @@ mod tests {
             vec![first.uuid(), second.uuid(), first.uuid()]
         );
         assert!(extract_image_file_ids(&RuntimeMessage::user("text")).is_empty());
+    }
+
+    #[test]
+    fn zip_file_part_names_its_folder_instead_of_sending_bytes() {
+        use crate::file_services::ResolvedFile;
+
+        let file_id = crate::typed_id::FileId::new();
+        let mut message = RuntimeMessage::user("look at this data");
+        message.content.push(ContentPart::File(
+            crate::message::FileContentPart::with_filename(file_id, "data.zip"),
+        ));
+        let resolved = HashMap::from([(
+            file_id.uuid(),
+            ResolvedFile {
+                base64: "UEsDBA==".to_string(),
+                media_type: "application/zip".to_string(),
+                filename: Some("data.zip".to_string()),
+            },
+        )]);
+
+        let llm = llm_message_from_message_with_attachments(&message, &HashMap::new(), &resolved);
+
+        let MessageContent::Parts(parts) = &llm.content else {
+            panic!("expected parts");
+        };
+        assert_eq!(parts.len(), 2);
+        let LlmContentPart::Text { text } = &parts[1] else {
+            panic!("expected a label, got {:?}", parts[1]);
+        };
+        assert_eq!(
+            text,
+            &format!(
+                "Attached file /attachments/{file_id}/data.zip (application/zip), \
+                 unpacked to /attachments/{file_id}/data/"
+            )
+        );
     }
 
     #[test]

@@ -244,7 +244,7 @@ export function ChatComposer({
           accept={
             supportsPdf
               ? [...ALLOWED_IMAGE_TYPES, ...ALLOWED_FILE_EXTENSIONS].join(",")
-              : ALLOWED_IMAGE_TYPES.join(",")
+              : [...ALLOWED_IMAGE_TYPES, ".zip"].join(",")
           }
           multiple
           className="hidden"
