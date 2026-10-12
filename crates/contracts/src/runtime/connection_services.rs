@@ -69,8 +69,7 @@ impl std::fmt::Debug for McpResolvedCredential {
     }
 }
 
-/// What one GitHub use asks for: who it acts as, and the least access it needs
-/// (knowledge/integrations/github-model.md, D4).
+/// What one GitHub use asks for: who it acts as, and the least access it needs.
 ///
 /// The resolver mints an installation token limited to `repositories` and
 /// `permissions`, so a tool that only reads a diff never holds write access.

@@ -42,7 +42,7 @@ pub(crate) fn target(arguments: &Value) -> Result<(String, u64), ToolExecutionRe
 }
 
 /// A token for one tool call: acting as `acts_as`, limited to `repo` and
-/// `permissions` (knowledge/integrations/github-model.md, D4).
+/// `permissions`.
 pub(crate) async fn github_token(
     context: &ToolContext,
     acts_as: GitHubActsAs,

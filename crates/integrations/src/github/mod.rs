@@ -71,7 +71,7 @@ pub const GITHUB_TOKEN_SECRET: &str = "GITHUB_TOKEN";
 
 /// Pull request, review and issue tools. Each call asks for a token acting as
 /// the configured identity and limited to the one repository and the
-/// permissions that tool needs (knowledge/integrations/github-model.md).
+/// permissions that tool needs.
 pub struct GitHubCapability;
 
 /// Whose GitHub identity the `github` tools act as.
