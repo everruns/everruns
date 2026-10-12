@@ -11,8 +11,11 @@
 //!   a router spelling the classification layer does not resolve;
 //! - with a `*` PAT, no route ever answers `insufficient_scope`.
 //!
-//! It also checks `POST /v1/commands/{name}` per command. `read` tokens
-//! cannot be created through the API yet, so the rows are inserted directly.
+//! It also checks `POST /v1/commands/{name}` per command, and the surfaces of
+//! Tests item 6 that validate a PAT outside the route table: the
+//! `GET /v1/commands` listing and `/mcp` (`tools/list`, `tools/call`). `read`
+//! tokens cannot be created through the API yet, so the rows are inserted
+//! directly.
 //!
 //! A dedicated single-test binary because the production builder reads
 //! process environment, which is installed before Tokio starts.
@@ -447,6 +450,175 @@ async fn sweep(port: u16, context: ServerContext) {
     );
 }
 
+async fn list_commands(client: &reqwest::Client, base: &str, token: &str) -> Vec<String> {
+    let catalog: serde_json::Value = client
+        .get(format!("{base}/v1/commands"))
+        .bearer_auth(token)
+        .send()
+        .await
+        .expect("list commands")
+        .error_for_status()
+        .expect("list commands status")
+        .json()
+        .await
+        .expect("command catalog JSON");
+    catalog["commands"]
+        .as_array()
+        .expect("commands array")
+        .iter()
+        .map(|entry| {
+            entry["wire_name"]
+                .as_str()
+                .expect("command wire name")
+                .to_string()
+        })
+        .collect()
+}
+
+async fn mcp(
+    client: &reqwest::Client,
+    base: &str,
+    token: &str,
+    method: &str,
+    params: serde_json::Value,
+) -> serde_json::Value {
+    client
+        .post(format!("{base}/mcp"))
+        .bearer_auth(token)
+        .header("MCP-Protocol-Version", "2026-07-28")
+        .json(&serde_json::json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }))
+        .send()
+        .await
+        .expect("mcp request")
+        .error_for_status()
+        .expect("mcp status")
+        .json()
+        .await
+        .expect("mcp JSON")
+}
+
+fn tool_names(list: &serde_json::Value) -> BTreeSet<String> {
+    list["result"]["tools"]
+        .as_array()
+        .expect("tools array")
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap().to_string())
+        .collect()
+}
+
+/// The tools a `read` token may list and call on `/mcp`.
+const READ_ONLY_MCP_TOOLS: &[&str] = &[
+    "agent_get_card",
+    "discover",
+    "everruns_home",
+    "list_organizations",
+    "me",
+    "query",
+    "session_get_status",
+    "session_view",
+];
+
+/// Tests item 6: `GET /v1/commands` and `/mcp` honor a `read` token's scope
+/// and leave a `*` token as it was.
+async fn surfaces(port: u16, db: &StorageBackend) {
+    let base = format!("http://127.0.0.1:{port}");
+    let client = reqwest::Client::new();
+    let read_token = mint_pat(db, &["read"]).await;
+    let full_token = mint_pat(db, &["*"]).await;
+
+    // GET /v1/commands lists exactly the commands each token can run.
+    let read_commands = list_commands(&client, &base, &read_token).await;
+    let full_commands = list_commands(&client, &base, &full_token).await;
+    let class = |name: &str| {
+        let desc = inventory::iter::<CommandDescriptor>
+            .into_iter()
+            .find(|desc| (desc.meta)().name == name)
+            .unwrap_or_else(|| panic!("no command {name}"));
+        classify_command(desc)
+    };
+    assert!(read_commands.contains(&command("list_agents", RouteAccess::Read).to_string()));
+    for name in &read_commands {
+        assert_eq!(
+            class(name),
+            RouteAccess::Read,
+            "{name} listed to a read token"
+        );
+    }
+    let expected: Vec<&String> = full_commands
+        .iter()
+        .filter(|name| class(name) == RouteAccess::Read)
+        .collect();
+    assert_eq!(read_commands.iter().collect::<Vec<_>>(), expected);
+    assert!(full_commands.contains(&command("create_agent", RouteAccess::Write).to_string()));
+
+    // tools/list: a read token sees only the read-only tools.
+    let read_tools = tool_names(
+        &mcp(
+            &client,
+            &base,
+            &read_token,
+            "tools/list",
+            serde_json::json!({}),
+        )
+        .await,
+    );
+    let expected: BTreeSet<String> = READ_ONLY_MCP_TOOLS.iter().map(|s| s.to_string()).collect();
+    assert_eq!(read_tools, expected);
+    let full_list = mcp(
+        &client,
+        &base,
+        &full_token,
+        "tools/list",
+        serde_json::json!({}),
+    )
+    .await;
+    let full_tools = tool_names(&full_list);
+    assert!(full_tools.is_superset(&expected) && full_tools.contains("execute"));
+    assert_eq!(full_list["result"]["cacheScope"], "public");
+
+    // tools/call: execute is refused to a read token with insufficient_scope;
+    // query still runs; a * token is never refused for its scope.
+    let call = |name: &str, arguments: serde_json::Value| serde_json::json!({ "name": name, "arguments": arguments });
+    let script = serde_json::json!({ "commands": "list_agents" });
+    let denied = mcp(
+        &client,
+        &base,
+        &read_token,
+        "tools/call",
+        call("execute", script.clone()),
+    )
+    .await;
+    assert_eq!(denied["result"]["isError"], true, "{denied}");
+    assert_eq!(
+        denied["result"]["structuredContent"]["code"], INSUFFICIENT_SCOPE,
+        "{denied}"
+    );
+    let queried = mcp(
+        &client,
+        &base,
+        &read_token,
+        "tools/call",
+        call("query", script.clone()),
+    )
+    .await;
+    assert_ne!(
+        queried["result"]["structuredContent"]["code"], INSUFFICIENT_SCOPE,
+        "{queried}"
+    );
+    let executed = mcp(
+        &client,
+        &base,
+        &full_token,
+        "tools/call",
+        call("execute", script),
+    )
+    .await;
+    assert_ne!(
+        executed["result"]["structuredContent"]["code"], INSUFFICIENT_SCOPE,
+        "{executed}"
+    );
+}
+
 #[test]
 fn pat_scopes_hold_on_every_route_of_the_real_router() {
     configure_server_environment();
@@ -457,6 +629,7 @@ fn pat_scopes_hold_on_every_route_of_the_real_router() {
         .unwrap()
         .block_on(async move {
             let context = start_real_server(port).await;
+            surfaces(port, &context.db).await;
             sweep(port, context).await;
         });
 }

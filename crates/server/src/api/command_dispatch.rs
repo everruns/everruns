@@ -225,11 +225,20 @@ pub struct CommandResponse {
     ),
     tag = "commands"
 )]
-pub async fn list_commands(org: ResolvedOrg) -> Json<CommandCatalog> {
+pub async fn list_commands(
+    org: ResolvedOrg,
+    pat_scope: Option<Extension<PatScope>>,
+) -> Json<CommandCatalog> {
+    // A scoped token sees only the commands it may run (for `read`, the
+    // read-only `query` set); everyone else sees the whole contract.
+    let scope = pat_scope.map(|Extension(scope)| scope);
     let commands = cli_tree::contracts_for(&org.feature_flags)
         .into_iter()
         .filter_map(|contract| {
             let desc = descriptor(&contract.wire_name)?;
+            if !pat_scope::scope_permits(scope, pat_scope::classify_command(desc)) {
+                return None;
+            }
             Some(CommandEntry {
                 contract,
                 api_version: COMMAND_API_VERSION,

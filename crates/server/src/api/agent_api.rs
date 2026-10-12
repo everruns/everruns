@@ -174,6 +174,9 @@ async fn authorize(
         Ok(Err(ApiAuthError::Misconfigured)) => {
             return Err(error(StatusCode::FORBIDDEN, "This agent is misconfigured"));
         }
+        Ok(Err(ApiAuthError::InsufficientScope)) => {
+            return Err(crate::auth::middleware::AuthError::insufficient_scope().into_response());
+        }
         Err(err) => return Err(internal_error(err)),
     };
     // THREAT[TM-AGENTKEY-004]: per caller and IP, after the credential check so

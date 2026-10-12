@@ -152,6 +152,9 @@ pub enum ApiAuthError {
     /// A credential that may not do what it asked, such as an `End-User`
     /// header from a key without `end_user` or from an end user.
     Forbidden,
+    /// A personal access token narrower than `*` calling as an org member:
+    /// running an agent is a write (knowledge/security/pat-scopes.md).
+    InsufficientScope,
     /// The channel's stored config does not parse.
     Misconfigured,
 }

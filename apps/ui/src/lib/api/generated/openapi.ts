@@ -17888,6 +17888,7 @@ export interface components {
       | "tool_panicked"
       | "invalid_arguments"
       | "permission_denied"
+      | "insufficient_scope"
       | "quota_exceeded"
       | "network_blocked"
       | "mcp_server_unreachable"

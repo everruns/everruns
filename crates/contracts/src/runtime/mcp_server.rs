@@ -1088,6 +1088,10 @@ pub enum McpErrorCode {
     /// Caller is authenticated but not authorized for the requested action
     /// or org scope.
     PermissionDenied,
+    /// The caller's credential is narrower than the operation needs: a
+    /// read-only personal access token calling a tool that changes state.
+    /// Retrying with the same credential fails the same way.
+    InsufficientScope,
     /// Org/user quota or rate limit hit.
     QuotaExceeded,
     /// Outbound network call blocked by egress policy.
@@ -1114,6 +1118,7 @@ impl McpErrorCode {
             McpErrorCode::ToolPanicked => "tool_panicked",
             McpErrorCode::InvalidArguments => "invalid_arguments",
             McpErrorCode::PermissionDenied => "permission_denied",
+            McpErrorCode::InsufficientScope => "insufficient_scope",
             McpErrorCode::QuotaExceeded => "quota_exceeded",
             McpErrorCode::NetworkBlocked => "network_blocked",
             McpErrorCode::McpServerUnreachable => "mcp_server_unreachable",
@@ -1131,7 +1136,9 @@ impl McpErrorCode {
             | McpErrorCode::McpServerUnreachable
             | McpErrorCode::QuotaExceeded => McpErrorCategory::Transient,
             McpErrorCode::InvalidArguments => McpErrorCategory::Validation,
-            McpErrorCode::PermissionDenied => McpErrorCategory::Auth,
+            McpErrorCode::PermissionDenied | McpErrorCode::InsufficientScope => {
+                McpErrorCategory::Auth
+            }
             McpErrorCode::ToolNotFound
             | McpErrorCode::ToolPanicked
             | McpErrorCode::NetworkBlocked => McpErrorCategory::Permanent,
@@ -1276,6 +1283,10 @@ pub fn classify_mcp_execute_error(message: &str) -> McpExecuteError {
         McpErrorCode::InvalidArguments
     } else if lower.starts_with("forbidden:") {
         McpErrorCode::PermissionDenied
+    } else if lower.starts_with("insufficient_scope:") {
+        // A personal access token scope refusal on `/mcp`
+        // (knowledge/security/pat-scopes.md, Decision 6).
+        McpErrorCode::InsufficientScope
     } else if lower.starts_with("internal:") {
         McpErrorCode::Internal
     // Order matters: more specific patterns first.

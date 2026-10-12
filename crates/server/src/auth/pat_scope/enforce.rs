@@ -14,6 +14,11 @@
 //   token's display prefix (never the token), the route and its class, and one
 //   `pat_scope_denied_total{class}` increment. Not written to the org audit log:
 //   a PAT often has no resolved org here, and a looping client would flood it.
+// Decision: surfaces that validate a PAT outside the extractor (`/mcp` tools
+//   and methods, the execution API's `org_member`) check one named operation
+//   with `enforce_operation`, which logs and counts the same way. Listings
+//   (`tools/list`, `GET /v1/commands`) filter with `scope_permits` silently:
+//   leaving out what a token cannot run is not a denial.
 
 use axum::extract::MatchedPath;
 use axum::http::{Extensions, HeaderValue, Method, StatusCode, header};
@@ -112,6 +117,37 @@ pub fn enforce_command(
         "personal access token scope denied a command"
     );
     count_denial(Some(class));
+    Err(AuthError::insufficient_scope())
+}
+
+/// Whether a credential with `scope` (`None`: not a PAT) may run an operation
+/// of class `access` that is not a routed request: an MCP tool or method, a
+/// command in a listing, a member call on the execution API.
+pub fn scope_permits(scope: Option<PatScope>, access: RouteAccess) -> bool {
+    scope.is_none_or(|scope| scope.permits(Some(access)))
+}
+
+/// Check one named operation of class `access` on a surface that validates
+/// PATs outside the extractor (`surface`: `mcp`, `agent_api`). JWTs, MCP OAuth
+/// tokens and `*` PATs always pass.
+pub fn enforce_operation(
+    user: &AuthUser,
+    surface: &'static str,
+    operation: &str,
+    access: RouteAccess,
+) -> Result<(), AuthError> {
+    if scope_permits(user.pat_scope, access) {
+        return Ok(());
+    }
+    tracing::warn!(
+        user_id = %user.id,
+        scope = ?user.pat_scope,
+        surface,
+        operation,
+        class = class_label(Some(access)),
+        "personal access token scope denied an operation"
+    );
+    count_denial(Some(access));
     Err(AuthError::insufficient_scope())
 }
 
