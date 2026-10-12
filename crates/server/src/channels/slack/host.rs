@@ -67,6 +67,8 @@ const TARGET_SURFACE: &str = "slack_surface";
 
 /// The message metadata key holding a Slack message's thread.
 pub(crate) const SLACK_THREAD_KEY: &str = "slack_thread_ts";
+/// Input metadata: answer in the DM itself, not in a thread under the input.
+pub(crate) const SLACK_REPLY_INLINE: &str = "slack_reply_inline";
 
 /// One Slack channel row as a host driver.
 pub(crate) struct SlackHostDriver {
@@ -211,13 +213,32 @@ impl SlackHostDriver {
             .routing_metadata
             .insert(SLACK_SURFACE.into(), surface_name(surface).into());
 
+        // A DM is already one conversation: answer a top-level DM message in
+        // the DM itself rather than opening a thread under every question. A
+        // message written inside a thread, a thread-bound session (whose key
+        // is the thread) and the pane keep threading.
+        let reply_inline = surface == SlackSurface::Channel
+            && event.thread_ts.is_none()
+            && self.config.session_strategy != SessionBinding::Thread
+            && match event.channel_type.as_deref() {
+                Some(kind) => kind == "im",
+                None => channel.starts_with('D'),
+            };
+        if reply_inline {
+            inbound
+                .message_metadata
+                .insert(SLACK_REPLY_INLINE.into(), Value::Bool(true));
+        }
         let mut reply_to = DeliveryTarget::new(
             channel,
-            event
-                .thread_ts
-                .clone()
-                .or(event.ts.clone())
-                .unwrap_or_default(),
+            match reply_inline {
+                true => String::new(),
+                false => event
+                    .thread_ts
+                    .clone()
+                    .or(event.ts.clone())
+                    .unwrap_or_default(),
+            },
         );
         reply_to
             .extra

@@ -498,3 +498,35 @@ async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
     ));
     assert_eq!(slack.received_requests().await.unwrap().len(), 2);
 }
+
+#[tokio::test]
+async fn a_top_level_dm_input_is_answered_in_the_dm_itself() {
+    let (fixture, session, app, endpoint) = setup().await;
+    let slack = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat.postMessage"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"ts":"9.8"})))
+        .mount(&slack)
+        .await;
+    let id = MessageId::new();
+    fixture.db.create_event(CreateEventRow {
+        session_id:session, event_type:"input.message".into(), ts:chrono::Utc::now(),
+        context:json!({"input_message_id":id}),
+        data:json!({"message":{"id":id,"metadata":{"_app_channel_id":endpoint,"slack_channel":"D1","slack_thread_ts":"3.4","slack_reply_inline":true}}}),
+        metadata:Some(json!({"initiator":{"type":"endpoint","endpoint_id":app}})),
+        tags:None,
+    }).await.unwrap();
+    let invoker = fixture.invoker(1, session).with_api_base(slack.uri());
+    invoker
+        .invoke(SlackAction::PostMessage {
+            input_message_id: id.to_string(),
+            tool_call_id: "call-1".into(),
+            text: "hello".into(),
+        })
+        .await
+        .unwrap();
+    let requests = slack.received_requests().await.unwrap();
+    let payload: Value = serde_json::from_slice(&requests[0].body).unwrap();
+    assert_eq!(payload["channel"], "D1");
+    assert!(payload.get("thread_ts").is_none(), "{payload}");
+}

@@ -147,6 +147,7 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("GET", "/v1/agents/{agent_id}/export", Read),
     ("POST", "/v1/agents/{agent_id}/exposures/resume", Write),
     ("POST", "/v1/agents/{agent_id}/exposures/suspend", Write),
+    ("POST", "/v1/agents/{agent_id}/github/connect", Never),
     ("GET", "/v1/agents/{agent_id}/health-checks", Read),
     ("POST", "/v1/agents/{agent_id}/health-checks", Write),
     ("GET", "/v1/agents/{agent_id}/health-checks/latest", Read),
@@ -794,7 +795,6 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
 /// `(method, path, class)` for served routes the OpenAPI document omits.
 pub const UNDOCUMENTED_ROUTES: &[(&str, &str, RouteAccess)] = &[
     // Readable.
-    ("GET", "/v1/agents/{agent_id}/github", Read),
     ("GET", "/v1/auth/me", Read),
     ("GET", "/v1/budgets/config", Read),
     ("GET", "/v1/environment-targets", Read),
@@ -858,7 +858,6 @@ pub const UNDOCUMENTED_ROUTES: &[(&str, &str, RouteAccess)] = &[
         "/v1/virtual-users/{identity_id}/connections/github/app",
         Never,
     ),
-    ("POST", "/v1/agents/{agent_id}/github/connect", Never),
     ("GET", "/v1/slack/install", Never),
     ("POST", "/v1/slack/workspaces", Never),
     ("POST", "/v1/channels/{channel_id}/slack/install", Never),
