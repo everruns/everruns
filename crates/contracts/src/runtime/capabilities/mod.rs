@@ -35,12 +35,16 @@ mod blueprint;
 mod collect;
 mod dependencies;
 mod registry;
+mod sandbox_file_tools;
 mod spawn_agent;
 
 pub use blueprint::*;
 pub use collect::*;
 pub use dependencies::*;
 pub use registry::*;
+pub use sandbox_file_tools::{
+    FILE_SYSTEM_FEATURE, MANAGED_SANDBOX_FEATURE, SESSION_FILE_TOOL_NAMES,
+};
 pub use spawn_agent::*;
 
 /// Descriptor an integration crate publishes for one of its capabilities.

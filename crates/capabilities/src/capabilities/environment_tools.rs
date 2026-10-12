@@ -9,6 +9,7 @@ use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::truncation_info::TruncationInfo;
 use serde_json::{Value, json};
 
+use super::environment_file_tools::read_session_vfs_fallback;
 use super::session_sandbox::{
     parse_config, provider_for_config, sandbox_exec_hint, sandbox_exec_output_mode,
     sandbox_exec_output_schema,
@@ -46,7 +47,7 @@ fn resolve_workspace_path(
     })
 }
 
-fn shell_escape(value: &str) -> String {
+pub(super) fn shell_escape(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
@@ -125,7 +126,7 @@ fn parse_timeout(arguments: &Value) -> Result<Option<u64>, ToolExecutionResult> 
     }
 }
 
-async fn exec(
+pub(super) async fn exec(
     config: &SessionSandboxConfig,
     context: &ToolContext,
     command: String,
@@ -165,7 +166,10 @@ async fn exec(
     Ok(response)
 }
 
-fn exec_result(response: SessionSandboxExecResponse, cwd: Option<&str>) -> ToolExecutionResult {
+pub(super) fn exec_result(
+    response: SessionSandboxExecResponse,
+    cwd: Option<&str>,
+) -> ToolExecutionResult {
     let mut value = json!({
         "stdout": response.stdout,
         "stderr": response.stderr,
@@ -182,7 +186,7 @@ fn exec_result(response: SessionSandboxExecResponse, cwd: Option<&str>) -> ToolE
     }
 }
 
-fn read_result(
+pub(super) fn read_result(
     mut response: SessionSandboxReadFileResponse,
     display_path: &str,
     offset: usize,
@@ -393,6 +397,11 @@ impl Tool for EnvironmentReadFileTool {
             .await
         {
             Ok(response) => read_result(response, path, offset, limit),
+            Err(ToolExecutionResult::ToolError(error)) => {
+                read_session_vfs_fallback(context, path, offset, limit)
+                    .await
+                    .unwrap_or(ToolExecutionResult::ToolError(error))
+            }
             Err(error) => error,
         }
     }

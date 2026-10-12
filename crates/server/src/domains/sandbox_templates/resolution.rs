@@ -1007,6 +1007,77 @@ mod tests {
         );
     }
 
+    /// Sandbox Worker inherits Worker's session file system. Under a managed
+    /// template the sandbox must own every file tool the model can call, or a
+    /// file the sandbox just cloned reads as "File not found".
+    #[tokio::test]
+    async fn sandbox_worker_under_a_managed_template_exposes_no_vfs_file_tool() {
+        use everruns_contracts::capability::BuiltInHarnessPreset;
+        use everruns_core::capabilities::{
+            SESSION_FILE_TOOL_NAMES, SystemPromptContext, collect_capabilities_with_configs,
+            resolve_capability_configs,
+        };
+
+        let managed = resolve_spec(&profile(SandboxTargetSpec::managed("daytona"))).unwrap();
+        // Sandbox Worker adds no capability of its own; Worker is its whole set.
+        let harness = BuiltInHarnessPreset::Worker.effective_capabilities();
+        let session = apply_sandbox_to_capabilities(&[], &harness, Some(&managed));
+        let effective = everruns_core::merge_capabilities(&harness, &session);
+        let registry = crate::platform::oss_capability_registry_for_grade(DeploymentGrade::Dev);
+        let resolved = resolve_capability_configs(&effective, &registry).unwrap();
+        let ctx =
+            SystemPromptContext::without_file_store(everruns_contracts::typed_id::SessionId::new());
+        let collected = collect_capabilities_with_configs(&resolved, &registry, &ctx).await;
+
+        // Skills and output persistence still need the VFS capability.
+        assert!(
+            collected
+                .applied_ids
+                .iter()
+                .any(|id| id == "session_file_system")
+        );
+        let mut definitions = collected.tool_definitions;
+        for hook in &collected.tool_definition_hooks {
+            definitions = hook.transform(definitions);
+        }
+        for name in SESSION_FILE_TOOL_NAMES {
+            let matching: Vec<_> = definitions.iter().filter(|d| d.name() == *name).collect();
+            assert!(matching.len() <= 1, "{name} offered twice");
+            if let Some(definition) = matching.first() {
+                assert_eq!(
+                    definition.hints().capability_id.as_deref(),
+                    Some("session_sandbox"),
+                    "{name} must run in the sandbox"
+                );
+            }
+            let tool = collected.tools.iter().rfind(|t| t.name() == *name);
+            assert_eq!(
+                tool.is_some(),
+                !matching.is_empty(),
+                "{name}: definition and implementation disagree"
+            );
+            if let Some(tool) = tool {
+                assert_eq!(
+                    tool.to_definition().concurrency_class(),
+                    Some("session_sandbox"),
+                    "{name} must execute in the sandbox"
+                );
+            }
+        }
+        for name in [
+            "read_file",
+            "read_many_files",
+            "list_directory",
+            "glob",
+            "grep",
+        ] {
+            assert!(
+                definitions.iter().any(|d| d.name() == name),
+                "{name} missing"
+            );
+        }
+    }
+
     #[test]
     fn bashkit_profile_keeps_the_agents_http_opt_in() {
         let resolved = resolve_spec(&profile(SandboxTargetSpec::vfs("bashkit"))).unwrap();

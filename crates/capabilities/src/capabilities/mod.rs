@@ -16,6 +16,7 @@ pub mod citation_web;
 pub mod coordination;
 pub mod data_knowledge;
 pub mod delegation_result;
+mod environment_file_tools;
 mod environment_tools;
 pub mod knowledge_base;
 pub mod knowledge_index;
