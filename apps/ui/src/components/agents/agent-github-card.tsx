@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ExternalLink, GitPullRequest, Plus } from "lucide-react";
+import { ExternalLink, GitPullRequest, MoreHorizontal, Plus } from "lucide-react";
 import {
   useAgentGitHub,
   useConnectAgentGitHub,
@@ -10,6 +10,13 @@ import {
 } from "@/hooks/use-agent-github";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuPositioner,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -100,9 +107,30 @@ export function AgentGitHubCard({ agentId }: { agentId: string }) {
               </Button>
             </div>
           ) : !isLoading && status ? (
-            <Button variant="outline" size="sm" onClick={onConnect} disabled={connect.isPending}>
-              {status.app_created ? "Finish installing" : "Connect GitHub"}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" onClick={onConnect} disabled={connect.isPending}>
+                {status.app_created ? "Finish installing" : "Connect GitHub"}
+              </Button>
+              {status.app_created && (
+                // An App that was never installed can be forgotten, e.g. to
+                // create it in an organization instead of a personal account.
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    className={buttonVariants({ variant: "ghost", size: "icon" })}
+                    aria-label="GitHub actions"
+                  >
+                    <MoreHorizontal className="size-4" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuPositioner>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem onClick={onDisconnect} disabled={disconnect.isPending}>
+                        Start over
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenuPositioner>
+                </DropdownMenu>
+              )}
+            </div>
           ) : null}
         </div>
         {!isLoading && status && !status.connected && !status.app_created && (
