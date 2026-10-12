@@ -8,7 +8,7 @@ products: [platform, cloud, framework]
 surfaces: [ui, api, code]
 links:
   docs: [/capabilities/web-search/]
-  prs: [everruns/everruns#4551, everruns/everruns#4584, everruns/everruns#4605, everruns/everruns#4611, everruns/everruns#4614]
+  prs: [everruns/everruns#4551, everruns/everruns#4584, everruns/everruns#4605, everruns/everruns#4611, everruns/everruns#4614, everruns/everruns#4621]
 ---
 
 Agents now search with one `web_search` tool, whichever provider answers. The Conversation and
