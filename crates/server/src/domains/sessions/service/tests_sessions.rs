@@ -81,6 +81,7 @@ async fn session_list_lookup_count_is_independent_of_page_size() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
     })
     .execute(&ctx)
@@ -298,6 +299,7 @@ async fn session_list_batch_hydration_preserves_response_fields() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
     })
     .execute(&ctx)
@@ -956,6 +958,7 @@ async fn starter_files_are_copied_into_new_sessions() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
     })
     .execute(&ctx)
@@ -1071,6 +1074,7 @@ async fn scoped_memories_are_auto_created_and_mounted_for_new_sessions() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
     })
     .execute(&ctx)
@@ -1332,6 +1336,7 @@ async fn archived_dependencies_cannot_be_assigned_in_dev_mode() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
     })
     .execute(&ctx)

@@ -116,28 +116,12 @@ async fn assert_channel_budget_exhausts_and_stops(channel_type: &str) {
     let agent = db
         .create_agent(
             1,
-            CreateAgentRow {
-                public_id: AgentId::new().to_string(),
-                name: format!("{channel_type} budget test agent"),
-                display_name: None,
-                description: None,
-                intro_markdown: None,
-                short_description: None,
-                starters: serde_json::json!([]),
-                system_prompt: String::new(),
-                default_model_id: None,
-                harness_id: everruns_contracts::typed_id::HarnessId::from_uuid(Uuid::nil()),
-                tags: vec![],
-                initial_files: serde_json::json!([]),
-                tools: serde_json::json!([]),
-                mcp_servers: serde_json::json!({}),
-                network_access: None,
-                max_iterations: None,
-                parallel_tool_calls: None,
-                communication: Default::default(),
-                environments: None,
-                is_built_in: false,
-            },
+            CreateAgentRow::new(
+                AgentId::new().to_string(),
+                format!("{channel_type} budget test agent"),
+                String::new(),
+                everruns_contracts::typed_id::HarnessId::from_uuid(Uuid::nil()),
+            ),
         )
         .await
         .unwrap();

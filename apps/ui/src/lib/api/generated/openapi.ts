@@ -7052,6 +7052,15 @@ export interface components {
        * @example 50
        */
       max_iterations?: number | null;
+      /**
+       * Format: int32
+       * @description Ceiling on output tokens per model response, sent to the provider as
+       *     `max_tokens`. Unset keeps the provider default. Clamped to the model's
+       *     output limit when known. Lower it when a provider rejects calls because
+       *     the balance can only afford fewer tokens.
+       * @example 4096
+       */
+      max_output_tokens?: number | null;
       /** @description Remote MCP servers scoped to this agent and inherited by its sessions. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
@@ -10194,6 +10203,14 @@ export interface components {
        * @example 20
        */
       max_iterations?: number | null;
+      /**
+       * Format: int32
+       * @description Ceiling on output tokens per model response (sent as `max_tokens`).
+       *     Omit to use the provider default. Must be at least 1; clamped to the
+       *     model's output limit when known.
+       * @example 4096
+       */
+      max_output_tokens?: number | null;
       /** @description Remote MCP servers scoped to this agent. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
@@ -14909,6 +14926,15 @@ export interface components {
          * @example 50
          */
         max_iterations?: number | null;
+        /**
+         * Format: int32
+         * @description Ceiling on output tokens per model response, sent to the provider as
+         *     `max_tokens`. Unset keeps the provider default. Clamped to the model's
+         *     output limit when known. Lower it when a provider rejects calls because
+         *     the balance can only afford fewer tokens.
+         * @example 4096
+         */
+        max_output_tokens?: number | null;
         /** @description Remote MCP servers scoped to this agent and inherited by its sessions. */
         mcpServers?: components["schemas"]["BTreeMap"];
         /**
@@ -17849,6 +17875,11 @@ export interface components {
       intro_markdown?: string | null;
       /** @description Optional tool-loop iteration limit. Omission keeps the host default. */
       max_iterations?: number | null;
+      /**
+       * Format: int32
+       * @description Ceiling on output tokens per model response. Omission keeps the provider default.
+       */
+      max_output_tokens?: number | null;
       /** @description Named scoped MCP definitions. Credential placeholders require explicit host bindings. */
       mcpServers?: {
         [key: string]: components["schemas"]["ScopedMcpServer"];
@@ -26130,6 +26161,13 @@ export interface components {
        * @example 20
        */
       max_iterations?: number | null;
+      /**
+       * Format: int32
+       * @description Ceiling on output tokens per model response (sent as `max_tokens`).
+       *     Omit to leave unchanged; `null` clears it back to the provider default.
+       * @example 4096
+       */
+      max_output_tokens?: number | null;
       mcpServers?: components["schemas"]["BTreeMap"] | null;
       /**
        * @description Name, unique per org. Lowercase alphanumeric and hyphens.
@@ -27689,6 +27727,15 @@ export interface components {
        * @example 50
        */
       max_iterations?: number | null;
+      /**
+       * Format: int32
+       * @description Ceiling on output tokens per model response, sent to the provider as
+       *     `max_tokens`. Unset keeps the provider default. Clamped to the model's
+       *     output limit when known. Lower it when a provider rejects calls because
+       *     the balance can only afford fewer tokens.
+       * @example 4096
+       */
+      max_output_tokens?: number | null;
       /** @description Remote MCP servers scoped to this agent and inherited by its sessions. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
