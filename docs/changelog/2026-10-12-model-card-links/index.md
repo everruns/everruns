@@ -11,6 +11,8 @@ links:
   prs: [everruns/everruns#4645]
 ---
 
+![Models page rows for Claude Haiku 5.5 and Claude Opus 4.7, each with a Model card link after the release date](./model-card-link@2x.png)
+
 Each model on the **Models** page now shows a **Model card** link next to its release date when
 the vendor has published one: Anthropic's system cards for Claude, OpenAI's system cards for
 GPT-6 and GPT-5.6, and Meta's card for Muse Wonder. The card is where the vendor documents
