@@ -7,7 +7,9 @@
 //! the tool share it; turning entries into drivers ([`plan_steps`]) is the
 //! tool's job. Model provider search never runs here: when the model runs it,
 //! the driver replaces the function tool, so at tool time a native entry is
-//! only recorded as the attempt that could not answer.
+//! only recorded as the attempt that could not answer. Whether native runs
+//! for a turn is [`native_search_first`](everruns_contracts::runtime::web_search::native_search_first),
+//! which the plan table below keeps in step with [`resolve_plan`].
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -239,7 +241,8 @@ pub fn plan_steps(plan: &ResolvedPlan, drivers: &PlanDrivers) -> Vec<PlanStep> {
                 "native",
                 "Model provider search",
                 if plan.allow_native {
-                    "The model running this turn has no search of its own"
+                    "The model running this turn did not search natively: it has no search \
+                     of its own, or its search cannot apply this agent's domain filters"
                 } else {
                     "Model provider search is turned off for this organization"
                 },
@@ -577,6 +580,53 @@ mod tests {
                 expected,
                 "{config} native={native} key={brave_key} org={org:?}"
             );
+        }
+    }
+
+    /// The per-turn native decision (driver option) and the plan agree: native
+    /// runs as the model's search exactly when it is the plan's first entry.
+    #[test]
+    fn native_first_matches_the_plan_for_every_setting() {
+        use everruns_contracts::runtime::web_search::native_search_first;
+        let orgs = [
+            org(serde_json::json!({})),
+            org(serde_json::json!({"automatic_order": [B.to_string()]})),
+            org(serde_json::json!({"automatic_order": [A.to_string(), "native"]})),
+            org(serde_json::json!({"automatic_order": ["native", B.to_string()]})),
+            org(serde_json::json!({"allow_native": false})),
+            org(serde_json::json!({"provider": "free"})),
+            org(serde_json::json!({"provider": "native", "fallback": "none"})),
+            org(serde_json::json!({"provider": "account", "account_id": A})),
+            WebSearchOrgSettings::default(),
+        ];
+        let configs = [
+            serde_json::json!({}),
+            serde_json::json!({"provider": "auto"}),
+            serde_json::json!({"provider": "auto", "fallback": "none"}),
+            serde_json::json!({"provider": "native"}),
+            serde_json::json!({"provider": "brave"}),
+            serde_json::json!({"provider": "free"}),
+            serde_json::json!({"provider": "account", "account_id": B}),
+        ];
+        for config in &configs {
+            let parsed = WebSearchConfig::from_value(config).unwrap();
+            for org in orgs.iter().map(Some).chain([None]) {
+                let resolved = resolve_plan(PlanInputs {
+                    config: &parsed,
+                    org,
+                    model_has_native: true,
+                    brave_key: true,
+                });
+                // A plan whose first entry is native only runs it when the org
+                // allows native (a turned-off native entry is recorded, not run).
+                let plan_native_first =
+                    resolved.entries.first() == Some(&PlanEntry::Native) && resolved.allow_native;
+                assert_eq!(
+                    native_search_first(parsed.provider, org),
+                    plan_native_first,
+                    "{config} {org:?}"
+                );
+            }
         }
     }
 

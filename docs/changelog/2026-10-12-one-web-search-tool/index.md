@@ -13,6 +13,9 @@ links:
 
 Agents now search with one `web_search` tool, whichever provider answers. The Conversation and
 Worker harnesses include it, and keyless free search answers whenever the chosen provider cannot.
+On OpenAI and OpenRouter models that have their own search, Automatic uses it first: the model
+searches through its provider, billed by the provider, and each search is counted on the model
+call's cost. Anthropic and Gemini native search come next.
 
 **In the UI:** **Registers > Web search** lists the providers (model provider search with its
 price, connected Brave Search accounts, free search) and holds the organization defaults: the

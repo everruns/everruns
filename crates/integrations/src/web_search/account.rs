@@ -7,16 +7,16 @@
 //! for [`ORG_SETTINGS_TTL`] per organization, so a changed default reaches
 //! running sessions within that window without one lookup per search.
 
-use std::collections::HashMap;
-use std::sync::{Arc, LazyLock, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use everruns_contracts::runtime::connection_services::UserConnectionResolver;
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::web_search::{
     SearchAccount, SearchContext, SearchDriver, SearchDriverCapabilities, SearchFailure,
-    SearchFailureKind, SearchRequest, SearchResponse, WebSearchOrgSettings,
+    SearchFailureKind, SearchRequest, SearchResponse, WEB_SEARCH_SETTINGS_TTL,
+    WebSearchOrgSettings, cached_web_search_settings,
 };
 use everruns_contracts::typed_id::SessionId;
 use tracing::debug;
@@ -25,12 +25,7 @@ use super::BRAVE_SEARCH_CONNECTION_PROVIDER;
 use super::brave::BraveSearchDriver;
 
 /// How long a worker reuses an organization's web search settings.
-pub const ORG_SETTINGS_TTL: Duration = Duration::from_secs(30);
-
-type CacheEntry = (Instant, Option<Arc<WebSearchOrgSettings>>);
-
-static ORG_SETTINGS: LazyLock<Mutex<HashMap<String, CacheEntry>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+pub const ORG_SETTINGS_TTL: Duration = WEB_SEARCH_SETTINGS_TTL;
 
 /// The organization's web search settings for this call, or `None` when the
 /// host has none (Framework, serve) or the lookup failed (logged; the call
@@ -41,25 +36,7 @@ pub(super) async fn org_settings(context: &ToolContext) -> Option<Arc<WebSearchO
         Some(org) => format!("org:{org:?}"),
         None => format!("session:{}", context.session_id),
     };
-    let now = Instant::now();
-    if let Ok(cache) = ORG_SETTINGS.lock()
-        && let Some((at, settings)) = cache.get(&key)
-        && now.duration_since(*at) < ORG_SETTINGS_TTL
-    {
-        return settings.clone();
-    }
-    let settings = match resolver.get_web_search_settings(context.session_id).await {
-        Ok(settings) => settings.map(Arc::new),
-        Err(error) => {
-            debug!("web search settings lookup failed: {error}");
-            return None;
-        }
-    };
-    if let Ok(mut cache) = ORG_SETTINGS.lock() {
-        cache.retain(|_, (at, _)| now.duration_since(*at) < ORG_SETTINGS_TTL);
-        cache.insert(key, (now, settings.clone()));
-    }
-    settings
+    cached_web_search_settings(resolver.as_ref(), &key, context.session_id).await
 }
 
 /// A search driver for one organization account, or `None` when this host

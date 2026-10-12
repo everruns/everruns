@@ -12,9 +12,10 @@ tags:
 # Web Search
 
 Status: approved (2026-10-11), being built in the delivery order below. Step 1 (the
-capability, free and Brave drivers, harnesses, Framework builder) and step 2
+capability, free and Brave drivers, harnesses, Framework builder), step 2
 (organization search accounts, `web_search_defaults`, live plan resolution, the
-catalog and preview endpoints, flags removed) are in place.
+catalog and preview endpoints, flags removed), step 3 (UI) and the OpenAI and
+OpenRouter half of step 4 (native search) are in place.
 
 ## Abstract
 
@@ -190,10 +191,12 @@ keep their natural place (native first, accounts not listed after the listed
 ones, in the organization's listing order), so connecting an account changes
 Automatic without anyone editing the order. Native is switched off with "allow
 model provider search"; an account leaves Automatic by being disconnected. With
-fallback `none`, Automatic keeps only its first available entry. Until step 4
-lands a native adapter, a native step at tool time records that the model did
-not search and the next provider answers; the preview already lists native for
-the provider types that will have it (`NATIVE_WEB_SEARCH_PROVIDER_TYPES`).
+fallback `none`, Automatic keeps only its first available entry. A native step
+that reaches tool time (the model's driver has no native search for it, or
+could not apply the agent's filters) records that the model did not search and
+the next provider answers. The preview lists native only for provider types
+whose driver runs it (`NATIVE_WEB_SEARCH_PROVIDER_TYPES`) and models that have
+it (`native_web_search_supported_model`).
 
 Resolution happens live: each turn decides whether native applies to the model
 running it (that is what makes Automatic follow a mid-session model switch), and
@@ -269,16 +272,37 @@ user location. Like the native browser toolset, it is a request, not a
 requirement: a driver that cannot honor it for this model leaves the function
 tool in place and the next provider in the plan answers.
 
+As built (OpenAI, OpenRouter): capability config alone cannot say whether native
+is first, because that depends on the organization's current defaults. So the
+capability writes the option for every setting that can start with native
+(`org_default`, `auto`, `native`) and carries the agent's setting in it; the
+host's turn resolver then reads the organization's settings (the same 30 second
+cache the tool uses) and drops the option for a turn whose plan does not start
+with native, or adds the organization's blocked domains
+([`native_search_first`](../../crates/contracts/src/runtime/web_search_org.rs)).
+Hosts without organization settings keep the built-in defaults. Blocked domains
+are a policy: a provider that cannot exclude domains (OpenAI) declines rather
+than searching them. Freshness is a hint no native search applies, so it never
+makes a driver decline. Which models search natively is a model-id rule per
+vendor in [`native_web_search`](../../crates/contracts/src/native_web_search.rs).
+
 | Driver | Hosted tool | Notes |
 |---|---|---|
 | OpenAI, Azure OpenAI, ChatGPT plan | Responses `web_search` | Reuses `openai_hosted_tools` wiring (`web_search_call` parsing, cost). |
-| OpenRouter | `openrouter:web_search` with engine `native` | Reuses `OpenRouterServerToolKind::WebSearch`; OpenRouter falls back to its own engine for models without native search, which we disable so the plan decides. |
+| OpenRouter | `openrouter:web_search` with engine `native` | Reuses `OpenRouterServerToolKind::WebSearch`. OpenRouter falls back to its own engine (Exa) for models without native search even with engine `native`, and no request field turns that off, so the driver sends the tool only for models on OpenRouter's native list; searches are counted from `usage.server_tool_use` and `web_search_call` items. |
 | Anthropic | server tool `web_search_*` | New: send the tool entry, parse `server_tool_use` and `web_search_tool_result` blocks, keep encrypted content for replay, map citations. Version pinned per model, like `browser_toolset_20260801`. |
 | Gemini | `google_search` | New, per-model table: only models that accept `google_search` next to function tools. |
 | Others (Mistral, Fireworks, Bedrock, Meta, …) | none | Function tool, next provider in the plan. |
 
-`openai_server_tools` and `openrouter_server_tools` lose their `web_search`
-entries; their other hosted tools stay where they are.
+`openai_server_tools` and `openrouter_server_tools` keep their `web_search`
+entries (user decision, 2026-10-12). When one of them already turns on its
+provider's search, that entry answers for native search and the function tool
+is dropped, so the request never carries two web search tools of one provider.
+
+As built, native calls arrive as `tool.hosted_call` events with the query as
+their summary, and each per-call priced hosted call becomes a `hosted_tool`
+cost component on the `llm.generation`. The normalized result list and raw
+block for native calls in the details view are not built yet.
 
 ## Free search, improved
 

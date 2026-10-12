@@ -64,6 +64,7 @@ pub mod model_profiles;
 pub mod model_spec;
 pub mod native_async;
 pub mod native_computer;
+pub mod native_web_search;
 pub mod openai_compat;
 pub mod openai_computer;
 #[cfg(feature = "http")]

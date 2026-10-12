@@ -27,17 +27,12 @@ pub const WEB_SEARCH_CONNECTOR_CAPABILITY: &str = "web_search";
 /// `everruns-integrations` keeps the two in step.
 pub const WEB_SEARCH_ACCOUNT_PROVIDERS: &[&str] = &["brave_search"];
 
-/// Model provider types whose models offer search of their own (native search,
-/// billed by the model provider). The driver adapters land one by one; until
-/// a driver runs it, a native step falls through to the next provider.
-pub const NATIVE_WEB_SEARCH_PROVIDER_TYPES: &[&str] = &[
-    "openai",
-    "azure_openai",
-    "chatgpt",
-    "openrouter",
-    "anthropic",
-    "gemini",
-];
+/// Model provider types whose drivers run the model's own search (native
+/// search, billed by the model provider). Anthropic and Gemini join when their
+/// driver adapters land; until then their models search with the next
+/// provider of the plan.
+pub const NATIVE_WEB_SEARCH_PROVIDER_TYPES: &[&str] =
+    &["openai", "azure_openai", "chatgpt", "openrouter"];
 
 /// Plain-words price of native search, shown wherever it is offered.
 pub const NATIVE_WEB_SEARCH_PRICE_NOTE: &str =
@@ -50,6 +45,92 @@ pub const AUTOMATIC_FREE: &str = "free";
 /// Whether models of this provider type offer native search.
 pub fn native_web_search_supported(provider_type: &str) -> bool {
     NATIVE_WEB_SEARCH_PROVIDER_TYPES.contains(&provider_type)
+}
+
+/// Whether this model searches natively through its provider's driver: the
+/// same model rules the drivers apply before swapping in the hosted tool.
+pub fn native_web_search_supported_model(provider_type: &str, model: &str) -> bool {
+    match provider_type {
+        "openai" | "azure_openai" | "chatgpt" => {
+            crate::native_web_search::openai_has_native_web_search(model)
+        }
+        "openrouter" => crate::native_web_search::openrouter_native_vendor(model).is_some(),
+        _ => false,
+    }
+}
+
+/// Whether model provider search comes first in the plan an agent's provider
+/// setting resolves to under these organization settings (`None`: no
+/// organization, the built-in defaults), for a model that has it. This is
+/// the per-turn question native search answers: only a first entry runs as
+/// the model's own search, since anything before it must be tried first.
+pub fn native_search_first(
+    provider: SearchProviderSetting,
+    org: Option<&WebSearchOrgSettings>,
+) -> bool {
+    let defaults = org.map(|org| &org.defaults);
+    if defaults.is_some_and(|defaults| !defaults.allow_native) {
+        return false;
+    }
+    let provider = match provider {
+        SearchProviderSetting::OrgDefault => {
+            defaults.map_or(SearchProviderSetting::Auto, |defaults| defaults.provider)
+        }
+        provider => provider,
+    };
+    match provider {
+        SearchProviderSetting::Native => true,
+        SearchProviderSetting::Auto | SearchProviderSetting::OrgDefault => {
+            // Automatic puts native first unless the order lists a connected
+            // account ahead of it; an order without native keeps it first.
+            let Some(org) = org else { return true };
+            let order = &org.defaults.automatic_order;
+            !order.iter().any(|entry| entry == AUTOMATIC_NATIVE)
+                || !org
+                    .defaults
+                    .automatic_order
+                    .iter()
+                    .take_while(|entry| entry.as_str() != AUTOMATIC_NATIVE)
+                    .any(|entry| {
+                        Uuid::parse_str(entry)
+                            .is_ok_and(|id| org.accounts.iter().any(|account| account.id == id))
+                    })
+        }
+        SearchProviderSetting::Brave
+        | SearchProviderSetting::Account
+        | SearchProviderSetting::Free => false,
+    }
+}
+
+/// Apply the organization's current settings to a call's native search
+/// request: drop it when native is not first in the agent's plan, and add the
+/// organization's blocked domains otherwise. A request without the option is
+/// left alone.
+pub fn resolve_native_web_search(
+    options: &mut std::collections::HashMap<String, serde_json::Value>,
+    org: Option<&WebSearchOrgSettings>,
+) {
+    use crate::native_web_search::{NATIVE_WEB_SEARCH_OPTION, NativeWebSearch};
+    let Some(mut native) = NativeWebSearch::from_driver_options(options) else {
+        options.remove(NATIVE_WEB_SEARCH_OPTION);
+        return;
+    };
+    let provider = serde_json::from_value(serde_json::Value::from(native.provider.clone()))
+        .unwrap_or(SearchProviderSetting::OrgDefault);
+    if !native_search_first(provider, org) {
+        options.remove(NATIVE_WEB_SEARCH_OPTION);
+        return;
+    }
+    for domain in org
+        .map(|org| org.defaults.blocked_domains.as_slice())
+        .unwrap_or_default()
+    {
+        if !native.blocked_domains.contains(domain) {
+            native.blocked_domains.push(domain.clone());
+        }
+    }
+    let (key, value) = native.to_driver_option();
+    options.insert(key, value);
 }
 
 /// Which provider web search uses.
@@ -254,6 +335,49 @@ pub fn normalize_domains(domains: &[String]) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
+/// How long a host reuses an organization's web search settings, so a change
+/// reaches running sessions within this window without one lookup per call.
+pub const WEB_SEARCH_SETTINGS_TTL: std::time::Duration = std::time::Duration::from_secs(30);
+
+type SettingsCacheEntry = (
+    web_time::Instant,
+    Option<std::sync::Arc<WebSearchOrgSettings>>,
+);
+
+static SETTINGS_CACHE: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<String, SettingsCacheEntry>>,
+> = std::sync::LazyLock::new(Default::default);
+
+/// The organization's web search settings through `resolver`, cached for
+/// [`WEB_SEARCH_SETTINGS_TTL`] under `key` (an organization or session). `None`
+/// when the host has none or the lookup failed (logged): callers then use the
+/// built-in defaults rather than failing the search or the turn.
+pub async fn cached_web_search_settings(
+    resolver: &dyn crate::runtime::connection_services::UserConnectionResolver,
+    key: &str,
+    session_id: crate::runtime::typed_id::SessionId,
+) -> Option<std::sync::Arc<WebSearchOrgSettings>> {
+    let now = web_time::Instant::now();
+    if let Ok(cache) = SETTINGS_CACHE.lock()
+        && let Some((at, settings)) = cache.get(key)
+        && now.duration_since(*at) < WEB_SEARCH_SETTINGS_TTL
+    {
+        return settings.clone();
+    }
+    let settings = match resolver.get_web_search_settings(session_id).await {
+        Ok(settings) => settings.map(std::sync::Arc::new),
+        Err(error) => {
+            tracing::debug!(error = %error, "web search settings lookup failed");
+            return None;
+        }
+    };
+    if let Ok(mut cache) = SETTINGS_CACHE.lock() {
+        cache.retain(|_, (at, _)| now.duration_since(*at) < WEB_SEARCH_SETTINGS_TTL);
+        cache.insert(key.to_string(), (now, settings.clone()));
+    }
+    settings
+}
+
 /// One organization search account, without its key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -417,8 +541,143 @@ mod tests {
     }
 
     #[test]
-    fn native_search_is_a_provider_type_property() {
-        assert!(native_web_search_supported("anthropic"));
+    fn native_search_is_a_provider_type_and_model_property() {
+        assert!(native_web_search_supported("openrouter"));
+        // Anthropic and Gemini adapters are not in yet.
+        assert!(!native_web_search_supported("anthropic"));
         assert!(!native_web_search_supported("mistral"));
+        assert!(native_web_search_supported_model("openai", "gpt-6.1-sol"));
+        assert!(!native_web_search_supported_model(
+            "openai",
+            "gpt-3.5-turbo"
+        ));
+        assert!(native_web_search_supported_model(
+            "openrouter",
+            "anthropic/claude-opus-5-5"
+        ));
+        assert!(!native_web_search_supported_model(
+            "openrouter",
+            "mistralai/mistral-large"
+        ));
+        assert!(!native_web_search_supported_model(
+            "anthropic",
+            "claude-opus-5-5"
+        ));
+    }
+
+    fn org(defaults: serde_json::Value, accounts: &[Uuid]) -> WebSearchOrgSettings {
+        WebSearchOrgSettings {
+            defaults: serde_json::from_value(defaults).unwrap(),
+            accounts: accounts
+                .iter()
+                .map(|id| SearchAccount {
+                    id: *id,
+                    provider: "brave_search".into(),
+                    name: "Team".into(),
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn native_first_by_setting_and_org_defaults() {
+        use SearchProviderSetting::*;
+        let a = id(0xa);
+        let fresh = org(serde_json::json!({}), &[a]);
+        let off = org(serde_json::json!({"allow_native": false}), &[a]);
+        let account_first = org(
+            serde_json::json!({"automatic_order": [a.to_string(), "native"]}),
+            &[a],
+        );
+        // An order naming an account that is gone does not push native down.
+        let stale_first = org(
+            serde_json::json!({"automatic_order": [id(9).to_string(), "native"]}),
+            &[a],
+        );
+        // An order that leaves native out keeps it in its natural first place.
+        let native_unlisted = org(
+            serde_json::json!({"automatic_order": [a.to_string()]}),
+            &[a],
+        );
+        let free_default = org(serde_json::json!({"provider": "free"}), &[a]);
+        let native_default = org(
+            serde_json::json!({"provider": "native", "automatic_order": [a.to_string()]}),
+            &[a],
+        );
+        let cases: Vec<(SearchProviderSetting, Option<&WebSearchOrgSettings>, bool)> = vec![
+            (OrgDefault, None, true),
+            (Auto, None, true),
+            (Native, None, true),
+            (Free, None, false),
+            (Brave, None, false),
+            (OrgDefault, Some(&fresh), true),
+            (Auto, Some(&fresh), true),
+            (Auto, Some(&off), false),
+            (Native, Some(&off), false),
+            (OrgDefault, Some(&off), false),
+            (Auto, Some(&account_first), false),
+            (OrgDefault, Some(&account_first), false),
+            (Native, Some(&account_first), true),
+            (Auto, Some(&stale_first), true),
+            (Auto, Some(&native_unlisted), true),
+            (OrgDefault, Some(&free_default), false),
+            (Auto, Some(&free_default), true),
+            (OrgDefault, Some(&native_default), true),
+            (Account, Some(&fresh), false),
+        ];
+        for (provider, org, expected) in cases {
+            assert_eq!(
+                native_search_first(provider, org),
+                expected,
+                "{provider:?} {org:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn resolving_the_request_drops_it_or_adds_org_blocked_domains() {
+        use crate::native_web_search::{NATIVE_WEB_SEARCH_OPTION, NativeWebSearch};
+        use std::collections::HashMap;
+        let request = |provider: &str| {
+            HashMap::from([NativeWebSearch {
+                provider: provider.into(),
+                blocked_domains: vec!["x.com".into()],
+                ..Default::default()
+            }
+            .to_driver_option()])
+        };
+        let blocking = org(
+            serde_json::json!({"blocked_domains": ["x.com", "pinterest.com"]}),
+            &[],
+        );
+        let mut options = request("auto");
+        resolve_native_web_search(&mut options, Some(&blocking));
+        assert_eq!(
+            NativeWebSearch::from_driver_options(&options)
+                .unwrap()
+                .blocked_domains,
+            ["x.com", "pinterest.com"]
+        );
+        let mut options = request("org_default");
+        resolve_native_web_search(
+            &mut options,
+            Some(&org(serde_json::json!({"allow_native": false}), &[])),
+        );
+        assert!(!options.contains_key(NATIVE_WEB_SEARCH_OPTION));
+        // No organization: built-in defaults keep the request.
+        let mut options = request("org_default");
+        resolve_native_web_search(&mut options, None);
+        assert!(options.contains_key(NATIVE_WEB_SEARCH_OPTION));
+        // A malformed request is dropped, never sent half-read.
+        let mut options = HashMap::from([(
+            NATIVE_WEB_SEARCH_OPTION.to_string(),
+            serde_json::json!({"max_uses": "x"}),
+        )]);
+        resolve_native_web_search(&mut options, None);
+        assert!(options.is_empty());
+        // Nothing requested stays nothing.
+        let mut options = HashMap::new();
+        resolve_native_web_search(&mut options, Some(&blocking));
+        assert!(options.is_empty());
     }
 }
