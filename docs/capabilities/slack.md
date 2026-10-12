@@ -173,6 +173,12 @@ timestamp: use it as `timestamp` with `slack_update_message` when the Slack
 actions capability is enabled. If delivery is uncertain, the error says so;
 the Agent should not resend blindly because the message may already be visible.
 
+A turn started by a session schedule (the Agent's `create_schedule`) has no
+Slack message of its own. Its `send_message` goes to the conversation of the
+session's latest Slack message: inline in a direct message, top-level in a
+`per_channel` channel, and in the thread for a `per_thread` session. A session
+that has never received a Slack message cannot post.
+
 The agent pane shows a working status while the turn runs. Approval cards and
 task progress appear independently of the Agent's messages. If a turn ends
 without anything posted to the thread, or an explicit Agent's turn fails or is
