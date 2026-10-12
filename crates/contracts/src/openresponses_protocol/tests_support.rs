@@ -121,6 +121,7 @@ pub(crate) fn make_tool(
 /// Minimal `LlmCallConfig` for wire tests.
 pub(crate) fn auth_test_config() -> LlmCallConfig {
     LlmCallConfig {
+        tool_baseline: None,
         speed: None,
         verbosity: None,
         model: "gpt-5.4".to_string(),
