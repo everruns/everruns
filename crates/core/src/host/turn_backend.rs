@@ -19,17 +19,16 @@
 //!   its own store (the platform server persists every message and tool
 //!   resolution before it starts a turn). Every backend serves the stored
 //!   forms; a backend with no session runtime to write through (the
-//!   platform's `DurableRunner`) serves only them. There is no server-only
-//!   variant: stored input is a framework capability.
+//!   platform server's session-actor backend) serves only them. There is no
+//!   server-only variant: stored input is a framework capability.
 //! - A backend that cannot look the session up (one that reaches the
-//!   session only through a durable queue) needs the session's organization,
+//!   session only through a store of its own) needs the session's organization,
 //!   harness and agent on the request: [`TurnRequest::scope`]. A backend that
 //!   resolves the session itself ignores it.
 //! - Crash recovery (`recover`) is left out: the in-process runtime keeps no
 //!   queue to recover from, and an interrupted turn is resumed per session
 //!   through [`TurnInput::ResumeInterrupted`], from the session log, on any
-//!   backend. The durable memory backend needs nothing more: its queue dies
-//!   with the process.
+//!   backend.
 //! - [`InProcessBackend`] drives the turn on the task that polls its ticket,
 //!   so moving the facade onto this entry point changed no concurrency: a
 //!   turn makes progress only while its owner polls it, and dropping the
@@ -51,7 +50,7 @@ use uuid::Uuid;
 use super::runtime::{AcceptedTurnInput, InProcessRuntime, TurnResult, TurnSteering};
 use crate::events::ToolCompletedData;
 
-/// Runs a session's turns: in this process, or on a durable queue.
+/// Runs a session's turns: in this process, or on a platform worker.
 ///
 /// The one entry point for turns, used by the framework's sessions and the
 /// platform server alike.
@@ -164,8 +163,8 @@ pub enum TurnInput {
     /// or through its own event store) continue it, as
     /// [`ToolResults`](Self::ToolResults) does once it has recorded its own.
     RecordedToolResults {
-        /// Keys this continuation. A durable backend enqueues the turn's next
-        /// step under it, so continuing twice with one id runs the step once.
+        /// Keys this continuation: the resolution whose recorded events the
+        /// turn continues from.
         resolution_id: Uuid,
     },
 }
@@ -176,8 +175,8 @@ pub enum TurnInput {
 ///
 /// A backend that holds the session's runtime resolves these itself and
 /// ignores the request's scope. One that reaches the session only through a
-/// durable queue (the platform's `DurableRunner`) needs it to start a turn
-/// from a [`TurnInput::StoredMessage`].
+/// store of its own (the platform server's session-actor backend) needs it
+/// to start a turn from a [`TurnInput::StoredMessage`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct TurnScope {
@@ -222,9 +221,9 @@ pub struct TurnRequest {
     /// The session's organization, harness and agent, for a backend that
     /// cannot look them up; see [`TurnScope`].
     pub scope: Option<TurnScope>,
-    /// The request that caused the turn, for correlation. The durable
-    /// backends carry it in the turn's checkpoint; the in-process backend
-    /// does not record it.
+    /// The request that caused the turn, for correlation. Neither the
+    /// in-process backend nor the platform's session-actor backend records
+    /// it today.
     pub request_id: Option<String>,
 }
 

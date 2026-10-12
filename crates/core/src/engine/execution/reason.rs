@@ -81,10 +81,6 @@ use stream_state::{
 };
 use transcript::repair_dangling_tool_calls;
 
-fn unix_now_secs() -> u64 {
-    everruns_contracts::rt::unix_now_secs()
-}
-
 fn default_max_iterations() -> usize {
     500
 }
@@ -118,7 +114,6 @@ pub struct ReasonAtom {
     image_resolver: Option<Arc<dyn ImageResolver>>,
     file_resolver: Option<Arc<dyn FileResolver>>,
     /// Optional heartbeater for stream-liveness signalling (EVE-531).
-    stream_heartbeater: Option<Arc<dyn crate::engine::durability::StreamHeartbeater>>,
     /// Optional provider stall timeout (EVE-531). Default: 120s.
     provider_stall_timeout: Option<std::time::Duration>,
     /// Shared attempt/backoff/time budget for automatic provider recovery.
@@ -177,7 +172,6 @@ impl ReasonAtom {
             event_emitter: PhaseEffectEmitter::new(Arc::new(event_emitter)),
             image_resolver: None,
             file_resolver: None,
-            stream_heartbeater: None,
             provider_stall_timeout: None,
             provider_retry_config: LlmRetryConfig::default(),
             durable_tool_result_store: None,
@@ -219,15 +213,6 @@ impl ReasonAtom {
 
     pub fn with_file_resolver(mut self, resolver: Arc<dyn FileResolver>) -> Self {
         self.file_resolver = Some(resolver);
-        self
-    }
-
-    /// Set the stream heartbeater for liveness signalling during LLM streaming.
-    pub fn with_stream_heartbeater(
-        mut self,
-        heartbeater: Arc<dyn crate::engine::durability::StreamHeartbeater>,
-    ) -> Self {
-        self.stream_heartbeater = Some(heartbeater);
         self
     }
 
@@ -1374,22 +1359,13 @@ impl ReasonAtom {
             let mut last_thinking_delta_emit: Option<Instant> = None;
             let mut time_to_first_token_ms: Option<u64> = None;
 
-            // EVE-531: stall timeout + keepalive heartbeat for stream-liveness
+            // EVE-531: stall timeout for stream liveness
             let stall_timeout = self
                 .provider_stall_timeout
                 .unwrap_or(std::time::Duration::from_secs(120));
             let initial_stall_timeout = remaining_retry_time(&retry_config, retry_started_at)
                 .map_or(stall_timeout, |remaining| remaining.min(stall_timeout));
             let mut stall_sleep = Box::pin(everruns_contracts::rt::sleep(initial_stall_timeout));
-            let mut keepalive_ticker =
-                everruns_contracts::rt::Interval::new(std::time::Duration::from_secs(12));
-            keepalive_ticker.tick().await; // consume immediate first tick
-            let mut last_stream_heartbeat = Instant::now();
-            // Tracks the wall-clock time of the last actual token received.
-            // Updated only on content events; keepalive heartbeats use this
-            // so the control plane can distinguish "alive/slow" from "making
-            // progress" without conflating keepalive pings with real tokens.
-            let mut last_token_at_unix: u64 = unix_now_secs();
 
             loop {
                 let event = tokio::select! {
@@ -1461,17 +1437,6 @@ impl ReasonAtom {
                             .await;
                         return Err(AgentLoopError::llm(stall_error.message));
                     },
-                    _ = keepalive_ticker.tick() => {
-                        if let Some(ref hb) = self.stream_heartbeater {
-                            hb.heartbeat(crate::engine::durability::StreamProgress {
-                                accumulated_len: text.len() + thinking.len(),
-                                last_delta_at: last_token_at_unix,
-                            })
-                            .await;
-                            last_stream_heartbeat = Instant::now();
-                        }
-                        continue;
-                    },
                 };
                 let event = match event {
                     Ok(event) => event,
@@ -1486,7 +1451,6 @@ impl ReasonAtom {
                 let advanced_stall_deadline = advances_stall_deadline(&event);
                 if advanced_stall_deadline {
                     stall_sleep = Box::pin(everruns_contracts::rt::sleep(stall_timeout));
-                    last_token_at_unix = unix_now_secs();
                 }
                 match event {
                     LlmStreamEvent::TextDelta(delta) => {
@@ -1883,18 +1847,6 @@ impl ReasonAtom {
                     // `LlmStreamEvent` is `#[non_exhaustive]`: ignore kinds this build does
                     // not know so the turn keeps streaming (unreachable in-workspace).
                     _ => {}
-                }
-                // Per-event heartbeat after processing the event, so accumulated_len
-                // reflects the just-received tokens. Throttled to every 5s.
-                if last_stream_heartbeat.elapsed().as_millis() as u64 >= 5_000
-                    && let Some(ref hb) = self.stream_heartbeater
-                {
-                    hb.heartbeat(crate::engine::durability::StreamProgress {
-                        accumulated_len: text.len() + thinking.len(),
-                        last_delta_at: last_token_at_unix,
-                    })
-                    .await;
-                    last_stream_heartbeat = Instant::now();
                 }
             }
             compaction_lifecycle

@@ -21,10 +21,10 @@
 //!   its backoff by [`ACTOR_POLL_BACKOFF_MAX`]: a lease that expires (its
 //!   holder died) sends no wake-up, so the poll bounds how long past its TTL
 //!   the turn waits for another worker.
-//! - The worker's host stays the one queued phases used: `WorkerRuntimeHost`
-//!   with its phase setup reads, turn read cache and write-behind events,
-//!   built once per turn and re-armed at each phase boundary (`ActorHosts`).
-//!   Stream heartbeats are not needed: the lease renewer keeps the turn alive.
+//! - The worker's host is `WorkerRuntimeHost` with its phase setup reads,
+//!   turn read cache and write-behind events, built once per turn and
+//!   re-armed at each phase boundary (`ActorHosts`). The lease renewer keeps
+//!   the turn alive; nothing heartbeats the model stream.
 
 mod inbox;
 mod lease;

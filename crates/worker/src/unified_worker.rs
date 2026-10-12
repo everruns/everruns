@@ -9,8 +9,7 @@
 //   step 6c); no turn step is a queued task any more.
 // - the durable task queue loop: claims the activities that are not turns
 //   (leased-resource cleanup, the session task reaper, scheduled channel and
-//   agent-trigger invocations) and runs them through durable-engine's
-//   `TurnTaskDriver` with `WorkerTurnHost`.
+//   agent-trigger invocations) and runs them through `TaskDriver`.
 //
 // Decision: the worker owns registration, heartbeats, operator drain and
 // concurrency for both loops: they share `in_flight` (the advertised load),
@@ -26,18 +25,13 @@ use tokio::task::JoinSet;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use crate::activities::activity_types;
 use crate::actor_runtime::{ActorRuntime, ActorRuntimeConfig, ActorSlots, WorkerActorHosts};
-use crate::engine::model_wait::{self, ModelWaitSlots};
+use crate::engine::model_wait::ModelWaitSlots;
 use crate::model_wait_slots::{DEFAULT_MAX_CONCURRENT_MODEL_WAITS, WorkerModelWaitSlots};
-use crate::task_error::summarize_task_failure;
+use crate::task_driver::TaskDriver;
+use crate::task_store::TaskStore;
 use crate::task_wakeup::spawn_wakeup_listener;
-use crate::turn_driver::TurnTaskDriver;
-use crate::turn_host::WorkerTurnHost;
 use crate::worker_adapters::WorkerAdapters;
-
-// Re-export atom types
-pub use crate::engine::{InputAtomInput, ReasonInput, ReasonResult};
 
 // =============================================================================
 // Configuration
@@ -105,10 +99,6 @@ pub struct TaskWorkerConfig {
     pub grpc_address: String,
     /// Timeout for initial connection to control-plane gRPC.
     pub connect_timeout: Duration,
-    /// Run a turn's next step on this worker right away, enqueued already
-    /// claimed, instead of through the queue (`WORKER_CHAIN_STEPS`, on by
-    /// default). See the turn driver's module notes.
-    pub chain_steps: bool,
     /// How long a shutting-down worker lets in-flight tasks finish before it
     /// aborts them (`WORKER_SHUTDOWN_GRACE_SECS`). Keep it under the
     /// orchestrator's kill timeout; aborted tasks go back to the queue when
@@ -125,12 +115,7 @@ impl Default for TaskWorkerConfig {
         Self {
             worker_id: format!("worker-{}", Uuid::now_v7()),
             // Turns are not queued activities: the actor loop runs them.
-            activity_types: vec![
-                "leased_resource_cleanup".to_string(),
-                "session_task_reaper".to_string(),
-                activity_types::INVOKE_SCHEDULED_CHANNEL.to_string(),
-                activity_types::INVOKE_AGENT_TRIGGER.to_string(),
-            ],
+            activity_types: crate::activities::all(),
             max_concurrent_tasks: DEFAULT_MAX_CONCURRENT_TASKS,
             claim_batch_size: DEFAULT_CLAIM_BATCH_SIZE,
             max_concurrent_model_waits: DEFAULT_MAX_CONCURRENT_MODEL_WAITS,
@@ -140,7 +125,6 @@ impl Default for TaskWorkerConfig {
             worker_group: None,
             grpc_address: "127.0.0.1:9001".to_string(),
             connect_timeout: Duration::from_secs(30),
-            chain_steps: true,
             shutdown_grace: DEFAULT_SHUTDOWN_GRACE,
         }
     }
@@ -211,7 +195,6 @@ impl TaskWorkerConfig {
                 "WORKER_GRPC_CONNECT_TIMEOUT",
                 defaults.connect_timeout,
             ),
-            chain_steps: env_or("WORKER_CHAIN_STEPS", defaults.chain_steps),
             shutdown_grace: env_duration_secs(
                 "WORKER_SHUTDOWN_GRACE_SECS",
                 defaults.shutdown_grace,
@@ -225,22 +208,20 @@ impl TaskWorkerConfig {
 // Unified Worker
 // =============================================================================
 
-pub use everruns_durable_engine::turn_store::TurnStore;
-
 /// Unified worker that executes tasks from the durable task queue
 ///
 /// This worker is generic over:
-/// - `S`: TurnStore implementation (direct store or gRPC store)
+/// - `S`: TaskStore implementation (direct store or gRPC store)
 /// - `A`: WorkerAdapters implementation (Direct or gRPC)
 pub struct TaskWorker<S, A>
 where
-    S: TurnStore,
+    S: TaskStore,
     A: WorkerAdapters,
 {
     config: TaskWorkerConfig,
     store: Arc<S>,
-    /// Runs each claimed task (see durable-engine's `turn_driver`).
-    driver: TurnTaskDriver<S, WorkerTurnHost<A>>,
+    /// Runs each claimed task (see `task_driver`).
+    driver: TaskDriver<S, A>,
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
     in_flight: Arc<AtomicUsize>,
@@ -257,7 +238,7 @@ where
 
 impl<S, A> TaskWorker<S, A>
 where
-    S: TurnStore,
+    S: TaskStore,
     A: WorkerAdapters,
 {
     /// Create a new unified worker
@@ -272,7 +253,6 @@ where
             poll_interval_ms = config.poll_interval.as_millis(),
             poll_backoff_max_ms = config.poll_backoff_max.as_millis(),
             heartbeat_interval_ms = config.heartbeat_interval.as_millis(),
-            chain_steps = config.chain_steps,
             "Initialized unified worker"
         );
 
@@ -281,13 +261,12 @@ where
             adapters.actor_lease_store(),
             ActorRuntimeConfig::new(config.worker_id.clone()),
         );
-        let driver = TurnTaskDriver::new(
+        let driver = TaskDriver::new(
             store.clone(),
-            WorkerTurnHost::new(adapters),
+            adapters,
             config.worker_id.clone(),
             config.heartbeat_interval,
-        )
-        .chain_steps(config.chain_steps);
+        );
 
         let in_flight = Arc::new(AtomicUsize::new(0));
         let wake = Arc::new(Notify::new());
@@ -506,7 +485,7 @@ where
     }
 
     /// Graceful stop: mark this worker draining so the queue routes new tasks
-    /// and chained steps elsewhere, give in-flight tasks `shutdown_grace` to
+    /// elsewhere, give in-flight tasks `shutdown_grace` to
     /// finish, then abort what is left.
     async fn finish_in_flight(&self, task_handles: &mut JoinSet<()>) {
         if let Err(e) = self.store.drain_worker(&self.config.worker_id).await {
@@ -600,34 +579,22 @@ where
             let driver = self.driver.clone();
             let in_flight_guard = InFlightTaskGuard::increment(self.in_flight.clone());
             let wake = self.wake.clone();
-            let model_waits = self.model_waits.clone();
 
             task_handles.spawn(async move {
                 let _in_flight_guard = in_flight_guard;
-                let result = model_wait::scope(model_waits, driver.execute_task(&task)).await;
-                // A finished phase usually enqueued the next one (reason -> act
-                // -> reason); claim it now instead of after the poll backoff.
+                let result = driver.execute_task(&task).await;
+                // A freed slot may take queued work now instead of after the
+                // poll backoff.
                 wake.notify_one();
 
                 if let Err(e) = result {
-                    let failure = summarize_task_failure(
-                        task.id,
-                        task.workflow_id,
-                        &task.activity_type,
-                        task.attempt,
-                        Some(task.max_attempts),
-                        &task.input,
-                        &e,
-                    );
                     error!(
                         task_id = %task.id,
                         workflow_id = ?task.workflow_id,
                         activity_type = %task.activity_type,
                         attempt = task.attempt,
                         max_attempts = task.max_attempts,
-                        session_id = ?failure.session_id,
-                        tool_identifiers = ?failure.tool_identifiers,
-                        error_chain = %failure.error_chain,
+                        error = %crate::task_driver::failure_message(&task, &e),
                         "Task execution failed"
                     );
                 }
@@ -641,7 +608,7 @@ where
 /// Heartbeats until `stop` resolves, recording whether the registry reports
 /// the worker draining and waking the poll loop when a drain is lifted.
 #[allow(clippy::too_many_arguments)]
-async fn heartbeat_loop<S: TurnStore>(
+async fn heartbeat_loop<S: TaskStore>(
     store: Arc<S>,
     worker_id: String,
     interval: Duration,
@@ -712,10 +679,7 @@ mod tests {
     use crate::unified_worker_test_adapters::NoopAdapters;
 
     use super::*;
-    use crate::durable::{
-        ClaimedTask, HeartbeatResponse, StoreError, TaskFailureOutcome, WorkflowError,
-        WorkflowStatus,
-    };
+    use crate::durable::{ClaimedTask, HeartbeatResponse, StoreError, TaskFailureOutcome};
 
     #[test]
     fn test_config_default() {
@@ -789,12 +753,10 @@ mod tests {
         finished: Arc<AtomicUsize>,
         /// Registry calls in order, to check drain-before-deregister.
         calls: Arc<std::sync::Mutex<Vec<&'static str>>>,
-        /// Spend `fail_delay` as a model wait, like a reason step streaming.
-        model_wait: bool,
     }
 
     #[async_trait::async_trait]
-    impl TurnStore for ConcurrentStore {
+    impl TaskStore for ConcurrentStore {
         async fn register_worker(&self, _worker: WorkerInfo) -> Result<(), StoreError> {
             Ok(())
         }
@@ -846,7 +808,6 @@ mod tests {
             &self,
             _task_id: Uuid,
             _worker_id: &str,
-            _details: Option<serde_json::Value>,
         ) -> Result<HeartbeatResponse, StoreError> {
             Ok(HeartbeatResponse {
                 accepted: true,
@@ -854,56 +815,9 @@ mod tests {
             })
         }
 
-        async fn get_workflow(
-            &self,
-            _workflow_id: Uuid,
-        ) -> Result<everruns_durable_engine::turn_store::WorkflowSnapshot, StoreError> {
-            Ok(everruns_durable_engine::turn_store::WorkflowSnapshot {
-                status: WorkflowStatus::Running,
-                output: None,
-                error: None,
-            })
-        }
-
-        async fn start_turn(
-            &self,
-            _workflow_id: Uuid,
-            _workflow_type: &str,
-            _input: serde_json::Value,
-            _activity_id: String,
-            _activity_type: String,
-            _steer: Option<serde_json::Value>,
-        ) -> Result<crate::durable::RunStart, StoreError> {
-            Ok(crate::durable::RunStart::Active)
-        }
-
-        async fn cancel_pending_tasks(&self, _workflow_id: Uuid) -> Result<u64, StoreError> {
-            Ok(0)
-        }
-
-        async fn count_active_workflows(&self) -> Result<usize, StoreError> {
-            Ok(0)
-        }
-
-        async fn count_pending_signals(
-            &self,
-            _workflow_id: Uuid,
-            _signal_type: &str,
-        ) -> Result<usize, StoreError> {
-            Ok(0)
-        }
-
-        async fn send_signal(
-            &self,
-            _workflow_id: Uuid,
-            _signal: crate::durable::WorkflowSignal,
-        ) -> Result<(), StoreError> {
-            Ok(())
-        }
-
         async fn record_activity_started(&self, _task: &ClaimedTask, _worker_id: &str) {}
 
-        async fn complete_task_and_record(
+        async fn complete_task(
             &self,
             _task: &ClaimedTask,
             _worker_id: &str,
@@ -912,7 +826,7 @@ mod tests {
             Ok(())
         }
 
-        async fn fail_task_and_record(
+        async fn fail_task(
             &self,
             _task: &ClaimedTask,
             _error: &str,
@@ -920,57 +834,10 @@ mod tests {
         ) -> Result<TaskFailureOutcome, StoreError> {
             let current = self.current.fetch_add(1, Ordering::SeqCst) + 1;
             self.max.fetch_max(current, Ordering::SeqCst);
-            let wait = self.model_wait.then(model_wait::begin);
             tokio::time::sleep(self.fail_delay).await;
-            drop(wait);
             self.current.fetch_sub(1, Ordering::SeqCst);
             self.finished.fetch_add(1, Ordering::SeqCst);
             Ok(TaskFailureOutcome::MovedToDlq)
-        }
-
-        async fn enqueue_task_and_record(
-            &self,
-            _workflow_id: Uuid,
-            _activity_id: String,
-            _activity_type: String,
-            _input: serde_json::Value,
-        ) -> Result<Uuid, StoreError> {
-            Ok(Uuid::now_v7())
-        }
-
-        async fn update_workflow_status(
-            &self,
-            _workflow_id: Uuid,
-            _status: WorkflowStatus,
-            _output: Option<serde_json::Value>,
-            _error: Option<WorkflowError>,
-        ) -> Result<(), StoreError> {
-            Ok(())
-        }
-
-        async fn complete_workflow(
-            &self,
-            _workflow_id: Uuid,
-            _event_output: serde_json::Value,
-            _stored_output: Option<serde_json::Value>,
-            _error: Option<WorkflowError>,
-        ) -> Result<(), StoreError> {
-            Ok(())
-        }
-
-        async fn consume_pending_signals(
-            &self,
-            _workflow_id: Uuid,
-        ) -> Result<Vec<crate::durable::WorkflowSignal>, StoreError> {
-            Ok(vec![])
-        }
-
-        async fn consume_pending_signals_by_type(
-            &self,
-            _workflow_id: Uuid,
-            _signal_type: &str,
-        ) -> Result<Vec<crate::durable::WorkflowSignal>, StoreError> {
-            Ok(vec![])
         }
     }
 
@@ -1002,42 +869,6 @@ mod tests {
             store.max.load(Ordering::SeqCst) > 1,
             "store calls were serialized"
         );
-    }
-
-    async fn in_flight_while_waiting_on_the_model(max_concurrent_model_waits: usize) -> usize {
-        let store = Arc::new(ConcurrentStore {
-            fail_delay: Duration::from_millis(300),
-            model_wait: true,
-            ..Default::default()
-        });
-        let config = TaskWorkerConfig {
-            max_concurrent_tasks: 2,
-            claim_batch_size: 2,
-            max_concurrent_model_waits,
-            heartbeat_interval: Duration::from_secs(60),
-            ..Default::default()
-        };
-        let worker = TaskWorker::new(config, store.clone(), NoopAdapters);
-        let mut task_handles = JoinSet::new();
-        worker
-            .poll_and_execute(&mut task_handles)
-            .await
-            .expect("poll succeeds");
-        wait_until("both tasks waiting", || {
-            store.current.load(Ordering::SeqCst) == 2
-        })
-        .await;
-        let waiting = worker.in_flight.load(Ordering::SeqCst);
-        while task_handles.join_next().await.is_some() {}
-        assert_eq!(worker.in_flight.load(Ordering::SeqCst), 0);
-        waiting
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn model_waits_hand_their_slot_back() {
-        assert_eq!(in_flight_while_waiting_on_the_model(10).await, 0);
-        assert_eq!(in_flight_while_waiting_on_the_model(1).await, 1);
-        assert_eq!(in_flight_while_waiting_on_the_model(0).await, 2);
     }
 
     fn shutdown_config(grace: Duration) -> TaskWorkerConfig {

@@ -3,7 +3,7 @@
 // Decision: Uses WorkerAppBuilder for composable worker setup
 
 use anyhow::Result;
-use everruns_durable_engine::host::observability::{TelemetryConfig, init_telemetry};
+use everruns_worker::host::observability::{TelemetryConfig, init_telemetry};
 use everruns_worker::{TaskWorkerConfig, WorkerAppBuilder};
 
 // Use mimalloc as the global allocator. The worker runs heavy concurrent
@@ -22,10 +22,8 @@ async fn main() -> Result<()> {
     }
     if telemetry_config.log_filter.is_none() {
         let log_level = std::env::var("LOG_LEVEL").unwrap_or_else(|_| "debug".to_string());
-        // durable-engine runs every claimed task (`TurnTaskDriver`), so its
-        // task lifecycle lines belong in the worker's default filter.
         telemetry_config.log_filter = Some(format!(
-            "everruns_worker={log_level},everruns_durable_engine={log_level},everruns_core={log_level}"
+            "everruns_worker={log_level},everruns_core={log_level}"
         ));
     }
     let _telemetry_guard = init_telemetry(telemetry_config);

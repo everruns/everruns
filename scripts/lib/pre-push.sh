@@ -283,8 +283,7 @@ else
   fail "core kernel dependency guard failed"
 fi
 
-# 20. Durable isolation guard: the generic engine has no everruns-* deps;
-# durable-engine has no tonic or internal-protocol deps
+# 20. Durable isolation guard: the generic engine has no everruns-* deps
 echo "20/31 Durable isolation guard"
 if DURABLE_ISOLATION_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-durable-isolation.sh" 2>&1

@@ -22,9 +22,8 @@ use tracing::{debug, info};
 
 /// Host-owned state carried across turn phases.
 ///
-/// Durable hosts can persist this between activities; in-memory hosts can hold
-/// it directly in memory. The type itself is engine-level and has no host,
-/// store, or durable-engine coupling.
+/// A host can persist this between phases or hold it in memory. The type
+/// itself is engine-level and has no host or store coupling.
 ///
 /// Hosts are expected to serialize this however they want. `everruns_core::engine`
 /// only defines the fields required to resume the next semantic step.
@@ -487,7 +486,7 @@ pub fn plan_after_reason(
     }
 
     // turn_end lifecycle hooks (advisory). Fired once the turn reaches a
-    // terminal reason outcome on the durable/strategy path.
+    // terminal reason outcome on the strategy path.
     effects.push(TurnLifecycleEffect::FireTurnEndHooks {
         harness_id: state.harness_id,
         agent_id: state.agent_id,

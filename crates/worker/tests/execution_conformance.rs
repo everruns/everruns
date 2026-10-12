@@ -10,11 +10,11 @@
 use chrono::{TimeZone, Utc};
 use everruns_contracts::tool_types::ToolCall;
 use everruns_contracts::typed_id::{HarnessId, MessageId, SessionId, TurnId};
-use everruns_durable_engine::engine::{
+use everruns_worker::engine::{
     ActOutcome, ActivityOutcome, Execution, HostFacts, ReasonResult, TurnExecution,
     TurnLifecycleEffect, TurnPlan, TurnState,
 };
-use everruns_durable_engine::host::InProcessExecution;
+use everruns_worker::host::InProcessExecution;
 use serde_json::json;
 
 fn initial_state() -> TurnState {

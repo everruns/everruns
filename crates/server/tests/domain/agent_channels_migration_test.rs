@@ -26,8 +26,6 @@ use axum::{
     http::{Method, Request, StatusCode},
     response::Response,
 };
-use everruns_durable::InMemoryWorkflowEventStore;
-
 use everruns_contracts::typed_id::PrincipalId;
 use everruns_server::EventDelivery;
 use everruns_server::api;
@@ -35,7 +33,7 @@ use everruns_server::domains::agent_channels::hash_a2a_api_key;
 use everruns_server::domains::agent_channels::record::ChannelType;
 use everruns_server::storage::Database;
 use everruns_server::storage::StorageBackend;
-use everruns_worker::DurableRunner;
+use everruns_server::turns::ActorTurnBackend;
 use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};
 use sha2::Sha256;
@@ -161,7 +159,9 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
          GRANT SELECT, INSERT, UPDATE, DELETE ON agent_trigger_deliveries TO {role};
          GRANT SELECT, INSERT, UPDATE, DELETE ON
              channel_bindings, channel_seen, channel_pending_deliveries
-         TO {role};"
+         TO {role};
+         -- Turns start by marking the session actor runnable.
+         GRANT SELECT, INSERT, UPDATE ON session_actors TO {role};"
     );
     sqlx::raw_sql(sqlx::AssertSqlSafe(grants.as_str()))
         .execute(&pool)
@@ -554,9 +554,8 @@ async fn seed_ingress_channel(
 }
 
 async fn ingress_router(db: Arc<StorageBackend>) -> Router {
-    let runner: Arc<dyn everruns_core::host::TurnBackend> = Arc::new(
-        DurableRunner::new_with_shared_store(Arc::new(InMemoryWorkflowEventStore::new())),
-    );
+    let runner: Arc<dyn everruns_core::host::TurnBackend> =
+        Arc::new(ActorTurnBackend::new(db.clone(), None));
     let event_delivery = EventDelivery::in_memory();
     let sse_tracker = Arc::new(api::sse::SseConnectionTracker::new(
         api::sse::SseConnectionLimits::default(),
@@ -642,7 +641,18 @@ async fn assert_route_status(
     expected: StatusCode,
 ) {
     let response = request_route(router, method, uri, headers, body).await;
-    assert_eq!(response.status(), expected, "{uri}");
+    let status = response.status();
+    if status != expected {
+        // Only a failure reads the body: a passing AG-UI response is an
+        // open event stream.
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        panic!(
+            "{uri}: expected {expected}, got {status}: {}",
+            String::from_utf8_lossy(&body)
+        );
+    }
 }
 
 async fn request_route(

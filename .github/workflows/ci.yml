@@ -357,9 +357,6 @@ jobs:
               # Durable's UpdateField; server storage uses it too.
               - 'crates/db/**'
               - 'crates/durable/**'
-              # The durable shard also runs the PostgreSQL halves of the
-              # durable-engine backend tests.
-              - 'crates/durable-engine/**'
               - 'crates/core/**'
               - 'crates/config/**'
               - 'crates/session-sqldb/**'
@@ -535,7 +532,6 @@ jobs:
           cargo check --locked --all-features \
             -p everruns-core \
             -p everruns-durable \
-            -p everruns-durable-engine \
             -p everruns-drivers \
             -p everruns-integrations \
             -p everruns-integrations-experimental \
@@ -746,10 +742,8 @@ jobs:
           bash scripts/test-core-feature-modules.sh
 
   # Architecture guard: everruns-durable is a generic durable-execution engine
-  # with no everruns-* normal or build dependency; agent/turn semantics live in
-  # durable-engine and server. durable-engine itself carries no tonic or
-  # internal-protocol edge (the worker owns gRPC). Also owns the
-  # database-driver boundary check.
+  # with no everruns-* normal or build dependency; what its tasks mean lives in
+  # the worker and server. Also owns the database-driver boundary check.
   durable-isolation:
     name: Durable Isolation Guard
     runs-on: ubuntu-latest
@@ -1226,7 +1220,7 @@ jobs:
       - name: Run worker tests
         # Whole crate (lib + integration), not just --lib: the network_reliability
         # integration test is pure (no network/credentials) and was being skipped.
-        run: cargo test -p everruns-worker -p everruns-durable-engine --all-features -- --test-threads=1
+        run: cargo test -p everruns-worker --all-features -- --test-threads=1
 
   shell-test:
     name: Shell Tests (Repo Scripts)
@@ -1545,19 +1539,10 @@ jobs:
             --test strict_client_tools \
             -- --test-threads=1
 
-      # Also the PostgreSQL halves of the durable-engine tests (lib unit
-      # tests: the recovery matrix and worker crashes). Elsewhere they run
-      # without DATABASE_URL and skip; EVERRUNS_REQUIRE_POSTGRES_TESTS turns
-      # that skip into a failure here. They ride this invocation rather than a
-      # new one: one feature resolution builds everruns-durable once, and
-      # `--lib` costs only the test-mode libs of the two packages (their unit
-      # tests take ~5s).
       - name: Run durable integration tests
         if: ${{ matrix.shard == 'durable' }}
-        env:
-          EVERRUNS_REQUIRE_POSTGRES_TESTS: "1"
         run: >-
-          cargo test -p everruns-durable -p everruns-durable-engine
+          cargo test -p everruns-durable
           --features everruns-durable/postgres-tests
           --lib
           --test postgres_integration_test --test postgres_repository_test --test heartbeat_cancel_test

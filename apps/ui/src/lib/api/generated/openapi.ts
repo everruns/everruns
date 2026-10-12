@@ -2154,23 +2154,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/durable/workflows/{workflow_id}/signal": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** POST /v1/durable/workflows/:workflow_id/signal - Send signal to workflow */
-    post: operations["send_signal"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/v1/durable/workflows/{workflow_id}/sse": {
     parameters: {
       query?: never;
@@ -22980,19 +22963,6 @@ export interface components {
        */
       preset_id: string;
     };
-    /** @description Request to send a signal to a workflow */
-    SendSignalRequest: {
-      /**
-       * @description Signal payload (workflow-specific JSON, any shape; defaults to `null` when omitted).
-       *     Example: `{"approved": true, "approver": "user_01933b5a00007000800000000000001"}`.
-       */
-      payload?: unknown;
-      /**
-       * @description Signal name. Must match a signal the running workflow listens for.
-       * @example user_response_received
-       */
-      signal_type: string;
-    };
     /**
      * @description A typed service a provider driver can offer.
      *
@@ -35612,49 +35582,6 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["WorkflowEventsListResponse"];
         };
-      };
-      /** @description Workflow not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  send_signal: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Workflow ID */
-        workflow_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["SendSignalRequest"];
-      };
-    };
-    responses: {
-      /** @description Signal sent */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
       };
       /** @description Workflow not found */
       404: {

@@ -101,8 +101,6 @@ everruns_core::durability::DurableToolCallStatus::Settled	variant
 everruns_core::durability::DurableToolResultStore	trait
 everruns_core::durability::PartialStreamState	struct
 everruns_core::durability::PartialStreamStore	trait
-everruns_core::durability::StreamHeartbeater	trait
-everruns_core::durability::StreamProgress	struct
 everruns_core::durability::ToolCallClaimResult	enum
 everruns_core::durability::ToolCallClaimResult::AlreadyRunning	variant
 everruns_core::durability::ToolCallClaimResult::AlreadySettled	variant

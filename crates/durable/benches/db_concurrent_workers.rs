@@ -215,7 +215,6 @@ impl DbTestScenario {
 
         // Delete in reverse dependency order
         for statement in [
-            "DELETE FROM durable_signals WHERE workflow_id = ANY($1)",
             "DELETE FROM durable_dead_letter_queue WHERE workflow_id = ANY($1)",
             "DELETE FROM durable_task_queue WHERE workflow_id = ANY($1)",
             "DELETE FROM durable_workflow_events WHERE workflow_id = ANY($1)",

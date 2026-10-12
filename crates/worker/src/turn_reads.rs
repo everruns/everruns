@@ -8,8 +8,8 @@
 // context alone is a dozen sequential queries on the server. In production that
 // setup cost 90-380 ms per phase, paid again at every tool hand-off.
 //
-// Decision: since the worker that finished a phase runs the turn's next phase
-// itself (the turn driver chains steps), the values a phase's setup read are
+// Decision: since the worker that holds a session's lease runs every phase of
+// its turn (`actor_runtime`), the values a phase's setup read are
 // kept per turn, keyed by the turn's org, session and input message, and the
 // next phase's setup starts from them. The turn's configuration is pinned for
 // the turn on this worker, the way the agent definition already is: an edit
@@ -18,8 +18,8 @@
 // for the phase memo. Only setup reads go through it; once a phase has started,
 // reads go to the store as before.
 //
-// Decision: entries end with the turn (the driver plans `Complete` or a pause),
-// and a turn that never reaches that (a crash, a reclaim elsewhere) ages out
+// Decision: entries end with the turn (the leased turn ends or parks), and a
+// turn that never reaches that (a crash, a lease lost to another worker) ages out
 // after `IDLE_FOR`. At most `MAX_TURNS` turns are kept; the least recently
 // used goes first. Errors are never kept.
 

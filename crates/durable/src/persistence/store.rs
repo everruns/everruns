@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::UpdateField;
-use crate::workflow::{ActivityOptions, WorkflowEvent, WorkflowSignal};
+use crate::workflow::{ActivityOptions, WorkflowEvent};
 
 /// Default snapshot interval: save a snapshot every N events.
 /// Configurable via `DURABLE_SNAPSHOT_INTERVAL` env var.
@@ -178,35 +178,6 @@ pub struct TaskDefinition {
     pub options: ActivityOptions,
 }
 
-/// The steering a run start carries; see [`EventLog::start_run_with_task`].
-///
-/// Decision: a caller that finds a run active steers it with a signal, and
-/// that signal is written under the same workflow lock as the active-run
-/// check. Sent afterwards, in its own write, it could land after the run's
-/// last step drained its signals and completed the workflow, and nothing
-/// would act on it (a follow-up message sent right after a turn went idle
-/// was lost that way under load).
-#[derive(Debug, Clone, PartialEq)]
-pub struct RunSteering {
-    /// The signal type that steers this workflow's runs. When a new run
-    /// starts, pending signals of this type are consumed: they were sent to
-    /// a run that has ended, and the new run acts on what they announced.
-    pub signal_type: String,
-    /// Payload of the signal sent to the run when one is active. `None`
-    /// sends nothing.
-    pub payload: Option<serde_json::Value>,
-}
-
-/// Outcome of [`EventLog::start_run_with_task`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RunStart {
-    /// A new run started and its first task was enqueued. `created` is true
-    /// when this call also created the workflow.
-    Started { task_id: Uuid, created: bool },
-    /// A run is already active; nothing changed.
-    Active,
-}
-
 /// A task that has been claimed by a worker
 #[derive(Debug, Clone, Default)]
 pub struct ClaimedTask {
@@ -222,33 +193,6 @@ pub struct ClaimedTask {
     /// claim, so a worker can skip work for a cancelled or finished workflow
     /// without a second read. `None` for standalone tasks.
     pub workflow_status: Option<WorkflowStatus>,
-}
-
-/// How [`TaskQueue::enqueue_claimed_task`] enqueued a task.
-#[derive(Debug, Clone)]
-pub enum Enqueued {
-    /// Enqueued claimed by the requesting worker, which runs it now.
-    Claimed(Box<ClaimedTask>),
-    /// Enqueued pending, with this id, for whichever worker claims it.
-    Queued(Uuid),
-}
-
-impl Enqueued {
-    /// The task's id.
-    pub fn task_id(&self) -> Uuid {
-        match self {
-            Self::Claimed(task) => task.id,
-            Self::Queued(task_id) => *task_id,
-        }
-    }
-
-    /// The claimed task, when it was enqueued claimed.
-    pub fn into_claimed(self) -> Option<ClaimedTask> {
-        match self {
-            Self::Claimed(task) => Some(*task),
-            Self::Queued(_) => None,
-        }
-    }
 }
 
 /// Response from heartbeat operation
@@ -465,7 +409,6 @@ pub fn event_type_name(event: &WorkflowEvent) -> &'static str {
         WorkflowEvent::TimerStarted { .. } => "timer_started",
         WorkflowEvent::TimerFired { .. } => "timer_fired",
         WorkflowEvent::TimerCancelled { .. } => "timer_cancelled",
-        WorkflowEvent::SignalReceived { .. } => "signal_received",
         WorkflowEvent::ChildWorkflowStarted { .. } => "child_workflow_started",
         WorkflowEvent::ChildWorkflowCompleted { .. } => "child_workflow_completed",
         WorkflowEvent::ChildWorkflowFailed { .. } => "child_workflow_failed",
@@ -763,41 +706,6 @@ pub trait EventLog: Send + Sync + 'static {
     /// wins the claim.
     async fn try_start_new_run(&self, workflow_id: Uuid) -> Result<bool, StoreError>;
 
-    /// Start a run of `workflow_id` and enqueue its first task, atomically.
-    ///
-    /// The one-step form of "create or `try_start_new_run`, then
-    /// `enqueue_task`" that callers starting a run on a long-lived workflow
-    /// need. Doing it in one step means a run is never left Running without a
-    /// task, and concurrent callers need no lock of their own: exactly one
-    /// wins, the rest get [`RunStart::Active`] and can signal the run instead.
-    ///
-    /// - Unknown workflow: create it Running with `WorkflowStarted` and
-    ///   `ActivityScheduled` events and enqueue `task`.
-    /// - Known workflow with no active run: start a new run exactly as
-    ///   `try_start_new_run` does (stale pending tasks are cancelled) and
-    ///   enqueue `task`.
-    /// - Active run (Running, or a task claimed): change nothing and return
-    ///   [`RunStart::Active`]. A run that is Running with no pending or
-    ///   claimed task and a completed last task is stranded between steps:
-    ///   its last step is enqueued again (as
-    ///   [`TaskQueue::requeue_stranded_workflows`] does) so the run the
-    ///   caller then signals resumes.
-    ///
-    ///
-    /// With `steering`, an active run is sent its signal (when it has a
-    /// payload) and a new run consumes the pending signals of its type, both
-    /// under the same lock as the active-run check; see [`RunSteering`].
-    ///
-    /// `task.workflow_id` is ignored; the task always belongs to `workflow_id`.
-    async fn start_run_with_task(
-        &self,
-        workflow_id: Uuid,
-        workflow_type: &str,
-        input: serde_json::Value,
-        task: TaskDefinition,
-        steering: Option<RunSteering>,
-    ) -> Result<RunStart, StoreError>;
-
     /// Cancel a workflow
     async fn cancel_workflow(&self, workflow_id: Uuid) -> Result<(), StoreError>;
 
@@ -827,28 +735,6 @@ pub trait EventLog: Send + Sync + 'static {
 pub trait TaskQueue: Send + Sync + 'static {
     /// Enqueue an activity task
     async fn enqueue_task(&self, task: TaskDefinition) -> Result<Uuid, StoreError>;
-
-    /// Enqueue a task already claimed by `worker_id`: the same as
-    /// [`enqueue_task`](Self::enqueue_task) followed by a claim of that task
-    /// by `worker_id`, without the queue in between.
-    ///
-    /// A worker that just finished one step of a workflow runs the next step
-    /// itself this way, without waiting for a wakeup and a claim. The task is
-    /// an ordinary claimed row: it heartbeats, retries and is reclaimed when
-    /// stale like any other.
-    ///
-    /// Returns [`Enqueued::Queued`] when the task was enqueued as pending
-    /// instead, for any worker to claim: the worker is not registered or is
-    /// draining, or the task is delayed or deduplicated. The default always
-    /// does that.
-    async fn enqueue_claimed_task(
-        &self,
-        task: TaskDefinition,
-        worker_id: &str,
-    ) -> Result<Enqueued, StoreError> {
-        let _ = worker_id;
-        self.enqueue_task(task).await.map(Enqueued::Queued)
-    }
 
     /// Claim tasks of the default queue for execution; see
     /// [`claim_queue_tasks`](Self::claim_queue_tasks).
@@ -897,31 +783,6 @@ pub trait TaskQueue: Send + Sync + 'static {
         result: serde_json::Value,
     ) -> Result<(), StoreError>;
 
-    /// Complete a workflow's task and hand the workflow to its next step in
-    /// one atomic write: complete (ownership checked as in
-    /// [`complete_task`](Self::complete_task)), consume `hand_off.drain`,
-    /// then enqueue the next task or complete the workflow. Nothing changes
-    /// on `TaskNotOwned`. See [`crate::HandOff`].
-    async fn complete_task_and_hand_off(
-        &self,
-        task_id: Uuid,
-        worker_id: &str,
-        result: serde_json::Value,
-        hand_off: crate::HandOff,
-    ) -> Result<crate::HandedOff, StoreError>;
-
-    /// Re-enqueue the last step of each `workflow_type` workflow left
-    /// `Running` with no pending or claimed task whose last task completed
-    /// more than `completed_before` ago, at most `limit` of them. The step
-    /// runs again from its own input, as after a crash before its completion.
-    /// Safe to run concurrently: a workflow is requeued once.
-    async fn requeue_stranded_workflows(
-        &self,
-        workflow_type: &str,
-        completed_before: Duration,
-        limit: usize,
-    ) -> Result<Vec<crate::RequeuedWorkflow>, StoreError>;
-
     /// Fail a task using its normal retry policy.
     async fn fail_task(
         &self,
@@ -963,62 +824,11 @@ pub trait TaskQueue: Send + Sync + 'static {
     ) -> Result<Vec<TaskInfo>, StoreError>;
 }
 
-/// Per-workflow signal inbox.
-///
-/// Needed by the engine to deliver and consume signals (application
-/// messages, cancellation, timers). `consume_pending_signals` has a non-atomic derived
-/// default; stores should override it with an atomic implementation.
-#[async_trait]
-pub trait SignalStore: Send + Sync + 'static {
-    /// Send a signal to a workflow
-    async fn send_signal(
-        &self,
-        workflow_id: Uuid,
-        signal: WorkflowSignal,
-    ) -> Result<(), StoreError>;
-
-    /// Get pending signals for a workflow
-    async fn get_pending_signals(
-        &self,
-        workflow_id: Uuid,
-    ) -> Result<Vec<WorkflowSignal>, StoreError>;
-
-    /// Mark signals as processed
-    async fn mark_signals_processed(
-        &self,
-        workflow_id: Uuid,
-        count: usize,
-    ) -> Result<(), StoreError>;
-
-    /// Atomically get and consume all pending signals for a workflow.
-    ///
-    /// The derived default calls `get_pending_signals` + `mark_signals_processed`,
-    /// which is not atomic; stores should override it to avoid races.
-    async fn consume_pending_signals(
-        &self,
-        workflow_id: Uuid,
-    ) -> Result<Vec<WorkflowSignal>, StoreError> {
-        let signals = self.get_pending_signals(workflow_id).await?;
-        if !signals.is_empty() {
-            self.mark_signals_processed(workflow_id, signals.len())
-                .await?;
-        }
-        Ok(signals)
-    }
-
-    /// Atomically get and consume pending signals of one type for a workflow.
-    async fn consume_pending_signals_by_type(
-        &self,
-        workflow_id: Uuid,
-        signal_type: &str,
-    ) -> Result<Vec<WorkflowSignal>, StoreError>;
-}
-
 /// Worker registration, liveness and capacity.
 ///
 /// Needed by workers (register, heartbeat, capacity snapshot for fair-share
 /// claiming, deregister) and by operators (list, drain, resume). A worker
-/// process needs only `TaskQueue + SignalStore + WorkerRegistry`.
+/// process needs only `TaskQueue + WorkerRegistry`.
 #[async_trait]
 pub trait WorkerRegistry: Send + Sync + 'static {
     /// Register a worker
@@ -1292,11 +1102,10 @@ pub trait DurableAdmin: EventLog + Send + Sync + 'static {
 /// that implements all of them, so `Arc<dyn WorkflowEventStore>` and
 /// `T: WorkflowEventStore` keep working and the supertrait methods are callable
 /// through it. Consumers that need only a slice should bound on the focused
-/// trait instead: a worker needs `TaskQueue + SignalStore + WorkerRegistry`.
+/// trait instead: a worker needs `TaskQueue + WorkerRegistry`.
 pub trait WorkflowEventStore:
     EventLog
     + TaskQueue
-    + SignalStore
     + WorkerRegistry
     + DeadLetters
     + CircuitBreakers
@@ -1311,7 +1120,6 @@ pub trait WorkflowEventStore:
 impl<T> WorkflowEventStore for T where
     T: EventLog
         + TaskQueue
-        + SignalStore
         + WorkerRegistry
         + DeadLetters
         + CircuitBreakers

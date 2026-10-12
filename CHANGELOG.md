@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Crate Releases
+
+Retired (deleted, no new home):
+
+- `everruns-durable-engine`. Platform turns run only on leased session actors in the Everruns worker, so the per-step durable turn path this crate held is removed. Yank it with the Yank Crate workflow at release.
+
 ## [0.47.0] - 2026-10-09
 
 ### Highlights

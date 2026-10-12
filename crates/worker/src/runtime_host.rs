@@ -292,7 +292,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
 /// host phases without depending on in-process-only stores.
 ///
 /// ```ignore
-/// use everruns_durable_engine::host::execute_reason_activity;
+/// use everruns_worker::host::execute_reason_activity;
 /// use everruns_worker::{GrpcWorkerAdapters, WorkerRuntimeHost};
 ///
 /// let adapters = GrpcWorkerAdapters::connect("127.0.0.1:9001").await?;
@@ -342,14 +342,6 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
     /// and another worker now owns the session's log.
     pub fn abandon_events(&self) {
         drop(self.write_behind.take_pending());
-    }
-
-    /// Start the phase's setup reads now, concurrently (see `phase_reads`).
-    pub fn prefetching(self, ids: Option<crate::phase_reads::PhaseIds>) -> Self {
-        if let Some(ids) = ids {
-            self.reads.prefetch(&self.adapters, ids);
-        }
-        self
     }
 
     /// Append every event this host emits under the actor lease `fence`.
@@ -796,10 +788,6 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         &self,
     ) -> Option<Arc<dyn crate::core::delegation_services::SubagentSpawnStore>> {
         self.adapters.subagent_spawn_store()
-    }
-
-    fn stream_heartbeater(&self) -> Option<Arc<dyn crate::core::durability::StreamHeartbeater>> {
-        self.adapters.stream_heartbeater()
     }
 
     fn partial_stream_store(&self) -> Option<Arc<dyn crate::core::durability::PartialStreamStore>> {

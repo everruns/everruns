@@ -5,9 +5,8 @@
 //! constructing Tokio, so no test or runtime thread can observe partial config.
 
 use chrono::Utc;
-use everruns_contracts::typed_id::{MessageId, PrincipalId, SessionId};
+use everruns_contracts::typed_id::{PrincipalId, SessionId};
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_durable::{EventLog, PostgresWorkflowEventStore, WorkflowStatus};
 use everruns_server::app_builder::{ServerAppBuilder, ServerContext};
 use everruns_server::domains::sessions::record::SessionSource;
 use everruns_server::server::ServerConfig;
@@ -292,44 +291,6 @@ async fn run_background_sweep_regression() {
         })
         .await
         .expect("record pending client tool call");
-
-    let saved_turn = json!({
-        "org_id": DEFAULT_ORG_ID,
-        "session_id": timeout_session.id,
-        "harness_id": timeout_session.harness_id.expect("test session harness"),
-        "agent_id": null,
-        "input_message_id": MessageId::new(),
-        "turn_id": null,
-        "previous_response_id": null,
-        "iteration": 1,
-        "request_id": null,
-        "started_at": null,
-        "cumulative_usage": null,
-        "tool_call_count": 0,
-        "llm_call_count": 0,
-        "time_to_first_token_ms": null,
-        "final_message_id": null,
-        "final_answer_preview": null
-    });
-    let durable_store = PostgresWorkflowEventStore::new(observer.clone());
-    durable_store
-        .create_workflow(
-            timeout_session.id.uuid(),
-            "turn_workflow",
-            saved_turn.clone(),
-            None,
-        )
-        .await
-        .expect("create parked workflow");
-    durable_store
-        .update_workflow_status(
-            timeout_session.id.uuid(),
-            WorkflowStatus::Completed,
-            Some(saved_turn),
-            None,
-        )
-        .await
-        .expect("save parked turn input");
 
     let _burst = saturate(context.db.pool(), 4).await;
     let request_error = context

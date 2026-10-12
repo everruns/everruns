@@ -61,7 +61,6 @@ async fn reset_durable_tables(pool: &PgPool) {
     sqlx::query(
         r#"
         TRUNCATE TABLE
-            durable_signals,
             durable_dead_letter_queue,
             durable_task_queue,
             durable_workflow_events,

@@ -11,20 +11,17 @@ use parking_lot::RwLock;
 use uuid::Uuid;
 
 use super::store::*;
-use crate::workflow::{WorkflowError, WorkflowEvent, WorkflowSignal};
+use crate::workflow::{WorkflowError, WorkflowEvent};
 
 mod admin;
 mod circuit_breakers;
 mod dlq;
-mod end_watchers;
 mod event_log;
 mod inspect;
 mod schedules;
-mod signals;
 mod task_queue;
 mod task_table;
 mod workers;
-pub use end_watchers::WorkflowEndSubscription;
 use task_table::{TaskState, TaskTable};
 
 /// Internal workflow state
@@ -36,7 +33,6 @@ struct WorkflowState {
     result: Option<serde_json::Value>,
     error: Option<WorkflowError>,
     events: Vec<WorkflowEvent>,
-    signals: Vec<WorkflowSignal>,
     created_at: chrono::DateTime<chrono::Utc>,
     started_at: Option<chrono::DateTime<chrono::Utc>>,
     completed_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -91,7 +87,6 @@ pub struct InMemoryWorkflowEventStore {
     schedules: RwLock<HashMap<Uuid, ScheduleMemState>>,
     schedule_executions: RwLock<HashMap<Uuid, ScheduleExecutionMemState>>,
     scheduler_instances: RwLock<HashMap<String, SchedulerInstanceInfo>>,
-    end_watchers: end_watchers::EndWatchers,
     #[cfg(test)]
     load_events_calls: AtomicUsize,
     #[cfg(test)]
@@ -112,7 +107,6 @@ impl InMemoryWorkflowEventStore {
             schedules: RwLock::new(HashMap::new()),
             schedule_executions: RwLock::new(HashMap::new()),
             scheduler_instances: RwLock::new(HashMap::new()),
-            end_watchers: Default::default(),
             #[cfg(test)]
             load_events_calls: AtomicUsize::new(0),
             #[cfg(test)]
@@ -313,34 +307,6 @@ mod tests {
 
         // Task should be pending again
         assert_eq!(store.pending_task_count(), 1);
-    }
-
-    #[tokio::test]
-    async fn test_signals() {
-        let store = InMemoryWorkflowEventStore::new();
-        let workflow_id = Uuid::now_v7();
-
-        store
-            .create_workflow(workflow_id, "test", serde_json::json!({}), None)
-            .await
-            .unwrap();
-
-        // Send signal
-        store
-            .send_signal(workflow_id, WorkflowSignal::cancel("user cancelled"))
-            .await
-            .unwrap();
-
-        // Get pending signals
-        let signals = store.get_pending_signals(workflow_id).await.unwrap();
-        assert_eq!(signals.len(), 1);
-        assert!(signals[0].is_cancel());
-
-        // Mark as processed
-        store.mark_signals_processed(workflow_id, 1).await.unwrap();
-
-        let signals = store.get_pending_signals(workflow_id).await.unwrap();
-        assert_eq!(signals.len(), 0);
     }
 
     // ========================================================================

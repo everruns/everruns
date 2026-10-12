@@ -1,8 +1,6 @@
 //! Implementation of [`crate::TaskQueue`].
 
-use super::hand_off;
 use super::*;
-use crate::persistence::store::Enqueued;
 
 #[async_trait]
 impl TaskQueue for PostgresWorkflowEventStore {
@@ -13,15 +11,11 @@ impl TaskQueue for PostgresWorkflowEventStore {
             let limit = self.max_pending_tasks_per_workflow;
             let pending_count: i64 = sqlx::query_scalar(
                 r#"
-                SELECT CASE WHEN $3 AND EXISTS (
-                    SELECT 1 FROM durable_task_queue WHERE workflow_id = $1 AND activity_id = $2
-                ) THEN 0 ELSE COUNT(*) END FROM durable_task_queue
+                SELECT COUNT(*) FROM durable_task_queue
                 WHERE workflow_id = $1 AND status = 'pending'
                 "#,
             )
             .bind(wf_id)
-            .bind(&task.activity_id)
-            .bind(task.options.dedupe_by_activity_id)
             .fetch_one(&self.pool)
             .await
             .map_err(|e| {
@@ -64,28 +58,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
             .map(sanitize_json_null_bytes)
             .map_err(|e| StoreError::Serialization(e.to_string()))?;
 
-        // A dedupe task returns the existing `(workflow_id, activity_id)` row
-        // instead of inserting a second one. `ON CONFLICT DO NOTHING` names no
-        // arbiter so any unique index over those ids (the deployment decides
-        // which, see `ActivityOptions::dedupe_by_activity_id`) settles a race;
-        // the loser then reads the winner's committed row.
-        let dedupe = task.options.dedupe_by_activity_id && task.workflow_id.is_some();
-        let inserted: Option<Uuid> = sqlx::query_scalar(if dedupe {
-            r#"
-            INSERT INTO durable_task_queue (
-                id, workflow_id, activity_id, activity_type, input, options,
-                max_attempts, priority, visible_at,
-                schedule_to_start_timeout_ms, start_to_close_timeout_ms, heartbeat_timeout_ms,
-                queue
-            )
-            SELECT $1, $2, $3, $4, $5, $6, $7, $8, NOW() + $12::bigint * INTERVAL '1 millisecond', $9, $10, $11, $13
-            WHERE NOT EXISTS (
-                SELECT 1 FROM durable_task_queue WHERE workflow_id = $2 AND activity_id = $3
-            )
-            ON CONFLICT DO NOTHING
-            RETURNING id
-            "#
-        } else {
+        sqlx::query(
             r#"
             INSERT INTO durable_task_queue (
                 id, workflow_id, activity_id, activity_type, input, options,
@@ -94,9 +67,8 @@ impl TaskQueue for PostgresWorkflowEventStore {
                 queue
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW() + $12::bigint * INTERVAL '1 millisecond', $9, $10, $11, $13)
-            RETURNING id
-            "#
-        })
+            "#,
+        )
         .bind(task_id)
         .bind(task.workflow_id)
         .bind(&task.activity_id)
@@ -110,32 +82,12 @@ impl TaskQueue for PostgresWorkflowEventStore {
         .bind(task.options.heartbeat_timeout.map(|d| d.as_millis() as i64))
         .bind(task.options.start_delay.map_or(0, |d| d.as_millis() as i64))
         .bind(task.options.queue.as_deref())
-        .fetch_optional(&self.pool)
+        .execute(&self.pool)
         .await
         .map_err(|e| {
             error!(error = %e, "Failed to enqueue task");
             StoreError::Database(e.to_string())
         })?;
-
-        let task_id = match inserted {
-            Some(task_id) => task_id,
-            None => sqlx::query_scalar(
-                r#"
-                SELECT id FROM durable_task_queue
-                WHERE workflow_id = $1 AND activity_id = $2
-                ORDER BY id
-                LIMIT 1
-                "#,
-            )
-            .bind(task.workflow_id)
-            .bind(&task.activity_id)
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "Failed to read deduplicated task");
-                StoreError::Database(e.to_string())
-            })?,
-        };
 
         #[cfg(feature = "failpoints")]
         fail_point!("postgres_enqueue_task_after_insert", |_| {
@@ -146,75 +98,6 @@ impl TaskQueue for PostgresWorkflowEventStore {
 
         debug!(%task_id, activity_type = %task.activity_type, "enqueued task");
         Ok(task_id)
-    }
-
-    #[instrument(skip(self, task))]
-    async fn enqueue_claimed_task(
-        &self,
-        task: TaskDefinition,
-        worker_id: &str,
-    ) -> Result<Enqueued, StoreError> {
-        if task.options.start_delay.is_some() || task.options.dedupe_by_activity_id {
-            return self.enqueue_task(task).await.map(Enqueued::Queued);
-        }
-
-        // One transaction, as a claim: lock the workflow row first, so the
-        // ActivityStarted sequence read in the next statement sees every
-        // committed event (see `claim_task` on READ COMMITTED snapshots), then
-        // insert the task claimed and the event together. A claimed row is not
-        // pending, so the pending-task limit does not apply.
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| StoreError::Database(e.to_string()))?;
-
-        let workflow_status = match task.workflow_id {
-            Some(workflow_id) => {
-                let status: Option<String> = sqlx::query_scalar(
-                    "SELECT status FROM durable_workflow_instances WHERE id = $1 FOR UPDATE",
-                )
-                .bind(workflow_id)
-                .fetch_optional(&mut *tx)
-                .await
-                .map_err(|e| {
-                    store_failure(
-                        "durable.tasks.enqueue_claimed",
-                        "Failed to lock workflow",
-                        e,
-                    )
-                })?;
-                status.as_deref().map(parse_workflow_status).transpose()?
-            }
-            None => None,
-        };
-
-        let task_id = Uuid::now_v7();
-        let inserted = hand_off::insert_claimed_task(&mut tx, task_id, &task, worker_id).await?;
-
-        tx.commit().await.map_err(|e| {
-            error!(error = %e, "Failed to commit claimed enqueue");
-            StoreError::Database(e.to_string())
-        })?;
-
-        if !inserted {
-            // Not a registered worker, or draining: the queue hands the task
-            // to whoever claims it next.
-            return self.enqueue_task(task).await.map(Enqueued::Queued);
-        }
-
-        debug!(%task_id, activity_type = %task.activity_type, worker_id, "enqueued claimed task");
-        Ok(Enqueued::Claimed(Box::new(ClaimedTask {
-            id: task_id,
-            workflow_id: task.workflow_id,
-            max_attempts: task.options.retry_policy.max_attempts,
-            activity_id: task.activity_id,
-            activity_type: task.activity_type,
-            input: sanitize_json_null_bytes(task.input),
-            options: task.options,
-            attempt: 1,
-            workflow_status,
-        })))
     }
 
     #[instrument(skip(self, activity_types))]
@@ -547,28 +430,6 @@ impl TaskQueue for PostgresWorkflowEventStore {
                 Err(StoreError::TaskNotOwned(task_id))
             }
         }
-    }
-
-    #[instrument(skip(self, _result, hand_off))]
-    async fn complete_task_and_hand_off(
-        &self,
-        task_id: Uuid,
-        worker_id: &str,
-        _result: serde_json::Value,
-        hand_off: crate::HandOff,
-    ) -> Result<crate::HandedOff, StoreError> {
-        self.hand_off(task_id, worker_id, hand_off).await
-    }
-
-    #[instrument(skip(self))]
-    async fn requeue_stranded_workflows(
-        &self,
-        workflow_type: &str,
-        completed_before: Duration,
-        limit: usize,
-    ) -> Result<Vec<crate::RequeuedWorkflow>, StoreError> {
-        self.requeue_stranded(workflow_type, completed_before, limit)
-            .await
     }
 
     #[instrument(skip(self))]

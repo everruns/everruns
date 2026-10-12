@@ -8,16 +8,17 @@
 // database. In production (database a few milliseconds away) that made reason
 // setup ~600 ms of every ~700 ms phase hand-off, against ~130 ms locally.
 //
-// Decision: one memo per `WorkerRuntimeHost`, which the worker builds per
-// activity, so nothing is shared across phases or turns. It serves setup only:
+// Decision: one memo per phase, re-armed at each phase boundary of a leased
+// turn (`begin_phase`), so nothing is shared across phases or turns except
+// through the turn's own reads (`turn_reads`). It serves setup only:
 // once the phase's start event goes out it empties and stops memoizing, so the
 // model call, tools, and anything after them read fresh state. Entries also
 // expire after `FRESH_FOR`, for hosts that never emit a start event (activity
 // scheduling). Session writes made through the host drop the session entry.
 // Errors are never memoized.
 //
-// Decision: the worker knows every id these reads need when it claims the
-// task, so `prefetch` starts them all at once instead of letting setup issue
+// Decision: the worker knows every id these reads need when the phase
+// begins, so `prefetch` starts them all at once instead of letting setup issue
 // them one after another (harness, agent, session, then the turn context).
 // Each read is a cell that later callers wait on while it is in flight, so a
 // prefetched read is never repeated. With the control plane tens of
@@ -139,7 +140,7 @@ fn turn_providers(v: &mut TurnValues) -> &mut HashMap<ProviderKeyed, Option<Prov
     &mut v.providers
 }
 
-/// The ids a phase's setup reads. Known when the worker claims the task.
+/// The ids a phase's setup reads, known when the turn's phase begins.
 pub struct PhaseIds {
     pub org_id: i64,
     pub session_id: Uuid,
@@ -147,29 +148,6 @@ pub struct PhaseIds {
     pub agent_id: Option<Uuid>,
     /// Set for a reason phase, which also loads the turn context.
     pub input_message_id: Option<Uuid>,
-}
-
-impl PhaseIds {
-    pub fn reason(input: &crate::core::engine::ReasonInput) -> Option<Self> {
-        let message_id = input.context.input_message_id.uuid();
-        Some(Self {
-            org_id: input.org_id,
-            session_id: input.context.session_id.uuid(),
-            harness_id: input.harness_id.uuid(),
-            agent_id: input.agent_id.map(|id| id.uuid()),
-            input_message_id: (!message_id.is_nil()).then_some(message_id),
-        })
-    }
-
-    pub fn act(input: &crate::core::engine::ActInput) -> Option<Self> {
-        Some(Self {
-            org_id: input.org_id?,
-            session_id: input.context.session_id.uuid(),
-            harness_id: input.harness_id.uuid(),
-            agent_id: input.agent_id.map(|id| id.uuid()),
-            input_message_id: None,
-        })
-    }
 }
 
 /// Agent, harness, session, and turn-context reads for one phase, memoized

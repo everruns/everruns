@@ -1,8 +1,8 @@
 // Partial-stream store over the control plane's `GetPartialStream` RPC (EVE-532).
 //
-// Why: a reason step retried after its worker died must find the stream the
-// lost attempt left open, so it completes that message under its id instead
-// of announcing the step and the message again. The events live on the
+// Why: a reason rerun after its worker died (a resumed leased turn) must find
+// the stream the lost attempt left open, so it completes that message under
+// its id instead of announcing the step and the message again. The events live on the
 // server, so the worker asks it.
 //
 // Decision: a server without the RPC (`UNIMPLEMENTED`, an older control plane

@@ -277,12 +277,6 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
-    /// Stream-liveness heartbeater for the Reason activity (EVE-531).
-    /// Default: `None` (no heartbeats sent — durable workers supply one).
-    fn stream_heartbeater(&self) -> Option<Arc<dyn crate::durability::StreamHeartbeater>> {
-        None
-    }
-
     /// Partial-stream store for ContinuePartial recovery (EVE-532).
     /// Default: `None` (no recovery; in-memory and dev hosts use this default).
     fn partial_stream_store(&self) -> Option<Arc<dyn PartialStreamStore>> {
@@ -1193,9 +1187,6 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
     }
     if let Some(file_resolver) = adapter.file_resolver(org_id) {
         atom = atom.with_file_resolver(file_resolver);
-    }
-    if let Some(hb) = adapter.stream_heartbeater() {
-        atom = atom.with_stream_heartbeater(hb);
     }
     if let Some(timeout) = adapter.provider_stall_timeout() {
         atom = atom.with_provider_stall_timeout(timeout);

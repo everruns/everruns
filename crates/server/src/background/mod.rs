@@ -11,15 +11,8 @@ pub mod blob_gc;
 // Cluster-once maintenance jobs on durable schedules
 pub mod cluster_jobs;
 
-// Surface sealed and exhausted durable turns (forward-progress guard, EVE-534)
-// to sessions; driven by the stale-task reaper.
-pub mod durable_failure;
+// Stale durable-task reaping (non-turn activities)
 pub mod durable_reaper;
-pub mod durable_seal;
-
-// TEMPORARY (step 7 deletes it): hands old-path turn tasks created during a
-// rolling deploy to session actors.
-pub mod legacy_turn_sweep;
 
 // Event and sandbox-history retention jobs
 pub mod event_retention;

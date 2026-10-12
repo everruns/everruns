@@ -661,14 +661,8 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
-    /// Stream-liveness heartbeater for the Reason activity (EVE-531).
-    /// Default: `None` (no heartbeats sent — durable workers supply one).
-    fn stream_heartbeater(&self) -> Option<Arc<dyn crate::core::durability::StreamHeartbeater>> {
-        None
-    }
-
     /// Partial-stream store for ContinuePartial recovery (EVE-532).
-    /// Default: `None` (a retried reason step announces itself again).
+    /// Default: `None` (a rerun reason announces itself again).
     fn partial_stream_store(&self) -> Option<Arc<dyn crate::core::durability::PartialStreamStore>> {
         None
     }
