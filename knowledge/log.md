@@ -2,6 +2,12 @@
 
 ## 2026-10-12
 
+* **GitHub connection model design (awaiting approval).** One `github`
+  connection per virtual user with a kind (agent App, shared Everruns app,
+  person); every use declares how it acts, its repositories and permissions,
+  and gets a token cut down to that; the shared app becomes an org-level
+  opt-in; mentions become a GitHub channel beside triggers. See
+  [GitHub Connection Model](integrations/github-model.md).
 * **Cache-stable tool changes design (awaiting approval).** The tool list
   sent to the provider is fixed per session; reveals, MCP attaches and
   refreshes, capability switches and client tools become recorded tool
