@@ -1,0 +1,26 @@
+---
+// Previous and next pages as two bordered cards, next aligned right.
+const { dir, pagination } = Astro.locals.starlightRoute;
+const { prev, next } = pagination;
+---
+
+{
+  (prev || next) && (
+    <nav class="er-pagination print:hidden" dir={dir} aria-label="Pagination">
+      {prev ? (
+        <a href={prev.href} rel="prev">
+          <span class="er-pagination-label">← {Astro.locals.t("page.previousLink")}</span>
+          <span class="er-pagination-title">{prev.label}</span>
+        </a>
+      ) : (
+        <span />
+      )}
+      {next && (
+        <a href={next.href} rel="next">
+          <span class="er-pagination-label">{Astro.locals.t("page.nextLink")} →</span>
+          <span class="er-pagination-title">{next.label}</span>
+        </a>
+      )}
+    </nav>
+  )
+}

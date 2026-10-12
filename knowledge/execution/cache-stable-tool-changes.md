@@ -11,7 +11,7 @@ tags:
 
 # Cache-Stable Tool Changes
 
-> Status: **Accepted 2026-10-12. Steps 1, 2 and the Anthropic request side of 3 implemented.**
+> Status: **Accepted 2026-10-12. Steps 1 to 3 implemented.**
 > Builds on the earlier analysis of Pi's approach (project notes,
 > `pi-1-0/cache-stable-tool-reveals.md`) and the caching comparison with
 > Pydantic AI (`caching/pydantic-unified-caching.md`), where this is ranked as
@@ -63,8 +63,19 @@ Prefix of about 6.4k tokens, two requests per scenario, Sonnet 5.5 and Opus 5.5.
 | New tool through `tool_addition` (beta `inline-tools-2026-09-15`) | 6339 / 6339 |
 | Redefine the existing stub by name through `tool_addition` | 6499 / 6496 |
 
-The model called the tool correctly in every `tool_addition` case. A fresh
-Anthropic run was not possible on 2026-10-12: the Doppler key is out of credit.
+The model called the tool correctly in every `tool_addition` case.
+
+### Anthropic through the driver (2026-10-12)
+
+`test_anthropic_tool_reveal_keeps_prompt_cache` in
+`crates/llm-tests/tests/tool_search_test.rs`: generic `tool_search` reveals
+`add` mid-turn, and the call after the reveal must read the cached prefix.
+With inline changes, that call read the whole prefix (8140 of about 8.5k
+tokens, 40480 with a longer prompt) on Opus 5.5, Opus 5, Opus 4.8, Sonnet 5.5,
+Haiku 5.5 and Fable 5.1, and every model called `add`. With the flag off,
+Haiku 5.5 read 0 and wrote the prefix again. Sonnet 5 read 0 in one of two
+runs and Haiku 4.5 in both, so neither has the flag. Fable 5 answered without
+searching in two runs, so it stays unverified.
 
 ### OpenAI Responses (2026-10-12)
 
@@ -222,7 +233,7 @@ sends the tools wanted now, as before.
 #### Anthropic
 
 Implemented in `crates/drivers/drivers/src/anthropic/driver_tool_changes.rs`,
-on Opus 5.5 and Sonnet 5.5 (the families our 2026-10-06 probe verified), against
+on the families a live probe verified (the profile flag lists them), against
 the first-party endpoint only:
 
 - `tools` is the baseline followed by a deferred placeholder tool, as Pi does.
@@ -243,8 +254,8 @@ the first-party endpoint only:
   change with no user turn before it (it would land in top-level `system`,
   which cannot hold a definition).
 - Hosted Claude search with tools added inline (`defer_loading: true` on the
-  addition) stays unverified until the Anthropic key has credit; until then
-  hosted search keeps today's behavior.
+  addition) is not verified yet; until it is, hosted search keeps today's
+  behavior.
 - Bedrock and Google Cloud have only the by-reference form; a reference must
   name a tool already in `tools`, so on those hosts only removals and
   re-offers of baseline tools are cache-safe. Requests there fall back until
@@ -330,9 +341,11 @@ Each step is one PR and leaves `main` working.
    a request.
 3. **Anthropic driver** renders changes inline and Session Trace shows them;
    profile flag for verified families; live tests once the key has credit.
-   Done: the request side, with the profile flag on Opus 5.5 and Sonnet 5.5.
-   Left: Session Trace display, and the live cache test before widening the
-   flag to Fable, Opus 5 and 4.8 and Haiku 5.5.
+   Done: the request side; Session Trace listing each call's change
+   (`llm.generation` carries it as `metadata.tool_changes`; a cache reset is
+   blamed on tools only when the provider body's tools changed); and the live
+   cache test, which widened the flag to Opus 5 and 4.8, Haiku 5.5 and Fable
+   5.1 (see the 2026-10-12 driver results above).
 4. **OpenAI Responses driver** renders `additional_tools`; profile flag
    (`add_and_redefine` for GPT-6, `add_only` for 5.x) with live tests.
 5. **Sources move onto the comparison**: generic `tool_search` (drop the

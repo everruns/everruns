@@ -46,6 +46,18 @@ Use `explicit` when many short, unrelated sessions share long instructions or
 tools, such as a support agent: caching every conversation would cost more in
 cache writes than it saves in reads.
 
+## Tool changes during a session
+
+Tool definitions sit at the front of the cached prompt, so a tool list that
+changes mid-session (a tool revealed by [Tool Search](/capabilities/tool-search/),
+for example) used to throw the whole cache away. Sessions now record their tool
+list on the first model call and each later change in the conversation. On
+Claude Opus 5.5, Opus 5, Opus 4.8, Sonnet 5.5, Haiku 5.5 and Fable 5.1 through
+the Claude API, the request keeps the
+first tool list and sends each change as a message, so the cache survives it.
+Other models and endpoints receive the current tool list, which costs one cache
+write per change, as before.
+
 ## Retention
 
 `retention` sets how long the provider keeps a cached prefix after its last
@@ -95,7 +107,8 @@ read, cache write and uncached tokens. When a call reuses less than half of
 what the previous call left cached, the trace marks a cache reset and names the
 likely cause: the model, the tool definitions, the system prompt or earlier
 messages changed, or the session sat idle longer than the cache retention. A
-long prompt sent with caching off is marked as one that caching would help.
+long prompt sent with caching off is marked as one that caching would help. A
+call that changed the tool list lists the tools added, updated or removed.
 
 ## See also
 

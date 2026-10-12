@@ -63,3 +63,15 @@ test("the bare root redirects into the docs", async () => {
     assert.equal(response.headers.get("location"), "https://everruns.com/docs/");
   }
 });
+
+test("the former docs host redirects every URL to the same page under /docs", async () => {
+  for (const [from, to] of [
+    ["https://docs.everruns.com/", "https://everruns.com/docs/"],
+    ["https://docs.everruns.com/framework/quickstart/?ref=x", "https://everruns.com/docs/framework/quickstart/?ref=x"],
+    ["https://docs.everruns.com/llms.txt", "https://everruns.com/docs/llms.txt"],
+  ]) {
+    const response = await worker.fetch(new Request(from, { headers: { accept: "text/markdown" } }), { ASSETS });
+    assert.equal(response.status, 301);
+    assert.equal(response.headers.get("location"), to);
+  }
+});

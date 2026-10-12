@@ -138,6 +138,7 @@ fn test_convert_llm_generation_with_parent() {
             tool_calls_dropped: 0,
             tool_calls_truncated_executed: 0,
             truncation_gate: None,
+            tool_changes: None,
         },
     };
 

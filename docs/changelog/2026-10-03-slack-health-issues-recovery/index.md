@@ -22,7 +22,7 @@ under **Action required** in the notification menu. Managed apps get a repair
 that extends the app's manifest before Slack asks for consent again; manually
 configured apps get scope, reinstall and token guidance. Reading or snoozing an
 issue keeps it active until a fresh check passes. From the CLI, use
-`everruns health-issues`.
+[`everruns health-issues`](/reference/cli/health-issues/).
 
 See [Resolve installation issues](/how-to/publish-to-slack/#resolve-installation-issues).
 PR [#4134](https://github.com/everruns/everruns/pull/4134).

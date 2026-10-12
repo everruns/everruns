@@ -19,9 +19,22 @@ seeded as an enabled Anthropic favorite. It always thinks, so an explicit
 GPT-6.1 Sol joins the OpenAI models. Its `controls.speed` setting accepts
 `fast` and `ultrafast`. The OpenAI drivers reject a speed tier the model does
 not list before sending, and usage is priced at the tier that served the call.
+Set the tier per message:
+
+```bash
+curl -X POST http://localhost:9300/api/v1/sessions/{session_id}/messages \
+  -H "Authorization: Bearer $EVERRUNS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"message": {"role": "user", "content": [{"type": "text", "text": "Hello!"}]},
+       "controls": {"speed": "fast"}}'
+```
 
 Anthropic sunset Claude Sonnet 4.5, so its model profile and catalog entry are
 removed.
 
 See [Anthropic](/providers/anthropic/) and [OpenAI](/providers/openai/). PRs
 [#3902](https://github.com/everruns/everruns/pull/3902), [#3925](https://github.com/everruns/everruns/pull/3925), [#3952](https://github.com/everruns/everruns/pull/3952).
+
+## Update 2026-10-10
+
+GPT-6.1 Sol now lists only `fast`: OpenAI has not released Ultrafast for it, so the drivers reject `ultrafast` before sending.

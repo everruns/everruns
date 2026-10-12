@@ -8,6 +8,7 @@ products: [cloud]
 surfaces: [ui]
 links:
   docs: [/getting-started/cloud/]
+visual: "Everruns Cloud Sessions page right after clicking Sessions in the sidebar, cropped to the sidebar and the loaded session list."
 ---
 
 Opening **Sessions**, **Harnesses** or **Skills** in

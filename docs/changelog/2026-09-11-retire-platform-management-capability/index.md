@@ -19,7 +19,14 @@ or hooks, and is hidden from catalogs unless `include_retired` is set.
 
 `platform_management` is retired. Its 14 hand-written tools are replaced by the
 `platform` capability, which derives the same surface from the command catalog.
-Agents that still list `platform_management` should switch to `platform`.
+Agents that still list `platform_management` should switch to `platform`:
+
+```toml
+# Before
+capabilities = ["platform_management"]
+# After
+capabilities = ["platform"]
+```
 
 See [Platform Management (removed)](/capabilities/platform-management/) and
 [Platform](/capabilities/platform/). [#3513](https://github.com/everruns/everruns/pull/3513)

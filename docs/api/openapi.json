@@ -45424,6 +45424,13 @@
             "example": 1,
             "minimum": 0
           },
+          "tool_changes": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Tool change recorded for this generation: the baseline tool list when\nit started an epoch, or what was added, redefined or removed since\n(see [`crate::tool_changes`]). Omitted when the tools did not change."
+          },
           "truncation_gate": {
             "type": [
               "string",
@@ -59388,6 +59395,17 @@
             ],
             "description": "Start of the system prompt."
           },
+          "tool_changes": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TraceToolChanges",
+                "description": "How the call's tool list changed; absent when it did not."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "tool_count": {
             "type": "integer",
             "format": "int32",
@@ -59859,6 +59877,47 @@
               "$ref": "#/components/schemas/TraceStep"
             },
             "description": "Steps in step order."
+          }
+        }
+      },
+      "TraceToolChanges": {
+        "type": "object",
+        "description": "A tool change recorded for one model call. Models that take changes\ninline keep the request's tool list fixed and receive these as messages;\nothers get the new tool list.",
+        "required": [
+          "added",
+          "redefined",
+          "removed"
+        ],
+        "properties": {
+          "added": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tools that became callable."
+          },
+          "baseline_tools": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Tools fixed when this call started a new tool epoch (the first call, or\nthe first after a model switch or compaction).",
+            "example": 9
+          },
+          "redefined": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tools whose definition changed, such as a searched tool's full schema."
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tools no longer callable."
           }
         }
       },

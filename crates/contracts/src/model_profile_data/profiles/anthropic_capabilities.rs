@@ -28,11 +28,19 @@ pub(super) fn apply(profile: &mut ModelProfile) {
         return;
     }
     let mut parameters = vec![MID_CONVERSATION_SYSTEM_PARAMETER, CLEAR_AT_PARAMETER];
-    // Inline tool changes: only the families a live round trip verified
-    // (cache kept across a `tool_addition`, 2026-10-06). Add others the same way.
+    // Inline tool changes: only the families a live round trip verified (cache
+    // kept across a `tool_addition`, 2026-10-06 and 2026-10-12, the latter by
+    // `test_anthropic_tool_reveal_keeps_prompt_cache`). Sonnet 5 and Haiku 4.5
+    // stay off: their call after a reveal wrote the prefix again in at least one
+    // of two runs. Add others the same way.
     if matches!(
         profile.family.as_str(),
-        "claude-opus-5-5" | "claude-sonnet-5-5"
+        "claude-opus-5-5"
+            | "claude-sonnet-5-5"
+            | "claude-fable-5-1"
+            | "claude-opus-5"
+            | "claude-opus-4-8"
+            | "claude-haiku-5-5"
     ) {
         parameters.push(INLINE_TOOL_CHANGES_PARAMETER);
     }

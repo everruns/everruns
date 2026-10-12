@@ -23,6 +23,18 @@ can now read and answer it. Before, they saw a session that stayed working.
 - Over MCP Tasks, `tasks/get` exposes the pending form through
   `inputRequests`, and `tasks/update` answers it.
 
+An A2A answer names the task and the `ask_user` call:
+
+```json
+{"role": "user", "taskId": "<task id>", "parts": [{"kind": "data", "data": {
+  "everruns/ask_user_answer": {
+    "tool_call_id": "call_ask_1",
+    "status": "answered",
+    "answers": [{"id": "target", "selected": ["Production"]}]
+  }
+}}]}
+```
+
 See [Ask User](/capabilities/ask-user/), [MCP](/features/mcp/) and
 [A2A](/features/a2a/). PRs [#3781](https://github.com/everruns/everruns/pull/3781), [#3780](https://github.com/everruns/everruns/pull/3780),
 [#3828](https://github.com/everruns/everruns/pull/3828).

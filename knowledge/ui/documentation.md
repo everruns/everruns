@@ -75,10 +75,17 @@ grade sit in one "Experimental (dev grade)" group rather than beside the
 supported ones, because Everruns Cloud runs at production grade and never
 offers them.
 
-Custom `Header.astro` override renders two rows inside Starlight's fixed
-header: the everruns.com site header, then a docs bar with the topic tabs,
-search and theme switch. Sidebar topic list is hidden on desktop (visible on
-mobile).
+The layout replaces Starlight's fixed frame (`PageFrame.astro`): the
+everruns.com site header scrolls away, and a 48px docs bar (`Header.astro`:
+"Docs", the topic tabs, search, a light/dark/system switch) sticks to the top.
+Once the site header is out of view the bar collapses: the logo and an Open
+Cloud button slide in, so the bar alone still says which site this is. Below
+it, one 1200px column holds the sidebar, the article (720px) and the "On this
+page" column, which folds into a sticky dropdown below 1200px; the sidebar
+becomes a popover menu below 960px. The sidebar topic list shows only in that
+menu, since the tabs carry it on wider screens. Slate tokens and Geist live in
+`apps/docs/src/styles/slate.css`; code blocks are dark in both themes
+(`apps/docs/src/code-theme.json`).
 
 The Reference tab must remain active for all `/api/` pages, including nested
 OpenAPI-generated routes such as `/api/operations/*` and `/api/operations/tags/*`.
@@ -210,12 +217,17 @@ sites build and deploy independently and no request passes through both.
    text/markdown` (or a known AI user agent, never a search crawler) on a page
    URL returns its `index.md` twin, with `Vary: Accept, User-Agent`. Every page
    response carries `Link` headers for `llms.txt` and the API reference
-4. docs.everruns.com keeps a zone redirect rule that 301s every path, query
-   included, to the same path under https://everruns.com/docs. It stays
+4. The docs Worker also owns the route `docs.everruns.com/*` and 301s every
+   path, query included, to the same path under https://everruns.com/docs. A
+   Worker route rather than a zone redirect rule, because the deploy token
+   manages Worker routes and the redirect stays tested in the repo. It stays
    forever: published crate docs, plugins and old posts link the old host
 5. `apps/docs/scripts/check-live.mjs` checks every sitemap page and its
    Markdown twin, the agent files, content negotiation and, with `--old`, each
    old URL's redirect. It runs after every deploy and daily
+6. `scripts/lib/check-docs-host.sh` (pre-push and CI) fails on any new link
+   to docs.everruns.com outside the files about the move itself; the
+   maintenance skill sweeps the sibling repositories for the same
 
 ### Development
 

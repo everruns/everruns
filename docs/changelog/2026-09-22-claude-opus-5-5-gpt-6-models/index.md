@@ -19,7 +19,12 @@ the recommended Anthropic model. Opus 5 stays enabled for existing agents.
 
 GPT-6 Luna replaces GPT-5.6 Terra as the platform default model. It is also the
 default utility model behind Agent Analyze, Health checks and `llm_judge`
-guardrails; set `UTILITY_LLM_MODEL` to choose another.
+guardrails; set `UTILITY_LLM_MODEL` to choose another:
+
+```bash
+# Control-plane and workers both read it.
+UTILITY_LLM_MODEL=gpt-6-sol
+```
 
 See [Anthropic](/providers/anthropic/), [OpenAI](/providers/openai/) and
 [environment variables](/sre/environment-variables/). PRs [#3769](https://github.com/everruns/everruns/pull/3769),

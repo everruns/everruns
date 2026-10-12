@@ -959,7 +959,32 @@ fn request_summary(data: &Value, new_from: i32) -> TraceRequestSummary {
             .map(|(i, m)| message_out(i, m, &names, None))
             .collect(),
         usage: request_usage(data),
+        tool_changes: request_tool_changes(data),
     }
+}
+
+/// The tool change recorded on the call, by tool name.
+fn request_tool_changes(data: &Value) -> Option<TraceToolChanges> {
+    let changes = data.pointer("/metadata/tool_changes")?;
+    let names = |key: &str| -> Vec<String> {
+        changes
+            .get(key)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|item| item.as_str().or_else(|| item.get("name")?.as_str()))
+            .map(str::to_string)
+            .collect()
+    };
+    Some(TraceToolChanges {
+        baseline_tools: changes
+            .get("baseline")
+            .and_then(Value::as_array)
+            .map(|tools| i32::try_from(tools.len()).unwrap_or(i32::MAX)),
+        added: names("added"),
+        redefined: names("redefined"),
+        removed: names("removed"),
+    })
 }
 
 fn request_tools(data: &Value) -> Vec<TraceRequestTool> {
@@ -1216,6 +1241,25 @@ mod tests {
                 "request_options": {"prompt_cache": {"enabled": true, "strategy": "auto"}}
             }
         })
+    }
+
+    #[test]
+    fn recorded_tool_changes_are_listed_by_name() {
+        let mut data = stored_request();
+        assert!(request_tool_changes(&data).is_none());
+        let tool = |name: &str| json!({"type": "client_side", "name": name, "description": "d", "parameters": {}});
+        data["metadata"]["tool_changes"] = json!({"baseline": [tool("a"), tool("b")]});
+        let baseline = request_tool_changes(&data).unwrap();
+        assert_eq!(baseline.baseline_tools, Some(2));
+        assert!(baseline.added.is_empty());
+
+        data["metadata"]["tool_changes"] =
+            json!({"added": [tool("c")], "redefined": [tool("a")], "removed": ["b"]});
+        let change = request_summary(&data, 0).tool_changes.unwrap();
+        assert_eq!(change.baseline_tools, None);
+        assert_eq!(change.added, ["c"]);
+        assert_eq!(change.redefined, ["a"]);
+        assert_eq!(change.removed, ["b"]);
     }
 
     #[test]

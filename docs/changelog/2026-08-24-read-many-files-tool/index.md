@@ -12,7 +12,14 @@ links:
   prs: [everruns/everruns#3275]
 ---
 
-Agents with the File System capability get a `read_many_files` tool. It reads 2 to 10 independent session-workspace files in one call, returns them in order with a per-file result or error, and stops below a 60 KiB combined output. `read_file` is unchanged.
+Agents with the File System capability get a `read_many_files` tool. It reads 2 to 10 independent session-workspace files in one call, returns them in order with a per-file result or error, and stops below a 60 KiB combined output. `read_file` is unchanged. A call's arguments:
+
+```json
+{
+  "paths": ["/workspace/README.md", "/workspace/Cargo.toml", "/workspace/src/lib.rs"],
+  "limit": 200
+}
+```
 
 Models that emit one tool call per response no longer need one model round per file. In the PR's tests, three independent reads took 2 model calls instead of 4 and about half the input tokens. Loop detection recognizes repeated batch reads.
 

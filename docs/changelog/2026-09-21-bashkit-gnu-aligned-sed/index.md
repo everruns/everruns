@@ -18,6 +18,12 @@ range-address semantics, `\U \L \u \l \E` case conversion, and real option
 parsing for `-s`, `-z`, `-f`, `-l` and attached `-i.bak`. A missing final
 newline is preserved, and `-i` now writes files atomically.
 
+```bash
+echo 'hello world' | sed 's/hello/\U&/'   # HELLO world
+sed -i.bak 'y/abc/xyz/' notes.txt         # keeps notes.txt.bak
+sed -n '$=' notes.txt                     # line count
+```
+
 The same release builds VFS paths with forward slashes on every host, including
 Windows.
 

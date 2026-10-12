@@ -21,7 +21,7 @@ The [GitHub](/capabilities/github/) capability then gives it
 `get_github_pull_request`, `get_github_pull_request_diff` and
 `upsert_github_comment`.
 
-Add a trigger in GitHub mode, or from the CLI with `--github-events` and
+Add an [agent trigger](/features/agent-triggers/) in GitHub mode, or from the CLI with `--github-events` and
 `--repositories`, to start work on pull request events. Webhooks are signature
 verified, deduplicated by delivery ID, and routed to one session per pull
 request. Every trigger now shares that pipeline, so webhook triggers also accept

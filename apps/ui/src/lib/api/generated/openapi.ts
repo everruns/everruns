@@ -17564,6 +17564,12 @@ export interface components {
        */
       tool_calls_truncated_executed?: number;
       /**
+       * @description Tool change recorded for this generation: the baseline tool list when
+       *     it started an epoch, or what was added, redefined or removed since
+       *     (see [`crate::tool_changes`]). Omitted when the tools did not change.
+       */
+      tool_changes?: Record<string, unknown> | null;
+      /**
        * @description What the output-truncation gate did because this generation lost tool
        *     calls (`finish_reason` `length`, or arguments that did not parse):
        *     `retried` (the model was told and the turn ran another generation) or
@@ -25271,6 +25277,7 @@ export interface components {
       new_messages: components["schemas"]["TraceRequestMessage"][];
       /** @description Start of the system prompt. */
       system_preview?: string | null;
+      tool_changes?: components["schemas"]["TraceToolChanges"] | null;
       /**
        * Format: int32
        * @description Tools offered in the call.
@@ -25531,6 +25538,26 @@ export interface components {
       next_step?: number | null;
       /** @description Steps in step order. */
       steps: components["schemas"]["TraceStep"][];
+    };
+    /**
+     * @description A tool change recorded for one model call. Models that take changes
+     *     inline keep the request's tool list fixed and receive these as messages;
+     *     others get the new tool list.
+     */
+    TraceToolChanges: {
+      /** @description Tools that became callable. */
+      added: string[];
+      /**
+       * Format: int32
+       * @description Tools fixed when this call started a new tool epoch (the first call, or
+       *     the first after a model switch or compaction).
+       * @example 9
+       */
+      baseline_tools?: number | null;
+      /** @description Tools whose definition changed, such as a searched tool's full schema. */
+      redefined: string[];
+      /** @description Tools no longer callable. */
+      removed: string[];
     };
     /** @description One turn: what the user asked, how it went, and what happened. */
     TraceTurn: {

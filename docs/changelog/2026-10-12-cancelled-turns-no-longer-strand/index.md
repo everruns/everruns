@@ -20,3 +20,4 @@ a cancel is recorded by that worker before the request answers, and nothing
 the cancelled turn produces after `turn.cancelled` reaches the session. The
 next message starts a fresh turn. A worker or server that crashes mid-turn is
 also recovered from the session's event log without repeating `turn.started`.
+The [event reference](/event-reference/) lists the turn events.

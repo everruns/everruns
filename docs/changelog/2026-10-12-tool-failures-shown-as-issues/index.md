@@ -20,5 +20,5 @@ turn.
 **In code:** a failed `tool.completed` event carries `"severity": "issue"`, and
 `turn.completed` carries `issue_count` with the number of failed tool calls the
 turn absorbed. A failed turn is still reported as `turn.failed`. The act
-headline now reads "with 1 issue". The OpenAPI spec and the event reference
-document both fields.
+headline now reads "with 1 issue". The OpenAPI spec and the [event reference](/event-reference/)
+document both fields; see [Events](/features/events/) for how clients read them.

@@ -28,8 +28,11 @@
   --space-xl: 4rem;
   --max-width: 1200px;
   --header-height: 64px;
+  /* Muted text: Slate's muted-foreground. */
+  --color-muted: #737373;
   font-family:
-    'Geist Sans',
+    'Geist Variable',
+    'Geist',
     system-ui,
     -apple-system,
     sans-serif;
@@ -60,10 +63,11 @@
   margin: 0;
 }
 
+/* The docs set --er-chrome-gutter to their 24px column gutter. */
 .er-container {
   max-width: var(--max-width);
   margin: 0 auto;
-  padding: 0 var(--space-md);
+  padding: 0 var(--er-chrome-gutter, var(--space-md));
 }
 
 /* Header */
@@ -94,7 +98,7 @@
 .er-h-logo-link {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 10px;
   text-decoration: none;
 }
 
@@ -103,13 +107,14 @@
 }
 
 .er-h-logo {
-  width: 32px;
-  height: 32px;
+  width: 26px;
+  height: 26px;
 }
 
 .er-h-logo-text {
-  font-size: 1.25rem;
+  font-size: 20px;
   font-weight: 600;
+  letter-spacing: -0.02em;
   color: var(--color-obsidian);
 }
 
@@ -137,7 +142,8 @@
 .er-h-nav {
   display: flex;
   align-items: center;
-  gap: var(--space-lg);
+  gap: 28px;
+  font-size: 15px;
 }
 
 /* Three groups across the bar: logo, the nav links, then the utility group
@@ -148,15 +154,14 @@
 .er-h-header-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-md);
+  gap: 16px;
   order: 3;
 }
 
-/* Icons read as one cluster, so they sit tighter than the nav links. */
 .er-h-header-social {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: 16px;
 }
 
 .er-h-logo-link {
@@ -167,20 +172,25 @@
   order: 2;
 }
 
-/* Primary entry point to the hosted app (app.everruns.com). */
-.er-h-nav-cta {
+/* Primary entry point to the hosted app (app.everruns.com). Scoped under
+   .er-chrome so it outranks the chrome-wide `.er-chrome a` link color; a bare
+   class loses to it and renders navy text on the dark button. */
+.er-chrome .er-h-nav-cta {
   display: inline-flex;
   align-items: center;
-  padding: 0.45rem 0.9rem;
+  padding: 9px 16px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  font-size: 15px;
   font-weight: 600;
-  color: var(--color-white);
-  background: var(--color-obsidian);
+  line-height: 1.4;
+  color: #fff;
+  background: #0a0a0a;
   text-decoration: none;
   white-space: nowrap;
 }
 
-.er-h-nav-cta:hover {
-  background: var(--color-navy);
+.er-chrome .er-h-nav-cta:hover {
+  opacity: 0.9;
   text-decoration: none;
 }
 
@@ -275,7 +285,7 @@
 }
 
 .er-h-nav a {
-  color: var(--color-slate);
+  color: var(--color-muted);
   font-weight: 500;
   transition: color 0.2s;
 }
@@ -285,9 +295,18 @@
   text-decoration: none;
 }
 
-.er-h-social-link {
+/* The section the page belongs to (Header.astro sets aria-current; the docs
+   mark Docs). */
+.er-chrome .er-h-nav > a[aria-current],
+.er-chrome .er-h-nav-dropdown-toggle[aria-current] {
+  color: var(--color-obsidian);
+  font-weight: 600;
+}
+
+.er-chrome .er-h-social-link {
   display: inline-flex;
   align-items: center;
+  color: var(--color-obsidian);
 }
 
 .er-h-social-link svg {
@@ -360,41 +379,41 @@
     display: none;
   }
 
-  .er-h-nav-cta {
-    padding: 0.4rem 0.75rem;
-    font-size: 0.9rem;
+  .er-chrome .er-h-nav-cta {
+    padding: 7px 12px;
+    font-size: 14px;
   }
 }
-/* Footer */
+/* Footer: dark in both themes. */
 .er-footer {
   background: var(--color-charcoal);
-  color: var(--color-silver);
-  padding: var(--space-xl) 0 var(--space-lg);
+  color: hsl(0 0% 62%);
+  padding: 72px 0 40px;
 }
 
 .er-f-footer-top {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--space-xl);
+  grid-template-columns: minmax(0, 1fr);
+  gap: 48px;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 960px) {
   .er-f-footer-top {
-    grid-template-columns: minmax(180px, 1fr) 2.4fr;
-    gap: var(--space-xl);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2.4fr);
   }
 }
 
 .er-f-footer-brand {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: 12px;
+  max-width: 340px;
 }
 
 .er-f-logo-link {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 10px;
   text-decoration: none;
 }
 
@@ -403,134 +422,223 @@
 }
 
 .er-f-logo {
-  width: 28px;
-  height: 28px;
-  filter: invert(1) brightness(0.7);
+  width: 24px;
+  height: 24px;
+  filter: invert(1);
 }
 
-.er-f-logo-text {
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: var(--color-silver);
+.er-chrome .er-f-logo-text {
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  color: #fff;
 }
 
 .er-f-tagline {
-  font-size: 0.9rem;
-  color: var(--color-slate);
-  max-width: 22ch;
+  font-size: 14px;
+}
+
+/* Newsletter signup, posting to /api/subscribe (src/pages/api/subscribe.ts).
+   It works as a plain form post; site-chrome.js upgrades it to an in-place
+   request with an inline status line. */
+.er-f-subscribe {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.er-f-subscribe-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.er-f-subscribe-hint {
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.er-f-subscribe-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.er-f-subscribe-input {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  margin: 0;
+  padding: 0 12px;
+  border: 1px solid rgb(255 255 255 / 0.2);
+  border-radius: 0;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.er-f-subscribe-input::placeholder {
+  color: hsl(0 0% 50%);
+}
+
+.er-f-subscribe-input:focus {
+  border-color: var(--color-gold);
+  box-shadow: 0 0 0 3px hsl(43 60% 53% / 0.5);
+}
+
+.er-f-subscribe-button {
+  height: 38px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  color: #0a0a0a;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.er-f-subscribe-button:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.er-f-subscribe-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px hsl(43 60% 53% / 0.5);
+}
+
+.er-f-subscribe-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.er-f-subscribe-honeypot {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.er-f-subscribe-status {
+  font-size: 14px;
+}
+
+.er-f-subscribe-status:empty {
+  display: none;
+}
+
+.er-f-subscribe-status.is-error {
+  color: var(--color-gold);
 }
 
 .er-f-footer-columns {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-lg) var(--space-md);
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 40px 24px;
 }
 
-@media (min-width: 560px) {
-  .er-f-footer-columns {
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  }
+.er-f-footer-column {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
 }
 
 .er-f-column-title {
   display: block;
-  font-size: 0.75rem;
+  font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-white);
-  margin-bottom: var(--space-md);
+  color: #fff;
 }
 
 .er-f-footer-column ul {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 14px;
+  line-height: 1.45;
 }
 
-.er-f-footer-column a {
-  color: var(--color-silver);
-  font-size: 0.9rem;
+.er-chrome .er-f-footer-column a {
+  font-size: 14px;
+  line-height: 1.45;
+  color: hsl(0 0% 78%);
   transition: color 0.2s;
 }
 
-.er-f-footer-column a:hover {
-  color: var(--color-white);
-  text-decoration: none;
-}
-
-.er-f-divider {
-  border: none;
-  border-top: 1px solid var(--color-slate);
-  margin: var(--space-lg) 0;
+.er-chrome .er-f-footer-column a:hover {
+  color: #fff;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .er-f-footer-bottom {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-  align-items: flex-start;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 56px;
+  padding-top: 32px;
+  border-top: 1px solid rgb(255 255 255 / 0.12);
 }
 
-@media (min-width: 560px) {
-  .er-f-footer-bottom {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-  }
+.er-f-footer-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
 }
 
 .er-f-ukraine {
-  margin-bottom: var(--space-xs);
-  font-size: 0.9rem;
+  color: hsl(0 0% 88%);
 }
 
 .er-f-heart {
   display: inline-block;
 }
 
-.er-f-copyright {
-  font-size: 0.875rem;
-  color: var(--color-slate);
-}
-
 .er-f-social-links {
   display: flex;
-  gap: var(--space-md);
+  align-items: center;
+  gap: 16px;
 }
 
-.er-f-social-link {
+.er-chrome .er-f-social-link {
   display: inline-flex;
   align-items: center;
-  color: var(--color-silver);
+  color: hsl(0 0% 70%);
 }
 
-.er-f-social-link:hover {
-  color: var(--color-white);
+.er-chrome .er-f-social-link:hover {
+  color: #fff;
 }
 
 .er-f-social-link svg {
-  transition: transform 0.2s;
+  width: 18px;
+  height: 18px;
 }
 
-.er-f-social-link:hover svg {
-  transform: scale(1.1);
-}
 /*
  * Dark theme, used only where the page sets data-theme="dark" (the docs theme
- * switch). The landing site is light-only and never sets it.
+ * switch). The landing site is light-only and never sets it. Only the header
+ * changes; the footer is dark in both themes.
  */
-[data-theme='dark'] .er-chrome {
+[data-theme='dark'] .er-header {
   --color-white: #0a0a0a;
   --color-smoke: #2a2a2a;
   --color-obsidian: #fafafa;
   --color-navy: #d4dcf5;
-}
-
-/* The footer is dark in both themes; only the header's muted links lighten. */
-[data-theme='dark'] .er-header {
-  --color-slate: #c4c4c4;
+  --color-muted: #a6a6a6;
 }
 
 [data-theme='dark'] .er-h-logo {
