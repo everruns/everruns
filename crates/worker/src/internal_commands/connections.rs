@@ -14,7 +14,9 @@
 
 use super::{InternalCommandTransport, call, call_secret};
 use crate::core::McpServerActsAs;
-use crate::core::connection_services::{ServiceApiKeyConnection, UserConnectionResolver};
+use crate::core::connection_services::{
+    GitHubAccess, McpResolvedCredential, ServiceApiKeyConnection, UserConnectionResolver,
+};
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
 use everruns_contracts::session_sandbox::SessionSandboxCredential;
@@ -66,6 +68,13 @@ impl<T: InternalCommandTransport + 'static> CommandConnectionResolver<T> {
             "input_message_id": self.input_message_id,
         })
     }
+}
+
+/// A GitHub token for one use, as it crosses the wire.
+#[derive(serde::Deserialize)]
+struct GitHubToken {
+    token: String,
+    acted_as: McpServerActsAs,
 }
 
 /// The service API-key connection, as it crosses the wire.
@@ -138,6 +147,28 @@ impl<T: InternalCommandTransport + 'static> UserConnectionResolver
             self.mcp(session_id, provider, acts_as),
         )
         .await
+    }
+
+    async fn get_github_token(
+        &self,
+        session_id: SessionId,
+        access: &GitHubAccess,
+    ) -> Result<Option<McpResolvedCredential>> {
+        let token: Option<GitHubToken> = call_secret(
+            &*self.transport,
+            "Get GitHub token",
+            "worker_get_github_token",
+            json!({
+                "session_id": session_id.to_string(),
+                "access": access,
+                "input_message_id": self.input_message_id,
+            }),
+        )
+        .await?;
+        Ok(token.map(|token| McpResolvedCredential {
+            token: token.token,
+            acted_as: token.acted_as,
+        }))
     }
 
     async fn get_service_api_key_connection(
@@ -288,6 +319,32 @@ mod tests {
         assert_eq!(calls[1].1["input_message_id"], invocation.to_string());
         assert_eq!(calls[1].1["server_prefix"], "docs");
         assert_eq!(calls[1].1["acts_as"], "user");
+    }
+
+    /// A GitHub use sends its whole access request with the invocation, and
+    /// the answer names the identity that served it.
+    #[tokio::test]
+    async fn github_token_carries_the_access_and_the_acting_identity() {
+        let (resolver, calls) = resolver(Ok(json!({"token": "ghs_x", "acted_as": "service"})));
+        let session = SessionId::new();
+        let invocation = Uuid::new_v4();
+        let access = GitHubAccess::new(McpServerActsAs::UserOrService, &[("issues", "write")])
+            .for_repository("acme/app");
+        let credential = resolver
+            .for_execution(invocation)
+            .unwrap()
+            .get_github_token(session, &access)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(credential.token, "ghs_x");
+        assert_eq!(credential.acted_as, McpServerActsAs::Service);
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls[0].0, "worker_get_github_token");
+        assert_eq!(calls[0].1["input_message_id"], invocation.to_string());
+        assert_eq!(calls[0].1["access"]["acts_as"], "user_or_service");
+        assert_eq!(calls[0].1["access"]["repositories"], json!(["acme/app"]));
+        assert_eq!(calls[0].1["access"]["permissions"]["issues"], "write");
     }
 
     /// `user_or_service` asks for each concrete identity in turn, as the

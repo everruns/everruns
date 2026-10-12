@@ -12,17 +12,30 @@ use tracing::{debug, error};
 
 use crate::github::client::GitHubClient;
 use crate::github::{GITHUB_API_BASE, GITHUB_CONNECTION_PROVIDER, GITHUB_TOKEN_SECRET};
+use everruns_contracts::runtime::GitHubAccess;
+use everruns_contracts::runtime::mcp_server::McpServerActsAs;
 
 const DEFAULT_LIMIT: u32 = 10;
 const MAX_LIMIT: u32 = 30;
 
-pub(crate) async fn get_github_token(context: &ToolContext) -> Result<String, ToolExecutionResult> {
+/// Scout tools act as the person when they connected GitHub, else the agent.
+/// They only call read endpoints, across repositories they discover, so the
+/// token is not narrowed further.
+fn scout_access() -> GitHubAccess {
+    GitHubAccess::new(McpServerActsAs::UserOrService, &[])
+}
+
+/// A GitHub token for one use: the connection `access` names, limited to its
+/// repositories and permissions, else the `GITHUB_TOKEN` session secret.
+pub(crate) async fn get_github_token(
+    context: &ToolContext,
+    access: &GitHubAccess,
+) -> Result<String, ToolExecutionResult> {
     if let Some(resolver) = context.connection_resolver.as_ref() {
-        match resolver
-            .get_connection_token(context.session_id, GITHUB_CONNECTION_PROVIDER)
-            .await
-        {
-            Ok(Some(token)) if !token.trim().is_empty() => return Ok(token),
+        match resolver.get_github_token(context.session_id, access).await {
+            Ok(Some(credential)) if !credential.token.trim().is_empty() => {
+                return Ok(credential.token);
+            }
             Ok(_) => {}
             Err(e) => debug!("GitHub connection resolver failed: {e}"),
         }
@@ -236,7 +249,7 @@ impl Tool for SearchGitHubCodeTool {
         if let Err(e) = enforce_github_network_access(context) {
             return e;
         }
-        let token = match get_github_token(context).await {
+        let token = match get_github_token(context, &scout_access()).await {
             Ok(token) => token,
             Err(e) => return e,
         };
@@ -395,7 +408,7 @@ impl Tool for ReadGitHubFileTool {
         if let Err(e) = enforce_github_network_access(context) {
             return e;
         }
-        let token = match get_github_token(context).await {
+        let token = match get_github_token(context, &scout_access()).await {
             Ok(token) => token,
             Err(e) => return e,
         };
@@ -519,7 +532,7 @@ impl Tool for SearchGitHubIssuesTool {
         if let Err(e) = enforce_github_network_access(context) {
             return e;
         }
-        let token = match get_github_token(context).await {
+        let token = match get_github_token(context, &scout_access()).await {
             Ok(token) => token,
             Err(e) => return e,
         };
@@ -583,13 +596,21 @@ mod tests {
 
     #[async_trait]
     impl UserConnectionResolver for MockConnectionResolver {
-        async fn get_connection_token(
+        async fn get_connection_token(&self, _: SessionId, _: &str) -> Result<Option<String>> {
+            panic!("GitHub tools resolve through get_github_token");
+        }
+
+        async fn get_github_token(
             &self,
             session_id: SessionId,
-            provider: &str,
-        ) -> Result<Option<String>> {
-            assert_eq!(provider, GITHUB_CONNECTION_PROVIDER);
-            Ok(self.tokens.get(&session_id).cloned())
+            access: &GitHubAccess,
+        ) -> Result<Option<everruns_contracts::runtime::McpResolvedCredential>> {
+            Ok(self.tokens.get(&session_id).map(|token| {
+                everruns_contracts::runtime::McpResolvedCredential {
+                    token: token.clone(),
+                    acted_as: access.acts_as,
+                }
+            }))
         }
     }
 
@@ -658,7 +679,7 @@ mod tests {
         let context = ToolContext::new(session_id)
             .with_connection_resolver(Arc::new(MockConnectionResolver { tokens }));
         assert_eq!(
-            get_github_token(&context).await.unwrap(),
+            get_github_token(&context, &scout_access()).await.unwrap(),
             "connection-token"
         );
     }
@@ -671,13 +692,16 @@ mod tests {
             .seed_secret(session_id, GITHUB_TOKEN_SECRET, "secret-token")
             .await;
         let context = ToolContext::with_storage_store(session_id, storage);
-        assert_eq!(get_github_token(&context).await.unwrap(), "secret-token");
+        assert_eq!(
+            get_github_token(&context, &scout_access()).await.unwrap(),
+            "secret-token"
+        );
     }
 
     #[tokio::test]
     async fn missing_token_returns_connection_required() {
         let context = ToolContext::new(SessionId::new());
-        match get_github_token(&context).await {
+        match get_github_token(&context, &scout_access()).await {
             Err(ToolExecutionResult::ConnectionRequired { provider, .. }) => {
                 assert_eq!(provider, GITHUB_CONNECTION_PROVIDER)
             }
@@ -747,7 +771,7 @@ mod tests {
                 tokens: HashMap::from([(parent_session_id, "parent-connection-token".into())]),
             }));
 
-        match get_github_token(&context).await {
+        match get_github_token(&context, &scout_access()).await {
             Err(ToolExecutionResult::ConnectionRequired { provider, .. }) => {
                 assert_eq!(provider, GITHUB_CONNECTION_PROVIDER)
             }
@@ -771,7 +795,7 @@ mod tests {
         let mut context = ToolContext::with_storage_store(session_id, storage);
         context = context.with_session_store(Arc::new(MockSessionStore { session }));
 
-        match get_github_token(&context).await {
+        match get_github_token(&context, &scout_access()).await {
             Err(ToolExecutionResult::ConnectionRequired { provider, .. }) => {
                 assert_eq!(provider, GITHUB_CONNECTION_PROVIDER)
             }

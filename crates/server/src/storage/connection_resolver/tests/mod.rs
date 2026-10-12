@@ -1279,6 +1279,7 @@ async fn playground_and_delegated_runs_never_resolve_private_user_grants() {
     );
 }
 
+mod github;
 mod user_or_service;
 
 async fn agentmail_grant(fixture: &McpFixture, service: bool, key: &str) {

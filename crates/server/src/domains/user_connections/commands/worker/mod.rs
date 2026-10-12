@@ -134,6 +134,58 @@ impl Command for WorkerGetSandboxConnectionToken {
 }
 
 #[derive(Debug, Deserialize, ToSchema, Serialize)]
+pub struct WorkerGetGitHubToken {
+    /// Session's prefixed public identifier.
+    pub session_id: String,
+    /// Who the use acts as and the least access it needs.
+    #[schema(value_type = Object)]
+    pub access: everruns_contracts::runtime::GitHubAccess,
+    /// The invocation whose end user the lookup acts for, when bound to one.
+    #[serde(default)]
+    pub input_message_id: Option<Uuid>,
+}
+
+/// A GitHub token for one use and the identity (`user` or `service`) it acts as.
+#[derive(Serialize, ToSchema)]
+pub struct WorkerGitHubToken {
+    pub token: String,
+    pub acted_as: String,
+}
+
+impl std::fmt::Debug for WorkerGitHubToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WorkerGitHubToken")
+            .field("token", &"<redacted>")
+            .field("acted_as", &self.acted_as)
+            .finish()
+    }
+}
+
+#[command(
+    name = "worker_get_github_token",
+    category = "connections",
+    description = "Internal: a GitHub token for one use, acting as the requested identity and limited to the requested repositories and permissions; null when that identity has no GitHub connection.",
+    method = "GET",
+    path = "/internal/sessions/{session_id}/github_token",
+    policy = SESSION_VIEW
+)]
+impl Command for WorkerGetGitHubToken {
+    type Output = Option<WorkerGitHubToken>;
+
+    async fn execute(self, ctx: &Ctx) -> Result<Option<WorkerGitHubToken>, CommandError> {
+        let session_id = owned_session(ctx, &self.session_id).await?;
+        let credential = bound_resolver(ctx, self.input_message_id)?
+            .get_github_token(session_id, &self.access)
+            .await
+            .map_err(lookup_failed("Failed to resolve GitHub token"))?;
+        Ok(credential.map(|credential| WorkerGitHubToken {
+            token: credential.token,
+            acted_as: credential.acted_as.to_string(),
+        }))
+    }
+}
+
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct WorkerGetServiceApiKeyConnection {
     /// Session's prefixed public identifier.
     pub session_id: String,
