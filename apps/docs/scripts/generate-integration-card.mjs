@@ -14,6 +14,7 @@
 //
 // --partner repeats for an entry that adds several integrations at once
 // (at most three). --name overrides a partner's display name, in order.
+// --label replaces the INTEGRATION kicker, e.g. NEW MODEL for a model entry.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -77,7 +78,7 @@ function tile(item, x, y, size, prefix) {
 }
 
 // host and each partner are { name, logo? }, logo being SVG source.
-export function integrationCardSvg({ host, partners, title, date }) {
+export function integrationCardSvg({ host, partners, title, date, label = "INTEGRATION" }) {
   const items = [host, ...partners];
   const size = items.length > 3 ? 300 : 360;
   const gap = 150;
@@ -116,7 +117,7 @@ export function integrationCardSvg({ host, partners, title, date }) {
   <rect width="${WIDTH}" height="${HEIGHT}" fill="#07101A"/>
   <rect width="${WIDTH}" height="${HEIGHT}" fill="url(#wash)"/>
   <text x="115" y="135" font-family="Arial, Helvetica, sans-serif" font-size="54" font-weight="700" letter-spacing="-2" fill="#F4F3EF">Everruns</text>
-  <text x="2285" y="127" class="mono" font-size="29" font-weight="700" letter-spacing="4" text-anchor="end" fill="#D4A43A">INTEGRATION  ·  ${month} ${date.slice(0, 4)}</text>
+  <text x="2285" y="127" class="mono" font-size="29" font-weight="700" letter-spacing="4" text-anchor="end" fill="#D4A43A">${escapeXml(label)}  ·  ${month} ${date.slice(0, 4)}</text>
   ${parts.join("\n  ")}
   ${titleSvg}
   <line x1="115" y1="1186" x2="2285" y2="1186" stroke="#D4A43A" stroke-width="2"/>
@@ -136,6 +137,7 @@ function parseArgs(argv) {
     else if (option === "--date") args.date = value;
     else if (option === "--output") args.output = value;
     else if (option === "--svg-output") args.svgOutput = value;
+    else if (option === "--label") args.label = value;
     else fail(`unknown argument ${option}`);
   }
   if (!HOSTS[args.host]) fail(`--host must be one of ${Object.keys(HOSTS).join(", ")}`);
@@ -143,6 +145,7 @@ function parseArgs(argv) {
   if (!args.title || args.title.length > 88) fail("--title must be 1-88 characters");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(args.date ?? "")) fail("--date must be YYYY-MM-DD");
   if (!args.output) fail("--output requires a path");
+  if (args.label !== undefined && !/^[A-Z][A-Z ]{0,23}$/.test(args.label)) fail("--label must be 1-24 uppercase letters");
   return args;
 }
 
@@ -157,7 +160,7 @@ async function main() {
     name: args.names[index] ?? slug,
     logo: readLogo(path.join(ASSETS, "logos", `${slug}.svg`)),
   }));
-  const svg = integrationCardSvg({ host, partners, title: args.title, date: args.date });
+  const svg = integrationCardSvg({ host, partners, title: args.title, date: args.date, label: args.label });
   if (args.svgOutput) writeFileSync(path.resolve(args.svgOutput), svg);
   const { default: sharp } = await import("sharp");
   const output = path.resolve(args.output);
