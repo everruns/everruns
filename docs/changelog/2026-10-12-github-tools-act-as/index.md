@@ -1,6 +1,6 @@
 ---
 title: "GitHub tools act as one chosen identity, with narrowed tokens"
-description: "The GitHub capability's acts_as setting picks the agent, the person, or the person when connected; every call gets a token limited to one repository and the permissions that tool needs."
+description: "A new acts_as setting picks whose GitHub identity the tools use, and each call gets a token limited to one repository and the permissions it needs."
 date: 2026-10-12
 kind: improvement
 significance: minor
