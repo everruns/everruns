@@ -63,6 +63,9 @@ pub enum Commands {
     /// Show current user and org
     Status,
 
+    /// Show who the server says you are, and your token's access
+    Whoami,
+
     /// Organizations you belong to, and which one is active
     Orgs {
         #[command(subcommand)]
@@ -120,6 +123,12 @@ pub enum OrgsCommand {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Every failure passes through one place that explains the ones a person
+    // can act on, such as a read-only token refused a write.
+    Box::pin(run()).await.map_err(commands::api::explain)
+}
+
+async fn run() -> anyhow::Result<()> {
     everruns_contracts::install_default_crypto_provider();
 
     // The CLI's own tree, plus every contract command it does not hand-write.
@@ -249,6 +258,7 @@ async fn main() -> anyhow::Result<()> {
             ))
             .await
         }
+        Commands::Whoami => Box::pin(commands::whoami::run(&client, output_format)).await,
         Commands::Chat {
             message,
             session,
@@ -729,6 +739,13 @@ mod tests {
     fn test_cli_parse_status() {
         let cli = Cli::try_parse_from(["everruns", "status"]).unwrap();
         assert!(matches!(cli.command, Commands::Status));
+    }
+
+    #[test]
+    fn test_cli_parse_whoami() {
+        let cli = Cli::try_parse_from(["everruns", "-o", "json", "whoami"]).unwrap();
+        assert!(matches!(cli.command, Commands::Whoami));
+        assert_eq!(cli.output, "json");
     }
 
     #[test]
