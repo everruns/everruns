@@ -141,6 +141,7 @@ fn role_ctx(db: Arc<StorageBackend>, role: OrgRole) -> Ctx {
             role,
             is_platform_user: false,
             is_internal: false,
+            read_only: false,
         },
         db,
         Some(Arc::new(encryption)),

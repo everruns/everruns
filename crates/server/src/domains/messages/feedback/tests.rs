@@ -36,6 +36,7 @@ async fn user(db: &StorageBackend) -> Caller {
         role: OrgRole::Owner,
         is_platform_user: false,
         is_internal: false,
+        read_only: false,
     }
 }
 

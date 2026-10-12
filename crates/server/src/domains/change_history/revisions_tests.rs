@@ -25,6 +25,7 @@ fn owner() -> Ctx {
         role: OrgRole::Owner,
         is_platform_user: false,
         is_internal: false,
+        read_only: false,
     };
     let encryption =
         EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[]).unwrap();

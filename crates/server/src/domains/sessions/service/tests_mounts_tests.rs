@@ -333,6 +333,7 @@ async fn create_rejects_high_risk_harness_capabilities_for_members() {
         role: OrgRole::Member,
         is_platform_user: false,
         is_internal: false,
+        read_only: false,
     };
 
     let err = session_service
@@ -424,6 +425,7 @@ async fn create_rejects_declarative_capability_with_high_risk_dependency_for_mem
         role: OrgRole::Member,
         is_platform_user: false,
         is_internal: false,
+        read_only: false,
     };
 
     let err = session_service

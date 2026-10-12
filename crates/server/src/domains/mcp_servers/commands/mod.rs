@@ -713,6 +713,7 @@ mod credential_origin_tests {
                 role: OrgRole::Member,
                 is_platform_user: false,
                 is_internal: false,
+                read_only: false,
             },
             db,
             capability_service,

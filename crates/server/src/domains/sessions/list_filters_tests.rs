@@ -29,6 +29,7 @@ fn ctx_for(db: Arc<StorageBackend>, user_id: Option<Uuid>) -> Ctx {
             role: OrgRole::Owner,
             is_platform_user: false,
             is_internal: user_id.is_none(),
+            read_only: false,
         },
         db,
         capability_service,

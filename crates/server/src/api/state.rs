@@ -116,6 +116,7 @@ fn nobody() -> Caller {
         role: everruns_core::OrgRole::Member,
         is_platform_user: false,
         is_internal: false,
+        read_only: false,
     }
 }
 
@@ -135,6 +136,7 @@ mod tests {
             role: OrgRole::Admin,
             is_platform_user: false,
             feature_flags: all_feature_flags_for_test(),
+            read_only: false,
         }
     }
 

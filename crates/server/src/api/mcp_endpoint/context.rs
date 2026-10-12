@@ -172,6 +172,7 @@ mod tests {
             role: OrgRole::Owner,
             is_platform_user: false,
             feature_flags: Default::default(),
+            read_only: false,
         };
 
         assert_provider_services(&domain_context(Caller::from(&org), &state));

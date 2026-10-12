@@ -714,6 +714,7 @@ mod tests {
             role: OrgRole::Member,
             is_platform_user: false,
             is_internal: false,
+            read_only: false,
         };
         let service = SessionService::new(db.clone());
         let session = service
@@ -805,6 +806,7 @@ mod tests {
             role: OrgRole::Member,
             is_platform_user: false,
             is_internal: false,
+            read_only: false,
         };
         let runner: Arc<dyn TurnBackend> = Arc::new(RecordingRunner::default());
         let ctx = Ctx::minimal_for_test(caller, db.clone(), None)

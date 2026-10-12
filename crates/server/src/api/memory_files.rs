@@ -625,6 +625,7 @@ mod tests {
             role,
             is_platform_user: false,
             feature_flags: crate::domains::common::all_feature_flags_for_test(),
+            read_only: false,
         }
     }
 

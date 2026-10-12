@@ -143,6 +143,7 @@ fn ctx_with(state: &AppState, role: everruns_core::OrgRole) -> Ctx {
             role,
             is_platform_user: false,
             is_internal: false,
+            read_only: false,
         },
         state.db.clone(),
         state.encryption.clone(),

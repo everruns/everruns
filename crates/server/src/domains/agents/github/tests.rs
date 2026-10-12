@@ -21,6 +21,7 @@ fn caller(role: OrgRole) -> Caller {
         role,
         is_platform_user: false,
         is_internal: false,
+        read_only: false,
     }
 }
 

@@ -721,6 +721,12 @@ pub trait Command: DeserializeOwned + Serialize + Send + 'static + CommandSchema
                 if meta.is_internal() && !ctx.caller.is_internal {
                     return Err(CommandError::forbidden("Internal command"));
                 }
+                // A read-only personal access token runs read-only commands
+                // only, whatever route dispatched this one (pat-scopes.md).
+                crate::auth::pat_scope::enforce_caller(
+                    &ctx.caller,
+                    &CommandDescriptor::of::<Self>(),
+                )?;
                 if let Some(flag) = meta.required_feature()
                     && !ctx.feature_flags.is_enabled(flag)
                 {

@@ -985,6 +985,7 @@ mod tests {
             role,
             is_platform_user: false,
             feature_flags: crate::records::FeatureFlags::default(),
+            read_only: false,
         }
     }
 

@@ -49,6 +49,7 @@ fn external_test_ctx(db: Arc<StorageBackend>, user_id: Uuid) -> Ctx {
             role: OrgRole::Owner,
             is_platform_user: false,
             is_internal: false,
+            read_only: false,
         },
         db,
         capability_service,

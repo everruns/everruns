@@ -889,6 +889,7 @@ mod tests {
             role: crate::kernel_imports::OrgRole::Owner,
             is_platform_user: false,
             feature_flags: Default::default(),
+            read_only: false,
         }
     }
 }

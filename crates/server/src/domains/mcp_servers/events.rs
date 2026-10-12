@@ -471,6 +471,7 @@ impl McpEventsService {
             role: member.role.parse::<OrgRole>().unwrap_or(OrgRole::Member),
             is_platform_user: false,
             is_internal: false,
+            read_only: false,
         };
         let allowed = crate::domains::sessions::SESSION_VIEW
             .evaluate_with(self.permission_resolver.as_ref(), &caller);

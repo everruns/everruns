@@ -468,6 +468,10 @@ pub struct Caller {
     pub is_platform_user: bool,
     /// Whether the caller originates from an internal server path.
     pub is_internal: bool,
+    /// Whether the caller authenticated with a read-only credential (a `read`
+    /// personal access token). `Command::run` refuses any command that is not
+    /// read-only for such a caller, behind the route-level scope check.
+    pub read_only: bool,
 }
 
 impl Caller {
@@ -493,6 +497,7 @@ impl Caller {
             role: OrgRole::Owner,
             is_platform_user: true,
             is_internal: true,
+            read_only: false,
         }
     }
 }
@@ -751,6 +756,7 @@ mod tests {
             role: OrgRole::Owner,
             is_platform_user: false,
             is_internal: false,
+            read_only: false,
         }
     }
 
@@ -762,6 +768,7 @@ mod tests {
             role: OrgRole::Admin,
             is_platform_user: false,
             is_internal: false,
+            read_only: false,
         }
     }
 
@@ -773,6 +780,7 @@ mod tests {
             role: OrgRole::Member,
             is_platform_user: false,
             is_internal: false,
+            read_only: false,
         }
     }
 
@@ -888,6 +896,7 @@ mod tests {
             role: OrgRole::Admin,
             is_platform_user: false,
             is_internal: false,
+            read_only: false,
         };
         // API key callers without user_id should still evaluate policies
         assert!(TEST_MANAGE.evaluate(&caller).is_ok());

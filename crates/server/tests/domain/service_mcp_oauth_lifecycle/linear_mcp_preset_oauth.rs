@@ -36,6 +36,7 @@ fn resolved_org(user_id: Uuid) -> ResolvedOrg {
         role: OrgRole::Owner,
         is_platform_user: false,
         feature_flags: everruns_server::records::FeatureFlags::current(),
+        read_only: false,
     }
 }
 
