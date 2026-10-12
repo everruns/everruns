@@ -153,7 +153,11 @@ fn provider_masks_and_curated_models_survive_enumeration() {
         ("anthropic", &["claude-opus-5-5", "claude-fable-5-1"][..]),
         (
             "meta",
-            &["muse-spark-1.3", "muse-spark-1.3-contributor"][..],
+            &[
+                "muse-wonder-1.0",
+                "muse-spark-1.3",
+                "muse-spark-1.3-contributor",
+            ][..],
         ),
         (
             "gemini",
