@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui, api]
 links:
   docs: [/capabilities/citation-web/]
-  prs: []
+  prs: [everruns/everruns#4625]
 ---
 
 Add **Web Citations** (`citation_web`) to an agent that has Web Search, and each sentence the
