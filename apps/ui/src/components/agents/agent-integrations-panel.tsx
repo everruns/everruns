@@ -19,7 +19,7 @@ import { ChannelRow } from "@/components/agents/channels/channel-row";
 import { MiniTimeline } from "@/components/apps/mini-timeline";
 import { type StatStripStats } from "@/components/apps/stat-strip";
 import { ChannelDetailsPanel } from "@/components/agents/integrations/channel-details-panel";
-import { AgentGitHubCard } from "@/components/agents/agent-github-card";
+import { AgentGitHubSection } from "@/components/agents/agent-github-card";
 import { AgentTriggersPanel } from "@/components/agents/agent-triggers-panel";
 import { BudgetPanel } from "@/components/budgets/budget-panel";
 import {
@@ -116,6 +116,7 @@ export function AgentIntegrationsPanel({
 
   const doors = channels.filter(({ channel }) => !isTriggerChannel(channel));
   const scheduleEndpoints = channels.filter(({ channel }) => isTriggerChannel(channel));
+  const githubTriggerCount = triggers.filter((trigger) => trigger.trigger_type === "github").length;
 
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
@@ -227,8 +228,13 @@ export function AgentIntegrationsPanel({
             )}
           </section>
 
+          <AgentGitHubSection
+            agentId={agent.id}
+            avatar={agent.avatar}
+            githubTriggerCount={githubTriggerCount}
+          />
+
           <AgentTriggersPanel agentId={agent.id}>
-            <AgentGitHubCard agentId={agent.id} />
             {scheduleEndpoints.length > 0 && (
               <div className="flex flex-col gap-2">
                 {scheduleEndpoints.map(({ channel }) => (

@@ -7584,12 +7584,28 @@ export interface components {
        *     installation was removed.
        */
       app_created: boolean;
+      /**
+       * @description The App's settings page on GitHub, where its logo is uploaded
+       *     (GitHub has no API for that). `None` when the owner's account kind is
+       *     not known, since user and organization Apps live at different paths.
+       */
+      app_settings_url?: string | null;
       app_slug?: string | null;
       app_url?: string | null;
+      /**
+       * @description The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`.
+       *     Known for an agent's own App; `None` otherwise.
+       */
+      bot_login?: string | null;
       /** @description An installation is bound, so tools and triggers work. */
       connected: boolean;
       /** @description The agent's identity, once it has one; disconnect goes through it. */
       identity_id?: string | null;
+      /**
+       * @description Which GitHub identity the agent acts as: `agent_app` (its own App) or
+       *     `everruns_app` (the shared Everruns App). `None` before either exists.
+       */
+      kind?: string | null;
       /**
        * @description Permissions new Apps request that this installation lacks (`name:level`),
        *     e.g. `actions:read` for CI triggers on an App created before them.

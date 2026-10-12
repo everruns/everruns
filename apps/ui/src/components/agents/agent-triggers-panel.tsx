@@ -110,7 +110,7 @@ export function AgentTriggersPanel({
   };
 
   return (
-    <section className="flex min-w-0 flex-col gap-3">
+    <section id="triggers" className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold tracking-tight">Triggers</h3>

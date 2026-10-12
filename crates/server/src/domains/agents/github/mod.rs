@@ -26,10 +26,11 @@ use crate::domains::virtual_users::VIRTUAL_USER_MANAGE;
 use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
 use crate::github_apps::{
     GITHUB_APP_CONNECTION_TYPE, GITHUB_PROVIDER, GitHubAppApi, GitHubAppContext, ManifestInput,
-    SetupState, app_credentials, build_manifest, default_app_name, install_url,
+    SetupState, app_credentials, app_settings_url, build_manifest, default_app_name, install_url,
     manifest_form_action, missing_permissions,
 };
 use crate::kernel_imports::contracts::typed_id::VirtualUserId;
+use crate::storage::connection_resolver::GitHubIdentityKind;
 use crate::storage::{AgentRow, EncryptionService, StorageBackend};
 
 // ============================================================================
@@ -48,6 +49,16 @@ pub struct AgentGitHubStatus {
     pub app_created: bool,
     pub app_slug: Option<String>,
     pub app_url: Option<String>,
+    /// Which GitHub identity the agent acts as: `agent_app` (its own App) or
+    /// `everruns_app` (the shared Everruns App). `None` before either exists.
+    pub kind: Option<String>,
+    /// The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`.
+    /// Known for an agent's own App; `None` otherwise.
+    pub bot_login: Option<String>,
+    /// The App's settings page on GitHub, where its logo is uploaded
+    /// (GitHub has no API for that). `None` when the owner's account kind is
+    /// not known, since user and organization Apps live at different paths.
+    pub app_settings_url: Option<String>,
     /// GitHub account the App is installed on.
     pub account: Option<String>,
     /// `all` or `selected`.
@@ -139,6 +150,11 @@ pub struct AgentGitHubDisconnect {
     pub outcome: GitHubDisconnectOutcome,
 }
 
+/// `kind` of an agent acting as its own App.
+pub const AGENT_APP_KIND: &str = "agent_app";
+/// `kind` of an agent acting as the shared Everruns App.
+pub const EVERRUNS_APP_KIND: &str = "everruns_app";
+
 const CREATE_APP_NEXT_STEP: &str = "Creating the GitHub App needs a browser: open the agent in the web UI, \
      select Integrations, and choose Connect GitHub on the GitHub card. Run this command again \
      afterwards to get an install link.";
@@ -152,6 +168,7 @@ pub(crate) async fn status_for_agent(
     db: &StorageBackend,
     org_id: i64,
     agent: &AgentRow,
+    web_url: &str,
 ) -> Result<AgentGitHubStatus, CommandError> {
     let suggested_owners = suggested_owners(db, org_id).await?;
     let Some(identity_id) = agent.virtual_user_id else {
@@ -161,10 +178,32 @@ pub(crate) async fn status_for_agent(
         });
     };
     let app = db.get_github_app_for_identity(org_id, identity_id).await?;
-    let connection = db
+    let any_connection = db
         .get_virtual_user_connection(identity_id, GITHUB_PROVIDER)
-        .await?
-        .filter(|c| c.connection_type == GITHUB_APP_CONNECTION_TYPE);
+        .await?;
+    // The resolver's identity kind. An App created but not yet installed is
+    // still the agent's own identity; a person's token is not an agent kind.
+    let kind = match any_connection.as_ref().map(GitHubIdentityKind::of) {
+        Some(GitHubIdentityKind::AgentApp) => Some(AGENT_APP_KIND),
+        Some(GitHubIdentityKind::EverrunsApp) => Some(EVERRUNS_APP_KIND),
+        Some(GitHubIdentityKind::Person) | None => app.as_ref().map(|_| AGENT_APP_KIND),
+    };
+    let connection = any_connection.filter(|c| c.connection_type == GITHUB_APP_CONNECTION_TYPE);
+    let own_app = app.as_ref().filter(|_| kind == Some(AGENT_APP_KIND));
+    let app_settings_url = own_app.and_then(|app| {
+        let owner = app.owner_login.as_deref()?;
+        let owner_kind = suggested_owners
+            .iter()
+            .find(|known| known.login.eq_ignore_ascii_case(owner))
+            .map_or(GitHubAccountKind::Unknown, |known| known.kind);
+        match owner_kind {
+            GitHubAccountKind::Organization => {
+                Some(app_settings_url(web_url, &app.slug, Some(owner)))
+            }
+            GitHubAccountKind::User => Some(app_settings_url(web_url, &app.slug, None)),
+            GitHubAccountKind::Unknown => None,
+        }
+    });
     let repository_selection = connection
         .as_ref()
         .and_then(|c| c.provider_metadata.as_ref())
@@ -177,6 +216,9 @@ pub(crate) async fn status_for_agent(
         app_created: app.is_some(),
         app_slug: app.as_ref().map(|app| app.slug.clone()),
         app_url: app.as_ref().map(|app| app.html_url.clone()),
+        kind: kind.map(str::to_string),
+        bot_login: own_app.map(|app| format!("{}[bot]", app.slug)),
+        app_settings_url,
         missing_permissions: connection
             .as_ref()
             .map(|c| missing_permissions(c.scopes.as_deref()))
@@ -265,7 +307,7 @@ pub(crate) async fn begin_connect(
         });
     }
 
-    let name = default_app_name(identity_name);
+    let name = default_app_name(&github.api, identity_name).await;
     let manifest = build_manifest(&ManifestInput {
         name: &name,
         api_base_url: &github.api_base_url,
@@ -364,7 +406,8 @@ impl Command for GetAgentGitHub {
 
     async fn execute(self, ctx: &Ctx) -> Result<AgentGitHubStatus, CommandError> {
         let agent = load_agent(ctx, &self.agent_id).await?;
-        status_for_agent(&ctx.db, ctx.org_id(), &agent).await
+        let web_url = &ctx.github_apps.api.endpoints().web_url;
+        status_for_agent(&ctx.db, ctx.org_id(), &agent, web_url).await
     }
 }
 

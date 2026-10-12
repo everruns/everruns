@@ -46,6 +46,7 @@ enum OAuthScope {
     Org(i64),
 }
 mod github;
+pub(crate) use github::GitHubIdentityKind;
 
 const REFRESH_LOCK_MAX_CAPACITY: u64 = 10_000;
 const REFRESH_LOCK_IDLE_TTL: StdDuration = StdDuration::from_secs(10 * 60);

@@ -201,28 +201,80 @@ pub fn is_publicly_reachable(base_url: &str) -> bool {
     }
 }
 
-/// A default App name: GitHub requires globally unique names of at most 34
-/// characters, so the agent name is shortened and given a random suffix. The
-/// user can still rename it on GitHub's confirmation page.
-pub fn default_app_name(agent_name: &str) -> String {
-    let base: String = agent_name
+/// GitHub's limit on App names.
+const MAX_APP_NAME_LEN: usize = 34;
+/// Room the random suffix takes: a dash and six characters.
+const APP_NAME_SUFFIX_LEN: usize = 7;
+
+/// The agent name as a GitHub App name: ASCII letters, digits and single
+/// dashes, at most 34 characters. `agent` when nothing usable is left.
+pub fn app_name_base(agent_name: &str) -> String {
+    let base = agent_name
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { ' ' })
         .collect::<String>()
         .split_whitespace()
         .collect::<Vec<_>>()
         .join("-")
-        .trim_matches('-')
         .chars()
-        .take(24)
-        .collect();
-    let base = if base.is_empty() {
+        .take(MAX_APP_NAME_LEN)
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+    if base.is_empty() {
         "agent".to_string()
     } else {
         base
-    };
+    }
+}
+
+/// `base` shortened to leave room for a random 6-character suffix, which
+/// makes it unique.
+pub fn suffixed_app_name(base: &str) -> String {
+    let stem = base
+        .chars()
+        .take(MAX_APP_NAME_LEN - APP_NAME_SUFFIX_LEN)
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
     let suffix = &Uuid::new_v4().simple().to_string()[..6];
-    format!("{base}-{suffix}")
+    format!("{stem}-{suffix}")
+}
+
+/// The name a new agent App is created with (D2 in
+/// knowledge/integrations/github-model.md): the agent name, shortened to
+/// GitHub's 34 characters, with a random suffix only when the plain slug is
+/// taken. The user can still rename it on GitHub's confirmation page.
+///
+/// Decision: GitHub has no "is this name free" API, so the probe is the public
+/// `GET /apps/{slug}`. A private App answers 404 to everyone but its owner, so
+/// a clash with one goes unseen here; GitHub's confirmation page reports it.
+/// A failed probe takes the suffix rather than sending a name that may clash.
+pub async fn default_app_name(api: &GitHubAppApi, agent_name: &str) -> String {
+    let base = app_name_base(agent_name);
+    // A sanitised name's slug is the name lowercased.
+    match api.app_slug_taken(&base.to_ascii_lowercase()).await {
+        Ok(false) => base,
+        Ok(true) => suffixed_app_name(&base),
+        Err(err) => {
+            tracing::debug!(error = %err, "GitHub App name probe failed; adding a suffix");
+            suffixed_app_name(&base)
+        }
+    }
+}
+
+/// The App's settings page on GitHub, where its logo is uploaded. User-owned
+/// and organization-owned Apps live under different paths.
+pub fn app_settings_url(web_url: &str, slug: &str, owner_org: Option<&str>) -> String {
+    let web = web_url.trim_end_matches('/');
+    let slug = urlencoding::encode(slug);
+    match owner_org {
+        Some(org) => format!(
+            "{web}/organizations/{}/settings/apps/{slug}",
+            urlencoding::encode(org)
+        ),
+        None => format!("{web}/settings/apps/{slug}"),
+    }
 }
 
 /// Where the browser posts the manifest: a personal account or an org.
@@ -410,6 +462,24 @@ impl GitHubAppApi {
             .request(method, self.api(path))
             .header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", "2022-11-28")
+    }
+
+    /// Whether a public App already uses `slug`. Unauthenticated: 200 is
+    /// taken, 404 is free (or a private App's), anything else is an error.
+    pub async fn app_slug_taken(&self, slug: &str) -> Result<bool> {
+        let response = self
+            .request(
+                reqwest::Method::GET,
+                &format!("/apps/{}", urlencoding::encode(slug)),
+            )
+            .send()
+            .await
+            .context("GitHub App lookup request failed")?;
+        match response.status() {
+            status if status.is_success() => Ok(true),
+            reqwest::StatusCode::NOT_FOUND => Ok(false),
+            status => bail!("GitHub returned {status} looking up an App"),
+        }
     }
 
     /// Exchange the one-time manifest code for the new App's credentials.
@@ -720,13 +790,71 @@ mod tests {
     }
 
     #[test]
-    fn default_name_is_short_unique_and_github_safe() {
-        let name = default_app_name("My PR Summarizer (prod)!");
-        assert!(name.len() <= 34, "{name}");
-        assert!(name.starts_with("My-PR-Summarizer-prod"), "{name}");
-        assert!(name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
-        assert_ne!(default_app_name("x"), default_app_name("x"));
-        assert!(default_app_name("!!!").starts_with("agent-"));
+    fn app_names_are_short_and_github_safe() {
+        assert_eq!(
+            app_name_base("My PR Summarizer (prod)!"),
+            "My-PR-Summarizer-prod"
+        );
+        assert_eq!(app_name_base("!!!"), "agent");
+        let long = app_name_base("A very long agent name that GitHub would refuse outright");
+        assert!(long.len() <= 34, "{long}");
+        assert!(!long.ends_with('-'), "{long}");
+        let suffixed = suffixed_app_name(&long);
+        assert!(suffixed.len() <= 34, "{suffixed}");
+        assert!(
+            suffixed
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-')
+        );
+        assert_ne!(suffixed_app_name("x"), suffixed_app_name("x"));
+    }
+
+    #[test]
+    fn settings_url_follows_the_owner() {
+        assert_eq!(
+            app_settings_url("https://github.com/", "pr-bot", None),
+            "https://github.com/settings/apps/pr-bot"
+        );
+        assert_eq!(
+            app_settings_url("https://github.com", "pr-bot", Some("acme")),
+            "https://github.com/organizations/acme/settings/apps/pr-bot"
+        );
+    }
+
+    /// The name chosen for "PR Summarizer" when GitHub answers the slug probe
+    /// with `status`.
+    async fn name_with_probe(status: u16) -> String {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/apps/pr-summarizer"))
+            .respond_with(ResponseTemplate::new(status))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let api = GitHubAppApi::new(GitHubEndpoints {
+            api_url: server.uri(),
+            web_url: "https://github.com".to_string(),
+        });
+        default_app_name(&api, "PR Summarizer").await
+    }
+
+    #[tokio::test]
+    async fn a_free_name_is_the_agent_name() {
+        assert_eq!(name_with_probe(404).await, "PR-Summarizer");
+    }
+
+    #[tokio::test]
+    async fn a_taken_name_gets_a_suffix() {
+        let name = name_with_probe(200).await;
+        assert!(name.starts_with("PR-Summarizer-"), "{name}");
+        assert_eq!(name.len(), "PR-Summarizer-".len() + 6, "{name}");
+    }
+
+    #[tokio::test]
+    async fn a_failed_probe_gets_a_suffix() {
+        let name = name_with_probe(503).await;
+        assert!(name.starts_with("PR-Summarizer-"), "{name}");
+        assert_eq!(name.len(), "PR-Summarizer-".len() + 6, "{name}");
     }
 
     #[test]

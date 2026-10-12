@@ -10,7 +10,7 @@ use crate::storage::{
 };
 use everruns_core::{Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole};
 use std::sync::Arc;
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{method, path, path_regex};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn caller(role: OrgRole) -> Caller {
@@ -247,6 +247,119 @@ async fn get_shows_the_installation() {
     assert_eq!(status.account.as_deref(), Some("acme"));
     assert_eq!(status.app_slug.as_deref(), Some("pr-summarizer-1a2b3c"));
     assert_eq!(status.repository_selection.as_deref(), Some("selected"));
+    assert_eq!(status.kind.as_deref(), Some(AGENT_APP_KIND));
+    assert_eq!(
+        status.bot_login.as_deref(),
+        Some("pr-summarizer-1a2b3c[bot]")
+    );
+    // The owner `acme` was stored without an account type, so which settings
+    // path the App lives at is unknown.
+    assert_eq!(status.app_settings_url, None);
+}
+
+#[tokio::test]
+async fn get_points_at_the_app_settings_for_the_owner_kind() {
+    let github = MockServer::start().await;
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_for(&db, &github, OrgRole::Owner);
+    let (agent_id, _) = agent_with_app(&ctx).await;
+
+    // Not installed yet: still the agent's own App, with its bot login.
+    let created = status(&ctx, &agent_id).await;
+    assert!(!created.connected);
+    assert_eq!(created.kind.as_deref(), Some(AGENT_APP_KIND));
+    assert_eq!(
+        created.bot_login.as_deref(),
+        Some("pr-summarizer-1a2b3c[bot]")
+    );
+
+    connected_account(&db, DEFAULT_ORG_ID, "acme", Some("Organization"), 4300).await;
+    assert_eq!(
+        status(&ctx, &agent_id).await.app_settings_url.as_deref(),
+        Some("https://github.example/organizations/acme/settings/apps/pr-summarizer-1a2b3c")
+    );
+
+    let other = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_for(&other, &github, OrgRole::Owner);
+    let (agent_id, _) = agent_with_app(&ctx).await;
+    connected_account(&other, DEFAULT_ORG_ID, "acme", Some("User"), 4301).await;
+    assert_eq!(
+        status(&ctx, &agent_id).await.app_settings_url.as_deref(),
+        Some("https://github.example/settings/apps/pr-summarizer-1a2b3c")
+    );
+}
+
+#[tokio::test]
+async fn get_reports_the_shared_app_for_another_installation() {
+    let github = MockServer::start().await;
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_for(&db, &github, OrgRole::Owner);
+    let agent_id = seed_agent(&db).await;
+    connect(&ctx, &agent_id).await;
+    let identity_id: VirtualUserId = status(&ctx, &agent_id)
+        .await
+        .identity_id
+        .unwrap()
+        .parse()
+        .unwrap();
+    db.upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
+        virtual_user_id: identity_id,
+        provider: GITHUB_PROVIDER.to_string(),
+        connection_type: "oauth".to_string(),
+        provider_user_id: Some("8".to_string()),
+        provider_username: Some("acme".to_string()),
+        access_token_encrypted: None,
+        refresh_token_encrypted: None,
+        scopes: None,
+        expires_at: None,
+        installation_id: Some(4400),
+        provider_metadata: None,
+    })
+    .await
+    .unwrap();
+
+    let status = status(&ctx, &agent_id).await;
+    assert_eq!(status.kind.as_deref(), Some(EVERRUNS_APP_KIND));
+    assert!(
+        !status.connected,
+        "only the agent's own App counts as connected"
+    );
+    assert_eq!(status.bot_login, None);
+    assert_eq!(status.app_settings_url, None);
+}
+
+#[tokio::test]
+async fn connect_names_a_new_app_after_the_agent() {
+    let github = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path_regex("^/apps/pr-summarizer-"))
+        .respond_with(ResponseTemplate::new(404))
+        .expect(1)
+        .mount(&github)
+        .await;
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_for(&db, &github, OrgRole::Owner);
+    let agent_id = seed_agent(&db).await;
+
+    let BeginConnectResponse::CreateApp { manifest, .. } = connect(&ctx, &agent_id).await else {
+        panic!("a new App is created");
+    };
+    let manifest: serde_json::Value = serde_json::from_str(&manifest).unwrap();
+    let name = manifest["name"].as_str().unwrap();
+    // The identity carries the agent name; a free slug needs no suffix.
+    let identity_id: VirtualUserId = status(&ctx, &agent_id)
+        .await
+        .identity_id
+        .unwrap()
+        .parse()
+        .unwrap();
+    let identity = db
+        .get_virtual_user(DEFAULT_ORG_ID, identity_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(name, crate::github_apps::app_name_base(&identity.name));
+    assert!(name.len() <= 34, "{name}");
 }
 
 #[tokio::test]
@@ -281,7 +394,13 @@ async fn disconnect_forgets_an_app_that_was_never_installed() {
     let result = disconnect(&ctx, &agent_id).await.unwrap();
     assert_eq!(result.outcome, GitHubDisconnectOutcome::StartedOver);
     assert!(
-        github.received_requests().await.unwrap().is_empty(),
+        // Only the name probe of the first connect reached GitHub.
+        github
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .all(|request| request.method.as_str() == "GET"),
         "nothing to uninstall on GitHub"
     );
     assert!(!status(&ctx, &agent_id).await.app_created);

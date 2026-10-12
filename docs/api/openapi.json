@@ -27588,6 +27588,13 @@
             "type": "boolean",
             "description": "The App exists. Without `connected` it was never installed, or its\ninstallation was removed."
           },
+          "app_settings_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The App's settings page on GitHub, where its logo is uploaded\n(GitHub has no API for that). `None` when the owner's account kind is\nnot known, since user and organization Apps live at different paths."
+          },
           "app_slug": {
             "type": [
               "string",
@@ -27600,6 +27607,13 @@
               "null"
             ]
           },
+          "bot_login": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`.\nKnown for an agent's own App; `None` otherwise."
+          },
           "connected": {
             "type": "boolean",
             "description": "An installation is bound, so tools and triggers work."
@@ -27610,6 +27624,13 @@
               "null"
             ],
             "description": "The agent's identity, once it has one; disconnect goes through it."
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Which GitHub identity the agent acts as: `agent_app` (its own App) or\n`everruns_app` (the shared Everruns App). `None` before either exists."
           },
           "missing_permissions": {
             "type": "array",
