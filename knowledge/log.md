@@ -2,6 +2,12 @@
 
 ## 2026-10-12
 
+* **PAT scopes step 4: read-only tokens can be created.** Creation accepts
+  `[]`, `["*"]` or `["read"]` and nothing else; the token page has a Full
+  access / Read-only picker and shows each token's scope; `GET /v1/auth/me`
+  reports `token_scope`; the creation audit event records `scopes`. Threat
+  model gains TM-AUTH-037 (mitigated) and TM-AUTH-038 (accepted). See
+  [Personal Access Token Scopes](security/pat-scopes.md).
 * **PAT scopes step 3: enforced on `/mcp` and the execution API.** A
   read-only token lists and calls only the read-only MCP tools (an explicit
   list kept equal to the `readOnlyHint` annotations by a test) and is refused
