@@ -115,6 +115,8 @@ export const onRequest = defineRouteMiddleware((context) => {
     }
   }
 
+  route.editUrl = sourceEditUrl(route.editUrl);
+
   // Set per-page og:image when a pre-generated card exists.
   // Falls back to the global /og-image.png set in astro.config.mjs.
   const ogImagePath = deriveOgImagePath(slug);
@@ -125,6 +127,19 @@ export const onRequest = defineRouteMiddleware((context) => {
     setOgMeta(route, "og:image:alt", route.entry.data.title);
   }
 });
+
+/**
+ * Starlight builds edit links from the collection path, but
+ * `apps/docs/src/content/docs` is a symlink to the repo's `docs/`, and GitHub
+ * cannot edit a file through a symlink (it answers 404). Point at the real file.
+ */
+const SYMLINKED_CONTENT = "/apps/docs/src/content/docs/";
+export function sourceEditUrl(editUrl: URL | undefined): URL | undefined {
+  if (!editUrl?.pathname.includes(SYMLINKED_CONTENT)) return editUrl;
+  const fixed = new URL(editUrl);
+  fixed.pathname = fixed.pathname.replace(SYMLINKED_CONTENT, "/docs/");
+  return fixed;
+}
 
 /** Replace an og:* meta entry in the head, or append it when absent. */
 function setOgMeta(
