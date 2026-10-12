@@ -26,6 +26,9 @@ agents export	--format --out <agent>!
 agents exposures resume	--agent --context-revision --reason <agent_id>
 agents exposures suspend	--agent --context-revision --reason <agent_id>
 agents get	--context-revision --id --reason <id>
+agents github connect	--agent-id! --context-revision --owner-org --reason --return-to
+agents github disconnect	--agent-id! --context-revision --reason
+agents github get	--agent-id! --context-revision --reason
 agents health-checks get	--agent-id! --context-revision --reason --run-id!
 agents health-checks latest get	--agent-id! --context-revision --reason
 agents health-checks list	--agent-id! --context-revision --reason

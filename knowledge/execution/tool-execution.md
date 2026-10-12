@@ -43,7 +43,7 @@ Tools can return images alongside JSON results via `ToolExecutionResult::success
 
 Supported image formats: PNG, JPEG, GIF, WebP (matching LLM vision API support).
 
-Note: OpenAI Responses API (`function_call_output`) does not support images in tool results - images are dropped with a warning in that path.
+The Responses protocol (OpenAI, OpenRouter) sends tool-result images as `input_image` parts of `function_call_output`.
 
 **Provided Tools:** See `crates/core/src/tools.rs` for the built-in tool implementations.
 
@@ -369,7 +369,7 @@ Current hooks:
 
 Current final hooks (always-on, cannot be removed):
 - **PersistOutputHook**: Persists full output for any tool that declares `persist_output: true` before hard-limit truncation, independent of whether a harness explicitly enabled the persistence capability.
-- **OutputHardLimitHook** (EVE-225): Enforces a 64 KiB hard ceiling on serialized tool result text. Head-truncation with UTF-8 safety; appends an LLM-actionable suffix. Logs `tracing::warn!` with tool_name, tool_call_id, result_bytes, limit when truncating. Fires regardless of which capabilities are active. See `crates/core/src/engine/execution/act_hooks.rs`.
+- **OutputHardLimitHook** (EVE-225): Enforces a 64 KiB hard ceiling on serialized tool result text. Head-truncation with UTF-8 safety; appends an LLM-actionable suffix. Native images have their own 5 MiB cumulative budget (they are priced by pixels, not bytes, and a text-sized cap dropped every ordinary screenshot); an image over it is dropped and the result says so. Logs `tracing::warn!` with tool_name, tool_call_id, result_bytes, limit when truncating. Fires regardless of which capabilities are active. See `crates/core/src/engine/execution/act_hooks.rs`.
 
 ### Loop Detection (EVE-227)
 

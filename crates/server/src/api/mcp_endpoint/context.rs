@@ -20,7 +20,8 @@ pub(crate) fn domain_context(caller: Caller, state: &AppState) -> crate::domains
     .with_slack_provisioner(state.slack_provisioner.clone())
     .with_mcp_oauth_checker(state.mcp_oauth_checker.clone())
     .with_utility_llm_service(state.utility_llm_service.clone())
-    .with_decisions(state.decisions.clone());
+    .with_decisions(state.decisions.clone())
+    .with_github_apps(github_apps(state));
     if let Some(service) = &state.health_check_service {
         ctx = ctx.with_health_check_service(service.clone());
     }
@@ -46,11 +47,19 @@ pub(crate) fn mcp_ctx(org: &ResolvedOrg, state: &AppState) -> Ctx {
     .with_slack_provisioner(state.slack_provisioner.clone())
     .with_mcp_oauth_checker(state.mcp_oauth_checker.clone())
     .with_utility_llm_service(state.utility_llm_service.clone())
-    .with_decisions(state.decisions.clone());
+    .with_decisions(state.decisions.clone())
+    .with_github_apps(github_apps(state));
     if let Some(service) = &state.health_check_service {
         ctx = ctx.with_health_check_service(service.clone());
     }
     with_provider_services(ctx, state)
+}
+
+/// Agent GitHub Apps with this server's public URLs, so a manifest started
+/// over MCP or `/v1/commands` names the same URLs as one started over REST.
+fn github_apps(state: &AppState) -> crate::github_apps::GitHubAppContext {
+    crate::github_apps::GitHubAppContext::from_env()
+        .with_public_urls(&state.auth.config.base_url, &state.auth.config.frontend_url)
 }
 
 /// Attach the provider-domain services `/v1/providers` uses, so provider
