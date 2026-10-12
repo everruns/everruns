@@ -404,9 +404,10 @@ production and DEV_MODE alike; the worker side is
   the control plane answers as "session not found" naming the session rather
   than a lost lease (`NotFound` over gRPC, `SessionNotFound` in process). An
   append that gets there first fails the session FK and is answered the same
-  way, fenced or not. The holder stops the turn as on a lost lease, at info
-  level: no `turn.failed` (there is nowhere to store it) and nothing to
-  release.
+  way, fenced or not. A turn that instead fails on a read (its input message
+  or conversation already gone) asks the renew before it counts the failure
+  as its own. The holder stops the turn as on a lost lease, at info level: no
+  `turn.failed` (there is nowhere to store it) and nothing to release.
 - **Release never loses input.** Release clears the runnable marker only when
   the holder consumed input up to `inbox_seq`. A message that lands as a turn
   finishes moves `inbox_seq` past it, so the actor stays runnable and the next
