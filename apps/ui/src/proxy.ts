@@ -4,7 +4,7 @@ import { getLoginRedirectPath, isFullPageLoginRedirect } from "@/lib/auth-redire
 
 const HOMEPAGE_DISCOVERY_LINKS = [
   '</api-doc/openapi.json>; rel="service-desc"; type="application/json"',
-  '<https://docs.everruns.com/api/>; rel="service-doc"; type="text/html"',
+  '<https://everruns.com/docs/api/>; rel="service-doc"; type="text/html"',
 ].join(", ");
 
 // Decision: proxy only enforces cookie presence for protected app routes.

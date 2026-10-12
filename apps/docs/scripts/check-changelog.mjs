@@ -22,7 +22,7 @@ const KINDS = ["feature", "improvement", "fix", "breaking", "deprecation", "inci
 const SIGNIFICANCE = ["major", "notable", "minor"];
 const PRODUCTS = ["cloud", "platform", "framework", "sdk", "cli", "yolop", "mira", "bashkit"];
 const SURFACES = ["ui", "api", "code", "cli", "agent", "operations"];
-// Products whose docs live outside docs.everruns.com; their entries may link
+// Products whose docs live outside everruns.com/docs; their entries may link
 // their own repository instead of an internal docs page.
 const EXTERNAL_DOCS = ["yolop", "mira", "bashkit", "sdk"];
 const NEEDS_DOCS = ["feature", "improvement", "breaking", "deprecation"];

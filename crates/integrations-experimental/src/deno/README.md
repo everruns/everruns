@@ -36,7 +36,7 @@ assert_eq!(capability.id(), "deno");
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-integrations-experimental)
-- [Everruns documentation](https://docs.everruns.com)
+- [Everruns documentation](https://everruns.com/docs)
 
 > **Unsupported and untested.** Deno sandboxes require a paid Deno plan; without
 > one, `create_sandbox` returns `400 VERIFICATION_REQUIRED_FOR_SANDBOXES`. This

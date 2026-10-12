@@ -1,4 +1,5 @@
 ---
+import { docsPath } from "../lib/site";
 import DefaultFooter from "@astrojs/starlight/components/Footer.astro";
 import { isChangelogEntry, productLabel } from "../lib/changelog";
 
@@ -25,7 +26,7 @@ const PRODUCT_HOME: Record<string, string> = {
 };
 const entry = Astro.locals.starlightRoute.entry;
 const links = isChangelogEntry(entry)
-  ? (entry.data.products ?? []).map((p: string) => ({ label: productLabel(p), href: PRODUCT_HOME[p] }))
+  ? (entry.data.products ?? []).map((p: string) => ({ label: productLabel(p), href: docsPath(PRODUCT_HOME[p]) }))
   : crossLinks;
 ---
 

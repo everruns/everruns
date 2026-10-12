@@ -233,7 +233,7 @@ pub(crate) fn to_tool(
 /// List the tools an MCP server offers, with their saved risk labels.
 #[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct ListMcpServerTools {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -296,7 +296,7 @@ pub(crate) async fn list_tools_in(
 /// Set or clear a person's risk label for one tool of an MCP server.
 #[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct SetMcpToolLabel {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     /// The tool's own name on the MCP server.
     pub tool_name: String,

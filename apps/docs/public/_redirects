@@ -1,3 +1,4 @@
-# Redirect removed pages to closest relevant page
-/sre/runbooks/production-migrations/ /sre/admin-container/ 301
-/sre/runbooks/production-migrations /sre/admin-container/ 301
+# Redirect removed pages to closest relevant page. Paths are public URLs: the
+# docs Worker serves dist/ under /docs (scripts/stage-worker-assets.mjs).
+/docs/sre/runbooks/production-migrations/ /docs/sre/admin-container/ 301
+/docs/sre/runbooks/production-migrations /docs/sre/admin-container/ 301

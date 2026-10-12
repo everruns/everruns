@@ -33,7 +33,7 @@ async fn roll_dice(sides: u32) -> Result<u32> {
 
 ## Documentation
 
-- [Serve overview](https://docs.everruns.com/framework/serve/)
+- [Serve overview](https://everruns.com/docs/framework/serve/)
 - [`everruns-serve` API reference](https://docs.rs/everruns-serve)
 - [Implementation API reference](https://docs.rs/everruns-serve-macros)
 

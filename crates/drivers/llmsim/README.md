@@ -41,8 +41,8 @@ let model = Model::simulated("Hello from the simulator.");
 
 ## Documentation
 
-- [Framework testing and simulation](https://docs.everruns.com/framework/testing-and-simulation/)
-- [Framework models and providers](https://docs.everruns.com/framework/models-and-providers/)
+- [Framework testing and simulation](https://everruns.com/docs/framework/testing-and-simulation/)
+- [Framework models and providers](https://everruns.com/docs/framework/models-and-providers/)
 - [API reference](https://docs.rs/everruns-llmsim)
 
 ## License

@@ -96,7 +96,7 @@ cargo test -p everruns-server --test integration_test test_full_agent_session_wo
 
 ## API Endpoints
 
-See the [REST API reference](https://docs.everruns.com/api/) for endpoints and schemas.
+See the [REST API reference](https://everruns.com/docs/api/) for endpoints and schemas.
 
 ### Core Resources
 
@@ -200,10 +200,10 @@ lsof -i :9301
 
 ## Documentation
 
-- [Architecture](https://docs.everruns.com/explanation/architecture/)
-- [Docker Compose deployment](https://docs.everruns.com/getting-started/docker-compose/)
-- [API reference](https://docs.everruns.com/api/)
-- [Everruns documentation](https://docs.everruns.com)
+- [Architecture](https://everruns.com/docs/explanation/architecture/)
+- [Docker Compose deployment](https://everruns.com/docs/getting-started/docker-compose/)
+- [API reference](https://everruns.com/docs/api/)
+- [Everruns documentation](https://everruns.com/docs)
 
 ## License
 

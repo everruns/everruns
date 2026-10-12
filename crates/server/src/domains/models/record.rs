@@ -65,7 +65,7 @@ impl std::str::FromStr for ModelSource {
 /// LLM Model entity
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Model {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     #[schema(value_type = String, example = "model_01933b5a00007000800000000000001")]
     pub id: ModelId,
     /// Owning provider's prefixed public identifier.
@@ -96,7 +96,7 @@ pub struct Model {
 /// LLM Model with provider info
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ModelWithProvider {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     #[schema(value_type = String, example = "model_01933b5a00007000800000000000001")]
     pub id: ModelId,
     /// Owning provider's prefixed public identifier.

@@ -174,7 +174,7 @@ export function ChatGptConnectionCard({ providerId }: { providerId: string }) {
                 Download login setup
               </Button>
               <a
-                href="https://docs.everruns.com/features/chatgpt"
+                href="https://everruns.com/docs/features/chatgpt"
                 target="_blank"
                 rel="noreferrer"
                 className="underline"

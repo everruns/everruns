@@ -37,7 +37,7 @@ assert_eq!(capability.id(), "docker_container");
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-integrations)
-- [Everruns documentation](https://docs.everruns.com)
+- [Everruns documentation](https://everruns.com/docs)
 
 ## License
 

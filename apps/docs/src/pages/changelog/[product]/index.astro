@@ -1,4 +1,5 @@
 ---
+import { docsPath } from "../../../lib/site";
 // One page per product, the changelog list pre-filtered at build time. The
 // entries themselves are indexed for search on their own pages, so this page
 // stays out of the search index to avoid duplicate results.
@@ -28,7 +29,7 @@ const { label } = Astro.props;
           rel: "alternate",
           type: "application/rss+xml",
           title: `${label} changelog`,
-          href: `/changelog/${product}/rss.xml`,
+          href: docsPath(`/changelog/${product}/rss.xml`),
         },
       },
     ],

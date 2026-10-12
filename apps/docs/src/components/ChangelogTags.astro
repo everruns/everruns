@@ -1,4 +1,5 @@
 ---
+import { docsPath } from "../lib/site";
 // Tags for one changelog entry: its kind with an icon and color, a Major mark,
 // and its products as links to their changelog pages.
 //
@@ -52,7 +53,7 @@ const mark = (id: string) =>
 }
 {
   products.map((p) => (
-    <a class:list={["cl-tag", "cl-product", `cl-p-${p}`]} href={`/changelog/${p}/`}>
+    <a class:list={["cl-tag", "cl-product", `cl-p-${p}`]} href={docsPath(`/changelog/${p}/`)}>
       <Fragment set:html={mark(p)} />
       {productLabel(p)}
     </a>

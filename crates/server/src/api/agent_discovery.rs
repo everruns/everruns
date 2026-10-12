@@ -196,7 +196,7 @@ fn render_auth_md(state: &AppState) -> String {
              administrator. Call the API at `{api}` and the MCP endpoint at \
              `{root}/mcp` without any `Authorization` header.\n\n\
              Do not expose a server in this mode to a network you do not control.\n\n\
-             Documentation: <https://docs.everruns.com/>\n"
+             Documentation: <https://everruns.com/docs/>\n"
         );
     }
 
@@ -254,13 +254,13 @@ fn render_auth_md(state: &AppState) -> String {
          - <{root}/.well-known/mcp/server-card.json> - MCP server card\n\
          - <{root}/.well-known/oauth-authorization-server> - authorization server metadata\n\
          - <{root}/llms.txt> - what this server offers, for agents\n\
-         - <https://docs.everruns.com/> - full documentation\n"
+         - <https://everruns.com/docs/> - full documentation\n"
     )
 }
 
 const PRODUCT_SITE: &str = "https://everruns.com";
-const DOCS_URL: &str = "https://docs.everruns.com/";
-const API_DOCS_URL: &str = "https://docs.everruns.com/api/";
+const DOCS_URL: &str = "https://everruns.com/docs/";
+const API_DOCS_URL: &str = "https://everruns.com/docs/api/";
 const PLUGIN_URL: &str = "https://github.com/everruns/plugins";
 const PRODUCT_SUMMARY: &str = "Durable AI agent platform. Create and run agents whose sessions \
      survive crashes, restarts, and worker loss.";

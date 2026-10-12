@@ -1,0 +1,23 @@
+// The docs Worker, serving apps/docs at everruns.com/docs/ (worker/index.mjs).
+// Deployed by .github/workflows/docs-deploy.yml after `pnpm run build` and
+// `pnpm run stage-worker`.
+{
+  "name": "everruns-docs",
+  "main": "worker/index.mjs",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist-worker",
+    "binding": "ASSETS",
+    // The Worker negotiates Markdown for page URLs before assets answer.
+    "run_worker_first": true,
+    "html_handling": "auto-trailing-slash",
+    // Nearest 404.html up the path: dist-worker/docs/404.html.
+    "not_found_handling": "404-page",
+  },
+  // More specific than the landing Worker's everruns.com Custom Domain, so
+  // Cloudflare sends /docs and everything under it here.
+  "routes": [{ "pattern": "everruns.com/docs*", "zone_name": "everruns.com" }],
+  // PR previews: `wrangler versions upload --preview-alias pr-<n>`.
+  "workers_dev": true,
+  "preview_urls": true,
+}

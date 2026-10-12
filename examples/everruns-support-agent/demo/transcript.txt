@@ -8,11 +8,11 @@ How do I resume a durable Framework session after restarting my process?
 
 < search_docs: OK
 Page: session-history
-Source: https://docs.everruns.com/framework/session-history/
+Source: https://everruns.com/docs/framework/session-history/
 Match: title: Session History and Resume
 
 Page: persistence
-Source: https://docs.everruns.com/framework/persistence/
+Source: https://everruns.com/docs/framework/persistence/
 Match: description: Choose volatile memory, crash-durable local state, or the distributed durable Platform.
 
 > search_docs
@@ -20,11 +20,11 @@ Match: description: Choose volatile memory, crash-durable local state, or the di
 
 < search_docs: OK
 Page: session-history
-Source: https://docs.everruns.com/framework/session-history/
+Source: https://everruns.com/docs/framework/session-history/
 Match: title: Session History and Resume
 
 Page: persistence
-Source: https://docs.everruns.com/framework/persistence/
+Source: https://everruns.com/docs/framework/persistence/
 Match: title: Persistence
 
 > read_doc
@@ -32,7 +32,7 @@ Match: title: Persistence
 
 < read_doc: OK
 Official docs snapshot, 2026-09-08
-Source: https://docs.everruns.com/framework/session-history/
+Source: https://everruns.com/docs/framework/session-history/
 ---
 title: Session History and Resume
 description: Read bounded conversation history and continue Framework sessions without importing host or runtime storage APIs.
@@ -57,7 +57,7 @@ let agent = Agent::builder()
 
 < read_doc: OK
 Official docs snapshot, 2026-09-08
-Source: https://docs.everruns.com/framework/persistence/
+Source: https://everruns.com/docs/framework/persistence/
 ---
 title: Persistence
 description: Choose volatile memory, crash-durable local state, or the distributed durable Platform.
@@ -92,7 +92,7 @@ Key points from the docs:
 - `attach` is required because a new engine can't infer the Agent; rebuild it from trusted config with the *same* data directory, or attach is rejected.
 - A session becomes durable only after its first async operation (`run`, `inspect`, or a history page read).
 
-Sources: https://docs.everruns.com/framework/session-history/ and https://docs.everruns.com/framework/persistence/
+Sources: https://everruns.com/docs/framework/session-history/ and https://everruns.com/docs/framework/persistence/
 
 One caveat the docs state but your question doesn't cover: the local profile assumes one embedded process at a time — for multi-process or distributed restarts it points to the Platform instead.
 

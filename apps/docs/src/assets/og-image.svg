@@ -47,7 +47,7 @@
   <text x="560" y="330" font-family="system-ui, -apple-system, sans-serif" font-size="28" font-weight="400" fill="#A0A0A0">Durable Agentic Harness Engine</text>
 
   <!-- URL -->
-  <text x="560" y="420" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="400" fill="#D4A43A">docs.everruns.com</text>
+  <text x="560" y="420" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="400" fill="#D4A43A">everruns.com/docs</text>
 
   <!-- Bottom accent line -->
   <rect x="0" y="620" width="1200" height="10" fill="#D4A43A" opacity="0.6"/>

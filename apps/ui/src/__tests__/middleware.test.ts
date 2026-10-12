@@ -110,7 +110,7 @@ describe("auth proxy", () => {
     expect(response.headers.get("x-middleware-next")).toBe("1");
     expect(response.headers.get("location")).toBeNull();
     expect(response.headers.get("link")).toBe(
-      '</api-doc/openapi.json>; rel="service-desc"; type="application/json", <https://docs.everruns.com/api/>; rel="service-doc"; type="text/html"',
+      '</api-doc/openapi.json>; rel="service-desc"; type="application/json", <https://everruns.com/docs/api/>; rel="service-doc"; type="text/html"',
     );
   });
 

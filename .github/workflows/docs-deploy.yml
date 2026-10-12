@@ -1,0 +1,131 @@
+name: Docs Deploy
+
+# Builds apps/docs and deploys it as the `everruns-docs` Worker, which serves
+# everruns.com/docs/ (apps/docs/wrangler.jsonc, knowledge/ui/documentation.md).
+#
+# - main: deploy, then check the live site and the docs.everruns.com redirects.
+# - pull requests: upload a preview version at
+#   https://pr-<number>-everruns-docs.everruns.workers.dev/docs/
+#   (same-repository branches only; forks get no secrets).
+# - daily: re-run the live check, so a broken redirect or a missing page is
+#   noticed even when nothing in the docs changed.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/docs/**'
+      - 'docs/**'
+      - '.github/workflows/docs-deploy.yml'
+  pull_request:
+    paths:
+      - 'apps/docs/**'
+      - 'docs/**'
+      - '.github/workflows/docs-deploy.yml'
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  WRANGLER_VERSION: 4.144.0
+
+jobs:
+  deploy:
+    name: Build and deploy docs
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'schedule' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apps/docs
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: apps/docs/pnpm-lock.yaml
+
+      - name: Install Doppler CLI
+        id: doppler_install
+        # Absorbs one transient installer failure; see
+        # scripts/test-doppler-install-retry.sh for why.
+        continue-on-error: true
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
+
+      - name: Pause before Doppler CLI retry
+        if: steps.doppler_install.outcome == 'failure'
+        run: sleep 15
+
+      - name: Install Doppler CLI (retry)
+        if: steps.doppler_install.outcome == 'failure'
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test the docs Worker
+        run: pnpm run worker:test
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Stage Worker assets
+        run: pnpm run stage-worker
+
+      # CLOUDFLARE_* reach wrangler only through `doppler run` (see the AGENTS.md
+      # gotcha on runtime-fetched secrets).
+      - name: Upload preview version
+        if: github.event_name == 'pull_request'
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          PREVIEW_ALIAS: pr-${{ github.event.pull_request.number }}
+        run: |
+          doppler run -- bash -c 'CLOUDFLARE_API_TOKEN="$CLOUDFLARE_API_TOKEN" CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_ACCOUNT_ID" \
+            pnpm dlx "wrangler@$WRANGLER_VERSION" versions upload --preview-alias "$PREVIEW_ALIAS"'
+          echo "Docs preview: https://$PREVIEW_ALIAS-everruns-docs.everruns.workers.dev/docs/" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check preview
+        if: github.event_name == 'pull_request'
+        run: node scripts/check-live.mjs --site "https://pr-${{ github.event.pull_request.number }}-everruns-docs.everruns.workers.dev/docs"
+
+      - name: Deploy
+        if: github.event_name != 'pull_request'
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          doppler run -- bash -c 'CLOUDFLARE_API_TOKEN="$CLOUDFLARE_API_TOKEN" CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_ACCOUNT_ID" \
+            pnpm dlx "wrangler@$WRANGLER_VERSION" deploy'
+
+  check-live:
+    name: Check live docs and redirects
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: >-
+      always() &&
+      github.ref == 'refs/heads/main' &&
+      (needs.deploy.result == 'success' || needs.deploy.result == 'skipped')
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Check everruns.com/docs and the docs.everruns.com redirects
+        run: node apps/docs/scripts/check-live.mjs --site https://everruns.com/docs --old https://docs.everruns.com

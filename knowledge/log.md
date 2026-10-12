@@ -8,6 +8,11 @@
   changes in the conversation, sent as Anthropic `tool_addition` blocks or
   OpenAI `additional_tools` items, with today's behavior as the fallback. See
   [Cache-Stable Tool Changes](execution/cache-stable-tool-changes.md).
+* **Docs moved to everruns.com/docs.** The docs Worker serves the Starlight
+  build on the `everruns.com/docs*` route beside the landing site, with
+  Markdown negotiation like landing; docs.everruns.com 301s every path there
+  and a daily check guards pages, agent files and redirects. See
+  [Documentation Site Specification](ui/documentation.md).
 
 ## 2026-10-11
 

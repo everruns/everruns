@@ -26,7 +26,7 @@ This crate contains opt-in integrations whose APIs or vendor coverage have a dif
 
 ## Documentation
 
-See the [integration guides](https://docs.everruns.com/integrations) and the [API reference](https://docs.rs/everruns-integrations-experimental).
+See the [integration guides](https://everruns.com/docs/integrations) and the [API reference](https://docs.rs/everruns-integrations-experimental).
 
 ## License
 

@@ -1,12 +1,14 @@
 ---
+import { docsPath } from "../lib/site";
 import DefaultHeader from "@astrojs/starlight/components/Header.astro";
 
 const sidebarTopics = Astro.locals.starlightSidebarTopics;
 const topics = sidebarTopics?.topics ?? [];
 const hasTopics = topics.length > 0;
 const currentPath = Astro.url.pathname;
+const API = docsPath("/api/");
 const isTopicActive = (topic: any) =>
-  topic.isCurrent || (topic.link === "/api/" && currentPath.startsWith("/api/"));
+  topic.isCurrent || (topic.link === API && currentPath.startsWith(API));
 ---
 
 <DefaultHeader {...Astro.props} />

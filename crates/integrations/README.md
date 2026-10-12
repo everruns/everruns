@@ -50,7 +50,7 @@ Use `everruns-integrations` for the maintained integrations. Deno and Sprites, w
 
 ## Documentation
 
-See the [integration guides](https://docs.everruns.com/integrations) and the [API reference](https://docs.rs/everruns-integrations). Each module README documents its vendor configuration.
+See the [integration guides](https://everruns.com/docs/integrations) and the [API reference](https://docs.rs/everruns-integrations). Each module README documents its vendor configuration.
 
 ## License
 

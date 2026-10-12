@@ -70,7 +70,7 @@ impl From<&str> for SkillStatus {
 /// Skill entity (API response type)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Skill {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     #[schema(value_type = String, example = "skill_01933b5a00007000800000000000001")]
     pub id: SkillId,
     /// Stable kebab-case slug used to invoke the skill (e.g. `/pdf-processing` in chat). Safe to render in user-facing messages.

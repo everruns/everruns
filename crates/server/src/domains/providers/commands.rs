@@ -226,7 +226,7 @@ impl Command for CheckProviderCredentials {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetProvider {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -254,7 +254,7 @@ impl Command for GetProvider {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateProvider {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: Option<String>,
@@ -320,7 +320,7 @@ impl Command for UpdateProvider {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteProvider {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -349,7 +349,7 @@ impl Command for DeleteProvider {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ReviewProviderModels {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -385,7 +385,7 @@ impl Command for ReviewProviderModels {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SyncProviderModels {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 

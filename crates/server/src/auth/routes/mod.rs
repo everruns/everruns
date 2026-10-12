@@ -215,7 +215,7 @@ pub struct TokenResponse {
 /// Organization membership in user response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct OrgMembershipResponse {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub public_id: String,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
@@ -225,7 +225,7 @@ pub struct OrgMembershipResponse {
 /// User info response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct UserInfoResponse {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     pub email: String,
     /// Human-readable name. Safe to render in user-facing messages.

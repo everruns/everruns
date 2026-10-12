@@ -1,6 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Meta Model API provider support for the
-//! [Everruns Framework](https://docs.everruns.com/framework/).
+//! [Everruns Framework](https://everruns.com/docs/framework/).
 //!
 //! Meta Model API serves Muse models through an OpenAI-compatible Responses
 //! API. [`MetaChatDriver`] wraps the shared Responses protocol driver and adds

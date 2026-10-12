@@ -1,6 +1,6 @@
 # Changelog entry
 
-The public changelog at <https://docs.everruns.com/changelog/> gets one entry per **completed**
+The public changelog at <https://everruns.com/docs/changelog/> gets one entry per **completed**
 user-facing feature, notable improvement, user-visible fix, breaking change, deprecation, or
 significant Cloud incident, across every product (Cloud, self-hosted Platform, Framework, SDKs,
 CLI, Yolop, Mira, Bashkit). Intent, taxonomy and rules:

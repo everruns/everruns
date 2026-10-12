@@ -124,7 +124,7 @@ pub struct CapabilityInfo {
     #[serde(default, skip_serializing_if = "is_zero_u64")]
     #[cfg_attr(feature = "openapi", schema(example = 7u64))]
     pub harness_count: u64,
-    /// Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.
+    /// Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(example = "session_file_system"))]
     pub docs_slug: Option<String>,
@@ -174,7 +174,7 @@ fn is_zero_u64(v: &u64) -> bool {
 }
 
 /// Mapping from built-in capability ID to its docs slug under
-/// [capability documentation](https://docs.everruns.com/capabilities/). Returns None for IDs that
+/// [capability documentation](https://everruns.com/docs/capabilities/). Returns None for IDs that
 /// have no published documentation page.
 pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
     match id {

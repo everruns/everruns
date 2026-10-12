@@ -6,7 +6,7 @@ flowchart LR
   ENTRY["Changelog entry, everruns/everruns<br/>docs/changelog/&lt;date&gt;-&lt;slug&gt;.md<br/>kind, significance, products, surfaces<br/>links, optional visual<br/>release: and cloud: stamped later<br/>Update section or supersededBy"]
   REL["/prepare-release<br/>release entry and card<br/>CHANGELOG.md links entries"]
   SAAS["/release-to-saas<br/>Cloud-only entries<br/>stamps cloud: on deploy"]
-  SITE["docs.everruns.com/changelog<br/>HTML, Markdown, RSS per product, search<br/>filters: product, surface, significance"]
+  SITE["everruns.com/docs/changelog<br/>HTML, Markdown, RSS per product, search<br/>filters: product, surface, significance"]
 
   PR -- "1 complete" --> ENTRY
   PR -.-> STEP

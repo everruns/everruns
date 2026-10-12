@@ -65,7 +65,7 @@ Everruns' own execution capabilities when the agent's work must land there.
       "config": {
         "tools": ["web_search"],
         "web_search_context_size": "high",
-        "web_search_allowed_domains": ["openai.com", "docs.everruns.com"],
+        "web_search_allowed_domains": ["openai.com", "everruns.com"],
         "web_search_user_location": { "country": "US", "city": "Chicago", "timezone": "America/Chicago" }
       }
     }

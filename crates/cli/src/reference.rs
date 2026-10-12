@@ -1,4 +1,4 @@
-//! The CLI reference pages on docs.everruns.com, generated from this binary.
+//! The CLI reference pages on everruns.com/docs, generated from this binary.
 //!
 //! Decision: the pages are rendered from the same clap tree `everruns --help`
 //! walks (hand-written commands plus the mounted contract), so a page can

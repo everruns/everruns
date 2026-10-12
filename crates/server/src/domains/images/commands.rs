@@ -41,7 +41,7 @@ impl Command for ListImages {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetImage {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 

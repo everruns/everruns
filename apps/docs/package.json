@@ -12,6 +12,8 @@
     "build": "astro build",
     "postbuild": "node scripts/verify-notebooks.mjs && node scripts/verify-llms.mjs",
     "preview": "astro preview",
+    "stage-worker": "node scripts/stage-worker-assets.mjs",
+    "worker:test": "node --test worker/index.test.mjs",
     "check": "astro check",
     "release-card": "node scripts/generate-release-card.mjs",
     "release-card:test": "node --test scripts/generate-release-card.test.mjs",
