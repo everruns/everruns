@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 import { marked } from "marked";
 import { createHighlighter } from "shiki";
+import { withBase } from "../site.config.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const docsAppRoot = path.resolve(scriptDir, "..");
@@ -253,7 +254,7 @@ function createMarkdownRenderer({ slugCounts, headings, includeTocHeadings, assi
     }
 
     const title = token.title ? ` title="${escapeHtml(token.title)}"` : "";
-    return `<a href="${escapeHtml(href)}"${title}>${content}</a>`;
+    return `<a href="${escapeHtml(withBase(href))}"${title}>${content}</a>`;
   };
 
   renderer.image = function image(token) {
@@ -264,7 +265,7 @@ function createMarkdownRenderer({ slugCounts, headings, includeTocHeadings, assi
     }
 
     const title = token.title ? ` title="${escapeHtml(token.title)}"` : "";
-    return `<img src="${escapeHtml(href)}" alt="${alt}"${title}>`;
+    return `<img src="${escapeHtml(withBase(href))}" alt="${alt}"${title}>`;
   };
 
   return renderer;
@@ -401,7 +402,7 @@ function renderNotebookHtml({ notebook, sourcePath, publicHref, frontmatter }) {
           }
           <div class="cookbook-meta__actions">
             <a class="cookbook-meta__link" href="${escapeHtml(sourceUrl)}">View on GitHub</a>
-            <a class="cookbook-meta__link" href="${escapeHtml(publicHref)}" download>Download .ipynb</a>
+            <a class="cookbook-meta__link" href="${escapeHtml(withBase(publicHref))}" download>Download .ipynb</a>
             <span class="cookbook-meta__kernel">${escapeHtml(kernelLabel)}</span>
           </div>
         </div>

@@ -3,11 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ExternalLink, GitPullRequest, MoreHorizontal, Plus } from "lucide-react";
-import {
-  useAgentGitHub,
-  useConnectAgentGitHub,
-  useDisconnectAgentGitHub,
-} from "@/hooks/use-agent-github";
+import { useAgentGitHub, useDisconnectAgentGitHub } from "@/hooks/use-agent-github";
+import { ConnectGitHubButton } from "@/components/agents/connect-github-button";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -17,8 +14,6 @@ import {
   DropdownMenuPositioner,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -30,20 +25,9 @@ import {
 
 export function AgentGitHubCard({ agentId }: { agentId: string }) {
   const { data: status, isLoading } = useAgentGitHub(agentId);
-  const connect = useConnectAgentGitHub(agentId);
   const disconnect = useDisconnectAgentGitHub(agentId);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [ownerOrg, setOwnerOrg] = useState("");
-
-  const onConnect = async () => {
-    setError(null);
-    try {
-      await connect.mutateAsync(ownerOrg.trim() || undefined);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to start GitHub connection.");
-    }
-  };
 
   const onDisconnect = async () => {
     if (!status?.identity_id) return;
@@ -80,6 +64,7 @@ export function AgentGitHubCard({ agentId }: { agentId: string }) {
               ) : (
                 <p className="text-sm text-muted-foreground">
                   Give this agent its own GitHub App to read pull requests and comment as itself.
+                  {!status.app_created && " The App can only be installed where it is created."}
                 </p>
               )}
             </div>
@@ -108,9 +93,7 @@ export function AgentGitHubCard({ agentId }: { agentId: string }) {
             </div>
           ) : !isLoading && status ? (
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="sm" onClick={onConnect} disabled={connect.isPending}>
-                {status.app_created ? "Finish installing" : "Connect GitHub"}
-              </Button>
+              <ConnectGitHubButton agentId={agentId} status={status} />
               {status.app_created && (
                 // An App that was never installed can be forgotten, e.g. to
                 // create it in an organization instead of a personal account.
@@ -133,23 +116,6 @@ export function AgentGitHubCard({ agentId }: { agentId: string }) {
             </div>
           ) : null}
         </div>
-        {!isLoading && status && !status.connected && !status.app_created && (
-          <div className="space-y-1">
-            <Label htmlFor={`github-owner-${agentId}`}>GitHub organization (optional)</Label>
-            <Input
-              id={`github-owner-${agentId}`}
-              value={ownerOrg}
-              onChange={(event) => setOwnerOrg(event.target.value)}
-              placeholder="your-org"
-              className="max-w-xs"
-            />
-            <p className="text-xs text-muted-foreground">
-              The App can only be installed where it is created. Enter an organization to reach its
-              repositories; leave empty for your personal account. You need permission to create
-              GitHub Apps in that organization.
-            </p>
-          </div>
-        )}
         {status?.connected && status.missing_permissions.length > 0 && (
           <p className="border bg-muted/50 p-3 text-sm" role="status">
             This agent&apos;s GitHub App was created before CI triggers and lacks{" "}

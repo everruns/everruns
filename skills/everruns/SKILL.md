@@ -7,7 +7,7 @@ metadata:
   category: agent-framework
   version: "3.1"
   homepage: https://everruns.com
-  docs: https://docs.everruns.com/framework/
+  docs: https://everruns.com/docs/framework/
   api-reference: https://docs.rs/everruns
   repository: https://github.com/everruns/everruns
 ---
@@ -90,8 +90,8 @@ mutable-history paths are not execution inputs.
 
 ## References
 
-- [Everruns Framework](https://docs.everruns.com/framework/)
-- [Custom backends](https://docs.everruns.com/framework/custom-backends/)
+- [Everruns Framework](https://everruns.com/docs/framework/)
+- [Custom backends](https://everruns.com/docs/framework/custom-backends/)
 - [Framework API](https://docs.rs/everruns)
 - [Host API](https://docs.rs/everruns-core/latest/everruns_core/host/)
 - [Focused crate catalog](references/crates.md)

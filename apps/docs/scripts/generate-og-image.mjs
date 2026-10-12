@@ -149,7 +149,7 @@ function apiOperationSvg(method, apiPath, description, operationId, hasBody) {
   ${curlLines.map((line, i) => `<text x="80" y="${366 + i * 26}" font-family="monospace" font-size="18" fill="#c9d1d9">${line}</text>`).join("\n  ")}
 
   <!-- URL -->
-  <text x="60" y="590" font-family="system-ui, -apple-system, sans-serif" font-size="18" fill="#D4A43A">docs.everruns.com</text>
+  <text x="60" y="590" font-family="system-ui, -apple-system, sans-serif" font-size="18" fill="#D4A43A">everruns.com/docs</text>
 </svg>`;
 }
 
@@ -213,7 +213,7 @@ function docPageSvg(title, description, breadcrumb, hasHero) {
   ${descLines.map((line, i) => `<text x="60" y="${180 + titleLines.length * 64 + 30 + i * 30}" font-family="system-ui, -apple-system, sans-serif" font-size="22" fill="#A0A0A0">${escXml(line)}</text>`).join("\n  ")}
 
   <!-- URL -->
-  <text x="60" y="590" font-family="system-ui, -apple-system, sans-serif" font-size="18" fill="#D4A43A">docs.everruns.com</text>
+  <text x="60" y="590" font-family="system-ui, -apple-system, sans-serif" font-size="18" fill="#D4A43A">everruns.com/docs</text>
 </svg>`;
 }
 

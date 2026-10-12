@@ -24,7 +24,7 @@ let _store = TurbopufferVectorStore::new("https://example.turbopuffer.com", "api
 
 ## Documentation
 
-- [Everruns documentation](https://docs.everruns.com)
+- [Everruns documentation](https://everruns.com/docs)
 - [API reference](https://docs.rs/everruns-turbopuffer)
 
 ## License

@@ -92,7 +92,7 @@
 
   <!-- Site -->
   <rect x="20" y="395" width="760" height="75" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="400" y="420" text-anchor="middle" class="label">docs.everruns.com/changelog</text>
+  <text x="400" y="420" text-anchor="middle" class="label">everruns.com/docs/changelog</text>
   <text x="400" y="439" text-anchor="middle" class="sublabel">HTML, Markdown, RSS per product, search, llms.txt</text>
   <text x="400" y="456" text-anchor="middle" class="mono">filters: product · surface · significance · kind · since version</text>
 </svg>

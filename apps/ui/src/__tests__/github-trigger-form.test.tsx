@@ -7,7 +7,7 @@ const push = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
   usePathname: () => "/agents/agent_1/triggers/new",
-  useSearchParams: () => new URLSearchParams("type=github"),
+  useSearchParams: () => new URLSearchParams(search),
 }));
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlag: () => false,
@@ -23,12 +23,22 @@ jest.mock("@/hooks/use-agent-triggers", () => ({
   useRunAgentTrigger: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 let connected = true;
+let search = "type=github";
+const connect = jest.fn();
 jest.mock("@/hooks/use-agent-github", () => ({
   useAgentGitHub: () => ({
-    data: { connected, app_created: connected, identity_id: "ident_1" },
+    data: {
+      connected,
+      app_created: connected,
+      identity_id: "ident_1",
+      suggested_owners: [{ login: "acme", kind: "organization" }],
+    },
     isLoading: false,
   }),
-  useConnectAgentGitHub: () => ({ mutate: jest.fn(), isPending: false }),
+  useConnectAgentGitHub: (_agentId: string, returnTo?: string) => ({
+    mutateAsync: async (ownerOrg?: string) => connect(returnTo, ownerOrg),
+    isPending: false,
+  }),
   useGitHubRepositories: () => ({
     data: [{ full_name: "acme/api", private: false, html_url: "u" }],
   }),
@@ -44,7 +54,9 @@ const page = () => <GitHubTriggerPage params={params} />;
 describe("GitHub trigger page", () => {
   beforeEach(() => {
     connected = true;
+    search = "type=github";
     create.mockClear();
+    connect.mockClear();
   });
 
   it("sends changes_only when CI should only wake on a flip", async () => {
@@ -77,10 +89,45 @@ describe("GitHub trigger page", () => {
     expect(request.message).toContain("{{github.repository}}");
   });
 
-  it("shows a connect notice when GitHub is not connected", async () => {
+  it("connects in a chosen organization and comes back to the prefilled trigger", async () => {
+    connected = false;
+    search = "type=github&events=workflow_run.completed";
+    render(page());
+    expect(screen.getByText(/before adding a GitHub trigger/)).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Connect GitHub" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "acme" }));
+    await waitFor(() =>
+      expect(connect).toHaveBeenCalledWith(
+        "/agents/agent_1/triggers/new?type=github&events=workflow_run.completed",
+        "acme",
+      ),
+    );
+    // The menu lives inside the trigger editor's form; opening it must not save.
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("types another organization inside the editor without submitting it", async () => {
     connected = false;
     render(page());
-    expect(await screen.findByRole("button", { name: "Connect GitHub" })).toBeInTheDocument();
-    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Connect GitHub" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Another organization…" }));
+    const input = await screen.findByLabelText("GitHub organization");
+    fireEvent.change(input, { target: { value: "beta-labs" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(connect).toHaveBeenCalledWith("/agents/agent_1/triggers/new?type=github", "beta-labs"),
+    );
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("names the events the trigger listens to", () => {
+    search = "type=github&events=workflow_run.completed";
+    const { unmount } = render(page());
+    expect(screen.getByText(/CI events/)).toBeInTheDocument();
+    unmount();
+    search = "type=github";
+    render(page());
+    expect(screen.getByText(/Pull request events/)).toBeInTheDocument();
   });
 });

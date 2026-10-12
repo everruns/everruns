@@ -106,7 +106,7 @@ Replace the bundled pages with a versioned documentation index while retaining s
 
 ## Boundaries
 
-The corpus is a five-page snapshot from 2026-09-08, not a live search of docs.everruns.com. Provenance is recorded in `src/resources/docs/README.md`, and the snapshot can lag current APIs.
+The corpus is a five-page snapshot from 2026-09-08, not a live search of everruns.com/docs. Provenance is recorded in `src/resources/docs/README.md`, and the snapshot can lag current APIs.
 
 ## Source map
 

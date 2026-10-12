@@ -35,8 +35,8 @@ assert_eq!(capability.id(), "cursor");
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-integrations)
-- [Cursor integration](https://docs.everruns.com/integrations/cursor/)
-- [Everruns documentation](https://docs.everruns.com)
+- [Cursor integration](https://everruns.com/docs/integrations/cursor/)
+- [Everruns documentation](https://everruns.com/docs)
 
 ## License
 

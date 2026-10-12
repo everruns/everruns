@@ -13,7 +13,7 @@ the session's storage, and asks a person before anything leaves the workspace.
 - Session storage keeps both the workspace and serve's session log, so a session
   id that comes back after the idle timeout finds its files and conversation.
 
-See the [Serve on AgentCore guide](https://docs.everruns.com/framework/serve-agentcore/)
+See the [Serve on AgentCore guide](https://everruns.com/docs/framework/serve-agentcore/)
 for the full contract.
 
 ## Run it locally

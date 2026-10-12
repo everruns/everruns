@@ -13,7 +13,7 @@ pub type ListUsersResponse = crate::common_dto::ListResponse<User>;
 /// User response for listing
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct User {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     pub email: String,
     /// Human-readable name. Safe to render in user-facing messages.

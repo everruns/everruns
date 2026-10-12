@@ -93,7 +93,7 @@ let model = Model::new("gpt-6.1-sol", OpenAI::from_env()?);
 let answer = model.complete("Name the three primary colors.").await?;
 ```
 
-See [Direct model calls](https://docs.everruns.com/framework/direct-model-calls/).
+See [Direct model calls](https://everruns.com/docs/framework/direct-model-calls/).
 
 Picking that model id is the same provider, asked a different question:
 
@@ -105,7 +105,7 @@ for model in models::list(OpenAI::from_env()?).await? {
 }
 ```
 
-See [Model catalogs](https://docs.everruns.com/framework/models-and-providers/).
+See [Model catalogs](https://everruns.com/docs/framework/models-and-providers/).
 
 And when the answer is a number rather than prose — *does this hold, how severe
 is it, which of these* — ask for a judgment instead of parsing one out of text:
@@ -118,7 +118,7 @@ let spam = judge.probability("Is this message spam?", text).await?;
 ```
 
 The threshold stays in your code, so there is no written verdict to misparse.
-See [Direct decision](https://docs.everruns.com/framework/direct-model-calls/).
+See [Direct decision](https://everruns.com/docs/framework/direct-model-calls/).
 
 ## Credentials come from your vendor's own variables
 
@@ -145,7 +145,7 @@ that declares nothing is never configured from the environment.
 This is for standalone, CLI, and development use. Server deployments resolve
 credentials from encrypted storage and read no environment variables — drivers
 only declare names, they never read them. See
-[Credentials](https://docs.everruns.com/framework/models-and-providers/).
+[Credentials](https://everruns.com/docs/framework/models-and-providers/).
 
 ## Give agents tools and capabilities
 
@@ -172,10 +172,10 @@ let agent = Agent::builder()
 
 You can also define reusable capability packages in Rust or load open,
 configuration-driven capability references. See [Tools and
-macros](https://docs.everruns.com/framework/agents/), [capability
-integrations](https://docs.everruns.com/framework/capability-integrations/),
+macros](https://everruns.com/docs/framework/agents/), [capability
+integrations](https://everruns.com/docs/framework/capability-integrations/),
 and [authoring advanced
-capabilities](https://docs.everruns.com/framework/advanced-capabilities/).
+capabilities](https://everruns.com/docs/framework/advanced-capabilities/).
 
 ## Choose a reusable harness foundation
 
@@ -304,19 +304,19 @@ includes the exact command for each one.
 
 ## Documentation
 
-- [Framework guide](https://docs.everruns.com/framework/)
-- [Agents](https://docs.everruns.com/framework/agents/)
-- [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
-- [Direct model calls](https://docs.everruns.com/framework/direct-model-calls/)
-- [Model catalogs](https://docs.everruns.com/framework/models-and-providers/)
-- [Direct decision](https://docs.everruns.com/framework/direct-model-calls/)
-- [Credentials](https://docs.everruns.com/framework/models-and-providers/)
-- [Sessions](https://docs.everruns.com/framework/sessions/)
-- [Events and cancellation](https://docs.everruns.com/framework/events-and-cancellation/)
-- [Persistence](https://docs.everruns.com/framework/sessions/)
-- [Workspaces and environments](https://docs.everruns.com/framework/workspaces-and-environments/)
-- [Custom providers](https://docs.everruns.com/framework/models-and-providers/)
-- [Custom backends](https://docs.everruns.com/framework/custom-backends/)
+- [Framework guide](https://everruns.com/docs/framework/)
+- [Agents](https://everruns.com/docs/framework/agents/)
+- [Models and providers](https://everruns.com/docs/framework/models-and-providers/)
+- [Direct model calls](https://everruns.com/docs/framework/direct-model-calls/)
+- [Model catalogs](https://everruns.com/docs/framework/models-and-providers/)
+- [Direct decision](https://everruns.com/docs/framework/direct-model-calls/)
+- [Credentials](https://everruns.com/docs/framework/models-and-providers/)
+- [Sessions](https://everruns.com/docs/framework/sessions/)
+- [Events and cancellation](https://everruns.com/docs/framework/events-and-cancellation/)
+- [Persistence](https://everruns.com/docs/framework/sessions/)
+- [Workspaces and environments](https://everruns.com/docs/framework/workspaces-and-environments/)
+- [Custom providers](https://everruns.com/docs/framework/models-and-providers/)
+- [Custom backends](https://everruns.com/docs/framework/custom-backends/)
 - [API reference](https://docs.rs/everruns)
 
 ## License

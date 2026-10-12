@@ -88,8 +88,8 @@ added to the host tool list.
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-integrations)
-- [GitHub Scout capability](https://docs.everruns.com/capabilities/github-scout/)
-- [Everruns documentation](https://docs.everruns.com)
+- [GitHub Scout capability](https://everruns.com/docs/capabilities/github-scout/)
+- [Everruns documentation](https://everruns.com/docs)
 
 ## License
 

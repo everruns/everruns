@@ -44,7 +44,7 @@ impl FromRef<PersonalAccessTokenState> for AuthState {
 /// Personal access token response (full token shown only once at creation)
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PersonalAccessTokenResponse {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
@@ -59,7 +59,7 @@ pub struct PersonalAccessTokenResponse {
 /// Personal access token list item (without full token)
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PersonalAccessTokenListItem {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,

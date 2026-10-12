@@ -56,6 +56,39 @@ pub struct AgentGitHubStatus {
     /// e.g. `actions:read` for CI triggers on an App created before them.
     /// Empty when not connected.
     pub missing_permissions: Vec<String>,
+    /// GitHub accounts this organization already reached, as candidates for
+    /// `owner_org` when creating the App: installation accounts of its GitHub
+    /// connections and owners of its other agents' Apps. Organizations first,
+    /// then users, then accounts of unknown kind; by login within each.
+    pub suggested_owners: Vec<GitHubOwnerSuggestion>,
+}
+
+/// A GitHub account a new App could be created in.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, ToSchema)]
+pub struct GitHubOwnerSuggestion {
+    pub login: String,
+    pub kind: GitHubAccountKind,
+}
+
+/// What kind of GitHub account a login is.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum GitHubAccountKind {
+    Organization,
+    User,
+    /// Not recorded: connections made before the account type was stored,
+    /// and App owners.
+    Unknown,
+}
+
+impl GitHubAccountKind {
+    fn from_github(account_type: Option<&str>) -> Self {
+        match account_type {
+            Some(t) if t.eq_ignore_ascii_case("organization") => Self::Organization,
+            Some(t) if t.eq_ignore_ascii_case("user") => Self::User,
+            _ => Self::Unknown,
+        }
+    }
 }
 
 /// Where a new App is created and where the browser lands afterwards.
@@ -120,8 +153,12 @@ pub(crate) async fn status_for_agent(
     org_id: i64,
     agent: &AgentRow,
 ) -> Result<AgentGitHubStatus, CommandError> {
+    let suggested_owners = suggested_owners(db, org_id).await?;
     let Some(identity_id) = agent.virtual_user_id else {
-        return Ok(AgentGitHubStatus::default());
+        return Ok(AgentGitHubStatus {
+            suggested_owners,
+            ..AgentGitHubStatus::default()
+        });
     };
     let app = db.get_github_app_for_identity(org_id, identity_id).await?;
     let connection = db
@@ -146,7 +183,49 @@ pub(crate) async fn status_for_agent(
             .unwrap_or_default(),
         account: connection.and_then(|c| c.provider_username),
         repository_selection,
+        suggested_owners,
     })
+}
+
+/// GitHub accounts the org already knows, deduplicated case-insensitively.
+///
+/// Decision: suggestions come from stored data only, never a GitHub call, so
+/// the status stays cheap and offline, and only from this org's rows: a login
+/// another org connected must not leak here. A known kind wins over `unknown`
+/// when the same login appears twice (an App owner is stored without a type).
+async fn suggested_owners(
+    db: &StorageBackend,
+    org_id: i64,
+) -> Result<Vec<GitHubOwnerSuggestion>, CommandError> {
+    let mut by_login: std::collections::BTreeMap<String, GitHubOwnerSuggestion> =
+        std::collections::BTreeMap::new();
+    for row in db.list_known_github_accounts(org_id).await? {
+        let login = row.login.trim();
+        if login.is_empty() {
+            continue;
+        }
+        let kind = GitHubAccountKind::from_github(row.account_type.as_deref());
+        by_login
+            .entry(login.to_ascii_lowercase())
+            .and_modify(|known| {
+                if known.kind == GitHubAccountKind::Unknown && kind != GitHubAccountKind::Unknown {
+                    // The typed row came from GitHub's installation answer, so
+                    // its spelling is the account's own too.
+                    *known = GitHubOwnerSuggestion {
+                        login: login.to_string(),
+                        kind,
+                    };
+                }
+            })
+            .or_insert_with(|| GitHubOwnerSuggestion {
+                login: login.to_string(),
+                kind,
+            });
+    }
+    let mut owners: Vec<_> = by_login.into_values().collect();
+    // Stable within a kind: the map already ordered logins case-insensitively.
+    owners.sort_by_key(|owner| owner.kind);
+    Ok(owners)
 }
 
 /// Start connecting an identity: a manifest to create its App, or the

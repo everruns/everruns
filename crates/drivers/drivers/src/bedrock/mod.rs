@@ -28,6 +28,7 @@
 //! register_driver(&mut registry);
 //! ```
 
+mod cache;
 mod credential;
 #[cfg(feature = "bedrock-default-credentials")]
 mod default_chain;

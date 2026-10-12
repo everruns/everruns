@@ -105,7 +105,7 @@ each to a `TurnTaskDriver`.
 
 ## Documentation
 
-- [Durable execution](https://docs.everruns.com/explanation/durable-execution/)
+- [Durable execution](https://everruns.com/docs/explanation/durable-execution/)
 - [API reference](https://docs.rs/everruns-durable-engine)
 
 ## License

@@ -61,7 +61,7 @@ mode; `celld --dev` runs it offline. Other commands are serve's.
 
 ## Documentation
 
-- [Serve on celld](https://docs.everruns.com/framework/serve-celld/)
+- [Serve on celld](https://everruns.com/docs/framework/serve-celld/)
 - [API reference](https://docs.rs/everruns-serve-celld)
 
 ## License

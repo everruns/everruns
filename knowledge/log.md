@@ -21,6 +21,12 @@
   `ServerAppBuilder::classify_pat_routes`. A migration deletes legacy tokens
   whose stored scopes are not exactly `["*"]` (owner decision). See
   [Personal Access Token Scopes](security/pat-scopes.md).
+* **Docs moved to everruns.com/docs.** The docs Worker serves the Starlight
+  build on the `everruns.com/docs*` route beside the landing site, with
+  Markdown negotiation like landing; docs.everruns.com 301s every path there
+  and a daily check guards pages, agent files and redirects. The docs wear the
+  everruns.com header and footer (synced from landing) and their search merges
+  the landing index. See [Documentation Site Specification](ui/documentation.md).
 
 ## 2026-10-11
 

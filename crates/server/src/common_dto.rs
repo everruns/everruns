@@ -25,7 +25,7 @@ use utoipa::ToSchema;
 pub struct ErrorResponse {
     /// RFC 9457 problem type URI. Optional; identifies the problem class.
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
-    #[schema(example = "https://docs.everruns.com/errors/session_not_found")]
+    #[schema(example = "https://everruns.com/docs/errors/session_not_found")]
     pub type_uri: Option<String>,
     /// Short, human-readable summary of the problem (e.g. "Not Found").
     #[schema(example = "Session not found")]

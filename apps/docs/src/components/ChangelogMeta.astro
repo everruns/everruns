@@ -1,4 +1,5 @@
 ---
+import { docsPath } from "../lib/site";
 // Header for one changelog entry, under its title: date, products and kind,
 // where the change is available today, and its links. A superseded entry keeps
 // its text and opens with a pointer to what replaced it.
@@ -27,9 +28,10 @@ const successor = d.supersededBy
 const docs = await Promise.all(
   (d.links?.docs ?? []).map(async (href) => {
     if (!href.startsWith("/")) return { href, label: "Docs" };
+    // Frontmatter links are site-root paths (`/features/ui/`), like content links.
     const id = href.replace(/#.*$/, "").replace(/^\/|\/$/g, "");
     const page = await Promise.resolve(getEntry("docs", id)).catch(() => undefined);
-    return { href, label: page?.data.title ?? "Docs" };
+    return { href: docsPath(href), label: page?.data.title ?? "Docs" };
   }),
 );
 const prs = (d.links?.prs ?? []).map(prLink);
@@ -40,7 +42,7 @@ const prs = (d.links?.prs ?? []).map(prLink);
     <p class="changelog-superseded">
       {successor ? (
         <>
-          Superseded by <a href={`/changelog/${d.supersededBy}/`}>{successor.data.title}</a>.
+          Superseded by <a href={docsPath(`/changelog/${d.supersededBy}/`)}>{successor.data.title}</a>.
         </>
       ) : (
         <>Removed in {d.removedIn}.</>
@@ -52,7 +54,7 @@ const prs = (d.links?.prs ?? []).map(prLink);
 
 <div class="changelog-meta">
   <p class="changelog-meta-row">
-    <a href="/changelog/">Changelog</a>
+    <a href={docsPath("/changelog/")}>Changelog</a>
     <span aria-hidden="true">·</span>
     <time datetime={isoDate(d.date!)}>{formatDate(d.date!)}</time>
   </p>

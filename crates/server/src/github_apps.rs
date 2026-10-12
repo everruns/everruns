@@ -324,6 +324,10 @@ pub struct ManifestConversion {
 pub struct GitHubAccount {
     pub id: i64,
     pub login: String,
+    /// `User` or `Organization`. Recorded on connections so the agent page
+    /// can tell organizations apart when suggesting where an App lives.
+    #[serde(default, rename = "type")]
+    pub account_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

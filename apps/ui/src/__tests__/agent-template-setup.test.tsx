@@ -141,7 +141,7 @@ jest.mock("@/hooks/use-agent-github", () => ({
     data: { connected, app_created: connected, identity_id: "ident_1", account: "acme" },
   }),
   useConnectAgentGitHub: (_agentId: string, returnTo?: string) => ({
-    mutate: () => connect(returnTo),
+    mutateAsync: async (ownerOrg?: string) => connect(returnTo, ownerOrg),
     isPending: false,
   }),
   useGitHubRepositories: () => ({
@@ -193,7 +193,10 @@ describe("AgentTemplateSetup", () => {
     connected = false;
     render(<AgentTemplateSetup agentId="agent_1" templateName="pr-reviewer" />);
     fireEvent.click(await screen.findByRole("button", { name: "Connect GitHub" }));
-    expect(connect).toHaveBeenCalledWith("/agents/agent_1/setup?template=pr-reviewer");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Personal account" }));
+    await waitFor(() =>
+      expect(connect).toHaveBeenCalledWith("/agents/agent_1/setup?template=pr-reviewer", undefined),
+    );
     expect(screen.getByRole("button", { name: "Create trigger" })).toBeDisabled();
   });
 

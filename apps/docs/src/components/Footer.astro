@@ -1,18 +1,13 @@
 ---
+import { docsPath } from "../lib/site";
 import DefaultFooter from "@astrojs/starlight/components/Footer.astro";
 import { isChangelogEntry, productLabel } from "../lib/changelog";
+import siteFooter from "../site-chrome/footer.html?raw";
 
-// Cross-site links surfaced on every docs page. Keeping them here (rather than
-// per-page markdown) guarantees the marketing site and the bashkit project are
-// always one click away and discoverable to crawlers from any docs URL.
-const crossLinks = [
-  { label: "Everruns", href: "https://everruns.com" },
-  { label: "Bashkit", href: "https://bashkit.sh" },
-  { label: "GitHub", href: "https://github.com/everruns/everruns" },
-];
-
-// A changelog entry links the products it is about instead: where each one
-// lives, so a reader can go from "what changed" to the product itself.
+// Every page ends with the everruns.com site footer, shared with the landing
+// site (see Header.astro). A changelog entry also links the products it is
+// about: where each one lives, so a reader can go from "what changed" to the
+// product itself.
 const PRODUCT_HOME: Record<string, string> = {
   cloud: "/getting-started/cloud/",
   platform: "/getting-started/docker-compose/",
@@ -25,10 +20,11 @@ const PRODUCT_HOME: Record<string, string> = {
 };
 const entry = Astro.locals.starlightRoute.entry;
 const links = isChangelogEntry(entry)
-  ? (entry.data.products ?? []).map((p: string) => ({ label: productLabel(p), href: PRODUCT_HOME[p] }))
-  : crossLinks;
+  ? (entry.data.products ?? []).map((p: string) => ({ label: productLabel(p), href: docsPath(PRODUCT_HOME[p]) }))
+  : [];
 ---
 
+{links.length > 0 && (
 <div class="site-footer-links">
   <nav aria-label="Everruns sites">
     <ul>
@@ -44,10 +40,23 @@ const links = isChangelogEntry(entry)
     </ul>
   </nav>
 </div>
+)}
 
 <DefaultFooter {...Astro.props} />
 
+<div class="site-footer">
+  <Fragment set:html={siteFooter} />
+</div>
+
 <style>
+  .site-footer {
+    margin-block-start: 3rem;
+  }
+
+  .site-footer :global(.er-footer) {
+    border-top: 1px solid var(--sl-color-hairline-light);
+  }
+
   .site-footer-links {
     margin-block-end: 1rem;
     padding-block-end: 1rem;

@@ -2,6 +2,7 @@
 // Runs after starlight-openapi has populated the sidebar with real items.
 
 import { defineRouteMiddleware } from "@astrojs/starlight/route-data";
+import { docsPath } from "../src/lib/site";
 
 // The Reference topic index in the sidebar-topics config array.
 const REFERENCE_TOPIC_INDEX = 4;
@@ -29,6 +30,6 @@ export const onRequest = defineRouteMiddleware((context) => {
   // Patch sidebar-topics locals so the topic tabs render correctly.
   topicsData.isPageWithTopic = true;
   for (const topic of topicsData.topics) {
-    topic.isCurrent = topic.link === "/api/";
+    topic.isCurrent = topic.link === docsPath("/api/");
   }
 });

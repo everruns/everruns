@@ -78,7 +78,7 @@ pub(super) async fn rate(
 /// Suggest a risk label for every tool of an MCP server that has none.
 #[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct SuggestMcpToolLabels {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 

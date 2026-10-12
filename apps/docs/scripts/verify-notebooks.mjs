@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { docsUrl } from "../site.config.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const docsAppRoot = path.resolve(scriptDir, "..");
@@ -16,7 +17,7 @@ if (!existsSync(sitemapIndexPath)) {
 }
 
 const sitemapIndex = readFileSync(sitemapIndexPath, "utf8");
-if (!sitemapIndex.includes("<loc>https://docs.everruns.com/sitemap.xml</loc>")) {
+if (!sitemapIndex.includes(`<loc>${docsUrl("/sitemap.xml")}</loc>`)) {
   throw new Error("sitemap-index.xml does not reference sitemap.xml");
 }
 
@@ -34,7 +35,7 @@ for (const entry of Object.values(manifest)) {
     throw new Error(`Notebook download asset missing from build output: ${notebookAssetPath}`);
   }
 
-  if (!sitemap.includes(`<loc>https://docs.everruns.com${entry.route}</loc>`)) {
+  if (!sitemap.includes(`<loc>${docsUrl(entry.route)}</loc>`)) {
     throw new Error(`Notebook-backed docs page missing from sitemap.xml: ${entry.route}`);
   }
 }

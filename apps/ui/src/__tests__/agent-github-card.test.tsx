@@ -17,7 +17,14 @@ const base: api.AgentGitHubStatus = {
   account: null,
   repository_selection: null,
   missing_permissions: [],
+  suggested_owners: [],
 };
+
+/** Opens the Connect GitHub menu and picks `item`. */
+async function connectVia(item: string) {
+  fireEvent.click(await screen.findByRole("button", { name: "Connect GitHub" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: item }));
+}
 
 function renderCard() {
   const client = new QueryClient({
@@ -33,7 +40,7 @@ function renderCard() {
 describe("AgentGitHubCard", () => {
   beforeEach(() => jest.resetAllMocks());
 
-  it("submits a manifest form for create_app", async () => {
+  it("submits a manifest form for the personal account", async () => {
     mocked.getAgentGitHub.mockResolvedValue(base);
     mocked.connectAgentGitHub.mockResolvedValue({
       kind: "create_app",
@@ -42,7 +49,8 @@ describe("AgentGitHubCard", () => {
     });
     const submit = jest.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(() => {});
     renderCard();
-    fireEvent.click(await screen.findByRole("button", { name: "Connect GitHub" }));
+    expect(screen.queryByLabelText("GitHub organization")).not.toBeInTheDocument();
+    await connectVia("Personal account");
     await waitFor(() => expect(submit).toHaveBeenCalled());
     expect(mocked.connectAgentGitHub).toHaveBeenCalledWith("agent_1", {
       return_to: "/agents/agent_1?tab=integrations",
@@ -54,7 +62,36 @@ describe("AgentGitHubCard", () => {
     submit.mockRestore();
   });
 
-  it("creates the App in the organization the user names", async () => {
+  it("offers organizations the org already knows, without personal accounts", async () => {
+    mocked.getAgentGitHub.mockResolvedValue({
+      ...base,
+      suggested_owners: [
+        { login: "acme", kind: "organization" },
+        { login: "octocat", kind: "user" },
+        { login: "beta-labs", kind: "unknown" },
+      ],
+    });
+    mocked.connectAgentGitHub.mockResolvedValue({
+      kind: "create_app",
+      action: "https://github.com/organizations/beta-labs/settings/apps/new",
+      manifest: '{"name":"x"}',
+    });
+    const submit = jest.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(() => {});
+    renderCard();
+    fireEvent.click(await screen.findByRole("button", { name: "Connect GitHub" }));
+    expect(
+      (await screen.findAllByRole("menuitem")).map((item) => item.textContent?.trim()),
+    ).toEqual(["Personal account", "acme", "beta-labs", "Another organization…"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "beta-labs" }));
+    await waitFor(() => expect(submit).toHaveBeenCalled());
+    expect(mocked.connectAgentGitHub).toHaveBeenCalledWith("agent_1", {
+      return_to: "/agents/agent_1?tab=integrations",
+      owner_org: "beta-labs",
+    });
+    submit.mockRestore();
+  });
+
+  it("creates the App in another organization the user names", async () => {
     mocked.getAgentGitHub.mockResolvedValue(base);
     mocked.connectAgentGitHub.mockResolvedValue({
       kind: "create_app",
@@ -63,10 +100,13 @@ describe("AgentGitHubCard", () => {
     });
     const submit = jest.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(() => {});
     renderCard();
-    fireEvent.change(await screen.findByLabelText("GitHub organization (optional)"), {
+    await connectVia("Another organization…");
+    const connectButton = await screen.findByRole("button", { name: "Connect" });
+    expect(connectButton).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("GitHub organization"), {
       target: { value: " acme " },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Connect GitHub" }));
+    fireEvent.click(connectButton);
     await waitFor(() => expect(submit).toHaveBeenCalled());
     expect(mocked.connectAgentGitHub).toHaveBeenCalledWith("agent_1", {
       return_to: "/agents/agent_1?tab=integrations",

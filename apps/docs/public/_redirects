@@ -1,3 +1,13 @@
-# Redirect removed pages to closest relevant page
-/sre/runbooks/production-migrations/ /sre/admin-container/ 301
-/sre/runbooks/production-migrations /sre/admin-container/ 301
+# Redirect removed pages to closest relevant page. Paths are public URLs: the
+# docs Worker serves dist/ under /docs (scripts/stage-worker-assets.mjs).
+/docs/sre/runbooks/production-migrations/ /docs/sre/admin-container/ 301
+/docs/sre/runbooks/production-migrations /docs/sre/admin-container/ 301
+
+# BEGIN pages-only
+# The old docs.everruns.com Pages build serves dist/ at its root, but pages
+# link and load assets under /docs. Until docs.everruns.com redirects to
+# everruns.com/docs, this maps /docs/* back to the root so it keeps working.
+# stage-worker-assets.mjs drops this block: in the Worker, dist/ really lives
+# under /docs. Delete it once the Pages project is retired.
+/docs/* /:splat 200
+# END pages-only

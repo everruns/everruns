@@ -1,4 +1,5 @@
 ---
+import { docsPath } from "../lib/site";
 // Page title plus the "Applies to" row.
 //
 // Decision: the row reads the `appliesTo` frontmatter field (see
@@ -17,9 +18,9 @@ const appliesTo: string[] | undefined =
 
 // Same order and names as the Start here chooser.
 const targets = [
-  { id: "framework", label: "Framework", href: "/framework/quickstart/" },
-  { id: "platform", label: "Self-hosted", href: "/getting-started/docker-compose/" },
-  { id: "cloud", label: "Everruns Cloud", href: "/getting-started/cloud/" },
+  { id: "framework", label: "Framework", href: docsPath("/framework/quickstart/") },
+  { id: "platform", label: "Self-hosted", href: docsPath("/getting-started/docker-compose/") },
+  { id: "cloud", label: "Everruns Cloud", href: docsPath("/getting-started/cloud/") },
 ];
 ---
 
@@ -30,7 +31,7 @@ const targets = [
 {
   appliesTo && appliesTo.length > 0 && (
     <p class="applies-to">
-      <a class="applies-to-label" href="/getting-started/introduction/">
+      <a class="applies-to-label" href={docsPath("/getting-started/introduction/")}>
         Applies to
       </a>
       {targets.map((target) => {

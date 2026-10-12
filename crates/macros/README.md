@@ -41,7 +41,7 @@ let agent = Agent::builder()
 
 ## Documentation
 
-- [Framework tools and macros](https://docs.everruns.com/framework/agents/)
+- [Framework tools and macros](https://everruns.com/docs/framework/agents/)
 - [`everruns` API reference](https://docs.rs/everruns)
 - [Implementation API reference](https://docs.rs/everruns-macros)
 

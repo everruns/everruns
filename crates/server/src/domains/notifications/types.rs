@@ -21,7 +21,7 @@ pub struct ListNotificationsResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Notification {
     #[schema(value_type = String, example = "notification_01933b5a00007000800000000000001")]
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: NotificationId,
     /// Discriminator selecting the variant of this resource.
     #[schema(example = "health.issue")]
