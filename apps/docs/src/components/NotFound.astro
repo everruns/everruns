@@ -1,0 +1,189 @@
+---
+// The docs 404 (docs/404.mdx). It follows everruns.com's 404, the
+// three-tone "404" and the searching-rings illustration, and adds what a docs
+// reader needs next: search, and the pages most people come for.
+import { Image } from "astro:assets";
+import { docsPath } from "../lib/site";
+import illustration from "../assets/not-found.png";
+
+const pages = [
+  { label: "Start here", href: "/getting-started/introduction/" },
+  { label: "Framework quickstart", href: "/framework/quickstart/" },
+  { label: "Docker Compose", href: "/getting-started/docker-compose/" },
+  { label: "API reference", href: "/api/" },
+  { label: "Changelog", href: "/changelog/" },
+];
+---
+
+<div class="er-404 not-content">
+  <p class="er-404-code" aria-hidden="true">
+    <span class="d1">4</span><span class="d2">0</span><span class="d3">4</span>
+  </p>
+  <h1>Page not found</h1>
+  <p class="er-404-lede">
+    This page may have moved, or the link is out of date. Search the docs, or start from one of
+    these pages.
+  </p>
+
+  <Image
+    src={illustration}
+    alt="Three Everruns rings searching with a flashlight, a magnifying glass and a map"
+    widths={[480, 960]}
+    sizes="(max-width: 600px) 90vw, 480px"
+    class="er-404-art"
+  />
+
+  <button type="button" class="er-404-search" data-er-404-search>
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+    <span>Search the docs</span>
+    <kbd data-er-404-kbd>⌘K</kbd>
+  </button>
+
+  <nav class="er-404-pages" aria-label="Popular pages">
+    {pages.map((page) => <a href={docsPath(page.href)}>{page.label}</a>)}
+  </nav>
+
+  <p class="er-404-credit">Illustration generated with ChatGPT</p>
+</div>
+
+<script>
+  // Same search dialog as the docs bar; the dialog closes on any click outside
+  // it, so this click must not reach the window once it is open.
+  document.querySelector("[data-er-404-search]")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    document.querySelector<HTMLButtonElement>("site-search button[data-open-modal]")?.click();
+  });
+  const kbd = document.querySelector("[data-er-404-kbd]");
+  if (kbd && !/(Mac|iPhone|iPod|iPad)/i.test(navigator.platform)) kbd.textContent = "Ctrl K";
+</script>
+
+<style>
+  .er-404 {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 64px 16px 72px;
+    text-align: center;
+  }
+
+  /* everruns.com's 404: orange, gold and navy digits. */
+  .er-404-code {
+    display: flex;
+    gap: 0.04em;
+    margin: 0;
+    font-size: clamp(5rem, 16vw, 8.5rem);
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.04em;
+  }
+
+  .er-404-code span {
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .d1 {
+    background-image: linear-gradient(180deg, #ff6b35 0%, #f7931e 50%, #d4a43a 100%);
+  }
+
+  .d2 {
+    background-image: linear-gradient(180deg, #ffd700 0%, #d4a43a 100%);
+  }
+
+  .d3 {
+    background-image: linear-gradient(180deg, #1e90ff 0%, #0a1636 100%);
+  }
+
+  :global([data-theme="dark"]) .d3 {
+    background-image: linear-gradient(180deg, #6fb6ff 0%, #3b6fd8 100%);
+  }
+
+  .er-404 h1 {
+    margin: 16px 0 0;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: hsl(var(--foreground));
+  }
+
+  .er-404-lede {
+    max-width: 520px;
+    margin: 12px 0 0;
+    font-size: 16px;
+    line-height: 1.6;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .er-404 :global(.er-404-art) {
+    width: 100%;
+    max-width: 480px;
+    height: auto;
+    margin-top: 32px;
+    border: 1px solid hsl(var(--border));
+  }
+
+  .er-404-search {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    max-width: 420px;
+    height: 44px;
+    margin-top: 32px;
+    padding: 0 10px 0 14px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0;
+    background: hsl(var(--background));
+    box-shadow: var(--shadow-xs);
+    color: hsl(var(--muted-foreground));
+    font: inherit;
+    font-size: 14px;
+    cursor: pointer;
+  }
+
+  .er-404-search:hover {
+    border-color: hsl(var(--muted-foreground) / 0.4);
+  }
+
+  .er-404-search span {
+    flex: 1;
+    text-align: left;
+  }
+
+  .er-404-search kbd {
+    padding: 2px 6px;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--card));
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+
+  .er-404-pages {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px 20px;
+    margin-top: 20px;
+    font-size: 14px;
+  }
+
+  .er-404-pages a {
+    color: hsl(var(--foreground));
+    text-decoration: underline;
+    text-decoration-color: hsl(var(--border));
+    text-underline-offset: 3px;
+  }
+
+  .er-404-pages a:hover {
+    text-decoration-color: currentColor;
+  }
+
+  .er-404-credit {
+    margin-top: 40px;
+    font-size: 12px;
+    color: hsl(var(--muted-foreground));
+  }
+</style>

@@ -25,7 +25,14 @@ Three additions for agents running in Slack:
 
 ```json
 {
-  "capabilities": [{ "ref": "soft_approval" }, { "ref": "slack" }]
+  "capabilities": [
+    {
+      "ref": "soft_approval"
+    },
+    {
+      "ref": "slack"
+    }
+  ]
 }
 ```
 

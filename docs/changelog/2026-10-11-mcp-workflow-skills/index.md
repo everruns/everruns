@@ -18,8 +18,14 @@ guidance directly from the Everruns endpoint. Use `skills/list` under MCP
 guides creating and revising agents.
 
 ```json
-{ "jsonrpc": "2.0", "id": 1, "method": "skills/get",
-  "params": { "uri": "skill://everruns-mcp/SKILL.md" } }
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "skills/get",
+  "params": {
+    "uri": "skill://everruns-mcp/SKILL.md"
+  }
+}
 ```
 
 Each entry includes a complete file manifest with SHA-256 digests. The endpoint

@@ -30,7 +30,8 @@ frontmatter from a recent entry. Leave `release:` and `cloud:` out: `/prepare-re
   matters to both audiences, two paragraphs: **In the UI:** and **In code:**.
 - Show an example. A `feature`, `improvement`, `breaking` or `deprecation` entry carries the
   request, CLI command, config or code a reader would write (a short code block that compiles),
-  or a screenshot of the changed UI. A breaking change shows before and after.
+  or a screenshot of the changed UI. A breaking change shows before and after. JSON is valid and
+  pretty-printed with a two-space indent (`JSON.stringify(value, null, 2)`).
 - Link docs in the sentence that names them (`see [Prompt caching](/features/prompt-caching/)`),
   not as a separate list. Every `links.docs` page must be linked from the body; the check fails
   otherwise. `links.docs` must name pages that exist; `links.prs` uses `everruns/<repo>#<n>` and

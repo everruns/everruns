@@ -16,7 +16,11 @@ Agents with the File System capability get a `read_many_files` tool. It reads 2 
 
 ```json
 {
-  "paths": ["/workspace/README.md", "/workspace/Cargo.toml", "/workspace/src/lib.rs"],
+  "paths": [
+    "/workspace/README.md",
+    "/workspace/Cargo.toml",
+    "/workspace/src/lib.rs"
+  ],
   "limit": 200
 }
 ```

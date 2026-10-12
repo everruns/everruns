@@ -25,7 +25,15 @@ with every attempt and the raw response a click away. Two search tools on one ag
 **In code:** `WebSearch::auto()` in the Framework, or the capability config on a Platform agent:
 
 ```json
-{"ref": "web_search", "config": {"provider": "brave", "blocked_domains": ["pinterest.com"]}}
+{
+  "ref": "web_search",
+  "config": {
+    "provider": "brave",
+    "blocked_domains": [
+      "pinterest.com"
+    ]
+  }
+}
 ```
 
 See [Web Search](/capabilities/web-search/).
