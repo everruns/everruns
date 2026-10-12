@@ -31,12 +31,16 @@ export default function NewSandboxTemplatePage() {
       ...(description ? { description } : {}),
       spec,
     });
-    router.push(`/sandbox-templates/${created.id}`);
+    router.push(`/sandboxes/templates/${created.id}`);
   };
   return (
     <PageContainer>
       <PageBreadcrumb
-        items={[{ label: "Sandbox Templates", href: "/sandbox-templates" }, { label: "New" }]}
+        items={[
+          { label: "Sandboxes", href: "/sandboxes" },
+          { label: "Templates", href: "/sandboxes/templates" },
+          { label: "New" },
+        ]}
       />
       <PageMasthead
         icon={<SandboxTemplateIcon />}

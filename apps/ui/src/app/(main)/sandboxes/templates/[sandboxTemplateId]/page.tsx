@@ -57,7 +57,8 @@ function SandboxTemplateEditor({ template }: { template: SandboxTemplate }) {
     <PageContainer>
       <PageBreadcrumb
         items={[
-          { label: "Sandbox Templates", href: "/sandbox-templates" },
+          { label: "Sandboxes", href: "/sandboxes" },
+          { label: "Templates", href: "/sandboxes/templates" },
           { label: template.display_name },
         ]}
       />
@@ -108,7 +109,7 @@ function SandboxTemplateEditor({ template }: { template: SandboxTemplate }) {
               variant="outline"
               onClick={async () => {
                 await archive.mutateAsync(template.id);
-                router.push("/sandbox-templates");
+                router.push("/sandboxes/templates");
               }}
             >
               <Archive className="size-4" />

@@ -7,13 +7,15 @@
 // choosing its models is one task. One page with three tabs keeps that task in
 // one place (knowledge/ui/models-and-providers.md).
 //
-// The tab, provider filter and status filter live in the URL so links from
-// elsewhere (`/models?tab=providers`, `/models?provider=…`) land on the view
-// they name. `/settings/providers` redirects here.
+// Each tab is its own path (`/models`, `/models/providers`, `/models/defaults`)
+// and the provider and status filters are query params, so links from
+// elsewhere land on the view they name. This shell is the tabs' layout: the
+// drawers and notices it owns survive switching tabs. Old `?tab=` links and
+// `/settings/providers` redirect here (lib/tab-routes.ts).
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Cpu, Plus, PlugZap, SlidersHorizontal } from "lucide-react";
 import { ModelsIcon } from "@/components/icons/facet-icons";
 import { Button } from "@/components/ui/button";
@@ -48,8 +50,11 @@ import { updateModel } from "@/lib/api/providers";
 import type { DriverId, ModelWithProvider, Provider } from "@/lib/api/types";
 import { queryKeys } from "@/lib/query-keys";
 import { selectionChanges } from "@/lib/model-selection";
+import { tabFromPath, tabHref } from "@/lib/tab-routes";
 
-type Tab = "models" | "providers" | "defaults";
+const TABS = ["models", "providers", "defaults"] as const;
+type Tab = (typeof TABS)[number];
+const tabPath = (tab: Tab) => tabHref("/models", tab, "models");
 type PageNotice = { kind: "success" | "error"; text: string };
 
 function errorDetail(error: unknown): string {
@@ -62,13 +67,13 @@ type Selection =
   | { kind: "review"; models: ModelWithProvider[] }
   | { kind: "choose"; provider: Provider };
 
-export default function ModelsPage() {
+export function ModelsShell({ children }: { children?: ReactNode }) {
   usePageTitle("Models");
   const queryClient = useQueryClient();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const tabParam = searchParams.get("tab");
-  const tab: Tab = tabParam === "providers" || tabParam === "defaults" ? tabParam : "models";
+  const pathname = usePathname();
+  const tab = tabFromPath(pathname, "/models", TABS, "models");
   const providerId = searchParams.get("provider");
   const statusParam = searchParams.get("status");
 
@@ -110,7 +115,7 @@ export default function ModelsPage() {
       if (value === null) params.delete(key);
       else params.set(key, value);
     }
-    router.replace(`/models${params.size ? `?${params}` : ""}`, { scroll: false });
+    router.replace(`${tabPath(tab)}${params.size ? `?${params}` : ""}`, { scroll: false });
   };
 
   // Back from a provider's sign-in page (`?connected=<driver>`).
@@ -123,8 +128,8 @@ export default function ModelsPage() {
     });
     const params = new URLSearchParams(searchParams.toString());
     params.delete("connected");
-    router.replace(`/models${params.size ? `?${params}` : ""}`, { scroll: false });
-  }, [connected, router, searchParams]);
+    router.replace(`${pathname}${params.size ? `?${params}` : ""}`, { scroll: false });
+  }, [connected, pathname, router, searchParams]);
 
   const counts = useMemo(
     () => ({ models: models.length, providers: providers.length }),
@@ -202,18 +207,21 @@ export default function ModelsPage() {
   const tabs = [
     {
       value: "models",
+      href: tabPath("models"),
       label: "Models",
       icon: <Cpu className="icon-sharp size-3.5" />,
       count: counts.models,
     },
     {
       value: "providers",
+      href: tabPath("providers"),
       label: "Providers",
       icon: <PlugZap className="icon-sharp size-3.5" />,
       count: counts.providers,
     },
     {
       value: "defaults",
+      href: tabPath("defaults"),
       label: "Defaults",
       icon: <SlidersHorizontal className="icon-sharp size-3.5" />,
     },
@@ -236,12 +244,7 @@ export default function ModelsPage() {
         }
       />
 
-      <SectionTabs
-        aria-label="Models sections"
-        value={tab}
-        onValueChange={(value) => setParams({ tab: value === "models" ? null : value })}
-        items={tabs}
-      />
+      <SectionTabs aria-label="Models sections" value={tab} items={tabs} />
 
       {notice && (
         <Notice
@@ -275,7 +278,7 @@ export default function ModelsPage() {
             canManage={canManage}
             defaultModelId={org?.default_model_id ?? null}
             decisionDefault={decisionDefault.data ?? null}
-            onGoToDefaults={() => setParams({ tab: "defaults" })}
+            onGoToDefaults={() => router.push(tabPath("defaults"))}
             onConnect={() => setConnectOpen(true)}
             onAddModel={() => setAddModelOpen(true)}
             onReviewNew={(newModels) => {
@@ -322,7 +325,7 @@ export default function ModelsPage() {
         providers={providers}
         onConnected={(text) => {
           setNotice({ kind: "success", text });
-          setParams({ tab: "providers" });
+          router.push(tabPath("providers"));
         }}
       />
       <ModelSelectionDrawer
@@ -347,6 +350,7 @@ export default function ModelsPage() {
         error={selectionError}
       />
       <AddModelDialog providers={providers} open={addModelOpen} onOpenChange={setAddModelOpen} />
+      {children}
     </PageContainer>
   );
 }

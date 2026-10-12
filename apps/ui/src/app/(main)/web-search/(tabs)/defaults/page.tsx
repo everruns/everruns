@@ -1,0 +1,4 @@
+// Defaults tab: content lives in the shell (../layout.tsx).
+export default function WebSearchDefaultsPage() {
+  return null;
+}

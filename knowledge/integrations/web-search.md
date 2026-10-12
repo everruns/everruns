@@ -539,7 +539,7 @@ cited.
 Mockups: `/mnt/project-files/web-search/` in the project thread.
 
 - **Registries → Web search**, a new page beside Models, with **Providers** and
-  **Defaults** tabs mirroring Models. Providers shows a card per provider:
+  **Defaults** tabs mirroring Models (`/web-search`, `/web-search/defaults`). Providers shows a card per provider:
   native (which connected model providers support it), each search account
   (status, last check, searches this month, role in Automatic), free search,
   and a "Connect search provider" card that opens the existing connector form.

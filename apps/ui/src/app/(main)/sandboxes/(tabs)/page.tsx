@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { formatPageTitle } from "@/lib/page-title";
-import SandboxesPageClient from "./sandboxes-page-client";
+import { SandboxFleetTab } from "./fleet-tab";
 
 export const metadata: Metadata = {
   title: formatPageTitle("Sandboxes"),
 };
 
-export default function SandboxesPage() {
+export default function SandboxesFleetPage() {
   return (
     <Suspense>
-      <SandboxesPageClient />
+      <SandboxFleetTab />
     </Suspense>
   );
 }

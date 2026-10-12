@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import SandboxProviderAccountsPage from "@/app/(main)/sandbox-provider-accounts/page";
+import SandboxProviderAccountsPage from "@/app/(main)/sandboxes/(tabs)/accounts/page";
 
 const mutation = { mutateAsync: jest.fn(), isPending: false };
 

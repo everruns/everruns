@@ -44,10 +44,7 @@ export function NoIntelligenceAction({ canManage }: { canManage: boolean }) {
     );
   }
   return (
-    <Link
-      href="/models?tab=providers"
-      className={buttonVariants({ variant: "outline", size: "sm" })}
-    >
+    <Link href="/models/providers" className={buttonVariants({ variant: "outline", size: "sm" })}>
       Manage providers &amp; models
     </Link>
   );

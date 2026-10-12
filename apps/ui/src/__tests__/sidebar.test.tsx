@@ -541,28 +541,10 @@ describe("Sidebar", () => {
     expect(screen.getByText("Durable Execution")).toBeInTheDocument();
   });
 
-  it("keeps the Sandboxes group collapsed until one of its pages is open", () => {
+  it("links Sandboxes as one Building entry", () => {
+    mockPathname.mockReturnValue("/sandboxes/templates/template-1");
     render(<Sidebar />);
-    fireEvent.click(screen.getByRole("button", { name: "Sandboxes" }));
-    expect(screen.getByRole("link", { name: "Fleet" })).toHaveAttribute("href", "/sandboxes");
-    expect(screen.getByRole("link", { name: "Templates" })).toHaveAttribute(
-      "href",
-      "/sandbox-templates",
-    );
-  });
-
-  it.each(["/sandboxes", "/sandbox-templates/template-1"])(
-    "opens the Sandboxes group on %s",
-    (pathname) => {
-      mockPathname.mockReturnValue(pathname);
-      render(<Sidebar />);
-      expect(screen.getByRole("link", { name: "Fleet" })).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "Templates" })).toBeInTheDocument();
-    },
-  );
-
-  it("hides the collapsed Sandboxes links elsewhere", () => {
-    render(<Sidebar />);
+    expect(screen.getByRole("link", { name: "Sandboxes" })).toHaveAttribute("href", "/sandboxes");
     expect(screen.queryByRole("link", { name: "Fleet" })).not.toBeInTheDocument();
   });
 

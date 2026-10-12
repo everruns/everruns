@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import WebSearchPage from "@/app/(main)/web-search/page";
+import { WebSearchShell as WebSearchPage } from "@/app/(main)/web-search/(tabs)/web-search-shell";
 import { BRAVE_ACCOUNT_ID } from "@/app/dev/_fixtures/web-search-fixtures";
 
 let mockTab: string | null = null;
@@ -53,8 +53,8 @@ const mockCatalog = {
 };
 
 jest.mock("next/navigation", () => ({
-  usePathname: () => "/web-search",
-  useSearchParams: () => new URLSearchParams(mockTab ? `tab=${mockTab}` : ""),
+  usePathname: () => (mockTab ? `/web-search/${mockTab}` : "/web-search"),
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ push: jest.fn(), replace: mockRouterReplace }),
 }));
 

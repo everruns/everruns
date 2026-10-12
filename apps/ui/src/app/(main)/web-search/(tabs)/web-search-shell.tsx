@@ -3,11 +3,12 @@
 // Registries → Web search: where agents' searches go. Providers lists every
 // way the organization can search (model provider search, search accounts,
 // free search); Defaults edits the organization's `web_search_defaults`.
-// Mirrors the Models page: tabs in the URL, one "Connect" action in the
-// masthead. See knowledge/integrations/web-search.md (UI).
+// Mirrors the Models page: each tab is its own path (`/web-search`,
+// `/web-search/defaults`), one "Connect" action in the masthead. This shell is
+// the tabs' layout, so its dialogs and notices survive switching tabs. See knowledge/integrations/web-search.md (UI).
 
-import { useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useMemo, useState, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Globe, Plus, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,16 +37,18 @@ import { useInvalidateSearchProviders, useSearchProviders } from "@/hooks/use-se
 import { useConnectionProviders } from "@/hooks/use-user-connections";
 import type { OrganizationConnection } from "@/lib/api/organization-connections";
 import type { ConnectionProvider } from "@/lib/api/types";
+import { tabFromPath, tabHref } from "@/lib/tab-routes";
 import { useOrg } from "@/providers/org-provider";
 
-type Tab = "providers" | "defaults";
+const TABS = ["providers", "defaults"] as const;
+type Tab = (typeof TABS)[number];
+const tabPath = (tab: Tab) => tabHref("/web-search", tab, "providers");
 type PageNotice = { kind: "success" | "error"; text: string };
 
-export default function WebSearchPage() {
+export function WebSearchShell({ children }: { children?: ReactNode }) {
   usePageTitle("Web search");
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const tab: Tab = searchParams.get("tab") === "defaults" ? "defaults" : "providers";
+  const tab = tabFromPath(usePathname(), "/web-search", TABS, "providers");
   const { hasRole } = useOrg();
   const isAdmin = hasRole("admin");
 
@@ -72,12 +75,7 @@ export default function WebSearchPage() {
     account?: OrganizationConnection;
   } | null>(null);
 
-  const setTab = (value: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (value === "providers") params.delete("tab");
-    else params.set("tab", value);
-    router.replace(`/web-search${params.size ? `?${params}` : ""}`, { scroll: false });
-  };
+  const setTab = (value: Tab) => router.push(tabPath(value));
 
   const connect = () => {
     if (searchConnectors.length === 1) setEditing({ provider: searchConnectors[0] });
@@ -106,16 +104,17 @@ export default function WebSearchPage() {
       <SectionTabs
         aria-label="Web search sections"
         value={tab}
-        onValueChange={setTab}
         items={[
           {
             value: "providers",
+            href: tabPath("providers"),
             label: "Providers",
             icon: <Globe className="icon-sharp size-3.5" />,
             count: catalog.data ? providerCount : undefined,
           },
           {
             value: "defaults",
+            href: tabPath("defaults"),
             label: "Defaults",
             icon: <SlidersHorizontal className="icon-sharp size-3.5" />,
           },
@@ -239,6 +238,7 @@ export default function WebSearchPage() {
           setTab("providers");
         }}
       />
+      {children}
     </PageContainer>
   );
 }

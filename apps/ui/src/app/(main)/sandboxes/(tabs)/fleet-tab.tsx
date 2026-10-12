@@ -1,15 +1,18 @@
 "use client";
 
-// Every Sandbox in the organization, across providers and states.
+// Sandboxes tab: every Sandbox in the organization, across providers and
+// states. The page header and tabs come from the shell (sandboxes-shell.tsx).
 //
 // Two views over the same filters: a table for "what exists and in what
-// state", and a timeline for "when was each one running". Filters live in the
-// URL, so a filtered view (for example Needs attention) can be bookmarked and
-// shared.
+// state", and a timeline for "when was each one running". The view is a
+// toggle beside the filters, not a second row of tabs under the page's tabs.
+// Filters live in the URL, so a filtered view (for example Needs attention)
+// can be bookmarked and shared.
 
 import { SandboxIcon } from "@/components/icons/facet-icons";
 import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { ChartGantt, Rows3 } from "lucide-react";
 
 import { usePageTitle } from "@/hooks";
 import { useSandboxTargets } from "@/hooks/use-sandbox-templates";
@@ -19,14 +22,7 @@ import {
   useSandboxTimeline,
 } from "@/hooks/use-sandbox-fleet";
 import type { SandboxFleetFilters } from "@/lib/api/sandboxes";
-import {
-  EmptyState,
-  PageBreadcrumb,
-  PageContainer,
-  PageControlStrip,
-  PageMasthead,
-  SectionTabs,
-} from "@/components/layout";
+import { EmptyState, PageControlStrip } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import {
@@ -37,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import { SandboxDetailDrawer } from "@/components/sandboxes/sandbox-detail-drawer";
 import { providerLabel } from "@/components/sandboxes/sandbox-display";
 import { SandboxFleetSummary } from "@/components/sandboxes/sandbox-fleet-summary";
@@ -47,7 +44,7 @@ const PAGE_SIZE = 50;
 const WINDOWS = { "24h": 24 * 3_600_000, "7d": 7 * 86_400_000 } as const;
 type WindowKey = keyof typeof WINDOWS;
 
-export default function SandboxesPageClient() {
+export function SandboxFleetTab() {
   usePageTitle("Sandboxes");
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -141,14 +138,7 @@ export default function SandboxesPageClient() {
   const items = fleet.data?.items ?? [];
 
   return (
-    <PageContainer>
-      <PageBreadcrumb items={[{ label: "Fleet" }]} />
-      <PageMasthead
-        icon={<SandboxIcon />}
-        title="Sandboxes"
-        description="Every Sandbox your Sessions ran in, across providers: running, paused, lost and deleted."
-      />
-
+    <>
       <PageControlStrip>
         <SandboxFleetSummary
           stats={stats.data}
@@ -160,16 +150,32 @@ export default function SandboxesPageClient() {
       </PageControlStrip>
 
       <div className="flex flex-col gap-4">
-        <SectionTabs
-          value={view}
-          onValueChange={(next) => update({ view: next === "timeline" ? "timeline" : null })}
-          items={[
-            { value: "table", label: "Table", count: total },
-            { value: "timeline", label: "Timeline" },
-          ]}
-        />
-
         <div className="flex flex-wrap items-center gap-3">
+          <div role="radiogroup" aria-label="View" className="inline-flex border">
+            {(
+              [
+                ["table", "Table", Rows3],
+                ["timeline", "Timeline", ChartGantt],
+              ] as const
+            ).map(([value, label, Icon]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={view === value}
+                onClick={() => update({ view: value === "timeline" ? "timeline" : null })}
+                className={cn(
+                  "inline-flex h-9 items-center gap-1.5 px-3 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                  view === value
+                    ? "bg-muted text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Icon className="icon-sharp size-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
           <SearchInput
             value={search}
             onChange={(event) => {
@@ -284,6 +290,6 @@ export default function SandboxesPageClient() {
       </div>
 
       <SandboxDetailDrawer sandboxId={selectedId} onClose={() => select(null)} />
-    </PageContainer>
+    </>
   );
 }
