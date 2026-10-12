@@ -243,6 +243,8 @@ jobs:
               # the publish-set list.
               - 'scripts/release-preflight.py'
               - '.github/crates-publish-set.txt'
+              # scripts/test-chaos-harness.sh imports the chaos harness modules.
+              - 'scripts/chaos/**'
               # scripts/test-publish-crates-order.sh reads the publish workflow
               # and the workspace member manifests it publishes.
               - '.github/workflows/publish-crates.yml'
