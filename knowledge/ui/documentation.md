@@ -218,6 +218,9 @@ sites build and deploy independently and no request passes through both.
 5. `apps/docs/scripts/check-live.mjs` checks every sitemap page and its
    Markdown twin, the agent files, content negotiation and, with `--old`, each
    old URL's redirect. It runs after every deploy and daily
+6. `scripts/lib/check-docs-host.sh` (pre-push and CI) fails on any new link
+   to docs.everruns.com outside the files about the move itself; the
+   maintenance skill sweeps the sibling repositories for the same
 
 ### Development
 
