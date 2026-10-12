@@ -93,11 +93,14 @@ jobs:
             mirror.gcr.io/library/postgres:17-alpine \
             -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all \
             -c max_connections=400
+          # Probe over TCP: the image's init phase runs a temporary server on
+          # the Unix socket only, then restarts it, so a socket probe can pass
+          # before the real server is up.
           for _ in $(seq 60); do
-            docker exec chaos-postgres pg_isready -U everruns -d everruns_chaos && break
+            docker exec chaos-postgres pg_isready -h 127.0.0.1 -U everruns -d everruns_chaos && break
             sleep 1
           done
-          docker exec chaos-postgres psql -U everruns -d everruns_chaos \
+          docker exec chaos-postgres psql -h 127.0.0.1 -U everruns -d everruns_chaos \
             -c 'CREATE EXTENSION IF NOT EXISTS pg_stat_statements'
 
       - name: Install fast linker and psql
