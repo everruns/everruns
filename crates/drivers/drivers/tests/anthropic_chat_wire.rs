@@ -1110,11 +1110,12 @@ async fn cached_round_trip(
     mount_sse(&server, body).await;
 
     let mut call_config = config("claude-sonnet-5-5");
-    let mut cache = PromptCacheConfig::default();
-    cache.enabled = true;
-    cache.strategy = strategy;
-    cache.retention = retention;
-    call_config.prompt_cache = Some(cache);
+    call_config.prompt_cache = Some(PromptCacheConfig {
+        enabled: true,
+        strategy,
+        retention,
+        ..Default::default()
+    });
     call_config.tools = vec![ToolDefinition::function(
         "lookup",
         "look something up",

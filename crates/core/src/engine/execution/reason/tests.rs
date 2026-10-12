@@ -718,9 +718,10 @@ fn test_build_request_options_for_openai_prompt_cache() {
 #[test]
 fn request_options_record_the_retention_each_provider_actually_gets() {
     let mut config = LlmCallConfig::new("claude-sonnet-5-5");
-    let mut cache = PromptCacheConfig::default();
-    cache.enabled = true;
-    config.prompt_cache = Some(cache);
+    config.prompt_cache = Some(PromptCacheConfig {
+        enabled: true,
+        ..Default::default()
+    });
     let retention = |config: &LlmCallConfig, provider: &str| {
         build_request_options(config, provider)
             .and_then(|options| options.prompt_cache)
