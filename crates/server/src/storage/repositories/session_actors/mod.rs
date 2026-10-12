@@ -164,7 +164,7 @@ pub const LEGACY_TURN_ACTIVITY_TYPES: [&str; 3] = ["process_input", "reason", "a
 
 impl Database {
     /// TEMPORARY (actor-based design, step 6c): hand old-path turn work that
-    /// appeared after migration 222 ran to session actors. Step 7 deletes it
+    /// appeared after the cutover migration ran to session actors. Step 7 deletes it
     /// together with the per-step turn workflow.
     ///
     /// During a rolling deploy a server or worker of the previous release can
@@ -172,7 +172,7 @@ impl Database {
     /// under a `turn_workflow`) after the cutover migration converted the
     /// in-flight ones: an old server starting a turn, or an old worker
     /// finishing a step and enqueueing the next. Nothing of this release runs
-    /// them. This pass does what migration 222 did, for at most `limit` of
+    /// them. This pass does what the cutover migration did, for at most `limit` of
     /// them: every pending one, and every claimed one whose claim went
     /// silent for `stale_claim` (its old worker died; a live one finishes its
     /// step and its next task is swept in turn). It marks the session's actor

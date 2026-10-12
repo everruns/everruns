@@ -3,7 +3,7 @@
 //! per-step turn workflow.
 //!
 //! Decisions:
-//! - Migration 222 hands the turn tasks in flight at migration time to
+//! - The cutover migration (`*_session_actor_cutover.sql`) hands the turn tasks in flight at migration time to
 //!   session actors. During a rolling deploy, replicas of the previous
 //!   release keep running for a while: an old server can still start a turn
 //!   as a `process_input` task, and an old worker that finishes a step
