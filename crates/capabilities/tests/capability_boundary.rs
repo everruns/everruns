@@ -24,6 +24,7 @@ const HOSTED_IDS: &[&str] = &[
     "knowledge_base",
     "knowledge_index",
     "citation_retrieval",
+    "citation_web",
     "citation_verification",
     "openai_agents_api_runtime",
     "platform",

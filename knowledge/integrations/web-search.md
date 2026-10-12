@@ -490,15 +490,26 @@ Web search is the `citation_web` feed of [Citations](../runtime-resources/citati
 
 - function results: when the capability is on, the post-generation annotation
   hook maps the URLs (or `w` ids) the model cited back to the result entries
-  and attaches `TextAnnotation`s with origin `web_search`, title, url and
-  snippet;
+  and attaches `TextAnnotation`s with origin `citation_web` (the capability id,
+  as the citations spec requires of every feed), title, url, snippet, and the
+  result id as `external_id`. Matching is exact (URL equal after normalizing
+  scheme and host case, fragment and trailing slash; or an equal id); the span
+  is the sentence holding the citation, or the sentence before a citation that
+  stands alone;
 - native results: the Anthropic adapter reads text-block `citations` of type
-  `web_search_result_location`, OpenAI reads `url_citation` annotations, Gemini
-  reads grounding supports, and each becomes the same annotation.
+  `web_search_result_location`, OpenAI and OpenRouter read `url_citation`
+  annotations, Gemini reads grounding supports. Drivers report them on the
+  completion as provider-neutral web citations with char spans; the same hook
+  turns each into the same annotation, so they too appear only with the
+  capability on. The result id is derived from the URL for these as well.
 
-The chat then shows the numbered source chips that retrieval citations already
-use, with no web-specific UI. `citation_verification` works on these the same
-way.
+The capability is opt-in, like `citation_retrieval`: the harness presets that
+turn on web search do not turn on citations. The chat then shows the numbered
+source chips that retrieval citations already use, with no web-specific UI.
+`citation_verification` works on these the same way. Results of the
+Brave-specific `brave_web_search` share the `results[].url` shape and are
+matched by URL; DuckDuckGo instant answers are not search results and are not
+cited.
 
 ## UI
 

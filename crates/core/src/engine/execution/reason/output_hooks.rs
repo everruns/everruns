@@ -34,6 +34,16 @@ pub(super) fn client_visible_guardrail_text(
     guarded
 }
 
+/// The provider's own web citations for the `citation_web` feed, if the
+/// stream completed with any.
+pub(super) fn web_citations(
+    metadata: &Option<everruns_contracts::driver_registry::LlmCompletionMetadata>,
+) -> &[everruns_contracts::web_citation::WebCitation] {
+    metadata
+        .as_ref()
+        .map_or(&[], |m| m.web_citations.as_slice())
+}
+
 pub(super) struct OutputHooks {
     pub(super) streaming: Vec<(String, serde_json::Value, Arc<dyn OutputGuardrail>)>,
     pub(super) post_generation: Vec<PostGenerationProvider>,

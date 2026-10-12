@@ -288,6 +288,84 @@ async fn searches_stream_as_hosted_calls_and_are_counted() {
     assert_eq!(content[2]["citations"][0]["encrypted_index"], "Eo8BCioI");
 }
 
+#[tokio::test]
+async fn cited_text_blocks_become_web_citations_in_streamed_chars() {
+    // Text before the search and the cited block after it, both non-ASCII: the
+    // citation spans the cited block in chars of the concatenated answer.
+    let block = |index: u32, block: Value| {
+        sse_event(
+            "content_block_start",
+            json!({ "type": "content_block_start", "index": index, "content_block": block }),
+        )
+    };
+    let delta = |index: u32, delta: Value| {
+        sse_event(
+            "content_block_delta",
+            json!({ "type": "content_block_delta", "index": index, "delta": delta }),
+        )
+    };
+    let body = [
+        sse_event(
+            "message_start",
+            json!({ "type": "message_start", "message": { "id": "msg_3", "usage": { "input_tokens": 9 } } }),
+        ),
+        block(0, json!({ "type": "text", "text": "" })),
+        delta(0, json!({ "type": "text_delta", "text": "Grüße 😀! " })),
+        block(1, json!({ "type": "server_tool_use", "id": "srvtoolu_1", "name": "web_search",
+                         "input": { "query": "rust" } })),
+        block(2, json!({ "type": "web_search_tool_result", "tool_use_id": "srvtoolu_1", "content": [
+            { "type": "web_search_result", "url": "https://blog.rust-lang.org/", "title": "Rust Blog",
+              "encrypted_content": "E" } ] })),
+        block(3, json!({ "type": "text", "text": "", "citations": [] })),
+        delta(3, json!({ "type": "citations_delta", "citation": {
+            "type": "web_search_result_location", "url": "https://blog.rust-lang.org/",
+            "title": "Rust Blog", "encrypted_index": "Eo8B", "cited_text": "Rust 1.95" } })),
+        delta(3, json!({ "type": "text_delta", "text": "Rust 1.95 " })),
+        delta(3, json!({ "type": "text_delta", "text": "ist da 🎉." })),
+        sse_event(
+            "message_delta",
+            json!({ "type": "message_delta", "delta": { "stop_reason": "end_turn" }, "usage": { "output_tokens": 9 } }),
+        ),
+        sse_event("message_stop", json!({ "type": "message_stop" })),
+    ]
+    .concat();
+    let server = MockServer::builder().start().await;
+    mount(&server, body).await;
+
+    let events = send(
+        &server,
+        ask(),
+        &config("claude-haiku-5-5", Some(NativeWebSearch::default())),
+    )
+    .await;
+    let text: String = events
+        .iter()
+        .filter_map(|event| match event {
+            LlmStreamEvent::TextDelta(text) => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(text, "Grüße 😀! Rust 1.95 ist da 🎉.");
+    let Some(LlmStreamEvent::Done(metadata)) = events.last() else {
+        panic!("expected done");
+    };
+    let [citation] = metadata.web_citations.as_slice() else {
+        panic!("expected one citation: {:?}", metadata.web_citations);
+    };
+    assert_eq!(citation.url, "https://blog.rust-lang.org/");
+    assert_eq!(citation.title.as_deref(), Some("Rust Blog"));
+    assert_eq!(citation.snippet.as_deref(), Some("Rust 1.95"));
+    let span = citation.span.as_ref().unwrap();
+    let covered: String = text
+        .chars()
+        .skip(span.start)
+        .take(span.end - span.start)
+        .collect();
+    assert_eq!(covered, "Rust 1.95 ist da 🎉.");
+    assert_eq!(span.text, covered);
+    assert_eq!(span.start, 9);
+}
+
 fn searched_history() -> Vec<Message> {
     let preserved = json!([
         { "type": "server_tool_use", "id": "srvtoolu_1", "name": "web_search",

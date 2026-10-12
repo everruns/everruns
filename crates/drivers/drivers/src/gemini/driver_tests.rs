@@ -534,3 +534,52 @@ async fn native_search_request_sends_google_search_instead_of_the_function() {
         }
     }
 }
+
+#[test]
+fn grounding_supports_become_web_citations_over_the_streamed_answer() {
+    let chunk = |text: &str, grounding: Option<Value>| GeminiStreamResponse {
+        model_version: None,
+        candidates: Some(vec![
+            serde_json::from_value(json!({
+                "content": { "parts": [{ "text": text }] },
+                "finishReason": grounding.as_ref().map(|_| "STOP"),
+                "groundingMetadata": grounding,
+            }))
+            .unwrap(),
+        ]),
+        usage_metadata: None,
+    };
+    // Byte offsets into the whole answer: "Grüße 😀! " is 14 bytes, 9 chars.
+    let grounding = json!({
+        "webSearchQueries": ["rust 1.95"],
+        "groundingChunks": [{ "web": { "uri": "https://vertexaisearch.example/r", "title": "rust-lang.org" } }],
+        "groundingSupports": [{ "segment": { "startIndex": 14, "endIndex": 31, "text": "Rust 1.95 ist da." },
+                                "groundingChunkIndices": [0] }]
+    });
+    for grounded in [true, false] {
+        let mut state = GeminiStreamState {
+            model: "gemini-3.8-flash".into(),
+            grounded,
+            ..Default::default()
+        };
+        state.response(chunk("Grüße 😀! ", None));
+        state.response(chunk("Rust 1.95 ist da.", Some(grounding.clone())));
+        state.finish();
+        let Some(LlmStreamEvent::Done(metadata)) = state.pending.back() else {
+            panic!("expected done");
+        };
+        if !grounded {
+            // Not a grounded request: nothing to cite.
+            assert!(metadata.web_citations.is_empty());
+            continue;
+        }
+        let [citation] = metadata.web_citations.as_slice() else {
+            panic!("expected one citation: {:?}", metadata.web_citations);
+        };
+        assert_eq!(citation.url, "https://vertexaisearch.example/r");
+        assert_eq!(citation.title.as_deref(), Some("rust-lang.org"));
+        let span = citation.span.as_ref().unwrap();
+        assert_eq!((span.start, span.end), (9, 26));
+        assert_eq!(span.text, "Rust 1.95 ist da.");
+    }
+}

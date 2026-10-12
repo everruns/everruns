@@ -213,6 +213,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "web_search" => Some("web-search"),
         "ask_user" => Some("ask-user"),
         "citation_retrieval" => Some("citation-retrieval"),
+        "citation_web" => Some("citation-web"),
         "citation_verification" => Some("citation-verification"),
         "claude_tool_search" => Some("tool-search"),
         "docker_container" => Some("docker"),
