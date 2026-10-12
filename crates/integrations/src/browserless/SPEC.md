@@ -6,7 +6,7 @@ The Browserless capability integrates [Browserless](https://www.browserless.io/)
 
 Two operating modes:
 - **One-shot** (default): Each tool call opens a fresh guarded browser over CDP, destroyed when the call disconnects. No state, no cleanup.
-- **Persistent** (CDP sessions): `browserless_open_browser` opens a persistent browser via Chrome DevTools Protocol WebSocket. Subsequent tools reuse it, preserving login state and cookies. `browserless_close_browser` releases the browser.
+- **Persistent** (CDP sessions): `browserless_open_browser` opens a persistent browser via Chrome DevTools Protocol WebSocket. Subsequent tools reuse it, preserving login state and cookies. `browserless_close_browser` releases the browser. Every tool on this browser, the `browser` tool included, shares one concurrency class, so a batch of calls applies in order instead of racing on the same page.
 
 Both modes use the network guard below. The REST endpoints remain only as a fallback for Browserless cloud tokens that cannot open CDP sessions.
 
@@ -149,7 +149,7 @@ Take a PNG screenshot of a page.
 
 - **Parameters**: `url` (required), `full_page` (optional, default true), `selector` (optional), `wait_for_selector` (optional), `wait_for_timeout` (optional)
 - **Returns**: `{ url, format, size_bytes, image_base64 }`
-- **Session-aware**: CDP `Page.captureScreenshot` (clipped to the element for `selector`) on the persistent or a one-shot browser.
+- **Session-aware**: CDP `Page.captureScreenshot` (clipped to the element for `selector`) on the persistent or a one-shot browser. On the persistent browser it reads in a tab of its own, closed afterwards, so the page other tools are working in does not move.
 
 ### browserless_content
 
@@ -157,7 +157,7 @@ Get fully rendered HTML/DOM content.
 
 - **Parameters**: `url` (required), `wait_for_selector` (optional), `wait_for_timeout` (optional), `best_attempt` (optional)
 - **Returns**: `{ url, content, size_bytes, truncated }`
-- **Session-aware**: CDP `Runtime.evaluate` on the persistent or a one-shot browser. Truncates at 100KB.
+- **Session-aware**: CDP `Runtime.evaluate` on the persistent or a one-shot browser, in its own tab on the persistent one (as `browserless_screenshot`). Truncates at 100KB.
 
 ### browserless_scrape
 
@@ -165,6 +165,7 @@ Extract structured data using CSS selectors, in the Browserless `/scrape` respon
 
 - **Parameters**: `url` (required), `elements` (required, array of `{selector}`), `wait_for_selector` (optional), `wait_for_timeout` (optional)
 - **Returns**: `{ url, data }`
+- **Session-aware**: like `browserless_content`, in its own tab on the persistent browser.
 
 ### browserless_interact
 

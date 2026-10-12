@@ -175,3 +175,46 @@ fn long_output_is_cut_with_a_hint() {
     assert!(text.ends_with("characters. Use depth.]"));
     assert_eq!(Output::default().finish(""), "(empty)");
 }
+
+fn focused(node: &mut Value) {
+    node["properties"] = json!([
+        { "name": "focusable", "value": { "type": "booleanOrUndefined", "value": true } },
+        { "name": "focused", "value": { "type": "booleanOrUndefined", "value": true } }
+    ]);
+}
+
+#[test]
+fn reports_the_focused_element_for_key_presses() {
+    let mut link = ax("3", Some("1"), &[], "link", "Vision");
+    focused(&mut link);
+    let raw = vec![
+        ax("1", None, &["2", "3"], "RootWebArea", "Home"),
+        ax("2", Some("1"), &[], "link", "Home"),
+        link,
+    ];
+    let (nodes, order) = parse_ax_nodes(&raw);
+    let tree = PageTree {
+        root: Some("1".into()),
+        nodes,
+        order,
+        ..PageTree::default()
+    };
+    assert_eq!(focused_label(&tree).as_deref(), Some("link \"Vision\""));
+    // read_page shows the state too, so a re-read agrees with the key report.
+    assert!(tree.nodes["3"].states.contains(&"focused".to_string()));
+}
+
+#[test]
+fn focus_on_the_document_reports_no_element() {
+    let mut root = ax("1", None, &["2"], "RootWebArea", "Home");
+    focused(&mut root);
+    let raw = vec![root, ax("2", Some("1"), &[], "link", "Home")];
+    let (nodes, order) = parse_ax_nodes(&raw);
+    let tree = PageTree {
+        root: Some("1".into()),
+        nodes,
+        order,
+        ..PageTree::default()
+    };
+    assert_eq!(focused_label(&tree), None);
+}
