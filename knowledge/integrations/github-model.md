@@ -306,7 +306,10 @@ Each step is one PR unless noted, and leaves everything working.
 
 ## Open questions
 
-1. **Who may opt the org in to the shared App?** Proposed: org admins only.
+1. **Who may link a GitHub installation of the shared App to an Everruns
+   org?** The App itself is global, created once by the deployment. What each
+   org adds is an installation on its GitHub account, and the agreement that
+   its agents may act as `everruns[bot]` there. Proposed: org admins only.
 2. **Should a personal agent ever post as its bot?** Proposed: no. A personal
    agent acts as `user` throughout; a team bot acts as `service` throughout;
    `user_or_service` stays an explicit, labelled choice for MCP only.
