@@ -79,7 +79,6 @@ impl BuiltInHarnessPreset {
             Self::Conversation => vec![
                 CapabilityRef::new("ask_user"),
                 CapabilityRef::new("message_metadata"),
-                web_search(),
             ],
             Self::Worker => vec![
                 CapabilityRef::new("session_file_system"),
@@ -123,7 +122,8 @@ fn web_search() -> CapabilityRef {
 ///
 /// The hosted row stays, deprecated, for existing bindings and the custom
 /// harnesses adopted from examples before the tree changed. It keeps exactly
-/// what it declared, under Conversation, so nothing bound to it loses a tool.
+/// what it had under Conversation, so nothing bound to it loses a tool; web
+/// search moved here when Conversation dropped it.
 pub fn legacy_worker_base_capabilities() -> Vec<CapabilityRef> {
     vec![
         CapabilityRef::new("session_file_system"),
@@ -134,6 +134,7 @@ pub fn legacy_worker_base_capabilities() -> Vec<CapabilityRef> {
         CapabilityRef::new("tool_output_distillation"),
         CapabilityRef::with_config("parallel_tool_calls", serde_json::json!({"mode": "prefer"})),
         CapabilityRef::new("soft_approval"),
+        web_search(),
     ]
 }
 
@@ -242,8 +243,9 @@ mod tests {
             assert_eq!(ids.contains(&"session_file_system"), worker_kit);
             // Chat affordances stay on Conversation; workers do not inherit it.
             assert_eq!(ids.contains(&"ask_user"), preset == Conversation);
-            // Every agent above Base can search the web out of the box.
-            assert_eq!(ids.contains(&"web_search"), preset != Base);
+            // Workers search the web out of the box. Conversation stays plain
+            // chat: an assistant that should search opts in on the agent.
+            assert_eq!(ids.contains(&"web_search"), worker_kit);
             for opt_in in [
                 "web_fetch",
                 "session_storage",

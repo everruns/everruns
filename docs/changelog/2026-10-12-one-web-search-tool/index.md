@@ -11,8 +11,8 @@ links:
   prs: [everruns/everruns#4551, everruns/everruns#4584, everruns/everruns#4605, everruns/everruns#4611, everruns/everruns#4614, everruns/everruns#4621]
 ---
 
-Agents now search with one `web_search` tool, whichever provider answers. The Conversation and
-Worker harnesses include it, and keyless free search answers whenever the chosen provider cannot.
+Agents now search with one `web_search` tool, whichever provider answers. The Worker
+harnesses include it (a Conversation agent adds it on the agent), and keyless free search answers whenever the chosen provider cannot.
 On OpenAI, Anthropic, Gemini and OpenRouter models with their own search, Automatic uses it
 first, billed by the provider and counted on the model call's cost.
 

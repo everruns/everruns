@@ -365,12 +365,15 @@ the agent settings, citations, and the yolop and Framework setup.
 
 ## Built-in harnesses
 
-Web search is part of the built-in harness tree, so every new agent can search
-without adding anything. It joins the two branch layers in
+Web search is part of the worker branch of the built-in harness tree, so every
+new worker agent can search without adding anything. It sits on **Worker** in
 [the shared preset definition](../../crates/contracts/src/capability/presets.rs),
-**Conversation** and **Worker**, with config `{"provider": "org_default"}`;
-Bashkit Worker and Sandbox Worker inherit it from Worker. Base stays limited to
-what every agent needs to run reliably. With a fresh organization's defaults
+with config `{"provider": "org_default"}`; Bashkit Worker and Sandbox Worker
+inherit it. **Conversation** leaves it out (owner decision, 2026-10-12): plain
+chat stays plain, and an assistant that should search adds the capability on
+the agent. The deprecated Worker Base, which hangs off Conversation, keeps it as
+its own entry so nothing bound to it loses the tool. Base stays limited to what
+every agent needs to run reliably. With a fresh organization's defaults
 (Automatic, fallback on), an agent searches with its model's own search when
 the model has it and with free search otherwise, with no key and no setup.
 Organization reconciliation updates the managed harness rows in place, as it
