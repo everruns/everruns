@@ -517,9 +517,9 @@ pub use leased_resource::{
     LEASED_RESOURCES_FEATURE, LeasedResource, LeasedResourceStatus, UpsertLeasedResource,
 };
 pub use mcp_deferred::{
-    DEFERRED_MCP_REVEAL_KV_PREFIX, DeferredMcpServerTool, deferred_mcp_server_definition,
-    deferred_mcp_server_prefix, partition_deferred_mcp_servers, reveal_deferred_mcp_server,
-    revealed_mcp_servers,
+    DEFERRED_MCP_REVEAL_KV_PREFIX, DeferredMcpServerTool, MCP_LAST_TOOLS_KV_PREFIX,
+    deferred_mcp_server_definition, deferred_mcp_server_prefix, partition_deferred_mcp_servers,
+    reveal_deferred_mcp_server, revealed_mcp_servers,
 };
 pub use mcp_proxy::{
     McpCallIdentity, McpProxyTool, McpServerTools, McpToolInvoker, ScopedMcpToolInvoker,

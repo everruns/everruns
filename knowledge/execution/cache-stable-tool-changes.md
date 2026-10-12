@@ -405,7 +405,14 @@ Each step is one PR and leaves `main` working.
    keeps deferral on once a recorded tool list holds a stub, so reveals
    survive restarts and look the same on every worker. Done for OpenAI
    profiles: gpt-5.6 Sol, Terra and Luna take the full mode, gpt-5.5 and gpt-5.4
-   the add-only mode (probe above).
+   the add-only mode (probe above). Done for a failed MCP listing: the session
+   records what each server listed last (`MCP_LAST_TOOLS_KV_PREFIX`, reserved
+   from `kv_store`) and a turn whose `tools/list` fails publishes that record,
+   so the tool list does not change and a call fails with the server's
+   connection error. The record is session storage rather than the recorded
+   declarations, because the turn's tool registry is built before the reason
+   step reads the transcript; the in-process runtime already serves stale tools
+   on a failed refresh.
 6. **Prompt text with changes**: capability prompt additions that appear
    mid-session ride in the change's `note` instead of the system prompt;
    compaction and trimming re-baseline; the infinity-context notice and

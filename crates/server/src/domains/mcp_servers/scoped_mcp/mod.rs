@@ -807,6 +807,30 @@ pub async fn build_materialized_scoped_mcp_tool_definitions(
     connection_resolver: Option<&Arc<dyn UserConnectionResolver>>,
     egress_service: &dyn EgressService,
 ) -> Result<Vec<ToolDefinition>> {
+    build_materialized_scoped_mcp_tool_definitions_reporting(
+        db,
+        org_id,
+        servers,
+        session_id,
+        connection_resolver,
+        egress_service,
+        &mut Vec::new(),
+    )
+    .await
+}
+
+/// [`build_materialized_scoped_mcp_tool_definitions`] that also names, in
+/// `failed`, the servers it skipped because listing their tools failed (as
+/// opposed to servers with discovery off or no connection to list them as).
+pub(crate) async fn build_materialized_scoped_mcp_tool_definitions_reporting(
+    db: &StorageBackend,
+    org_id: i64,
+    servers: &ScopedMcpServers,
+    session_id: Option<SessionId>,
+    connection_resolver: Option<&Arc<dyn UserConnectionResolver>>,
+    egress_service: &dyn EgressService,
+    failed: &mut Vec<String>,
+) -> Result<Vec<ToolDefinition>> {
     let materialized = materialize_scoped_mcp_servers(db, org_id, servers).await?;
     // Saved risk labels of the catalog presets, in one query, keyed by the
     // attachment name the definitions are published under.
@@ -881,6 +905,7 @@ pub async fn build_materialized_scoped_mcp_tool_definitions(
                     session_id,
                     connection_resolver,
                     egress_service,
+                    failed,
                 )
                 .await?,
             );
@@ -931,6 +956,7 @@ pub async fn build_materialized_scoped_mcp_tool_definitions(
                     %error,
                     "Failed to discover cached catalog MCP tools, skipping server"
                 );
+                failed.push(name.clone());
                 continue;
             }
         };
@@ -962,18 +988,20 @@ pub async fn build_scoped_mcp_tool_definitions(
         session_id,
         connection_resolver,
         egress_service,
+        &mut Vec::new(),
     )
     .await
 }
 
 /// [`build_scoped_mcp_tool_definitions`] with saved risk labels, keyed by the
-/// scoped server name.
+/// scoped server name. Servers whose listing failed are named in `failed`.
 async fn build_labeled_scoped_mcp_tool_definitions(
     servers: &ScopedMcpServers,
     labels: &HashMap<String, McpToolLabels>,
     session_id: Option<SessionId>,
     connection_resolver: Option<&Arc<dyn UserConnectionResolver>>,
     egress_service: &dyn EgressService,
+    failed: &mut Vec<String>,
 ) -> Result<Vec<ToolDefinition>> {
     let mut definitions = Vec::new();
 
@@ -997,6 +1025,7 @@ async fn build_labeled_scoped_mcp_tool_definitions(
                         error = %error,
                         "Failed to resolve scoped MCP discovery token, skipping server"
                     );
+                    failed.push(name.clone());
                     continue;
                 }
             };
@@ -1027,6 +1056,7 @@ async fn build_labeled_scoped_mcp_tool_definitions(
                     error = %error,
                     "Failed to discover scoped MCP tools, skipping server"
                 );
+                failed.push(name.clone());
                 continue;
             }
         };

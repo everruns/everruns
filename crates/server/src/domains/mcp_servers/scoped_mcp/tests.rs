@@ -76,6 +76,8 @@ impl UserConnectionResolver for ActingIdentityResolver {
 #[derive(Default)]
 pub(crate) struct CatalogPreviewEgress {
     pub(crate) calls: AtomicUsize,
+    /// When set, `tools/list` answers 503, as a server that is down.
+    pub(crate) down: std::sync::atomic::AtomicBool,
 }
 
 #[async_trait::async_trait]
@@ -115,6 +117,13 @@ impl EgressService for CatalogPreviewEgress {
             }),
             "tools/list" => {
                 self.calls.fetch_add(1, Ordering::SeqCst);
+                if self.down.load(Ordering::SeqCst) {
+                    return Ok(everruns_core::EgressResponse {
+                        status: 503,
+                        headers: Default::default(),
+                        body: Vec::new(),
+                    });
+                }
                 Ok(everruns_core::EgressResponse {
                     status: 200,
                     headers: Default::default(),
