@@ -17,13 +17,14 @@ pub mod capability_dto;
 pub mod capability_mcp_server;
 pub mod capability_types;
 pub mod channel;
-pub mod channel_messaging;
+pub mod channel_driver;
 pub mod command;
 pub mod command_host;
 pub mod compaction_policy;
 pub mod computer_use;
 pub mod config_layer;
 pub mod connection_services;
+pub mod conversation;
 pub mod decisions;
 pub mod delegation_services;
 pub mod dependency_blocker;
@@ -45,12 +46,14 @@ pub mod llm_error_hook;
 pub mod localization;
 pub mod mcp_deferred;
 pub mod mcp_proxy;
+pub mod mcp_resources;
 pub mod mcp_server;
 pub mod message;
 pub mod message_filter;
 pub mod message_retriever;
 pub mod mount_fs;
 pub mod network_access;
+pub mod org_egress_allowlist;
 pub mod organization;
 pub mod outline;
 pub mod output_guardrail;
@@ -81,6 +84,7 @@ pub mod tools;
 pub mod truncation_info;
 pub mod user_hook_types;
 pub mod utility_llm;
+pub mod web_search;
 
 pub use self::agent_definition::AgentDefinition;
 pub use self::background::{
@@ -111,10 +115,10 @@ pub use self::capability_mcp_server::{
     CapabilityMcpServer, CapabilityMcpServers, capability_mcp_servers_to_scoped,
 };
 pub use self::channel::{
-    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelReplyMode, ChannelStreamDelivery,
-    ChannelViewContext, DeliveryContext as ChannelDeliveryContext,
-    DeliveryResult as ChannelDeliveryResult, InboundAttachment, InboundChannelEvent,
-    OutboundChannelMessage, Participant, SessionBinding, ThreadContext,
+    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelStreamDelivery, ChannelViewContext,
+    DeliveryContext as ChannelDeliveryContext, DeliveryResult as ChannelDeliveryResult,
+    InboundAttachment, InboundChannelEvent, OutboundChannelMessage, Participant, SessionBinding,
+    ThreadContext,
 };
 pub use self::command_host::{
     CommandHost, CommandTurnContext, DisabledCommandHost, SessionCompletion,
@@ -128,7 +132,7 @@ pub use self::config_layer::{
     AgentConfigOverlay, merge_capabilities, merge_initial_files, normalize_initial_file_path,
 };
 pub use self::connection_services::{
-    McpResolvedCredential, ServiceApiKeyConnection, UserConnectionResolver,
+    GitHubAccess, McpResolvedCredential, ServiceApiKeyConnection, UserConnectionResolver,
 };
 pub use self::decisions::{
     DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionUsage,
@@ -139,7 +143,8 @@ pub use self::dependency_blocker::DependencyBlocker;
 pub use self::deployment::DeploymentGrade;
 pub use self::egress::{
     DisabledEgressService, EgressByteStream, EgressError, EgressRequest, EgressRequestKind,
-    EgressResponse, EgressResult, EgressService, EgressSigning, EgressStreamResponse,
+    EgressResponse, EgressResult, EgressScope, EgressService, EgressSigning, EgressStreamResponse,
+    ScopedEgressService,
 };
 pub use self::event_emitter::EventEmitter;
 pub use self::events::{
@@ -159,11 +164,12 @@ pub use self::events::{
     ReasonThinkingDeltaData, ReasonThinkingStartedData, RecoveryMode, SESSION_ACTIVATED,
     SESSION_IDLED, SESSION_MODEL_CHANGED, SESSION_STARTED, SESSION_TITLE_UPDATED,
     SessionActivatedData, SessionIdledData, SessionModelChangedData, SessionStartedData,
-    SessionTitleUpdatedData, TOOL_CALL_REQUESTED, TOOL_COMPLETED, TOOL_OUTPUT_DELTA, TOOL_PROGRESS,
-    TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_SEALED, TURN_STARTED,
-    TokenUsage, ToolCallRequestedData, ToolCallSummary, ToolCompletedData, ToolOutputDeltaData,
-    ToolProgressData, ToolStartedData, TurnCancelledData, TurnCompletedData, TurnFailedData,
-    TurnSealedData, TurnStartedData, VALID_EVENT_TYPES,
+    SessionTitleUpdatedData, TIMER_CANCELLED, TIMER_FIRED, TIMER_SET, TOOL_CALL_REQUESTED,
+    TOOL_COMPLETED, TOOL_OUTPUT_DELTA, TOOL_PROGRESS, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED,
+    TURN_FAILED, TURN_SEALED, TURN_STARTED, TimerCancelledData, TimerFiredData, TimerPurpose,
+    TimerSetData, TokenUsage, ToolCallRequestedData, ToolCallSummary, ToolCompletedData,
+    ToolOutputDeltaData, ToolProgressData, ToolStartedData, TurnCancelledData, TurnCompletedData,
+    TurnFailedData, TurnSealedData, TurnStartedData, VALID_EVENT_TYPES,
 };
 pub use self::execution_context::ExecutionContext;
 pub use self::execution_features::{
@@ -192,12 +198,18 @@ pub use self::mcp_proxy::{
     McpCallIdentity, McpProxyTool, McpServerTools, McpToolInvoker, ScopedMcpToolInvoker,
     build_mcp_proxy_tools,
 };
+pub use self::mcp_resources::{
+    LIST_MCP_RESOURCES_TOOL, McpResourceListing, McpResourceOutcome, READ_MCP_RESOURCE_TOOL,
+    add_mcp_resource_tool_definitions, is_mcp_resource_tool,
+};
 pub use self::mcp_server::{
-    MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2026_07,
-    McpConnectInChat, McpContent, McpElicitationPolicy, McpError, McpProtocolMode,
+    MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2025_11,
+    MCP_PROTOCOL_VERSION_2026_07, McpAnnotations, McpConnectInChat, McpContent,
+    McpElicitationPolicy, McpError, McpProtocolMode, McpReadResourceResult, McpResource,
+    McpResourceContents, McpResourceTemplate, McpResourceTemplatesPage, McpResourcesPage,
     McpSecretBindingMetadata, McpServerActsAs, McpServerAuthMode, McpServerPresetRef,
     McpServerTransportType, McpToolAnnotations, McpToolCallParams, McpToolCallRequest,
-    McpToolCallResponse, McpToolCallResult, McpToolDefinition, McpToolsListRequest,
+    McpToolCallResponse, McpToolCallResult, McpToolDefinition, McpToolLabel, McpToolsListRequest,
     McpToolsListResponse, McpToolsListResult, ScopedMcpServer, ScopedMcpServers,
     apply_mcp_secret_binding_schemas, is_mcp_tool, mcp_oauth_provider_id_for_uuid,
     mcp_oauth_session_secret_name, mcp_tool_name, merge_scoped_mcp_servers,
@@ -208,7 +220,7 @@ pub use self::message::{
     AnnotationSource, ContentPart, ContentType, Controls, ExternalActor, ImageContentPart,
     ImageFileContentPart, InputContentPart, ReasoningConfig, RuntimeMessage, RuntimeMessageRole,
     TextAnnotation, TextContentPart, ToolCallContentPart, ToolResultContentPart,
-    VerificationStatus, VerificationVerdict,
+    UNKNOWN_TOOL_OUTCOME, VerificationStatus, VerificationVerdict,
 };
 pub use self::message_filter::{
     ExcludedNoticeTransform, FilterContext, InjectedMessage, InjectionPosition, MessageFilter,
@@ -216,6 +228,10 @@ pub use self::message_filter::{
 };
 pub use self::message_retriever::{InputMessage, MessageHistory, MessageRetriever};
 pub use self::mount_fs::{DisplayPolicy, MountFs, WORKSPACE_MOUNT, scoped_prompt_file_store};
+pub use self::org_egress_allowlist::{
+    MAX_ORG_EGRESS_ALLOWLIST_PATTERNS, OrgEgressAllowlist, OrgEgressGrant, org_egress_extension,
+    org_egress_grant, validate_org_egress_pattern, validate_org_egress_patterns,
+};
 pub use self::organization::{
     DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole, org_public_id_from_internal,
 };
@@ -260,7 +276,11 @@ pub use self::skill::{
 pub use self::subagent_delegation::{
     PlatformCreateSessionRequest, PlatformMessage, SubagentSessionDelegate,
 };
-pub use self::system_allowlist::{AllowGroup, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllowlist};
+pub use self::system_allowlist::{
+    AllowGroup, EGRESS_POLICY_ENV, EgressAccess, EgressPolicyDenial, EgressPolicyGrant,
+    EgressPolicyMode, OPEN_READ_MAX_URL_LEN, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllowlist,
+    SystemEgressPolicy,
+};
 pub use self::tool_context::{ReasoningEffortHandle, ToolContext};
 pub use self::tool_execution::{OutboundToolRateLimiter, ToolExecutor};
 pub use self::tools::{

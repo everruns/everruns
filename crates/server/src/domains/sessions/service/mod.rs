@@ -10,10 +10,14 @@ use super::platform_chat_starter::PLATFORM_CHAT_STARTER_TAG;
 use super::types::{SessionFacetCount, SessionFacetsResponse};
 use crate::common_dto::Pagination;
 use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
+use crate::domains::memory::record::{MemoryConfig, MemoryMountAccess};
+use crate::domains::sandbox_templates::record::SandboxPolicy;
 use crate::domains::session_files::memory_mounts::shared_memory_name_for_harness;
 use crate::domains::session_files::{CreateFileInput, WorkspaceFileService};
 use crate::domains::session_sandbox::SessionSandboxService;
 use crate::domains::sessions::limits::OrgCaps;
+use crate::domains::sessions::record::{Session, SessionActivity, SessionSource, SessionStatus};
+use crate::domains::users::{PrincipalService, row_to_principal};
 use crate::errors::{BadRequestError, ResourceLimitError, ResourceNotFoundError};
 use crate::kernel_imports::{
     AgentCapabilityConfig, Caller, CapabilityRegistry, contracts::typed_id::AgentId,
@@ -35,18 +39,13 @@ use crate::kernel_imports::{
     parse_skill_capability_id,
 };
 use crate::max_iterations;
-use crate::org_init;
-use crate::records::{MemoryConfig, MemoryMountAccess, SandboxPolicy};
-use crate::records::{Session, SessionActivity, SessionSource, SessionStatus};
 use crate::server::ResourceLimitsConfig;
-use crate::services::{PrincipalService, row_to_principal};
+use crate::setup::org_init;
 use crate::storage::UpdateField;
 use crate::storage::{
-    StorageBackend,
-    models::{
-        CreateEventRow, CreateMemoryRow, CreateSessionFileRow, CreateSessionRow, MemoryFileRow,
-        MemoryRow, SessionListFilters, UpdateSession, UpsertSessionKeyValue, UpsertSessionSecret,
-    },
+    CreateEventRow, CreateMemoryRow, CreateSessionFileRow, CreateSessionRow, MemoryFileRow,
+    MemoryRow, SessionListFilters, StorageBackend, UpdateSession, UpsertSessionKeyValue,
+    UpsertSessionSecret,
 };
 use anyhow::Result;
 use everruns_capabilities::capabilities::MEMORY_CAPABILITY_ID;
@@ -109,6 +108,8 @@ pub struct ForkOverrides {
     pub agent_id: Option<AgentId>,
     pub locale: Option<String>,
     pub system_prompt: Option<String>,
+    /// Message id to branch from; history after its turn is not copied.
+    pub up_to_message_id: Option<String>,
 }
 
 /// Session counts grouped by status.
@@ -261,6 +262,8 @@ fn insert_mount_file(
 
 // normalize_initial_file_path is imported from everruns_core::config_layer
 
+#[cfg(test)]
+mod tests_fork_from_message;
 #[cfg(test)]
 mod tests_mounts_tests;
 #[cfg(test)]

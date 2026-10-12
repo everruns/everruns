@@ -6,15 +6,16 @@ A [serve](../../../crates/serve) app that runs durably on
 `main` changes, from `serve::start` to `serve_celld::start`. `worker/` is the
 celld application: a Durable Object per name that runs the app in a container and
 keeps its state. The full guide is
-[Serve on celld](https://docs.everruns.com/framework/serve-celld/).
+[Serve on celld](https://everruns.com/docs/framework/serve-celld/).
 
 ## Try it without containers
 
 The external cell reaches a serve process by URL instead of a container, so this
-needs only [celld](https://celld.dev) and Node.js:
+needs only [celld](https://celld.dev), Node.js, and `OPENAI_API_KEY` for the
+agent's model:
 
 ```sh
-cargo run -p serve-example-celld -- celld --dev --port 8080   # the container half, offline
+cargo run -p serve-example-celld -- celld --dev --port 8080   # the container half
 cd examples/serve/celld/worker && npm install
 celld dev wrangler.external.jsonc                             # the cells, on :9876
 ```
@@ -55,7 +56,7 @@ image to a registry the deploying machine can pull and name it in
 | File | Is |
 |---|---|
 | `src/main.rs` | `serve_celld::start(...)` instead of `serve::start(...)` |
-| `src/agent.rs` | `#[agent] fn assistant()`, with an offline script |
+| `src/agent.rs` | `#[agent] fn assistant()` |
 | `src/tools.rs` | `#[tool] async fn look_up(cx, topic)`, slow on purpose |
 | `Dockerfile` | the container image |
 | `worker/src/cell.js` | the cell: snapshot, journal, restore and replay |

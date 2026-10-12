@@ -5,11 +5,11 @@ use crate::test_harness;
 use axum::http::StatusCode;
 use everruns_contracts::typed_id::AgentId;
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_server::records::Agent;
-use everruns_server::records::Harness;
-use everruns_server::records::Session;
+use everruns_server::domains::agents::record::Agent;
+use everruns_server::domains::harnesses::record::Harness;
+use everruns_server::domains::sessions::record::Session;
 use everruns_server::storage::UpdateField;
-use everruns_server::storage::models::UpdateOrganizationSettings;
+use everruns_server::storage::UpdateOrganizationSettings;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
@@ -51,7 +51,13 @@ async fn test_list_harnesses_includes_levels_and_deprecated_generic() {
         .collect();
     assert!(names.contains(&"base"), "Should have Base harness");
     assert!(names.contains(&"generic"), "Should have Generic harness");
-    for name in ["conversation", "worker-base", "worker"] {
+    for name in [
+        "conversation",
+        "worker",
+        "bashkit-worker",
+        "sandbox-worker",
+        "worker-base",
+    ] {
         assert!(names.contains(&name), "Missing {name}");
     }
     let generic = harnesses.iter().find(|h| h["name"] == "generic").unwrap();
@@ -77,8 +83,11 @@ async fn test_get_base_harness() {
 
     assert_eq!(harness.name, "base");
     assert!(
-        harness.capabilities.is_empty(),
-        "Base harness should have no capabilities"
+        harness
+            .capabilities
+            .iter()
+            .any(|capability| capability.capability_id() == "compaction"),
+        "Base harness carries the system essentials"
     );
     assert!(harness.tags.contains(&"base".to_string()));
     assert!(harness.tags.contains(&"built-in".to_string()));

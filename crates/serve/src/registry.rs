@@ -62,7 +62,9 @@ pub struct ToolRegistration {
 pub struct ChannelRegistration {
     pub name: &'static str,
     pub source: &'static str,
-    pub build: fn() -> Box<dyn crate::Channel>,
+    /// `#[channel(agent = "…")]`; the default agent when `None`.
+    pub agent: Option<&'static str>,
+    pub build: fn() -> crate::Channel,
 }
 
 /// `#[schedule]`.

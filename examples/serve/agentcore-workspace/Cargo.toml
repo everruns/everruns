@@ -1,5 +1,5 @@
 # A serve agent with a real shell and files in its AgentCore microVM, an
-# approval-gated tool, and session storage. Runs offline.
+# approval-gated tool, and session storage. Runs on Bedrock.
 [package]
 name = "serve-example-agentcore-workspace"
 version = "0.1.0"

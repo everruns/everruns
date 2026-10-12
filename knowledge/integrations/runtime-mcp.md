@@ -356,9 +356,5 @@ Landed:
 
 Remaining follow-up:
 
-- Wire hosted (worker) remote-MCP **execution** through `everruns-core` (`mcp` feature) via a
-  gRPC-backed `McpConnectionResolver` + web-OAuth `McpAuthProvider`. Discovery
-  is shared today; execution still needs this adapter (the worker's old
-  executor was already dead code).
 - Per-session TTL cache for runtime tool discovery (currently live per turn,
   matching the control plane's scoped-server behavior).

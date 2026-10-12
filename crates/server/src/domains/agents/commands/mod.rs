@@ -2,7 +2,7 @@
 // Request types double as catalog entries and auto-register with inventory.
 
 use super::command_validation::{
-    normalize_capability_refs, reject_sandbox_override_for_fixed_harness,
+    normalize_capability_refs, validate_sandbox_policy_for_harness,
     validate_sandbox_template_sources,
 };
 pub(crate) use super::managed::check_harness_assignment;
@@ -15,11 +15,12 @@ use super::queries as q;
 use super::sandbox_policy as sandbox_templates;
 use super::types::{AgentRow, CreateAgentRequest, CreateAgentRow, UpdateAgent, UpdateAgentRequest};
 use super::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
+use crate::domains::agents::record::{Agent, AgentStatus};
 use crate::domains::common::*;
+use crate::domains::sandbox_templates::record::SandboxPolicy;
 use crate::kernel_imports::{
     AgentCapabilityConfig, InitialFile, ScopedMcpServers, contracts::tool_types::ToolDefinition,
 };
-use crate::records::{Agent, AgentStatus};
 use crate::{max_iterations, storage::UpdateField as StorageUpdate};
 use everruns_contracts::typed_id::{AgentId, HarnessId};
 use serde::Deserialize;
@@ -142,8 +143,7 @@ impl Command for CreateAgent {
         };
         let harness_id =
             resolve_create_harness_id(ctx, req.harness_id, req.harness_name.as_deref()).await?;
-        reject_sandbox_override_for_fixed_harness(ctx, harness_id, req.sandbox_policy.is_some())
-            .await?;
+        validate_sandbox_policy_for_harness(ctx, harness_id, req.sandbox_policy.as_ref()).await?;
 
         validate_service_account(ctx, req.service_virtual_user_id).await?;
         // Persist
@@ -170,6 +170,7 @@ impl Command for CreateAgent {
                     .map(|na| serde_json::to_value(na).unwrap_or_default()),
                 max_iterations: max_iterations::to_db(req.max_iterations)?,
                 parallel_tool_calls: req.parallel_tool_calls,
+                communication: req.communication,
                 environments: sandbox_templates::to_json(req.sandbox_policy.as_ref()),
                 // Built-in agents come from the platform definition via org
                 // bootstrap. No API-facing creation path may mint one.
@@ -202,6 +203,7 @@ impl Command for CreateAgent {
                     .map(|na| serde_json::to_value(na).unwrap_or_default()),
                 max_iterations: max_iterations::to_db(req.max_iterations)?,
                 parallel_tool_calls: req.parallel_tool_calls,
+                communication: req.communication,
                 environments: sandbox_templates::to_json(req.sandbox_policy.as_ref()),
                 // Built-in agents come from the platform definition via org
                 // bootstrap. No API-facing creation path may mint one.
@@ -234,7 +236,7 @@ impl Command for CreateAgent {
         };
         let row = persist_harness_source(ctx, row, harness_source).await?;
         persist_capabilities(&ctx.db, agent_uuid, &caps).await?;
-        Ok(q::row_to_agent(row, caps))
+        Ok(crate::storage::row_to_agent(row, caps))
     }
 }
 // ListAgents
@@ -300,7 +302,7 @@ impl Command for ListAgents {
 /// Get a single agent by ID or name.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetAgent {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -312,7 +314,7 @@ pub struct GetAgent {
     path = "/v1/agents/{id}",
     policy = AGENT_VIEW,
     positional = "id",
-    cli = CliRoute::new(&["agents"], "get").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Show one agent's full configuration", "everruns agents get agt_01h9",)]),
+    cli = CliRoute::new(&["agents"], "get").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Show one agent's full configuration", "everruns agents get agent_01h9",)]),
 )]
 impl Command for GetAgent {
     type Output = Agent;
@@ -330,7 +332,7 @@ impl Command for GetAgent {
 /// Update an agent. Only provided fields are changed.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateAgentCmd {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     #[serde(flatten)]
     pub req: UpdateAgentRequest,
@@ -344,7 +346,7 @@ pub struct UpdateAgentCmd {
     path = "/v1/agents/{id}",
     policy = AGENT_MANAGE,
     positional = "id",
-    cli = CliRoute::new(&["agents"], "update").with_args(&[CliArg::new("id").at(1), CliArg::new("harness_name").short('H').long("harness"), CliArg::new("tag").short('t'),]).with_examples(&[CliExample::new("Rename an agent, leaving the rest of it alone", "everruns agents update agt_01h9 --name triage-v2 --reason 'Rename after the triage split'",)]),
+    cli = CliRoute::new(&["agents"], "update").with_args(&[CliArg::new("id").at(1), CliArg::new("harness_name").short('H').long("harness"), CliArg::new("tag").short('t'),]).with_examples(&[CliExample::new("Rename an agent, leaving the rest of it alone", "everruns agents update agent_01h9 --name triage-v2 --reason 'Rename after the triage split'",)]),
 )]
 impl Command for UpdateAgentCmd {
     type Output = Agent;
@@ -441,13 +443,16 @@ impl Command for UpdateAgentCmd {
         let harness_id =
             resolve_update_harness_id(ctx, req.harness_id, req.harness_name.as_deref()).await?;
         let final_harness_id = harness_id.unwrap_or(existing.harness_id);
-        let final_has_environments = match &req.sandbox_policy {
-            StorageUpdate::Set(_) => true,
-            StorageUpdate::Clear => false,
-            StorageUpdate::Unchanged => existing.environments.is_some(),
+        let existing_policy: Option<SandboxPolicy> = existing
+            .environments
+            .clone()
+            .and_then(|value| serde_json::from_value(value).ok());
+        let final_policy = match &req.sandbox_policy {
+            StorageUpdate::Set(policy) => Some(policy),
+            StorageUpdate::Clear => None,
+            StorageUpdate::Unchanged => existing_policy.as_ref(),
         };
-        reject_sandbox_override_for_fixed_harness(ctx, final_harness_id, final_has_environments)
-            .await?;
+        validate_sandbox_policy_for_harness(ctx, final_harness_id, final_policy).await?;
 
         if let StorageUpdate::Set(id) = req.service_virtual_user_id {
             validate_service_account(ctx, Some(id)).await?;
@@ -498,6 +503,7 @@ impl Command for UpdateAgentCmd {
                 .network_access
                 .map(|na| Some(serde_json::to_value(na).unwrap_or_default())),
             parallel_tool_calls: req.parallel_tool_calls.map(Some),
+            communication: req.communication,
             environments: sandbox_templates::update_to_json(req.sandbox_policy),
             ..Default::default()
         };
@@ -522,7 +528,7 @@ impl Command for UpdateAgentCmd {
             q::get_capabilities(&ctx.db, ctx.org_id(), internal_id.uuid()).await?
         };
 
-        let agent = q::row_to_agent(row, caps);
+        let agent = crate::storage::row_to_agent(row, caps);
         super::branding_slack::sync_if_changed(
             ctx,
             super::branding_slack::display_name(&existing.name, existing.display_name.as_deref()),
@@ -539,7 +545,7 @@ impl Command for UpdateAgentCmd {
 /// Archive an agent (soft delete).
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteAgent {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -551,7 +557,7 @@ pub struct DeleteAgent {
     path = "/v1/agents/{id}",
     policy = AGENT_MANAGE,
     positional = "id",
-    cli = CliRoute::new(&["agents"], "delete").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Archive an agent, keeping it restorable", "everruns agents delete agt_01h9 --reason 'Replaced by triage-v2'",)]),
+    cli = CliRoute::new(&["agents"], "delete").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Archive an agent, keeping it restorable", "everruns agents delete agent_01h9 --reason 'Replaced by triage-v2'",)]),
 )]
 impl Command for DeleteAgent {
     type Output = serde_json::Value;
@@ -587,7 +593,7 @@ pub struct UpsertAgent {
     /// Internal replacement mode used by complete portable manifests.
     #[serde(skip)]
     pub(crate) replace_capabilities: bool,
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     #[serde(flatten)]
     pub req: CreateAgentRequest,
@@ -609,7 +615,7 @@ pub struct UpsertResult {
     path = "/v1/agents/{id}",
     policy = AGENT_MANAGE,
     positional = "id",
-    cli = CliRoute::new(&["agents"], "upsert").with_args(&[CliArg::new("id").at(1), CliArg::new("harness_name").short('H').long("harness"), CliArg::new("tag").short('t'),]).with_examples(&[CliExample::new("Create or replace an agent at a known id, for a scripted deploy", "everruns agents upsert agt_01h9 --name triage --system-prompt 'Triage incoming issues' --reason 'Deploy release 42'",)]),
+    cli = CliRoute::new(&["agents"], "upsert").with_args(&[CliArg::new("id").at(1), CliArg::new("harness_name").short('H').long("harness"), CliArg::new("tag").short('t'),]).with_examples(&[CliExample::new("Create or replace an agent at a known id, for a scripted deploy", "everruns agents upsert agent_01h9 --name triage --system-prompt 'Triage incoming issues' --reason 'Deploy release 42'",)]),
 )]
 impl Command for UpsertAgent {
     type Output = UpsertResult;
@@ -680,6 +686,7 @@ impl Command for UpsertAgent {
             mcp_servers: serde_json::to_value(&req.mcp_servers).unwrap_or_default(),
             max_iterations: max_iterations::to_db(req.max_iterations)?,
             parallel_tool_calls: req.parallel_tool_calls,
+            communication: req.communication,
             environments: sandbox_templates::to_json(req.sandbox_policy.as_ref()),
             network_access: req
                 .network_access
@@ -701,7 +708,7 @@ impl Command for UpsertAgent {
             q::get_capabilities(&ctx.db, ctx.org_id(), agent_uuid).await?
         };
 
-        let agent = q::row_to_agent(row, final_caps);
+        let agent = crate::storage::row_to_agent(row, final_caps);
         if let Some(existing) = existing {
             super::branding_slack::sync_if_changed(
                 ctx,
@@ -723,7 +730,7 @@ impl Command for UpsertAgent {
 /// Copy an agent. Generates a unique name ({name}-copy, -copy-2, etc.)
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CopyAgent {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -735,7 +742,7 @@ pub struct CopyAgent {
     path = "/v1/agents/{id}/copy",
     policy = AGENT_MANAGE,
     positional = "id",
-    cli = CliRoute::new(&["agents"], "copy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Duplicate an agent to try a change without touching the original", "everruns agents copy agt_01h9 --reason 'Trial a stricter prompt'",)]),
+    cli = CliRoute::new(&["agents"], "copy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Duplicate an agent to try a change without touching the original", "everruns agents copy agent_01h9 --reason 'Trial a stricter prompt'",)]),
 )]
 impl Command for CopyAgent {
     type Output = Agent;
@@ -771,6 +778,7 @@ impl Command for CopyAgent {
             network_access: None,
             max_iterations: source.max_iterations,
             parallel_tool_calls: source.parallel_tool_calls,
+            communication: source.communication,
         };
 
         CreateAgent(req).execute(ctx).await
@@ -800,7 +808,7 @@ pub struct SuspendAgentExposures {
     path = "/v1/agents/{agent_id}/exposures/suspend",
     policy = AGENT_MANAGE,
     positional = "agent_id",
-    cli = CliRoute::new(&["agents", "exposures"], "suspend").with_args(&[CliArg::new("agent_id").at(1).long("agent")]).with_examples(&[CliExample::new("Stop an agent answering on its exposed surfaces without deleting it", "everruns agents exposures suspend agt_01h9 --reason 'Pause while the prompt is fixed'",)]),
+    cli = CliRoute::new(&["agents", "exposures"], "suspend").with_args(&[CliArg::new("agent_id").at(1).long("agent")]).with_examples(&[CliExample::new("Stop an agent answering on its exposed surfaces without deleting it", "everruns agents exposures suspend agent_01h9 --reason 'Pause while the prompt is fixed'",)]),
 )]
 impl Command for SuspendAgentExposures {
     type Output = Agent;
@@ -824,7 +832,7 @@ pub struct ResumeAgentExposures {
     path = "/v1/agents/{agent_id}/exposures/resume",
     policy = AGENT_MANAGE,
     positional = "agent_id",
-    cli = CliRoute::new(&["agents", "exposures"], "resume").with_args(&[CliArg::new("agent_id").at(1).long("agent")]).with_examples(&[CliExample::new("Put a suspended agent back on its exposed surfaces", "everruns agents exposures resume agt_01h9 --reason 'Prompt fix verified'",)]),
+    cli = CliRoute::new(&["agents", "exposures"], "resume").with_args(&[CliArg::new("agent_id").at(1).long("agent")]).with_examples(&[CliExample::new("Put a suspended agent back on its exposed surfaces", "everruns agents exposures resume agent_01h9 --reason 'Prompt fix verified'",)]),
 )]
 impl Command for ResumeAgentExposures {
     type Output = Agent;
@@ -866,7 +874,7 @@ async fn set_exposures_suspended(
         .await?
         .ok_or_else(|| CommandError::not_found("Agent"))?;
     let caps = q::get_capabilities(&ctx.db, row.org_id, row.id.uuid()).await?;
-    let agent = q::row_to_agent(row, caps);
+    let agent = crate::storage::row_to_agent(row, caps);
     q::with_derived_exposure_one(&ctx.db, Some(agent))
         .await?
         .ok_or_else(|| CommandError::not_found("Agent"))
@@ -1016,7 +1024,7 @@ impl Command for CheckAgentName {
     type Output = NameAvailability;
 
     async fn execute(self, ctx: &Ctx) -> Result<NameAvailability, CommandError> {
-        if crate::records::validate_addressable_name(&self.name).is_err() {
+        if crate::domains::agents::record::validate_addressable_name(&self.name).is_err() {
             return Ok(NameAvailability { available: false });
         }
 
@@ -1048,7 +1056,7 @@ mod tests;
 /// Permanently delete an archived agent.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DestroyAgent {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -1062,7 +1070,7 @@ pub struct DestroyAgent {
     positional = "id",
     http = no_content,
     responses((status = 404, description = "Agent not found")),
-    cli = CliRoute::new(&["agents"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove an already-archived agent", "everruns agents destroy agt_01h9 --reason 'Retired after the archive window'",)]),
+    cli = CliRoute::new(&["agents"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove an already-archived agent", "everruns agents destroy agent_01h9 --reason 'Retired after the archive window'",)]),
 )]
 impl Command for DestroyAgent {
     type Output = serde_json::Value;

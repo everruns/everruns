@@ -52,10 +52,12 @@ async fn channel_migration_preserves_identity_secrets_attribution_and_spend_cont
             .await
             .unwrap();
 
-    sqlx::raw_sql(include_str!("../../migrations/166_agent_channels.sql"))
-        .execute(&mut *tx)
-        .await
-        .unwrap();
+    sqlx::raw_sql(include_str!(
+        "../../migrations/legacy/166_agent_channels.sql"
+    ))
+    .execute(&mut *tx)
+    .await
+    .unwrap();
 
     for table in ["agent_channels", "app_channels"] {
         let query = format!("SELECT to_jsonb(c) FROM {table} c");

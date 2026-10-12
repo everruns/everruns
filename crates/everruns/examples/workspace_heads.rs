@@ -1,9 +1,13 @@
 //! Open an isolated local Git head and bind it to a durable Framework session.
+//!
+//! ```text
+//! cargo run -p everruns --features local,openai --example workspace_heads -- /path/to/repo /path/to/state
+//! ```
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use everruns::{Agent, Engine, LocalConfig, LocalGitWorkspace, Model, Workspace, WorkspacePolicy};
+use everruns::{Agent, Engine, LocalConfig, LocalGitWorkspace, OpenAI, Workspace, WorkspacePolicy};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -21,7 +25,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let head = workspace.head("example").create().await?;
     let agent = Agent::builder()
         .instructions("Work only in the selected workspace head.")
-        .model(Model::simulated("ready"))
+        .provider(OpenAI::from_env()?)
+        .model("gpt-6.1-sol")
         .local(LocalConfig::new(state.join("runtime")))
         .workspace_backend(backend)
         .workspace_policy(WorkspacePolicy::read_write())

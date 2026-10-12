@@ -48,8 +48,10 @@ use super::user_servers::{
     AddUserMcpServerRequest, UpdateUserMcpServerRequest, UserMcpConnectionStatus, UserMcpServer,
     UserMcpServerError, UserMcpServerSource, UserMcpServers,
 };
+use crate::domains::agents::record::Agent;
+use crate::domains::harnesses::record::Harness;
+use crate::domains::sessions::record::Session;
 use crate::kernel_imports::{McpServerActsAs, McpServerAuthMode, resolve_runtime_capabilities};
-use crate::records::{Agent, Harness, Session};
 use crate::storage::{EncryptionService, StorageBackend};
 use everruns_core::session_services::SessionStorageStore;
 use everruns_core::{SessionMcpServer, SessionMcpServerSource};
@@ -112,6 +114,7 @@ pub async fn invoke_user_mcp_store(
         encryption: turn.encryption,
         org_id: turn.org_id,
         owner: person,
+        egress: None,
     };
     let clashes = Clashes::of(turn, &resolved.resolved_capability_configs);
 
@@ -260,10 +263,7 @@ impl ManageTurnRecords {
                         row.id.uuid(),
                     )
                     .await?;
-                    Some(crate::domains::agents::queries::row_to_agent(
-                        row,
-                        capabilities,
-                    ))
+                    Some(crate::storage::row_to_agent(row, capabilities))
                 }
                 _ => None,
             },

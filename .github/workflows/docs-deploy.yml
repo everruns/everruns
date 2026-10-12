@@ -1,0 +1,105 @@
+name: Docs Deploy
+
+# Builds apps/docs and deploys it as the `everruns-docs` Worker, which serves
+# everruns.com/docs/ (apps/docs/wrangler.jsonc, knowledge/ui/documentation.md).
+#
+# - main: deploy, then check the live site and the docs.everruns.com redirects.
+# - daily: re-run the live check, so a broken redirect, a missing page or a
+#   header that drifted from everruns.com is noticed even when nothing in the
+#   docs changed.
+#
+# Pull requests are covered by ci.yml's docs build; the deploy job holds the
+# Doppler token, so it runs only on main (scripts/test-workflow-vault-token-scope.sh)
+# and uses no actions beyond SHA-pinned ones. Node comes from the runner image
+# and pnpm from npm, at the `packageManager` version in apps/docs/package.json.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/docs/**'
+      - 'docs/**'
+      - '.github/workflows/docs-deploy.yml'
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  WRANGLER_VERSION: 4.144.0
+
+jobs:
+  deploy:
+    name: Build and deploy docs
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name != 'schedule'
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apps/docs
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup pnpm
+        run: |
+          node --version
+          npm install --global "pnpm@$(node -p 'require("./package.json").packageManager.split("@")[1]')"
+          pnpm --version
+
+      - name: Install Doppler CLI
+        id: doppler_install
+        # Absorbs one transient installer failure; see
+        # scripts/test-doppler-install-retry.sh for why.
+        continue-on-error: true
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
+
+      - name: Pause before Doppler CLI retry
+        if: steps.doppler_install.outcome == 'failure'
+        run: sleep 15
+
+      - name: Install Doppler CLI (retry)
+        if: steps.doppler_install.outcome == 'failure'
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test the docs Worker
+        run: pnpm run worker:test
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Stage Worker assets
+        run: pnpm run stage-worker
+
+      # CLOUDFLARE_* reach wrangler only through `doppler run` (see the AGENTS.md
+      # gotcha on runtime-fetched secrets).
+      - name: Deploy
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          doppler run -- bash -c 'CLOUDFLARE_API_TOKEN="$CLOUDFLARE_API_TOKEN" CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_ACCOUNT_ID" \
+            pnpm dlx "wrangler@$WRANGLER_VERSION" deploy'
+
+  check-live:
+    name: Check live docs and redirects
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: >-
+      always() &&
+      github.ref == 'refs/heads/main' &&
+      (needs.deploy.result == 'success' || needs.deploy.result == 'skipped')
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Check everruns.com/docs and the docs.everruns.com redirects
+        run: node apps/docs/scripts/check-live.mjs --site https://everruns.com/docs --old https://docs.everruns.com
+      - name: Check the docs header and footer match everruns.com
+        run: node apps/docs/scripts/sync-site-chrome.mjs --check

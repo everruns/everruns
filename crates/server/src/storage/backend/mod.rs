@@ -21,8 +21,9 @@ pub const USER_PREFERENCE_LIMIT_EXCEEDED: &str = "user preference limit exceeded
 pub(crate) const FORCED_STORAGE_FAILURE: &str = "error returned from database: relation \
      \"agents\" does not exist at sqlx-postgres-0.8.6/src/connection/mod.rs:666";
 
-use super::models::*;
 use super::repositories::Database;
+use super::*;
+use super::{KnowledgeBaseRow, KnowledgeEntryRow, KnowledgeIndexRow, MemoryRow};
 use crate::common_dto::Pagination;
 
 /// Hard upper bound on a single retention-prune batch (EVE-580). Caps the
@@ -88,6 +89,7 @@ macro_rules! dispatch {
 #[derive(Clone)]
 pub struct StorageBackend {
     db: Database,
+    identity: identity_cache::IdentityCache,
 }
 
 // Decision: callers reach the repositories through `Deref`. The backend used
@@ -109,7 +111,10 @@ pub struct SlackInstallLock(#[allow(dead_code)] sqlx::Transaction<'static, sqlx:
 impl StorageBackend {
     /// Wrap an already connected database.
     pub fn from_database(db: Database) -> Self {
-        Self { db }
+        Self {
+            db,
+            identity: identity_cache::IdentityCache::new(),
+        }
     }
 
     /// The repositories this backend runs on.
@@ -138,6 +143,8 @@ impl StorageBackend {
 mod decision_defaults;
 mod harnesses_sessions;
 mod identity;
+mod identity_cache;
+pub use identity_cache::SessionLineage;
 mod knowledge;
 mod manager_context;
 mod models_files;
@@ -193,7 +200,7 @@ mod retention_tests {
             )
             .await
             .unwrap();
-        db.create_session_file(crate::storage::models::CreateSessionFileRow {
+        db.create_session_file(crate::storage::CreateSessionFileRow {
             session_id,
             path: "/.background/bg_task_term/result.json".to_string(),
             content: Some(b"{}".to_vec()),
@@ -217,7 +224,7 @@ mod retention_tests {
             })
             .await
             .unwrap();
-        db.create_session_file(crate::storage::models::CreateSessionFileRow {
+        db.create_session_file(crate::storage::CreateSessionFileRow {
             session_id,
             path: "/.background/bg_task_live/result.json".to_string(),
             content: Some(b"{}".to_vec()),

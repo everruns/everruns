@@ -43,6 +43,10 @@ export interface ModelWithProvider extends Model {
   profile?: ModelProfile;
   /** Vendor/brand from the model registry; drives branding. Not persisted. */
   model_vendor?: ModelVendor;
+  /** Derived: a discovered model the provider stopped listing. Kept, not deleted. */
+  stale?: boolean;
+  /** Derived: discovered after the provider's models were last reviewed, still disabled. */
+  is_new?: boolean;
 }
 
 // ============================================

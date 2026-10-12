@@ -84,6 +84,10 @@ pub struct LlmCompletionMetadata {
     pub cache_read_tokens: Option<u32>,
     /// Tokens written to cache (Anthropic-specific), disjoint from `prompt_tokens`
     pub cache_creation_tokens: Option<u32>,
+    /// The share of `cache_creation_tokens` written with a 1 hour retention,
+    /// which Anthropic bills at 2x input instead of the 5 minute 1.25x. A
+    /// subset, not an addition. `None` when the provider does not split it.
+    pub cache_creation_1h_tokens: Option<u32>,
     /// Reasoning tokens the provider billed as part of `completion_tokens`.
     ///
     /// A *subset* of `completion_tokens`, not an addition to it: providers

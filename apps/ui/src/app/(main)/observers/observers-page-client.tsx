@@ -1,8 +1,9 @@
 "use client";
 
+import { ObserverIcon } from "@/components/icons/facet-icons";
 import { EntityStatus } from "@/components/ui/entity-status";
 import { useMemo, useState } from "react";
-import { Plus, Telescope } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useObservers, usePageTitle } from "@/hooks";
 import { LinkButton } from "@/components/ui/button";
 import { EntityCard, EntityCardDescription } from "@/components/ui/entity-card";
@@ -92,7 +93,7 @@ export default function ObserversPageClient() {
       <PageBreadcrumb items={[{ label: "Observers" }]} />
 
       <PageMasthead
-        icon={<Telescope />}
+        icon={<ObserverIcon />}
         title="Observers"
         description="Score production sessions asynchronously with sampling rules and evaluators."
         actions={

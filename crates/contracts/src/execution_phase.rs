@@ -51,6 +51,10 @@ pub enum PhaseSource {
     Provider,
     /// The runtime inferred it from tool-call presence. A weak signal.
     Derived,
+    /// The agent talks through explicit communication, so every assistant
+    /// message is working commentary by definition: what people see is sent
+    /// with `send_message`.
+    Communication,
 }
 
 impl PhaseSource {
@@ -58,6 +62,7 @@ impl PhaseSource {
         match self {
             Self::Provider => "provider",
             Self::Derived => "derived",
+            Self::Communication => "communication",
         }
     }
 
@@ -65,6 +70,7 @@ impl PhaseSource {
         match s {
             "provider" => Some(Self::Provider),
             "derived" => Some(Self::Derived),
+            "communication" => Some(Self::Communication),
             _ => None,
         }
     }
@@ -84,8 +90,9 @@ impl<'de> Deserialize<'de> for PhaseSource {
         deserializer: D,
     ) -> std::result::Result<Self, D::Error> {
         let s = String::deserialize(deserializer)?;
-        Self::from_str_opt(&s)
-            .ok_or_else(|| serde::de::Error::unknown_variant(&s, &["provider", "derived"]))
+        Self::from_str_opt(&s).ok_or_else(|| {
+            serde::de::Error::unknown_variant(&s, &["provider", "derived", "communication"])
+        })
     }
 }
 

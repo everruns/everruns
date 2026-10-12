@@ -168,6 +168,7 @@ mod dispatch_tests {
             &self,
             _: SessionId,
             _: AgentId,
+            _reason: &str,
         ) -> Result<SessionParticipantId> {
             unimplemented!()
         }

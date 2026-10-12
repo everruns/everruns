@@ -15,7 +15,7 @@ Public guide: `docs/features/voice.md`.
 
 ## Model
 
-Voice is a channel type (`voice` in `records/agent_channel.rs`). Its config is
+Voice is a channel type (`voice` in `domains/agent_channels/record/mod.rs`). Its config is
 `VoiceChannelConfig` from `everruns_contracts::voice`, the same struct the
 Framework and serve use, so validation and defaults live in one place.
 Creating a voice channel, or importing one from an agent package, needs the

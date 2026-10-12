@@ -13,11 +13,7 @@ fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
     let mut registry = CapabilityRegistry::new();
     registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
         plugin.feature_flag.is_none_or(|flag| {
-            everruns_contracts::runtime::feature_flag_available(
-                flag,
-                everruns_integrations::typesafe::FEATURE_FLAGS,
-                grade,
-            )
+            everruns_contracts::runtime::feature_flag_available(flag, std::iter::empty(), grade)
         })
     });
     registry
@@ -31,8 +27,8 @@ fn jev_plugin() -> &'static IntegrationPlugin {
 }
 
 #[test]
-fn plugin_is_behind_its_feature_flag() {
-    assert_eq!(jev_plugin().feature_flag, Some("typesafe"));
+fn plugin_has_no_feature_flag() {
+    assert_eq!(jev_plugin().feature_flag, None);
 }
 
 #[test]
@@ -58,7 +54,7 @@ fn connector_is_published_with_an_api_key_form() {
         .iter()
         .find(|plugin| (plugin.factory)().provider_id() == "typesafe")
         .expect("TypeSafe ConnectorPlugin should be published in CONNECTOR_PLUGINS");
-    assert_eq!(plugin.feature_flag, Some("typesafe"));
+    assert_eq!(plugin.feature_flag, None);
     let connector = (plugin.factory)();
     let schema = connector.form_schema().expect("form schema");
     assert_eq!(schema.fields.len(), 1);

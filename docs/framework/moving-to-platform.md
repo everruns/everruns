@@ -20,13 +20,13 @@ such as [Computer Use](/capabilities/computer-use/), are not offered there.
 |---|---|
 | `.name("support")` | `name`. Must be lowercase letters, digits, and hyphens, unique in the organization |
 | `.instructions(...)` | `system_prompt` |
-| `.model("gpt-5.6-terra")` | `default_model_id`, the ID of a model configured for the organization. A model name string is not accepted |
+| `.model("gpt-6.1-sol")` | `default_model_id`, the ID of a model configured for the organization. A model name string is not accepted |
 | `.capability(...)` | `capabilities`, the same `{ "ref": ..., "config": ... }` shape |
 | `.initial_file(...)`, `.file(...)`, `.readonly_file(...)` | `initial_files` |
 | `.mcp_server(...)` for a remote server | `mcpServers` |
 | `.max_iterations(n)` | `max_iterations` |
 | `.parallel_tool_calls(b)` | `parallel_tool_calls` |
-| A `Harness` | A Platform harness (`harness_id` or `harness_name`). `Harness::base()`, `conversation()`, `worker_base()` and `worker()` share the Platform preset definitions; `generic()` is deprecated and preserves the legacy bundle |
+| A `Harness` | A Platform harness (`harness_id` or `harness_name`). `Harness::base()`, `conversation()`, `worker()` and `bashkit_worker()` share the Platform preset definitions; `generic()` is deprecated and preserves the legacy bundle |
 
 `CapabilityRef` serializes as `{"ref": id, "config": {...}}`, which is the
 format of a Platform agent's `capabilities` entries, so a capability list can
@@ -48,7 +48,7 @@ let agent = Agent::builder()
     .name("support")
     .instructions("Answer support questions.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-5.6-terra")
+    .model("gpt-6.1-sol")
     .capability("current_time")
     .capability(CapabilityRef::new("loop_detection").config(json!({ "threshold": 4 })))
     .build()?;

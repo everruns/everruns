@@ -23,6 +23,9 @@ pub(super) struct GenerationOutcome {
     pub output_tokens: Option<u32>,
     pub tool_calls_dropped: u32,
     pub tool_calls_truncated_executed: u32,
+    /// The request body the driver sent, when it captured one; stored on
+    /// `llm.generation` for the session trace's native request view.
+    pub request_body: Option<serde_json::Value>,
 }
 
 impl GenerationOutcome {
@@ -39,6 +42,7 @@ impl GenerationOutcome {
             output_tokens: meta.and_then(|m| m.completion_tokens),
             tool_calls_dropped: meta.map_or(0, |m| m.tool_calls_dropped),
             tool_calls_truncated_executed: meta.map_or(0, |m| m.tool_calls_truncated_executed),
+            request_body: meta.and_then(|m| m.request_body.clone()),
         }
     }
 
@@ -49,6 +53,7 @@ impl GenerationOutcome {
             self.tool_calls_dropped,
             self.tool_calls_truncated_executed,
         )
+        .with_request_body(self.request_body.clone())
     }
 
     /// The `ReasonAtom: LLM call completed` line, now carrying the ending.

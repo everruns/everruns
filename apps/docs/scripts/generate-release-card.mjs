@@ -175,7 +175,7 @@ export function releaseCardSvg(card) {
   ${highlights}
 
   <line x1="115" y1="1186" x2="2285" y2="1186" stroke="#D4A43A" stroke-width="2"/>
-  <text x="115" y="1260" class="mono" font-size="29" fill="#8F99A8">docs.everruns.com</text>
+  <text x="115" y="1260" class="mono" font-size="29" fill="#8F99A8">everruns.com/docs</text>
   <text x="2285" y="1260" class="mono" font-size="29" text-anchor="end" fill="#8F99A8">github.com/everruns/everruns</text>
 </svg>`;
 }

@@ -23,6 +23,7 @@ mod resolved_snapshot_test;
 mod runtime_artifact_store_test;
 mod runtime_host_test;
 mod tool_scheduler_e2e_test;
+mod turn_loop_test;
 mod turn_recovery_test;
 mod usage_limit_auto_continue_test;
 mod workspace_paths_conformance_test;

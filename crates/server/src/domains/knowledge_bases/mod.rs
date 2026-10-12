@@ -19,7 +19,7 @@ pub const KNOWLEDGE_BASE_MANAGE: Policy = Policy {
 };
 
 /// Allowed entry kinds. Matches the database CHECK constraint.
-// Migration: crates/server/migrations/032_knowledge_bases.sql.
+// Migration: crates/server/migrations/legacy/032_knowledge_bases.sql.
 pub const ENTRY_KINDS: &[&str] = &["note", "table", "business", "query", "runbook"];
 
 /// Hard cap on entry body size, matching the SQL `octet_length(body) <= 65536`

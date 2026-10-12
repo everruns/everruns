@@ -3,7 +3,7 @@
 
 import { api, getApiBaseUrl, throwApiError } from "./client";
 import type { AgentAvatar } from "./agent-types";
-import type { AvatarPreset, AvatarPresetSelection } from "./schema-types";
+import type { AvatarPreset, AvatarPresetSelection, Communication } from "./schema-types";
 import { createCrudApi } from "./crud";
 import { withOrgHeader } from "./active-org";
 import type {
@@ -106,6 +106,7 @@ export interface AgentPackagePreview {
   channels?: Record<string, { type: string; enabled: boolean; config: unknown }>;
   max_iterations?: number;
   parallel_tool_calls?: boolean;
+  communication?: Communication | null;
   tools?: { name: string; description: string; parameters: unknown }[];
   network_access?: unknown;
   environments?: unknown;

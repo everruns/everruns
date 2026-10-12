@@ -29,11 +29,12 @@ Fundamental capabilities for file operations, command execution, web access, ses
 |---|---|---|
 | [File System](/capabilities/file-system/) | `session_file_system` | 10 |
 | [Bashkit Shell](/capabilities/bashkit-shell/) | `bashkit_shell` | 1 |
-| [Tools in Shell](/capabilities/tools-in-shell/) | `tools_in_shell` | 1 (`tools`, hidden from the model; it is the shell command); `FEATURE_TOOLS_IN_SHELL` grade |
+| [Tools in Shell](/capabilities/tools-in-shell/) | `tools_in_shell` | 1 (`tools`, hidden from the model; it is the shell command) |
 | [Host Shell](/capabilities/host-shell/) | `host_shell` | 1 (Framework-only) |
 | [Session](/capabilities/session/) | `session` | 2 |
 | [Storage](/capabilities/session-storage/) | `session_storage` | 2 |
 | [Web Fetch](/capabilities/web-fetch/) | `web_fetch` | 1 |
+| [Web Search](/capabilities/web-search/) | `web_search` | 1 |
 | [Current Time](/capabilities/current-time/) | `current_time` | 1 |
 | [Message Metadata](/capabilities/message-metadata/) | `message_metadata` | 0 |
 | [Ask User](/capabilities/ask-user/) | `ask_user` | 1 |
@@ -54,8 +55,10 @@ Delegating work to other sessions and running it in the background.
 | [Sub Agents](/capabilities/sub-agents/) | `subagents` | 0 (contributes the `spawn_agent` delegation target) |
 | Session Tasks | `session_tasks` | 5 |
 | Background Execution | `background_execution` | 1 |
-| [Agent Handoff](/capabilities/agent-handoff/) | `agent_handoff` | 0 (organisation opt-in, contributes the `agent` `spawn_agent` target); `FEATURE_AGENT_DELEGATION` grade |
-| [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | `a2a_agent_delegation` | 0 (organisation opt-in, contributes the `external_a2a` `spawn_agent` target); `FEATURE_AGENT_DELEGATION` grade |
+| [Agent Handoff](/capabilities/agent-handoff/) | `agent_handoff` | 0 (contributes the `agent` `spawn_agent` target) |
+| [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | `a2a_agent_delegation` | 0 (contributes the `external_a2a` `spawn_agent` target) |
+| AG-UI Agent Delegation | `ag_ui_delegation` | 0 (contributes the `external_ag_ui` `spawn_agent` target) |
+| [Coordination](/framework/coordination/) | `coordination` | 5 |
 
 ### Sandboxes
 
@@ -125,7 +128,14 @@ External-service capabilities and blueprint-backed workflows.
 | [GitHub Scout](/capabilities/github-scout/) | `github_scout` | 0 |
 | [Slack](/capabilities/slack/) | `slack` | 4 |
 | Cursor | `cursor` | 9 |
+| [Agentic Resource Discovery](/integrations/ard/) | `resource_discovery` | 3 |
+| [AgentID Sign-In](/integrations/agentid/) | `agentid` | 1 |
+| [Brave Search](/integrations/brave-search/) | `brave_search` | 1 |
+| [DuckDuckGo](/integrations/duckduckgo/) | `duckduckgo` | 1 |
+| [Parallel Search and Fetch](/integrations/parallel/) | `parallel_search` | 0 (2 hosted MCP tools from Parallel) |
+| [Jev Decisions](/integrations/typesafe/) | `jev` | 1 |
 | [User MCP Servers](/capabilities/user-mcp-servers/) | `user_mcp` | 6 (only with `manage` on) |
+| [Poppy Personal Agent](/capabilities/poppy-personal-agent/) | `poppy_client` | 5 |
 
 ### Platform
 
@@ -173,6 +183,7 @@ Streaming-output guardrails and runtime safety nets.
 | [Output Truncation](/capabilities/output-truncation/) | `output_truncation` | 0 |
 | [Guardrails](/capabilities/guardrails/) | `guardrails` | 0 |
 | [Tool Approval](/capabilities/tool-approval/) | `tool_approval` | 0 |
+| [Dry Run](/capabilities/dry-run/) | `dry_run` | 0 |
 | Progress Guard | `progress_guard` | 0 |
 | [Soft Approval](/capabilities/soft-approval/) | `soft_approval` | 3 |
 | [Tool Loop Detection](/capabilities/loop-detection/) | `loop_detection` | 0 |
@@ -294,6 +305,7 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | [Memory](/capabilities/memory/) | [File System](/capabilities/file-system/) |
 | [Container Sandbox](/capabilities/container-sandbox/) | [Storage](/capabilities/session-storage/) |
 | [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | Session Tasks |
+| AG-UI Agent Delegation | Session Tasks |
 
 ### Features
 

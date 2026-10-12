@@ -444,3 +444,92 @@ fn unspoken_tail_backs_up_to_the_word_start() {
     assert_eq!(unspoken_tail("Short.", "Short. extra"), "");
     assert_eq!(unspoken_tail("Nothing heard.", ""), "Nothing heard.");
 }
+
+#[test]
+fn the_output_mapper_speaks_streamed_and_whole_messages_once() {
+    use serde_json::json;
+    let mut mapper = AgentOutputMapper::default();
+    // A streamed message: its completion adds nothing.
+    assert_eq!(
+        mapper.map("output.message.started", &json!({})),
+        [AgentOutput::MessageStarted]
+    );
+    assert_eq!(
+        mapper.map(
+            "output.message.delta",
+            &json!({"message_id": "m1", "delta": "Hi"})
+        ),
+        [AgentOutput::TextDelta("Hi".into())]
+    );
+    assert!(
+        mapper
+            .map(
+                "output.message.completed",
+                &json!({"message": {"id": "m1", "content": [{"type": "text", "text": "Hi"}]}})
+            )
+            .is_empty()
+    );
+    // A message from a driver that does not stream: spoken whole, text parts only.
+    assert_eq!(
+        mapper.map(
+            "output.message.completed",
+            &json!({"message": {"id": "m2", "content": [
+                {"type": "text", "text": "First."},
+                {"type": "image", "url": "x"},
+                {"type": "text", "text": "Second."}
+            ]}})
+        ),
+        [
+            AgentOutput::MessageStarted,
+            AgentOutput::TextDelta("First.\nSecond.".into())
+        ]
+    );
+    for ended in [
+        "turn.completed",
+        "turn.failed",
+        "turn.cancelled",
+        "turn.sealed",
+    ] {
+        assert_eq!(mapper.map(ended, &json!({})), [AgentOutput::TurnEnded]);
+    }
+    assert!(mapper.map("tool.call.started", &json!({})).is_empty());
+}
+
+#[test]
+fn the_output_mapper_keeps_working_notes_silent_and_speaks_sent_messages() {
+    use serde_json::json;
+    let mut mapper = AgentOutputMapper::default();
+    assert!(
+        mapper
+            .map("output.message.started", &json!({"phase": "commentary"}))
+            .is_empty()
+    );
+    assert!(
+        mapper
+            .map(
+                "output.message.delta",
+                &json!({"message_id": "m1", "delta": "thinking"})
+            )
+            .is_empty()
+    );
+    assert!(
+        mapper
+            .map(
+                "output.message.completed",
+                &json!({"message": {"id": "m1", "content": [{"type": "text", "text": "notes"}]}})
+            )
+            .is_empty()
+    );
+    assert_eq!(
+        mapper.map("conversation.message", &json!({"text": "On my way."})),
+        [
+            AgentOutput::MessageStarted,
+            AgentOutput::TextDelta("On my way.".into())
+        ]
+    );
+    // The next message is spoken again.
+    assert_eq!(
+        mapper.map("output.message.started", &json!({"phase": "final_answer"})),
+        [AgentOutput::MessageStarted]
+    );
+}

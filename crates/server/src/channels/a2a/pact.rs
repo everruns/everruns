@@ -1,6 +1,6 @@
 // PACT Identity profile (PACT 1.0, github.com/openpactprotocol/openpactprotocol)
 // on an A2A endpoint: a personal agent talks to the endpoint's agent for one
-// of its users, over A2A 1.0 HTTP+JSON at `/v1/a2a/{channel_id}`.
+// of its users, over A2A 1.0 HTTP+JSON at `/v1/channels/{channel_id}/a2a/pact`.
 //
 // Design Decisions:
 // - Separate routes, not a mode of the channel's A2A URL. PACT changes what
@@ -22,7 +22,6 @@
 // See `knowledge/integrations/a2a-channel.md`.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use axum::{
     Extension, Router,
@@ -34,7 +33,7 @@ use axum::{
 };
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::{
-    INPUT_MESSAGE, InputMessageData, OUTPUT_MESSAGE_COMPLETED, OutputMessageCompletedData,
+    CONVERSATION_MESSAGE, INPUT_MESSAGE, InputMessageData, OUTPUT_MESSAGE_COMPLETED,
     TOOL_COMPLETED, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED,
 };
 use serde_json::{Value, json};
@@ -42,15 +41,14 @@ use uuid::Uuid;
 
 use super::http_json::{a2a_error, a2a_json};
 use super::pact_delegated::{self, Delegation, ToolRun};
-use super::{AuthorizedA2a, ChannelA2aState, pact_identity, task_view};
+use super::{AuthorizedA2a, ChannelA2aState, pact_identity, task_view, turn};
 use crate::api::channel_ingress;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::domains::agent_channels::invocation::A2A_MESSAGE_ID_METADATA;
-use crate::domains::agent_channels::{A2aInvocationRequest, invoke_channel_a2a_with_hook};
-use crate::records::agent_channel::PactProfileConfig;
-use crate::records::pact_delegation::PactDelegationConfig;
+use crate::domains::agent_channels::record::PactProfileConfig;
+use crate::domains::agent_channels::record::pact_delegation::PactDelegationConfig;
 
-const BASE: &str = "/v1/a2a/{channel_id}";
+const BASE: &str = "/v1/channels/{channel_id}/a2a/pact";
 
 const TASK_NOT_FOUND: i64 = -32001;
 const PUSH_NOTIFICATION_NOT_SUPPORTED: i64 = -32003;
@@ -97,7 +95,7 @@ type ReqId = Option<Extension<crate::middleware::RequestId>>;
 /// A PACT request that passed routing and authentication.
 struct Caller {
     auth: AuthorizedA2a,
-    /// The id `invoke_channel_a2a_with_hook` resolves the channel's app by.
+    /// The id the A2A turn resolves the channel's app by.
     legacy_app_id: String,
     user: pact_identity::PersonalAgentUser,
     /// The channel's internal id, which keys its PACT signing key and grants.
@@ -115,7 +113,7 @@ pub(super) async fn pact_channel(
     Option<(
         channel_ingress::IngressContext,
         channel_ingress::IngressChannel,
-        crate::records::A2aChannelConfig,
+        crate::domains::agent_channels::record::A2aChannelConfig,
         PactProfileConfig,
     )>,
     Response,
@@ -127,7 +125,7 @@ pub(super) async fn pact_channel(
     else {
         return Ok(None);
     };
-    if channel.channel_type != crate::records::ChannelType::A2a
+    if channel.channel_type != crate::domains::agent_channels::record::ChannelType::A2a
         || channel_ingress::channel_liveness(&app, &channel).is_err()
     {
         return Ok(None);
@@ -177,7 +175,7 @@ pub(super) async fn rate_limit(
     state: &ChannelA2aState,
     app: &channel_ingress::IngressContext,
     channel: &channel_ingress::IngressChannel,
-    config: &crate::records::A2aChannelConfig,
+    config: &crate::domains::agent_channels::record::A2aChannelConfig,
     headers: &HeaderMap,
     peer: Peer,
 ) -> Result<(), Response> {
@@ -457,9 +455,6 @@ async fn send_message(
         None => None,
     };
 
-    let subscription_slot = Arc::new(tokio::sync::Mutex::new(None));
-    let hook_slot = subscription_slot.clone();
-    let event_delivery = state.event_delivery.clone();
     let hook_state = state.clone();
     let org_id = caller.auth.org_id;
     let channel_internal_id = caller.channel_internal_id;
@@ -474,12 +469,9 @@ async fn send_message(
                 delegation.sub.clone(),
             )
         });
-    let result = invoke_channel_a2a_with_hook(
-        &state.db,
-        state.encryption.as_ref(),
-        &state.session_service,
-        &state.message_service,
-        A2aInvocationRequest {
+    let result = turn::start(
+        &state,
+        turn::A2aTurnRequest {
             legacy_app_id: caller.legacy_app_id.clone(),
             channel_id: caller.auth.channel_public_id.to_string(),
             params: serde_json::from_slice(&body).unwrap_or(Value::Null),
@@ -512,12 +504,6 @@ async fn send_message(
                 .await
                 .map_err(crate::domains::common::CommandError::internal)?;
             }
-            // Subscribed before dispatch, so the turn cannot settle unseen.
-            let subscription = event_delivery
-                .subscribe(session_id.uuid())
-                .await
-                .map_err(crate::domains::common::CommandError::internal)?;
-            *hook_slot.lock().await = Some(subscription);
             Ok(())
         },
     )
@@ -529,14 +515,8 @@ async fn send_message(
             return a2a_error(INTERNAL, "The agent could not take the message");
         }
     };
-    if let Some(mut subscription) = subscription_slot.lock().await.take() {
-        task_view::wait_until_settled(
-            &mut subscription,
-            result.session_id,
-            task_view::BLOCKING_SEND_TIMEOUT,
-        )
-        .await;
-    }
+    let mut events = result.events;
+    task_view::wait_until_settled(&mut events, task_view::BLOCKING_SEND_TIMEOUT).await;
     match stored_reply(&state, result.session_id, &message.message_id).await {
         Ok(Some((Reply::Pending, _)) | None) => a2a_error(INTERNAL, "The agent did not reply"),
         Ok(Some((reply, runs))) => answer.respond(result.session_id, reply, &runs, false).await,
@@ -685,9 +665,10 @@ enum Reply {
 }
 
 /// Event types a reply and its tool calls are read from.
-const REPLY_EVENT_TYPES: [&str; 7] = [
+const REPLY_EVENT_TYPES: [&str; 8] = [
     INPUT_MESSAGE,
     OUTPUT_MESSAGE_COMPLETED,
+    CONVERSATION_MESSAGE,
     TOOL_STARTED,
     TOOL_COMPLETED,
     TURN_COMPLETED,
@@ -750,11 +731,8 @@ fn reply_to(events: &[crate::storage::EventRow], message_id: &str) -> Option<Rep
     let mut outputs: Vec<(String, String)> = Vec::new();
     for event in turn_events(events, message_id)? {
         match event.event_type.as_str() {
-            OUTPUT_MESSAGE_COMPLETED => {
-                if let Ok(data) =
-                    serde_json::from_value::<OutputMessageCompletedData>(event.data.clone())
-                    && let Some(output) = task_view::final_output(&data)
-                {
+            OUTPUT_MESSAGE_COMPLETED | CONVERSATION_MESSAGE => {
+                if let Some(output) = task_view::said_output(&event.event_type, &event.data) {
                     outputs.push(output);
                 }
             }
@@ -893,6 +871,7 @@ async fn push_unsupported(
 mod tests {
     use super::*;
     use crate::storage::EventRow;
+    use everruns_core::events::OutputMessageCompletedData;
 
     fn parse(body: Value) -> Result<UserMessage, i64> {
         parse_message(body.to_string().as_bytes()).map_err(|(code, _)| code)
@@ -1043,13 +1022,13 @@ mod tests {
             "Shop",
             "Orders",
             "Shop",
-            "https://x.example/v1/a2a/ch",
+            "https://x.example/v1/channels/ch/a2a/pact",
             None,
         );
         assert_eq!(
             card["supportedInterfaces"],
             json!([{
-                "url": "https://x.example/v1/a2a/ch",
+                "url": "https://x.example/v1/channels/ch/a2a/pact",
                 "protocolBinding": "HTTP+JSON",
                 "protocolVersion": "1.0",
             }])

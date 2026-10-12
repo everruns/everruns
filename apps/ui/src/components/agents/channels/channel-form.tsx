@@ -5,6 +5,7 @@ import {
   CalendarClock,
   ChevronDown,
   Globe,
+  Code,
   Hash,
   MessageSquareText,
   Mic,
@@ -53,7 +54,6 @@ import type {
   ScheduleChannelConfig,
   VoiceChannelConfig,
   SessionStrategy,
-  SlackReplyMode,
   SlackResponsePolicy,
   WebhookChannelConfig,
 } from "@/lib/api/types";
@@ -66,6 +66,14 @@ import {
   voiceFormStateFromConfig,
   type VoiceFormState,
 } from "./voice-fields";
+import {
+  ApiFields,
+  apiFormStateFromConfig,
+  buildApiChannelConfig,
+  isApiFormValid,
+  type ApiChannelConfig,
+  type ApiFormState,
+} from "./api-fields";
 import {
   getAgUiToolVisibilityDisplayName,
   getChannelTypeDisplayName,
@@ -82,6 +90,7 @@ import { cn } from "@/lib/utils";
 
 export const CHANNEL_FORM_KINDS: ChannelType[] = [
   "schedule",
+  "api",
   "webhook",
   "ag_ui",
   "public_chat",
@@ -114,7 +123,6 @@ export type ChannelFormState = {
   slackAppId: string;
   slackAgentSurfaceEnabled: boolean;
   slackSessionStrategy: SessionStrategy;
-  slackReplyMode: SlackReplyMode;
   slackResponsePolicy: SlackResponsePolicy;
   scheduleCronExpression: string;
   scheduleTimezone: string;
@@ -155,6 +163,7 @@ export type ChannelFormState = {
   publicChatAgentIdEnabled: boolean;
   publicChatAgentIdClientId: string;
   voice: VoiceFormState;
+  api: ApiFormState;
 };
 
 function secretValue(value?: string, configured?: boolean): string {
@@ -178,7 +187,6 @@ export function getDefaultChannelFormState(
     slackAppId: "",
     slackAgentSurfaceEnabled: false,
     slackSessionStrategy: "per_thread",
-    slackReplyMode: "all_messages",
     slackResponsePolicy: "all_messages",
     scheduleCronExpression: "0 0 * * * * *",
     scheduleTimezone: "UTC",
@@ -219,6 +227,7 @@ export function getDefaultChannelFormState(
     publicChatAgentIdEnabled: false,
     publicChatAgentIdClientId: "",
     voice: voiceFormStateFromConfig(),
+    api: apiFormStateFromConfig(),
   };
 
   if (!channel) return base;
@@ -326,6 +335,10 @@ export function getDefaultChannelFormState(
       publicChatAgentIdClientId: agentIdClientId(auth),
     };
   }
+  if (channel.channel_type === "api") {
+    const config = channel.channel_config as ApiChannelConfig;
+    return { ...base, kind: "api", api: apiFormStateFromConfig(config) };
+  }
   if (channel.channel_type === "voice") {
     const config = channel.channel_config as VoiceChannelConfig;
     return { ...base, kind: "voice", voice: voiceFormStateFromConfig(config) };
@@ -345,7 +358,6 @@ export function getDefaultChannelFormState(
       slackAppId: config.slack_app_id || "",
       slackAgentSurfaceEnabled: config.agent_surface_enabled ?? false,
       slackSessionStrategy: config.session_strategy || "per_thread",
-      slackReplyMode: config.reply_mode || "all_messages",
       slackResponsePolicy: config.response_policy || "all_messages",
     };
   }
@@ -463,6 +475,8 @@ export function buildChannelConfig(state: ChannelFormState) {
     }
     case "voice":
       return buildVoiceChannelConfig(state.voice);
+    case "api":
+      return buildApiChannelConfig(state.api);
     case "slack":
       return buildSlackChannelConfig(state);
     default:
@@ -520,6 +534,7 @@ export function isChannelFormValid(state: ChannelFormState): boolean {
     return true;
   }
   if (state.kind === "voice") return isVoiceFormValid(state.voice);
+  if (state.kind === "api") return isApiFormValid(state.api);
   if (state.kind === "slack") return true;
   return false;
 }
@@ -536,6 +551,8 @@ function channelIcon(kind: ChannelType) {
       return Globe;
     case "voice":
       return Mic;
+    case "api":
+      return Code;
     case "fcp":
       return MessageSquareText;
     case "slack":
@@ -557,6 +574,8 @@ function channelDescription(kind: ChannelType): string {
       return "Hosted, branded chat website for this one agent. Anonymous or sign-in; optional Turnstile.";
     case "voice":
       return "Talk to this agent by voice. A speech model listens and speaks; the agent answers.";
+    case "api":
+      return "Call this agent from your code with an agent key: sessions, messages, and live events.";
     case "fcp":
       return "Free Communication Protocol. Text-in / text-out HTTP channel with a Markdown handshake.";
     case "slack":
@@ -670,22 +689,6 @@ export function ChannelForm({
 
   return (
     <div className="space-y-6">
-      {mode === "edit" && section === "all" && (
-        <div className="flex items-center justify-between border p-3">
-          <div>
-            <p className="text-sm font-medium">Enabled</p>
-            <p className="text-xs text-muted-foreground">
-              Disabled channels stay configured but do not invoke the agent.
-            </p>
-          </div>
-          <Switch
-            aria-label="Enabled"
-            checked={state.enabled}
-            onCheckedChange={(checked) => update("enabled", checked)}
-          />
-        </div>
-      )}
-
       {state.kind === "schedule" && (section === "all" || section === "schedule") && (
         <CronInput
           value={state.scheduleCronExpression}
@@ -1136,6 +1139,10 @@ export function ChannelForm({
         </div>
       )}
 
+      {state.kind === "api" && (section === "all" || section === "invocation") && (
+        <ApiFields value={state.api} onChange={(api) => update("api", api)} />
+      )}
+
       {state.kind === "voice" && (section === "all" || section === "invocation") && (
         <VoiceFields value={state.voice} onChange={(voice) => update("voice", voice)} />
       )}
@@ -1220,11 +1227,9 @@ export function ChannelForm({
         <SlackConversationSettings
           idPrefix={slackFormId}
           sessionStrategy={state.slackSessionStrategy}
-          replyMode={state.slackReplyMode}
           responsePolicy={state.slackResponsePolicy}
           onResponsePolicyChange={(value) => update("slackResponsePolicy", value)}
           onSessionStrategyChange={(value) => update("slackSessionStrategy", value)}
-          onReplyModeChange={(value) => update("slackReplyMode", value)}
         />
       )}
 
@@ -1361,6 +1366,14 @@ export function ChannelFormSummary({ state }: { state: ChannelFormState }) {
             <p className="text-xs font-medium uppercase text-muted-foreground">Activation</p>
             <p className="mt-1 text-sm text-muted-foreground">
               Publish this channel before external clients can invoke it.
+            </p>
+          </div>
+        )}
+        {state.kind === "api" && (
+          <div>
+            <p className="text-xs font-medium uppercase text-muted-foreground">Agent keys</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              After you create the channel, publish it and create an agent key on its page.
             </p>
           </div>
         )}

@@ -28,7 +28,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::records::{AgUiChannelConfig, SessionStatus};
+use crate::domains::agent_channels::record::AgUiChannelConfig;
+use crate::domains::sessions::record::SessionStatus;
 use everruns_contracts::tool_types::ToolApprovalRequired;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::ag_ui::{Interrupt, ResumeEntry, ResumeStatus};
@@ -231,7 +232,7 @@ pub(crate) struct ResumeServices<'a> {
 pub(crate) async fn resume(
     services: &ResumeServices<'_>,
     org_id: i64,
-    session: &crate::records::Session,
+    session: &crate::domains::sessions::record::Session,
     config: &AgUiChannelConfig,
     entries: &[ResumeEntry],
 ) -> Result<ResumeOutcome, ResumeError> {

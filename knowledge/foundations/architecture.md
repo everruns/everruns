@@ -55,7 +55,7 @@ graph TB
 
 ### Event Delivery
 
-Events are delivered to SSE clients via the `EventDelivery` abstraction (`crates/server/src/event_delivery.rs`), which picks a transport at startup:
+Events are delivered to SSE clients via the `EventDelivery` abstraction (`crates/server/src/live_updates/event_delivery.rs`), which picks a transport at startup:
 
 - **InMemory** (dev mode): Partitioned `broadcast::channel`, zero external dependencies
 - **NATS JetStream** (production): Per-session subjects with short-term retention for replay
@@ -105,19 +105,19 @@ Production event routing therefore prefers:
    - `contracts/` → `everruns-contracts` - Portable provider and capability contracts: `ChatDriver`, the shared OpenAI/OpenResponses protocol drivers, model profiles, retry/stream helpers, typed IDs, credential form schema, and the LLM error taxonomy
    - `core/src/engine/` - Pure turn state machine plus shared Input/Reason/Act execution, enabled by `engine`
    - `capabilities/` → `everruns-capabilities` - Hosted capability implementations and orchestration
-   - `server/src/records/` - Control-plane persistence/API records
+   - `server/src/domains/<domain>/record.rs` - Control-plane persistence/API records, one per owning domain; `server/src/records/` keeps the cross-domain ones
    - `everruns/` → `everruns` - The application-facing Everruns Framework crate
    - `core/src/host/` - Opt-in neutral host implementation and session services; concrete integrations are composed by `everruns::batteries`
    - `engine/`, `host/`, `builtins/`, `mcp/`, `ag-ui/` - Deprecated one-release forwarding shims; canonical modules live in `core/src/`
    - `macros/` → `everruns-macros` - Framework tool-macro implementation re-exported through `everruns::tool`
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
    - `durable/` → `everruns-durable` - Generic durable execution engine (task queue, event log, signals, schedules) with in-memory and PostgreSQL stores, published with its own idempotent schema (`PostgresWorkflowEventStore::migrate`); it has no `everruns-*` dependency
-   - `durable-engine/` → `everruns-durable-engine` - Durable turn backend: runs core turns as queued, checkpointed steps behind core's `TurnBackend`; the worker's turn driver and the facade's experimental `durable` feature
+   - `durable-engine/` → `everruns-durable-engine` - Durable turn backend: runs core turns as queued, checkpointed steps behind core's `TurnBackend`; the platform worker's turn driver (the facade no longer uses it: its sessions run on core's `ActorRunner`)
    - `drivers/drivers/` → `everruns-drivers` - Feature-selected official LLM transports over `everruns-contracts`; `drivers/llmsim/` retains the simulator
    - `integrations/` → feature modules in `crates/integrations` (`everruns-integrations`); experimental Deno and Sprites live in `crates/integrations-experimental`.
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
    - Exports providers, components, hooks, and lib modules via `package.json` `exports` field for SaaS wrapper consumption
-4. **Documentation Site**: Astro Starlight in `apps/docs/` deployed to https://docs.everruns.com/
+4. **Documentation Site**: Astro Starlight in `apps/docs/` deployed to https://everruns.com/docs/
    - See [knowledge/ui/documentation.md](../ui/documentation.md) for detailed specification
 
 ### Project Structure
@@ -186,7 +186,6 @@ graph TD
     drivers --> provider
     durableEngine --> durable
     durableEngine --> host
-    framework -.->|opt-in durable feature| durableEngine
     worker --> host
     worker --> durableEngine
     worker --> protocol
@@ -323,8 +322,8 @@ The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/wor
 
 ### Execution Layer
 
-1. **Turn Entry Point**: the server starts, continues and cancels turns through core's `TurnBackend` trait, the same one the framework uses; `DurableRunner` implements it ([Execution Backends](../framework/execution-backends.md))
-2. **Durable Execution**: Workflows run via PostgreSQL-backed durable execution engine
+1. **Turn Entry Point**: the server starts, continues and cancels turns through core's `TurnBackend` trait, the same one the framework uses; `ActorTurnBackend` implements it ([Execution Backends](../framework/execution-backends.md))
+2. **Sessions as actors**: a worker leases a runnable session and runs its whole turn; the session event log is the only turn state ([Durable Execution Engine](../operations/durable-execution-engine.md#session-actors-turn-execution)). Queued activities that are not turns run on the PostgreSQL-backed durable task queue
 3. **Workflow Isolation**: Backend concepts (workflow IDs, task queues) never exposed in public API
 4. **Event Streaming**: SSE for real-time event delivery via PostgreSQL-backed durable events plus `EventDelivery` push channels
 
@@ -341,8 +340,9 @@ Workers communicate with the control-plane via gRPC instead of direct database a
    - Individual operations for messages, files, providers
 
 2. **gRPC Client Adapters** (in worker crate):
-   - `GrpcAdapter` - Implements session-scoped message, event, filesystem, task, and budget effects via gRPC
-   - `GrpcOrgAdapter` - Implements organization-scoped agent, session, provider, platform, and scheduling effects via gRPC
+   - `GrpcAdapter` - Implements session-scoped message, event, filesystem, and budget effects via gRPC
+   - `GrpcOrgAdapter` - Implements organization-scoped agent, session, provider, and platform effects via gRPC
+   - `internal_commands` - Stores served by internal domain commands over `ExecuteCommand` (session schedules, the session resource registry, the tool-side leased resource store, session key/value storage and secrets, the session task registry, the connection and MCP credential resolver), shared with the in-process worker; see [Internal worker commands](domains.md#internal-worker-commands). Image and file byte RPCs (create/get image artifact, image and file resolution) stay gRPC by design: they carry bytes up to 100 MiB
    - `WorkerRuntimeHost` - Bridges worker adapters into `everruns-core` (`host` feature) host execution
    - `GrpcDurableStore` - Implements durable workflow operations via gRPC
 
@@ -584,7 +584,7 @@ just start-dev
 ```
 
 **DEV_MODE behavior:**
-- Runs on an embedded PostgreSQL server (`crates/pg-embedded`) started by the process; DATABASE_URL is ignored and the database is deleted on exit (`crates/server/src/storage_init.rs`)
+- Runs on an embedded PostgreSQL server (`crates/pg-embedded`) started by the process; DATABASE_URL is ignored and the database is deleted on exit (`crates/server/src/setup/storage_init.rs`)
 - Execution happens in-process (no separate worker)
 - gRPC server disabled (not needed without workers)
 - Migrations run at startup against the embedded database
@@ -716,12 +716,13 @@ Adaptive flow control is enabled (hyper auto-adjusts windows based on throughput
    - Cross-cutting or internal-only modules, not a separate business-logic layer
    - Examples:
      - `EventService` - event persistence + delivery fanout
-     - `LlmResolverService` - model resolution with decrypted API keys
-     - `ModelSyncService` - provider model discovery / sync
+     - `ProviderResolverService` - model resolution with decrypted API keys
      - `CapabilityService` - capability registry/read helpers
-     - listeners and validators such as `UsageTrackingListener`, `scoped_mcp`, `capability_validation`
+   - Event listeners with no single owning domain (run summaries, turn latency,
+     coordination thread turns) live in `server/src/listeners/`; a listener one
+     domain owns stays with it (for example `domains::usage::UsageTrackingListener`)
 
-5. **Transport Layer** (`server/src/api/`, `server/src/grpc_service.rs`):
+5. **Transport Layer** (`server/src/api/`, `server/src/worker_link/grpc_service/mod.rs`):
    - **HTTP API** (axum) on local direct port 9301 - public REST API behind Caddy in local dev
    - **gRPC Server** (tonic) on port 9001 - internal WorkerService
    - API contracts (DTOs) are collocated with their routes in the same module

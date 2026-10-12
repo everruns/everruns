@@ -14,6 +14,7 @@ fn previewing_context() -> (ToolContext, Arc<Policy>) {
 
 fn approval_request(output: &Value) -> Option<ToolApprovalRequired> {
     ToolApprovalRequired::from_tool_result(&ToolResult {
+        details: None,
         tool_call_id: "call_outer".into(),
         result: Some(output.clone()),
         images: None,

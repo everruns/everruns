@@ -365,6 +365,15 @@ describe("AgentPage layout", () => {
     expect(push).toHaveBeenCalledWith("/playground/new?agent=agent-1");
   });
 
+  it("opens a dry-run Playground setup from Test run", async () => {
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: /Test run/ }));
+
+    expect(mockCreateSession).not.toHaveBeenCalled();
+    expect(push).toHaveBeenCalledWith("/playground/new?agent=agent-1&dry_run=1");
+  });
+
   it("toggles the prompt between rendered markdown and source", async () => {
     await renderPage();
 

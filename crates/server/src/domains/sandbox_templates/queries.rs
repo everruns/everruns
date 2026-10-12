@@ -11,7 +11,7 @@ use everruns_contracts::typed_id::{AgentId, SessionId};
 use everruns_core::merge_capabilities;
 
 use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
-use crate::org_init;
+use crate::setup::org_init;
 use crate::storage::StorageBackend;
 
 /// Resolve the capabilities a session runs with, in merge order.
@@ -67,6 +67,7 @@ pub async fn effective_session_capabilities(
     Ok(Some(
         crate::domains::sandbox_templates::resolution::apply_sandbox_to_capabilities(
             &merged,
+            &[],
             sandbox.as_ref().map(|record| &record.spec),
         ),
     ))

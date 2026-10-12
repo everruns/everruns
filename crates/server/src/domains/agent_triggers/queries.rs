@@ -1,12 +1,13 @@
 // Agent-triggers domain queries — shared read/mapping helpers.
 
+use crate::domains::agent_triggers::record::{AgentTrigger, AgentTriggerType};
 use crate::domains::common::{CommandError, classify_anyhow};
 use crate::errors::ResourceNotFoundError;
 use crate::records::AgentChannelId;
-use crate::records::{AgentTrigger, AgentTriggerType};
+use crate::storage::AgentRow;
+use crate::storage::AgentTriggerRow;
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
-use crate::storage::models::{AgentRow, AgentTriggerRow};
 use everruns_contracts::typed_id::{AgentId, TriggerId};
 use std::sync::Arc;
 

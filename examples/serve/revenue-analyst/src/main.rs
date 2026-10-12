@@ -1,4 +1,4 @@
-//! revenue-analyst: the full serve layout, runnable offline.
+//! revenue-analyst: the full serve layout.
 //!
 //! ```sh
 //! cargo run -p serve-example-revenue-analyst              # dev server on :3000

@@ -89,9 +89,9 @@ impl Capability for SlackCapability {
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
-        // Posting is supplied by the neutral channel_post_message tool in
-        // agent-controlled mode. It binds to this invocation's conversation;
-        // arbitrary-channel posting is deliberately not exposed here.
+        // Posting is `send_message`, for agents that talk explicitly. It binds
+        // to this invocation's conversation; arbitrary-channel posting is
+        // deliberately not exposed here.
         vec![
             Box::new(SlackAddReactionTool),
             Box::new(SlackUpdateMessageTool),

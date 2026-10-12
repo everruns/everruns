@@ -34,6 +34,7 @@ pub mod computer;
 pub mod connection;
 mod naming;
 pub mod openapi_spec;
+mod owned;
 mod session_sandbox_provider;
 pub mod state;
 pub mod tools;

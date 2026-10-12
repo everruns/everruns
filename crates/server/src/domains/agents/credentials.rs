@@ -1,6 +1,6 @@
-use crate::domains::common::{Command, CommandError, Ctx, command};
+use crate::domains::common::{CliExample, CliRoute, Command, CommandError, Ctx, command};
 use crate::kernel_imports::{CapabilityId, contracts::typed_id::AgentId};
-use crate::storage::models::{AgentMcpSecretBindingRow, UpsertAgentMcpSecretBindingRow};
+use crate::storage::{AgentMcpSecretBindingRow, UpsertAgentMcpSecretBindingRow};
 use everruns_core::mcp::McpCapabilityIdExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -16,7 +16,7 @@ use super::AGENT_MANAGE;
 /// repeating the revocation and risking one of them drifting.
 pub(crate) async fn revoke_agent_grants(
     ctx: &Ctx,
-    row: &crate::storage::models::AgentRow,
+    row: &crate::storage::AgentRow,
 ) -> Result<(), CommandError> {
     if let Some(identity_id) = row.virtual_user_id {
         ctx.db
@@ -121,6 +121,7 @@ pub struct CreateAgentCredentialBinding {
     method = "POST",
     path = "/v1/agents/{agent_id}/credentials",
     policy = AGENT_MANAGE,
+    cli = CliRoute::new(&["agents", "credentials"], "create").with_examples(&[CliExample::new("Declare that an MCP tool needs a secret the model must never see", "everruns agents credentials create --agent-id agent_01h9 --mcp-server-name visti --tool-name visti_send --parameter-name channel_key --label 'Visti channel key' --reason 'Notify the on-call channel'",)]),
 )]
 impl Command for CreateAgentCredentialBinding {
     type Output = AgentCredentialBinding;
@@ -184,7 +185,7 @@ fn validate_component(label: &str, value: &str) -> Result<(), CommandError> {
 
 async fn resolve_attached_server_url(
     ctx: &Ctx,
-    agent: &crate::storage::models::AgentRow,
+    agent: &crate::storage::AgentRow,
     requested_name: &str,
 ) -> Result<String, CommandError> {
     let scoped: everruns_core::ScopedMcpServers =
@@ -257,18 +258,24 @@ pub async fn resolve_runtime_secret_bindings(
     Ok(bindings)
 }
 
+/// `known_public_id` skips the public id lookup when the caller already
+/// loaded the agent.
 pub async fn list_secret_binding_metadata(
     db: &crate::storage::StorageBackend,
     org_id: i64,
     agent_id: Option<AgentId>,
+    known_public_id: Option<String>,
 ) -> anyhow::Result<Vec<everruns_core::McpSecretBindingMetadata>> {
     let Some(agent_id) = agent_id else {
         return Ok(Vec::new());
     };
-    let public_id = db
-        .get_agent_public_id(org_id, agent_id)
-        .await?
-        .unwrap_or_else(|| agent_id.to_string());
+    let public_id = match known_public_id {
+        Some(public_id) => public_id,
+        None => db
+            .get_agent_public_id(org_id, agent_id)
+            .await?
+            .unwrap_or_else(|| agent_id.to_string()),
+    };
     let setup_url = format!("/agents/{public_id}?tab=credentials");
     Ok(db
         .list_agent_mcp_secret_bindings(org_id, agent_id)

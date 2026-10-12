@@ -21,7 +21,7 @@ use everruns_core::tools::{Tool, ToolExecutionResult};
 pub const KNOWLEDGE_BASE_CAPABILITY_ID: &str = "knowledge_base";
 
 /// Allowed knowledge entry kinds.
-// Must match crates/server/migrations/032_knowledge_bases.sql and
+// Must match crates/server/migrations/legacy/032_knowledge_bases.sql and
 // crates/server/src/domains/knowledge_bases::ENTRY_KINDS.
 const ENTRY_KINDS: &[&str] = &["note", "table", "business", "query", "runbook"];
 

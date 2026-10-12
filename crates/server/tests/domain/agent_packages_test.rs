@@ -179,7 +179,9 @@ async fn platform_chat_cli_resolves_workspace_folders_and_exports_zip_artifacts(
     use everruns_core::{Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole};
     use everruns_server::domains::common::{Command, Ctx};
     use everruns_server::domains::session_files::{CreateWorkspaceFile, types::CreateFileRequest};
-    use everruns_server::services::platform_command_surface::{CatalogContext, Operation, invoke};
+    use everruns_server::worker_link::platform_command_surface::{
+        CatalogContext, Operation, invoke,
+    };
     let server = TestServer::in_memory().await;
     let session = server
         .post(

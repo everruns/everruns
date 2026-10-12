@@ -206,6 +206,9 @@ where
                 PgTransactionManager::start_rollback(&mut connection);
                 return Err(internal(error.into()));
             }
+            // Effects may wait (a cancel waits for the turn's holder): give
+            // the connection back first.
+            drop(connection);
             for effect in effects {
                 effect.await;
             }

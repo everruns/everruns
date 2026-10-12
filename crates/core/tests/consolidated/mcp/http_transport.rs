@@ -425,6 +425,36 @@ async fn discovers_tools_over_http_plain_json() {
 }
 
 #[tokio::test]
+async fn reads_resource_over_http_sse_with_method_and_uri() {
+    let response = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": { "contents": [
+            { "uri": "file:///chart.png", "mimeType": "image/png", "blob": "AAAA" }
+        ]}
+    });
+    let egress = Arc::new(FakeEgress {
+        body: format!("event: message\ndata: {response}\n\n").into_bytes(),
+        status: 200,
+        last_authorization: Arc::new(Mutex::new(None)),
+        last_body: Arc::new(Mutex::new(Vec::new())),
+    });
+    let last_body = egress.last_body.clone();
+
+    let client = McpClient::new(egress, Arc::new(NoAuthProvider));
+    let read = client
+        .read_resource(&McpConnection::http("docs", FAKE_URL), "file:///chart.png")
+        .await
+        .unwrap();
+
+    assert_eq!(read.contents[0].blob.as_deref(), Some("AAAA"));
+    assert!(read.contents[0].text.is_none());
+    let sent: serde_json::Value = serde_json::from_slice(&last_body.lock().unwrap()).unwrap();
+    assert_eq!(sent["method"], "resources/read");
+    assert_eq!(sent["params"]["uri"], "file:///chart.png");
+}
+
+#[tokio::test]
 async fn parsed_auth_modes_reach_provider_and_sse_transport() {
     struct CheckingAuth {
         expected: McpServerAuthMode,

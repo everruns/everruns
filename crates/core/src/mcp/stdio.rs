@@ -128,6 +128,16 @@ impl McpTransport for StdioTransport {
         let parsed: McpToolCallResult = serde_json::from_value(result)?;
         Ok(parsed)
     }
+
+    async fn request(
+        &self,
+        connection: &McpConnection,
+        method: &str,
+        params: Value,
+        _credential: Option<&McpCredential>,
+    ) -> Result<Value> {
+        self.run(connection, method, params).await
+    }
 }
 
 async fn write_message<W: AsyncWriteExt + Unpin>(writer: &mut W, message: &Value) -> Result<()> {
@@ -153,8 +163,17 @@ async fn read_response_for<R: tokio::io::AsyncBufRead + Unpin>(
             continue;
         };
         if value.get("id").and_then(Value::as_i64) == Some(id) {
-            if let Some(error) = value.get("error") {
-                return Err(anyhow!("MCP stdio error: {error}"));
+            if let Some(error) = value.get("error").filter(|error| !error.is_null()) {
+                return Err(crate::mcp::McpRpcError {
+                    code: error.get("code").and_then(Value::as_i64).unwrap_or(-32603),
+                    message: error
+                        .get("message")
+                        .and_then(Value::as_str)
+                        .unwrap_or("unknown error")
+                        .to_string(),
+                    data: error.get("data").cloned(),
+                }
+                .into());
             }
             return Ok(value.get("result").cloned().unwrap_or(Value::Null));
         }

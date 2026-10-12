@@ -843,6 +843,7 @@ mod tests {
             arguments: json!({"command": "cargo test", "output": "normal"}),
         };
         let mut result = ToolResult {
+            details: None,
             tool_call_id: tool_call.id.clone(),
             result: Some(json!({
                 "stdout": complete,
@@ -892,6 +893,7 @@ mod tests {
             arguments: json!({"command": "git grep Error", "output": "normal"}),
         };
         let mut result = ToolResult {
+            details: None,
             tool_call_id: tool_call.id.clone(),
             result: Some(json!({
                 "stdout": visible_output,

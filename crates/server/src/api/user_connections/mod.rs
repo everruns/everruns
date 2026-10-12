@@ -9,6 +9,7 @@ use crate::auth::config::AuthConfig;
 use crate::auth::middleware::{AuthState, AuthUser as ManagementUser};
 use crate::auth::oauth::GitHubAppService;
 use crate::domains::mcp_servers::McpServerService;
+use crate::domains::mcp_servers::record::{McpConnectionCheck, McpConnectionCheckStatus};
 use crate::domains::plugins::oauth_anchor::humanize_connection_name;
 use crate::kernel_imports::{
     Caller, McpServerAuthMode,
@@ -41,11 +42,15 @@ use utoipa::ToSchema;
 use super::common::{impl_auth_state, sanitized_internal_error};
 use crate::domains::mcp_servers::MCP_SERVER_MANAGE;
 use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
-use crate::storage::models::{
+use crate::storage::{
     CreateUserConnectionRow, CreateVirtualUserConnectionRow, UpsertMcpOAuthSessionCredentials,
 };
 pub mod mcp_connections;
 use mcp_connections::list_mcp_connections;
+mod connect_errors;
+use connect_errors::{ConnectErrorCode, is_safe_return_to, redirect_on_connect_error};
+mod connection_check;
+pub use connection_check::OAuthConnectionChecker;
 mod mcp_oauth;
 use mcp_oauth::{
     ensure_mcp_oauth_registration, oauth_refusal_message, validate_authorization_params,
@@ -167,6 +172,16 @@ pub struct ProviderResponse {
     /// Provider icon name.
     #[schema(example = "github")]
     pub icon: String,
+    /// Theme-neutral icon published by an MCP server. The named `icon` remains
+    /// the fallback when this is absent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon_url: Option<String>,
+    /// Icons published by an MCP server, including light and dark variants.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub icons: Vec<crate::domains::mcp_servers::presentation::McpServerIcon>,
+    /// Operator slug when the heading is a discovered title or a plugin name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slug: Option<String>,
     /// Provider credential mechanism.
     #[schema(example = "oauth")]
     pub connection_type: String,
@@ -425,6 +440,9 @@ async fn list_connectors_for_org(state: &AppState, org_id: i64) -> Json<Vec<Prov
             display_name: "GitHub".to_string(),
             description: "Access private repositories for agent sessions".to_string(),
             icon: "github".to_string(),
+            icon_url: None,
+            icons: Vec::new(),
+            slug: None,
             connection_type: "oauth".to_string(),
             capabilities: Vec::new(),
             form_schema: None,
@@ -446,6 +464,9 @@ async fn list_connectors_for_org(state: &AppState, org_id: i64) -> Json<Vec<Prov
             display_name: provider.display_name().to_string(),
             description: provider.description().to_string(),
             icon: provider.icon().to_string(),
+            icon_url: None,
+            icons: Vec::new(),
+            slug: None,
             connection_type: conn_type.to_string(),
             capabilities: provider
                 .capabilities()
@@ -484,20 +505,68 @@ async fn list_connectors_for_org(state: &AppState, org_id: i64) -> Json<Vec<Prov
     };
 
     match state.db.list_mcp_servers(org_id, None, false).await {
-        Ok(servers) => {
+        Ok(mut servers) => {
+            let mut oauth_rows = Vec::new();
+            let mut oauth_indexes = Vec::new();
+            for (index, server) in servers.iter().enumerate() {
+                if McpServerService::settings_from_row(server).auth_mode == McpServerAuthMode::OAuth
+                {
+                    oauth_indexes.push(index);
+                    oauth_rows.push(server.clone());
+                }
+            }
+            crate::domains::mcp_servers::presentation::refresh_rows(
+                &state.db,
+                state.mcp_service.egress_service().as_ref(),
+                org_id,
+                &mut oauth_rows,
+            )
+            .await;
+            for (index, row) in oauth_indexes.into_iter().zip(oauth_rows) {
+                servers[index].presentation = row.presentation;
+            }
             providers.extend(servers.into_iter().filter_map(|server| {
                 let settings = McpServerService::settings_from_row(&server);
-                (settings.auth_mode == McpServerAuthMode::OAuth).then(|| ProviderResponse {
+                if settings.auth_mode != McpServerAuthMode::OAuth {
+                    return None;
+                }
+                let presentation =
+                    crate::domains::mcp_servers::presentation::McpServerPresentation::for_api(
+                        &server.presentation,
+                    );
+                let slug = server.name.clone();
+                let plugin_name =
+                    mcp_connection_display_name(&server.settings, &slug, &plugin_display_names);
+                let display_name = if plugin_name != slug {
+                    plugin_name
+                } else {
+                    presentation
+                        .as_ref()
+                        .and_then(|found| found.title.clone())
+                        .unwrap_or(slug.clone())
+                };
+                let show_slug = (display_name != slug).then(|| slug.clone());
+                let description = server
+                    .description
+                    .or_else(|| {
+                        presentation
+                            .as_ref()
+                            .and_then(|found| found.description.clone())
+                    })
+                    .unwrap_or_else(|| format!("Authenticate {slug} for chat MCP tool access"));
+                Some(ProviderResponse {
                     provider_id: mcp_oauth_provider_id_for_uuid(server.id.uuid()),
-                    display_name: mcp_connection_display_name(
-                        &server.settings,
-                        &server.name,
-                        &plugin_display_names,
-                    ),
-                    description: server.description.unwrap_or_else(|| {
-                        format!("Authenticate {} for chat MCP tool access", server.name)
-                    }),
+                    display_name,
+                    description,
                     icon: "plug".to_string(),
+                    icon_url: presentation
+                        .as_ref()
+                        .and_then(|found| found.icon_src().map(str::to_string)),
+                    icons: presentation
+                        .as_ref()
+                        .map(|found| found.icons.clone())
+                        .unwrap_or_default(),
+                    slug: show_slug,
                     connection_type: "oauth".to_string(),
                     capabilities: Vec::new(),
                     form_schema: None,
@@ -577,9 +646,14 @@ pub async fn create_api_key_connection(
         .await
         .is_connector_enabled(&provider_id)
     {
+        // The connector exists but its feature flag is off for this org. Say
+        // so: "Unknown connector" sent people looking for a typo.
         return Err((
             StatusCode::NOT_FOUND,
-            format!("Unknown connector: {provider_id}"),
+            format!(
+                "{} is turned off for this organization. An organization admin can turn it on in Settings > Features.",
+                provider.display_name()
+            ),
         ));
     }
 
@@ -791,7 +865,10 @@ pub async fn authorize_connection(
     Path(provider): Path<String>,
     Query(query): Query<OAuthAuthorizeQuery>,
 ) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
-    authorize_connection_inner(
+    let auth_config = state.auth_config.clone();
+    let return_to = query.return_to.clone();
+    let popup = query.popup.unwrap_or(false);
+    let result = authorize_connection_inner(
         state,
         OAuthAuthority {
             org_id: org.org_id,
@@ -801,10 +878,21 @@ pub async fn authorize_connection(
             runtime_credential: None,
         },
         jar,
-        provider,
+        provider.clone(),
         query,
     )
-    .await
+    .await;
+    match redirect_on_connect_error(
+        &auth_config,
+        result,
+        return_to.as_deref(),
+        &provider,
+        popup,
+        None,
+    )? {
+        Ok(redirect) => Ok(redirect),
+        Err(target) => Ok((CookieJar::new(), Redirect::to(&target))),
+    }
 }
 struct OAuthAuthority {
     org_id: i64,
@@ -913,8 +1001,23 @@ async fn authorize_connection_inner(
     let code_verifier = generate_pkce_verifier();
     let code_challenge = pkce_challenge(&code_verifier);
 
-    let (metadata, registration, updated_settings) =
+    let (metadata, registration, mut updated_settings) =
         ensure_mcp_oauth_registration(&state, &row, settings, &provider).await?;
+    // Discovery and registration just worked: a preset nobody checked yet
+    // (one saved before checks existed) now reads "Ready to connect". A
+    // recorded result is left to the check that produced it.
+    if updated_settings
+        .connection_check
+        .as_ref()
+        .is_none_or(|check| check.status == McpConnectionCheckStatus::NotChecked)
+    {
+        updated_settings.connection_check = Some(McpConnectionCheck {
+            status: McpConnectionCheckStatus::Ready,
+            checked_at: Some(Utc::now()),
+            host: None,
+            reason: None,
+        });
+    }
     state
         .db
         .update_mcp_server_settings_any_owner(
@@ -1041,9 +1144,45 @@ pub async fn connection_oauth_callback(
         ));
     };
     let pending = validate_pending_oauth_state(&jar, &provider, query.state.as_deref())?;
-    consume_pending_setup(&state, &pending).await?;
-    let authority = callback_authority(&state, &pending, org).await?;
     let clear_cookie = jar.remove(Cookie::from(oauth_state_cookie_name(&provider)));
+    // Past this point the browser-bound state is valid, so a failure returns
+    // the browser to its (re-validated) `return_to` with a `connect_error`.
+    let provider_refused = query.error.is_some();
+    let result =
+        complete_mcp_oauth_callback(&state, org, server_id, &provider, &pending, &query).await;
+    let code_override =
+        (result.is_err() && provider_refused).then_some(ConnectErrorCode::ProviderRefused);
+    match redirect_on_connect_error(
+        &state.auth_config,
+        result,
+        Some(pending.return_to.as_str()),
+        &provider,
+        pending.popup,
+        code_override,
+    )? {
+        Ok(()) => {
+            let redirect_target = finalize_oauth_redirect(
+                &state.auth_config,
+                &pending.return_to,
+                &provider,
+                pending.popup,
+            );
+            Ok((clear_cookie, Redirect::to(&redirect_target)))
+        }
+        Err(target) => Ok((clear_cookie, Redirect::to(&target))),
+    }
+}
+
+async fn complete_mcp_oauth_callback(
+    state: &AppState,
+    org: Result<ResolvedOrg, crate::auth::middleware::AuthError>,
+    server_id: uuid::Uuid,
+    provider: &str,
+    pending: &PendingOAuthState,
+    query: &OAuthCallbackQuery,
+) -> Result<(), (StatusCode, String)> {
+    consume_pending_setup(state, pending).await?;
+    let authority = callback_authority(state, pending, org).await?;
     if let Some(error) = query.error.as_deref() {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -1073,6 +1212,7 @@ pub async fn connection_oauth_callback(
             return Err((StatusCode::NOT_FOUND, "MCP server not found".to_string()));
         }
     }
+    let catalog_preset = owned.owner_virtual_user_id.is_none();
     let row = owned.row;
     if row.status != "active" {
         return Err((
@@ -1099,7 +1239,7 @@ pub async fn connection_oauth_callback(
         StatusCode::BAD_REQUEST,
         "OAuth token endpoint missing".to_string(),
     ))?;
-    let redirect_uri = mcp_oauth_redirect_uri(&state.auth_config, &provider);
+    let redirect_uri = mcp_oauth_redirect_uri(&state.auth_config, provider);
 
     let token = exchange_oauth_code(
         state.mcp_service.egress_service().as_ref(),
@@ -1199,7 +1339,7 @@ pub async fn connection_oauth_callback(
         // signed, so a planted one must not be able to aim a grant at another
         // tenant's identity or clear a gate the authorizing user never passed.
         let caller = authority.management_caller()?;
-        enforce_identity_grant_policy(&state, caller)?;
+        enforce_identity_grant_policy(state, caller)?;
 
         let encryption = state.encryption.as_ref().ok_or((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1212,7 +1352,7 @@ pub async fn connection_oauth_callback(
                 agent_id,
                 CreateVirtualUserConnectionRow {
                     virtual_user_id: identity_id,
-                    provider: provider.clone(),
+                    provider: provider.to_string(),
                     connection_type: "oauth".to_string(),
                     provider_user_id: None,
                     provider_username: Some(row.name.clone()),
@@ -1246,25 +1386,26 @@ pub async fn connection_oauth_callback(
             StatusCode::INTERNAL_SERVER_ERROR,
             "Encryption not configured".to_string(),
         ))?;
+        let subject = pending
+            .virtual_user_id
+            .as_deref()
+            .ok_or((
+                StatusCode::BAD_REQUEST,
+                "Missing runtime subject".to_string(),
+            ))?
+            .parse::<VirtualUserId>()
+            .map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    "Invalid runtime subject".to_string(),
+                )
+            })?
+            .uuid();
         state
             .db
             .upsert_user_connection(CreateUserConnectionRow {
-                user_id: pending
-                    .virtual_user_id
-                    .as_deref()
-                    .ok_or((
-                        StatusCode::BAD_REQUEST,
-                        "Missing runtime subject".to_string(),
-                    ))?
-                    .parse::<VirtualUserId>()
-                    .map_err(|_| {
-                        (
-                            StatusCode::BAD_REQUEST,
-                            "Invalid runtime subject".to_string(),
-                        )
-                    })?
-                    .uuid(),
-                provider: provider.clone(),
+                user_id: subject,
+                provider: provider.to_string(),
                 connection_type: "oauth".to_string(),
                 provider_user_id: None,
                 provider_username: Some(row.name.clone()),
@@ -1286,15 +1427,47 @@ pub async fn connection_oauth_callback(
             })
             .await
             .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
+        if catalog_preset {
+            list_signed_in_catalog_server(state, authority.org_id, subject, server_id).await;
+        }
     }
+    Ok(())
+}
 
-    let redirect_target = finalize_oauth_redirect(
-        &state.auth_config,
-        &pending.return_to,
-        &provider,
-        pending.popup,
-    );
-    Ok((clear_cookie, Redirect::to(&redirect_target)))
+/// A personal sign-in to a catalog server puts it on the person's My MCP
+/// servers list (knowledge/integrations/user-mcp-servers.md, D8).
+///
+/// Only the durable personal grant (modes `user` and `virtual_user`) counts.
+/// Session mode stores the token as a secret of one chat, so it is not the
+/// person's sign-in and lists nothing; identity mode is the agent's own grant.
+/// Fails soft: the grant is already written, and a missing list row only
+/// costs the User MCP servers capability this server until the next connect.
+async fn list_signed_in_catalog_server(
+    state: &AppState,
+    org_id: i64,
+    owner: uuid::Uuid,
+    preset_id: uuid::Uuid,
+) {
+    let servers = crate::domains::mcp_servers::user_servers::UserMcpServers {
+        db: &state.db,
+        encryption: state.encryption.as_deref(),
+        org_id,
+        owner,
+        // The new row is stale until the next list, which discovers presentation.
+        egress: None,
+    };
+    match servers.list_signed_in_catalog_server(preset_id).await {
+        Ok(crate::storage::CatalogListing::Added { name, .. }) => {
+            tracing::info!(%preset_id, %name, "listed a signed-in catalog MCP server for its user");
+        }
+        Ok(crate::storage::CatalogListing::AlreadyListed { .. }) => {}
+        Ok(crate::storage::CatalogListing::Skipped(reason)) => {
+            tracing::info!(%preset_id, reason, "signed-in catalog MCP server not listed");
+        }
+        Err(error) => {
+            tracing::warn!(%preset_id, %error, "failed to list a signed-in catalog MCP server");
+        }
+    }
 }
 
 mod github_setup;

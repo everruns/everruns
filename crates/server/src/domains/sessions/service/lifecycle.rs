@@ -167,7 +167,9 @@ impl SessionService {
                     None
                 };
                 let mut session = Self::row_to_session(r, &caller.org_public_id, fallback);
-                self.hydrate_ownership(caller.org_id, &mut session).await?;
+                // No owner summaries: every caller (the worker, cancel,
+                // durable seal and failure) only settles the status, and
+                // hydrating them cost two queries on every turn.
                 self.resolve_session_agent_id(caller.org_id, &mut session)
                     .await?;
                 Ok(Some(session))

@@ -24,6 +24,8 @@ import {
 import { extractMcpAppResources, extractResultImages, getFullText } from "./tool-call-utils";
 import { useLocale } from "@/providers/locale-provider";
 import { ApprovalToolActivity, type ApprovalToolContext } from "./approval-tool-activity";
+import { WebSearchRow } from "./web-search-details";
+import { parseWebSearchDetails } from "@/lib/web-search";
 
 export function ToolActivityRow({
   toolCall,
@@ -58,6 +60,11 @@ export function ToolActivityRow({
     return (
       <ApprovalToolActivity toolCall={toolCall} toolResult={toolResult} context={approvalContext} />
     );
+  }
+
+  const search = parseWebSearchDetails(toolResult?.details);
+  if (search && toolResult) {
+    return <WebSearchRow details={search} durationMs={toolResult.duration_ms} event={toolResult} />;
   }
 
   return (

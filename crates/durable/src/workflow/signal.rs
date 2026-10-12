@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// store.send_signal(workflow_id, WorkflowSignal::cancel("user requested")).await?;
 ///
-/// // The executor hands pending signals to `Workflow::on_signal` on its next pass.
+/// // The consumer drains pending signals on its next pass.
 /// let pending = store.get_pending_signals(workflow_id).await?;
 /// assert!(pending[0].is_cancel());
 /// assert_eq!(pending[0].payload["reason"], "user requested");

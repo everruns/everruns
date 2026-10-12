@@ -87,6 +87,15 @@ pub fn execute_query(conn: &Connection, sql: &str) -> Result<SqlQueryResult, Sql
     // Remove progress handler
     clear_progress_handler(conn);
 
+    // `BEGIN` counts as read-only to SQLite, but a transaction left open by a
+    // query would swallow the next `sql_execute` into it.
+    if !conn.is_autocommit() {
+        let _ = conn.execute_batch("ROLLBACK");
+        return Err(SqlDbError::QueryError(
+            "sql_query cannot open a transaction; use sql_execute".to_string(),
+        ));
+    }
+
     result
 }
 
@@ -94,6 +103,16 @@ fn execute_query_inner(conn: &Connection, sql: &str) -> Result<SqlQueryResult, S
     let mut stmt = conn
         .prepare(sql)
         .map_err(|e| SqlDbError::QueryError(e.to_string()))?;
+
+    // Decision: queries are read-only by contract, and the persisted backend
+    // relies on it: a query never persists pages, so a write slipped through
+    // here would live only in one process's cache and vanish on reload.
+    if !stmt.readonly() {
+        return Err(SqlDbError::QueryError(
+            "sql_query is read-only; use sql_execute for statements that modify the database"
+                .to_string(),
+        ));
+    }
 
     let columns: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
     let col_count = columns.len();
@@ -400,6 +419,25 @@ mod tests {
         let names: Vec<&str> = schema.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"a"));
         assert!(names.contains(&"b"));
+    }
+
+    #[test]
+    fn test_query_rejects_writes_and_transactions() {
+        let conn = setup_conn();
+        execute_statement(
+            &conn,
+            "CREATE TABLE t (x INTEGER); INSERT INTO t VALUES (1)",
+        )
+        .unwrap();
+
+        let err = execute_query(&conn, "DELETE FROM t").unwrap_err();
+        assert!(matches!(err, SqlDbError::QueryError(ref m) if m.contains("read-only")));
+        let err = execute_query(&conn, "BEGIN").unwrap_err();
+        assert!(matches!(err, SqlDbError::QueryError(ref m) if m.contains("transaction")));
+        assert!(conn.is_autocommit());
+
+        let count = execute_query(&conn, "SELECT COUNT(*) FROM t").unwrap();
+        assert_eq!(count.rows[0][0], json!(1));
     }
 
     use serde_json::json;

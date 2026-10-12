@@ -1,6 +1,6 @@
 use super::*;
+use crate::domains::agent_channels::record::slack_provisioning::*;
 use crate::domains::agent_channels::{DeleteAgentChannel, ListAgentChannels};
-use crate::records::slack_provisioning::*;
 use crate::storage::CreateAgentChannelRow;
 use serde_json::json;
 use std::collections::HashSet;
@@ -138,14 +138,17 @@ async fn archive_removes_owned_slack_apps_and_restore_requires_reinstall() {
     assert_eq!(channels.len(), 3);
     for channel in channels {
         assert!(!channel.enabled);
-        assert_eq!(channel.status, crate::records::ChannelStatus::Disabled);
+        assert_eq!(
+            channel.status,
+            crate::domains::agent_channels::record::ChannelStatus::Disabled
+        );
         assert!(channel.channel_config.get("provisioned_app").is_none());
     }
     ctx.db
         .update_agent(
             ctx.org_id(),
             AgentId::from_uuid(agent.internal_id),
-            crate::storage::models::UpdateAgent {
+            crate::storage::UpdateAgent {
                 status: Some("active".into()),
                 ..Default::default()
             },
@@ -339,7 +342,7 @@ async fn queued_channel_edit_cannot_restore_removed_slack_credentials() {
                 agent_id: public_agent_id,
                 channel_id: edit_channel_id,
                 req: crate::domains::agent_channels::types::UpdateAgentChannelRequest {
-                    channel_config: Some(json!({"reply_mode":"tool_only"})),
+                    channel_config: Some(json!({"session_strategy":"per_channel"})),
                     ..Default::default()
                 },
             }

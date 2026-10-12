@@ -7,16 +7,39 @@ import starlightLlmsTxt from "starlight-llms-txt";
 import starlightLinksValidator from "starlight-links-validator";
 import apiSidebarFix from "./plugins/api-sidebar-fix.ts";
 import remarkStripRustHiddenLines from "./plugins/remark-strip-rust-hidden-lines.ts";
+import rehypeBaseLinks from "./plugins/rehype-base-links.ts";
+import { BASE, SITE, withBase } from "./site.config.mjs";
 import perPageMarkdown from "./integrations/per-page-markdown.mjs";
 import sitemapEnhance from "./integrations/sitemap-enhance.mjs";
+import changelogMedia from "./integrations/changelog-media.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Entry count per product for the changelog sidebar, read from entry
+// frontmatter at config time (the content collection is not available here).
+const changelogDir = path.join(__dirname, "../../docs/changelog");
+const changelogCounts = {};
+for (const folder of readdirSync(changelogDir, { withFileTypes: true })) {
+  if (!folder.isDirectory()) continue;
+  const source = readFileSync(path.join(changelogDir, folder.name, "index.md"), "utf8");
+  const products = source.match(/^products: \[([^\]]*)\]/m)?.[1] ?? "";
+  for (const product of products.split(",").map((p) => p.trim()).filter(Boolean)) {
+    changelogCounts[product] = (changelogCounts[product] ?? 0) + 1;
+  }
+}
+const changelogProduct = (label, id) => ({
+  label,
+  link: `/changelog/${id}/`,
+  badge: { text: String(changelogCounts[id] ?? 0), class: "changelog-count" },
+});
+
 // https://astro.build/config
 export default defineConfig({
-  site: "https://docs.everruns.com",
+  site: SITE,
+  base: BASE,
   trailingSlash: "always",
   // Register remark-gfm explicitly so GFM (tables, etc.) applies to `.mdx`
   // pages too. Starlight auto-adds `@astrojs/mdx` with extendMarkdownConfig,
@@ -30,8 +53,10 @@ export default defineConfig({
       // them; Starlight would otherwise render the `#` prefixes literally.
       remarkStripRustHiddenLines,
     ],
+    rehypePlugins: [[rehypeBaseLinks, { base: BASE }]],
   },
-  redirects: {
+  // Astro adds the base to redirect sources but not to their destinations.
+  redirects: Object.fromEntries(Object.entries({
     // virtual_bash capability renamed to bashkit_shell
     "/capabilities/virtual-bash/": "/capabilities/bashkit-shell/",
     // generic-tool-search page renamed to tool-search
@@ -81,6 +106,16 @@ export default defineConfig({
     // The memory model design note moved to knowledge/; the shipped
     // behavior it describes is on the memory scopes page.
     "/advanced/memory-model/": "/features/memory-scopes/",
+  }).map(([from, to]) => [from, withBase(to)])),
+  // Screenshots are mostly text. Astro's default WebP quality (80) smears
+  // small type and colored UI text, so encode at 92 with smart chroma
+  // subsampling. Changelog screenshots are captured at 2x, so they stay sharp
+  // on high-density screens. See knowledge/docs/changelog.md.
+  image: {
+    service: {
+      entrypoint: "astro/assets/services/sharp",
+      config: { webp: { quality: 92, smartSubsample: true } },
+    },
   },
   vite: {
     resolve: {
@@ -151,7 +186,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             property: "og:image",
-            content: "https://docs.everruns.com/og-image.png",
+            content: `${SITE}${BASE}/og-image.png`,
           },
         },
         {
@@ -170,6 +205,17 @@ export default defineConfig({
       social: [
         { icon: "github", label: "GitHub", href: "https://github.com/everruns/everruns" },
       ],
+      // One search box for everruns.com: the landing site publishes its own
+      // Pagefind index at /pagefind/ (everruns/landing
+      // scripts/build-search-index.mjs), merged here with the docs index.
+      // Absolute, so PR previews on workers.dev search it too. The landing
+      // index has a few dozen product pages against ~1,000 docs pages, so it is
+      // weighted up to keep a product's own page above its changelog entries.
+      pagefind: {
+        mergeIndex: [
+          { bundlePath: `${SITE}/pagefind/`, baseUrl: `${SITE}/`, indexWeight: 2 },
+        ],
+      },
       components: {
         Header: "./src/components/Header.astro",
         Search: "./src/components/Search.astro",
@@ -269,6 +315,7 @@ export default defineConfig({
                     { label: "Deploy a Framework App", slug: "framework/deployment" },
                     { label: "Move to Platform or Cloud", slug: "framework/moving-to-platform" },
                     { label: "Serve (experimental)", slug: "framework/serve" },
+                    { label: "Tutorial: Serve and Call an Agent", slug: "framework/serve-tutorial" },
                     { label: "Serve AG-UI", slug: "framework/ag-ui" },
                     { label: "A2A", slug: "framework/a2a" },
                     { label: "Build a Voice Agent", slug: "framework/voice" },
@@ -360,6 +407,12 @@ export default defineConfig({
                 { label: "Event Reference", slug: "event-reference" },
                 { label: "ID Schema", slug: "advanced/id-schema" },
                 {
+                  // Generated from the everruns binary; see crates/cli/src/reference.rs.
+                  label: "CLI Commands",
+                  collapsed: true,
+                  items: [{ autogenerate: { directory: "reference/cli" } }],
+                },
+                {
                   label: "Harnesses",
                   collapsed: true,
                   items: [
@@ -388,6 +441,7 @@ export default defineConfig({
                         { label: "Session", slug: "capabilities/session" },
                         { label: "Session Storage", slug: "capabilities/session-storage" },
                         { label: "Web Fetch", slug: "capabilities/web-fetch" },
+                        { label: "Web Search", slug: "capabilities/web-search" },
                         { label: "Current Time", slug: "capabilities/current-time" },
                         { label: "Message Metadata", slug: "capabilities/message-metadata" },
                         { label: "Ask User", slug: "capabilities/ask-user" },
@@ -453,6 +507,7 @@ export default defineConfig({
                         { label: "GitHub Scout", slug: "capabilities/github-scout" },
                         { label: "Slack", slug: "capabilities/slack" },
                         { label: "User MCP Servers", slug: "capabilities/user-mcp-servers" },
+                        { label: "Poppy Personal Agent", slug: "capabilities/poppy-personal-agent" },
                       ],
                     },
                     {
@@ -478,6 +533,7 @@ export default defineConfig({
                       items: [
                         { label: "Guardrails", slug: "capabilities/guardrails" },
                         { label: "Tool Approval", slug: "capabilities/tool-approval" },
+                        { label: "Dry Run", slug: "capabilities/dry-run" },
                         { label: "Prompt Canary Guardrail", slug: "capabilities/prompt-canary-guardrail" },
                         { label: "Tool Call Repair", slug: "capabilities/tool-call-repair" },
                         { label: "Output Truncation", slug: "capabilities/output-truncation" },
@@ -553,12 +609,41 @@ export default defineConfig({
                 ...openAPISidebarGroups,
               ],
             },
+            {
+              // Dated entries live in docs/changelog/<date>-<slug>/ and are
+              // listed by the page itself, not the sidebar; the topics option
+              // below assigns every /changelog/ page to this tab.
+              label: "Changelog",
+              link: "/changelog/",
+              icon: "list-format",
+              id: "changelog",
+              items: [
+                { label: "All changes", link: "/changelog/" },
+                {
+                  label: "By product",
+                  items: [
+                    changelogProduct("Cloud", "cloud"),
+                    changelogProduct("Platform", "platform"),
+                    changelogProduct("Framework", "framework"),
+                    changelogProduct("SDK", "sdk"),
+                    changelogProduct("CLI", "cli"),
+                    changelogProduct("Yolop", "yolop"),
+                    changelogProduct("Mira", "mira"),
+                    changelogProduct("Bashkit", "bashkit"),
+                  ],
+                },
+                { label: "Feeds", slug: "changelog/feeds" },
+              ],
+            },
           ],
           {
             exclude: ["/", "/api/**"],
             // Retired capability page kept for inbound links, unlisted in the
             // sidebar but still shown under the Reference tab.
-            topics: { reference: ["/capabilities/platform-management"] },
+            topics: {
+              reference: ["/capabilities/platform-management"],
+              changelog: ["/changelog/**"],
+            },
           },
         ),
         apiSidebarFix(),
@@ -580,9 +665,9 @@ export default defineConfig({
           details: [
             "Everruns is used in three ways, in increasing order of what it operates for you:",
             "",
-            "- **Framework**: embed Everruns in a Rust application with the `everruns` crate. You own the process, deployment, integrations, and data path. Start at <https://docs.everruns.com/framework/quickstart/>.",
-            "- **Self-hosted platform**: run the shared runtime in infrastructure you manage when you need a control plane, server, workers, UI, remote API, and durable execution. Start at <https://docs.everruns.com/getting-started/docker-compose/>.",
-            "- **Everruns Cloud**: use the shared runtime and production operations without operating the platform yourself, with a built-in model provider and starter credit. Start at <https://docs.everruns.com/getting-started/cloud/>.",
+            `- **Framework**: embed Everruns in a Rust application with the \`everruns\` crate. You own the process, deployment, integrations, and data path. Start at <${SITE}${BASE}/framework/quickstart/>.`,
+            `- **Self-hosted platform**: run the shared runtime in infrastructure you manage when you need a control plane, server, workers, UI, remote API, and durable execution. Start at <${SITE}${BASE}/getting-started/docker-compose/>.`,
+            `- **Everruns Cloud**: use the shared runtime and production operations without operating the platform yourself, with a built-in model provider and starter credit. Start at <${SITE}${BASE}/getting-started/cloud/>.`,
             "",
             "The documentation sets below are organised the same way, so a reader with a narrow question can take one set instead of the complete text. Every page in them carries a `Source:` line with its canonical URL; cite that rather than the text file.",
             "",
@@ -647,13 +732,20 @@ export default defineConfig({
             },
             {
               label: "Reference",
-              description: "the event protocol; REST endpoints live in the OpenAPI schema",
-              paths: ["event-reference"],
+              description:
+                "the event protocol and every CLI command with its flags; REST endpoints live in the OpenAPI schema",
+              paths: ["event-reference", "reference/cli/**"],
             },
             {
               label: "Operations",
               description: "environment variables, admin container, and SRE runbooks",
               paths: ["sre/**"],
+            },
+            {
+              label: "Changelog",
+              description:
+                "what changed in each product, one dated entry per change, newest first; check the release a change shipped in before relying on it",
+              paths: ["changelog/**"],
             },
           ],
           // Secondary material a reader can skip, and the machine-readable
@@ -661,13 +753,13 @@ export default defineConfig({
           optionalLinks: [
             {
               label: "OpenAPI schema",
-              url: "https://docs.everruns.com/api/openapi.json",
+              url: `${SITE}${BASE}/api/openapi.json`,
               description:
                 "the REST API as OpenAPI 3.0 — authoritative request and response shapes",
             },
             {
               label: "REST API reference",
-              url: "https://docs.everruns.com/api/",
+              url: `${SITE}${BASE}/api/`,
               description: "the same endpoints as browsable pages",
             },
             {
@@ -710,7 +802,9 @@ export default defineConfig({
             "observability/**",
             "integrations/**",
             "event-reference",
+            "reference/cli/**",
             "capabilities/platform-management",
+            "changelog/**",
           ],
         }),
         // Validate internal links and hash anchors at build time so broken
@@ -718,7 +812,7 @@ export default defineConfig({
         starlightLinksValidator({
           // The OpenAPI reference pages are generated by starlight-openapi at
           // build time and validated by that plugin, not authored here.
-          exclude: ["/api/**"],
+          exclude: [`${BASE}/api/**`],
           // The Docker Compose guide documents the local stack's URLs
           // (http://localhost:9300/...) as example endpoints, not as site
           // links to follow. Don't treat those as broken links.
@@ -732,5 +826,6 @@ export default defineConfig({
     }),
     perPageMarkdown(),
     sitemapEnhance(),
+    changelogMedia({ docsDir: path.resolve(__dirname, "../../docs") }),
   ],
 });

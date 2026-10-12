@@ -560,3 +560,39 @@ async fn max_price_preset_reaches_provider_in_usd_per_million() {
     assert!(body.get("presets").is_none());
     assert!(body.get("capacity_strategy").is_none());
 }
+
+/// The Open Responses driver hands back the body it sent when asked, after
+/// OpenRouter's extension decorated it: the JSON the provider received.
+#[tokio::test]
+async fn captured_request_body_is_the_decorated_body_on_the_wire() {
+    for capture in [true, false] {
+        let server = MockServer::start().await;
+        let completed = json!({
+            "type": "response.completed",
+            "response": {"id": "resp_c", "status": "completed", "output": [],
+                         "usage": {"input_tokens": 1, "output_tokens": 1}}
+        });
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("connection", "close")
+                    .set_body_raw(
+                        format!("event: response.completed\ndata: {completed}\n\n"),
+                        "text/event-stream",
+                    ),
+            )
+            .mount(&server)
+            .await;
+        let mut config = base_config("openai/gpt-6.1-sol");
+        config.capture_request = capture;
+
+        let response = provider(format!("{}/v1/responses", server.uri()))
+            .chat_completion(vec![Message::text(MessageRole::User, "hello")], &config)
+            .await
+            .expect("completion should succeed");
+
+        let requests = server.received_requests().await.unwrap();
+        let sent: serde_json::Value = requests.last().unwrap().body_json().unwrap();
+        assert_eq!(response.metadata.request_body, capture.then_some(sent));
+    }
+}

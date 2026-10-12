@@ -37,8 +37,8 @@ assert_eq!(capability.id(), "sprites");
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-integrations-experimental)
-- [Sprites integration](https://docs.everruns.com/integrations/sprites/)
-- [Everruns documentation](https://docs.everruns.com)
+- [Sprites integration](https://everruns.com/docs/integrations/sprites/)
+- [Everruns documentation](https://everruns.com/docs)
 
 ## License
 

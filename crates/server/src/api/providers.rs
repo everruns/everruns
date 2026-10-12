@@ -3,21 +3,22 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
+use crate::domains::models::ModelSyncService;
+use crate::domains::providers::record::Provider;
 pub use crate::domains::providers::types::{
     CreateProviderRequest, SyncModelsResponse, UpdateProviderRequest,
 };
 use crate::domains::providers::{
     CheckProviderCredentials, CreateProvider, CredentialCheckResult, DeleteProvider, GetProvider,
-    LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW, ListProviders, ProviderService, SyncProviderModels,
-    UpdateProvider,
+    LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW, ListProviders, ProviderService, ReviewProviderModels,
+    SyncProviderModels, UpdateProvider,
 };
 use crate::kernel_imports::{
     Caller, Policy, contracts::driver_registry::DriverOAuthFlow,
     contracts::driver_registry::DriverRegistry, contracts::provider::DriverId,
     evaluate_policies_with,
 };
-use crate::records::provider::Provider;
-use crate::services::{ModelSyncService, ProviderResolverService};
+use crate::services::ProviderResolverService;
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
@@ -69,26 +70,17 @@ impl AppState {
         auth: AuthState,
         provider_resolver: Option<Arc<ProviderResolverService>>,
     ) -> Self {
-        let model_service = match provider_resolver.clone() {
-            Some(resolver) => {
-                crate::domains::models::ModelService::with_resolver(db.clone(), resolver)
-            }
-            None => crate::domains::models::ModelService::new(db.clone()),
-        };
-        let service = if let Some(resolver) = provider_resolver {
-            ProviderService::with_resolver(db.clone(), encryption.clone(), resolver)
-        } else {
-            ProviderService::new(db.clone(), encryption.clone())
-        };
+        let services = crate::domains::providers::ProviderServices::new(
+            db.clone(),
+            encryption.clone(),
+            driver_registry.clone(),
+            provider_resolver,
+        );
         Self {
-            db: db.clone(),
-            service: Arc::new(service),
-            model_service: Arc::new(model_service),
-            sync_service: Arc::new(ModelSyncService::new(
-                db,
-                driver_registry.clone(),
-                encryption.clone(),
-            )),
+            db,
+            service: services.provider,
+            model_service: services.model,
+            sync_service: services.model_sync,
             auth,
             driver_registry,
             encryption,
@@ -102,9 +94,17 @@ impl AppState {
             None,
             self.auth.permission_resolver.clone(),
         )
-        .with_provider_service(self.service.clone())
-        .with_model_sync_service(self.sync_service.clone())
-        .with_model_service(self.model_service.clone())
+        .with_provider_services(&self.provider_services())
+    }
+
+    /// The service instances these routes use, for every other command surface
+    /// (MCP, gRPC worker, in-process worker) to share.
+    pub fn provider_services(&self) -> crate::domains::providers::ProviderServices {
+        crate::domains::providers::ProviderServices {
+            provider: self.service.clone(),
+            model_sync: self.sync_service.clone(),
+            model: self.model_service.clone(),
+        }
     }
 }
 
@@ -387,7 +387,7 @@ pub async fn delete_provider(
         (status = 200, description = "Models synced", body = SyncModelsResponse),
         (status = 400, description = "Invalid provider ID"),
         (status = 404, description = "Provider not found"),
-        (status = 500, description = "Sync failed")
+        (status = 422, description = "Provider rejected or could not serve the model list (code `provider_sync_failed`)")
     ),
     tag = "providers"
 )]
@@ -397,6 +397,34 @@ pub async fn sync_models(
     Path(id): Path<String>,
 ) -> ApiResult<SyncModelsResponse> {
     Ok(Json(SyncProviderModels { id }.run(&state.ctx(&org)).await?))
+}
+
+/// Mark a provider's discovered models as reviewed
+///
+/// Clears the `is_new` flag on the provider's discovered models: only models
+/// discovered after this call, and still disabled, read back as new.
+#[utoipa::path(
+    post,
+    path = "/v1/providers/{id}/models/review",
+    params(
+        ("id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
+    ),
+    responses(
+        (status = 200, description = "Provider with its review time updated", body = Provider),
+        (status = 400, description = "Invalid provider ID"),
+        (status = 403, description = "Caller cannot manage providers"),
+        (status = 404, description = "Provider not found")
+    ),
+    tag = "providers"
+)]
+pub async fn review_models(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Provider> {
+    Ok(Json(
+        ReviewProviderModels { id }.run(&state.ctx(&org)).await?,
+    ))
 }
 
 /// A driver's declared credential schema, so the Settings UI can render
@@ -576,15 +604,13 @@ pub async fn oauth_authorize(
                 "Use the ChatGPT connection endpoint.".to_string(),
             ));
         }
-        DriverOAuthFlow::OpenRouterPkce => {
-            let mut url = reqwest::Url::parse(&oauth.authorize_url)
-                .map_err(|e| internal("OAuth provider connection", &e))?;
-            url.query_pairs_mut()
-                .append_pair("callback_url", &callback_url)
-                .append_pair("code_challenge", &code_challenge)
-                .append_pair("code_challenge_method", "S256");
-            url.to_string()
-        }
+        DriverOAuthFlow::OpenRouterPkce => openrouter_authorize_url(
+            &oauth.authorize_url,
+            &callback_url,
+            &code_challenge,
+            &org.name,
+        )
+        .map_err(|e| internal("OAuth provider connection", &e))?,
     };
 
     tracing::info!(
@@ -671,7 +697,7 @@ pub async fn oauth_callback(
     );
 
     let redirect = format!(
-        "{}/settings/providers?connected={}",
+        "{}/models?tab=providers&connected={}",
         state.auth.config.frontend_url.trim_end_matches('/'),
         urlencoding::encode(provider.provider_type.as_str()),
     );
@@ -712,6 +738,44 @@ async fn resolve_oauth_provider(
             ),
         ))?;
     Ok((provider, oauth))
+}
+
+/// OpenRouter authorize URL for the PKCE connect flow.
+///
+/// `key_label` prefills the consent screen and becomes the created key's name.
+fn openrouter_authorize_url(
+    authorize_url: &str,
+    callback_url: &str,
+    code_challenge: &str,
+    org_name: &str,
+) -> Result<String, url::ParseError> {
+    let mut url = reqwest::Url::parse(authorize_url)?;
+    url.query_pairs_mut()
+        .append_pair("callback_url", callback_url)
+        .append_pair("code_challenge", code_challenge)
+        .append_pair("code_challenge_method", "S256")
+        .append_pair("key_label", &openrouter_key_label(org_name));
+    Ok(url.to_string())
+}
+
+/// OpenRouter's authorize page prefills the created key's label from `key_label`.
+/// The API caps that field at 100 characters.
+const OPENROUTER_KEY_LABEL_LIMIT: usize = 100;
+
+/// Label shown on OpenRouter's consent screen and stored on the created key:
+/// `Everruns <org name>`, so the key is identifiable in the OpenRouter dashboard.
+fn openrouter_key_label(org_name: &str) -> String {
+    let name = org_name.trim();
+    let label = if name.is_empty() {
+        "Everruns".to_string()
+    } else {
+        format!("Everruns {name}")
+    };
+    let mut truncated = String::new();
+    for ch in label.chars().take(OPENROUTER_KEY_LABEL_LIMIT) {
+        truncated.push(ch);
+    }
+    truncated
 }
 
 /// Exchange an OpenRouter PKCE authorization code for a user-controlled API key.
@@ -904,6 +968,7 @@ pub fn routes(state: AppState) -> Router {
         )
         .route("/v1/providers/check-credentials", post(check_credentials))
         .route("/v1/providers/{id}/sync-models", post(sync_models))
+        .route("/v1/providers/{id}/models/review", post(review_models))
         .route("/v1/providers/{id}/oauth/authorize", get(oauth_authorize))
         .route("/v1/providers/{id}/oauth/callback", get(oauth_callback))
         .with_state(state)
@@ -940,6 +1005,45 @@ mod oauth_tests {
             pkce_challenge(verifier),
             "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
         );
+    }
+
+    #[test]
+    fn openrouter_authorize_url_prefills_the_org_key_label() {
+        let url = openrouter_authorize_url(
+            "https://openrouter.ai/auth",
+            "https://app.everruns.com/v1/providers/provider_abc/oauth/callback?state=csrf",
+            "challenge",
+            "Acme & Co",
+        )
+        .unwrap();
+        let parsed = reqwest::Url::parse(&url).unwrap();
+        let query: std::collections::HashMap<String, String> =
+            parsed.query_pairs().into_owned().collect();
+        assert_eq!(
+            query.get("key_label").map(String::as_str),
+            Some("Everruns Acme & Co")
+        );
+        assert_eq!(
+            query.get("code_challenge_method").map(String::as_str),
+            Some("S256")
+        );
+        assert_eq!(parsed.host_str(), Some("openrouter.ai"));
+    }
+
+    #[test]
+    fn openrouter_key_label_uses_the_org_name() {
+        assert_eq!(openrouter_key_label("Acme"), "Everruns Acme");
+        assert_eq!(openrouter_key_label("  Acme  "), "Everruns Acme");
+        assert_eq!(openrouter_key_label("   "), "Everruns");
+    }
+
+    #[test]
+    fn openrouter_key_label_stays_within_openrouter_limit() {
+        let org = "界".repeat(200);
+        let label = openrouter_key_label(&org);
+        assert_eq!(label.chars().count(), OPENROUTER_KEY_LABEL_LIMIT);
+        assert!(label.starts_with("Everruns 界"));
+        assert!(label.is_char_boundary(label.len()));
     }
 
     #[test]

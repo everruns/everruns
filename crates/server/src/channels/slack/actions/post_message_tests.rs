@@ -1,11 +1,11 @@
 use super::tests::Fixture;
 use super::*;
-use crate::storage::models::CreateEventRow;
-use everruns_capabilities::channel_message_sender::SlackChannelMessageSender;
+use crate::storage::CreateEventRow;
+use everruns_capabilities::channel_message_sender::SlackConversationSender;
 use everruns_contracts::slack_action::SlackActionInvoker;
 use everruns_contracts::typed_id::MessageId;
 use everruns_core::{
-    channel_messaging::{ChannelMessageSenderExt, ChannelPostMessageTool},
+    conversation::{ConversationSenderExt, SendMessageTool},
     events::EventContext,
     tool_context::ToolContext,
     tools::{Tool, ToolExecutionResult},
@@ -73,14 +73,14 @@ async fn neutral_tool_posts_to_its_input_thread_and_returns_an_editable_receipt(
         ctx.tool_call_id = Some(format!("call-{channel}"));
         let invoker = fixture.invoker(1, session).with_api_base(slack.uri());
         ctx.extensions
-            .insert(Arc::new(ChannelMessageSenderExt(Arc::new(
-                SlackChannelMessageSender(Arc::new(invoker)),
+            .insert(Arc::new(ConversationSenderExt(Arc::new(
+                SlackConversationSender(Arc::new(invoker)),
             ))));
-        let result = ChannelPostMessageTool
+        let result = SendMessageTool
             .execute_with_context(json!({"text":"**Hello**\nCan you confirm?"}), &ctx)
             .await;
         assert!(
-            matches!(result, ToolExecutionResult::Success(value) if value == json!({"delivered":true,"platform":"slack","channel":channel,"message_ref":"9.8"}))
+            matches!(result, ToolExecutionResult::Success(value) if value["sent"] == true && value["delivery"] == json!({"platform":"slack","channel":channel,"message_ref":"9.8"}))
         );
     }
     let requests = slack.received_requests().await.unwrap();
@@ -106,6 +106,40 @@ async fn neutral_tool_posts_to_its_input_thread_and_returns_an_editable_receipt(
             "Bearer xoxb-endpoint"
         );
     }
+}
+
+#[tokio::test]
+async fn answer_goes_to_the_thread_of_the_message_that_steered_the_turn() {
+    let (fixture, session, app, endpoint) = setup().await;
+    let slack = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat.postMessage"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"ts":"9.8"})))
+        .mount(&slack)
+        .await;
+    let invoker = fixture.invoker(1, session).with_api_base(slack.uri());
+    let turn_input = input(&fixture, session, &app, &endpoint, "D1", "3.4", true).await;
+    let post = || {
+        invoker.invoke(SlackAction::PostMessage {
+            input_message_id: turn_input.to_string(),
+            tool_call_id: "call-1".into(),
+            text: "hello".into(),
+        })
+    };
+    // A second question steers the running turn; the answer belongs under it.
+    input(&fixture, session, &app, &endpoint, "D1", "7.8", true).await;
+    post().await.unwrap();
+    // An input without signed Slack provenance cannot redirect the post.
+    input(&fixture, session, &app, &endpoint, "D1", "9.9", false).await;
+    post().await.unwrap();
+    let threads: Vec<Value> = slack
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .map(|r| serde_json::from_slice::<Value>(&r.body).unwrap()["thread_ts"].clone())
+        .collect();
+    assert_eq!(threads, vec![json!("7.8"), json!("3.4")]);
 }
 
 #[tokio::test]
@@ -196,15 +230,14 @@ async fn slack_ingress_principal_provenance_authorizes_the_neutral_post() {
                 .collect(),
         ),
     };
-    let principal = crate::services::PrincipalService::new(fixture.db.clone())
+    let principal = crate::domains::users::PrincipalService::new(fixture.db.clone())
         .ensure_external_actor_principal(1, &actor)
         .await
         .unwrap();
     let service = crate::domains::messages::MessageService::new(
         fixture.db.clone(),
         Arc::new(crate::channels::slack::events::tests_support::NoopRunner),
-        false,
-        crate::event_delivery::EventDelivery::in_memory(),
+        crate::live_updates::event_delivery::EventDelivery::in_memory(),
     );
     let message = service
         .create(
@@ -240,6 +273,7 @@ async fn slack_ingress_principal_provenance_authorizes_the_neutral_post() {
                 ),
                 tags: None,
                 external_actor: Some(actor),
+                client_message_id: None,
             },
         )
         .await
@@ -277,10 +311,10 @@ async fn slack_ingress_principal_provenance_authorizes_the_neutral_post() {
 
 #[tokio::test]
 async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
+    use crate::domains::agent_channels::record::ChannelType;
     use crate::domains::agent_channels::types::CreateAgentChannelRequest;
     use crate::domains::agent_channels::{CreateAgentChannel, PublishAgentChannel};
     use crate::domains::common::{Command, Ctx};
-    use crate::records::ChannelType;
     let fixture = Fixture::new();
     let harness = fixture.seed_harness().await;
     let agent = fixture.seed_agent(1, harness).await;
@@ -289,10 +323,13 @@ async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
         agent_id: agent.to_string(),
         req: CreateAgentChannelRequest {
             channel_type: ChannelType::Slack,
-            channel_config: json!({"reply_mode":"tool_only", "bot_token":"xoxb-native", "signing_secret":"s"}),
+            channel_config: json!({"bot_token":"xoxb-native", "signing_secret":"s"}),
             enabled: true,
         },
-    }.run(&ctx).await.unwrap();
+    }
+    .run(&ctx)
+    .await
+    .unwrap();
     PublishAgentChannel {
         agent_id: agent.to_string(),
         channel_id: endpoint.public_id.to_string(),
@@ -371,48 +408,13 @@ async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
         .update_session(
             1,
             session,
-            crate::storage::models::UpdateSession {
+            crate::storage::UpdateSession {
                 status: Some("active".into()),
                 ..Default::default()
             },
         )
         .await
         .unwrap();
-    let (_events, rx) = tokio::sync::broadcast::channel(16);
-    let dispatcher = crate::channels::slack::delivery::SlackDeliveryDispatcher::start(
-        fixture.db.clone(),
-        rx,
-        String::new(),
-    );
-    dispatcher.recover(None).await;
-    assert_eq!(
-        dispatcher.active_delivery_count().await,
-        1,
-        "native working feedback must survive recovery"
-    );
-
-    input(
-        &fixture,
-        session,
-        &app,
-        &endpoint.public_id.to_string(),
-        "C_FORGED",
-        "9.0",
-        false,
-    )
-    .await;
-    let (_api_events, api_rx) = tokio::sync::broadcast::channel(16);
-    let api_dispatcher = crate::channels::slack::delivery::SlackDeliveryDispatcher::start(
-        fixture.db.clone(),
-        api_rx,
-        String::new(),
-    );
-    api_dispatcher.recover(None).await;
-    assert_eq!(
-        api_dispatcher.active_delivery_count().await,
-        0,
-        "API metadata cannot redirect native recovery"
-    );
 
     // Endpoint ownership and current agent liveness remain required without an App FK.
     for (status, suspended) in [("archived", false), ("active", true)] {
@@ -421,7 +423,7 @@ async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
             .update_agent(
                 1,
                 agent,
-                crate::storage::models::UpdateAgent {
+                crate::storage::UpdateAgent {
                     status: Some(status.into()),
                     exposures_suspended: Some(suspended),
                     ..Default::default()
@@ -440,7 +442,7 @@ async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
         .update_agent(
             1,
             agent,
-            crate::storage::models::UpdateAgent {
+            crate::storage::UpdateAgent {
                 status: Some("active".into()),
                 exposures_suspended: Some(false),
                 ..Default::default()
@@ -495,4 +497,36 @@ async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
         Err(SlackActionError::ChannelUnavailable)
     ));
     assert_eq!(slack.received_requests().await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn a_top_level_dm_input_is_answered_in_the_dm_itself() {
+    let (fixture, session, app, endpoint) = setup().await;
+    let slack = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat.postMessage"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"ts":"9.8"})))
+        .mount(&slack)
+        .await;
+    let id = MessageId::new();
+    fixture.db.create_event(CreateEventRow {
+        session_id:session, event_type:"input.message".into(), ts:chrono::Utc::now(),
+        context:json!({"input_message_id":id}),
+        data:json!({"message":{"id":id,"metadata":{"_app_channel_id":endpoint,"slack_channel":"D1","slack_thread_ts":"3.4","slack_reply_inline":true}}}),
+        metadata:Some(json!({"initiator":{"type":"endpoint","endpoint_id":app}})),
+        tags:None,
+    }).await.unwrap();
+    let invoker = fixture.invoker(1, session).with_api_base(slack.uri());
+    invoker
+        .invoke(SlackAction::PostMessage {
+            input_message_id: id.to_string(),
+            tool_call_id: "call-1".into(),
+            text: "hello".into(),
+        })
+        .await
+        .unwrap();
+    let requests = slack.received_requests().await.unwrap();
+    let payload: Value = serde_json::from_slice(&requests[0].body).unwrap();
+    assert_eq!(payload["channel"], "D1");
+    assert!(payload.get("thread_ts").is_none(), "{payload}");
 }

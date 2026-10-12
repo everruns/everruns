@@ -1,8 +1,9 @@
 // Agent avatar image with an icon fallback. Square by default, matching the
 // stored avatar; `shape="circle"` uses the server's pre-masked circular preset
 // rather than CSS clipping, so it looks the same as on Slack and A2A clients.
+import { AgentIcon } from "@/components/icons/facet-icons";
 import type { ReactNode } from "react";
-import { Boxes } from "lucide-react";
+
 import { agentAvatarUrl } from "@/lib/api/agents";
 import type { AgentAvatar as AgentAvatarData } from "@/lib/api/agent-types";
 import { cn } from "@/lib/utils";
@@ -11,7 +12,7 @@ export function AgentAvatar({
   avatar,
   size,
   shape = "square",
-  fallback = <Boxes />,
+  fallback = <AgentIcon size={size} />,
   className,
 }: {
   avatar?: AgentAvatarData | null;

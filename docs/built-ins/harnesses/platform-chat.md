@@ -63,6 +63,7 @@ inherited from [Bashkit Worker](/built-ins/harnesses/bashkit-worker/).
 | Error Disclosure | Return detailed platform errors to the managed operator Agent |
 | User MCP Servers | Use the MCP servers the person added for themselves, and add, remove and connect them in chat ([User MCP servers](/features/user-mcp-servers/)) |
 | Coordination | Hand focused work to threads you can open and follow, when the organization has adopted Chat threads |
+| Poppy Personal Agent | Talk to companies' agents for the person over the Personal Agent Protocol ([Poppy Personal Agent](/capabilities/poppy-personal-agent/)) |
 
 ## Existing conversations
 

@@ -6,10 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 use web_time::Instant;
 
 use super::ExecutionContext;
@@ -26,8 +23,7 @@ use crate::engine::tool_fingerprint::{
     tool_call_fingerprint, tool_error_fingerprint, tool_result_fingerprint,
 };
 use crate::engine::tool_narration::{
-    GroupHeadlineAction, ToolNarrationContext, ToolNarrationPhase,
-    render_tool_narration_with_locale, summarize_group_actions, tool_call_for_group_summary,
+    GroupHeadlineAction, ToolNarrationPhase, summarize_group_actions, tool_call_for_group_summary,
 };
 use crate::engine::tool_types::ConnectionRequired;
 use crate::engine::tool_types::{SideEffectClass, ToolCall, ToolDefinition, ToolResult};
@@ -38,35 +34,6 @@ use crate::engine::{
     session_files::SessionFileSystem, tool_execution::ToolExecutor,
 };
 use uuid::Uuid;
-
-/// A Tokio task handle that aborts its task if the parent future is dropped
-/// before the task completes. Tokio detaches a bare [`tokio::task::JoinHandle`]
-/// on drop, but tool execution must not outlive Act cancellation.
-struct AbortOnDropJoinHandle<T> {
-    handle: everruns_contracts::rt::JoinHandle<T>,
-}
-
-impl<T> AbortOnDropJoinHandle<T> {
-    fn new(handle: everruns_contracts::rt::JoinHandle<T>) -> Self {
-        Self { handle }
-    }
-}
-
-impl<T> Future for AbortOnDropJoinHandle<T> {
-    type Output = std::result::Result<T, everruns_contracts::rt::JoinError>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        Pin::new(&mut self.handle).poll(cx)
-    }
-}
-
-impl<T> Drop for AbortOnDropJoinHandle<T> {
-    fn drop(&mut self) {
-        if !self.handle.is_finished() {
-            self.handle.abort();
-        }
-    }
-}
 
 // ============================================================================
 // Input and Output Types
@@ -652,8 +619,8 @@ where
             return Ok(result);
         }
 
-        // Replace tool_calls with only server-side tools for execution
-        let tool_calls = server_tool_calls;
+        // THREAT[TM-AGENT-007]: calls past the per-act cap fail without running.
+        let (tool_calls, over_cap) = tool_scheduler::split_at_call_cap(server_tool_calls);
 
         tracing::info!(
             session_id = %context.session_id,
@@ -762,7 +729,7 @@ where
             serialize_all: parallel_tool_calls == Some(false),
             ..tool_scheduler::ScheduleConfig::default()
         };
-        let results =
+        let mut results =
             tool_scheduler::schedule(tool_calls.len(), &classes, schedule_config, |index| {
                 let tool_call = &tool_calls[index];
                 let tool_def = tool_map.get(tool_call.name.as_str()).cloned();
@@ -778,6 +745,7 @@ where
                 )
             })
             .await;
+        results.extend(over_cap);
 
         // Count successes and errors, including client calls already settled
         // by the pre-tool chain. Those never reach the server scheduler.
@@ -855,7 +823,6 @@ where
             )));
         }
 
-        let mut results = results;
         results.extend(client_policy_results);
         let mut act_result = ActResult {
             results,
@@ -891,38 +858,6 @@ where
     T: ToolExecutor + Send + Sync + 'static,
     E: EventEmitter + Send + Sync + 'static,
 {
-    fn render_tool_narration(
-        &self,
-        execution_context: &ExecutionContext,
-        tool_def: Option<&ToolDefinition>,
-        tool_call: &ToolCall,
-        phase: ToolNarrationPhase,
-        locale: Option<&str>,
-    ) -> String {
-        let wrapped_store = self.wrap_file_store_for_narration(execution_context);
-        let ctx = ToolNarrationContext::new(wrapped_store.as_deref());
-        for hook in &self.tool_call_hooks {
-            if let Some(narration) = hook.narration(tool_def, tool_call, phase, locale, ctx) {
-                return narration;
-            }
-        }
-        // Capability hooks only reach tools a capability lists in `tools()`.
-        // Tools assembled outside any capability — the unified `spawn_agent`
-        // dispatcher built from delegation targets, registry-augmented and
-        // proxied tools — still own narration, so ask the executing tool
-        // directly before falling back to the generic display-name phrasing.
-        if let Some(narration) = self
-            .context_services
-            .tool_registry
-            .as_ref()
-            .and_then(|registry| registry.get(&tool_call.name))
-            .and_then(|tool| tool.narrate(tool_call, phase, locale, ctx))
-        {
-            return narration;
-        }
-        render_tool_narration_with_locale(tool_def, tool_call, phase, locale)
-    }
-
     fn render_group_headline(
         &self,
         execution_context: &ExecutionContext,
@@ -1058,6 +993,7 @@ where
             return ToolCallResult {
                 tool_call: tool_call.clone(),
                 result: ToolResult {
+                    details: None,
                     tool_call_id: tool_call.id.clone(),
                     result: None,
                     images: None,
@@ -1130,6 +1066,7 @@ where
                         return ToolCallResult {
                             tool_call: tool_call.clone(),
                             result: ToolResult {
+                                details: None,
                                 tool_call_id: tool_call.id.clone(),
                                 result: None,
                                 images: None,
@@ -1152,6 +1089,7 @@ where
                     // Emit a replayed tool.completed without re-emitting tool.started.
                     let replayed_result: ToolResult = serde_json::from_value(result_json.clone())
                         .unwrap_or(ToolResult {
+                            details: None,
                             tool_call_id: tool_call.id.clone(),
                             result: Some(result_json),
                             images: None,
@@ -1258,6 +1196,7 @@ where
                         return ToolCallResult {
                             tool_call: tool_call.clone(),
                             result: ToolResult {
+                                details: None,
                                 tool_call_id: tool_call.id.clone(),
                                 result: None,
                                 images: None,
@@ -1331,6 +1270,7 @@ where
                             return ToolCallResult {
                                 tool_call: tool_call.clone(),
                                 result: ToolResult {
+                                    details: None,
                                     tool_call_id: tool_call.id.clone(),
                                     result: None,
                                     images: None,
@@ -1386,6 +1326,7 @@ where
                     return ToolCallResult {
                         tool_call: tool_call.clone(),
                         result: ToolResult {
+                            details: None,
                             tool_call_id: tool_call.id.clone(),
                             result: None,
                             images: None,
@@ -1486,6 +1427,7 @@ where
             return ToolCallResult {
                 tool_call: tool_call.clone(),
                 result: ToolResult {
+                    details: None,
                     tool_call_id: tool_call.id.clone(),
                     result: None,
                     images: None,
@@ -1577,6 +1519,33 @@ where
                 let success = tool_result.error.is_none();
                 let status = if success { "success" } else { "error" };
 
+                // A delivered send_message is something the agent said. Record
+                // it before the tool completes so every surface sees the
+                // message no later than the call that sent it. Replays never
+                // re-emit: the call settled, and so did its message.
+                if success
+                    && let Some(sent) = crate::conversation::sent_message(
+                        &tool_call.name,
+                        &tool_call.id,
+                        &execution_tool_call.arguments,
+                        tool_result.result.as_ref(),
+                    )
+                    && let Err(e) = self
+                        .event_emitter
+                        .emit(EventRequest::new(
+                            context.session_id,
+                            event_context.clone(),
+                            sent,
+                        ))
+                        .await
+                {
+                    tracing::warn!(
+                        tool_call_id = %tool_call.id,
+                        error = %e,
+                        "ActAtom: failed to emit conversation.message"
+                    );
+                }
+
                 // Emit tool.completed event
                 let completed_data = if success {
                     let result_fingerprint = tool_result_fingerprint(&tool_call.name, &tool_result);
@@ -1608,13 +1577,17 @@ where
                     .with_capability_attribution(capability_id.clone(), capability_name.clone())
                     .with_executed_arguments(authored_arguments, &execution_tool_call.arguments)
                     .with_acted_as(client_policy::mcp_acted_as(&tool_context))
-                    .with_narration(Some(self.render_tool_narration(
-                        context,
-                        Some(tool_def),
-                        &tool_call,
-                        ToolNarrationPhase::Completed,
-                        locale,
-                    )))
+                    .with_details(tool_result.details.clone())
+                    .with_narration(Some(
+                        self.render_tool_narration_with_result(
+                            context,
+                            Some(tool_def),
+                            &tool_call,
+                            ToolNarrationPhase::Completed,
+                            locale,
+                            Some(&tool_result),
+                        ),
+                    ))
                 } else {
                     let result_fingerprint = tool_result_fingerprint(&tool_call.name, &tool_result);
                     ToolCompletedData::failure(
@@ -1759,6 +1732,7 @@ where
                 ToolCallResult {
                     tool_call: tool_call.clone(),
                     result: ToolResult {
+                        details: None,
                         tool_call_id: tool_call.id.clone(),
                         result: None,
                         images: None,
@@ -1782,6 +1756,13 @@ where
 
 #[path = "act_client_policy.rs"]
 mod client_policy;
+
+#[path = "act_narration.rs"]
+mod narration;
+
+#[path = "act_abort_on_drop.rs"]
+mod abort_on_drop;
+use abort_on_drop::AbortOnDropJoinHandle;
 
 #[cfg(test)]
 #[path = "act_tests.rs"]

@@ -546,15 +546,6 @@ fn child_task(task: &str, public_context: Option<&Value>) -> String {
     )
 }
 
-fn last_agent_message(
-    messages: &[everruns_core::subagent_delegation::PlatformMessage],
-) -> Option<String> {
-    messages
-        .iter()
-        .rfind(|message| message.role == "agent" || message.role == "assistant")
-        .map(|message| message.content.clone())
-}
-
 async fn finish_handoff_task(
     context: &ToolContext,
     task_id: Option<&str>,
@@ -630,7 +621,7 @@ async fn handoff_result(
         .get_messages(child_session_id, Some(5))
         .await
         .map_err(ToolExecutionResult::internal_error)?;
-    Ok(last_agent_message(&messages)
+    Ok(crate::platform_store::last_agent_message(&messages)
         .unwrap_or_else(|| format!("Handoff completed with status: {status}")))
 }
 
@@ -1024,8 +1015,9 @@ impl Tool for SpawnAgentHandoffTool {
                 ));
             }
 
+            let reason = crate::platform_store::invite_reason(&target.id);
             let participant_id = match store
-                .add_agent_session_participant(context.session_id, target.agent_id)
+                .add_agent_session_participant(context.session_id, target.agent_id, &reason)
                 .await
             {
                 Ok(participant_id) => participant_id,
@@ -1082,6 +1074,7 @@ impl Tool for SpawnAgentHandoffTool {
                     .then_some(context.session_id),
                 budget_root_session_id,
                 seed,
+                reason: crate::platform_store::handoff_reason(&name, &target.id),
             })
             .await
         {

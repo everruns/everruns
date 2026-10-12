@@ -8,12 +8,11 @@ use crate::session_row_fixture::base_session_row;
 use crate::test_harness::get_database_url;
 
 use everruns_contracts::typed_id::PrincipalId;
-use everruns_server::storage::models::{
-    CreatePrincipalRow, CreateSessionRow, CreateUsageJournalRow,
-};
+use everruns_server::storage::CreateUsageJournalRow;
 use everruns_server::storage::{
     CreatePendingUsageGeneration, Database, LateGenerationUsage, StorageBackend,
 };
+use everruns_server::storage::{CreatePrincipalRow, CreateSessionRow};
 use sqlx::PgPool;
 use uuid::Uuid;
 

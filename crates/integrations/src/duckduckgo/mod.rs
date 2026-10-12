@@ -33,20 +33,9 @@ use tools::DuckDuckGoSearchTool;
 // Integration Plugin Registration
 // ============================================================================
 
-/// Feature flags this module's plugins name, with their default rollout grades;
-/// the hosted platform lists them in its feature flag settings, and
-/// `FEATURE_<NAME>` overrides the grade per deployment.
-pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
-    &[everruns_contracts::runtime::FeatureFlagDefinition {
-        name: "duckduckgo",
-        label: "DuckDuckGo search",
-        description: "Keyless web search through DuckDuckGo.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
-    }];
-
 /// Capability plugins this crate contributes to a hosted catalog.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
-    feature_flag: Some("duckduckgo"),
+    feature_flag: None,
     factory: || Box::new(DuckDuckGoCapability),
 }];
 // ============================================================================
@@ -86,7 +75,12 @@ impl Capability for DuckDuckGoCapability {
          Agents can get abstracts, definitions, related topics, and direct answers. \
          This is an instant-answer lookup, not a full web/SERP search — no result does \
          not mean no web pages exist. \
-         EXPERIMENTAL: This capability may change."
+         EXPERIMENTAL: This capability may change. \
+         For provider-neutral web search, use Web search."
+    }
+
+    fn web_search_source(&self, _config: &serde_json::Value) -> bool {
+        true
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -127,7 +121,8 @@ impl Capability for DuckDuckGoCapability {
              отримувати анотації, визначення, пов'язані теми та прямі відповіді. \
              Це пошук миттєвих відповідей, а не повноцінний веб-пошук — відсутність \
              результату не означає, що немає відповідних веб-сторінок. \
-             ЕКСПЕРИМЕНТАЛЬНО: ця можливість може змінитися.",
+             ЕКСПЕРИМЕНТАЛЬНО: ця можливість може змінитися. Для пошуку без прив'язки до \
+             провайдера використовуйте Вебпошук.",
         )]
     }
 }

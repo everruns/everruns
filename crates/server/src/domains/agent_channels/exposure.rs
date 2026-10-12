@@ -46,10 +46,11 @@ fn canonical(mut config: Value) -> Value {
                 map.remove("auth");
             }
             Some(auth) => {
-                if let Some(typed) =
-                    serde_json::from_value::<crate::records::ChannelAuthConfig>(auth.clone())
-                        .ok()
-                        .and_then(|auth| serde_json::to_value(auth).ok())
+                if let Some(typed) = serde_json::from_value::<
+                    crate::domains::agent_channels::record::ChannelAuthConfig,
+                >(auth.clone())
+                .ok()
+                .and_then(|auth| serde_json::to_value(auth).ok())
                 {
                     map.insert("auth".to_string(), typed);
                 }

@@ -20,7 +20,7 @@ A framework Harness carries no hosted presentation, base prompt or starter files
 
 ## Shared presets
 
-Base, Conversation, Worker Base and Worker consume [one preset definition](../../crates/contracts/src/capability/presets.rs). Hosted records inherit the parent live; [framework constructors](../../crates/everruns/src/harness.rs) flatten the same parent chain and retain capability configurations. Tests compare the two effective surfaces and exercise serialized round trips.
+Base, Conversation, Worker and Bashkit Worker consume [one preset definition](../../crates/contracts/src/capability/presets.rs). Hosted records inherit the parent live; [framework constructors](../../crates/everruns/src/harness.rs) flatten the same parent chain and retain capability configurations. Tests compare the two effective surfaces and exercise serialized round trips.
 
 [Harness Types](../harnesses/harness-types.md) owns the level choices, opt-in features, default and Generic deprecation contract. Do not approximate those presets with a parallel builder list in examples. The deprecated framework Generic constructor preserves its legacy surface; it is not an alias to Worker.
 
@@ -43,7 +43,7 @@ The broader industry sometimes calls the whole loop a harness. Everruns uses Eng
 ## Sources
 
 - [Application-facing Harness](../../crates/everruns/src/harness.rs)
-- [Hosted Harness](../../crates/server/src/records/harness.rs)
+- [Hosted Harness](../../crates/server/src/domains/harnesses/record.rs)
 - [Portable runtime projection](../../crates/contracts/src/runtime/harness_definition.rs)
 - [Hosted definitions](../../crates/server/src/harnesses/mod.rs)
 - [Session binding](../../crates/everruns/src/session.rs)

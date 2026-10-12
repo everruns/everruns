@@ -59,7 +59,8 @@ own backends through the same contracts.
 - `everruns-durable` is a generic durable-execution engine (persistence,
   retries, task queue, schedules) with no agent or turn semantics and no
   `everruns-*` dependency. `everruns-durable-engine` owns the `TurnTaskDriver` that runs each turn step and checkpoints its
-  `TurnExecution` state between steps,
+  `TurnExecution` state between steps (platform turns left it for session
+  actors on 2026-10-11; the worker still runs its non-turn activities through it),
   and the turn conventions layered on durable tasks; it implements host's
   experimental `TurnBackend` seam (see
   [Execution Backends](../framework/execution-backends.md)).
@@ -206,12 +207,14 @@ Required behavior:
 6. Persist assistant messages and tool-result messages from emitted events so
    subsequent turns see the same history shape as the durable/server-backed
    runtime.
-7. Durable/server-backed workers must execute their per-phase host composition
+7. Platform workers must execute their per-phase host composition
    through `everruns-core` (`host` feature) instead of maintaining a separate execution loop in
-   the worker crate.
-8. Durable/server-backed workers must use engine-owned turn planning
-   for `process_input -> reason -> act`, steering continuation,
-   dependency-blocked completion, and `waiting_for_tool_results` pause/resume.
+   the worker crate: since the actor cutover they run a whole turn with
+   core's `drive_turn` and resume one with its log fold
+   ([`actor_runtime`](../../crates/worker/src/actor_runtime/mod.rs)).
+8. Platform workers must use engine-owned turn planning for input, reason
+   and act, steering continuation, dependency-blocked completion, and
+   `waiting_for_tool_results` pause/resume.
 9. Provider recovery must reuse the assembled reason input in place. It must
    not persist a second user message, schedule another act for already-completed
    tools, or discard provider continuation state that remains valid. Terminal
@@ -350,6 +353,17 @@ continuations pinned to the snapshot their first page captured, and polling
 cursors that deliberately start a new snapshot. The log stays append-only;
 there is no truncate, rewind, or mutation contract.
 
+Besides the plain append, every log implements a conditional append: commit
+only if the session's log still ends at the sequence the caller last saw (or is
+empty), otherwise fail with a distinct sequence-conflict error that carries the
+actual last sequence and writes nothing. The check is atomic with sequence
+assignment, so of concurrent writers holding the same expectation exactly one
+wins. This is the single-writer-per-session primitive, with no external lock;
+it is a required method so no backend can silently ignore the precondition.
+The platform server offers the same operation over PostgreSQL
+(`EventService::emit_conditional`), checking the stored tail under the
+session's sequence-counter row lock.
+
 `crates/everruns/tests/fixtures/external-consumer/event-log` is an
 out-of-workspace implementation exercised by CI, so the SPI cannot silently stop being
 externally implementable.
@@ -411,6 +425,15 @@ error, then wait `claim_timeout` before retry so a disappearing route cannot
 cause poll-rate claim churn. Shutdown stops new claims and waits for an active
 delivery; forced abort leaves the lease for stale recovery. See `crates/everruns/src/local/`
 for the public lifecycle API and tests.
+
+The session log is the record of a schedule: creating one appends `timer.set`
+to the session, each delivered occurrence `timer.fired`, cancelling
+`timer.cancelled`. `local_schedules` is the index the runner polls, and the
+runner reconciles it with the logs before its first poll: a timer the index
+lost gets its row back, a row behind the log catches up (so an occurrence the
+log records is not delivered again), and an enabled row with no timer in the
+log is written into it. This is step 3 of the actor-based design, where
+timers are journal entries and any due-work index is derived from them.
 
 This boundary provides at-least-once delivery across process failure. Atomic
 claims prevent duplicate delivery by concurrent healthy runners, but a crash

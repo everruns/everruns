@@ -4,13 +4,13 @@ A [serve](../../../crates/serve) app packaged for
 [Amazon Bedrock AgentCore Runtime](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-agui-protocol-contract.html)
 with [serve-agentcore](../../../crates/serve-agentcore). The app is ordinary serve
 code; only `main` changes, from `serve::start` to `serve_agentcore::start`.
-The full guide is [Serve on AgentCore](https://docs.everruns.com/framework/serve-agentcore/);
+The full guide is [Serve on AgentCore](https://everruns.com/docs/framework/serve-agentcore/);
 [agentcore-workspace](../agentcore-workspace) adds a shell in the microVM and approvals.
 
 ## Try the contract locally
 
 ```sh
-cargo run -p serve-example-agentcore -- agentcore --dev   # :8080, offline simulator
+cargo run -p serve-example-agentcore -- agentcore --dev   # :8080, needs OPENAI_API_KEY
 ```
 
 ```sh
@@ -45,7 +45,7 @@ protocol forwards from CopilotKit or `@ag-ui/client`.
    so a session's conversation survives the microVM stopping after its idle
    timeout. `SERVE_GATEWAY_URL` routes the model; an AgentCore Gateway inference
    endpoint works, with targets named after providers (`anthropic`, `openai`) so
-   `anthropic/claude-sonnet-5` routes as-is:
+   `openai/gpt-6.1-sol` routes as-is:
 
    ```sh
    aws bedrock-agentcore-control create-agent-runtime \

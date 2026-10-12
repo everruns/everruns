@@ -111,6 +111,25 @@ pub fn models_url_for_api_url(api_url: &str) -> String {
 /// it cannot drift from what was actually sent. A serialization failure yields
 /// `None` rather than failing the call — a diagnostic must never be the reason
 /// a request does not happen.
+/// A stable cache-routing key for calls that share a prompt prefix: the same
+/// session (or agent, harness, organization) and model. Unlike the Responses
+/// driver's key it leaves instructions and tools out; the key only routes, so
+/// a coarser family costs nothing when the prefix differs.
+fn chat_prompt_cache_key(config: &LlmCallConfig) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    let cache = config.prompt_cache.as_ref().filter(|cache| cache.enabled)?;
+    let family = ["session_id", "agent_id", "harness_id", "org_id"]
+        .iter()
+        .find_map(|key| config.metadata.get(*key));
+    let fingerprint = serde_json::json!({
+        "model": config.model,
+        "family": family,
+        "strategy": cache.strategy,
+    });
+    let digest = hex::encode(Sha256::digest(fingerprint.to_string()));
+    Some(format!("everruns:{}", &digest[..55]))
+}
+
 fn capture_request_body(
     config: &LlmCallConfig,
     request: &impl serde::Serialize,
@@ -161,6 +180,9 @@ pub fn models_api_status_error(status: reqwest::StatusCode) -> AgentLoopError {
 pub struct OpenAIProtocolChatDriver {
     /// Retry configuration for rate limit errors
     retry_config: LlmRetryConfig,
+    /// Send `prompt_cache_key` when prompt caching is enabled. Off by default:
+    /// not every OpenAI-compatible host accepts the field.
+    prompt_cache_key: bool,
 }
 
 impl OpenAIProtocolChatDriver {
@@ -173,7 +195,22 @@ impl OpenAIProtocolChatDriver {
         crate::install_default_crypto_provider();
         Self {
             retry_config: LlmRetryConfig::default(),
+            prompt_cache_key: false,
         }
+    }
+
+    /// Send a `prompt_cache_key` when the call enables prompt caching, for
+    /// hosts that route requests sharing a prefix to the same cache with it
+    /// (Mistral).
+    pub fn with_prompt_cache_key(mut self, enabled: bool) -> Self {
+        self.prompt_cache_key = enabled;
+        self
+    }
+
+    fn prompt_cache_key_for(&self, config: &LlmCallConfig) -> Option<String> {
+        self.prompt_cache_key
+            .then(|| chat_prompt_cache_key(config))
+            .flatten()
     }
 
     /// Configure retry behavior for rate limit errors
@@ -459,6 +496,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             verbosity: config.verbosity.clone(),
             metadata,
             response_format: OpenAiRequest::response_format_for(config),
+            prompt_cache_key: self.prompt_cache_key_for(config),
         };
         let captured_request = capture_request_body(config, &request);
         let (response, retry_metadata) = self
@@ -605,6 +643,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             verbosity: config.verbosity.clone(),
             metadata,
             response_format: OpenAiRequest::response_format_for(config),
+            prompt_cache_key: self.prompt_cache_key_for(config),
         };
 
         // Establish the SSE stream, transparently reconnecting on a transport

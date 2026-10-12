@@ -41,29 +41,17 @@ use tools::BraveWebSearchTool;
 // Plugin Registration
 // ============================================================================
 
-/// Feature flags this module's plugins name, with their default rollout grades;
-/// the hosted platform lists them in its feature flag settings, and
-/// `FEATURE_<NAME>` overrides the grade per deployment.
-#[cfg(feature = "brave-search-hosted")]
-pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
-    &[everruns_contracts::runtime::FeatureFlagDefinition {
-        name: "brave_search",
-        label: "Brave Search",
-        description: "Web search through the Brave Search API, with a Brave Search connection.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
-    }];
-
 /// Capability plugins this crate contributes to a hosted catalog.
 #[cfg(feature = "brave-search-hosted")]
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
-    feature_flag: Some("brave_search"),
+    feature_flag: None,
     factory: || Box::new(BraveSearchCapability),
 }];
 
 /// Connector plugins this crate contributes to a hosted catalog.
 #[cfg(feature = "brave-search-hosted")]
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
-    feature_flag: Some("brave_search"),
+    feature_flag: None,
     factory: || Box::new(BraveSearchConnector),
 }];
 // ============================================================================
@@ -92,7 +80,12 @@ impl Capability for BraveSearchCapability {
     fn description(&self) -> &str {
         "Search the web using Brave Search API. \
          Agents can query the web and get relevant results including titles, URLs, and descriptions. \
-         EXPERIMENTAL: This capability may change."
+         EXPERIMENTAL: This capability may change. \
+         For provider-neutral web search, use Web search."
+    }
+
+    fn web_search_source(&self, _config: &serde_json::Value) -> bool {
+        true
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -127,7 +120,8 @@ impl Capability for BraveSearchCapability {
             "[Експериментально] Brave Search",
             "Шукайте в інтернеті через Brave Search API. Агенти можуть виконувати пошукові \
              запити й отримувати релевантні результати із заголовками, URL-адресами та \
-             описами. ЕКСПЕРИМЕНТАЛЬНО: ця можливість може змінитися.",
+             описами. ЕКСПЕРИМЕНТАЛЬНО: ця можливість може змінитися. Для пошуку без \
+             прив'язки до провайдера використовуйте Вебпошук.",
         )]
     }
 }

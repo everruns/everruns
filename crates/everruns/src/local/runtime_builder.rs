@@ -36,6 +36,11 @@ pub fn local_capability_registry() -> everruns_core::CapabilityRegistry {
     // answered through the server API. A local host has no such endpoint and
     // supplies its own in-process approver through the agent builder instead.
     registry.unregister("tool_approval");
+    // The hosted `poppy_client` tools ask the control plane to run the
+    // protocol. A Framework app is its own personal agent instead: it adds
+    // `everruns::poppy::PoppyPersonalAgent` (feature `poppy`), the same tools
+    // under the same id, with the client in process.
+    registry.unregister(everruns_capabilities::capabilities::POPPY_CLIENT_CAPABILITY_ID);
     // Decision: delegation is registered regardless of `FEATURE_AGENT_DELEGATION`.
     // That flag is the hosted product's experimental gate. In the framework the
     // opt-in is the Cargo feature (`a2a`, ...) plus the developer adding the

@@ -7,7 +7,7 @@
         "session_tasks"
       ],
       "docs_slug": "a2a-agent-delegation",
-      "feature_flag": "agent_delegation",
+      "feature_flag": null,
       "features": [
         "agent_runs"
       ],
@@ -43,7 +43,7 @@
         "session_tasks"
       ],
       "docs_slug": null,
-      "feature_flag": "agent_delegation",
+      "feature_flag": null,
       "features": [
         "agent_runs"
       ],
@@ -60,7 +60,7 @@
       "category": "Orchestration",
       "dependencies": [],
       "docs_slug": "agent-handoff",
-      "feature_flag": "agent_delegation",
+      "feature_flag": null,
       "features": [
         "agent_handoffs"
       ],
@@ -92,7 +92,7 @@
       "category": "Integrations",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": "agentid",
+      "feature_flag": null,
       "features": [],
       "grades": [
         "prod",
@@ -179,7 +179,7 @@
       "category": "Network",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": "brave_search",
+      "feature_flag": null,
       "features": [],
       "grades": [
         "prod",
@@ -448,7 +448,7 @@
       "category": "Core",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": "agent_coordination",
+      "feature_flag": null,
       "features": [
         "coordination"
       ],
@@ -606,10 +606,25 @@
       ]
     },
     {
+      "category": "Safety",
+      "dependencies": [],
+      "docs_slug": "dry-run",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "dry_run",
+      "name": "Dry Run",
+      "status": "available",
+      "tools": []
+    },
+    {
       "category": "Network",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": "duckduckgo",
+      "feature_flag": null,
       "features": [],
       "grades": [
         "prod",
@@ -772,7 +787,7 @@
       "category": "Reasoning",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": "typesafe",
+      "feature_flag": null,
       "features": [],
       "grades": [
         "prod",
@@ -1051,7 +1066,7 @@
         "dev"
       ],
       "id": "parallel",
-      "name": "Parallel (Machine Payments)",
+      "name": "Parallel Paid Search (pay per call)",
       "status": "available",
       "tools": [
         "parallel_extract",
@@ -1064,14 +1079,14 @@
       "category": "Network",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": "parallel_search",
+      "feature_flag": null,
       "features": [],
       "grades": [
         "prod",
         "dev"
       ],
       "id": "parallel_search",
-      "name": "[Experimental] Parallel",
+      "name": "Parallel Search and Fetch",
       "status": "available",
       "tools": []
     },
@@ -1125,6 +1140,27 @@
       "name": "Platform Management",
       "status": "retired",
       "tools": []
+    },
+    {
+      "category": "Integrations",
+      "dependencies": [],
+      "docs_slug": "poppy-personal-agent",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "poppy_client",
+      "name": "Poppy Personal Agent",
+      "status": "available",
+      "tools": [
+        "poppy_close",
+        "poppy_discover",
+        "poppy_handoff",
+        "poppy_read",
+        "poppy_send"
+      ]
     },
     {
       "category": "Guardrails",
@@ -1190,7 +1226,7 @@
       "category": "Discovery",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": "ard",
+      "feature_flag": null,
       "features": [],
       "grades": [
         "prod",
@@ -1632,7 +1668,7 @@
         "bashkit_shell"
       ],
       "docs_slug": "tools-in-shell",
-      "feature_flag": "tools_in_shell",
+      "feature_flag": null,
       "features": [],
       "grades": [
         "prod",
@@ -1712,6 +1748,23 @@
       "status": "available",
       "tools": [
         "web_fetch"
+      ]
+    },
+    {
+      "category": "Network",
+      "dependencies": [],
+      "docs_slug": "web-search",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "web_search",
+      "name": "Web search",
+      "status": "available",
+      "tools": [
+        "web_search"
       ]
     }
   ]

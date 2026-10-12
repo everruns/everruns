@@ -234,6 +234,123 @@ async fn execution_harness_pins_managed_bashkit_sandbox() {
     assert_eq!(sandbox["generation"], 1);
 }
 
+/// Each worker owns one answer to "where does the workspace run": Worker has
+/// no compute unless the Agent adds one, Bashkit Worker is sealed to Bashkit,
+/// and Sandbox Worker needs a full sandbox with no Bashkit fallback.
+#[tokio::test]
+async fn worker_harnesses_enforce_their_execution_rule() {
+    let server = TestServer::in_memory().await;
+    let harness_id = |name: &'static str| {
+        let server = &server;
+        async move {
+            let harness: Value = server
+                .get(&format!("/v1/harnesses/{name}"))
+                .await
+                .assert_status(StatusCode::OK)
+                .json();
+            harness["id"].as_str().unwrap().to_string()
+        }
+    };
+    let worker = harness_id("worker").await;
+    let bashkit_worker = harness_id("bashkit-worker").await;
+    let sandbox_worker = harness_id("sandbox-worker").await;
+    let daytona = json!({
+        "mode": "fixed", "default": "build",
+        "templates": {"build": {"target": {"kind": "managed", "provider": "daytona"}}}
+    });
+    let bashkit_only = json!({
+        "mode": "fixed", "default": "scratch",
+        "templates": {"scratch": {"target": {"kind": "vfs", "provider": "bashkit"}}}
+    });
+    let agent = |name: &'static str, harness: &str, policy: Option<Value>| {
+        let mut body = json!({"name": name, "system_prompt": "Test", "harness_id": harness});
+        if let Some(policy) = policy {
+            body["sandbox_policy"] = policy;
+        }
+        body
+    };
+    let session = |harness: &str, agent: Option<&Value>| {
+        let mut body = json!({"harness_id": harness});
+        if let Some(agent) = agent {
+            body["agent_id"] = agent["id"].clone();
+        }
+        body
+    };
+
+    // Worker: no shell and no primary sandbox by default.
+    let plain: Value = server
+        .post("/v1/sessions", session(&worker, None))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let sandbox: Value = server
+        .get(&format!(
+            "/v1/sessions/{}/sandbox",
+            plain["id"].as_str().unwrap()
+        ))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert!(
+        sandbox["target"].is_null(),
+        "Worker has no compute: {sandbox}"
+    );
+
+    // Bashkit Worker: sealed, so an Agent policy is rejected.
+    server
+        .post(
+            "/v1/agents",
+            agent("sealed", &bashkit_worker, Some(daytona.clone())),
+        )
+        .await
+        .assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+
+    // Sandbox Worker: a Bashkit-only policy cannot satisfy it.
+    server
+        .post(
+            "/v1/agents",
+            agent("bashkit-on-sandbox", &sandbox_worker, Some(bashkit_only)),
+        )
+        .await
+        .assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    // No policy is accepted on the Agent, but a Session cannot start on it.
+    let unconfigured: Value = server
+        .post("/v1/agents", agent("unconfigured", &sandbox_worker, None))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    server
+        .post(
+            "/v1/sessions",
+            session(&sandbox_worker, Some(&unconfigured)),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    // A full sandbox policy pins that sandbox.
+    let builder: Value = server
+        .post(
+            "/v1/agents",
+            agent("builder", &sandbox_worker, Some(daytona)),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let built: Value = server
+        .post("/v1/sessions", session(&sandbox_worker, Some(&builder)))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let sandbox: Value = server
+        .get(&format!(
+            "/v1/sessions/{}/sandbox",
+            built["id"].as_str().unwrap()
+        ))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(sandbox["target"]["kind"], "managed");
+}
+
 #[tokio::test]
 async fn legacy_environment_authoring_is_accepted_but_response_is_canonical() {
     let server = TestServer::in_memory().await;

@@ -22,7 +22,7 @@ a working default; each row links to the section that documents it.
 | [`NATS_URL`](#nats_url) | API and workers | No | PostgreSQL `NOTIFY` and in-memory broadcast. |
 | [`STORAGE_*`](#object-storage-s3-compatible-blob-backend) | API | No | File and image bytes stay in PostgreSQL. |
 | [`SERVER_GRPC_ADDRESS`](#server_grpc_address), [`SERVER_GRPC_BIND_ADDR`](#server_grpc_bind_addr), [`WORKER_GRPC_CONNECT_TIMEOUT`](#worker_grpc_connect_timeout), [`WORKER_GRPC_TLS_*`](#worker_grpc_tls_cert) | API or workers | No | Plain gRPC on `127.0.0.1:9001` / `0.0.0.0:9001`. |
-| [`DEFAULT_*_API_KEY`](#default-api-keys-development-convenience) | API | No | Providers need keys configured in Settings > Providers. |
+| [`DEFAULT_*_API_KEY`](#default-api-keys-development-convenience) | API | No | Providers need keys configured in Models > Providers. |
 | [`UTILITY_*`](#system-model-keys) | API and workers | No | Analyze, Health, and model-backed guardrail checks are unavailable or skipped. |
 | [`EMAIL_PROVIDER`](#system-email-delivery), [`RESEND_*`](#system-email-delivery) | API | When sending email | Email delivery is disabled. |
 | [`RATE_LIMIT_API_REQUESTS_PER_MINUTE`](#other-server-variables), [`TRUSTED_PROXY_HOPS`](#other-server-variables), [`EXPECTED_INSTANCES`](#other-server-variables), [`EVENT_RETENTION_DAYS`](#other-server-variables), [`SSE_*`](#sse-streaming-configuration) | API | No | 1200 requests per minute, one trusted proxy, one instance, no event archiving, default SSE limits. |
@@ -238,6 +238,7 @@ CORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
 - Not needed in production if using a reverse proxy on the same domain
 - If set, credentials are allowed (`Access-Control-Allow-Credentials: true`)
 - Wildcard (`*`) is not supported when using credentials
+- Browsers may send `X-Org-Id`, `Idempotency-Key`, `Everruns-Change-Reason` and `Everruns-Context-Revision` in addition to the standard headers, and can read the `Idempotent-Replayed` response header
 
 ## HTTP_ADDR
 
@@ -413,12 +414,12 @@ NATS_URL=nats://control:s3cret@nats:4222
 
 ## LLM Provider API Keys
 
-LLM provider API keys (OpenAI, Anthropic, Gemini) are primarily stored encrypted in the database and managed via the Settings > Providers UI.
+LLM provider API keys (OpenAI, Anthropic, Gemini) are primarily stored encrypted in the database and managed via the Models > Providers UI.
 
 | Property | Value |
 |----------|-------|
 | **Storage** | Database (encrypted with AES-256-GCM) |
-| **Configuration** | Settings > Providers UI or `/v1/providers` API |
+| **Configuration** | Models > Providers UI or `/v1/providers` API |
 | **Supported Providers** | OpenAI, Anthropic, Google Gemini |
 
 **Required for encryption:**
@@ -475,8 +476,9 @@ platform uses for its own internal work.
 | `UTILITY_OPENROUTER_API_KEY` | The same work, routed through OpenRouter instead. Setting it selects OpenRouter; it wins when both keys are set, and the startup log says so | The utility LLM falls back to `UTILITY_OPENAI_API_KEY` |
 | `UTILITY_LLM_MODEL` | The model the utility LLM calls on whichever backend was selected | Defaults to `gpt-6-luna` on OpenAI, `openai/gpt-6-luna` on OpenRouter |
 | `UTILITY_TYPESAFE_API_KEY` | Guardrail checks with `engine: "jev"`, answered by TypeSafe | Those checks are skipped with a warning and the turn proceeds, unless `UTILITY_DECISION_DRIVER` picks another driver |
-| `UTILITY_DECISION_DRIVER` | Which decision driver answers `jev` checks and the Slack respond-or-not check: `typesafe`, `openai` (OpenAI's Decisions API, using `UTILITY_OPENAI_API_KEY`), `openrouter` (Jev through `UTILITY_OPENROUTER_API_KEY`), or `llm` to answer them with the utility LLM when you have no TypeSafe key. `llm` answers are labels, not calibrated probabilities | `typesafe` when its key is set, otherwise disabled. A driver that is not configured stops startup. Replaces `DECISIONS_DRIVER`, which now stops startup |
-| `UTILITY_DECISION_MODEL` | The model the chosen decision driver is asked for | The driver's own default. Not allowed with `UTILITY_DECISION_DRIVER=llm`, which uses `UTILITY_LLM_MODEL`. Replaces `DECISIONS_MODEL` |
+| `UTILITY_AZURE_AI_API_KEY`, `UTILITY_AZURE_AI_ENDPOINT` | Microsoft-Decision-1 on Microsoft Foundry for `jev` checks: the resource key and its resource or project endpoint (`https://<resource>.services.ai.azure.com`). Used only when `UTILITY_DECISION_DRIVER=mai` | The `mai` driver is unavailable. Setting only one of the two stops startup |
+| `UTILITY_DECISION_DRIVER` | Which decision driver answers `jev` checks and the Slack respond-or-not check: `typesafe`, `openai` (OpenAI's Decisions API, using `UTILITY_OPENAI_API_KEY`), `openrouter` (Jev through `UTILITY_OPENROUTER_API_KEY`), `mai` (Microsoft-Decision-1 on Foundry, using `UTILITY_AZURE_AI_*`), or `llm` to answer them with the utility LLM when you have no TypeSafe key. `llm` answers are labels, not calibrated probabilities | `typesafe` when its key is set, otherwise disabled. A driver that is not configured stops startup. Replaces `DECISIONS_DRIVER`, which now stops startup |
+| `UTILITY_DECISION_MODEL` | The model the chosen decision driver is asked for. For `mai` it is the Foundry deployment name | The driver's own default (`Microsoft-Decision-1` for `mai`). Not allowed with `UTILITY_DECISION_DRIVER=llm`, which uses `UTILITY_LLM_MODEL`. Replaces `DECISIONS_MODEL` |
 
 The keys are read from the process environment at startup. Missing keys **fail
 open**: a guardrail whose engine is not configured never blocks, so a missing
@@ -922,10 +924,3 @@ For setup instructions and configuration details, see the [Braintrust Integratio
 | `BRAINTRUST_TOOL_ARGS_MODE` | No | `redacted` | Tool argument export mode: `full`, `redacted`, `none` |
 | `BRAINTRUST_TOOL_RESULTS_MODE` | No | `summary` | Tool result export mode: `full`, `summary`, `redacted`, `none` |
 | `BRAINTRUST_DEBUG_PAYLOADS` | No | `false` | Print full outbound Braintrust payload JSON to local debug logs |
-
-## FEATURE_CHATGPT_PLAN
-
-Rollout grade for personal ChatGPT plan connections. Defaults to `adoption`: an
-organization administrator enables **ChatGPT plan connections** in Settings → Features.
-Set `off` to remove the feature from the deployment. Requires a stable
-`SECRETS_ENCRYPTION_KEY`. See [ChatGPT plan](/features/chatgpt/).

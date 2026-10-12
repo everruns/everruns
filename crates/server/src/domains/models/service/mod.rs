@@ -11,10 +11,7 @@ use crate::kernel_imports::{
     contracts::typed_id::ProviderId,
 };
 use crate::services::ProviderResolverService;
-use crate::storage::{
-    StorageBackend,
-    models::{CreateModelRow, ModelRow, ModelWithProviderRow, UpdateModel},
-};
+use crate::storage::{CreateModelRow, ModelRow, ModelWithProviderRow, StorageBackend, UpdateModel};
 use anyhow::Result;
 use std::sync::Arc;
 use tracing::error;
@@ -24,11 +21,11 @@ use crate::domains::models::types::{CreateModelRequest, UpdateModelRequest};
 
 pub const LLM_MODEL_VIEW: Policy = Policy {
     id: "model.view",
-    rules: &[Rule::UserHasPermission(Permission::OrgProvidersView)],
+    rules: &[Rule::UserHasPermission(Permission::OrgModelsView)],
 };
 pub const LLM_MODEL_MANAGE: Policy = Policy {
     id: "model.manage",
-    rules: &[Rule::UserHasPermission(Permission::OrgProvidersManage)],
+    rules: &[Rule::UserHasPermission(Permission::OrgModelsManage)],
 };
 
 /// What [`ModelService::bootstrap_intelligence`] changed. All-zero means the org
@@ -126,7 +123,7 @@ impl ModelService {
     ) -> Result<Model> {
         let provider = self.get_visible_provider(caller, provider_id).await?;
         Self::require_unmanaged_provider(&provider)?;
-        let metadata = crate::services::model_catalog::assign(
+        let metadata = crate::domains::models::catalog::assign(
             &provider.provider_type,
             &req.model_id,
             &req.capabilities,
@@ -136,7 +133,7 @@ impl ModelService {
         )?;
         self.validate_model_service(
             &provider.provider_type,
-            crate::services::model_catalog::service(Some(&metadata)),
+            crate::domains::models::catalog::service(Some(&metadata)),
         )?;
 
         // Discovery populates a provider's catalog the moment it gains a
@@ -301,10 +298,29 @@ impl ModelService {
             .iter()
             .map(|p| (p.id.uuid(), p.last_synced_at))
             .collect();
+        let provider_reviewed_at: std::collections::HashMap<
+            Uuid,
+            Option<chrono::DateTime<chrono::Utc>>,
+        > = providers
+            .iter()
+            .map(|p| (p.id.uuid(), p.models_reviewed_at))
+            .collect();
+        // Model is stale if it is discovered and its last_seen_at predates the
+        // provider's last sync (or it was never seen by one).
+        let is_stale = |row: &ModelWithProviderRow| {
+            row.source == "discovered"
+                && provider_sync_times
+                    .get(&row.provider_id.uuid())
+                    .copied()
+                    .flatten()
+                    .is_some_and(|last_synced| {
+                        row.last_seen_at.is_none_or(|seen| seen < last_synced)
+                    })
+        };
 
         let visible: std::collections::HashSet<_> = providers
             .iter()
-            .filter(|p| crate::services::chatgpt::visible(&p.settings, caller))
+            .filter(|p| crate::domains::user_connections::chatgpt::visible(&p.settings, caller))
             .map(|p| p.id)
             .collect();
         let models: Vec<ModelWithProvider> = rows
@@ -328,25 +344,25 @@ impl ModelService {
 
                 // Filter stale models (discovered models not seen in most recent sync)
                 // Only discovered models can be stale
-                if !include_stale
-                    && row.source == "discovered"
-                    && let Some(Some(last_synced)) =
-                        provider_sync_times.get(&row.provider_id.uuid())
-                {
-                    // Model is stale if last_seen_at < provider.last_synced_at
-                    if let Some(last_seen) = row.last_seen_at {
-                        if last_seen < *last_synced {
-                            return false;
-                        }
-                    } else {
-                        // No last_seen_at means never seen in sync - stale
-                        return false;
-                    }
+                if !include_stale && is_stale(row) {
+                    return false;
                 }
 
                 true
             })
-            .map(Self::row_to_model_with_provider)
+            .map(|row| {
+                let mut model = Self::row_to_model_with_provider(row);
+                model.stale = is_stale(row);
+                model.is_new = row.source == "discovered"
+                    && !row.enabled
+                    && !model.stale
+                    && provider_reviewed_at
+                        .get(&row.provider_id.uuid())
+                        .copied()
+                        .flatten()
+                        .is_none_or(|reviewed| row.created_at > reviewed);
+                model
+            })
             .collect();
 
         Ok(models)
@@ -408,7 +424,7 @@ impl ModelService {
             || req.profile_key.is_some()
             || req.service.is_some_and(|service| {
                 service
-                    != crate::services::model_catalog::service(existing.provider_metadata.as_ref())
+                    != crate::domains::models::catalog::service(existing.provider_metadata.as_ref())
             }) {
             let target_provider = if let Some(id) = provider_id {
                 self.get_visible_provider(caller, id.uuid()).await?
@@ -417,7 +433,7 @@ impl ModelService {
             };
             let caps: Vec<String> =
                 serde_json::from_value(existing.capabilities.clone()).unwrap_or_default();
-            let metadata = crate::services::model_catalog::assign(
+            let metadata = crate::domains::models::catalog::assign(
                 &target_provider.provider_type,
                 req.model_id.as_deref().unwrap_or(&existing.model_id),
                 req.capabilities.as_ref().unwrap_or(&caps),
@@ -427,10 +443,10 @@ impl ModelService {
             )?;
             self.validate_model_service(
                 &target_provider.provider_type,
-                crate::services::model_catalog::service(Some(&metadata)),
+                crate::domains::models::catalog::service(Some(&metadata)),
             )?;
-            if crate::services::model_catalog::service(Some(&metadata))
-                != crate::services::model_catalog::service(existing.provider_metadata.as_ref())
+            if crate::domains::models::catalog::service(Some(&metadata))
+                != crate::domains::models::catalog::service(existing.provider_metadata.as_ref())
             {
                 anyhow::bail!(crate::errors::BadRequestError::new(
                     "Cannot change the service of an existing model; add a separate model"
@@ -674,7 +690,7 @@ impl ModelService {
     async fn chat_candidates(
         &self,
         org_id: i64,
-        provider: &crate::storage::models::ProviderRow,
+        provider: &crate::storage::ProviderRow,
         provider_type: &DriverId,
     ) -> Result<Vec<ModelRow>> {
         let mut chat: Vec<ModelRow> = self
@@ -732,7 +748,7 @@ impl ModelService {
         capabilities: &sqlx::types::JsonValue,
         metadata: Option<&serde_json::Value>,
     ) -> bool {
-        if crate::services::model_catalog::service(metadata)
+        if crate::domains::models::catalog::service(metadata)
             != everruns_contracts::ServiceKind::Chat
         {
             return false;

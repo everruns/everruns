@@ -114,11 +114,9 @@ gate. It is distinct from subagents and blueprints because the target is a
 normal Agent resource, not inherited runtime config and not a code-defined
 template. See [agent-handoff.md](../runtime-resources/agent-handoff.md).
 
-`agent_handoff`, `a2a_agent_delegation` and `ag_ui_delegation` are gated behind the
-`agent_delegation` feature flag. Its adoption default requires organisation opt-in;
-registration follows deployment availability, while assignment and execution use
-organisation-effective flags. See [Feature Flags](../security/feature-flags.md)
-and the [shared registration policy](../../crates/contracts/src/runtime/execution_features.rs).
+`agent_handoff`, `a2a_agent_delegation` and `ag_ui_delegation` have no feature flag:
+adding the capability to an agent is the opt-in (user decision, 2026-10-10, same rule
+as coordination). They are registered on every hosted deployment.
 
 ### Guardrail Capabilities
 
@@ -995,7 +993,7 @@ Following the agentskills.io specification:
 
 - **ID**: `soft_approval`
 - **Purpose**: Asks the agent to pause for spoken consent before critical actions, batching safe work without interruption
-- **Status**: Registered and included in Worker Base, Worker, deprecated Generic and the Platform Chat at level `normal`
+- **Status**: Registered and included in Base (so every built-in harness), deprecated Generic and the Platform Chat at level `normal`
 - **Tools**: `request_approval` (the pause), `record_approval` (audit), `set_approval_mode` (level)
 - **Config**: `{"mode": "off" | "normal" | "protective"}` (default `normal`)
 - **Source**: `crates/core/src/builtins/soft_approval.rs`
@@ -1182,7 +1180,7 @@ Capabilities are managed via the agents API (`POST /v1/agents`, `PATCH /v1/agent
 
 ### Database Schema
 
-See `crates/server/migrations/001_base_schema.sql` for the `agent_capabilities` table DDL.
+See `crates/server/migrations/legacy/001_base_schema.sql` for the `agent_capabilities` table DDL.
 
 **Note**: The `capability_id` column has no CHECK constraint, validation is at the application layer via `CapabilityRegistry`. This allows adding capabilities without database migrations.
 
@@ -1281,7 +1279,7 @@ carries mounts in product registries.
   a user or raise the caller.
 - **Command contract**: MCP and capability adapters share catalog search,
   positional rewriting, script limits, output formatting, and safe error
-  decision in `crates/server/src/services/platform_command_surface.rs`.
+  decision in `crates/server/src/worker_link/platform_command_surface.rs`.
   Multi-match searches omit schemas and return a refinement hint so catalog
   browsing stays below model/tool-output limits. An exact command-name search
   returns only that operation with `bash_usage`, rendered from the registered

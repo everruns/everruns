@@ -22,7 +22,7 @@ scratch() {
   rm -rf "$dir"
   mkdir -p "$dir/scripts/lib"
   cp "$GUARD" "$dir/scripts/lib/check-server-api-layering.sh"
-  for layer in domains storage services records; do
+  for layer in domains storage services records listeners; do
     mkdir -p "$dir/crates/server/src/$layer"
     printf 'use crate::records::common::Pagination;\n' > "$dir/crates/server/src/$layer/clean.rs"
   done

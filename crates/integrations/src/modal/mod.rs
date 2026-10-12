@@ -20,6 +20,7 @@
 pub mod client;
 pub mod connection;
 pub mod egress;
+pub mod owned;
 mod session_sandbox;
 pub mod state;
 mod tools;

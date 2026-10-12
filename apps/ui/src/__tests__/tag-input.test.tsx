@@ -40,6 +40,14 @@ describe("TagInput", () => {
     expect(input).toHaveValue("");
   });
 
+  it("renders a JSON array as its strings", () => {
+    render(<ControlledTagInput initialValue={'["company", "ci"]'} />);
+
+    expect(screen.getByText("company")).toBeInTheDocument();
+    expect(screen.getByText("ci")).toBeInTheDocument();
+    expect(screen.queryByText('["company"')).not.toBeInTheDocument();
+  });
+
   it("splits pasted comma-separated tags", () => {
     render(<ControlledTagInput />);
     const input = screen.getByLabelText("Tags");

@@ -25,7 +25,7 @@ use uuid::Uuid;
 
 use crate::domains::mcp_servers::McpServerSettings;
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateMcpServerRow, McpServerRow, UpdateMcpServer};
+use crate::storage::{CreateMcpServerRow, McpServerRow, UpdateMcpServer};
 
 /// Marker key inside `mcp_servers.settings` identifying a plugin OAuth anchor.
 const ANCHOR_KEY: &str = "plugin_anchor";

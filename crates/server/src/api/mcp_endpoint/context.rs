@@ -18,7 +18,10 @@ pub(crate) fn domain_context(caller: Caller, state: &AppState) -> crate::domains
     .with_runner(state.runner.clone())
     .with_fallback_harness_name(state.fallback_default_harness_name.clone())
     .with_slack_provisioner(state.slack_provisioner.clone())
-    .with_utility_llm_service(state.utility_llm_service.clone());
+    .with_mcp_oauth_checker(state.mcp_oauth_checker.clone())
+    .with_utility_llm_service(state.utility_llm_service.clone())
+    .with_decisions(state.decisions.clone())
+    .with_github_apps(github_apps(state));
     if let Some(service) = &state.health_check_service {
         ctx = ctx.with_health_check_service(service.clone());
     }
@@ -42,47 +45,39 @@ pub(crate) fn mcp_ctx(org: &ResolvedOrg, state: &AppState) -> Ctx {
     .with_feature_flags(org.feature_flags.clone())
     .with_org_rate_limiter(state.org_rate_limiter.clone())
     .with_slack_provisioner(state.slack_provisioner.clone())
-    .with_utility_llm_service(state.utility_llm_service.clone());
+    .with_mcp_oauth_checker(state.mcp_oauth_checker.clone())
+    .with_utility_llm_service(state.utility_llm_service.clone())
+    .with_decisions(state.decisions.clone())
+    .with_github_apps(github_apps(state));
     if let Some(service) = &state.health_check_service {
         ctx = ctx.with_health_check_service(service.clone());
     }
     with_provider_services(ctx, state)
 }
 
+/// Agent GitHub Apps with this server's public URLs, so a manifest started
+/// over MCP or `/v1/commands` names the same URLs as one started over REST.
+fn github_apps(state: &AppState) -> crate::github_apps::GitHubAppContext {
+    crate::github_apps::GitHubAppContext::from_env()
+        .with_public_urls(&state.auth.config.base_url, &state.auth.config.frontend_url)
+}
+
 /// Attach the provider-domain services `/v1/providers` uses, so provider
 /// commands behave the same over MCP and the generic command adapter.
 fn with_provider_services(
-    mut ctx: crate::domains::common::Ctx,
+    ctx: crate::domains::common::Ctx,
     state: &AppState,
 ) -> crate::domains::common::Ctx {
-    if let Some(services) = &state.provider_services {
-        ctx = ctx
-            .with_provider_service(services.provider.clone())
-            .with_model_sync_service(services.model_sync.clone())
-            .with_model_service(services.model.clone());
-    }
-    ctx
-}
-
-/// Provider-domain services shared with the `/v1/providers` routes. Shared
-/// rather than rebuilt so the provider resolver whose cache they invalidate is
-/// the one the runtime reads.
-#[derive(Clone)]
-pub struct ProviderServices {
-    pub provider: Arc<crate::domains::providers::ProviderService>,
-    pub model_sync: Arc<crate::services::ModelSyncService>,
-    pub model: Arc<crate::domains::models::ModelService>,
-}
-
-impl From<&crate::api::providers::AppState> for ProviderServices {
-    fn from(state: &crate::api::providers::AppState) -> Self {
-        Self {
-            provider: state.service.clone(),
-            model_sync: state.sync_service.clone(),
-            model: state.model_service.clone(),
-        }
+    match &state.provider_services {
+        Some(services) => ctx.with_provider_services(services),
+        None => ctx,
     }
 }
+
+/// The OAuth catalog preset connection check, implemented in
+/// `api::user_connections` and handed to every command context.
+pub type SharedMcpOAuthChecker =
+    Arc<dyn crate::domains::mcp_servers::connection_check::McpOAuthConnectionChecker>;
 
 impl AppState {
     pub fn with_provider_services(mut self, services: ProviderServices) -> Self {
@@ -90,9 +85,31 @@ impl AppState {
         self
     }
 
+    pub fn with_resource_metadata_url(mut self, url: impl Into<String>) -> Self {
+        self.resource_metadata_url = Some(url.into());
+        self
+    }
+
+    pub fn with_connector_registry(
+        mut self,
+        registry: everruns_contracts::connector::ConnectorRegistry,
+    ) -> Self {
+        self.connector_registry = registry;
+        self
+    }
+
+    pub fn with_mcp_oauth_checker(mut self, checker: Option<SharedMcpOAuthChecker>) -> Self {
+        self.mcp_oauth_checker = checker;
+        self
+    }
+
     pub fn with_slack_provisioner(
         mut self,
-        provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
+        provisioner: Option<
+            Arc<
+                dyn crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner,
+            >,
+        >,
     ) -> Self {
         self.slack_provisioner = provisioner;
         self
@@ -121,14 +138,13 @@ mod tests {
             auth,
             &host,
             &[],
-            false,
-            crate::event_delivery::EventDelivery::in_memory(),
+            crate::live_updates::event_delivery::EventDelivery::in_memory(),
             None,
             None,
             Arc::new(CapabilityService::new(db, None)),
             None,
         )
-        .with_provider_services((&providers).into())
+        .with_provider_services(providers.provider_services())
     }
 
     fn assert_provider_services(ctx: &Ctx) {

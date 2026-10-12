@@ -11,7 +11,7 @@
  * credentialed), so this stays in step with `get_default_model`, which also
  * fails closed on a disabled model or an inactive provider.
  *
- * Every role may read models (`org:providers:view`), so the check itself is not
+ * Every role may read models (`org:models:view`), so the check itself is not
  * gated; only the fix-it link is, on `provider.manage`.
  *
  * The policy map is fetched only once the org is known to have no model. Chats

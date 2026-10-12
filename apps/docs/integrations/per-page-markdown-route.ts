@@ -5,11 +5,19 @@ import { htmlToSimpleMarkdown } from "starlight-llms-txt/entry-to-simple-markdow
 import { generatePageMarkdown } from "starlight-llms-txt/generator";
 import { getSchemaStaticPaths, type StarlightOpenAPIRouteProps } from "starlight-openapi/route";
 import OpenAPIPage from "starlight-openapi/routes/static";
+import { PRODUCTS, isChangelogEntry } from "../src/lib/changelog";
+import { changelogListMarkdown, withEntryFacts } from "../src/lib/changelog-markdown";
+import { withBase } from "../site.config.mjs";
 
 type Props =
   | {
       kind: "docs";
       doc: CollectionEntry<"docs">;
+      pageUrl: string;
+    }
+  | {
+      kind: "changelog";
+      product: string;
       pageUrl: string;
     }
   | {
@@ -27,19 +35,25 @@ export const getStaticPaths = (async () => {
     const path = pagePath(doc.id);
     return {
       params: { slug: path ? `${path}/index` : "index" },
-      props: { kind: "docs" as const, doc, pageUrl: path ? `/${path}/` : "/" },
+      props: { kind: "docs" as const, doc, pageUrl: withBase(path ? `/${path}/` : "/") },
     };
   });
   const openAPIPaths = getSchemaStaticPaths().map(({ params, props }) => ({
     params: { slug: `${params.openAPISlug}/index` },
     props: {
       kind: "openapi" as const,
-      pageUrl: `/${params.openAPISlug}/`,
+      pageUrl: withBase(`/${params.openAPISlug}/`),
       routeProps: props,
     },
   }));
 
-  return [...docsPaths, ...openAPIPaths];
+  // Per-product changelog pages are Astro pages, not docs entries.
+  const changelogPaths = PRODUCTS.map((p) => ({
+    params: { slug: `changelog/${p.id}/index` },
+    props: { kind: "changelog" as const, product: p.id, pageUrl: withBase(`/changelog/${p.id}/`) },
+  }));
+
+  return [...docsPaths, ...openAPIPaths, ...changelogPaths];
 }) satisfies GetStaticPaths;
 
 export async function GET(context: APIContext<Props>) {
@@ -48,10 +62,18 @@ export async function GET(context: APIContext<Props>) {
     request: { value: new Request(url, context.request) },
     url: { value: url },
   }) as APIContext;
-  const body =
-    context.props.kind === "docs"
-      ? await generatePageMarkdown(context.props.doc, pageContext)
-      : await generateOpenAPIMarkdown(context.props, pageContext);
+  const props = context.props;
+  let body: string;
+  if (props.kind === "changelog") {
+    body = await changelogListMarkdown(props.product);
+  } else if (props.kind === "docs" && props.doc.id === "changelog") {
+    body = await changelogListMarkdown();
+  } else if (props.kind === "docs") {
+    body = await generatePageMarkdown(props.doc, pageContext);
+    if (isChangelogEntry(props.doc)) body = withEntryFacts(body, props.doc);
+  } else {
+    body = await generateOpenAPIMarkdown(props, pageContext);
+  }
 
   return new Response(body, {
     headers: { "Content-Type": "text/markdown; charset=utf-8" },

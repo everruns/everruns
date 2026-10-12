@@ -51,7 +51,19 @@ jest.mock("@/hooks/use-agents", () => ({
 }));
 
 jest.mock("@/components/agents/channels/channel-row", () => ({
-  ChannelRow: ({ usePanel }: { usePanel?: React.ReactNode }) => <div>{usePanel}</div>,
+  ChannelRow: ({
+    usePanel,
+    expanded,
+    channel,
+  }: {
+    usePanel?: React.ReactNode;
+    expanded?: boolean;
+    channel: { id: string };
+  }) => (
+    <div data-testid={`row-${channel.id}`} data-expanded={String(!!expanded)}>
+      {usePanel}
+    </div>
+  ),
 }));
 
 jest.mock("@/components/agents/integrations/channel-details-panel", () => ({
@@ -113,7 +125,6 @@ describe("AgentIntegrationsPanel budgets", () => {
 
     render(<AgentIntegrationsPanel agent={agent} />);
 
-    expect(mockUseFeatureFlag).toHaveBeenCalledWith("channel_budgets");
     expect(screen.getByTestId("channel-details-endpoint_1")).toBeInTheDocument();
     expect(screen.getByTestId("budget-agent-agent_1")).toHaveAttribute(
       "data-can-manage",
@@ -133,13 +144,30 @@ describe("AgentIntegrationsPanel budgets", () => {
     expect(screen.queryByTestId(/^budget-/)).not.toBeInTheDocument();
   });
 
-  it("does not mount any budget UI when channel_budgets is disabled", () => {
-    mockUseFeatureFlag.mockReturnValue(false);
-    mockCanBudget.mockReturnValue(true);
+  it("enables or disables every channel and keeps each channel's publish state", () => {
+    mockCanBudget.mockReturnValue(false);
 
-    render(<AgentIntegrationsPanel agent={agent} />);
+    const { rerender } = render(<AgentIntegrationsPanel agent={agent} />);
 
-    expect(screen.queryByTestId(/^budget-/)).not.toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Enabled" })).toBeChecked();
+    expect(
+      screen.getByText(
+        "Off pauses every channel on this agent. Publish on each channel stays as it is.",
+      ),
+    ).toBeInTheDocument();
+
+    rerender(<AgentIntegrationsPanel agent={{ ...agent, exposures_suspended: true }} />);
+
+    expect(screen.getByRole("switch", { name: "Enabled" })).not.toBeChecked();
+    expect(screen.getByText("Disabled")).toBeInTheDocument();
+  });
+
+  it("opens the channel named in the address", () => {
+    mockCanBudget.mockReturnValue(false);
+
+    render(<AgentIntegrationsPanel agent={agent} initialChannelId="endpoint_1" />);
+
+    expect(screen.getByTestId("row-endpoint_1")).toHaveAttribute("data-expanded", "true");
   });
 
   it("groups GitHub setup and trigger creation under one Triggers heading", () => {

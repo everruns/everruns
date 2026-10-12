@@ -13,10 +13,11 @@ use aws_sdk_bedrockruntime::config::{
     BehaviorVersion, Builder as BedrockConfigBuilder, Credentials, Region,
 };
 use aws_sdk_bedrockruntime::types::{
-    ContentBlock, ContentBlockDelta, ContentBlockStart, ConversationRole, ConverseStreamOutput,
-    DocumentBlock, DocumentFormat, DocumentSource, ImageBlock, ImageFormat, ImageSource,
-    InferenceConfiguration, Message as BedrockMessage, SystemContentBlock, Tool, ToolConfiguration,
-    ToolInputSchema, ToolResultBlock, ToolResultContentBlock, ToolSpecification, ToolUseBlock,
+    CachePointBlock, CacheTtl, ContentBlock, ContentBlockDelta, ContentBlockStart,
+    ConversationRole, ConverseStreamOutput, DocumentBlock, DocumentFormat, DocumentSource,
+    ImageBlock, ImageFormat, ImageSource, InferenceConfiguration, Message as BedrockMessage,
+    SystemContentBlock, Tool, ToolConfiguration, ToolInputSchema, ToolResultBlock,
+    ToolResultContentBlock, ToolSpecification, ToolUseBlock,
 };
 use aws_smithy_types::Document;
 use base64::prelude::*;
@@ -36,6 +37,7 @@ use tracing::warn;
 
 const BEDROCK_STREAM_BUFFER_SIZE: usize = 64;
 
+use crate::bedrock::cache::CachePlan;
 use crate::bedrock::credential::BedrockCredential;
 
 /// Provider-owned Bedrock authentication and signing stack.
@@ -273,10 +275,23 @@ impl ChatDriver for BedrockChatDriver {
             .clone();
         let model_id = config.model.clone();
 
-        let (system_blocks, bedrock_messages) = build_messages(&messages)?;
+        let (mut system_blocks, mut bedrock_messages) = build_messages(&messages)?;
+        let cache_plan = CachePlan::for_call(config);
+        if let Some(plan) = &cache_plan {
+            if !system_blocks.is_empty()
+                && let Some(point) = plan.point()
+            {
+                system_blocks.push(SystemContentBlock::CachePoint(point));
+            }
+            plan.mark_messages(&mut bedrock_messages);
+        }
 
         let tool_cfg = if !config.tools.is_empty() {
-            Some(build_tool_config(&config.tools)?)
+            let tool_point = cache_plan
+                .as_ref()
+                .filter(|plan| plan.tools)
+                .and_then(CachePlan::point);
+            Some(build_tool_config(&config.tools, tool_point)?)
         } else {
             None
         };
@@ -399,11 +414,24 @@ impl ChatDriver for BedrockChatDriver {
                         ConverseStreamOutput::Metadata(e) => {
                             // Metadata arrives after MessageStop and carries token usage.
                             if let Some(usage) = e.usage() {
+                                // Converse buckets are disjoint: `inputTokens`
+                                // excludes cache reads and writes.
                                 let prompt = usage.input_tokens() as u32;
                                 let completion = usage.output_tokens() as u32;
+                                let read = usage.cache_read_input_tokens().map(|t| t as u32);
+                                let write = usage.cache_write_input_tokens().map(|t| t as u32);
                                 meta.prompt_tokens = Some(prompt);
                                 meta.completion_tokens = Some(completion);
-                                meta.total_tokens = Some(prompt + completion);
+                                meta.cache_read_tokens = read;
+                                meta.cache_creation_tokens = write;
+                                meta.cache_creation_1h_tokens = usage
+                                    .cache_details()
+                                    .iter()
+                                    .find(|detail| detail.ttl() == &CacheTtl::OneHour)
+                                    .map(|detail| detail.input_tokens() as u32);
+                                meta.total_tokens = Some(
+                                    prompt + completion + read.unwrap_or(0) + write.unwrap_or(0),
+                                );
                             }
                         }
                         _ => {} // MessageStart, Unknown: no action needed
@@ -668,7 +696,10 @@ fn merge_consecutive_same_role(messages: Vec<BedrockMessage>) -> Vec<BedrockMess
 // Tool configuration
 // ============================================================================
 
-fn build_tool_config(tools: &[ToolDefinition]) -> Result<ToolConfiguration> {
+fn build_tool_config(
+    tools: &[ToolDefinition],
+    cache_point: Option<CachePointBlock>,
+) -> Result<ToolConfiguration> {
     let mut tool_list = Vec::new();
     for tool in tools {
         let schema_doc = json_to_document(tool.parameters().clone());
@@ -680,6 +711,7 @@ fn build_tool_config(tools: &[ToolDefinition]) -> Result<ToolConfiguration> {
             .map_err(|e| AgentLoopError::llm(format!("Failed to build tool spec: {e}")))?;
         tool_list.push(Tool::ToolSpec(spec));
     }
+    tool_list.extend(cache_point.map(Tool::CachePoint));
     ToolConfiguration::builder()
         .set_tools(Some(tool_list))
         .build()

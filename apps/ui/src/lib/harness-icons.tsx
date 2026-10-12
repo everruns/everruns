@@ -1,14 +1,15 @@
 // Harness glyphs: built-in harnesses declare an `icon` name in their backend
 // definition (crates/server/src/harnesses/*.rs). Custom harnesses carry no icon
-// and fall back to the neutral shield used across harness surfaces.
+// and fall back to the neutral Facet harness outline used across harness surfaces.
 //
 // The stored name is only ever a key into this map; unknown names fall back.
 // Unlike `CapabilityIcon`, this renderer has no embedded-SVG branch, so a
 // database-sourced icon can never put attacker-controlled markup on the page
 // (TM-WEB-001).
 
+import { HarnessDomainIcon } from "@/components/icons/facet-icons";
 import { forwardRef, type SVGProps } from "react";
-import { BarChart3, Shield, SquareDashed } from "lucide-react";
+import { BarChart3, SquareDashed } from "lucide-react";
 import { capabilityIconMap, type IconComponent } from "@/lib/capability-icons";
 
 /**
@@ -48,8 +49,8 @@ export const harnessIconMap: Record<string, IconComponent> = {
 
 /** Resolve a harness icon name, falling back to the neutral harness glyph. */
 export function getHarnessIcon(iconName?: string | null): IconComponent {
-  if (!iconName) return Shield;
-  return harnessIconMap[iconName] ?? Shield;
+  if (!iconName) return HarnessDomainIcon;
+  return harnessIconMap[iconName] ?? HarnessDomainIcon;
 }
 
 interface HarnessIconProps extends SVGProps<SVGSVGElement> {

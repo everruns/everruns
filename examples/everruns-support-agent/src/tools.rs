@@ -48,7 +48,7 @@ fn search(query: &str) -> Result<String, String> {
                 .find(|line| words.iter().any(|word| line.to_lowercase().contains(word)))
                 .unwrap_or("");
             format!(
-                "Page: {id}\nSource: https://docs.everruns.com/framework/{id}/\nMatch: {excerpt}"
+                "Page: {id}\nSource: https://everruns.com/docs/framework/{id}/\nMatch: {excerpt}"
             )
         })
         .collect::<Vec<_>>()
@@ -61,7 +61,7 @@ fn read(id: &str) -> Result<String, String> {
         .find(|(key, _)| *key == id)
         .ok_or_else(|| "Unknown page ID; use an ID returned by search_docs.".to_string())?;
     Ok(format!(
-        "Official docs snapshot, 2026-09-08\nSource: https://docs.everruns.com/framework/{id}/\n{body}"
+        "Official docs snapshot, 2026-09-08\nSource: https://everruns.com/docs/framework/{id}/\n{body}"
     ))
 }
 
@@ -91,7 +91,7 @@ mod tests {
     #[test]
     fn reads_citable_documents_and_rejects_arbitrary_paths() {
         let page = read("persistence").unwrap();
-        assert!(page.contains("https://docs.everruns.com/framework/persistence/"));
+        assert!(page.contains("https://everruns.com/docs/framework/persistence/"));
         assert!(page.contains("Engine"));
         assert!(read("../../Cargo.toml").is_err());
     }

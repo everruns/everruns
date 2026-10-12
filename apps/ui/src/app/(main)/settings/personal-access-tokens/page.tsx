@@ -1,5 +1,6 @@
 "use client";
 
+import { TokenIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -25,7 +26,7 @@ import {
 } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks";
 import { useAuth } from "@/providers/auth-provider";
-import { Plus, Key, Trash2, Copy, Check, Clock, ShieldAlert } from "lucide-react";
+import { Plus, Trash2, Copy, Check, Clock, ShieldAlert } from "lucide-react";
 import type {
   PersonalAccessTokenListItem,
   CreatePersonalAccessTokenRequest,
@@ -81,7 +82,7 @@ function PersonalAccessTokenRow({
   return (
     <div className="flex items-center justify-between p-3 border">
       <div className="flex items-center gap-3">
-        <Key className="h-5 w-5 text-muted-foreground" />
+        <TokenIcon className="h-5 w-5 text-muted-foreground" />
         <div>
           <div className="font-medium">
             <EntityIdentity value={token.id}>{token.name}</EntityIdentity>
@@ -408,7 +409,7 @@ export default function PersonalAccessTokensPage() {
           }
           emptyState={
             <Card className="p-8 text-center">
-              <Key className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <TokenIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium mb-2">No personal access tokens</h3>
               <p className="text-muted-foreground mb-4">
                 Create a personal access token to access the Everruns API programmatically.

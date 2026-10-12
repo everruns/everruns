@@ -8,7 +8,7 @@ pub struct CreateSessionRequest {
     /// server-owned so the sessions facet rail stays trustworthy.
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "chat")]
-    pub source: Option<crate::records::SessionSource>,
+    pub source: Option<crate::domains::sessions::record::SessionSource>,
     /// ID of the harness for this session (format: harness_{32-hex}).
     /// If omitted, the harness is derived from the agent (when one is supplied),
     /// else the org default harness, else the built-in fallback. New orgs default
@@ -145,6 +145,11 @@ pub struct CreateSessionRequest {
     #[serde(default)]
     #[schema(ignore)]
     pub seed: SessionSeedMode,
+    /// Internal: a `Fork` seed copies events only up to this sequence
+    /// (branch from a message). `None` copies the whole history.
+    #[serde(skip)]
+    #[schema(ignore)]
+    pub fork_up_to_sequence: Option<i32>,
     /// Attach this session to an existing Workspace (format: `wsp_<32-hex>`)
     /// instead of auto-creating a default per-session workspace. The workspace
     /// must exist in the caller's org and be `active`. Lets multiple sessions

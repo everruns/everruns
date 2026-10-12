@@ -5,14 +5,14 @@ use serde::Serialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-pub use crate::storage::models::{AuditLogQuery, AuditLogRow};
+pub use crate::storage::{AuditLogQuery, AuditLogRow};
 
 /// Domain-level audit log view. Mirrors `AuditLogRow` but omits `org_id`
 /// (derived from the caller) and formats IDs as strings, matching the
 /// shape returned by the HTTP and MCP adapters.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AuditLogEntry {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     /// Audit domain: `management` for org administration, `agent` for agent activity.
     #[schema(example = "management")]

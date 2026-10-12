@@ -133,11 +133,6 @@ export function CapabilitySelector({
         onMoveDown={moveDown}
         compact={compact}
       />
-
-      {/* Coming soon indicator */}
-      {capabilities.some((c) => c.status === "coming_soon") && (
-        <p className="text-xs text-muted-foreground">More capabilities coming soon</p>
-      )}
     </div>
   );
 }

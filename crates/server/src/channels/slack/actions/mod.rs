@@ -24,7 +24,8 @@
 
 use std::sync::Arc;
 
-use crate::records::{AgentChannel, App, ChannelType};
+use crate::domains::agent_channels::record::{AgentChannel, ChannelType};
+use crate::domains::apps::record::App;
 use async_trait::async_trait;
 use everruns_contracts::slack_action::{
     SlackAction, SlackActionError, SlackActionInvoker, SlackActionOutcome,
@@ -33,14 +34,14 @@ use everruns_contracts::typed_id::SessionId;
 use serde_json::{Value, json};
 use tracing::{debug, warn};
 
-use crate::channels::slack::api::{SLACK_API_BASE, slack_api_call};
-use crate::channels::slack::api_error::{SlackApiError, parse_retry_after};
 use crate::storage::{EncryptionService, StorageBackend};
+use everruns_integrations::slack_channel::web_api::{SLACK_API_BASE, slack_api_call};
+use everruns_integrations::slack_channel::web_api::{SlackApiError, parse_retry_after};
 
 mod post_message;
 
-/// Routing-tag prefix stamped on Slack-originated sessions by
-/// `channels::slack::events::build_session_tags`.
+/// Routing-tag prefix archival Slack sessions carry, from before sessions
+/// had a channel FK.
 const SLACK_CHANNEL_TAG_PREFIX: &str = "slack:channel:";
 
 /// Ceiling on an upload's byte count.
@@ -215,15 +216,16 @@ fn select_slack_channel<'a>(app: &'a App, selector: &ChannelSelector) -> Option<
     (channel.channel_type == ChannelType::Slack).then_some(channel)
 }
 
-impl From<SlackApiError> for SlackActionError {
-    fn from(error: SlackApiError) -> Self {
-        match error {
-            SlackApiError::RateLimited { retry_after } => SlackActionError::RateLimited {
-                retry_after_secs: retry_after.map(|d| d.as_secs()),
-            },
-            SlackApiError::Permanent(message) => SlackActionError::Rejected(message),
-            SlackApiError::Transient(message) => SlackActionError::Transient(message),
-        }
+/// A Slack API failure as the action tool reports it.
+///
+/// A function rather than `From`: both types live in other crates now.
+pub(super) fn action_error(error: SlackApiError) -> SlackActionError {
+    match error {
+        SlackApiError::RateLimited { retry_after } => SlackActionError::RateLimited {
+            retry_after_secs: retry_after.map(|d| d.as_secs()),
+        },
+        SlackApiError::Permanent(message) => SlackActionError::Rejected(message),
+        SlackApiError::Transient(message) => SlackActionError::Transient(message),
     }
 }
 
@@ -286,7 +288,7 @@ impl SlackActionInvoker for DbSlackActionInvoker {
                                 "missing_scope: reconnect the Slack app and approve reactions:write to add reactions".into(),
                             ));
                         }
-                        return Err(error.into());
+                        return Err(action_error(error));
                     }
                 }
             }
@@ -377,7 +379,9 @@ async fn update_message(
         "text": text,
         "blocks": [{ "type": "markdown", "text": text }],
     });
-    slack_api_call(api_base, bot_token, "chat.update", payload).await?;
+    slack_api_call(api_base, bot_token, "chat.update", payload)
+        .await
+        .map_err(action_error)?;
     Ok(SlackActionOutcome::MessageUpdated {
         channel: channel.to_string(),
         timestamp: timestamp.to_string(),
@@ -395,7 +399,8 @@ async fn lookup_user(
         "users.info",
         json!({ "user": user_id }),
     )
-    .await?;
+    .await
+    .map_err(action_error)?;
     let user = body.get("user").ok_or_else(|| {
         SlackActionError::Transient("Slack users.info returned no user".to_string())
     })?;
@@ -459,7 +464,8 @@ async fn upload_file(
         "files.getUploadURLExternal",
         json!({ "filename": filename, "length": content.len() }),
     )
-    .await?;
+    .await
+    .map_err(action_error)?;
 
     let upload_url = reserve
         .get("upload_url")
@@ -533,7 +539,9 @@ async fn complete_upload(
     payload: Value,
     file_id: String,
 ) -> Result<SlackActionOutcome, SlackActionError> {
-    let body = slack_api_call(api_base, bot_token, "files.completeUploadExternal", payload).await?;
+    let body = slack_api_call(api_base, bot_token, "files.completeUploadExternal", payload)
+        .await
+        .map_err(action_error)?;
     let permalink = body
         .get("files")
         .and_then(Value::as_array)
@@ -628,10 +636,8 @@ pub async fn serve_rpc(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::models::{
-        CreateAppRow, CreateHarnessRow, CreateLegacyAliasChannelRow, CreateSessionRow,
-        UpdateChannelByIdRow,
-    };
+    use crate::storage::{CreateAppRow, CreateHarnessRow, CreateSessionRow};
+    use crate::storage::{CreateLegacyAliasChannelRow, UpdateChannelByIdRow};
     use everruns_contracts::slack_action::SlackActionInvoker;
     use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId};
     use uuid::Uuid;
@@ -653,7 +659,7 @@ mod tests {
 
         /// An endpoint must be owned by an agent, so every app needs one.
         pub(super) async fn seed_agent(&self, org_id: i64, harness_id: HarnessId) -> AgentId {
-            use crate::storage::models::CreateAgentRow;
+            use crate::storage::CreateAgentRow;
             let id = AgentId::new();
             self.db
                 .create_agent_with_id(
@@ -677,6 +683,7 @@ mod tests {
                         max_iterations: None,
                         network_access: None,
                         parallel_tool_calls: None,
+                        communication: Default::default(),
                         environments: None,
                         is_built_in: false,
                     },
@@ -806,7 +813,7 @@ mod tests {
                 .db
                 .create_session(CreateSessionRow {
                     playground_user_id: None,
-                    source: crate::records::SessionSource::Api,
+                    source: crate::domains::sessions::record::SessionSource::Api,
                     workspace_id: None,
                     org_id,
                     app_id,
@@ -843,7 +850,7 @@ mod tests {
                 .platform_metadata
                 .insert("channel_id".to_string(), "C1".to_string());
             self.db
-                .upsert_session_key_value(crate::storage::models::UpsertSessionKeyValue {
+                .upsert_session_key_value(crate::storage::UpsertSessionKeyValue {
                     session_id: session.id,
                     key: everruns_core::channel::THREAD_CONTEXT_KV_KEY.to_string(),
                     value: everruns_core::channel::encode_thread_context(&context)

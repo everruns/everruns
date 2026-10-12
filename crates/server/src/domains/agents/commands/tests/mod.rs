@@ -7,7 +7,7 @@ use crate::kernel_imports::{
 use crate::records::FeatureFlags;
 use crate::services::CapabilityService;
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateHarnessRow, CreateVirtualUserConnectionRow};
+use crate::storage::{CreateHarnessRow, CreateVirtualUserConnectionRow};
 use async_trait::async_trait;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -17,7 +17,7 @@ async fn ctx_with_role_and_flags(
     role: OrgRole,
     feature_flags: FeatureFlags,
 ) -> Ctx {
-    crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
+    crate::setup::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
         .await
         .expect("initialize built-in harnesses for agent command tests");
     let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
@@ -126,6 +126,7 @@ fn basic_agent_request(name: &str) -> CreateAgentRequest {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        communication: Default::default(),
     }
 }
 
@@ -153,6 +154,7 @@ fn update_prompt_request(system_prompt: &str) -> UpdateAgentRequest {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        communication: None,
     }
 }
 
@@ -187,7 +189,7 @@ async fn create_test_harness(db: &StorageBackend, name: &str) -> HarnessId {
 async fn create_agent_defaults_to_conversation_harness() {
     let db = Arc::new(StorageBackend::test_database());
     let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
-    crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
+    crate::setup::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
         .await
         .unwrap();
     let conversation_id = db
@@ -242,6 +244,7 @@ async fn create_and_update_agent_resolve_harness_name_and_id() {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            communication: None,
         },
     }
     .run(&ctx)

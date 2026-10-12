@@ -8,7 +8,7 @@
 use crate::auth::AuthState;
 use crate::auth::runtime::RuntimeAccount;
 use crate::kernel_imports::contracts::typed_id::VirtualUserId;
-use crate::storage::models::CreateVirtualUserConnectionRow;
+use crate::storage::CreateVirtualUserConnectionRow;
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,

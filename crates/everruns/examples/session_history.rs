@@ -1,15 +1,20 @@
-//! Persist, page, resume, and continue a Framework session entirely offline.
+//! Persist, page, resume, and continue a Framework session from local state.
+//!
+//! ```text
+//! cargo run -p everruns --features local,openai --example session_history [-- DATA_DIR]
+//! ```
 
 use std::path::{Path, PathBuf};
 
-use everruns::{Agent, Engine, LocalConfig, Model};
+use everruns::{Agent, Engine, LocalConfig, OpenAI};
 
-fn agent(data_dir: &Path) -> Result<Agent, everruns::BuildError> {
-    Agent::builder()
-        .instructions("Keep the conversation concise.")
-        .model(Model::simulated("Acknowledged."))
+fn agent(data_dir: &Path) -> Result<Agent, Box<dyn std::error::Error>> {
+    Ok(Agent::builder()
+        .instructions("Keep the conversation concise: one short sentence per reply.")
+        .provider(OpenAI::from_env()?)
+        .model("gpt-6.1-sol")
         .local(LocalConfig::new(data_dir))
-        .build()
+        .build()?)
 }
 
 #[tokio::main]
@@ -42,7 +47,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    resumed.send_and_wait("Continue the session.").await?;
+    let recalled = resumed.send_and_wait("What is my project called?").await?;
+    println!("after resume: {}", recalled.response);
     println!("resumed session {session_id}");
     println!("local state: {}", data_dir.display());
     Ok(())

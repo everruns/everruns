@@ -29,7 +29,7 @@ fn agent_blueprints(&self) -> Vec<AgentBlueprint> {
         name: "Repo Scout",
         description: "Search repositories for code, files, and issues. \
                       Read-only agent for codebase exploration.",
-        model: BlueprintModel::Fixed("claude-haiku-4-5-20251001".to_string()),
+        model: BlueprintModel::Fixed("claude-haiku-5-5".to_string()),
         system_prompt: REPO_SCOUT_PROMPT,
         tools: vec![Box::new(SearchCodeTool), Box::new(ReadFileTool)],
         max_turns: Some(15),

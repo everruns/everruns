@@ -1,5 +1,5 @@
 use super::*;
-use crate::storage::models::CreateHarnessRow;
+use crate::storage::CreateHarnessRow;
 use crate::storage::{CreateSessionRow, StorageBackend};
 use everruns_contracts::typed_id::{HarnessId, PrincipalId};
 use everruns_core::network_access::NetworkAccessList;

@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { GitHubOwnerSuggestion } from "./schema-types";
 
 export interface AgentGitHubStatus {
   identity_id: string | null;
@@ -8,6 +9,10 @@ export interface AgentGitHubStatus {
   app_url: string | null;
   account: string | null;
   repository_selection: string | null;
+  /** Permissions new Apps request that this installation lacks, as `name:level`. */
+  missing_permissions: string[];
+  /** GitHub accounts this organization already reached, candidates for `owner_org`. */
+  suggested_owners: GitHubOwnerSuggestion[];
 }
 
 export type AgentGitHubConnectResponse =

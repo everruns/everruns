@@ -271,6 +271,16 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         Ok(stored.unwrap_or(provisional))
     }
 
+    async fn emit_events_fenced(
+        &self,
+        requests: Vec<EventRequest>,
+        fence: &crate::actor_lease_store::ActorFence,
+    ) -> Result<Option<Event>> {
+        GrpcAdapter::new(self.client.clone())
+            .emit_fenced(requests, fence)
+            .await
+    }
+
     // =========================================================================
     // LLM Provider Operations
     // =========================================================================
@@ -606,13 +616,9 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         &self,
         org_id: i64,
     ) -> Arc<dyn crate::core::session_services::SessionStorageStore> {
-        Arc::new(GrpcAdapter::new_org_scoped(self.client.clone(), org_id))
-    }
-
-    fn storage_store_unscoped(
-        &self,
-    ) -> Arc<dyn crate::core::session_services::SessionStorageStore> {
-        Arc::new(GrpcAdapter::new(self.client.clone()))
+        Arc::new(crate::internal_commands::CommandSessionStorageStore::new(
+            GrpcAdapter::new_org_scoped(self.client.clone(), org_id),
+        ))
     }
 
     fn image_artifact_store(&self, org_id: i64) -> Arc<dyn ImageArtifactStore> {
@@ -651,37 +657,50 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     fn connection_resolver(
         &self,
+        org_id: i64,
     ) -> Arc<dyn crate::core::connection_services::UserConnectionResolver> {
-        Arc::new(crate::grpc_adapters::GrpcAdapter::new(self.client.clone()))
+        Arc::new(crate::internal_commands::CommandConnectionResolver::new(
+            GrpcAdapter::new_org_scoped(self.client.clone(), org_id),
+        ))
     }
 
-    fn leased_resource_store(&self) -> Arc<dyn crate::core::session_services::LeasedResourceStore> {
-        Arc::new(GrpcAdapter::new(self.client.clone()))
+    fn leased_resource_store(
+        &self,
+        org_id: i64,
+    ) -> Arc<dyn crate::core::session_services::LeasedResourceStore> {
+        Arc::new(crate::internal_commands::CommandLeasedResourceStore::new(
+            crate::grpc_adapters::GrpcAdapter::new_org_scoped(self.client.clone(), org_id),
+        ))
     }
 
     fn session_resource_registry(
         &self,
+        org_id: i64,
     ) -> Option<Arc<dyn crate::core::session_services::SessionResourceRegistry>> {
-        Some(Arc::new(crate::grpc_adapters::GrpcAdapter::new(
-            self.client.clone(),
-        )))
+        Some(Arc::new(
+            crate::internal_commands::CommandSessionResourceRegistry::new(
+                crate::grpc_adapters::GrpcAdapter::new_org_scoped(self.client.clone(), org_id),
+            ),
+        ))
     }
 
     fn session_task_registry(
         &self,
+        org_id: i64,
     ) -> Option<Arc<dyn crate::core::session_task::SessionTaskRegistry>> {
-        Some(Arc::new(crate::grpc_adapters::GrpcAdapter::new(
-            self.client.clone(),
-        )))
+        Some(Arc::new(
+            crate::internal_commands::CommandSessionTaskRegistry::new(
+                crate::grpc_adapters::GrpcAdapter::new_org_scoped(self.client.clone(), org_id),
+            ),
+        ))
     }
 
     fn schedule_store(
         &self,
         org_id: i64,
     ) -> Arc<dyn crate::core::session_services::SessionScheduleStore> {
-        Arc::new(crate::grpc_adapters::GrpcOrgAdapter::new(
-            self.client.clone(),
-            org_id,
+        Arc::new(crate::internal_commands::CommandSessionScheduleStore::new(
+            crate::grpc_adapters::GrpcAdapter::new_org_scoped(self.client.clone(), org_id),
         ))
     }
 
@@ -705,6 +724,19 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             crate::grpc_slack_actions::GrpcSlackActionInvoker::new(
                 self.client.clone(),
                 org_id,
+                session_id,
+            ),
+        ))
+    }
+
+    fn poppy_invoker(
+        &self,
+        org_id: i64,
+        session_id: everruns_contracts::typed_id::SessionId,
+    ) -> Option<Arc<dyn everruns_capabilities::capabilities::PoppyInvoker>> {
+        Some(Arc::new(
+            crate::internal_commands::CommandPoppyInvoker::new(
+                crate::grpc_adapters::GrpcAdapter::new_org_scoped(self.client.clone(), org_id),
                 session_id,
             ),
         ))
@@ -809,7 +841,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         &self,
         limit: u32,
         stale_after_seconds: u32,
-    ) -> Result<Vec<LeasedResource>> {
+    ) -> Result<Vec<(i64, LeasedResource)>> {
         self.client
             .claim_due_leased_resources(limit, stale_after_seconds)
             .await
@@ -846,19 +878,10 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         &self,
         stale_after: chrono::Duration,
         limit: i64,
-    ) -> Result<Vec<(everruns_contracts::typed_id::SessionId, String)>> {
+    ) -> Result<Vec<(i64, everruns_contracts::typed_id::SessionId, String)>> {
         self.client
             .list_orphaned_session_tasks(stale_after.num_seconds(), limit)
             .await
-    }
-
-    fn reaper_session_task_registry(
-        &self,
-    ) -> std::sync::Arc<dyn crate::core::session_task::SessionTaskRegistry> {
-        // Reuse the same gRPC-backed session-task registry the worker uses for
-        // executor RPCs — lifecycle invariants, events, and wake_policy all
-        // flow through the server's DbSessionTaskRegistry.
-        Arc::new(crate::grpc_adapters::GrpcAdapter::new(self.client.clone()))
     }
 
     async fn prune_terminal_session_tasks(
@@ -871,5 +894,11 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         self.client
             .prune_terminal_session_tasks(ttl.num_seconds(), limit)
             .await
+    }
+
+    fn actor_lease_store(&self) -> Arc<dyn crate::actor_lease_store::ActorLeaseStore> {
+        Arc::new(crate::grpc_actor_lease_store::GrpcActorLeaseStore::new(
+            self.client.clone(),
+        ))
     }
 }

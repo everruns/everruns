@@ -11,8 +11,8 @@ The deliberately small profile uses typed values for `session_file_system`,
 `bashkit_shell`, live `agent_instructions`, `skills`, `stateless_todo_list`,
 `web_fetch`, and `duckduckgo`. The CLI keeps a multiline composer, optional
 destructive-tool approval, and durable conversation resume. It
-supports OpenAI and a deterministic offline simulator; multi-provider routing
-belongs in an application, not this example.
+runs on OpenAI (`gpt-6.1-sol` by default); multi-provider routing belongs in an
+application, not this example.
 
 The important safety model is simple:
 
@@ -28,25 +28,18 @@ The CLI prints its typed session id, workspace/head ids, access mode, base, and
 state directory before the first prompt. Keep the session id when you want to
 resume or explicitly share that recorded head.
 
-## Run offline or with a live provider
+## Run
 
-Offline mode is deterministic and needs no credential or network:
-
-```bash
-cargo run -p everruns-coding-cli -- --offline --head review --base main \
-  "inspect the repository"
-```
-
-With `OPENAI_API_KEY` set, the CLI uses OpenAI and accepts a model id:
+The CLI needs `OPENAI_API_KEY` and refuses to start without it:
 
 ```bash
 export OPENAI_API_KEY=sk-...
-cargo run -p everruns-coding-cli -- --model gpt-5.6-terra \
-  --head docs --base main "improve the README"
+cargo run -p everruns-coding-cli -- --head review --base main \
+  "inspect the repository"
 ```
 
-Without that variable, the CLI falls back to the deterministic simulator.
-`--reasoning-effort <LEVEL>` attaches a portable per-turn control.
+`--model <ID>` (or `EVERRUNS_CLI_MODEL`) picks another OpenAI model; the
+default is `gpt-6.1-sol`. `--reasoning-effort <LEVEL>` attaches a portable per-turn control.
 
 Interactive mode supports `/help`, `/tools`, `/cwd`, `/clear`,
 `/model`, and `/quit`. Pass `--ask` to confirm filesystem writes and shell
@@ -67,8 +60,8 @@ backend creates distinct durable branches and worktrees, so writes do not
 collide and the original checkout is not edited.
 
 ```bash
-cargo run -p everruns-coding-cli -- --offline --head left --base main
-cargo run -p everruns-coding-cli -- --offline --head right --base main
+cargo run -p everruns-coding-cli -- --head left --base main
+cargo run -p everruns-coding-cli -- --head right --base main
 ```
 
 Reusing the same `--head` name creates another isolated head. Identity is the
@@ -79,7 +72,7 @@ printed `head` id, not the display name.
 Copy the printed typed session id from an earlier run:
 
 ```bash
-cargo run -p everruns-coding-cli -- --offline \
+cargo run -p everruns-coding-cli -- \
   --resume session_0123456789abcdef0123456789abcdef
 ```
 
@@ -94,13 +87,13 @@ Sharing has two explicit steps. First create a head as shared and keep the
 printed session id:
 
 ```bash
-cargo run -p everruns-coding-cli -- --offline --head team --shared
+cargo run -p everruns-coding-cli -- --head team --shared
 ```
 
 Then start a distinct session on the head recorded by that session id:
 
 ```bash
-cargo run -p everruns-coding-cli -- --offline \
+cargo run -p everruns-coding-cli -- \
   --shared-head session_0123456789abcdef0123456789abcdef
 ```
 

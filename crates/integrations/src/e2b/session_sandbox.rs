@@ -5,10 +5,11 @@ use std::time::Duration;
 use everruns_contracts::runtime::SessionFile;
 use everruns_contracts::runtime::exec_tool_result::ExecToolResultPayload;
 use everruns_contracts::session_sandbox::{
-    SessionSandboxConfig, SessionSandboxContext, SessionSandboxExecRequest,
-    SessionSandboxExecResponse, SessionSandboxInstance, SessionSandboxLease,
-    SessionSandboxProvider, SessionSandboxReadFileResponse, SessionSandboxState,
-    SessionSandboxStatus, SessionSandboxStatusResponse, SessionSandboxWriteFileResponse,
+    OwnedSandbox, SandboxAdminError, SessionSandboxConfig, SessionSandboxContext,
+    SessionSandboxExecRequest, SessionSandboxExecResponse, SessionSandboxInstance,
+    SessionSandboxLease, SessionSandboxProvider, SessionSandboxReadFileResponse,
+    SessionSandboxState, SessionSandboxStatus, SessionSandboxStatusResponse,
+    SessionSandboxWriteFileResponse,
 };
 use everruns_contracts::tools::ToolExecutionResult;
 use serde_json::{Value, json};
@@ -135,6 +136,22 @@ impl SessionSandboxProvider for E2BSessionSandboxProvider {
         "e2b"
     }
 
+    async fn list_owned(
+        &self,
+        token: &str,
+        labels: &std::collections::BTreeMap<String, String>,
+    ) -> Result<Vec<OwnedSandbox>, SandboxAdminError> {
+        super::owned::list_owned(&E2BClient::new(token.to_string()), labels).await
+    }
+
+    async fn stop_by_id(&self, token: &str, external_id: &str) -> Result<(), SandboxAdminError> {
+        super::owned::stop(&E2BClient::new(token.to_string()), external_id).await
+    }
+
+    async fn delete_by_id(&self, token: &str, external_id: &str) -> Result<(), SandboxAdminError> {
+        super::owned::delete(&E2BClient::new(token.to_string()), external_id).await
+    }
+
     async fn create(
         &self,
         context: &dyn SessionSandboxContext,
@@ -149,7 +166,7 @@ impl SessionSandboxProvider for E2BSessionSandboxProvider {
         let display_name = provider_config_string(config, "title")
             .map(str::to_string)
             .or_else(|| Some(format!("Session Sandbox {}", context.session_id())));
-        let mut labels = context.resource_labels().await;
+        let mut labels = context.managed_resource_labels().await;
         if let Some(name) = &display_name {
             labels.insert("everruns.title".to_string(), json!(name));
         }

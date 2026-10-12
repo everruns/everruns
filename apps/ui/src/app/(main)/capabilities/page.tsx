@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { useMemo, useState } from "react";
 import {
   useCapabilities,
@@ -20,7 +21,7 @@ import {
 import { SearchInput } from "@/components/ui/search-input";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
-import { CircleOff, Bot, Layers, Plus, Pencil } from "lucide-react";
+import { CircleOff, Layers, Plus, Pencil } from "lucide-react";
 import { EntityStatus } from "@/components/ui/entity-status";
 import { EntityCard, EntityCardDescription } from "@/components/ui/entity-card";
 import { EntityIdentity } from "@/components/ui/entity-identity";
@@ -109,7 +110,7 @@ function CapabilityStats({ capability }: { capability: Capability }) {
   return (
     <div className="flex items-center gap-3 text-xs text-muted-foreground">
       <span className="inline-flex items-center gap-1">
-        <Bot className="h-3.5 w-3.5" />
+        <AgentIcon className="h-3.5 w-3.5" />
         {formatCountLabel(agents, "agent")}
       </span>
       <span className="inline-flex items-center gap-1">

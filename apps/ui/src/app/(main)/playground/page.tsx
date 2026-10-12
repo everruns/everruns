@@ -1,8 +1,10 @@
 "use client";
 
+import { PlaygroundIcon } from "@/components/icons/facet-icons";
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Boxes, FlaskConical, ListFilter, Plus, Users, X } from "lucide-react";
+import { ListFilter, Plus, Users, X } from "lucide-react";
 import { getSessionFacets, listSessions } from "@/lib/api/sessions";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import type { PlaygroundGroupBy } from "@/lib/playground-list";
@@ -101,7 +103,7 @@ function PlaygroundLibrary() {
     <PageContainer>
       <PageBreadcrumb items={[{ label: "Playground" }]} />
       <PageMasthead
-        icon={<FlaskConical />}
+        icon={<PlaygroundIcon />}
         title="Playground"
         badges={activeFacets ? <Badge variant="outline">{activeFacets.total}</Badge> : undefined}
         description="Test agents as virtual users. Playground chats are shared with your organisation."
@@ -150,7 +152,7 @@ function PlaygroundLibrary() {
                         setPage(0);
                       }}
                     >
-                      <Boxes className="size-3.5 opacity-60" />
+                      <AgentIcon className="size-3.5 opacity-60" />
                       <span className="min-w-0 flex-1 truncate">{option.label}</span>
                       <span className="font-mono text-[11px] text-muted-foreground">
                         {option.count}
@@ -231,7 +233,7 @@ function PlaygroundLibrary() {
         <PlaygroundChatList sessions={data.data} agents={agents} groupBy={groupBy} />
       ) : (
         <div className="flex flex-col items-center gap-2 border bg-card px-6 py-12 text-center">
-          <FlaskConical className="size-5 text-muted-foreground" />
+          <PlaygroundIcon className="size-5 text-muted-foreground" />
           <div className="text-sm font-semibold">
             {filtering
               ? "No matching Playground chats"

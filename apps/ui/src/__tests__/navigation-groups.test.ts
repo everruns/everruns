@@ -50,7 +50,7 @@ describe("navigationGroupForPath", () => {
         .find((section) => section.label === label)
         ?.items.map((item) => item.name);
     expect(itemsFor("Building")).toEqual(["Agents", "Playground", "Harnesses", "Virtual Users"]);
-    expect(itemsFor("Operational")).toEqual(["Sessions", "Exposures"]);
+    expect(itemsFor("Operational")).toEqual(["Sessions"]);
     expect(itemsFor("Sandboxes")).toEqual(["Fleet", "Templates", "Provider Accounts"]);
     expect(
       defaultNavigationSections.find((section) => section.label === "Sandboxes")?.defaultCollapsed,

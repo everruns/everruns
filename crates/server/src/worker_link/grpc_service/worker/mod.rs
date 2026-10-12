@@ -1,0 +1,27 @@
+//! `WorkerService` RPC handlers, grouped by the surface they serve.
+//!
+//! One gRPC trait impl cannot be split across modules, so `worker_service_impl`
+//! keeps the `impl WorkerService for WorkerServiceImpl` block and does nothing but
+//! forward each RPC to an inherent method defined here. Handlers live next to the
+//! other handlers for their domain rather than in one 5000-line file.
+
+pub(crate) mod support;
+
+mod actors;
+mod artifacts;
+pub(crate) mod commands;
+mod credentials;
+mod durable;
+mod events;
+mod leases;
+mod messages;
+mod notifications;
+mod partial_streams;
+mod platform_sessions;
+mod policy;
+mod resilience;
+mod sandboxes;
+mod sessions;
+mod sqldb;
+mod tasks;
+mod user_mcp;

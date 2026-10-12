@@ -43,7 +43,9 @@ for the same user-visible capability that app-mounted routes
 reusing the proven A2A / AG-UI ingress pattern. The native REST routes under the
 App are inherently execution-only (no route to management APIs), self-confining
 (tag-based ownership check), and self-redacting (reads return only completed
-assistant messages). See `knowledge/integrations/app-api-keys.md`.
+assistant messages). Those routes are retired since (`api_endpoint` channels
+became `api` channels); the Agent Execution API kept this decision, see
+[Agent Execution API](../integrations/agent-execution-api.md).
 
 **What could change it**: A concrete need to expose the full management session
 surface (arbitrary agent selection, cross-App listing, raw event/SSE feeds) to
@@ -187,9 +189,10 @@ the dominant term, or a profile is added whose builds are not latency-sensitive.
 `everruns-durable` `Workflow` whose state is rebuilt by replaying its event
 history, with input, reason and act as its activities.
 
-**Why considered**: `everruns-durable` already ships `Workflow`, `Activity` and
+**Why considered**: `everruns-durable` then shipped `Workflow`, `Activity` and
 `WorkflowExecutor`, so a replayed turn would reuse a generic engine feature
-instead of the turn-specific queue driver.
+instead of the turn-specific queue driver. That engine has since been removed
+([Durable Execution Engine](../operations/durable-execution-engine.md#no-replayed-workflow-engine)).
 
 **Why dismissed**: The turn's state machine (`TurnExecution`) is already
 serializable, so a per-step checkpoint stores what replay would recompute.

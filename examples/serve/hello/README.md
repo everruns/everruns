@@ -1,8 +1,8 @@
 # hello (serve, experimental)
 
 The smallest [serve](../../../crates/serve) app: one agent, one tool, one
-eval. It runs offline; without a model gateway, the agent follows a scripted
-simulator.
+eval. The agent runs on `openai/gpt-6.1-sol`: set `OPENAI_API_KEY` (or a
+host's `SERVE_GATEWAY_URL` / `OPENROUTER_API_KEY`).
 
 ```sh
 cargo run -p serve-example-hello              # dev server on :3000
@@ -23,5 +23,3 @@ curl -N "localhost:3000/v1/sessions/$ID/sse?after_sequence=0"
 | `src/agent.rs` | `#[agent] fn assistant()` |
 | `src/tools/roll_dice.rs` | `#[tool] async fn roll_dice(cx, sides)` |
 | `evals/dice.rs` | `#[eval] async fn rolls_when_asked(t)` |
-
-Set `OPENROUTER_API_KEY` to run the agent on a real model.

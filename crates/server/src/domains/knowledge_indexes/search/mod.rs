@@ -20,8 +20,8 @@ use everruns_contracts::vector_store::{
 
 use super::embedding::build_embeddings_driver;
 use crate::services::ProviderResolverService;
+use crate::storage::KnowledgeIndexRow;
 use crate::storage::StorageBackend;
-use crate::storage::models::KnowledgeIndexRow;
 
 /// Maximum characters of chunk text returned as a citation snippet.
 const SNIPPET_MAX_CHARS: usize = 600;

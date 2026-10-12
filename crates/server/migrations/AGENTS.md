@@ -4,8 +4,8 @@ See [`knowledge/operations/migrations.md`](../../../knowledge/operations/migrati
 
 Key rules:
 
-1. **Naming:** `NNN_<feature_name>.sql`, next sequential number, descriptive name
-2. **After rebase:** check for duplicate numbers, renumber to next available
-3. **Release prep:** do not squash or rename existing migrations for a release; keep authored filenames and verify ordering
-4. **Ordering:** numbers must be strictly sequential (no gaps, no duplicates), validated by `scripts/lib/check-migration-ordering.sh`, invoked by `just pre-push`, `just pre-pr`, and `/ship` (after rebase and again immediately before merge)
-5. **Immutability:** once a migration SQL file is merged to `main`, never modify, delete, or rename it. Fixes must land as a new sequential migration. CI and `just pre-push` reject modified/deleted/renamed existing migration files.
+1. **Naming:** `just new-migration <description>` creates `YYYYMMDDHHMMSS_<description>.sql` (UTC). Never add a `NNN_` file. The baseline `20261011000000_baseline.sql` replaced 001..222, which stay frozen in `legacy/` for adopting old databases; never edit either.
+2. **After rebase:** nothing to renumber. If a newer migration from main must run before yours, recreate yours so it sorts after it.
+3. **Release prep:** do not squash or rename existing migrations for a release; keep authored filenames.
+4. **Validation:** `scripts/lib/check-migration-ordering.sh` checks names and unique versions; CI runs it on PRs and main, `just pre-push` and `just pre-pr` locally.
+5. **Immutability:** once a migration SQL file is merged to `main`, never modify, delete, or rename it. Fixes land as a new migration. CI and `just pre-push` reject modified/deleted/renamed existing migration files.

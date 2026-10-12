@@ -106,18 +106,14 @@ jest.mock("@/components/layout/notification-bell", () => ({
 // Mock feature flags provider
 const mockFeatureFlags = {
   chat_threads: false,
-  notifications: true,
   evals: true,
   skills: true,
   memory: true,
   knowledge: true,
   plugins: true,
-  channel_budgets: true,
   voice: true,
-  agent_delegation: true,
   observers: true,
   public_chat: true,
-  webmcp: true,
   reports: true,
 };
 jest.mock("@/providers/feature-flags-provider", () => ({
@@ -151,18 +147,14 @@ describe("Sidebar", () => {
     mockPathname.mockReturnValue("/dashboard");
     Object.assign(mockFeatureFlags, {
       chat_threads: false,
-      notifications: true,
       evals: true,
       skills: true,
       memory: true,
       knowledge: true,
       plugins: true,
-      channel_budgets: true,
       voice: true,
-      agent_delegation: true,
       observers: true,
       public_chat: true,
-      webmcp: true,
       reports: true,
     });
     mockPush.mockClear();
@@ -414,11 +406,21 @@ describe("Sidebar", () => {
       render(<Sidebar />);
 
       const chat = screen.getByRole("link", { name: "Chat" });
+      const agents = screen.getByRole("link", { name: "Agents" });
       expect(chat).toHaveAttribute("href", "/chats");
+      // Chat shares the row inset with every other item. Its hover rail
+      // matches too, except while it is the current page.
+      expect(chat.className).toContain("px-3");
+      expect(chat.className).not.toContain("mx-2.5");
       if (pathname === "/chats") {
         expect(chat).toHaveAttribute("aria-current", "page");
+        expect(chat).toHaveClass("border-l-primary");
+        expect(chat).toHaveClass("bg-primary/5");
       } else {
         expect(chat).not.toHaveAttribute("aria-current");
+        expect(chat).not.toHaveClass("border-l-primary");
+        expect(chat.className).toContain("hover:bg-card/80");
+        expect(agents.className).toContain("hover:bg-card/80");
       }
     },
   );
@@ -428,9 +430,9 @@ describe("Sidebar", () => {
 
     const icon = (name: string) => screen.getByRole("link", { name }).querySelector("svg");
 
-    expect(icon("Skills")).toHaveClass("lucide-book-open");
-    expect(icon("Capabilities")).toHaveClass("lucide-blocks");
-    expect(icon("Plugins")).toHaveClass("lucide-plug");
+    expect(icon("Skills")).toHaveAttribute("data-facet-icon", "skills");
+    expect(icon("Capabilities")).toHaveAttribute("data-facet-icon", "capabilities");
+    expect(icon("Plugins")).toHaveAttribute("data-facet-icon", "plugins");
   });
 
   it("snaps the active item instead of transitioning it after the page commits", () => {
@@ -507,7 +509,6 @@ describe("Sidebar", () => {
 
   it.each([
     "/settings/organization",
-    "/settings/providers",
     "/settings/members",
     "/settings/features",
     "/settings/payments",
@@ -876,7 +877,7 @@ describe("Create Organization dialog", () => {
     render(<Sidebar />);
 
     const warningBtn = screen.getByRole("button", {
-      name: /no llm provider configured/i,
+      name: /no provider connected/i,
     });
     expect(warningBtn).toBeInTheDocument();
 

@@ -41,6 +41,7 @@ pub struct ListAuditLogs {
     method = "GET",
     path = "/v1/orgs/{org}/audit-logs",
     policy = AUDIT_LOG_VIEW,
+    cli = CliRoute::new(&["orgs", "audit-logs"], "list").with_examples(&[CliExample::new("Review who changed what in the organization recently", "everruns orgs audit-logs list --domain management --limit 50")]),
     http = list,
     params(ListAuditLogs),
 )]
@@ -81,8 +82,8 @@ impl Command for ListAuditLogs {
 mod tests {
     use super::*;
     use crate::services::CapabilityService;
+    use crate::storage::CreateAuditLogRow;
     use crate::storage::StorageBackend;
-    use crate::storage::models::CreateAuditLogRow;
     use everruns_core::{Caller, DEFAULT_ORG_ID, organization::OrgRole};
     use std::sync::Arc;
 

@@ -1,76 +1,27 @@
-//! Running a scenario on every backend and comparing what each observed.
+//! Running a scenario and collecting what it observed.
 
 use std::future::Future;
 use std::time::Duration;
 
-use everruns::durable::PostgresWorkflowEventStore;
-use everruns::{Agent, Engine, Session, Turn, TurnStopReason, durable};
+use everruns::{Agent, Engine, Session, Turn, TurnStopReason};
 
-/// A backend the suite runs every scenario on.
+/// A turn backend the entry-point scenarios run on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BackendKind {
+    /// `InProcessBackend`: the reference, no lease.
     InProcess,
-    DurableMemory,
-    /// Only with `DATABASE_URL` set; see [`backends`].
-    DurablePostgres,
+    /// `ActorRunner`: the same turns under the session's lease, what an
+    /// engine runs its sessions on.
+    Actor,
 }
 
-/// The backends to run on: in process first, the reference every other
-/// backend is compared with. The durable PostgreSQL backend joins when
-/// `DATABASE_URL` names a database; without it the suite runs the other two
-/// and says so, unless `EVERRUNS_REQUIRE_POSTGRES_TESTS` is set (CI's durable
-/// PostgreSQL shard sets it), which makes the missing URL a failure. A set URL
-/// that does not connect fails the suite.
+/// The backends the entry-point scenarios compare, the reference first.
 pub fn backends() -> Vec<BackendKind> {
-    let mut kinds = vec![BackendKind::InProcess, BackendKind::DurableMemory];
-    if database_url().is_some() {
-        kinds.push(BackendKind::DurablePostgres);
-    } else {
-        assert!(
-            !require_postgres(),
-            "EVERRUNS_REQUIRE_POSTGRES_TESTS is set but DATABASE_URL is not"
-        );
-        eprintln!("DATABASE_URL is unset; skipping the durable PostgreSQL backend");
-    }
-    kinds
+    vec![BackendKind::InProcess, BackendKind::Actor]
 }
 
-/// Same flag and parsing as durable-engine's PostgreSQL backend tests, so one
-/// CI setting makes both suites fail instead of skipping.
-fn require_postgres() -> bool {
-    std::env::var("EVERRUNS_REQUIRE_POSTGRES_TESTS").is_ok_and(|v| {
-        let v = v.trim();
-        !v.is_empty() && v != "0" && !v.eq_ignore_ascii_case("false")
-    })
-}
-
-fn database_url() -> Option<String> {
-    std::env::var("DATABASE_URL").ok()
-}
-
-/// The durable store in the test database. Each engine routes its own
-/// sessions' steps, so concurrent scenarios share the database untouched.
-pub async fn postgres_store() -> PostgresWorkflowEventStore {
-    let url = database_url().expect("DATABASE_URL is set for the PostgreSQL backend");
-    PostgresWorkflowEventStore::connect(&url)
-        .await
-        .expect("DATABASE_URL connects and takes the durable schema")
-}
-
-/// How long one scenario may take on one backend.
+/// How long one scenario may take.
 const SCENARIO_TIMEOUT: Duration = Duration::from_secs(20);
-
-pub async fn engine(kind: BackendKind) -> Engine {
-    match kind {
-        BackendKind::InProcess => Engine::new(),
-        BackendKind::DurableMemory => Engine::builder()
-            .backend(durable::Backend::memory().workers(2))
-            .build(),
-        BackendKind::DurablePostgres => Engine::builder()
-            .backend(durable::Backend::postgres(postgres_store().await).workers(2))
-            .build(),
-    }
-}
 
 /// The comparable shape of a finished turn; its id differs per run.
 #[derive(Debug, PartialEq)]
@@ -94,7 +45,7 @@ impl From<Turn> for TurnShape {
     }
 }
 
-/// What a scenario reports from one backend.
+/// What a scenario reports.
 #[derive(Debug, Default)]
 pub struct Observed {
     pub turns: Vec<Turn>,
@@ -116,7 +67,7 @@ impl Observed {
     }
 }
 
-/// What a scenario observed on one backend, compared across backends.
+/// What a scenario observed.
 #[derive(Debug, PartialEq)]
 pub struct Outcome {
     pub turns: Vec<TurnShape>,
@@ -125,51 +76,39 @@ pub struct Outcome {
     pub event_types: Vec<String>,
 }
 
-/// Run `scenario` on a fresh session on each backend and require the same
-/// [`Outcome`] from all of them. `setup` builds the agent, plus whatever the
-/// scenario uses to observe it, once per backend.
+/// Run `scenario` on a fresh session of an engine and report what it
+/// observed. `setup` builds the agent, plus whatever the scenario uses to
+/// observe it.
 pub async fn run_on<P, S, F, Fut>(setup: S, scenario: F) -> Outcome
 where
     S: Fn() -> (Agent, P),
     F: Fn(Engine, Session, P) -> Fut,
     Fut: Future<Output = Observed>,
 {
-    let mut outcomes = Vec::new();
-    for kind in backends() {
-        let engine = engine(kind).await;
-        let (agent, probe) = setup();
-        let session = engine.create(agent);
-        let session_id = session.session_id();
-        let observed =
-            tokio::time::timeout(SCENARIO_TIMEOUT, scenario(engine.clone(), session, probe))
-                .await
-                .unwrap_or_else(|_| panic!("{kind:?}: the scenario finishes"));
-        // The scenario may have let its session go; reopen it to read history.
-        let session = engine
-            .resume(session_id)
-            .await
-            .unwrap_or_else(|error| panic!("{kind:?}: the session reopens: {error}"));
-        let event_types = session
-            .events_after(0)
-            .await
-            .expect("history reads")
-            .iter()
-            .map(|event| event.event_type().to_string())
-            .collect();
-        outcomes.push((
-            kind,
-            Outcome {
-                turns: observed.turns.into_iter().map(TurnShape::from).collect(),
-                notes: observed.notes,
-                event_types,
-            },
-        ));
+    let engine = Engine::new();
+    let (agent, probe) = setup();
+    let session = engine.create(agent);
+    let session_id = session.session_id();
+    let observed = tokio::time::timeout(SCENARIO_TIMEOUT, scenario(engine.clone(), session, probe))
+        .await
+        .expect("the scenario finishes");
+    // The scenario may have let its session go; reopen it to read history.
+    let session = engine
+        .resume(session_id)
+        .await
+        .unwrap_or_else(|error| panic!("the session reopens: {error}"));
+    let event_types = session
+        .events_after(0)
+        .await
+        .expect("history reads")
+        .iter()
+        .map(|event| event.event_type().to_string())
+        .collect();
+    Outcome {
+        turns: observed.turns.into_iter().map(TurnShape::from).collect(),
+        notes: observed.notes,
+        event_types,
     }
-    let (_, in_process) = outcomes.remove(0);
-    for (kind, outcome) in outcomes {
-        assert_eq!(outcome, in_process, "{kind:?} diverges from in process");
-    }
-    in_process
 }
 
 pub fn agent_with(model: everruns::Model) -> Agent {

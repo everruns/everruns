@@ -22,7 +22,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_SRC="${1:-$ROOT/examples/docker-compose-full.yaml}"
 PORT="${EXAMPLE_PROXY_PORT:-9300}"
 BASE="http://localhost:$PORT"
-# Seeded LlmSim model id (crates/server/src/seed/models.rs, LLMSIM_DEFAULT).
+# Seeded LlmSim model id (crates/server/src/setup/seed/models.rs, LLMSIM_DEFAULT).
 LLMSIM_MODEL="model_01933b5a000070008000000000000401"
 
 WORKDIR="$(mktemp -d)"

@@ -6,7 +6,6 @@
 // See knowledge/security/budgeting.md for full specification.
 
 use crate::kernel_imports::contracts::user_facing_error::UserFacingError;
-use crate::records::{Budget, LedgerEntry};
 use async_trait::async_trait;
 use chrono::{DateTime, Datelike, Timelike, Utc};
 use everruns_contracts::model_profiles::estimate_cost_usd;
@@ -14,17 +13,16 @@ use everruns_contracts::provider::DriverId;
 use everruns_contracts::typed_id::{AgentId, BudgetId, SessionId, TriggerId};
 use everruns_contracts::user_facing_error::codes as user_facing_error_codes;
 use everruns_core::EventListener;
-use everruns_core::budget::{
-    BudgetAction, BudgetCheckResult, BudgetPeriod, BudgetStatus, BudgetSubjectType,
-};
+use everruns_core::budget::{BudgetAction, BudgetCheckResult, BudgetPeriod};
 use everruns_core::events::{Event, EventData, LLM_GENERATION};
 use std::collections::HashSet;
 use std::sync::Arc;
 use tracing::{debug, error, info, instrument, warn};
 
 use crate::storage::StorageBackend;
-use crate::storage::models::*;
 use crate::storage::repositories::BudgetSubjectLookup;
+use crate::storage::*;
+use crate::storage::{BudgetRow, CreateUsageJournalRow, CreateUsageLedgerRow};
 
 // ============================================================================
 // BudgetService
@@ -74,46 +72,6 @@ impl BudgetScope {
 impl BudgetService {
     pub fn new(db: Arc<StorageBackend>) -> Self {
         Self { db }
-    }
-
-    /// Convert a storage row to the API-facing Budget DTO.
-    pub fn row_to_budget(row: &BudgetRow) -> Budget {
-        Budget {
-            id: BudgetId::from_uuid(row.id),
-            organization_id: everruns_core::org_public_id_from_internal(row.org_id),
-            subject_type: BudgetSubjectType::from(row.subject_type.as_str()),
-            subject_id: row.subject_id.clone(),
-            currency: row.currency.clone(),
-            limit: row.limit,
-            soft_limit: row.soft_limit,
-            balance: row.balance,
-            period: row
-                .period
-                .as_ref()
-                .and_then(|v| serde_json::from_value(v.clone()).ok()),
-            period_started_at: row.period_started_at,
-            metadata: row.metadata.clone(),
-            status: BudgetStatus::from(row.status.as_str()),
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-        }
-    }
-
-    pub fn row_to_ledger_entry(row: &BudgetLedgerRow) -> LedgerEntry {
-        LedgerEntry {
-            id: format!("ledger_{}", row.id.to_string().replace('-', "")),
-            budget_id: BudgetId::from_uuid(
-                row.budget_id
-                    .expect("budget ledger rows returned from budget APIs always have a budget_id"),
-            ),
-            amount: row.amount,
-            meter_source: row.meter_source.clone(),
-            ref_type: row.ref_type.clone(),
-            ref_id: row.ref_id.map(|id| id.to_string()),
-            session_id: row.session_id.map(SessionId::from_uuid),
-            description: row.description.clone(),
-            created_at: row.created_at,
-        }
     }
 
     async fn resolve_scope(

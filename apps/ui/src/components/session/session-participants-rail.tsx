@@ -9,8 +9,9 @@
  */
 "use client";
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { useMemo, useState } from "react";
-import { Bot, Loader2, LogOut, User, UserPlus } from "lucide-react";
+import { Loader2, LogOut, User, UserPlus } from "lucide-react";
 import type { SessionParticipant } from "@/lib/api/types";
 import {
   useAddSessionParticipant,
@@ -97,7 +98,7 @@ export function SessionParticipantsRail({ sessionId, className }: SessionPartici
       >
         <Avatar className="size-6 rounded-none">
           <AvatarFallback className="rounded-none bg-muted text-muted-foreground">
-            {isAgent ? <Bot className="h-3.5 w-3.5" /> : <User className="h-3.5 w-3.5" />}
+            {isAgent ? <AgentIcon className="h-3.5 w-3.5" /> : <User className="h-3.5 w-3.5" />}
           </AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
@@ -183,7 +184,7 @@ export function SessionParticipantsRail({ sessionId, className }: SessionPartici
                   onClick={() => handleInvite(agent.id)}
                   className="flex w-full items-center gap-2 border border-transparent px-2 py-2 text-left text-sm transition-colors hover:border-border/70 hover:bg-muted disabled:opacity-50"
                 >
-                  <Bot className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                  <AgentIcon className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
                   <span className="truncate">{getDisplayName(agent)}</span>
                 </button>
               ))

@@ -124,7 +124,7 @@ pub struct CapabilityInfo {
     #[serde(default, skip_serializing_if = "is_zero_u64")]
     #[cfg_attr(feature = "openapi", schema(example = 7u64))]
     pub harness_count: u64,
-    /// Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.
+    /// Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(example = "session_file_system"))]
     pub docs_slug: Option<String>,
@@ -174,7 +174,7 @@ fn is_zero_u64(v: &u64) -> bool {
 }
 
 /// Mapping from built-in capability ID to its docs slug under
-/// [capability documentation](https://docs.everruns.com/capabilities/). Returns None for IDs that
+/// [capability documentation](https://everruns.com/docs/capabilities/). Returns None for IDs that
 /// have no published documentation page.
 pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
     match id {
@@ -210,6 +210,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "bashkit_shell" => Some("bashkit-shell"),
         "tools_in_shell" => Some("tools-in-shell"),
         "web_fetch" => Some("web-fetch"),
+        "web_search" => Some("web-search"),
         "ask_user" => Some("ask-user"),
         "citation_retrieval" => Some("citation-retrieval"),
         "citation_verification" => Some("citation-verification"),
@@ -224,11 +225,13 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "parallel_tool_calls" => Some("parallel-tool-calls"),
         "output_truncation" => Some("output-truncation"),
         "platform" => Some("platform"),
+        "dry_run" => Some("dry-run"),
         "tool_approval" => Some("tool-approval"),
         "tool_call_repair" => Some("tool-call-repair"),
         "usage_limit_auto_continue" => Some("usage-limit-auto-continue"),
         "user_hooks" => Some("user-hooks"),
         "user_mcp" => Some("user-mcp-servers"),
+        "poppy_client" => Some("poppy-personal-agent"),
         "memory" => Some("memory"),
         "knowledge_base" => Some("knowledge-base"),
         "knowledge_index" => Some("knowledge-index"),

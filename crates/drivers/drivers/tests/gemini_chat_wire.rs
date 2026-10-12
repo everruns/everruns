@@ -626,3 +626,26 @@ async fn replayed_request_rejects_a_replay_that_changed_the_request() {
 
     replayed_request(&server).await;
 }
+
+/// Asked to, the driver hands back the body it sent, byte for byte the JSON
+/// the provider received; not asked, it records nothing.
+#[tokio::test]
+async fn captured_request_body_is_the_body_on_the_wire() {
+    for capture in [true, false] {
+        let server = MockServer::start().await;
+        let chunk = serde_json::json!({
+            "candidates": [{"content": {"parts": [{"text": "Hello"}]}, "finishReason": "STOP"}]
+        });
+        mount_sse(&server, format!("data: {chunk}\n\n")).await;
+        let mut config = config("gemini-2.5-flash");
+        config.capture_request = capture;
+
+        let response = provider(&server)
+            .chat_completion(vec![Message::text(MessageRole::User, "hi")], &config)
+            .await
+            .expect("completion should succeed");
+
+        let sent: serde_json::Value = replayed_request(&server).await.body_json().unwrap();
+        assert_eq!(response.metadata.request_body, capture.then_some(sent));
+    }
+}

@@ -5,7 +5,7 @@
 //! ingress and carries a bearer token, so both halves of that exposure live
 //! here rather than among the ordinary trigger commands.
 
-use crate::records::{AgentTrigger, AgentTriggerType};
+use crate::domains::agent_triggers::record::{AgentTrigger, AgentTriggerType};
 use serde_json::Value;
 
 use crate::domains::agents::AGENT_DANGEROUS;

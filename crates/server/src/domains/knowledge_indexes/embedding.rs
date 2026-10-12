@@ -13,8 +13,8 @@ use everruns_contracts::driver_registry::{
 };
 
 use crate::services::ProviderResolverService;
+use crate::storage::KnowledgeIndexRow;
 use crate::storage::StorageBackend;
-use crate::storage::models::KnowledgeIndexRow;
 
 /// An embeddings driver plus the provider-facing model id to pass to `embed`.
 pub struct ResolvedEmbedder {

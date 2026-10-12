@@ -19,7 +19,7 @@ Leased resources are the generic control-plane primitive for any provider-owned 
 
 ## Model
 
-See [`crates/contracts/src/runtime/leased_resource.rs`](../../crates/contracts/src/runtime/leased_resource.rs) for the public domain type and [`crates/server/migrations/007_v0.8.6.sql`](../../crates/server/migrations/007_v0.8.6.sql) for persistence details.
+See [`crates/contracts/src/runtime/leased_resource.rs`](../../crates/contracts/src/runtime/leased_resource.rs) for the public domain type and [`crates/server/migrations/legacy/007_v0.8.6.sql`](../../crates/server/migrations/legacy/007_v0.8.6.sql) for persistence details.
 
 Important constraints:
 
@@ -48,7 +48,7 @@ Control-plane cleanup uses backend-only transitions:
 
 ## Scheduling And Observability
 
-Cleanup is driven by the durable scheduler, not session schedules. The schedule is declared in [`crates/server/src/system_schedules.rs`](../../crates/server/src/system_schedules.rs) as a single activity schedule named `leased-resource-cleanup`, kept in shape by `everruns_durable::ensure_schedule`.
+Cleanup is driven by the durable scheduler, not session schedules. The schedule is declared in [`crates/server/src/background/system_schedules.rs`](../../crates/server/src/background/system_schedules.rs) as a single activity schedule named `leased-resource-cleanup`, kept in shape by `everruns_durable::ensure_schedule`.
 
 Observability comes from three places:
 
@@ -60,7 +60,7 @@ Observability comes from three places:
 
 - Full mode: leased resources and the durable schedule survive restarts because both persist in PostgreSQL.
 - Dev mode: the same leased-resource APIs, worker activity, and scheduler logic run against the same PostgreSQL-backed storage, on an embedded PostgreSQL server that lives only as long as the process, so dev mode remains restart-ephemeral.
-- External workers: the same contract is available over gRPC, so remote workers can register leases during tool execution and run cleanup activity without direct database access.
+- External workers: remote workers register, release, and list leases during tool execution through internal `worker_*_leased_resource(s)` commands over `ExecuteCommand`, built for the turn's org (the in-process worker dispatches the same commands; see [Internal worker commands](../foundations/domains.md#internal-worker-commands)), and run cleanup activity through the dedicated `ClaimDueLeasedResources`, `MarkLeasedResourceReleased`, and `MarkLeasedResourceCleanupFailed` RPCs, which stay RPCs because the sweeper works across every org by resource id. Each claimed lease carries its org, and the sweeper clears the lease's session storage through that org's store. Neither path needs direct database access.
 
 ## Provider Integration Contract
 

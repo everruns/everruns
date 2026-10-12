@@ -17,7 +17,7 @@ use super::{
 };
 use crate::security::constant_time_eq;
 use crate::storage::StorageBackend;
-use crate::storage::models::{
+use crate::storage::{
     CreateOAuthAuthorizationCodeRow, CreateOAuthClientRow, CreateOAuthRefreshTokenRow,
 };
 use axum::{
@@ -65,6 +65,7 @@ fn verify_pkce_s256(verifier: &str, challenge: &str) -> bool {
     constant_time_eq(computed.as_bytes(), challenge.as_bytes())
 }
 
+mod grants;
 mod redirect_uri;
 use redirect_uri::{
     is_loopback_http_uri, redirect_uri_matches, redirect_uri_registered, validate_redirect_uri,
@@ -574,22 +575,10 @@ async fn oauth_authorize(
         serde_json::json!({"client_id": query.client_id}),
     );
     let mut response = Html(confirm_page).into_response();
-    // Chrome checks `form-action` against every hop of a form-submission
-    // redirect chain, so the baseline `form-action 'self'` silently blocks the
-    // confirm POST's 302 to the client callback (e.g. a native client's
-    // `http://localhost:<port>/callback`). Extend it, for this page only, with
-    // the redirect origin — already validated against the registered client.
-    if let Some(csp) = url::Url::parse(&query.redirect_uri)
-        .ok()
-        .map(|u| u.origin().ascii_serialization())
-        .and_then(|origin| {
-            axum::http::HeaderValue::from_str(&format!(
-                "{} {origin}",
-                crate::security_headers::BASE_CONTENT_SECURITY_POLICY
-            ))
-            .ok()
-        })
-    {
+    // Extend `form-action` so the confirm POST's redirect chain is not blocked.
+    if let Ok(csp) = axum::http::HeaderValue::from_str(
+        &crate::security_headers::oauth_consent_page_csp(&query.redirect_uri),
+    ) {
         response
             .headers_mut()
             .insert(axum::http::header::CONTENT_SECURITY_POLICY, csp);
@@ -645,6 +634,7 @@ async fn oauth_authorize_confirm(
     };
 
     validate_authorize_client(&state, &query).await?;
+    grants::approve(&state, &query.client_id, user.id).await?;
     let redirect_url = issue_authorization_code(&state, &query, &user, ip).await?;
 
     Ok(Redirect::to(&redirect_url).into_response())
@@ -719,15 +709,13 @@ async fn issue_authorization_code(
     );
 
     tracing::info!(user_id = %user.id, client_id = %query.client_id, redirect_uri = %query.redirect_uri, "MCP OAuth: auth code issued, redirecting");
-    // RFC 6749 §3.1.2 — the registered redirect URI MAY contain a query
-    // component, which must be retained when appending `code` and `state`.
-    // Use `Url::query_pairs_mut` so a redirect like `https://app/cb?next=1`
-    // becomes `https://app/cb?next=1&code=...&state=...`, not the malformed
-    // `...?next=1?code=...` that naive string concatenation would produce.
-    // RFC 9207 — `iss` lets the client confirm which authorization server
-    // answered, defeating mix-up attacks when it talks to several. Advertised
-    // via `authorization_response_iss_parameter_supported` in server metadata,
-    // which obliges us to send it on every authorization response.
+    // RFC 6749 §3.1.2 — the registered redirect URI MAY contain a query component, which must be
+    // retained when appending `code` and `state`. Use `Url::query_pairs_mut` so a redirect like
+    // `https://app/cb?next=1` becomes `https://app/cb?next=1&code=...&state=...`, not the malformed
+    // `...?next=1?code=...` that naive string concatenation would produce. RFC 9207 — `iss` lets
+    // the client confirm which authorization server answered, defeating mix-up attacks when it
+    // talks to several. Advertised via `authorization_response_iss_parameter_supported` in server
+    // metadata, which obliges us to send it on every authorization response.
     build_oauth_redirect_url(
         &query.redirect_uri,
         &[
@@ -1266,24 +1254,9 @@ async fn handle_authorization_code_grant(
             error_description: Some("User not found".to_string()),
         })?;
 
-    let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
-
-    // THREAT[TM-MCP-006]: mint a resource-bound MCP access token (token_type
-    // "mcp_access", aud = `{root}/mcp`) rather than a full-API access token, so
-    // it is accepted only at `/mcp` and rejected on `/api/*`.
-    let access_token = state
-        .jwt_service
-        .generate_mcp_access_token(
-            auth_code.user_id,
-            &user.email,
-            &user.name,
-            &roles,
-            &state.mcp_resource(),
-        )
-        .map_err(|_| OAuthErrorResponse {
-            error: "server_error".to_string(),
-            error_description: Some("Failed to generate token".to_string()),
-        })?;
+    // The approval this code was issued under; rejected once revoked.
+    let grant = grants::live_grant(state, client_id, auth_code.user_id, None).await?;
+    let access_token = grants::mint_access_token(state, &user, &grant)?;
 
     // Generate refresh token
     let refresh_token_raw = generate_random_hex();
@@ -1298,6 +1271,7 @@ async fn handle_authorization_code_grant(
             org_id: auth_code.org_id,
             scope: auth_code.scope,
             expires_at: Utc::now() + Duration::seconds(MCP_REFRESH_TOKEN_LIFETIME_SECS),
+            grant_id: grant.id,
         })
         .await
         .map_err(|_| OAuthErrorResponse {
@@ -1406,22 +1380,8 @@ async fn handle_refresh_token_grant(
             error_description: Some("User not found".to_string()),
         })?;
 
-    let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
-
-    // Generate new resource-bound MCP access token (see TM-MCP-006 above).
-    let access_token = state
-        .jwt_service
-        .generate_mcp_access_token(
-            stored_token.user_id,
-            &user.email,
-            &user.name,
-            &roles,
-            &state.mcp_resource(),
-        )
-        .map_err(|_| OAuthErrorResponse {
-            error: "server_error".to_string(),
-            error_description: Some("Failed to generate token".to_string()),
-        })?;
+    let grant = grants::live_grant(state, client_id, user.id, stored_token.grant_id).await?;
+    let access_token = grants::mint_access_token(state, &user, &grant)?;
 
     // Generate new refresh token (rotation)
     let new_refresh_token = generate_random_hex();
@@ -1462,6 +1422,7 @@ async fn handle_refresh_token_grant(
             org_id: stored_token.org_id,
             scope: stored_token.scope,
             expires_at: Utc::now() + Duration::seconds(MCP_REFRESH_TOKEN_LIFETIME_SECS),
+            grant_id: grant.id,
         })
         .await
         .map_err(|_| OAuthErrorResponse {
@@ -1511,12 +1472,13 @@ mod tests {
             roles: vec!["admin".to_string()],
             is_platform_user: false,
             auth_method: crate::auth::middleware::AuthMethod::Jwt,
-            organizations: vec![crate::records::OrgMembership {
+            organizations: vec![crate::domains::organizations::record::OrgMembership {
                 org_id: 42,
                 public_id: "org_test".to_string(),
                 name: "User Personal".to_string(),
                 role: everruns_core::OrgRole::Admin,
             }],
+            pat_scope: None,
         }
     }
 

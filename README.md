@@ -1,7 +1,7 @@
 # Everruns
 
 [![Website](https://img.shields.io/badge/Website-everruns.com-blue)](https://everruns.com)
-[![Docs](https://img.shields.io/badge/Docs-docs.everruns.com-green)](https://docs.everruns.com)
+[![Docs](https://img.shields.io/badge/Docs-everruns.com%2Fdocs-green)](https://everruns.com/docs)
 [![Crates.io](https://img.shields.io/crates/v/everruns.svg)](https://crates.io/crates/everruns)
 [![CI](https://github.com/everruns/everruns/actions/workflows/ci.yml/badge.svg)](https://github.com/everruns/everruns/actions/workflows/ci.yml)
 [![Repo: Agent Friendly](https://img.shields.io/badge/Repo-Agent%20Friendly-blue)](AGENTS.md)
@@ -16,7 +16,7 @@ Use the framework in your application. When you need a shared runtime and
 production operations, run the Everruns platform yourself or use
 [Everruns Cloud](https://app.everruns.com).
 
-[Build with the framework](https://docs.everruns.com/framework/quickstart/) · [Read the docs](https://docs.everruns.com/framework/) · [Use Everruns Cloud](https://docs.everruns.com/getting-started/cloud/)
+[Build with the framework](https://everruns.com/docs/framework/quickstart/) · [Read the docs](https://everruns.com/docs/framework/) · [Use Everruns Cloud](https://everruns.com/docs/getting-started/cloud/)
 
 <p align="center">
   <img src="./assets/readme/banner.png" alt="Everruns" width="100%" />
@@ -65,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Everruns derives the tool schema from the Rust function, lets the model call it during the turn, and returns the result before producing the final response. [Continue the framework quickstart.](https://docs.everruns.com/framework/quickstart/)
+Everruns derives the tool schema from the Rust function, lets the model call it during the turn, and returns the result before producing the final response. [Continue the framework quickstart.](https://everruns.com/docs/framework/quickstart/)
 
 > **Note:** Everruns is under active development. Expect rapid changes and experimental features.
 
@@ -85,13 +85,13 @@ loop explicit and embeddable:
 - **Persistence and execution choices** — begin with engine-lifetime memory,
   add local crash-durable state, or cross deliberately into a distributed host.
 
-[Framework overview](https://docs.everruns.com/framework/)
+[Framework overview](https://everruns.com/docs/framework/)
 
 ## Choose how you run Everruns
 
 | Framework | Self-hosted platform | Everruns Cloud |
 | --- | --- | --- |
-| Start here. Embed Everruns in the Rust application you are building; you own the process, deployment, integrations, and data path.<br><br>[Framework quickstart →](https://docs.everruns.com/framework/quickstart/) | Run the shared runtime in infrastructure you manage when you need a control plane, server, workers, UI, remote API, and durable execution.<br><br>[Docker Compose quickstart →](https://docs.everruns.com/getting-started/docker-compose/) · [Architecture →](https://docs.everruns.com/explanation/architecture/) | Use the shared runtime and production operations without operating the platform yourself.<br><br>[Everruns Cloud quickstart →](https://docs.everruns.com/getting-started/cloud/) · [Open app.everruns.com →](https://app.everruns.com) |
+| Start here. Embed Everruns in the Rust application you are building; you own the process, deployment, integrations, and data path.<br><br>[Framework quickstart →](https://everruns.com/docs/framework/quickstart/) | Run the shared runtime in infrastructure you manage when you need a control plane, server, workers, UI, remote API, and durable execution.<br><br>[Docker Compose quickstart →](https://everruns.com/docs/getting-started/docker-compose/) · [Architecture →](https://everruns.com/docs/explanation/architecture/) | Use the shared runtime and production operations without operating the platform yourself.<br><br>[Everruns Cloud quickstart →](https://everruns.com/docs/getting-started/cloud/) · [Open app.everruns.com →](https://app.everruns.com) |
 
 ### Platform capabilities
 
@@ -100,19 +100,19 @@ pool, a web UI, and a remote API. It also publishes agents to Slack, web chat,
 A2A, webhooks, schedules, voice, HTTP, and MCP; manages organizations and
 permissions; and supports observation, budgeting, and evaluation.
 
-[Platform capabilities](https://docs.everruns.com/features/capabilities/) · [Channels](https://docs.everruns.com/features/channels/) · [Durable execution](https://docs.everruns.com/explanation/durable-execution/) · [Observability](https://docs.everruns.com/observability/)
+[Platform capabilities](https://everruns.com/docs/features/capabilities/) · [Channels](https://everruns.com/docs/features/channels/) · [Durable execution](https://everruns.com/docs/explanation/durable-execution/) · [Observability](https://everruns.com/docs/observability/)
 
 ## Documentation
 
-Full documentation lives at **[docs.everruns.com](https://docs.everruns.com)**.
+Full documentation lives at **[everruns.com/docs](https://everruns.com/docs)**.
 
-- [Everruns Framework](https://docs.everruns.com/framework/) — build and run agents inside a Rust application
-- [Framework quickstart](https://docs.everruns.com/framework/quickstart/) — install the crate and configure a provider
-- [Docker Compose quickstart](https://docs.everruns.com/getting-started/docker-compose/) — run the full platform stack
-- [How-to guides](https://docs.everruns.com/how-to/) — give agents tools, stream events, publish to Slack, and enforce budgets
-- [API reference](https://docs.everruns.com/api/) — OpenAPI 3.0
-- [SDKs](https://docs.everruns.com/features/sdk/) — Rust, Python, and TypeScript clients
-- [Docs as text](https://docs.everruns.com/llms.txt) — `llms.txt` index, per-topic Markdown sets, and the OpenAPI schema for agents
+- [Everruns Framework](https://everruns.com/docs/framework/) — build and run agents inside a Rust application
+- [Framework quickstart](https://everruns.com/docs/framework/quickstart/) — install the crate and configure a provider
+- [Docker Compose quickstart](https://everruns.com/docs/getting-started/docker-compose/) — run the full platform stack
+- [How-to guides](https://everruns.com/docs/how-to/) — give agents tools, stream events, publish to Slack, and enforce budgets
+- [API reference](https://everruns.com/docs/api/) — OpenAPI 3.0
+- [SDKs](https://everruns.com/docs/features/sdk/) — Rust, Python, and TypeScript clients
+- [Docs as text](https://everruns.com/docs/llms.txt) — `llms.txt` index, per-topic Markdown sets, and the OpenAPI schema for agents
 
 ## Security
 

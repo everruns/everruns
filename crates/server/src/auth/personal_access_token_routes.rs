@@ -21,8 +21,8 @@ use super::middleware::{AuthError, AuthMethod, AuthState, AuthUser};
 use super::personal_access_token::generate_personal_access_token;
 use crate::api::common::ListResponse;
 use crate::server::ResourceLimitsConfig;
+use crate::storage::CreatePersonalAccessTokenRow;
 use crate::storage::StorageBackend;
-use crate::storage::models::CreatePersonalAccessTokenRow;
 
 /// State for personal access token CRUD routes — decoupled from any specific AuthBackend.
 ///
@@ -44,7 +44,7 @@ impl FromRef<PersonalAccessTokenState> for AuthState {
 /// Personal access token response (full token shown only once at creation)
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PersonalAccessTokenResponse {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
@@ -59,7 +59,7 @@ pub struct PersonalAccessTokenResponse {
 /// Personal access token list item (without full token)
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PersonalAccessTokenListItem {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,

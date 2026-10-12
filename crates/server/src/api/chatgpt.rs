@@ -3,9 +3,9 @@ use super::{
     common::{ApiResult, ErrorResponse},
     providers::AppState,
 };
-use crate::services::chatgpt::ATTEMPTS;
-pub(crate) use crate::services::chatgpt::cancel_attempt;
-use crate::{auth::ResolvedOrg, services::chatgpt, storage::models::ProviderRow};
+use crate::domains::user_connections::chatgpt::ATTEMPTS;
+pub(crate) use crate::domains::user_connections::chatgpt::cancel_attempt;
+use crate::{auth::ResolvedOrg, domains::user_connections::chatgpt, storage::ProviderRow};
 use axum::{
     Json,
     extract::{Path, State},
@@ -137,9 +137,6 @@ pub async fn login(
     org: ResolvedOrg,
     Path(id): Path<String>,
 ) -> ApiResult<LoginResponse> {
-    if !org.feature_flags.chatgpt_plan {
-        return Err(ErrorResponse::feature_not_enabled("chatgpt_plan"));
-    }
     let mut row = row(&state, &org, &id).await?;
     let store = chatgpt::store(
         state.db.clone(),
@@ -219,7 +216,7 @@ pub async fn login(
         .update_provider(
             org.org_id,
             row.id.uuid(),
-            crate::storage::models::UpdateProvider {
+            crate::storage::UpdateProvider {
                 settings: Some(settings.clone()),
                 ..chatgpt::empty_update()
             },
@@ -252,7 +249,7 @@ pub async fn login(
                     .update_provider(
                         row.org_id,
                         row.id.uuid(),
-                        crate::storage::models::UpdateProvider {
+                        crate::storage::UpdateProvider {
                             settings: Some(settings),
                             ..chatgpt::empty_update()
                         },
@@ -332,7 +329,7 @@ async fn save_connection(
         .update_provider(
             row.org_id,
             row.id.uuid(),
-            crate::storage::models::UpdateProvider {
+            crate::storage::UpdateProvider {
                 settings: Some(settings),
                 ..chatgpt::empty_update()
             },
@@ -398,9 +395,6 @@ pub async fn import(
     Path(id): Path<String>,
     Json(input): Json<ImportedConnection>,
 ) -> ApiResult<serde_json::Value> {
-    if !org.feature_flags.chatgpt_plan {
-        return Err(ErrorResponse::feature_not_enabled("chatgpt_plan"));
-    }
     let mut row = row(&state, &org, &id).await?;
     if input.host_id
         != row.settings["chatgpt"]["host_id"]
@@ -474,7 +468,7 @@ pub async fn import(
         .update_provider(
             org.org_id,
             row.id.uuid(),
-            crate::storage::models::UpdateProvider {
+            crate::storage::UpdateProvider {
                 settings: Some(row.settings.clone()),
                 ..chatgpt::empty_update()
             },

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ConnectionFormField } from "@/lib/api/types";
 import { LOCALE_OPTIONS, TIMEZONE_OPTIONS } from "./locale-data";
+import { parseJsonStringList } from "./tags";
 
 export type FieldErrors = Partial<Record<string, string>>;
 
@@ -53,6 +54,9 @@ export function getFieldErrors(error: z.ZodError): FieldErrors {
 }
 
 export function parseTagList(value: string): string[] {
+  const fromJson = parseJsonStringList(value);
+  if (fromJson) return fromJson;
+
   return value
     .split(",")
     .map((tag) => tag.trim())

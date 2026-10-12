@@ -23,6 +23,7 @@ domain tools such as `parallel_search`.
 - Let users, agent identities, or organizations fund multiple wallets.
 - Let capabilities spend through approved wallets under explicit policy.
 - Enforce spending limits before a wallet signs an irreversible payment.
+- Enforce per-request, per-turn, and per-day policy limits before signing.
 - Record durable attempts and receipts; budget ledger debits are a follow-up.
 - Keep wallet credentials out of prompts, chat, session files, tool output, and
   arbitrary shell execution.
@@ -85,9 +86,23 @@ non-secret settlement proof references.
 
 ### Payment Reservation
 
-A pre-execution budget hold. Unlike LLM token metering, machine payments require
-pre-payment enforcement because payments are irreversible. Reservations are
-converted to usage ledger debits after settlement, or released on failure.
+A pre-execution spend hold. Unlike LLM token metering, machine payments require
+pre-payment enforcement because payments are irreversible. Before any wallet
+signs, the authority inserts a `pending` payment attempt for the request's
+maximum amount, tagged with the authorizing policy and the turn's input message.
+The insert happens under a row lock on the policy, after checking the policy's
+per-turn and per-day windows, so parallel paid tool calls serialize instead of
+each passing a stale check. Pending and succeeded attempts count toward the
+windows; a failed attempt releases its hold. The day window is a rolling 24
+hours. A policy with a per-turn limit fails closed when the request is not bound
+to a turn. A policy whose window is used up is skipped like any non-matching
+policy, so the next matching wallet may still pay. Holds are the request's
+maximum, not the settled price, so the windows are conservative.
+
+Not yet: posting settled amounts to the usage ledger (budget debits), and
+idempotency-key settlement hardening. A rail failure after a payment was signed
+is recorded as failed and released, which can undercount a payment the provider
+settled anyway.
 
 ## Wallet Resolution
 
@@ -150,8 +165,9 @@ signing, no worker key exposure, and durable attempt records. Registration of an
 money-spending capability, wallet custody UI, and payment account/policy/attempt API is
 itself gated by the `machine_payments` feature flag. When disabled, the UI is hidden and
 the API routes return a structured `feature_not_enabled` 404, so a deployment that cannot
-spend does not collect wallet keys. Budget reservations, per-turn/day
-enforcement, and idempotency-key settlement hardening remain follow-ups.
+spend does not collect wallet keys. Per-turn and per-day limits are enforced
+through pending-attempt reservations (see Payment Reservation). Ledger posting
+and idempotency-key settlement hardening remain follow-ups.
 
 ## Rollout
 
@@ -168,6 +184,6 @@ Recommended sequence:
 4. Control-plane gRPC payment authority for external workers.
 5. Native x402/Base adapter.
 6. Native MPP/Tempo adapter when the native protocol is documented.
-7. Budget reservation and final ledger posting.
-8. Per-turn/per-day limit enforcement.
+7. Spend reservation and per-turn/per-day limit enforcement (done).
+8. Final ledger posting of settled amounts.
 9. Audit/session timeline payment events.

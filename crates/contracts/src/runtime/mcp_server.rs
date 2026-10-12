@@ -253,8 +253,8 @@ impl<'de> Deserialize<'de> for McpServerPresetRef {
 // Protocol-era and elicitation policies live in `mcp_server/policy.rs`.
 mod policy;
 pub use policy::{
-    MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2026_07,
-    McpElicitationPolicy, McpProtocolMode,
+    MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2025_11,
+    MCP_PROTOCOL_VERSION_2026_07, McpElicitationPolicy, McpProtocolMode,
 };
 
 /// Normalize a JSON-RPC error code across MCP eras.
@@ -369,6 +369,13 @@ pub struct ScopedMcpServer {
     /// start).
     #[serde(default, skip_serializing_if = "is_false")]
     pub deferred: bool,
+    /// Risk labels for this server's tools, by the tool's own name:
+    /// `read_only` never asks for approval in the normal mode, `changes`
+    /// always asks. They win over the tool's annotations and over a catalog
+    /// preset's saved labels. Honored on harness, agent and person-owned
+    /// servers; dropped from session-scoped servers.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub tool_labels: HashMap<String, McpToolLabel>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -420,6 +427,8 @@ struct ScopedMcpServerWire {
     connect_in_chat: McpConnectInChat,
     #[serde(default, skip_serializing_if = "is_false")]
     deferred: bool,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    tool_labels: HashMap<String, McpToolLabel>,
 }
 
 impl TryFrom<ScopedMcpServerWire> for ScopedMcpServer {
@@ -450,6 +459,7 @@ impl TryFrom<ScopedMcpServerWire> for ScopedMcpServer {
             acts_as: wire.acts_as,
             connect_in_chat: wire.connect_in_chat,
             deferred: wire.deferred,
+            tool_labels: wire.tool_labels,
         })
     }
 }
@@ -472,6 +482,7 @@ impl From<ScopedMcpServer> for ScopedMcpServerWire {
             acts_as: server.acts_as,
             connect_in_chat: server.connect_in_chat,
             deferred: server.deferred,
+            tool_labels: server.tool_labels,
         }
     }
 }
@@ -494,6 +505,7 @@ impl Default for ScopedMcpServer {
             acts_as: McpServerActsAs::None,
             connect_in_chat: McpConnectInChat::Ask,
             deferred: false,
+            tool_labels: HashMap::new(),
         }
     }
 }
@@ -652,6 +664,57 @@ pub struct McpToolAnnotations {
     pub open_world_hint: Option<bool>,
 }
 
+/// A person's saved risk label for one MCP tool.
+///
+/// Decision (2026-10-10): a person's label always wins over the tool's own
+/// annotations, because a remote server describes itself and a person who
+/// owns the integration knows better. `read_only` also clears `open_world`,
+/// since tool approval treats an outward-reaching tool like a destructive one;
+/// without that a read-only MCP tool would still ask every time.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum McpToolLabel {
+    /// Only reads: never asks for approval in the normal approval mode.
+    ReadOnly,
+    /// Changes something: always asks for approval in the normal approval mode.
+    Changes,
+}
+
+impl McpToolLabel {
+    /// Stored and wire form.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ReadOnly => "read_only",
+            Self::Changes => "changes",
+        }
+    }
+
+    /// Parse the stored form; unknown values are `None`.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "read_only" => Some(Self::ReadOnly),
+            "changes" => Some(Self::Changes),
+            _ => None,
+        }
+    }
+
+    /// Override the hints a tool declared about itself.
+    pub fn apply(self, hints: &mut crate::tool_types::ToolHints) {
+        match self {
+            Self::ReadOnly => {
+                hints.readonly = Some(true);
+                hints.destructive = Some(false);
+                hints.open_world = Some(false);
+            }
+            Self::Changes => {
+                hints.readonly = Some(false);
+                hints.destructive = Some(true);
+            }
+        }
+    }
+}
+
 /// Request for MCP tools/list endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpToolsListRequest {
@@ -745,20 +808,194 @@ pub struct McpToolCallResult {
     pub is_error: bool,
 }
 
-/// MCP content type (text, image, etc.).
+/// MCP content block in a `tools/call` result (spec 2025-11-25).
+///
+/// Field names follow the wire (`mimeType`). A block type this client does
+/// not know becomes [`McpContent::Unknown`] instead of failing the whole
+/// result, since servers may send blocks from newer revisions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum McpContent {
     #[serde(rename = "text")]
-    Text { text: String },
+    Text {
+        text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        annotations: Option<McpAnnotations>,
+    },
     #[serde(rename = "image")]
-    Image { data: String, mime_type: String },
+    Image {
+        data: String,
+        #[serde(rename = "mimeType")]
+        mime_type: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        annotations: Option<McpAnnotations>,
+    },
+    #[serde(rename = "audio")]
+    Audio {
+        data: String,
+        #[serde(rename = "mimeType")]
+        mime_type: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        annotations: Option<McpAnnotations>,
+    },
+    /// Embedded resource: the contents travel inside the result.
     #[serde(rename = "resource")]
     Resource {
-        uri: String,
-        mime_type: Option<String>,
-        text: Option<String>,
+        resource: McpResourceContents,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        annotations: Option<McpAnnotations>,
     },
+    /// Link to a resource the client may read with `resources/read`.
+    #[serde(rename = "resource_link")]
+    ResourceLink {
+        uri: String,
+        name: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        description: Option<String>,
+        #[serde(rename = "mimeType", default, skip_serializing_if = "Option::is_none")]
+        mime_type: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        size: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        annotations: Option<McpAnnotations>,
+    },
+    /// A block type from a revision this client does not know.
+    #[serde(other)]
+    Unknown,
+}
+
+impl McpContent {
+    /// Text content block without annotations.
+    pub fn text(text: impl Into<String>) -> Self {
+        Self::Text {
+            text: text.into(),
+            annotations: None,
+        }
+    }
+
+    /// Annotations carried by this block, if any.
+    pub fn annotations(&self) -> Option<&McpAnnotations> {
+        match self {
+            Self::Text { annotations, .. }
+            | Self::Image { annotations, .. }
+            | Self::Audio { annotations, .. }
+            | Self::Resource { annotations, .. }
+            | Self::ResourceLink { annotations, .. } => annotations.as_ref(),
+            Self::Unknown => None,
+        }
+    }
+}
+
+/// Contents of one resource: text or base64 `blob` (spec 2025-11-25).
+/// Shared by embedded resources and `resources/read` results.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct McpResourceContents {
+    pub uri: String,
+    #[serde(rename = "mimeType", default, skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// Base64-encoded binary contents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blob: Option<String>,
+}
+
+/// A resource a server lists in `resources/list` (spec 2025-11-25).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct McpResource {
+    pub uri: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(rename = "mimeType", default, skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    /// Size in bytes, when the server knows it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<McpAnnotations>,
+}
+
+/// A parameterized resource (RFC 6570 URI template) from
+/// `resources/templates/list`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct McpResourceTemplate {
+    #[serde(rename = "uriTemplate")]
+    pub uri_template: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(rename = "mimeType", default, skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<McpAnnotations>,
+}
+
+/// One page of `resources/list`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct McpResourcesPage {
+    #[serde(default)]
+    pub resources: Vec<McpResource>,
+    #[serde(
+        rename = "nextCursor",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub next_cursor: Option<String>,
+}
+
+/// One page of `resources/templates/list`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct McpResourceTemplatesPage {
+    #[serde(rename = "resourceTemplates", default)]
+    pub resource_templates: Vec<McpResourceTemplate>,
+    #[serde(
+        rename = "nextCursor",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub next_cursor: Option<String>,
+}
+
+/// Result of `resources/read`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct McpReadResourceResult {
+    #[serde(default)]
+    pub contents: Vec<McpResourceContents>,
+}
+
+/// Display and context hints on a resource or content block.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct McpAnnotations {
+    /// Who the content is for: `"user"`, `"assistant"`, or both.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audience: Option<Vec<String>>,
+    /// Importance from 0.0 (optional) to 1.0 (effectively required).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub priority: Option<f64>,
+    /// ISO 8601 timestamp of the last change.
+    #[serde(
+        rename = "lastModified",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub last_modified: Option<String>,
+}
+
+impl McpAnnotations {
+    /// True when the block is meant only for the user, so it should not be
+    /// put in the model's context.
+    pub fn is_user_only(&self) -> bool {
+        self.audience
+            .as_ref()
+            .is_some_and(|a| !a.is_empty() && a.iter().all(|r| r == "user"))
+    }
 }
 
 /// Helper to generate prefixed tool name for MCP tools.

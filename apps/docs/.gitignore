@@ -26,3 +26,7 @@ public/og-image.png
 
 # OS
 .DS_Store
+
+# Docs Worker assets (scripts/stage-worker-assets.mjs) and wrangler state
+dist-worker/
+.wrangler/

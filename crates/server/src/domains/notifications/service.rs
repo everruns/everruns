@@ -355,7 +355,7 @@ fn format_duration(duration_ms: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::records::SessionSource;
+    use crate::domains::sessions::record::SessionSource;
     use crate::storage::StorageBackend;
     use crate::storage::test_database::test_session_row;
     use everruns_contracts::typed_id::{AgentId, TurnId};

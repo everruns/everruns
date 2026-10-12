@@ -43,30 +43,98 @@ Patterns use the same format and matching rules as `NetworkAccessList` (see
 - `*.example.com`, domain and all subdomains (apex included)
 - `https://example.com/api/`, URL prefix
 
-Current groups: `package_registries`, `source_hosting`, `container_registries`,
-`ai_providers`, `cloud_providers`, `os_packages`, `developer_tools`,
-`agent_services`. `agent_services` holds services agents sign up with on their own
-(auth.md, AgentID); each entry is reviewed because the agent can send data there.
+Groups cover developer infrastructure (registries, source hosting, toolchains,
+OS mirrors, containers), AI providers and vector stores, cloud control planes,
+observability, identity providers, productivity suites and trackers,
+engineering and construction platforms, commerce and payments (including
+Ukrainian marketplaces, delivery and banks), search, reference and news,
+social networks, and government registries (`*.gov`, `*.gov.ua`,
+`*.europa.eu`, `*.int`, and other national government domains). The TOML
+header states the inclusion rule.
 
-`SystemAllowlist` flattens all group patterns into a single non-empty `allowed`
-`NetworkAccessList`, so only URLs matching at least one pattern are permitted.
+Inclusion rule. In `curated-writes` the list decides where an agent may send
+data, so an entry is a judgement about the receiver. A reputable vendor whose
+subdomains it runs itself, or that hosts its customers' authenticated
+instances, gets in; an attacker can still sign up with that vendor and receive
+data with their own credentials, which the threat model accepts. Anything that
+runs or serves a customer's own code or pages (static hosting, functions, app
+platforms, workflow webhooks), services that fetch or act on arbitrary URLs for
+the caller (hosted browsers, sandboxes, crawlers with page actions), dedicated
+anonymous form, paste and shortener services, and storage buckets stay out,
+even under a listed vendor: such vendors are listed by exact API host rather
+than by wildcard (Google, Microsoft, Zoho, HubSpot, AWS). Tests in
+`system_allowlist.rs` pin examples on both sides of the rule. The `approved_exceptions` group holds
+receivers approved despite the rule (`*.edu`, Substack, Supabase, Firebase,
+Zapier, Make, and AWS Bedrock per region); a new exception of that kind needs
+the same explicit owner approval.
+
+Matching. `SystemAllowlist` compiles the patterns of every group into hash sets
+of exact hosts and wildcard suffixes, and matches a host by looking up the host
+and each parent domain, so a check costs one lookup per host label however long
+the list grows (URL-prefix patterns stay a short scan). Semantics are the
+`NetworkAccessList` ones, plus one trailing dot is dropped from the request
+host so `host.` cannot slip past the deny list, which is compiled the same way.
 An allowlist with no patterns (empty/misconfigured TOML) **fails closed**: it
-denies every URL rather than allowing all, via a sentinel pattern, since an
-empty `NetworkAccessList.allowed` otherwise means "no restriction". See
-`crates/contracts/src/runtime/system_allowlist.rs`.
+matches nothing. See `crates/contracts/src/runtime/system_allowlist.rs`.
 
-## Enabling
+## Modes
 
-Disabled by default. Controlled by a single environment variable:
+The allowlist is one part of the deployment's system egress policy
+(`SystemEgressPolicy` in `crates/contracts/src/runtime/system_allowlist.rs`),
+selected by one environment variable:
 
 ```
-EVERRUNS_SYSTEM_ALLOWLIST_ENABLED=true   # or 1
+EVERRUNS_EGRESS_POLICY=open | curated-writes | curated-all
 ```
 
-`DirectEgressService::for_runtime_traffic_from_env()` resolves the allowlist at
-construction. When unset or falsy, egress behavior is unchanged. Host-owned
-system transports do not construct or call `EgressService`, so they do not read
-this toggle.
+| Mode | Reads (GET/HEAD, no body) | Writes (any other request, plus all MCP and integration traffic) |
+|---|---|---|
+| `open` (default) | any public host | any public host |
+| `curated-writes` | any public host not on the deny list | deny list, then allowlist |
+| `curated-all` | deny list, then allowlist | deny list, then allowlist |
+
+When `EVERRUNS_EGRESS_POLICY` is unset, the legacy
+`EVERRUNS_SYSTEM_ALLOWLIST_ENABLED=true` (or `1`) selects `curated-all`. An
+unrecognized `EVERRUNS_EGRESS_POLICY` value fails closed to `curated-all`.
+
+Why reads are open in `curated-writes`: the set of pages an agent usefully
+reads is unbounded, so an allowlist for reads is always wrong and became the
+main source of friction on hosted. The allowlist's real job on an open-signup
+deployment is stopping tenants from pushing data to, or relaying through,
+arbitrary hosts, which only requests that carry data can do. A read can still
+carry data in its URL, so open reads are bounded:
+
+- **Deny list.** `crates/contracts/src/runtime/system_denylist.toml` names hosts
+  whose purpose is to receive data (request bins, out-of-band testing domains,
+  public tunnels). It applies in both curated modes, before the allowlist, and
+  nothing overrides it.
+- **Domain reputation.** With `EVERRUNS_EGRESS_REPUTATION=cloudflare-security`,
+  the boundary asks Cloudflare's malware-blocking resolver
+  (`security.cloudflare-dns.com`, the 1.1.1.2 service, over DNS-over-HTTPS)
+  about a host before its first open read, and refuses hosts it sinkholes.
+  Only the hostname leaves the deployment; verdicts are cached for an hour; a
+  lookup failure fails open, because reputation narrows open reads rather than
+  being what makes them safe. Off by default. Decision: a free filtering
+  resolver over a paid URL-reputation API (Google Web Risk, Cloudflare
+  categories), which can be added behind the same check if abuse warrants it;
+  an LLM classifier was rejected because the URL it would judge is attacker
+  controlled and every read would pay a model call.
+  The lookup runs concurrently with DNS-pinning resolution, so a first read of
+  an unknown host pays one round trip rather than two; allowlisted hosts skip
+  it entirely, which is one reason to list frequently read sites.
+- **URL length.** An open read's URL is capped at 2048 characters.
+- **Hostnames only.** An open read to an IP literal is refused, since it would
+  bypass any domain-based reputation.
+- **Per-org rate limit.** `DirectEgressService` admits at most
+  `EVERRUNS_EGRESS_OPEN_READS_PER_MINUTE` (default 120) open reads per org per
+  minute per process; `0` disables open reads. Allowlisted requests are not
+  metered. The browser path does not go through this meter.
+- **Audit log.** Every request is logged with its policy outcome
+  (`knowledge/operations/egress.md`).
+
+`DirectEgressService::for_runtime_traffic_from_env()` resolves the policy once
+per process. Host-owned system transports do not construct or call
+`EgressService`, so they do not read this setting.
 
 The env var is read by every process that builds an egress service, so it
 applies uniformly across the **control plane** and **workers**:
@@ -77,15 +145,15 @@ applies uniformly across the **control plane** and **workers**:
 
 Each runtime/agent egress surface must construct egress via
 `DirectEgressService::for_runtime_traffic_from_env()` (not `::default()`) so the
-toggle is honored everywhere. The list contents are *not* env-configurable,
-they are the curated embedded TOML; only the on/off toggle is environmental.
+setting is honored everywhere. The list contents are *not* env-configurable,
+they are the curated embedded TOML; only the mode is environmental.
 
 ## Enforcement
 
 The `EgressService` is the tenant/agent runtime outbound boundary (see
-`knowledge/operations/egress.md`). When the system allowlist is active, `DirectEgressService`
-denies tenant/agent-directed request kinds whose URL does not match the
-allowlist, with `EgressError::NetworkAccessDenied`.
+`knowledge/operations/egress.md`). When a curated mode is active, `DirectEgressService`
+denies tenant/agent-directed requests the policy refuses, with
+`EgressError::NetworkAccessDenied`.
 
 This check applies to `capability`, `integration`, `mcp`, and generic `other`
 requests, independent of the per-request `network_access`. Both the system
@@ -101,13 +169,13 @@ through `EgressService`. They must not require adding provider endpoints such as
 
 ### Maximum priority (hard ceiling)
 
-The system allowlist is a separate, AND-ed gate, it is **never merged into**
+The system policy is a separate, AND-ed gate, it is **never merged into**
 the harness/agent/session `NetworkAccessList`. Those layers can only narrow
-within the system allowlist (intersection on `allowed`, union on `blocked`);
-they can **never widen past it or override it**. When the allowlist is enabled,
-a session that explicitly allows a host still cannot reach it through
-tenant/agent egress unless the system allowlist also lists it. The system
-allowlist always wins for the request kinds it governs.
+within it (intersection on `allowed`, union on `blocked`); they can **never
+widen past it or override it**. When a curated mode is active, a session that
+explicitly allows a host still cannot write to it through tenant/agent egress
+unless the system allowlist also lists it, and cannot reach a denied host at
+all. The system policy always wins for the request kinds it governs.
 
 ### fetchkit / web_fetch
 
@@ -117,7 +185,8 @@ When `ToolContext.egress_service` is present (always true in the runtime),
 enforced at the boundary for every hop like any other egress traffic.
 
 On both paths the tool pre-checks the initial URL and returns the distinct
-"Endpoint blocked by system policy: …" error before any request is made
+"Endpoint blocked by system policy: …" error, naming which rule refused it,
+before any request is made
 (`crates/integrations/src/web_fetch/lib.rs`). A denial raised at the egress
 boundary itself (e.g. a redirect hop) surfaces as "Outbound request blocked by
 network policy: …". On the direct path (contexts without an egress service,
@@ -126,18 +195,118 @@ e.g. embedded hosts) the pre-flight check is the only enforcement.
 ### Operator responsibility
 
 Because enforcement covers tenant/agent runtime traffic, an operator enabling
-the allowlist must ensure endpoints reachable through capabilities,
+a curated mode must ensure endpoints reachable through capabilities,
 integrations, MCP, plugin fetches, and similar runtime HTTP paths are covered by
 a group. Self-hosted or uncommon runtime endpoints not present in the curated
 groups will be blocked while the allowlist is enabled. Host-owned system
 transports such as email, utility LLM, LLM providers, and Daytona are configured
 separately by deployment environment and are not governed by this list.
 
+## Org extensions
+
+A curated mode blocks an organization's writes to its own APIs and MCP servers
+unless the curated groups happen to list them. An org extension lets that org
+add hosts to the allowlist for its own traffic only.
+
+- **Who grants.** A platform user (`Rule::IsPlatformUser`) turns the right on or
+  off per org. It is off by default. The grant is a trust decision about the
+  tenant: a granted org can name hosts it controls. Granting needs a view across
+  orgs, so the API is driven from the host's admin console (the hosted super
+  admin app); the org's own settings page only edits the list and shows
+  whether it is granted.
+- **Who edits.** The org's admins (`OrgSettingsManage`, the same role that can
+  change org settings), and only while granted. Writing without a grant is a 403.
+  Revoking keeps the stored list but stops enforcing it; a re-grant restores it.
+- **Validation on write.** At most 50 patterns, in `NetworkAccessList` syntax.
+  Each must name a public hostname: no IP literals, no `localhost` or non-public
+  TLD, nothing the static SSRF checks of `validate_safe_url` refuse, no bare `*`,
+  and no wildcard directly over a public suffix (`*.com`, `*.co.uk`; a heuristic
+  over common two-letter registries, not the full public suffix list). URL
+  prefixes carry no credentials, query, or fragment.
+- **Enforcement.** `SystemEgressPolicy::check` takes the extension as
+  `extra_allowed`. `DirectEgressService` asks for it only when the policy alone
+  would deny a request as not allowlisted and the request's scope names an org,
+  so allowlisted traffic, open reads and deny-list hits never trigger a lookup.
+  The deny list, the per-request `NetworkAccessList` and DNS-pinned SSRF checks
+  still apply. Reads of an org's own hosts in `curated-writes` stay open reads
+  and are metered like any other.
+- **Resolution and cache.** The resolver is the `OrgEgressAllowlist` contract.
+  The server installs a database resolver and the gRPC worker one over the
+  internal command `worker_get_org_egress_allowlist`, each process-wide
+  (`install_runtime_org_egress_allowlist`), so every runtime egress service
+  built with `for_runtime_traffic_from_env()` sees it. Answers are cached per org
+  for 60 seconds (`ORG_EGRESS_ALLOWLIST_CACHE_TTL`): an edit or revoke takes
+  effect within that window. A failed lookup counts as no extension (fail
+  closed) and is not cached.
+- **Audit.** A request admitted only by the extension is logged with
+  `policy=allowlisted_org`. Grants and edits emit `management.settings.updated`
+  audit events.
+
+Storage is two columns on `organization_settings` (migration
+`198_org_egress_allowlist_extension.sql`); the API is
+`/v1/orgs/{org}/egress-allowlist` and its `/grant` subpath, defined in
+`crates/server/src/domains/organizations/egress_allowlist/`. Threat model:
+TM-AGENT-036.
+
+## Open egress grant
+
+A curated mode is the right default for tenants nobody vouches for, and the
+wrong one for tenants the host does vouch for: their agents need to post to
+any API, not only listed ones. An open grant gives one org the `open` mode for
+its own traffic.
+
+- **Who grants.** Only a platform user, through the same `/grant` endpoint
+  (`{"open": true}`); org admins cannot open their own org. The host decides
+  what earns it. Hosted Everruns grants it automatically to orgs that paid with
+  a card and takes it back when its abuse rules trip; a self-hosted operator
+  grants it by hand.
+- **What it lifts.** Everything the curated policy adds except the deny list:
+  writes to unlisted hosts, the open-read meter, the URL length cap and the
+  hostname-only rule. The deny list, DNS-pinned SSRF checks, the reputation
+  check (it runs for every request admitted this way) and the per-request
+  `NetworkAccessList` still apply.
+- **Enforcement.** Part of the same `OrgEgressGrant` the resolver returns with
+  the extension, cached the same 60 seconds. The org is looked up for any
+  request the policy alone would not allow outright (an open read or a
+  refusal other than the deny list). Requests admitted by it are audit-logged
+  as `policy=open_org`.
+- **Bounding volume.** The grant does not bound volume by itself. A host that
+  hands it out runs the tenant egress proxy below, which limits and meters per
+  org.
+
+Storage: `organization_settings.egress_open` (migration `216_org_egress_open.sql`).
+Threat model: TM-AGENT-037.
+
+## Tenant egress proxy
+
+`EVERRUNS_EGRESS_PROXY_URL` and `EVERRUNS_EGRESS_PROXY_SECRET` (32+ bytes) send
+tenant traffic (capability, integration, MCP and `other` kinds) through an HTTP
+forward proxy; host-owned transports (LLM providers, system email, the utility
+LLM) never use it. Two reasons:
+
+- **Separate addresses.** The proxy egresses from addresses the platform's own
+  calls never use, so a tenant that gets them blocklisted cannot break model
+  calls, email or billing, and the host can rotate them.
+- **Per-org limits and metering.** Each proxied request carries
+  `Proxy-Authorization: Bearer v1.<org>.<session>.<exp>.<hmac>`: org and session
+  public ids (`-` when missing), a unix expiry five minutes out, and a hex
+  HMAC-SHA256 over everything before the last dot with the shared secret. The
+  scope comes from `ScopedEgressService`, never from the tool.
+
+With a proxy, the proxy opens the connection, so it must re-resolve the target
+and refuse non-public addresses itself; the in-process checks still run first.
+A proxy URL with a missing or short secret fails closed: tenant requests error
+instead of leaving directly. Code: `crates/core/src/host/egress_proxy.rs`.
+Hosted Everruns runs the proxy in the SaaS repository.
+
 ## Relationship to other controls
 
 | Control | Scope | Configured by |
 |---------|-------|---------------|
 | System allowlist | Tenant/agent runtime egress | Maintainers (curated), operator toggles via env |
+| Org extension | One org's runtime egress, widening the allowlist only | Platform user grants, org admins edit |
+| Open egress grant | One org's runtime egress, `open` mode except the deny list | Platform user or the host's own rules |
+| Tenant egress proxy | All tenant runtime egress: separate addresses, per-org limits | Deployment |
 | `NetworkAccessList` | Per harness/agent/session, agent-authored URLs | Users/agents |
 | Future Egress Gateway | Network component owning outbound policy | Deployment |
 
@@ -149,5 +318,8 @@ today, in-process, ahead of the remote gateway.
 
 Reinforces **TM-AGENT-018** (outbound URL filtering) with a deployment-wide
 backstop that does not depend on per-agent configuration being set correctly,
-and narrows the blast radius of SSRF or exfiltration attempts to a curated set
-of public services.
+and is the control for **TM-AGENT-035** (open-signup tenants relaying abuse
+through the deployment). SSRF to internal addresses is handled separately and
+in every mode (TM-API-008, TM-TOOL-018). The allowlist is a weak exfiltration
+control on its own: several allowed hosts accept writes with attacker-supplied
+credentials, so per-agent `NetworkAccessList` remains the precise control.

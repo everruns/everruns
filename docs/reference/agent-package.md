@@ -51,7 +51,7 @@ such as `/workspace`; that prefix is a runtime alias, not a package layout.
 ## Minimal manifest
 
 ```toml
-#:schema https://docs.everruns.com/schemas/agent/v1.json
+#:schema https://everruns.com/docs/schemas/agent/v1.json
 schema_version = 1
 name = "my-agent"
 ```
@@ -92,6 +92,7 @@ table, rather than to the agent.
 | `network_access` | Table | Optional `allowed`/`blocked` lists; host enforces the policy. |
 | `max_iterations` | Integer | Runtime default; explicit values must be 1–1000. |
 | `parallel_tool_calls` | Boolean | Runtime default; explicitly allow or disable concurrent independent calls. |
+| `communication` | String | `direct`; `explicit` makes assistant text private notes and the agent talks through `send_message`. See [Explicit communication](/features/explicit-communication/). |
 | `tools` | Array of tool tables | Empty; only client-side tool schemas, requiring executable host bindings. |
 | `intro_markdown` | String | Optional Platform introduction displayed before a conversation. |
 | `short_description` | String | Optional short Platform discovery text. |
@@ -100,8 +101,8 @@ table, rather than to the agent.
 
 Platform resolves its default model and harness when omitted. Framework code
 binds a model explicitly. Serve uses its simulator when a model is omitted.
-Framework file creation recognizes `base`, `conversation`, `worker-base` and
-`worker`; custom harnesses require a host binding. Defaults that belong to the
+Framework file creation recognizes `base`, `conversation`, `worker` and
+`bashkit-worker` (the deprecated `worker-base` binds Bashkit Worker); custom harnesses require a host binding. Defaults that belong to the
 host are not frozen into portable exports.
 
 ## Select and map files
@@ -262,6 +263,7 @@ Framework and serve can bind stdio when their MCP stdio support is enabled.
 | `connectInChat` | String | `ask`; `ask` pauses the chat on a Connect card when a sign-in is missing, `never` fails the call with a settings link instead. |
 | `oauth_provider_id` | String | Optional named provider requirement; installed MCP resource IDs are rejected. |
 | `tool_discovery` | Boolean | `true`; discover server tools. |
+| `tool_labels` | Table of strings | Empty; risk label per tool name, `read_only` (never asks for approval) or `changes` (always asks). Wins over the tool's own hints and a catalog server's labels. |
 | `protocol_mode` | String | `auto`; or pin `2025-03-26`, `2025-06-18`, `2026-07-28`. |
 | `elicitation_policy` | String | `url`; `url`, `url_and_form` or `none`. |
 
@@ -291,7 +293,7 @@ rate_limit_per_minute = 30
 | Channel key | Type | Default and rules |
 | --- | --- | --- |
 | Table name | Stable name | Lookup/upsert name at the destination; no channel ID. |
-| `type` | String | Required known transport: `ag_ui`, `public_chat`, `slack`, `fcp`, `a2a`, `api_endpoint`, `schedule`, `webhook`. |
+| `type` | String | Required known transport: `ag_ui`, `public_chat`, `slack`, `fcp`, `a2a`, `api`, `schedule`, `webhook`. |
 | `enabled` | Boolean | `false`; true requests an enabled draft, not automatic publication. |
 | `config` | Table | `{}`; transport-specific declarative settings without credentials or resource IDs. |
 
@@ -313,7 +315,7 @@ short_description = "Investigate incidents with evidence."
 starters = [{ text = "Investigate the current incident.", icon = "search" }]
 
 [network_access]
-allowed = ["https://docs.everruns.com/**"]
+allowed = ["https://everruns.com/docs/**"]
 blocked = ["https://example.com/private/**"]
 ```
 
@@ -368,7 +370,7 @@ Use this header for completion and diagnostics in editors supporting the
 [Taplo schema directive](https://taplo.tamasfe.dev/configuration/directives.html):
 
 ```toml
-#:schema https://docs.everruns.com/schemas/agent/v1.json
+#:schema https://everruns.com/docs/schemas/agent/v1.json
 ```
 
 This is a comment, not an agent field. Do not add a `$schema` field to the
