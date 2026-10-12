@@ -22,3 +22,8 @@ sure its turn runs.
 A session whose worker failed right after its turn ended could stay `active`
 with nothing running, since `session.idled` was never written. The next worker
 now idles it, and never answers that turn's message a second time.
+
+A brief database failure while a turn prepared its model call, such as a
+timeout loading the conversation's compaction checkpoint, failed the turn with
+a provider error message, although the model was never called. The turn is now
+retried and answered.

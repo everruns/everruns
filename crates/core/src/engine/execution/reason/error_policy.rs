@@ -1,6 +1,9 @@
 use crate::engine::capabilities::CapabilityRegistry;
+use crate::engine::error::AgentLoopError;
 use crate::engine::message::{RuntimeMessage, RuntimeMessageRole};
 use crate::engine::{ErrorDisclosure, user_facing_error_codes};
+
+use super::ExecutionContext;
 
 const ERROR_PLACEHOLDER_MESSAGES: &[&str] = &[
     "I encountered an error while processing your request. Please try again later.",
@@ -11,6 +14,35 @@ const ERROR_PLACEHOLDER_MESSAGES: &[&str] = &[
     "No model is configured for this chat. Choose a model or configure a default model, then try again.",
     "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue.",
 ];
+
+/// Errors the reason step returns to the turn driver instead of reporting
+/// them as the model's failure (an error message and a failed turn):
+///
+/// - the session was deleted mid-call (EVE-1235): there is nothing to report
+///   to;
+/// - a control-plane read or write failed and a retry can clear it (chaos
+///   harness: a pool timeout loading the compaction checkpoint failed the turn
+///   as "LLM call failed" for good). The model never failed: the turn driver
+///   retries the turn (the actor's lease expires and the next holder resumes
+///   from the log). A store error that names missing data is permanent and
+///   is still reported.
+pub(super) fn returned_to_turn_driver(error: &AgentLoopError, context: &ExecutionContext) -> bool {
+    match error {
+        AgentLoopError::SessionNotFound(_) => true,
+        AgentLoopError::MessageStore(_) | AgentLoopError::EventEmission(_)
+            if !error.is_non_retryable() =>
+        {
+            tracing::warn!(
+                session_id = %context.session_id,
+                turn_id = %context.turn_id,
+                error = %error,
+                "ReasonAtom: control-plane failure; the turn will be retried"
+            );
+            true
+        }
+        _ => false,
+    }
+}
 
 pub(super) fn is_error_placeholder_message(msg: &RuntimeMessage) -> bool {
     if msg.role != RuntimeMessageRole::Agent {

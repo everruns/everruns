@@ -335,6 +335,10 @@ production and DEV_MODE alike; the worker side is
   lease: it stops the turn, drops its unwritten events and releases nothing.
   A retryable failure (a store or transport error) also lets the lease
   expire; the TTL is the backoff before another worker resumes from the log.
+  That includes a control-plane read or write the reason step needs (a pool
+  timeout loading the compaction checkpoint): the reason step returns it
+  instead of reporting it as a model failure, so it never becomes a
+  `turn.failed` with a provider-error message.
   Expiry is database time.
 - **Every log append is fenced.** Stopping on a lost renew leaves a window: a
   write already in flight when the lease ran out could land after another

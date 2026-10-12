@@ -469,8 +469,8 @@ impl ReasonAtom {
                 }
                 result
             }
-            // The session was deleted mid-call (EVE-1235): nothing to report to.
-            Err(e @ AgentLoopError::SessionNotFound(_)) => return Err(e),
+            // Not the model's failure: see `error_policy::returned_to_turn_driver`.
+            Err(e) if error_policy::returned_to_turn_driver(&e, &context) => return Err(e),
             Err(e) => {
                 let reason_duration_ms = reason_start.elapsed().as_millis() as u64;
                 // LLM call failure is a "normal" result per the spec: report it.
