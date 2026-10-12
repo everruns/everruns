@@ -423,6 +423,17 @@ are built purely as capabilities. The first consumer is
 `usage_limit_auto_continue` (schedules a continuation after a provider usage limit
 resets); see `crates/contracts/src/runtime/llm_error_hook.rs`.
 
+One hook is the platform's own, not a capability's: the reason atom always
+appends `RateLimitAutoRetryHook` (`crates/core/src/engine/rate_limit_auto_retry.rs`).
+A short provider throttle (`provider_rate_limited` with `retry_after` of at most
+600 s, such as OpenRouter's in-flight spending limit) would otherwise leave a
+session idle, because nothing above the in-call retry loop retries a failed turn.
+It needs no configuration for that reason, and it bounds itself (3 retries per
+session per hour, counted from the schedules it created) so a provider that
+keeps refusing cannot turn it into a loop. Hooks run on every terminal error,
+transient ones included: a transient error reaching the atom has already spent
+its in-call retries.
+
 ##### System Prompt Methods
 
 - **`system_prompt_addition()`**: Sync, returns static `&str`. Used by sync collection path.

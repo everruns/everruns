@@ -126,6 +126,27 @@ pub fn reserve_retry_wait(
     (wait < remaining).then_some(wait)
 }
 
+/// The wait before the next retry: the provider's own `Retry-After` when it
+/// fits the remaining elapsed-time budget, otherwise exponential backoff.
+///
+/// Retrying earlier than the provider asked only earns another refusal, so a
+/// delay that fits is honored as given.
+pub fn next_retry_wait(
+    config: &LlmRetryConfig,
+    started_at: Option<crate::rt::Instant>,
+    attempt: u32,
+    retry_after_secs: Option<u64>,
+) -> Duration {
+    let remaining = remaining_retry_time(config, started_at).unwrap_or(match started_at {
+        Some(_) => Duration::ZERO,
+        None => config.max_retry_elapsed,
+    });
+    retry_after_secs
+        .map(Duration::from_secs)
+        .filter(|wait| *wait < remaining)
+        .unwrap_or_else(|| config.calculate_backoff(attempt))
+}
+
 /// Remaining wall-clock retry budget after recovery has started.
 pub fn remaining_retry_time(
     config: &LlmRetryConfig,
@@ -1432,5 +1453,30 @@ mod tests {
         );
         tokio::time::advance(Duration::from_secs(1)).await;
         assert_eq!(remaining_retry_time(&config, started), None);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn next_retry_wait_honors_retry_after_only_within_budget() {
+        let config = LlmRetryConfig {
+            initial_backoff: Duration::from_millis(100),
+            jitter_factor: 0.0,
+            max_retry_elapsed: Duration::from_secs(30),
+            ..LlmRetryConfig::default()
+        };
+        let backoff = config.calculate_backoff(0);
+        assert_eq!(next_retry_wait(&config, None, 0, None), backoff);
+        assert_eq!(
+            next_retry_wait(&config, None, 0, Some(7)),
+            Duration::from_secs(7)
+        );
+        assert_eq!(next_retry_wait(&config, None, 0, Some(120)), backoff);
+
+        let started = Some(crate::rt::Instant::now());
+        tokio::time::advance(Duration::from_secs(25)).await;
+        assert_eq!(next_retry_wait(&config, started, 0, Some(7)), backoff);
+        assert_eq!(
+            next_retry_wait(&config, started, 0, Some(4)),
+            Duration::from_secs(4)
+        );
     }
 }

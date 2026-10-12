@@ -214,17 +214,24 @@ fn classify_billing_pressure(
     if status != 402 {
         return None;
     }
-    let body = serde_json::from_str::<Value>(error_body).ok()?;
-    let metadata = body.get("error")?.get("metadata")?;
-    let reason = match metadata.get("reason")?.as_str()? {
-        "in_flight_budget_exhausted" => BillingPressureReason::InFlightBudgetExhausted,
-        "insufficient_credits" => BillingPressureReason::InsufficientCredits,
-        _ => return None,
+    // Every OpenRouter 402 is a billing refusal. Only the in-flight cap is
+    // temporary; a missing or unknown reason (the "requires more credits ...
+    // can only afford Y" body carries none) is a credit shortfall.
+    let body = serde_json::from_str::<Value>(error_body).ok();
+    let metadata = body
+        .as_ref()
+        .and_then(|body| body.get("error")?.get("metadata"));
+    let reason = match metadata
+        .and_then(|metadata| metadata.get("reason"))
+        .and_then(Value::as_str)
+    {
+        Some("in_flight_budget_exhausted") => BillingPressureReason::InFlightBudgetExhausted,
+        _ => BillingPressureReason::InsufficientCredits,
     };
     let retry_after_secs = header_str(headers, &RETRY_AFTER)
         .and_then(parse_retry_after_secs)
         .or_else(|| {
-            metadata
+            metadata?
                 .get("headers")
                 .and_then(Value::as_object)
                 .and_then(|headers| json_header_value(headers, "retry-after"))
@@ -505,7 +512,7 @@ mod tests {
     }
 
     #[test]
-    fn billing_classifier_requires_402_and_a_supported_machine_reason() {
+    fn billing_classifier_treats_every_402_as_billing_pressure() {
         let body = |reason: &str, retry_after: &str| {
             json!({
                 "error": {
@@ -536,26 +543,39 @@ mod tests {
             })
         );
 
-        for (status, reason, retry_after) in [
-            (403, "in_flight_budget_exhausted", "120"),
-            (402, "unknown", "120"),
-            (402, "in_flight_budget_exhausted", "not-seconds"),
+        assert_eq!(
+            classify_billing_pressure(403, &headers, &body("in_flight_budget_exhausted", "120")),
+            None
+        );
+        assert_eq!(
+            classify_billing_pressure(402, &headers, &body("in_flight_budget_exhausted", "x")),
+            Some(LlmErrorKind::BillingPressure {
+                reason: BillingPressureReason::InFlightBudgetExhausted,
+                retry_after_secs: None,
+            })
+        );
+        // A 402 with an unknown, missing, or unparseable reason is still a
+        // credit shortfall, never an unclassified error.
+        let affordability = json!({"error": {
+            "message": "This request requires more credits, or fewer max_tokens. You requested up to 32000 tokens, but can only afford 1234.",
+            "code": 402,
+        }})
+        .to_string();
+        for error_body in [
+            body("unknown", "120"),
+            affordability,
+            "not json".to_string(),
         ] {
-            let classified =
-                classify_billing_pressure(status, &headers, &body(reason, retry_after));
-            if status == 402 && reason == "in_flight_budget_exhausted" {
-                assert_eq!(
-                    classified,
-                    Some(LlmErrorKind::BillingPressure {
-                        reason: BillingPressureReason::InFlightBudgetExhausted,
-                        retry_after_secs: None,
-                    })
-                );
-            } else {
-                assert_eq!(classified, None);
-            }
+            let expected_retry = error_body.contains("unknown").then_some(120);
+            assert_eq!(
+                classify_billing_pressure(402, &headers, &error_body),
+                Some(LlmErrorKind::BillingPressure {
+                    reason: BillingPressureReason::InsufficientCredits,
+                    retry_after_secs: expected_retry,
+                }),
+                "{error_body}"
+            );
         }
-        assert_eq!(classify_billing_pressure(402, &headers, "not json"), None);
     }
     fn base_config(model: &str) -> LlmCallConfig {
         LlmCallConfig::new(model)

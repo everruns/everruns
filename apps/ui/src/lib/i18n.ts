@@ -156,10 +156,20 @@ const messages = {
     runtime_error_provider_rate_limited: "Rate limited by the AI provider. Please wait a moment.",
     runtime_error_provider_rate_limited_retry_after:
       "Rate limited by the AI provider. Please wait {retry_after}s and try again.",
+    runtime_error_provider_rate_limited_auto_retry:
+      "Rate limited by the AI provider. Retrying automatically in about {retry_after}s.",
+    runtime_error_provider_in_flight_limit:
+      "The AI provider's in-flight spending limit is reached. Please wait a moment.",
+    runtime_error_provider_in_flight_limit_retry_after:
+      "The AI provider's in-flight spending limit is reached. Please wait {retry_after}s and try again.",
+    runtime_error_provider_in_flight_limit_auto_retry:
+      "The AI provider's in-flight spending limit is reached. Retrying automatically in about {retry_after}s.",
     runtime_error_provider_misconfigured:
       "There is a misconfiguration with the AI provider. Please contact support.",
     runtime_error_provider_quota_exhausted:
       "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue.",
+    runtime_error_provider_quota_exhausted_affordable:
+      "The AI provider account is out of credits for this request: it asked for up to {requested_max_tokens} output tokens, but the balance covers {affordable_tokens}. Add credits or lower the max output tokens to continue.",
     runtime_error_provider_attestation_required:
       "The AI provider account has not completed a confirmation this model requires. Complete it at {confirm_url}, then try again.",
     runtime_error_provider_attestation_required_types:
@@ -425,10 +435,20 @@ const messages = {
       "AI-провайдер тимчасово обмежив запити. Зачекайте трохи й спробуйте ще раз.",
     runtime_error_provider_rate_limited_retry_after:
       "AI-провайдер тимчасово обмежив запити. Зачекайте {retry_after} с і спробуйте ще раз.",
+    runtime_error_provider_rate_limited_auto_retry:
+      "AI-провайдер тимчасово обмежив запити. Автоматична повторна спроба приблизно через {retry_after} с.",
+    runtime_error_provider_in_flight_limit:
+      "Досягнуто ліміту одночасних витрат AI-провайдера. Зачекайте трохи.",
+    runtime_error_provider_in_flight_limit_retry_after:
+      "Досягнуто ліміту одночасних витрат AI-провайдера. Зачекайте {retry_after} с і спробуйте ще раз.",
+    runtime_error_provider_in_flight_limit_auto_retry:
+      "Досягнуто ліміту одночасних витрат AI-провайдера. Автоматична повторна спроба приблизно через {retry_after} с.",
     runtime_error_provider_misconfigured:
       "AI-провайдер налаштований некоректно. Зверніться до підтримки.",
     runtime_error_provider_quota_exhausted:
       "На обліковому записі AI-провайдера закінчилися кредити або квота. Поповніть рахунок або збільште ліміти, щоб продовжити.",
+    runtime_error_provider_quota_exhausted_affordable:
+      "На обліковому записі AI-провайдера бракує кредитів для цього запиту: запитано до {requested_max_tokens} вихідних токенів, а баланс покриває {affordable_tokens}. Поповніть рахунок або зменште максимальну кількість вихідних токенів, щоб продовжити.",
     runtime_error_provider_attestation_required:
       "Обліковий запис AI-провайдера не пройшов підтвердження, якого вимагає ця модель. Завершіть його на {confirm_url} і спробуйте ще раз.",
     runtime_error_provider_attestation_required_types:

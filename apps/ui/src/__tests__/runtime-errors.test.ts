@@ -65,6 +65,52 @@ describe("runtime error localization", () => {
     expect(text).not.toContain("backend fallback changed");
   });
 
+  it("names the in-flight spending limit and promises a retry only when one is scheduled", () => {
+    const scheduled = localizeRuntimeError(
+      "en",
+      {
+        code: "provider_rate_limited",
+        fields: { reason: "in_flight_budget_exhausted", retry_after: 120, auto_retry: true },
+      },
+      "backend fallback",
+    );
+    expect(scheduled).toContain("in-flight spending limit");
+    expect(scheduled).toContain("Retrying automatically in about 120s");
+
+    const unscheduled = localizeRuntimeError(
+      "en",
+      {
+        code: "provider_rate_limited",
+        fields: { reason: "in_flight_budget_exhausted", retry_after: 120 },
+      },
+      "backend fallback",
+    );
+    expect(unscheduled).toContain("in-flight spending limit");
+    expect(unscheduled).not.toContain("Retrying automatically");
+
+    const plain = localizeRuntimeError(
+      "uk",
+      { code: "provider_rate_limited", fields: { retry_after: 30, auto_retry: true } },
+      "backend fallback",
+    );
+    expect(plain).toContain("Автоматична повторна спроба");
+    expect(plain).toContain("30 с");
+  });
+
+  it("tells the reader how far the credit balance falls short", () => {
+    const text = localizeRuntimeError(
+      "en",
+      {
+        code: "provider_quota_exhausted",
+        fields: { requested_max_tokens: 32000, affordable_tokens: 1234 },
+      },
+      "backend fallback",
+    );
+    expect(text).toContain("32000");
+    expect(text).toContain("1234");
+    expect(text).toContain("lower the max output tokens");
+  });
+
   it("localizes provider quota exhaustion distinctly from misconfiguration", () => {
     const text = localizeRuntimeError(
       "en",

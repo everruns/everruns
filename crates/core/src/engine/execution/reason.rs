@@ -20,8 +20,8 @@ use crate::engine::events::{
     ReasonThinkingDeltaData, ReasonThinkingStartedData, TokenUsage, ToolDefinitionSummary,
 };
 use crate::engine::llm_retry::{
-    LlmRetryConfig, RetryMetadata, is_transient_error_message, remaining_retry_time,
-    reserve_retry_wait,
+    LlmRetryConfig, RetryMetadata, is_transient_error_message, next_retry_wait,
+    remaining_retry_time, reserve_retry_wait,
 };
 use crate::engine::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use crate::engine::message_retriever::MessageRetriever;
@@ -498,12 +498,8 @@ impl ReasonAtom {
                 let error_msg = e.to_string();
                 let mut source_error = e.user_facing_error(error_context);
 
-                // Only emit user-facing error events for non-transient errors.
-                // Transient errors (server errors, rate limits, timeouts) will be
-                // retried by the durable task engine. Emitting error events on each
-                // retry attempt causes duplicate error messages in the UI.
-                // The durable worker emits a single error event when all retries
-                // are exhausted (DLQ).
+                // Transient errors reach here only after in-call retries gave up (no
+                // durable retry follows); they surface through `turn.failed` only.
                 let is_transient = e.is_transient_llm_error()
                     || (e.llm_error_kind().is_none() && is_transient_error_message(&error_msg));
 
@@ -512,7 +508,7 @@ impl ReasonAtom {
                 // effect and/or augment the user-facing error fields — before the
                 // message is built. The atom stays behavior-agnostic; each hook
                 // (e.g. `usage_limit_auto_continue`) owns its own logic.
-                if !is_transient && !error_hooks.is_empty() {
+                if !error_hooks.is_empty() {
                     let services = crate::engine::llm_error_hook::LlmErrorHookServices {
                         schedule_store: self.schedule_store.clone(),
                     };
@@ -1286,8 +1282,12 @@ impl ReasonAtom {
                         && !has_provider_executed_tools
                         && stream_retry_metadata.attempts < retry_config.max_retries =>
                 {
-                    let proposed_wait =
-                        retry_config.calculate_backoff(stream_retry_metadata.attempts);
+                    let proposed_wait = next_retry_wait(
+                        &retry_config,
+                        retry_started_at,
+                        stream_retry_metadata.attempts,
+                        e.retry_after_secs(),
+                    );
                     let Some(wait_duration) =
                         reserve_retry_wait(&retry_config, &mut retry_started_at, proposed_wait)
                     else {

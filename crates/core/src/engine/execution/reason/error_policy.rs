@@ -132,7 +132,8 @@ impl super::ReasonAtom {
     /// paired with each capability's per-agent config. Hooks are invoked
     /// generically on the terminal-error path; the reason atom has no knowledge
     /// of any specific capability's behavior. Capabilities that contribute no
-    /// hook — the common case — are skipped at zero allocation cost.
+    /// hook — the common case — are skipped. The platform's own
+    /// rate-limit retry hook is always appended: it needs no configuration.
     pub(super) fn collect_llm_error_hooks(
         &self,
         resolved_capability_configs: &[crate::engine::CapabilityRef],
@@ -147,6 +148,11 @@ impl super::ReasonAtom {
                 let hook = cap.llm_error_hook()?;
                 Some((hook, cfg.config_value().clone()))
             })
+            .chain(std::iter::once((
+                std::sync::Arc::new(crate::engine::rate_limit_auto_retry::RateLimitAutoRetryHook)
+                    as std::sync::Arc<dyn crate::engine::llm_error_hook::LlmErrorHook>,
+                serde_json::Value::Null,
+            )))
             .collect()
     }
 }
