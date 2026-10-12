@@ -97,6 +97,27 @@ pub(super) fn ended_by_no_reply(messages: &[RuntimeMessage]) -> bool {
         })
 }
 
+/// The finished reason step for an explicit agent whose turn `no_reply`
+/// already ended (see [`ended_by_no_reply`]); `None` asks the model as usual.
+pub(super) fn ended_by_no_reply_result(
+    assembled: &crate::engine::runtime_context::AssembledTurnContext,
+) -> Option<super::ReasonResult> {
+    let agent = &assembled.runtime_agent;
+    if !agent.communication.is_explicit() || !ended_by_no_reply(&assembled.messages) {
+        return None;
+    }
+    Some(super::ReasonResult {
+        success: true,
+        commentary: true,
+        tool_definitions: agent.tools.clone(),
+        max_iterations: agent.max_iterations,
+        locale: assembled.resolved_locale.clone(),
+        network_access: agent.network_access.clone(),
+        parallel_tool_calls: agent.parallel_tool_calls,
+        ..Default::default()
+    })
+}
+
 /// Repair assistant tool calls without matching results before the next model
 /// request. Durable status determines whether replay is safe or the result is
 /// uncertain.

@@ -369,6 +369,19 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
     let mut error_context = crate::engine::UserFacingErrorContext::default()
         .with_provider(assembled.model.provider_type.to_string())
         .with_model_id(assembled.model.model.clone());
+    // Native async keeps its own transcript checkpoint, so it stays on the
+    // ordinary path.
+    if atom.native_async.is_none()
+        && let Some(result) = super::transcript::ended_by_no_reply_result(&assembled)
+    {
+        tracing::info!(%session_id, turn_id = %context.turn_id, "no_reply ended the turn");
+        return CallOutcome {
+            disclosure,
+            error_context,
+            error_hooks,
+            result: Ok(result),
+        };
+    }
     if let Some(reason) = preflight_fallback_reason(atom, &assembled) {
         match atom
             .context_resolver
