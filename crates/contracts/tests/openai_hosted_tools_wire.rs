@@ -9,6 +9,12 @@
 // response (`web_search_call` items, `response.web_search_call.*` events, url
 // citations) streams as answer text plus hosted-call progress events, never
 // as an agent tool call or a parse error.
+//
+// Every mock answers with `Connection: close`. The driver shares one
+// process-wide HTTP client, and wiremock recycles a dropped server's port to
+// the next test, so a pooled keep-alive connection from another test could
+// otherwise fail this test's stream before its first event; the driver then
+// reconnects and the mock sees the request twice.
 
 use everruns_contracts::driver_registry::{
     HostedToolCall, HostedToolCallStatus, LlmCallConfig, LlmStreamEvent, Message, MessageRole,
@@ -59,7 +65,11 @@ fn sse(frames: &[Value]) -> String {
 async fn mount(server: &MockServer, body: String) {
     Mock::given(method("POST"))
         .and(path("/v1/responses"))
-        .respond_with(ResponseTemplate::new(200).set_body_raw(body, "text/event-stream"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("connection", "close")
+                .set_body_raw(body, "text/event-stream"),
+        )
         .mount(server)
         .await;
 }
