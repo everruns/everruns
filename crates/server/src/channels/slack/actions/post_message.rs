@@ -55,6 +55,10 @@ fn slack_target(
         .as_str()
         .filter(|v| !v.is_empty())
         .ok_or(SlackActionError::NoSlackSession)?;
+    // A top-level DM message is answered in the DM itself (empty thread).
+    if metadata[crate::channels::slack::host::SLACK_REPLY_INLINE] == true {
+        return Ok(Some((channel.to_string(), String::new())));
+    }
     Ok(metadata["slack_thread_ts"]
         .as_str()
         .filter(|v| !v.is_empty())
