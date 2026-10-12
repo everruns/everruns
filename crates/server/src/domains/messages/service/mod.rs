@@ -220,6 +220,13 @@ impl MessageService {
             .into_iter()
             .map(ContentPart::from)
             .collect();
+        crate::domains::messages::attachments::stage_message_attachments(
+            &self.db,
+            ctx.org_id,
+            ctx.session_id,
+            &content,
+        )
+        .await?;
         let message_id = Uuid::now_v7();
         let now = Utc::now();
         let session_id = SessionId::from_uuid(ctx.session_id);

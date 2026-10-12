@@ -139,18 +139,23 @@ that names that path, the file name, the verified media type and the size.
   (`/.agent-runs`, `/.tasks`, `/.background`) in
   [`WorkspacePolicy`](../../crates/core/src/workspace_policy.rs): the model can
   read it, never write or delete it, so a label can never point at bytes the
-  agent changed. It sits outside `/workspace`, so it is not seeded, synced or
-  exported as a Workspace file. An agent that wants to edit a file copies it
-  into `/workspace` first.
+  agent changed. Copies are also stored read-only, so the Workspace API
+  cannot overwrite them either. They are ordinary session files otherwise:
+  they show in the file browser, count toward the Workspace quota, and are
+  shared when sessions share a Workspace. A copy that fails (quota, storage
+  error) is logged and skipped; the model still gets the bytes that turn, it
+  just cannot reopen them later. An agent that wants to edit a file copies it
+  elsewhere first.
 - **Uploads before a session exists.** The images and files APIs keep
   staging chat uploads. Message creation copies each referenced upload into
   `/attachments` (after checking it belongs to the org), so uploads get a path
   like every other attachment.
 - **Reopening.** `read_file` already shows PNG, JPEG, GIF and WebP to the
-  model as images. It also shows PDFs as files when the model accepts PDFs.
-  The shell sees `/attachments` like any other path. An agent without file
-  tools gets plain `read_file` limited to `/attachments` once the
-  conversation has an attachment.
+  model as images. Showing PDFs as files needs tool results that carry
+  documents through every driver, so it lands separately (step 2b); until
+  then `read_file` on a PDF returns its metadata. The shell sees
+  `/attachments` like any other path. Giving an agent without file tools a
+  `read_file` limited to `/attachments` is left until a surface needs it.
 
 ### 2. One intake path for every surface
 
@@ -243,7 +248,7 @@ durable on the server, copied on fork, and read-only to the model.
    resolution.** Fixes the compaction loss and the 8 file / 11 MiB cliff for
    today's uploads.
 2. **Attachments in session file storage.** `/attachments` as a host-written
-   root, uploads copied there at message creation, labels with paths,
-   `read_file` for PDFs.
+   root, uploads copied there at message creation, labels with paths.
+   2b. `read_file` shows PDFs to models that accept them.
 3. **One intake path.** `AttachmentIntake` with policy and notes, then Slack,
    AG-UI and Public Chat, A2A and PACT, execution API and MCP.

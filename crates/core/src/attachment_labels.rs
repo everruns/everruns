@@ -12,6 +12,7 @@
 
 use crate::driver_registry::{LlmContentPart, Message, MessageContent};
 use crate::message::ContentPart;
+use everruns_contracts::runtime::attachments::is_attachment_label;
 
 /// Media type of a `data:` URL, if it has one.
 fn data_url_media_type(url: &str) -> Option<&str> {
@@ -57,15 +58,31 @@ pub(crate) fn attachment_label(part: &LlmContentPart) -> Option<String> {
 /// Returns `None` when there are no attachments.
 pub(crate) fn attachment_list(messages: &[Message]) -> Option<String> {
     const MAX_LISTED: usize = 50;
-    let labels: Vec<String> = messages
-        .iter()
-        .filter_map(|msg| match &msg.content {
-            MessageContent::Parts(parts) => Some(parts),
-            MessageContent::Text(_) => None,
-        })
-        .flatten()
-        .filter_map(attachment_label)
-        .collect();
+    let mut labels: Vec<String> = Vec::new();
+    for msg in messages {
+        let MessageContent::Parts(parts) = &msg.content else {
+            continue;
+        };
+        // A path label ("Attached file /attachments/...") already names the
+        // attachment that follows it, so that part is not listed twice.
+        let mut labelled = false;
+        for part in parts {
+            match part {
+                LlmContentPart::Text { text } if is_attachment_label(text) => {
+                    labels.push(text.clone());
+                    labelled = true;
+                }
+                LlmContentPart::Text { .. } => labelled = false,
+                other => {
+                    if let Some(label) = attachment_label(other)
+                        && !std::mem::take(&mut labelled)
+                    {
+                        labels.push(label);
+                    }
+                }
+            }
+        }
+    }
     if labels.is_empty() {
         return None;
     }
@@ -200,5 +217,25 @@ mod tests {
         assert!(list.contains("doc-49.pdf"));
         assert!(!list.contains("doc-50.pdf"));
         assert!(list.ends_with("- and 10 more"));
+    }
+
+    #[test]
+    fn path_labelled_attachments_are_listed_once() {
+        let summarized = vec![user_msg_with_parts(vec![
+            LlmContentPart::text(
+                "Attached file /attachments/file_01/contract.pdf (application/pdf)",
+            ),
+            LlmContentPart::file(
+                "data:application/pdf;base64,JVBERi0=",
+                Some("contract.pdf".to_string()),
+            ),
+        ])];
+
+        let list = attachment_list(&summarized).expect("list");
+
+        assert!(
+            list.contains("- Attached file /attachments/file_01/contract.pdf (application/pdf)")
+        );
+        assert!(!list.contains("[Attached file: contract.pdf"));
     }
 }
