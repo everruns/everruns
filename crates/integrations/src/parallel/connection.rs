@@ -2,7 +2,8 @@
 //
 // Decision: API-key connection. Parallel's MCP accepts the key as a bearer
 // token on both /mcp and /mcp-oauth, and the free mode remains usable without
-// storing any credential.
+// storing any credential. The same key works for the Search API, so an
+// organization Parallel account is also a `web_search` search account.
 
 use async_trait::async_trait;
 use everruns_contracts::connector::{
@@ -16,6 +17,11 @@ pub struct ParallelConnector;
 
 #[async_trait]
 impl Connector for ParallelConnector {
+    /// Organization Parallel accounts answer the provider-neutral `web_search`.
+    fn capabilities(&self) -> &'static [&'static str] {
+        &[everruns_contracts::runtime::web_search::WEB_SEARCH_CONNECTOR_CAPABILITY]
+    }
+
     fn provider_id(&self) -> &str {
         PARALLEL_PROVIDER_ID
     }
@@ -25,7 +31,7 @@ impl Connector for ParallelConnector {
     }
 
     fn description(&self) -> &str {
-        "Optional Parallel API key for higher Search MCP limits and authenticated MCP endpoints"
+        "Parallel API key for Web search accounts, higher Search MCP limits and authenticated MCP endpoints"
     }
 
     fn icon(&self) -> &str {
@@ -45,7 +51,8 @@ impl Connector for ParallelConnector {
                     .with_help("Parallel is free without a key; add one for authenticated usage."),
             ],
             instructions_markdown: "\
-Parallel MCP works without a key by default.\n\n\
+Parallel MCP works without a key by default. A key also lets an organization \
+use Parallel as its Web search provider.\n\n\
 To use authenticated mode:\n\
 1. Go to [Parallel Platform](https://platform.parallel.ai)\n\
 2. Create or copy your API key\n\
@@ -97,6 +104,13 @@ mod tests {
         assert_eq!(p.display_name(), "Parallel");
         assert_eq!(p.connection_type(), ConnectorType::ApiKey);
         assert_eq!(p.icon(), "search");
+        // Its organization accounts are search accounts, and the contract's
+        // list of providers with a search driver names it.
+        assert!(p.capabilities().contains(&"web_search"));
+        assert!(
+            everruns_contracts::runtime::web_search::WEB_SEARCH_ACCOUNT_PROVIDERS
+                .contains(&p.provider_id())
+        );
     }
 
     #[test]

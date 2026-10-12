@@ -43,8 +43,13 @@ function providerKind(provider?: string): "native" | "free" | "account" {
   return "account";
 }
 
-function accountProvider(provider?: string): string | undefined {
-  if (provider === "brave" || provider?.startsWith("account:")) return "brave_search";
+/** Connector id for the icon: named providers directly, accounts by their label. */
+function accountProvider(provider?: string, label?: string | null): string | undefined {
+  if (provider === "parallel") return "parallel";
+  if (provider === "brave") return "brave_search";
+  if (provider?.startsWith("account:")) {
+    return label?.startsWith("Parallel") ? "parallel" : "brave_search";
+  }
   return undefined;
 }
 
@@ -102,7 +107,7 @@ export function WebSearchRow({
           {summary.providerLabel && (
             <SearchProviderIcon
               kind={providerKind(details.provider)}
-              provider={accountProvider(details.provider)}
+              provider={accountProvider(details.provider, summary.providerLabel)}
               className="size-3"
             />
           )}

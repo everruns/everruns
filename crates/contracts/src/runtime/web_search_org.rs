@@ -25,7 +25,7 @@ pub const WEB_SEARCH_CONNECTOR_CAPABILITY: &str = "web_search";
 /// Connection providers whose organization accounts have a search driver.
 /// Their connectors declare [`WEB_SEARCH_CONNECTOR_CAPABILITY`]; a test in
 /// `everruns-integrations` keeps the two in step.
-pub const WEB_SEARCH_ACCOUNT_PROVIDERS: &[&str] = &["brave_search"];
+pub const WEB_SEARCH_ACCOUNT_PROVIDERS: &[&str] = &["brave_search", "parallel"];
 
 /// Model provider types whose drivers run the model's own search (native
 /// search, billed by the model provider). Bedrock is not here: Anthropic does
@@ -104,6 +104,7 @@ pub fn native_search_first(
                     })
         }
         SearchProviderSetting::Brave
+        | SearchProviderSetting::Parallel
         | SearchProviderSetting::Account
         | SearchProviderSetting::Free => false,
     }
@@ -156,6 +157,9 @@ pub enum SearchProviderSetting {
     /// Brave Search with a key from the session, the user, the application, or
     /// else the organization's first Brave account.
     Brave,
+    /// Parallel with a key from the session, the user, the application, or
+    /// else the organization's first Parallel account.
+    Parallel,
     /// One named organization search account (`account_id`).
     Account,
     /// Keyless best-effort search.
@@ -169,6 +173,7 @@ impl SearchProviderSetting {
             Self::Auto => "auto",
             Self::Native => "native",
             Self::Brave => "brave",
+            Self::Parallel => "parallel",
             Self::Account => "account",
             Self::Free => "free",
         }
@@ -257,7 +262,7 @@ impl WebSearchDefaults {
             SearchProviderSetting::OrgDefault => {
                 return Err(
                     "web_search_defaults.provider cannot be org_default; choose auto, native, \
-                     brave, account or free"
+                     brave, parallel, account or free"
                         .into(),
                 );
             }
@@ -634,6 +639,7 @@ mod tests {
             (Native, None, true),
             (Free, None, false),
             (Brave, None, false),
+            (Parallel, None, false),
             (OrgDefault, Some(&fresh), true),
             (Auto, Some(&fresh), true),
             (Auto, Some(&off), false),

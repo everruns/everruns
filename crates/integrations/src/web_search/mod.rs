@@ -27,14 +27,16 @@ mod framework;
 mod free;
 mod html;
 mod http;
+mod parallel;
 mod plan;
 mod tool;
 
-pub use account::ORG_SETTINGS_TTL;
+pub use account::{ORG_SETTINGS_TTL, account_search_driver};
 pub use brave::BraveSearchDriver;
 pub use config::{FallbackMode, ProviderSetting, WebSearchConfig};
 pub use framework::WebSearch;
 pub use free::{FreeSearchDriver, FreeSearchEndpoints};
+pub use parallel::ParallelSearchDriver;
 pub use plan::{
     Attempt, PlanDrivers, PlanEntry, PlanInputs, PlanStep, ResolvedPlan, SearchOutcome, plan_steps,
     resolve_plan, run_plan,
@@ -51,32 +53,58 @@ pub use everruns_contracts::runtime::web_search::WEB_SEARCH_CAPABILITY_ID;
 pub const BRAVE_SEARCH_API_KEY: &str = "BRAVE_SEARCH_API_KEY";
 /// Connection provider id of a user's Brave Search connection.
 pub const BRAVE_SEARCH_CONNECTION_PROVIDER: &str = "brave_search";
+/// Session secret and environment variable holding a Parallel key.
+pub const PARALLEL_API_KEY: &str = "PARALLEL_API_KEY";
+/// Connection provider id of a Parallel connection.
+pub const PARALLEL_CONNECTION_PROVIDER: &str = "parallel";
 
 /// The provider-neutral web search capability.
 ///
-/// Hosted deployments register the default, which reads Brave keys only from
-/// the session's connections and secrets. A Framework application can hand
-/// it an application-owned Brave key ([`Self::with_brave_key`],
-/// [`Self::from_env`]); the key never enters capability config.
+/// Hosted deployments register the default, which reads Brave and Parallel
+/// keys only from the session's connections and secrets. A Framework
+/// application can hand it application-owned keys ([`Self::with_brave_key`],
+/// [`Self::with_parallel_key`], [`Self::from_env`]); keys never enter
+/// capability config.
 #[derive(Clone, Default)]
 pub struct WebSearchCapability {
-    brave_key: Option<String>,
+    keys: tool::AppKeys,
+}
+
+fn non_empty(key: String) -> Option<String> {
+    Some(key).filter(|key| !key.trim().is_empty())
 }
 
 impl WebSearchCapability {
     /// Use an application-owned Brave Search key when no session key exists.
     pub fn with_brave_key(key: impl Into<String>) -> Self {
-        Self {
-            brave_key: Some(key.into()).filter(|key| !key.trim().is_empty()),
-        }
+        Self::default().and_brave_key(key)
     }
 
-    /// Read `BRAVE_SEARCH_API_KEY` once at startup, if set.
+    /// Use an application-owned Parallel key when no session key exists.
+    pub fn with_parallel_key(key: impl Into<String>) -> Self {
+        Self::default().and_parallel_key(key)
+    }
+
+    /// Add an application-owned Brave Search key.
+    pub fn and_brave_key(mut self, key: impl Into<String>) -> Self {
+        self.keys.brave = non_empty(key.into());
+        self
+    }
+
+    /// Add an application-owned Parallel key.
+    pub fn and_parallel_key(mut self, key: impl Into<String>) -> Self {
+        self.keys.parallel = non_empty(key.into());
+        self
+    }
+
+    /// Read `BRAVE_SEARCH_API_KEY` and `PARALLEL_API_KEY` once at startup,
+    /// when set.
     pub fn from_env() -> Self {
         Self {
-            brave_key: std::env::var(BRAVE_SEARCH_API_KEY)
-                .ok()
-                .filter(|key| !key.trim().is_empty()),
+            keys: tool::AppKeys {
+                brave: std::env::var(BRAVE_SEARCH_API_KEY).ok().and_then(non_empty),
+                parallel: std::env::var(PARALLEL_API_KEY).ok().and_then(non_empty),
+            },
         }
     }
 }
@@ -93,7 +121,8 @@ impl Capability for WebSearchCapability {
     fn description(&self) -> &str {
         "Search the web with one web_search tool. Choose the search provider per agent \
          (organization default, Automatic, model provider search, a search account such as \
-         Brave Search, or free search); free search answers when the chosen provider cannot. \
+         Brave Search or Parallel, or free search); free search answers when the chosen \
+         provider cannot. \
          Results carry titles, links, sites, dates and snippets so the agent can cite them."
     }
 
@@ -133,7 +162,7 @@ impl Capability for WebSearchCapability {
     fn tools_with_config(&self, config: &serde_json::Value) -> Vec<Box<dyn Tool>> {
         vec![Box::new(tool::WebSearchTool::new(
             WebSearchConfig::from_value(config).unwrap_or_default(),
-            self.brave_key.clone(),
+            self.keys.clone(),
         ))]
     }
 
@@ -166,7 +195,7 @@ impl Capability for WebSearchCapability {
             "Вебпошук",
             "Пошук в інтернеті одним інструментом web_search. Постачальника пошуку обирають \
              для кожного агента (типовий для організації, автоматично, пошук постачальника \
-             моделі, обліковий запис пошуку, як-от Brave Search, або безкоштовний пошук); \
+             моделі, обліковий запис пошуку, як-от Brave Search чи Parallel, або безкоштовний пошук); \
              безкоштовний пошук відповідає, коли обраний постачальник не може. Результати \
              містять заголовки, посилання, сайти, дати й уривки, щоб агент міг на них посилатися.",
         )]
@@ -222,6 +251,7 @@ mod tests {
         for config in [
             serde_json::json!({"provider": "free"}),
             serde_json::json!({"provider": "brave"}),
+            serde_json::json!({"provider": "parallel"}),
             serde_json::json!({"provider": "account", "account_id": "00000000-0000-0000-0000-000000000007"}),
         ] {
             assert!(cap.driver_options(&config).is_empty(), "{config}");
@@ -275,6 +305,7 @@ mod tests {
         let drivers: Vec<Box<dyn SearchDriver>> = vec![
             Box::new(FreeSearchDriver::default()),
             Box::new(BraveSearchDriver::new("key")),
+            Box::new(ParallelSearchDriver::new("key")),
         ];
         for driver in drivers {
             for host in driver.egress_hosts() {

@@ -2,6 +2,10 @@
 
 ## 2026-10-12
 
+* **Web search step 7: Parallel Search API driver.** Parallel is a search
+  account provider and a `parallel` provider setting (session, user or
+  application key, else the organization's first Parallel account); the
+  driver uses `fast` mode. See [Web Search](integrations/web-search.md).
 * **PAT scopes step 4: read-only tokens can be created.** Creation accepts
   `[]`, `["*"]` or `["read"]` and nothing else; the token page has a Full
   access / Read-only picker and shows each token's scope; `GET /v1/auth/me`

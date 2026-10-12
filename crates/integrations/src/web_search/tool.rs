@@ -17,15 +17,17 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tracing::debug;
 
-use super::account::{account_driver, org_settings};
-use super::brave::{BRAVE_API_BASE, BraveSearchDriver};
+use super::account::{DriverBases, account_driver, org_settings};
 use super::config::WebSearchConfig;
 use super::free::FreeSearchDriver;
 use super::http::DirectEgress;
 use super::plan::{
     PlanDrivers, PlanInputs, ResolvedPlan, SearchOutcome, plan_steps, resolve_plan, run_plan,
 };
-use super::{BRAVE_SEARCH_API_KEY, BRAVE_SEARCH_CONNECTION_PROVIDER};
+use super::{
+    BRAVE_SEARCH_API_KEY, BRAVE_SEARCH_CONNECTION_PROVIDER, PARALLEL_API_KEY,
+    PARALLEL_CONNECTION_PROVIDER,
+};
 
 const DESCRIPTION: &str = "Search the web. Returns results with an id, title, url, site, \
 publication date when known, and a snippet (sometimes a longer excerpt). Cite each claim with \
@@ -46,26 +48,39 @@ struct Arguments {
     topic: SearchTopic,
 }
 
+/// Application-owned keys (Framework, serve), used when the session has none.
+#[derive(Clone, Default)]
+pub(super) struct AppKeys {
+    pub(super) brave: Option<String>,
+    pub(super) parallel: Option<String>,
+}
+
 pub(super) struct WebSearchTool {
     config: WebSearchConfig,
-    app_brave_key: Option<String>,
+    app_keys: AppKeys,
     free: Arc<FreeSearchDriver>,
-    brave_base: String,
+    bases: DriverBases,
 }
 
 impl WebSearchTool {
-    pub(super) fn new(config: WebSearchConfig, app_brave_key: Option<String>) -> Self {
+    pub(super) fn new(config: WebSearchConfig, app_keys: AppKeys) -> Self {
         Self {
             config,
-            app_brave_key,
+            app_keys,
             free: Arc::new(FreeSearchDriver::default()),
-            brave_base: BRAVE_API_BASE.to_string(),
+            bases: DriverBases::default(),
         }
     }
 
     #[cfg(test)]
     fn with_brave_base(mut self, base: impl Into<String>) -> Self {
-        self.brave_base = base.into();
+        self.bases.brave = base.into();
+        self
+    }
+
+    #[cfg(test)]
+    fn with_parallel_base(mut self, base: impl Into<String>) -> Self {
+        self.bases.parallel = base.into();
         self
     }
 
@@ -106,28 +121,33 @@ impl WebSearchTool {
         Ok(request)
     }
 
-    async fn brave_key(&self, context: &ToolContext) -> Option<String> {
+    /// A provider key from the user's connection, else the session secret,
+    /// else the application.
+    async fn session_key(
+        &self,
+        context: &ToolContext,
+        connection_provider: &str,
+        secret: &str,
+        app_key: Option<&String>,
+    ) -> Option<String> {
         if let Some(resolver) = &context.connection_resolver {
             match resolver
-                .get_connection_token(context.session_id, BRAVE_SEARCH_CONNECTION_PROVIDER)
+                .get_connection_token(context.session_id, connection_provider)
                 .await
             {
                 Ok(Some(token)) if !token.is_empty() => return Some(token),
                 Ok(_) => {}
-                Err(error) => debug!("Brave Search connection lookup failed: {error}"),
+                Err(error) => debug!("{connection_provider} connection lookup failed: {error}"),
             }
         }
         if let Some(storage) = &context.storage_store {
-            match storage
-                .get_secret(context.session_id, BRAVE_SEARCH_API_KEY)
-                .await
-            {
+            match storage.get_secret(context.session_id, secret).await {
                 Ok(Some(key)) if !key.is_empty() => return Some(key),
                 Ok(_) => {}
-                Err(error) => debug!("Brave Search secret lookup failed: {error}"),
+                Err(error) => debug!("{secret} secret lookup failed: {error}"),
             }
         }
-        self.app_brave_key.clone()
+        app_key.cloned()
     }
 
     async fn run(
@@ -135,15 +155,36 @@ impl WebSearchTool {
         mut request: SearchRequest,
         context: Option<&ToolContext>,
     ) -> ToolExecutionResult {
-        let (brave_key, org) = match context {
-            Some(context) => (self.brave_key(context).await, org_settings(context).await),
-            None => (self.app_brave_key.clone(), None),
+        let (brave_key, parallel_key, org) = match context {
+            Some(context) => (
+                self.session_key(
+                    context,
+                    BRAVE_SEARCH_CONNECTION_PROVIDER,
+                    BRAVE_SEARCH_API_KEY,
+                    self.app_keys.brave.as_ref(),
+                )
+                .await,
+                self.session_key(
+                    context,
+                    PARALLEL_CONNECTION_PROVIDER,
+                    PARALLEL_API_KEY,
+                    self.app_keys.parallel.as_ref(),
+                )
+                .await,
+                org_settings(context).await,
+            ),
+            None => (
+                self.app_keys.brave.clone(),
+                self.app_keys.parallel.clone(),
+                None,
+            ),
         };
         let plan = resolve_plan(PlanInputs {
             config: &self.config,
             org: org.as_deref(),
             model_has_native: false,
             brave_key: brave_key.is_some(),
+            parallel_key: parallel_key.is_some(),
         });
         if request.limit == 0 {
             request.limit = plan.limit;
@@ -165,7 +206,7 @@ impl WebSearchTool {
                                 account,
                                 resolver.clone(),
                                 context.session_id,
-                                &self.brave_base,
+                                &self.bases,
                             )
                             .map(|driver| (account.id, account.provider.clone(), driver))
                         })
@@ -176,9 +217,10 @@ impl WebSearchTool {
         };
         let drivers = PlanDrivers {
             free: self.free.clone(),
-            brave: brave_key.map(|key| {
-                Arc::new(BraveSearchDriver::with_base_url(key, &self.brave_base)) as Arc<_>
-            }),
+            brave: brave_key
+                .and_then(|key| self.bases.driver(BRAVE_SEARCH_CONNECTION_PROVIDER, key)),
+            parallel: parallel_key
+                .and_then(|key| self.bases.driver(PARALLEL_CONNECTION_PROVIDER, key)),
             accounts,
         };
         let steps = plan_steps(&plan, &drivers);

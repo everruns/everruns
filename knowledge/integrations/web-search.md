@@ -95,7 +95,14 @@ provider, in the same spirit as LLM drivers: `SearchDriver` in
 excerpt length, pagination) and `search(SearchRequest) -> SearchResponse`. Free
 search, Brave and Parallel are drivers in `everruns-integrations`; Exa and
 Tavily later are one driver each. A `SearchDriverRegistry` maps provider ids to
-drivers the way the connector registry maps connectors. Native search is not a
+drivers the way the connector registry maps connectors. The Parallel driver calls the Search API
+(`POST /v1/search`) in `fast` mode, Parallel's recommended mode for
+tool-calling agents (about 700 ms, $1 per 1,000 requests), with the query as
+both the objective and the one search query; domain filters go in its source
+policy (allowed sites win, since Parallel ignores exclusions when inclusions
+are set) and freshness becomes `after_date`. The `parallel` connector already
+held the MCP key; the same key works for the Search API, so the connector
+declares the `web_search` connector capability. Native search is not a
 `SearchDriver`: it is a per-LLM-driver adapter (below) because the model
 provider runs it inside the model call.
 
