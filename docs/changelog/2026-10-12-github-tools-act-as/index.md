@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [agent]
 links:
   docs: [/capabilities/github/]
-  prs: [everruns/everruns#4604]
+  prs: [everruns/everruns#4604, everruns/everruns#4651]
 ---
 
 The [GitHub capability](/capabilities/github/)'s tools now act on GitHub as exactly one identity, set by
@@ -28,3 +28,5 @@ instead of as itself.
 
 Every call also gets a short-lived token limited to the repository it names and
 the permissions that tool needs, so reading a diff no longer holds write access.
+Memory and knowledge index syncs from GitHub get read-only tokens for their one
+repository, and Daytona git tokens only reach repository contents.

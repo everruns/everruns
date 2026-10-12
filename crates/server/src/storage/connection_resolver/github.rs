@@ -150,6 +150,27 @@ impl DbConnectionResolver {
         Ok(None)
     }
 
+    /// Resolve a GitHub token acting as `owner`; see
+    /// `get_github_token_for_owner`.
+    pub(super) async fn github_token_for_owner(
+        &self,
+        org_id: i64,
+        owner: Uuid,
+        access: &GitHubAccess,
+    ) -> Result<Option<String>> {
+        let token_scope = token_scope(access)?;
+        let Some(row) = self
+            .db
+            .get_virtual_user_connection(VirtualUserId::from_uuid(owner), PROVIDER)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+        else {
+            return Ok(None);
+        };
+        self.scoped_github_token(OAuthScope::Org(org_id), row, &token_scope)
+            .await
+    }
+
     async fn scoped_github_token(
         &self,
         scope: OAuthScope,

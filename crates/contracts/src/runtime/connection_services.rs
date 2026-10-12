@@ -254,6 +254,22 @@ pub trait UserConnectionResolver: Send + Sync {
         Ok(None)
     }
 
+    /// Resolve a GitHub token for work done on behalf of one virtual user
+    /// outside a session (a memory or knowledge source sync), limited to
+    /// `access.repositories` and `access.permissions`. `access.acts_as` is
+    /// not consulted: the owner is the identity.
+    ///
+    /// THREAT[TM-GITHUB-006]: fail-closed by default, like
+    /// [`Self::get_github_token`].
+    async fn get_github_token_for_owner(
+        &self,
+        _org_id: i64,
+        _owner: Uuid,
+        _access: &GitHubAccess,
+    ) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     /// Invalidate an MCP credential after the remote server rejects it.
     ///
     /// Implementations that own persistent grants can remove the credential

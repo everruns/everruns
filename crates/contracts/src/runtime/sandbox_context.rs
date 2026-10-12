@@ -26,6 +26,22 @@ impl SessionSandboxContext for ToolContext {
         let Some(resolver) = &self.connection_resolver else {
             return Ok(None);
         };
+        if provider == "github" {
+            // THREAT[TM-GITHUB-006]: GitHub goes through the one declared-use
+            // request: the person when they connected GitHub, else the agent.
+            // A sandbox may call the API as well as git, and which repositories
+            // it needs is not known here, so the token is not narrowed yet;
+            // sandbox repositories on the template narrow it (github-model step 6).
+            let access = crate::runtime::GitHubAccess::new(
+                crate::runtime::mcp_server::McpServerActsAs::UserOrService,
+                &[],
+            );
+            return resolver
+                .get_github_token(self.session_id, &access)
+                .await
+                .map(|credential| credential.map(|credential| credential.token))
+                .map_err(ToolExecutionResult::internal_error);
+        }
         let token = resolver
             .get_connection_token(self.session_id, provider)
             .await;

@@ -816,6 +816,15 @@ impl UserConnectionResolver for DbConnectionResolver {
         self.github_token(session, access).await
     }
 
+    async fn get_github_token_for_owner(
+        &self,
+        org_id: i64,
+        owner: Uuid,
+        access: &everruns_contracts::runtime::GitHubAccess,
+    ) -> Result<Option<String>> {
+        self.github_token_for_owner(org_id, owner, access).await
+    }
+
     async fn get_sandbox_connection_token(
         &self,
         session_id: SessionId,
