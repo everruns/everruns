@@ -8,6 +8,7 @@ products: [platform, cloud, framework]
 surfaces: [api, code]
 links:
   docs: [/capabilities/session-schedules/]
+  prs: [everruns/everruns#4615]
 ---
 
 When an agent called `create_schedule` with an invalid cron expression or an
@@ -20,4 +21,4 @@ Standard 5-field crons that name weekdays by number, such as `0 18 * * 0` for
 Sunday evenings, are read the same way everywhere, including in embedded
 Framework schedules. The 5-minute minimum interval now also applies to them.
 
-See [Session schedules](/capabilities/session-schedules/).
+See [Session schedules](/capabilities/session-schedules/). [#4615](https://github.com/everruns/everruns/pull/4615)
