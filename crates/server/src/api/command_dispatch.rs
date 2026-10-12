@@ -60,7 +60,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, State},
     http::{HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
@@ -73,6 +73,7 @@ use utoipa::ToSchema;
 use super::common::ErrorResponse;
 use super::mcp_endpoint::{AppState, catalog, catalog_context, cli_tree};
 use crate::auth::ResolvedOrg;
+use crate::auth::pat_scope::{self, PatScope};
 use crate::domains::common::{CommandDescriptor, CommandError};
 use crate::storage::EncryptionService;
 use crate::storage::command_idempotency::{
@@ -265,11 +266,20 @@ pub async fn list_commands(org: ResolvedOrg) -> Json<CommandCatalog> {
 )]
 pub async fn execute_command(
     org: ResolvedOrg,
+    pat_scope: Option<Extension<PatScope>>,
     State(state): State<AppState>,
     Path(name): Path<String>,
     headers: HeaderMap,
     body: Option<Json<CommandRequest>>,
 ) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
+    // The route is `PerCommand`: a scoped token is checked against the named
+    // command here. An unknown or unexposed name falls through to the 404.
+    if let Some(desc) = exposed_descriptor(&name)
+        && let Err(denied) =
+            pat_scope::enforce_command(pat_scope.map(|Extension(s)| s), org.user_id, desc)
+    {
+        return Ok(denied.into_response());
+    }
     let request = body.map(|Json(request)| request).unwrap_or_default();
     let key = idempotency_key(&headers)?;
     if let Some(version) = request.api_version.as_deref()
@@ -541,6 +551,16 @@ fn validate_metadata(metadata: &BTreeMap<String, String>) -> Result<(), CommandE
         )));
     }
     Ok(())
+}
+
+/// The command `catalog::dispatch_named` would run under `name`.
+fn exposed_descriptor(name: &str) -> Option<&'static CommandDescriptor> {
+    inventory::iter::<CommandDescriptor>
+        .into_iter()
+        .find(|desc| {
+            let meta = (desc.meta)();
+            meta.name == name && catalog::is_exposed(&meta)
+        })
 }
 
 fn descriptor(name: &str) -> Option<&'static CommandDescriptor> {

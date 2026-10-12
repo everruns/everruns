@@ -1537,6 +1537,7 @@ jobs:
             --test blob_offload_integration_test \
             --test prometheus_metrics_test \
             --test background_sweep_wiring_test \
+            --test pat_scope_sweep_test \
             --test plugins_integration_test \
             --test plugins_remote_test \
             --test strict_client_tools \

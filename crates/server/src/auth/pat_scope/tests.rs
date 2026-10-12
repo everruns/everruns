@@ -241,7 +241,7 @@ fn echo_routes() -> Router {
 #[tokio::test]
 async fn layer_inserts_the_class_of_the_matched_route() {
     for prefix in ["", "/api"] {
-        let routes = classify_api_routes(echo_routes(), prefix);
+        let routes = classify_api_routes(echo_routes(), prefix, ExtraRouteClasses::default());
         let app = crate::server::build_router_with_prefix(routes, prefix);
         let cases = [
             ("GET", "/v1/auth/me", "Some(Read)"),
