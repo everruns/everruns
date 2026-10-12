@@ -7,6 +7,12 @@ export interface AgentGitHubStatus {
   app_created: boolean;
   app_slug: string | null;
   app_url: string | null;
+  /** `agent_app` (the agent's own App) or `everruns_app` (the shared Everruns App). */
+  kind: "agent_app" | "everruns_app" | null;
+  /** Login GitHub shows for the agent, e.g. `pr-summarizer[bot]`. */
+  bot_login: string | null;
+  /** The App's settings page on GitHub, where its logo is uploaded. */
+  app_settings_url: string | null;
   account: string | null;
   repository_selection: string | null;
   /** Permissions new Apps request that this installation lacks, as `name:level`. */

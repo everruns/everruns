@@ -302,6 +302,15 @@ Each step is one PR unless noted, and leaves everything working.
    App's installation never falls back to the shared App's key.
 2. **GitHub section on the agent page** (D7), name rules and avatar step (D2).
    Coordinate with the Yolop PR Reviewer thread's org picker, which lands first.
+   Done: the agent's Integrations tab has a **GitHub** section between Channels
+   and Triggers (`agent-github-card.tsx`), showing the bot login, the kind,
+   the installation, missing permissions, a "Set the avatar" step (download
+   the agent's avatar, open the App's settings page) and links to add and list
+   GitHub triggers. `AgentGitHubStatus` gained `kind`, `bot_login` and
+   `app_settings_url` (null when the owner's account kind is unknown). New
+   Apps are named after the agent and get a random suffix only when a public
+   App holds the slug (`default_app_name` probes `GET /apps/{slug}`). Left: the
+   logo-missing check D2 describes, and the shared App's bot login (step 3).
 3. **Shared App at org level** (D3): org opt-in, deployment webhook route by
    installation id, agent choice between own App and shared App, migration of
    person-held installations.
