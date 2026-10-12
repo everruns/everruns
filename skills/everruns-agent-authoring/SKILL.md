@@ -6,7 +6,7 @@ compatibility: A connected Everruns MCP endpoint with discover, query, and execu
 metadata:
   category: platform
   version: "1.0"
-  docs: https://docs.everruns.com/reference/cli/agents/
+  docs: https://everruns.com/docs/reference/cli/agents/
 ---
 
 # Author an Everruns agent

@@ -210,12 +210,17 @@ sites build and deploy independently and no request passes through both.
    text/markdown` (or a known AI user agent, never a search crawler) on a page
    URL returns its `index.md` twin, with `Vary: Accept, User-Agent`. Every page
    response carries `Link` headers for `llms.txt` and the API reference
-4. docs.everruns.com keeps a zone redirect rule that 301s every path, query
-   included, to the same path under https://everruns.com/docs. It stays
+4. The docs Worker also owns the route `docs.everruns.com/*` and 301s every
+   path, query included, to the same path under https://everruns.com/docs. A
+   Worker route rather than a zone redirect rule, because the deploy token
+   manages Worker routes and the redirect stays tested in the repo. It stays
    forever: published crate docs, plugins and old posts link the old host
 5. `apps/docs/scripts/check-live.mjs` checks every sitemap page and its
    Markdown twin, the agent files, content negotiation and, with `--old`, each
    old URL's redirect. It runs after every deploy and daily
+6. `scripts/lib/check-docs-host.sh` (pre-push and CI) fails on any new link
+   to docs.everruns.com outside the files about the move itself; the
+   maintenance skill sweeps the sibling repositories for the same
 
 ### Development
 

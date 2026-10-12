@@ -38,9 +38,9 @@ facade's selected integration presets. Supplying a custom `HostComposition`
 replaces the default capability registry; register each capability that the
 host will reference.
 
-- [Custom backends](https://docs.everruns.com/framework/custom-backends/)
-- [Capability integrations](https://docs.everruns.com/framework/capability-integrations/)
-- [Capability boundaries](https://docs.everruns.com/framework/capability-boundaries/)
-- [Workspaces and environments](https://docs.everruns.com/framework/workspaces-and-environments/)
+- [Custom backends](https://everruns.com/docs/framework/custom-backends/)
+- [Capability integrations](https://everruns.com/docs/framework/capability-integrations/)
+- [Capability boundaries](https://everruns.com/docs/framework/capability-boundaries/)
+- [Workspaces and environments](https://everruns.com/docs/framework/workspaces-and-environments/)
 - [Core API](https://docs.rs/everruns-core)
 - [Contracts API](https://docs.rs/everruns-contracts)
