@@ -163,7 +163,7 @@ behind green unit tests.
 
 Push-based via gRPC streaming (`SubscribeTaskNotifications`), backed by NATS when available and PostgreSQL `NOTIFY` otherwise. The standalone worker subscribes at startup (`crates/worker/src/task_wakeup.rs`) and every notification cuts its poll backoff short; a worker that finishes a task also wakes its own loop, because that task usually enqueued the next turn phase. Polling stays as the fallback, so a lost notification or a dropped stream costs at most one backoff interval (`WORKER_POLL_BACKOFF_MAX_MS`), and the worker resubscribes with a 1s to 30s backoff.
 
-Session actors ride the same channel with their own payloads: `session_actor` when an actor becomes leasable and `session_actor_cancel` when a cancel lands on a leased one. The worker subscribes to each under its own subscriber id (the control plane keeps one subscription per id): the first wakes the actor lease loop, the second makes every running lease renew at once, which is how its holder learns of the cancel. Under PostgreSQL a trigger on `session_actors` notifies on commit; under NATS the server's turn backend publishes after the intake transaction commits.
+Session actors ride the same channel with their own payloads: `session_actor` when an actor becomes leasable and `session_actor_cancel` when a cancel lands on a leased one. The worker subscribes to each under its own subscriber id (the control plane keeps one subscription per id): the first wakes the actor lease loop, the second makes every running lease renew at once, which is how its holder learns of the cancel. Under PostgreSQL a trigger on `session_actors` notifies on commit; under NATS the server's turn backend publishes after the intake transaction commits. The in-process DEV_MODE worker has no channel: the turn backend wakes its lease loop and its running leases directly, also after the commit (`ActorWakeups`). A release that leaves the actor runnable wakes the releasing worker's own loop once the turn's slot is free. A lease that expires sends nothing, so the actor loop's poll backoff is capped at 1 s (`ACTOR_POLL_BACKOFF_MAX`), which bounds how long past its TTL a dead holder's turn waits.
 
 The rest of this section is the history of the per-step turn path the actor cutover retired; its measurements explain choices the actor runtime kept (the push wake-up, per-phase setup reads, the per-turn read cache, write-behind events). Why it mattered then: every turn phase (`process_input`, `reason`, `act`) was its own queued task. Before the worker consumed these notifications, an idle worker sat in a backoff of up to 5s, so a new message waited up to 5s to start and each tool call paid that wait twice (reason to act, act to reason). Measured locally on a two-tool turn: pickup fell from about 1.5s to about 70ms and each phase hand-off from up to 1.5s to under 200ms. `crates/server/tests/workflow_test/latency.rs` guards the pickup end to end.
 
@@ -414,11 +414,16 @@ production and DEV_MODE alike; the worker side is
   consumed. A turn that kills its worker cannot loop forever, and the session
   is usable afterwards: the release resets the count, and the next message
   starts a fresh turn.
-- **Per-org fairness cap.** A lease call counts each org's held leases and
-  takes no more than the cap (default 32). The count is read at the start of
-  the call, so concurrent callers can overshoot it slightly: a fairness bound,
-  not a quota. Admission stays with `ORG_MAX_ACTIVE_TURNS` when the input is
-  accepted.
+- **Per-org fairness order.** A lease call counts each org's held leases and
+  takes actors of orgs under the cap (default 32) first, oldest first; an
+  org's actors past it fill only the room left. It orders, it never holds
+  work back: a lease runs a whole turn, model and tool waits included, so a
+  hard cap of 32 was a fleet-wide cap on one org's concurrent turns. The
+  chaos harness (one org, 50 live sessions) sat at exactly 32 leases with
+  worker slots free, and pickup rose from 38 ms to 1.3 s at p50 (p95 3.2 s);
+  ordering instead of capping brought it to 102 ms (p95 604 ms), with 50
+  leases held at once. Admission
+  stays with `ORG_MAX_ACTIVE_TURNS` when the input is accepted.
 - **Resolutions carry the open turn's id.** Tool results, answers, approval
   decisions, MCP URL consents, the tool-result timeout, a message's
   cancellation of pending client calls and the server-recorded cancel all

@@ -298,6 +298,7 @@ Baselines to start from (numbers, not targets):
 | Local stack, realistic model | 2026-10-08, 0.44.0 | 100 sessions: queueing for worker slots added about 5 s before first token at 50 slots; it disappeared at 300 slots (since #4444 a turn frees its slot while waiting on the model) |
 | Hosted, instant model | 2026-10-08, 0.44.0 | turn p50 0.48 s at 10 sessions, 0.89 s at 25, 1.86 s at 50 (includes about 0.15 s network round trip) |
 | Hosted, 0.9 s first token | 2026-10-08, 0.44.0 | turn p50 1.55 s at 25 sessions, 2.13 s at 50, 4.44 s at 100; at 100, worker slots added about 3 s of waiting |
+| Chaos harness, 200 sessions, low-memory release build | 2026-10-12, actor cutover | pickup p50/p95 102/604 ms without kills and 94/496 ms with them (1.3 s/3.2 s while the per-org lease cap held work back; main 53/462 ms); recovery 21 s after a worker kill, 20 s after a server kill; about 475 statements per turn |
 
 Known gaps in the method: a single driver machine hits the per-IP limit early, and a few long idle SSE streams were cut on the client or edge side during the hosted run, so the driver reconnects with `since_id` like the UI does.
 
