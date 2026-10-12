@@ -22,5 +22,14 @@ offers the agent's avatar as a download and links to the App's settings page.
 New Apps are named after the agent, with a random suffix only when the name is
 taken.
 
-**In the API:** `GET /v1/agents/{agent_id}/github` adds `kind`, `bot_login` and
-`app_settings_url`. See [Summarize GitHub pull requests](/how-to/summarize-github-pull-requests/).
+**In the API:** `GET /v1/agents/{agent_id}/github` adds three fields:
+
+```json
+{
+  "kind": "agent_app",
+  "bot_login": "pr-summarizer[bot]",
+  "app_settings_url": "https://github.com/organizations/acme/settings/apps/pr-summarizer"
+}
+```
+
+See [Summarize GitHub pull requests](/how-to/summarize-github-pull-requests/).
