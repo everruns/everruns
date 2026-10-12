@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [agent]
 links:
   docs: [/capabilities/github/]
-  prs: [4604]
+  prs: [everruns/everruns#4604]
 ---
 
 The GitHub capability's tools now act on GitHub as exactly one identity, set by
