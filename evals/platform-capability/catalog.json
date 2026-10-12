@@ -753,7 +753,77 @@
     "cli": "sessions storage secrets batch",
     "description": "Encrypt and store multiple session secrets in one request.",
     "input_schema": {
+      "$defs": {
+        "SecretAuth": {
+          "description": "How a bound secret is put on an outbound request.\n\nHeader-only by design (see `knowledge/security/bound-secrets.md`): a value\nis never placed in a URL or a body.",
+          "oneOf": [
+            {
+              "description": "`Authorization: Bearer <value>`.",
+              "properties": {
+                "type": {
+                  "enum": [
+                    "bearer"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "`<name>: <value>`, e.g. `X-Api-Key`.",
+              "properties": {
+                "name": {
+                  "description": "Header name.",
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "header"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "type"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "SecretBinding": {
+          "description": "Where a bound secret may be sent, and how.",
+          "properties": {
+            "auth": {
+              "$ref": "#/$defs/SecretAuth",
+              "description": "How the value is attached."
+            },
+            "url": {
+              "description": "`https://host[:port][/path-prefix]` the value may be sent to.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "url",
+            "auth"
+          ],
+          "type": "object"
+        }
+      },
       "properties": {
+        "bindings": {
+          "additionalProperties": {
+            "$ref": "#/$defs/SecretBinding"
+          },
+          "description": "Optional bindings keyed by secret name, e.g.\n`{\"JEV_API_KEY\": {\"url\": \"https://api.typesafe.ai\", \"auth\": {\"type\": \"bearer\"}}}`.\nA bound secret is write-only: the shell sees `$NAME` as a placeholder\nand the platform puts the value on requests to the bound URL only.",
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
         "secrets": {
           "additionalProperties": {
             "type": "string"
@@ -2536,18 +2606,42 @@
   {
     "category": "agents",
     "cli": "agents credentials create",
-    "description": "Create a write-only Agent credential setup requirement for one attached MCP tool parameter. This command never accepts a secret value; the user completes setup in the Agent Credentials UI.",
+    "description": "Create a write-only Agent credential setup requirement: one attached MCP tool parameter, or an HTTP API the agent's shell calls with $ENV_NAME (the value is injected only into requests to the bound URL). This command never accepts a secret value; the user completes setup in the Agent Credentials UI.",
     "input_schema": {
-      "description": "Declare a credential requirement for an agent's attached MCP tool.",
+      "description": "Declare a credential requirement for an agent: an attached MCP tool's\nparameter (`mcp_server_name`, `tool_name`, `parameter_name`), or an HTTP\nAPI the agent's shell calls (`env_name`, `url`, `auth`).",
       "properties": {
         "agent_id": {
           "description": "Agent ID, populated from the request path by the HTTP API.",
           "example": "agent_01933b5a000070008000000000000001",
           "type": "string"
         },
+        "auth": {
+          "description": "`bearer` (default) sends `Authorization: Bearer <value>`; `header`\nsends the value in `header_name` (HTTP API).",
+          "example": "bearer",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "description": {
           "description": "Optional explanation of how the credential will be used.",
           "example": "Delivers scheduled status notifications",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "env_name": {
+          "description": "Env var name the agent's shell uses as a placeholder (HTTP API).",
+          "example": "JEV_API_KEY",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "header_name": {
+          "description": "Header that carries the value when `auth` is `header` (HTTP API).",
+          "example": "X-Api-Key",
           "type": [
             "string",
             "null"
@@ -2559,25 +2653,39 @@
           "type": "string"
         },
         "mcp_server_name": {
-          "description": "Name of an MCP server attached to the agent.",
+          "description": "Name of an MCP server attached to the agent (MCP tool parameter).",
           "example": "visti",
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "parameter_name": {
-          "description": "Top-level tool argument to inject outside model context.",
+          "description": "Top-level tool argument to inject outside model context (MCP tool parameter).",
           "example": "channel_key",
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "tool_name": {
-          "description": "MCP tool whose outbound call requires the credential.",
+          "description": "MCP tool whose outbound call requires the credential (MCP tool parameter).",
           "example": "visti_send",
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "description": "HTTPS URL prefix the value may be sent to (HTTP API).",
+          "example": "https://api.typesafe.ai",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
-        "mcp_server_name",
-        "tool_name",
-        "parameter_name",
         "label"
       ],
       "type": "object"

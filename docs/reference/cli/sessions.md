@@ -1154,6 +1154,7 @@ everruns sessions storage secrets batch [OPTIONS] --secrets <secrets> --session-
 
 | Flag | Description |
 |---|---|
+| `--bindings <BINDINGS>` | Optional bindings keyed by secret name, e.g. `{"JEV_API_KEY": {"url": "https://api.typesafe.a... |
 | `--secrets <SECRETS>` | Required. Secret values keyed by name, e.g. |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
 

@@ -881,7 +881,7 @@
       "credentials"
     ],
     "verb": "create",
-    "description": "Create a write-only Agent credential setup requirement for one attached MCP tool parameter. This command never accepts a secret value; the user completes setup in the Agent Credentials UI.",
+    "description": "Create a write-only Agent credential setup requirement: one attached MCP tool parameter, or an HTTP API the agent's shell calls with $ENV_NAME (the value is injected only into requests to the bound URL). This command never accepts a secret value; the user completes setup in the Agent Credentials UI.",
     "method": "POST",
     "http_path": "/v1/agents/{agent_id}/credentials",
     "args": [
@@ -893,11 +893,32 @@
         "help": "Agent ID, populated from the request path by the HTTP API."
       },
       {
+        "field": "auth",
+        "long": "auth",
+        "kind": "string",
+        "required": false,
+        "help": "`bearer` (default) sends `Authorization: Bearer <value>`; `header` sends the value in `header..."
+      },
+      {
         "field": "description",
         "long": "description",
         "kind": "string",
         "required": false,
         "help": "Optional explanation of how the credential will be used."
+      },
+      {
+        "field": "env_name",
+        "long": "env-name",
+        "kind": "string",
+        "required": false,
+        "help": "Env var name the agent's shell uses as a placeholder (HTTP API)."
+      },
+      {
+        "field": "header_name",
+        "long": "header-name",
+        "kind": "string",
+        "required": false,
+        "help": "Header that carries the value when `auth` is `header` (HTTP API)."
       },
       {
         "field": "label",
@@ -910,28 +931,39 @@
         "field": "mcp_server_name",
         "long": "mcp-server-name",
         "kind": "string",
-        "required": true,
-        "help": "Name of an MCP server attached to the agent."
+        "required": false,
+        "help": "Name of an MCP server attached to the agent (MCP tool parameter)."
       },
       {
         "field": "parameter_name",
         "long": "parameter-name",
         "kind": "string",
-        "required": true,
-        "help": "Top-level tool argument to inject outside model context."
+        "required": false,
+        "help": "Top-level tool argument to inject outside model context (MCP tool parameter)."
       },
       {
         "field": "tool_name",
         "long": "tool-name",
         "kind": "string",
-        "required": true,
-        "help": "MCP tool whose outbound call requires the credential."
+        "required": false,
+        "help": "MCP tool whose outbound call requires the credential (MCP tool parameter)."
+      },
+      {
+        "field": "url",
+        "long": "url",
+        "kind": "string",
+        "required": false,
+        "help": "HTTPS URL prefix the value may be sent to (HTTP API)."
       }
     ],
     "examples": [
       {
         "intent": "Declare that an MCP tool needs a secret the model must never see",
         "command": "everruns agents credentials create --agent-id agent_01h9 --mcp-server-name visti --tool-name visti_send --parameter-name channel_key --label 'Visti channel key' --reason 'Notify the on-call channel'"
+      },
+      {
+        "intent": "Declare an API key the agent's shell sends to one host without seeing it",
+        "command": "everruns agents credentials create --agent-id agent_01h9 --env-name JEV_API_KEY --url https://api.typesafe.ai --label 'Jev API key' --reason 'Ask Jev for triage decisions'"
       }
     ]
   },
@@ -11857,6 +11889,13 @@
     "method": "PUT",
     "http_path": "/v1/sessions/{session_id}/storage/secrets",
     "args": [
+      {
+        "field": "bindings",
+        "long": "bindings",
+        "kind": "json",
+        "required": false,
+        "help": "Optional bindings keyed by secret name, e.g. `{\"JEV_API_KEY\": {\"url\": \"https://api.typesafe.a..."
+      },
       {
         "field": "secrets",
         "long": "secrets",

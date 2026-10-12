@@ -17,7 +17,7 @@ agents check-rules list	--context-revision --reason
 agents check-rules upsert	--category --context-revision --enabled! --kind! --match-mode --message --pattern --reason --rubric --rule-id! --severity
 agents copy	--context-revision --id --reason <id>
 agents create	--description --file/-f --harness/-H --initial-files-dir --instructions --model --name --reason --tag/-t... --writable
-agents credentials create	--agent-id --context-revision --description --label! --mcp-server-name! --parameter-name! --reason --tool-name!
+agents credentials create	--agent-id --auth --context-revision --description --env-name --header-name --label! --mcp-server-name --parameter-name --reason --tool-name --url
 agents delete	--context-revision --id --reason <id>
 agents destroy	--context-revision --id --reason <id>
 agents diff	--against --target <file>!
@@ -293,7 +293,7 @@ sessions sandbox manage	--action! --context-revision --reason --session-id!
 sessions sse stream	--context-revision --reason --session-id <session_id>
 sessions stats	--context-revision --reason
 sessions storage keys list	--context-revision --reason --session-id <session_id>
-sessions storage secrets batch	--context-revision --reason --secrets! --session-id!
+sessions storage secrets batch	--bindings --context-revision --reason --secrets! --session-id!
 sessions storage secrets delete	--context-revision --name! --reason --session-id!
 sessions storage secrets list	--context-revision --reason --session-id <session_id>
 sessions tasks cancel	--context-revision --reason --session-id! --task-id!

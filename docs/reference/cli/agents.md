@@ -43,7 +43,7 @@ Agent definitions and their configuration.
 | [`agents check-rules delete`](#agents-check-rules-delete) | Delete an agent check rule (built-in override or custom rule). |
 | [`agents check-rules list`](#agents-check-rules-list) | List the org's agent check rules: built-in rules with their effective enabled/severity, plus custom rules. |
 | [`agents check-rules upsert`](#agents-check-rules-upsert) | Create or update an agent check rule (built-in override or custom rule). |
-| [`agents credentials create`](#agents-credentials-create) | Create a write-only Agent credential setup requirement for one attached MCP tool parameter. |
+| [`agents credentials create`](#agents-credentials-create) | Create a write-only Agent credential setup requirement: one attached MCP tool parameter, or an HTTP API the agent's shell calls with $ENV_NAME (the value is injected only into requests to the bound URL). |
 | [`agents exposures resume`](#agents-exposures-resume) | Let an agent's live channels accept traffic again. |
 | [`agents exposures suspend`](#agents-exposures-suspend) | Stop every channel on an agent from accepting traffic. |
 | [`agents health-checks get`](#agents-health-checks-get) | Get a single agent health check run with its results. |
@@ -705,26 +705,33 @@ everruns agents check-rules upsert --rule-id custom.no-pii --kind nl_rubric --en
 
 ## agents credentials create
 
-Create a write-only Agent credential setup requirement for one attached MCP tool parameter. This command never accepts a secret value; the user completes setup in the Agent Credentials UI.
+Create a write-only Agent credential setup requirement: one attached MCP tool parameter, or an HTTP API the agent's shell calls with $ENV_NAME (the value is injected only into requests to the bound URL). This command never accepts a secret value; the user completes setup in the Agent Credentials UI.
 
 ```bash
-everruns agents credentials create [OPTIONS] --label <label> --mcp-server-name <mcp_server_name> --parameter-name <parameter_name> --tool-name <tool_name>
+everruns agents credentials create [OPTIONS] --label <label>
 ```
 
 | Flag | Description |
 |---|---|
 | `--agent-id <AGENT_ID>` | Agent ID, populated from the request path by the HTTP API. |
+| `--auth <AUTH>` | `bearer` (default) sends `Authorization: Bearer <value>`; `header` sends the value in `header... |
 | `--description <DESCRIPTION>` | Optional explanation of how the credential will be used. |
+| `--env-name <ENV_NAME>` | Env var name the agent's shell uses as a placeholder (HTTP API). |
+| `--header-name <HEADER_NAME>` | Header that carries the value when `auth` is `header` (HTTP API). |
 | `--label <LABEL>` | Required. Human-readable label shown in the secure setup UI. |
-| `--mcp-server-name <MCP_SERVER_NAME>` | Required. Name of an MCP server attached to the agent. |
-| `--parameter-name <PARAMETER_NAME>` | Required. Top-level tool argument to inject outside model context. |
-| `--tool-name <TOOL_NAME>` | Required. MCP tool whose outbound call requires the credential. |
+| `--mcp-server-name <MCP_SERVER_NAME>` | Name of an MCP server attached to the agent (MCP tool parameter). |
+| `--parameter-name <PARAMETER_NAME>` | Top-level tool argument to inject outside model context (MCP tool parameter). |
+| `--tool-name <TOOL_NAME>` | MCP tool whose outbound call requires the credential (MCP tool parameter). |
+| `--url <URL>` | HTTPS URL prefix the value may be sent to (HTTP API). |
 
 Example:
 
 ```bash
 # Declare that an MCP tool needs a secret the model must never see
 everruns agents credentials create --agent-id agent_01h9 --mcp-server-name visti --tool-name visti_send --parameter-name channel_key --label 'Visti channel key' --reason 'Notify the on-call channel'
+
+# Declare an API key the agent's shell sends to one host without seeing it
+everruns agents credentials create --agent-id agent_01h9 --env-name JEV_API_KEY --url https://api.typesafe.ai --label 'Jev API key' --reason 'Ask Jev for triage decisions'
 ```
 
 ## agents exposures resume

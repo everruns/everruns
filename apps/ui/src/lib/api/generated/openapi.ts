@@ -808,47 +808,6 @@ export interface paths {
     patch: operations["update_agent_script"];
     trace?: never;
   };
-  "/v1/agents/{agent_id}/secrets": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * GET /v1/agents/{agent_id}/secrets - List an agent's bound secrets
-     * @description List an agent's bound secrets: names, bound URLs and auth forms, never values.
-     */
-    get: operations["list_agent_secrets"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/secrets/{name}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    /**
-     * PUT /v1/agents/{agent_id}/secrets/{name} - Store an agent's bound secret
-     * @description Encrypt and store a bound secret for every session of an agent. The shell sees $NAME as a placeholder; the value goes only on requests to the bound URL.
-     */
-    put: operations["set_agent_secret"];
-    post?: never;
-    /** DELETE /v1/agents/{agent_id}/secrets/{name} - Delete an agent's bound secret */
-    delete: operations["delete_agent_secret"];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/v1/agents/{agent_id}/stats": {
     parameters: {
       query?: never;
@@ -7323,13 +7282,17 @@ export interface components {
       id: string;
       status: components["schemas"]["ChannelStatus"];
     };
-    /** @description Metadata for a write-only credential bound to one agent and MCP tool parameter. */
+    /**
+     * @description Metadata for a write-only credential bound to one agent: either an MCP
+     *     tool parameter or an HTTP API the agent's shell calls.
+     */
     AgentCredentialBinding: {
       /**
        * @description Agent that exclusively owns and may use this credential.
        * @example agent_01933b5a000070008000000000000001
        */
       agent_id: string;
+      binding?: components["schemas"]["SecretBinding"] | null;
       /**
        * @description Whether an encrypted value has been provisioned.
        * @example true
@@ -7346,47 +7309,59 @@ export interface components {
        */
       description?: string | null;
       /**
+       * @description Env var the agent's shell uses as a placeholder (`http`).
+       * @example JEV_API_KEY
+       */
+      env_name?: string | null;
+      /**
        * Format: uuid
        * @description Stable credential binding identifier.
        * @example 01933b5a-0000-7000-8000-000000000001
        */
       id: string;
+      /** @description How the credential is injected. */
+      kind: components["schemas"]["AgentCredentialKind"];
       /**
        * @description Human-readable credential label.
        * @example Visti channel key
        */
       label: string;
       /**
-       * @description Name of the attached MCP server.
+       * @description Name of the attached MCP server (`mcp_parameter`).
        * @example visti
        */
-      mcp_server_name: string;
+      mcp_server_name?: string | null;
       /**
-       * @description Exact MCP endpoint authorized to receive the credential.
+       * @description Exact MCP endpoint authorized to receive the credential (`mcp_parameter`).
        * @example https://visti.sh/mcp
        */
-      mcp_server_url: string;
+      mcp_server_url?: string | null;
       /**
-       * @description Top-level tool argument injected by the server.
+       * @description Top-level tool argument injected by the server (`mcp_parameter`).
        * @example channel_key
        */
-      parameter_name: string;
+      parameter_name?: string | null;
       /**
        * @description Relative UI route where the user can securely provision the value.
        * @example /agents/agent_01933b5a000070008000000000000001?tab=credentials
        */
       setup_url: string;
       /**
-       * @description MCP tool whose outbound call receives the credential.
+       * @description MCP tool whose outbound call receives the credential (`mcp_parameter`).
        * @example visti_send
        */
-      tool_name: string;
+      tool_name?: string | null;
       /**
        * @description RFC 3339 last-update time.
        * @example 2026-08-08T16:05:00Z
        */
       updated_at: string;
     };
+    /**
+     * @description How a write-only agent credential reaches the outside world.
+     * @enum {string}
+     */
+    AgentCredentialKind: "mcp_parameter" | "http";
     /**
      * @description The agent the builder is shaping. Nothing is created from it until the
      *     user confirms.
@@ -7738,17 +7713,6 @@ export interface components {
        * Format: date-time
        * @description Last update timestamp.
        */
-      updated_at: string;
-    };
-    /** @description An agent-scoped bound secret, without its value. */
-    AgentSecretInfo: {
-      /** @description Where the value may be sent, and how. */
-      binding: components["schemas"]["SecretBinding"];
-      /** @description When the secret was created */
-      created_at: string;
-      /** @description Env var name the agent's shell sees. */
-      name: string;
-      /** @description When the secret was last updated */
       updated_at: string;
     };
     /**
@@ -9906,7 +9870,11 @@ export interface components {
       /** @description Whether the channel can accept ingress traffic. */
       enabled?: boolean;
     };
-    /** @description Declare a credential requirement for an agent's attached MCP tool. */
+    /**
+     * @description Declare a credential requirement for an agent: an attached MCP tool's
+     *     parameter (`mcp_server_name`, `tool_name`, `parameter_name`), or an HTTP
+     *     API the agent's shell calls (`env_name`, `url`, `auth`).
+     */
     CreateAgentCredentialBinding: {
       /**
        * @description Agent ID, populated from the request path by the HTTP API.
@@ -9914,30 +9882,51 @@ export interface components {
        */
       agent_id?: string;
       /**
+       * @description `bearer` (default) sends `Authorization: Bearer <value>`; `header`
+       *     sends the value in `header_name` (HTTP API).
+       * @example bearer
+       */
+      auth?: string | null;
+      /**
        * @description Optional explanation of how the credential will be used.
        * @example Delivers scheduled status notifications
        */
       description?: string | null;
+      /**
+       * @description Env var name the agent's shell uses as a placeholder (HTTP API).
+       * @example JEV_API_KEY
+       */
+      env_name?: string | null;
+      /**
+       * @description Header that carries the value when `auth` is `header` (HTTP API).
+       * @example X-Api-Key
+       */
+      header_name?: string | null;
       /**
        * @description Human-readable label shown in the secure setup UI.
        * @example Visti channel key
        */
       label: string;
       /**
-       * @description Name of an MCP server attached to the agent.
+       * @description Name of an MCP server attached to the agent (MCP tool parameter).
        * @example visti
        */
-      mcp_server_name: string;
+      mcp_server_name?: string | null;
       /**
-       * @description Top-level tool argument to inject outside model context.
+       * @description Top-level tool argument to inject outside model context (MCP tool parameter).
        * @example channel_key
        */
-      parameter_name: string;
+      parameter_name?: string | null;
       /**
-       * @description MCP tool whose outbound call requires the credential.
+       * @description MCP tool whose outbound call requires the credential (MCP tool parameter).
        * @example visti_send
        */
-      tool_name: string;
+      tool_name?: string | null;
+      /**
+       * @description HTTPS URL prefix the value may be sent to (HTTP API).
+       * @example https://api.typesafe.ai
+       */
+      url?: string | null;
     };
     /** @description Request to create an ingress channel owned by an Agent. */
     CreateAgentEndpointRequest: {
@@ -14806,6 +14795,7 @@ export interface components {
          * @example agent_01933b5a000070008000000000000001
          */
         agent_id: string;
+        binding?: components["schemas"]["SecretBinding"] | null;
         /**
          * @description Whether an encrypted value has been provisioned.
          * @example true
@@ -14822,62 +14812,52 @@ export interface components {
          */
         description?: string | null;
         /**
+         * @description Env var the agent's shell uses as a placeholder (`http`).
+         * @example JEV_API_KEY
+         */
+        env_name?: string | null;
+        /**
          * Format: uuid
          * @description Stable credential binding identifier.
          * @example 01933b5a-0000-7000-8000-000000000001
          */
         id: string;
+        /** @description How the credential is injected. */
+        kind: components["schemas"]["AgentCredentialKind"];
         /**
          * @description Human-readable credential label.
          * @example Visti channel key
          */
         label: string;
         /**
-         * @description Name of the attached MCP server.
+         * @description Name of the attached MCP server (`mcp_parameter`).
          * @example visti
          */
-        mcp_server_name: string;
+        mcp_server_name?: string | null;
         /**
-         * @description Exact MCP endpoint authorized to receive the credential.
+         * @description Exact MCP endpoint authorized to receive the credential (`mcp_parameter`).
          * @example https://visti.sh/mcp
          */
-        mcp_server_url: string;
+        mcp_server_url?: string | null;
         /**
-         * @description Top-level tool argument injected by the server.
+         * @description Top-level tool argument injected by the server (`mcp_parameter`).
          * @example channel_key
          */
-        parameter_name: string;
+        parameter_name?: string | null;
         /**
          * @description Relative UI route where the user can securely provision the value.
          * @example /agents/agent_01933b5a000070008000000000000001?tab=credentials
          */
         setup_url: string;
         /**
-         * @description MCP tool whose outbound call receives the credential.
+         * @description MCP tool whose outbound call receives the credential (`mcp_parameter`).
          * @example visti_send
          */
-        tool_name: string;
+        tool_name?: string | null;
         /**
          * @description RFC 3339 last-update time.
          * @example 2026-08-08T16:05:00Z
          */
-        updated_at: string;
-      }[];
-    };
-    /**
-     * @description Response wrapper for list endpoints.
-     *     All list endpoints return responses wrapped in a `data` field.
-     */
-    ListResponse_AgentSecretInfo: {
-      /** @description Array of items returned by the list operation. */
-      data: {
-        /** @description Where the value may be sent, and how. */
-        binding: components["schemas"]["SecretBinding"];
-        /** @description When the secret was created */
-        created_at: string;
-        /** @description Env var name the agent's shell sees. */
-        name: string;
-        /** @description When the secret was last updated */
         updated_at: string;
       }[];
     };
@@ -23607,13 +23587,6 @@ export interface components {
        */
       value: string;
     };
-    /** @description Request to store an agent's bound secret. */
-    SetAgentSecretRequest: {
-      /** @description Where the value may be sent, and how. */
-      binding: components["schemas"]["SecretBinding"];
-      /** @description Write-only value; encrypted and never returned. */
-      value: string;
-    };
     /** @description Select or clear the organization decision default. */
     SetDefaultDecisionModel: {
       /** @description Prefixed saved model ID; omit or pass null to clear the default. */
@@ -31365,117 +31338,6 @@ export interface operations {
         };
       };
       /** @description Script not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  list_agent_secrets: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Agent ID */
-        agent_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Bound secrets (no values) */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ListResponse_AgentSecretInfo"];
-        };
-      };
-      /** @description Agent not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  set_agent_secret: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Agent ID */
-        agent_id: string;
-        /** @description Env var name, e.g. JEV_API_KEY */
-        name: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["SetAgentSecretRequest"];
-      };
-    };
-    responses: {
-      /** @description Bound secret stored */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AgentSecretInfo"];
-        };
-      };
-      /** @description Invalid name, binding or value */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Agent not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  delete_agent_secret: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Agent ID */
-        agent_id: string;
-        /** @description Secret name */
-        name: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Bound secret deleted */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Agent or secret not found */
       404: {
         headers: {
           [name: string]: unknown;
