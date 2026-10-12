@@ -528,8 +528,15 @@ fn validate_containment(containment: &SandboxContainmentSpec) -> Result<(), Stri
 
 /// Replace every legacy compute capability with the one selected by the pinned
 /// profile. Non-compute capabilities keep their original layering and order.
+///
+/// `inherited` holds the broader layers (harness and agent) when
+/// `capabilities` is only the session layer. A Bashkit profile keeps the
+/// shell's `enable_http` opt-in from either list: the pinned profile picks
+/// where commands run, not whether the agent may use curl, and the session
+/// layer overrides the agent layer by capability id.
 pub fn apply_sandbox_to_capabilities(
     capabilities: &[CapabilityRef],
+    inherited: &[CapabilityRef],
     environment: Option<&ResolvedSandboxSpec>,
 ) -> Vec<CapabilityRef> {
     let Some(environment) = environment else {
@@ -545,8 +552,25 @@ pub fn apply_sandbox_to_capabilities(
         })
         .cloned()
         .collect::<Vec<_>>();
-    result.push(capability_for_sandbox(environment));
+    let mut selected = capability_for_sandbox(environment);
+    if environment.target.kind == SandboxTargetKind::Vfs
+        && bashkit_http_opt_in(capabilities).or_else(|| bashkit_http_opt_in(inherited))
+            == Some(true)
+    {
+        selected = CapabilityRef::with_config("bashkit_shell", json!({"enable_http": true}));
+    }
+    result.push(selected);
     result
+}
+
+/// The `enable_http` value of the last Bashkit shell entry, if any sets it.
+fn bashkit_http_opt_in(capabilities: &[CapabilityRef]) -> Option<bool> {
+    capabilities
+        .iter()
+        .rev()
+        .find(|capability| matches!(capability.id(), "bashkit_shell" | "virtual_bash"))
+        .and_then(|capability| capability.config_value().get("enable_http"))
+        .and_then(serde_json::Value::as_bool)
 }
 
 pub fn capability_for_sandbox(profile: &ResolvedSandboxSpec) -> CapabilityRef {
@@ -900,7 +924,7 @@ mod tests {
             CapabilityRef::new("current_time"),
             CapabilityRef::new("daytona"),
         ];
-        let mapped = apply_sandbox_to_capabilities(&capabilities, Some(&selected.spec));
+        let mapped = apply_sandbox_to_capabilities(&capabilities, &[], Some(&selected.spec));
         assert_eq!(
             mapped.iter().map(CapabilityRef::id).collect::<Vec<_>>(),
             vec!["current_time", "bashkit_shell"]
@@ -975,11 +999,56 @@ mod tests {
             CapabilityRef::new("current_time"),
         ];
 
-        let mapped = apply_sandbox_to_capabilities(&capabilities, Some(&resolved));
+        let mapped = apply_sandbox_to_capabilities(&capabilities, &[], Some(&resolved));
 
         assert_eq!(
             mapped.iter().map(CapabilityRef::id).collect::<Vec<_>>(),
             vec!["current_time", "session_sandbox"]
+        );
+    }
+
+    #[test]
+    fn bashkit_profile_keeps_the_agents_http_opt_in() {
+        let resolved = resolve_spec(&profile(SandboxTargetSpec::vfs("bashkit"))).unwrap();
+        let shell = |enable_http: bool| {
+            CapabilityRef::with_config("bashkit_shell", json!({ "enable_http": enable_http }))
+        };
+        let http_of = |mapped: Vec<CapabilityRef>| {
+            mapped
+                .iter()
+                .find(|capability| capability.id() == "bashkit_shell")
+                .map(|capability| capability.config_value()["enable_http"].clone())
+        };
+
+        // The agent layer opted in: the pinned Bashkit profile keeps it.
+        let agent = vec![CapabilityRef::new("current_time"), shell(true)];
+        assert_eq!(
+            http_of(apply_sandbox_to_capabilities(&[], &agent, Some(&resolved))),
+            Some(json!(true))
+        );
+        // A session layer that says no wins over the agent.
+        assert_eq!(
+            http_of(apply_sandbox_to_capabilities(
+                &[shell(false)],
+                &agent,
+                Some(&resolved)
+            )),
+            Some(json!(false))
+        );
+        // Nobody opted in: HTTP stays off.
+        assert_eq!(
+            http_of(apply_sandbox_to_capabilities(
+                &[],
+                &[CapabilityRef::new("bashkit_shell")],
+                Some(&resolved)
+            )),
+            Some(json!(false))
+        );
+        // A managed profile never inherits the Bashkit opt-in.
+        let managed = resolve_spec(&profile(SandboxTargetSpec::managed("daytona"))).unwrap();
+        assert_eq!(
+            http_of(apply_sandbox_to_capabilities(&[], &agent, Some(&managed))),
+            None
         );
     }
 
