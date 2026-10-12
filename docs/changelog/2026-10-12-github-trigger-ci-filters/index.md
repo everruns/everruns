@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui]
 links:
   docs: [/features/agent-triggers/]
-  prs: []
+  prs: [everruns/everruns#4607]
 ---
 
 When a GitHub trigger listens to CI events, its form now has **Branches** and
@@ -21,4 +21,4 @@ reacts to every CI result keeps one ongoing conversation.
 When you describe a CI watcher to the agent builder and name a branch or
 workflow, the trigger it sets up arrives with those fields filled in.
 
-See [Agent triggers](/features/agent-triggers/).
+See [Agent triggers](/features/agent-triggers/) and [#4607](https://github.com/everruns/everruns/pull/4607).
