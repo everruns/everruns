@@ -242,11 +242,10 @@ impl Auth {
     /// The A2A Agent Card's `securitySchemes` and its requirements, one
     /// requirement per scheme since any one method lets a caller in.
     ///
-    /// Scheme names and shapes match the everruns server's card
-    /// (`crates/server/src/channels/a2a/agent_card.rs`), so a caller sees the
-    /// same scheme for the same method on either host: `apiKey` (HTTP bearer)
-    /// for static keys, `oidc` / `googleOidc` (OpenID Connect discovery) for
-    /// JWT issuers, and `oauth2Bearer` (HTTP bearer) for introspection, which
+    /// Scheme names and shapes match the everruns server's A2A card, so a
+    /// caller sees the same scheme for the same method on either host:
+    /// `apiKey` (HTTP bearer) for static keys, `oidc` / `googleOidc` (OpenID
+    /// Connect discovery) for JWT issuers, and `oauth2Bearer` (HTTP bearer) for introspection, which
     /// has no token URL to publish as an OAuth flow. A second issuer gets a
     /// numbered name (`oidc2`).
     #[cfg(feature = "a2a")]
