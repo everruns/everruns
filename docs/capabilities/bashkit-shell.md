@@ -101,6 +101,35 @@ deployment-wide system allowlist are enforced. Policy denials surface as curl's
 native `access denied` failure (exit code 7). Without the flag, the interpreter
 has no network path at all.
 
+### API keys the agent never sees
+
+A **bound secret** is an API key stored with the URL it may be sent to and how
+(`Authorization: Bearer`, or a named header). With outbound HTTP on, the shell
+sees `$NAME` as a placeholder, and the platform swaps in the real key only in
+that header and only for requests to the bound URL:
+
+```bash
+curl -sS https://api.example.com/v1/items -H "Authorization: Bearer $EXAMPLE_API_KEY"
+```
+
+The model can never read the value: printing `$NAME` shows the placeholder, a
+request to any other host (including a redirect target) carries the
+placeholder, and the key is redacted if a response echoes it back. The bound
+URL still has to pass the agent's network access list.
+
+Set one for every session of an agent:
+
+```bash
+everruns agents secrets set --agent-id agent_01h9 --name EXAMPLE_API_KEY \
+  --value "$EXAMPLE_API_KEY" \
+  --binding '{"url":"https://api.example.com","auth":{"type":"bearer"}}'
+```
+
+or for one session, with `bindings` on
+`PUT /v1/sessions/{session_id}/storage/secrets`. Over MCP,
+`session_set_secret` takes `url`, `auth`, `header` and `scope` and collects
+the value on a secure page, so it never passes through the MCP client.
+
 ## Security
 
 - **Sandboxed**: no direct network access (outbound HTTP is opt-in and

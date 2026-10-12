@@ -808,6 +808,47 @@ export interface paths {
     patch: operations["update_agent_script"];
     trace?: never;
   };
+  "/v1/agents/{agent_id}/secrets": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * GET /v1/agents/{agent_id}/secrets - List an agent's bound secrets
+     * @description List an agent's bound secrets: names, bound URLs and auth forms, never values.
+     */
+    get: operations["list_agent_secrets"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/secrets/{name}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * PUT /v1/agents/{agent_id}/secrets/{name} - Store an agent's bound secret
+     * @description Encrypt and store a bound secret for every session of an agent. The shell sees $NAME as a placeholder; the value goes only on requests to the bound URL.
+     */
+    put: operations["set_agent_secret"];
+    post?: never;
+    /** DELETE /v1/agents/{agent_id}/secrets/{name} - Delete an agent's bound secret */
+    delete: operations["delete_agent_secret"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/stats": {
     parameters: {
       query?: never;
@@ -7699,6 +7740,17 @@ export interface components {
        */
       updated_at: string;
     };
+    /** @description An agent-scoped bound secret, without its value. */
+    AgentSecretInfo: {
+      /** @description Where the value may be sent, and how. */
+      binding: components["schemas"]["SecretBinding"];
+      /** @description When the secret was created */
+      created_at: string;
+      /** @description Env var name the agent's shell sees. */
+      name: string;
+      /** @description When the secret was last updated */
+      updated_at: string;
+    };
     /**
      * @description A session as an execution caller sees it: no instructions, tools, owners
      *     or costs, which are management's.
@@ -8341,6 +8393,15 @@ export interface components {
     };
     /** @description Batch secret set request */
     BatchSetSecretsRequest: {
+      /**
+       * @description Optional bindings keyed by secret name. A bound secret is write-only:
+       *     the agent's shell sees `$NAME` as a placeholder, and the platform puts
+       *     the value on requests to the bound URL only. A name set without a
+       *     binding becomes an ordinary secret again.
+       */
+      bindings?: {
+        [key: string]: components["schemas"]["SecretBinding"];
+      };
       /**
        * @description Map of secret names to values. Names are case-sensitive; values are stored encrypted
        *     and never returned by list/read endpoints. Existing keys are overwritten.
@@ -14807,6 +14868,23 @@ export interface components {
      * @description Response wrapper for list endpoints.
      *     All list endpoints return responses wrapped in a `data` field.
      */
+    ListResponse_AgentSecretInfo: {
+      /** @description Array of items returned by the list operation. */
+      data: {
+        /** @description Where the value may be sent, and how. */
+        binding: components["schemas"]["SecretBinding"];
+        /** @description When the secret was created */
+        created_at: string;
+        /** @description Env var name the agent's shell sees. */
+        name: string;
+        /** @description When the secret was last updated */
+        updated_at: string;
+      }[];
+    };
+    /**
+     * @description Response wrapper for list endpoints.
+     *     All list endpoints return responses wrapped in a `data` field.
+     */
     ListResponse_AuditLogEntry: {
       /** @description Array of items returned by the list operation. */
       data: {
@@ -16199,6 +16277,7 @@ export interface components {
     ListResponse_SecretInfo: {
       /** @description Array of items returned by the list operation. */
       data: {
+        binding?: components["schemas"]["SecretBinding"] | null;
         /** @description When the secret was created */
         created_at: string;
         /** @description The secret name */
@@ -22657,8 +22736,33 @@ export interface components {
        */
       wake_agent_on_failure?: boolean;
     };
+    /**
+     * @description How a bound secret is put on an outbound request.
+     *
+     *     Header-only by design (see `knowledge/security/bound-secrets.md`): a value
+     *     is never placed in a URL or a body.
+     */
+    SecretAuth:
+      | {
+          /** @enum {string} */
+          type: "bearer";
+        }
+      | {
+          /** @description Header name. */
+          name: string;
+          /** @enum {string} */
+          type: "header";
+        };
+    /** @description Where a bound secret may be sent, and how. */
+    SecretBinding: {
+      /** @description How the value is attached. */
+      auth: components["schemas"]["SecretAuth"];
+      /** @description `https://host[:port][/path-prefix]` the value may be sent to. */
+      url: string;
+    };
     /** @description Secret entry info (name and timestamps only, no value) */
     SecretInfo: {
+      binding?: components["schemas"]["SecretBinding"] | null;
       /** @description When the secret was created */
       created_at: string;
       /** @description The secret name */
@@ -23501,6 +23605,13 @@ export interface components {
        * @description Write-only credential value. It is encrypted and never returned.
        * @example vsk_disposable_example
        */
+      value: string;
+    };
+    /** @description Request to store an agent's bound secret. */
+    SetAgentSecretRequest: {
+      /** @description Where the value may be sent, and how. */
+      binding: components["schemas"]["SecretBinding"];
+      /** @description Write-only value; encrypted and never returned. */
       value: string;
     };
     /** @description Select or clear the organization decision default. */
@@ -31254,6 +31365,117 @@ export interface operations {
         };
       };
       /** @description Script not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_agent_secrets: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Bound secrets (no values) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ListResponse_AgentSecretInfo"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  set_agent_secret: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID */
+        agent_id: string;
+        /** @description Env var name, e.g. JEV_API_KEY */
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetAgentSecretRequest"];
+      };
+    };
+    responses: {
+      /** @description Bound secret stored */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentSecretInfo"];
+        };
+      };
+      /** @description Invalid name, binding or value */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  delete_agent_secret: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID */
+        agent_id: string;
+        /** @description Secret name */
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Bound secret deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Agent or secret not found */
       404: {
         headers: {
           [name: string]: unknown;

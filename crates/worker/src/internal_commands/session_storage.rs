@@ -12,6 +12,7 @@ use super::{InternalCommandTransport, call, call_secret};
 use crate::core::session_services::{KeyInfo, SecretInfo, SessionStorageStore};
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
+use everruns_contracts::runtime::{BoundSecret, BoundSecretInfo};
 use everruns_contracts::typed_id::SessionId;
 use serde_json::json;
 
@@ -151,6 +152,28 @@ impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageS
                 updated_at: secret.updated_at,
             })
             .collect())
+    }
+
+    async fn list_bound_secrets(&self, session_id: SessionId) -> Result<Vec<BoundSecretInfo>> {
+        call(
+            &self.transport,
+            "List bound secrets",
+            "worker_list_bound_secrets",
+            json!({ "session_id": session_id.to_string() }),
+        )
+        .await
+    }
+
+    /// THREAT[TM-BASH-030]: the answer carries values; `call_secret` keeps
+    /// them out of failure messages.
+    async fn resolve_bound_secrets(&self, session_id: SessionId) -> Result<Vec<BoundSecret>> {
+        call_secret(
+            &self.transport,
+            "Resolve bound secrets",
+            "worker_resolve_bound_secrets",
+            json!({ "session_id": session_id.to_string() }),
+        )
+        .await
     }
 }
 

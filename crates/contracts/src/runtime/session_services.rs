@@ -22,6 +22,104 @@ pub struct SecretInfo {
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
+/// How a bound secret is put on an outbound request.
+///
+/// Header-only by design (see `knowledge/security/bound-secrets.md`): a value
+/// is never placed in a URL or a body.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum SecretAuth {
+    /// `Authorization: Bearer <value>`.
+    Bearer,
+    /// `<name>: <value>`, e.g. `X-Api-Key`.
+    Header {
+        /// Header name.
+        name: String,
+    },
+}
+
+/// Where a bound secret may be sent, and how.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SecretBinding {
+    /// `https://host[:port][/path-prefix]` the value may be sent to.
+    pub url: String,
+    /// How the value is attached.
+    pub auth: SecretAuth,
+}
+
+impl SecretBinding {
+    /// Check the binding is an `https` origin (optionally with a path
+    /// prefix) with no credentials, query, or fragment, and a sane header
+    /// name. Returns the normalized URL (no trailing slash).
+    pub fn validate(&self) -> std::result::Result<String, String> {
+        let url = self.url.trim();
+        let parsed = url::Url::parse(url).map_err(|e| format!("invalid binding url: {e}"))?;
+        if parsed.scheme() != "https" {
+            return Err("binding url must use https".to_string());
+        }
+        if parsed.host_str().is_none_or(str::is_empty) {
+            return Err("binding url must name a host".to_string());
+        }
+        if !parsed.username().is_empty() || parsed.password().is_some() {
+            return Err("binding url must not carry credentials".to_string());
+        }
+        if parsed.query().is_some() || parsed.fragment().is_some() {
+            return Err("binding url must not have a query or fragment".to_string());
+        }
+        if let SecretAuth::Header { name } = &self.auth {
+            let valid = !name.is_empty()
+                && name.len() <= 128
+                && name
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+            if !valid {
+                return Err("header name must be 1-128 letters, digits, '-' or '_'".to_string());
+            }
+        }
+        Ok(url.trim_end_matches('/').to_string())
+    }
+}
+
+/// Where a bound secret is stored.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum SecretScope {
+    /// This session only.
+    #[default]
+    Session,
+    /// Every session of the session's agent.
+    Agent,
+}
+
+/// A bound secret without its value: what the model may know.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BoundSecretInfo {
+    /// Env var name the shell sees.
+    pub name: String,
+    pub binding: SecretBinding,
+    pub scope: SecretScope,
+}
+
+/// A bound secret with its value, for the shell's credential injection only.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct BoundSecret {
+    #[serde(flatten)]
+    pub info: BoundSecretInfo,
+    pub value: String,
+}
+
+impl std::fmt::Debug for BoundSecret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BoundSecret")
+            .field("info", &self.info)
+            .field("value", &"<redacted>")
+            .finish()
+    }
+}
+
 /// Trait for session key/value and secret storage operations
 ///
 /// This trait abstracts storage operations for tools that need to persist
@@ -75,6 +173,22 @@ pub trait SessionStorageStore: Send + Sync {
 
     /// List all secret names in a session (without values)
     async fn list_secrets(&self, session_id: SessionId) -> Result<Vec<SecretInfo>>;
+
+    /// Bound secrets visible to the session (its own and its agent's), without
+    /// values. A session secret shadows an agent secret of the same name.
+    async fn list_bound_secrets(&self, session_id: SessionId) -> Result<Vec<BoundSecretInfo>> {
+        let _ = session_id;
+        Ok(Vec::new())
+    }
+
+    /// Bound secrets with values, for credential injection at the HTTP layer.
+    ///
+    /// THREAT[TM-BASH-030]: callers must never hand these values to the model;
+    /// `get_secret` refuses bound names for the same reason.
+    async fn resolve_bound_secrets(&self, session_id: SessionId) -> Result<Vec<BoundSecret>> {
+        let _ = session_id;
+        Ok(Vec::new())
+    }
 }
 
 // ============================================================================

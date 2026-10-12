@@ -129,16 +129,18 @@ impl Database {
     ) -> Result<SessionSecretRow> {
         let row = sqlx::query_as::<_, SessionSecretRow>(
             r#"
-            INSERT INTO session_secrets (session_id, name, value_encrypted)
-            VALUES ($1, $2, $3)
+            INSERT INTO session_secrets (session_id, name, value_encrypted, binding)
+            VALUES ($1, $2, $3, $4)
             ON CONFLICT (session_id, name) DO UPDATE
-            SET value_encrypted = EXCLUDED.value_encrypted, updated_at = NOW()
-            RETURNING id, session_id, name, value_encrypted, created_at, updated_at
+            SET value_encrypted = EXCLUDED.value_encrypted, binding = EXCLUDED.binding,
+                updated_at = NOW()
+            RETURNING id, session_id, name, value_encrypted, binding, created_at, updated_at
             "#,
         )
         .bind(input.session_id)
         .bind(&input.name)
         .bind(&input.value_encrypted)
+        .bind(input.binding.map(sqlx::types::Json))
         .fetch_one(&self.pool)
         .await?;
 
@@ -153,7 +155,7 @@ impl Database {
     ) -> Result<Option<SessionSecretRow>> {
         let row = sqlx::query_as::<_, SessionSecretRow>(
             r#"
-            SELECT id, session_id, name, value_encrypted, created_at, updated_at
+            SELECT id, session_id, name, value_encrypted, binding, created_at, updated_at
             FROM session_secrets
             WHERE session_id = $1 AND name = $2
             "#,
@@ -268,6 +270,100 @@ impl Database {
         .await?;
 
         Ok(rows)
+    }
+
+    /// Bound secrets a session can use: its own plus its agent's, a session
+    /// secret shadowing an agent secret of the same name. Still encrypted.
+    pub async fn list_bound_secrets(&self, session_id: Uuid) -> Result<Vec<BoundSecretRow>> {
+        let rows = sqlx::query_as::<_, BoundSecretRow>(
+            r#"
+            SELECT name, binding, value_encrypted, 'session' AS scope
+            FROM session_secrets
+            WHERE session_id = $1 AND binding IS NOT NULL
+            UNION ALL
+            SELECT a.name, a.binding, a.value_encrypted, 'agent' AS scope
+            FROM agent_secrets a
+            JOIN sessions s ON s.agent_id = a.agent_id AND s.org_id = a.org_id
+            WHERE s.id = $1
+              AND NOT EXISTS (
+                  SELECT 1 FROM session_secrets ss
+                  WHERE ss.session_id = $1 AND ss.name = a.name
+              )
+            ORDER BY name
+            "#,
+        )
+        .bind(session_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Create or replace an agent-scoped bound secret.
+    pub async fn upsert_agent_secret(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+        name: &str,
+        binding: &everruns_contracts::runtime::SecretBinding,
+        value_encrypted: &[u8],
+    ) -> Result<AgentSecretInfoRow> {
+        let row = sqlx::query_as::<_, AgentSecretInfoRow>(
+            r#"
+            INSERT INTO agent_secrets (org_id, agent_id, name, binding, value_encrypted)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (agent_id, name) DO UPDATE
+            SET binding = EXCLUDED.binding, value_encrypted = EXCLUDED.value_encrypted,
+                updated_at = NOW()
+            RETURNING name, binding, created_at, updated_at
+            "#,
+        )
+        .bind(org_id)
+        .bind(agent_id)
+        .bind(name)
+        .bind(sqlx::types::Json(binding))
+        .bind(value_encrypted)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// List an agent's bound secrets, without values.
+    pub async fn list_agent_secrets(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+    ) -> Result<Vec<AgentSecretInfoRow>> {
+        let rows = sqlx::query_as::<_, AgentSecretInfoRow>(
+            r#"
+            SELECT name, binding, created_at, updated_at
+            FROM agent_secrets
+            WHERE org_id = $1 AND agent_id = $2
+            ORDER BY name
+            "#,
+        )
+        .bind(org_id)
+        .bind(agent_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Delete an agent's bound secret.
+    pub async fn delete_agent_secret(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+        name: &str,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "DELETE FROM agent_secrets WHERE org_id = $1 AND agent_id = $2 AND name = $3",
+        )
+        .bind(org_id)
+        .bind(agent_id)
+        .bind(name)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
     }
 
     /// Delete a session secret by name

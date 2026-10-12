@@ -1,5 +1,5 @@
 use super::queries as q;
-use super::types::{BatchSetSecretsResponse, KeyValueInfo, SecretInfo};
+use super::types::{BatchSetSecretsResponse, KeyValueInfo, SecretBinding, SecretInfo};
 use crate::domains::common::*;
 use everruns_capabilities::capabilities::{
     is_internal_session_kv_key, is_internal_session_secret_name,
@@ -132,6 +132,7 @@ impl Command for ListSessionSecrets {
             .filter(|row| !is_internal_session_secret_name(&row.name))
             .map(|row| SecretInfo {
                 name: row.name,
+                binding: row.binding.map(|b| b.0),
                 created_at: row.created_at.to_rfc3339(),
                 updated_at: row.updated_at.to_rfc3339(),
             })
@@ -147,6 +148,12 @@ pub struct BatchSetSessionSecrets {
     pub session_id: String,
     /// Secret values keyed by name, e.g. `{"SERVICE_TOKEN": "..."}`. At most 100 per call.
     pub secrets: std::collections::HashMap<String, String>,
+    /// Optional bindings keyed by secret name, e.g.
+    /// `{"JEV_API_KEY": {"url": "https://api.typesafe.ai", "auth": {"type": "bearer"}}}`.
+    /// A bound secret is write-only: the shell sees `$NAME` as a placeholder
+    /// and the platform puts the value on requests to the bound URL only.
+    #[serde(default)]
+    pub bindings: std::collections::HashMap<String, SecretBinding>,
 }
 
 #[command(
@@ -199,6 +206,8 @@ impl Command for BatchSetSessionSecrets {
             }
         }
 
+        let bindings = validate_bindings(&self.secrets, self.bindings)?;
+
         for (name, value) in &self.secrets {
             let encrypted = encryption
                 .encrypt_string(value)
@@ -208,6 +217,7 @@ impl Command for BatchSetSessionSecrets {
                     session_id,
                     name: name.clone(),
                     value_encrypted: encrypted,
+                    binding: bindings.get(name).cloned(),
                 })
                 .await?;
         }
@@ -254,5 +264,53 @@ impl Command for DeleteSessionSecret {
     }
 }
 
+/// A bound secret's name doubles as the env var the shell sees.
+pub(crate) fn validate_bound_name(name: &str) -> Result<(), CommandError> {
+    let mut bytes = name.bytes();
+    let valid = name.len() <= 128
+        && bytes
+            .next()
+            .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_')
+        && bytes.all(|b| b.is_ascii_alphanumeric() || b == b'_');
+    if !valid {
+        return Err(CommandError::bad_request(format!(
+            "Bound secret name must be an env var name (letters, digits, '_'): '{name}'"
+        )));
+    }
+    Ok(())
+}
+
+/// Validate one binding and return it with its normalized URL.
+pub(crate) fn validate_binding(
+    name: &str,
+    binding: SecretBinding,
+) -> Result<SecretBinding, CommandError> {
+    validate_bound_name(name)?;
+    let url = binding
+        .validate()
+        .map_err(|e| CommandError::bad_request(format!("Secret '{name}': {e}")))?;
+    Ok(SecretBinding { url, ..binding })
+}
+
+fn validate_bindings(
+    secrets: &std::collections::HashMap<String, String>,
+    bindings: std::collections::HashMap<String, SecretBinding>,
+) -> Result<std::collections::HashMap<String, SecretBinding>, CommandError> {
+    bindings
+        .into_iter()
+        .map(|(name, binding)| {
+            if !secrets.contains_key(&name) {
+                return Err(CommandError::bad_request(format!(
+                    "Binding for '{name}' has no value in secrets"
+                )));
+            }
+            let binding = validate_binding(&name, binding)?;
+            Ok((name, binding))
+        })
+        .collect()
+}
+
+mod agent_secrets;
+pub use agent_secrets::*;
 mod worker;
 pub use worker::*;

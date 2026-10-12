@@ -32,10 +32,11 @@ use std::sync::Arc;
 use crate::api::mcp_endpoint::elicitation::{
     ElicitationIntent, ElicitationToken, TokenError, verify_token,
 };
+use crate::api::mcp_endpoint::elicitation::{SecretAuth, SecretBinding, SecretScope};
 use crate::auth::middleware::AuthUser;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
-use crate::domains::session_storage::BatchSetSessionSecrets;
+use crate::domains::session_storage::{BatchSetSessionSecrets, SetAgentSecret};
 use crate::kernel_imports::Caller;
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
@@ -108,9 +109,23 @@ async fn secret_form(
     Query(query): Query<TokenQuery>,
 ) -> Response {
     match resolve(&state, &auth_user, &query.token) {
-        Ok((token, ElicitationIntent::SessionSecret { session_id, name })) => page(
+        Ok((
+            token,
+            ElicitationIntent::SessionSecret {
+                session_id,
+                name,
+                binding,
+                scope,
+            },
+        )) => page(
             StatusCode::OK,
-            &secret_form_html(&query.token, &session_id, &name, &token.org_id),
+            &secret_form_html(
+                &query.token,
+                &session_id,
+                &name,
+                &token.org_id,
+                binding.as_ref().map(|binding| (binding, scope)),
+            ),
         ),
         Ok(_) => page(
             StatusCode::BAD_REQUEST,
@@ -133,7 +148,13 @@ async fn submit_secret(
         Ok(resolved) => resolved,
         Err(error) => return page(status_for(error), &error_html(error.message())),
     };
-    let ElicitationIntent::SessionSecret { session_id, name } = intent else {
+    let ElicitationIntent::SessionSecret {
+        session_id,
+        name,
+        binding,
+        scope,
+    } = intent
+    else {
         return page(
             StatusCode::BAD_REQUEST,
             &error_html("This link is not valid."),
@@ -151,12 +172,36 @@ async fn submit_secret(
         Err(message) => return page(StatusCode::FORBIDDEN, &error_html(&message)),
     };
 
-    let stored = BatchSetSessionSecrets {
-        session_id: session_id.clone(),
-        secrets: HashMap::from([(name.clone(), form.value)]),
-    }
-    .run(&state.ctx(&org))
-    .await;
+    // THREAT[TM-BASH-032]: name, binding and scope come from the signed
+    // token, never from the form, so a replayed or edited post cannot point
+    // the value at another host.
+    let ctx = state.ctx(&org);
+    let stored = match (binding, scope) {
+        (Some(binding), SecretScope::Agent) => {
+            match crate::domains::session_storage::agent_of_session(&ctx, &session_id).await {
+                Ok(agent_id) => SetAgentSecret {
+                    agent_id,
+                    name: name.clone(),
+                    value: form.value,
+                    binding,
+                }
+                .run(&ctx)
+                .await
+                .map(|_| ()),
+                Err(e) => Err(e),
+            }
+        }
+        (binding, _) => BatchSetSessionSecrets {
+            session_id: session_id.clone(),
+            bindings: binding
+                .map(|binding| HashMap::from([(name.clone(), binding)]))
+                .unwrap_or_default(),
+            secrets: HashMap::from([(name.clone(), form.value)]),
+        }
+        .run(&ctx)
+        .await
+        .map(|_| ()),
+    };
 
     match stored {
         Ok(_) => {
@@ -317,13 +362,43 @@ color:#fff;background:#111;border:0;border-radius:6px;cursor:pointer}\
 code{background:#f0f1f3;padding:.1rem .3rem;border-radius:4px}\
 .note{font-size:.875rem;color:#666}";
 
-fn secret_form_html(token: &str, session_id: &str, name: &str, org_id: &str) -> String {
+fn secret_form_html(
+    token: &str,
+    session_id: &str,
+    name: &str,
+    org_id: &str,
+    bound: Option<(&SecretBinding, SecretScope)>,
+) -> String {
+    let binding_html = match bound {
+        None => "<p class=\"note\">The value is encrypted and stored on the session. It is not shown to the model, \
+not returned by the API, and never passes through the MCP client that asked for it.</p>"
+            .to_string(),
+        Some((binding, scope)) => {
+            let header = match &binding.auth {
+                SecretAuth::Bearer => "Authorization: Bearer".to_string(),
+                SecretAuth::Header { name } => format!("{name}:"),
+            };
+            let place = match scope {
+                SecretScope::Session => "this session only",
+                SecretScope::Agent => "every session of this session's agent",
+            };
+            format!(
+                "<p>It will be sent <strong>only</strong> to <code>{url}</code>, as <code>{header}</code>, \
+for {place}.</p>\
+<p class=\"note\">The value is write-only. The agent uses it as <code>${name}</code> in requests to that \
+address, but can never read it; it is not returned by the API and never passes through the MCP \
+client that asked for it. If you do not recognize the address, close this page.</p>",
+                url = escape(&binding.url),
+                header = escape(&header),
+                name = escape(name),
+            )
+        }
+    };
     format!(
         "<h1>Enter a secret for Everruns</h1>\
 <p>An agent asked for the value of <code>{name}</code> to use in session <code>{session}</code> \
 (organization <code>{org}</code>).</p>\
-<p class=\"note\">The value is encrypted and stored on the session. It is not shown to the model, \
-not returned by the API, and never passes through the MCP client that asked for it.</p>\
+{binding_html}\
 <form method=\"post\" action=\"\" autocomplete=\"off\">\
 <input type=\"hidden\" name=\"token\" value=\"{token}\">\
 <label for=\"value\">{name}</label>\
@@ -399,14 +474,20 @@ mod tests {
     fn a_hostile_secret_name_cannot_break_out_of_the_form() {
         // The name reaches the page from a tool call, so it is attacker-shaped
         // input: it must render as text, never as markup.
-        let html = secret_form_html("tok", "sess_1", "\"><script>alert(1)</script>", "org_1");
+        let html = secret_form_html(
+            "tok",
+            "sess_1",
+            "\"><script>alert(1)</script>",
+            "org_1",
+            None,
+        );
         assert!(!html.contains("<script>"));
         assert!(html.contains("&lt;script&gt;"));
     }
 
     #[test]
     fn the_form_posts_the_value_to_everruns_itself() {
-        let html = secret_form_html("tok.sig", "sess_1", "API_KEY", "org_1");
+        let html = secret_form_html("tok.sig", "sess_1", "API_KEY", "org_1", None);
         // Posts back to the page's own URL. An absolute path would be wrong
         // wherever the API is mounted under a prefix (`/api` in a deployment):
         // the value would be posted at a path that does not serve this form.

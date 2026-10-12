@@ -113,7 +113,9 @@ fn session_set_secret_tool(
          accepts the value: pass only the secret's name, and Everruns responds with a URL for \
          the user to open, where a form served by Everruns collects the value directly. The \
          value therefore never passes through this MCP client or the model. Call it again \
-         after the user reports finishing to confirm the secret is stored.",
+         after the user reports finishing to confirm the secret is stored. Pass `url` to make \
+         it a bound secret: an API key the agent's shell uses as $NAME in HTTP requests to that \
+         URL but can never read; with `scope: agent` it serves every session of the agent.",
         with_organization_id(
             object_schema(
                 vec![
@@ -125,6 +127,37 @@ fn session_set_secret_tool(
                             "description": "Secret name, e.g. OPENAI_API_KEY. Names are case-sensitive.",
                             "minLength": 1,
                             "maxLength": 255
+                        }),
+                    ),
+                    (
+                        "url",
+                        json!({
+                            "type": "string",
+                            "description": "Bind the secret to this https URL prefix, e.g. https://api.example.com. The value is then write-only and sent only to this URL.",
+                            "format": "uri"
+                        }),
+                    ),
+                    (
+                        "auth",
+                        json!({
+                            "type": "string",
+                            "enum": ["bearer", "header"],
+                            "description": "How a bound value is sent: `Authorization: Bearer <value>` (default) or a custom header."
+                        }),
+                    ),
+                    (
+                        "header",
+                        json!({
+                            "type": "string",
+                            "description": "Header name when auth is `header`, e.g. X-Api-Key."
+                        }),
+                    ),
+                    (
+                        "scope",
+                        json!({
+                            "type": "string",
+                            "enum": ["session", "agent"],
+                            "description": "`session` (default) or `agent`: a bound secret for every session of the session's agent."
                         }),
                     ),
                 ],

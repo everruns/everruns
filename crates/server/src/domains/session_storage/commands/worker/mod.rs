@@ -196,6 +196,8 @@ mod secrets;
 pub use secrets::*;
 
 #[cfg(test)]
+mod bound_secret_tests;
+#[cfg(test)]
 mod secret_tests;
 #[cfg(test)]
 mod tests;

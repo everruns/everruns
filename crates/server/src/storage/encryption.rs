@@ -478,6 +478,12 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "value_encrypted",
         id_column: "id",
     },
+    // Agent-scoped bound secrets are encrypted at rest.
+    EncryptedColumn {
+        table: "agent_secrets",
+        column: "value_encrypted",
+        id_column: "id",
+    },
     // User connection access tokens are encrypted at rest
     EncryptedColumn {
         table: "pending_user_connections",

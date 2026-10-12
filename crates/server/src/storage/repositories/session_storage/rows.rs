@@ -42,6 +42,9 @@ pub struct SessionSecretRow {
     pub session_id: SessionId,
     pub name: String,
     pub value_encrypted: Vec<u8>,
+    /// Set for a bound (write-only) secret.
+    #[sqlx(default)]
+    pub binding: Option<sqlx::types::Json<everruns_contracts::runtime::SecretBinding>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -52,12 +55,34 @@ pub struct UpsertSessionSecret {
     pub session_id: SessionId,
     pub name: String,
     pub value_encrypted: Vec<u8>,
+    /// `None` stores an ordinary secret (and clears a previous binding).
+    pub binding: Option<everruns_contracts::runtime::SecretBinding>,
+}
+
+/// A bound secret visible to a session, from either scope, still encrypted.
+#[derive(Debug, Clone, FromRow)]
+pub struct BoundSecretRow {
+    pub name: String,
+    pub binding: sqlx::types::Json<everruns_contracts::runtime::SecretBinding>,
+    pub value_encrypted: Vec<u8>,
+    /// `session` or `agent`.
+    pub scope: String,
+}
+
+/// Agent-scoped bound secret, without its value.
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct AgentSecretInfoRow {
+    pub name: String,
+    pub binding: sqlx::types::Json<everruns_contracts::runtime::SecretBinding>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 /// Lightweight secret info for listing (without encrypted value)
 #[derive(Debug, Clone, FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct SessionSecretInfoRow {
     pub name: String,
+    pub binding: Option<sqlx::types::Json<everruns_contracts::runtime::SecretBinding>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

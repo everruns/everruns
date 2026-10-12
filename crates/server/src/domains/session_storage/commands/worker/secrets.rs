@@ -18,8 +18,35 @@ use crate::domains::common::*;
 use crate::domains::sessions::{SESSION_MANAGE, SESSION_VIEW};
 use crate::storage::UpsertSessionSecret;
 use chrono::{DateTime, Utc};
+use everruns_contracts::runtime::{BoundSecret, BoundSecretInfo, SecretScope};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+
+fn bound_error(name: &str) -> CommandError {
+    CommandError::bad_request(format!(
+        "'{name}' is a bound secret: its value is write-only. Use ${name} in shell HTTP requests to the bound URL."
+    ))
+}
+
+/// The runtime may not overwrite a bound secret: that would let the model
+/// swap a key for one it knows without the person seeing it.
+async fn refuse_bound(
+    ctx: &Ctx,
+    session_id: crate::kernel_imports::contracts::typed_id::SessionId,
+    name: &str,
+) -> Result<(), CommandError> {
+    let bound = ctx
+        .db
+        .list_bound_secrets(session_id.uuid())
+        .await
+        .map_err(CommandError::internal)?
+        .into_iter()
+        .any(|row| row.name == name);
+    if bound {
+        return Err(bound_error(name));
+    }
+    Ok(())
+}
 
 fn encryption(ctx: &Ctx) -> Result<&crate::storage::EncryptionService, CommandError> {
     ctx.encryption.as_deref().ok_or_else(|| {
@@ -62,6 +89,7 @@ impl Command for WorkerSetSessionSecret {
 
     async fn execute(self, ctx: &Ctx) -> Result<(), CommandError> {
         let session_id = super::owned_session(ctx, &self.session_id).await?;
+        refuse_bound(ctx, session_id, &self.name).await?;
         let value_encrypted = encryption(ctx)?
             .encrypt_string(&self.value)
             .map_err(CommandError::internal)?;
@@ -70,6 +98,7 @@ impl Command for WorkerSetSessionSecret {
                 session_id,
                 name: self.name,
                 value_encrypted,
+                binding: None,
             })
             .await
             .map_err(CommandError::internal)?;
@@ -107,6 +136,12 @@ impl Command for WorkerGetSessionSecret {
         else {
             return Ok(None);
         };
+        // THREAT[TM-BASH-030]: a bound value never goes back to the runtime
+        // as plaintext; only `worker_resolve_bound_secrets` reads it, for the
+        // shell's HTTP layer.
+        if row.binding.is_some() {
+            return Err(bound_error(&self.name));
+        }
         encryption
             .decrypt_to_string(&row.value_encrypted)
             .map(Some)
@@ -181,5 +216,93 @@ impl Command for WorkerListSessionSecrets {
                 updated_at: row.updated_at,
             })
             .collect())
+    }
+}
+
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
+pub struct WorkerListBoundSecrets {
+    /// Session's prefixed public identifier.
+    pub session_id: String,
+}
+
+#[command(
+    name = "worker_list_bound_secrets",
+    category = "session_storage",
+    description = "Internal: list the bound secrets a session can use (its own and its agent's), without values.",
+    method = "GET",
+    path = "/internal/sessions/{session_id}/storage/bound-secrets",
+    policy = SESSION_VIEW
+)]
+impl Command for WorkerListBoundSecrets {
+    type Output = Vec<BoundSecretInfo>;
+
+    async fn execute(self, ctx: &Ctx) -> Result<Vec<BoundSecretInfo>, CommandError> {
+        let session_id = super::owned_session(ctx, &self.session_id).await?;
+        Ok(ctx
+            .db
+            .list_bound_secrets(session_id.uuid())
+            .await
+            .map_err(CommandError::internal)?
+            .into_iter()
+            .map(|row| bound_info(&row))
+            .collect())
+    }
+}
+
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
+pub struct WorkerResolveBoundSecrets {
+    /// Session's prefixed public identifier.
+    pub session_id: String,
+}
+
+#[command(
+    name = "worker_resolve_bound_secrets",
+    category = "session_storage",
+    description = "Internal: decrypt a session's bound secrets for the shell's HTTP credential injection.",
+    method = "POST",
+    path = "/internal/sessions/{session_id}/storage/bound-secrets/resolve",
+    policy = SESSION_VIEW
+)]
+impl Command for WorkerResolveBoundSecrets {
+    type Output = Vec<BoundSecret>;
+
+    /// THREAT[TM-BASH-030]: the answer carries plaintext values. The worker
+    /// hands them to Bashkit's credential injection only, never to a tool
+    /// result; like `worker_get_session_secret`, neither params nor output are
+    /// logged.
+    async fn execute(self, ctx: &Ctx) -> Result<Vec<BoundSecret>, CommandError> {
+        let session_id = super::owned_session(ctx, &self.session_id).await?;
+        let rows = ctx
+            .db
+            .list_bound_secrets(session_id.uuid())
+            .await
+            .map_err(CommandError::internal)?;
+        if rows.is_empty() {
+            return Ok(Vec::new());
+        }
+        let encryption = encryption(ctx)?;
+        rows.into_iter()
+            .map(|row| {
+                let value = encryption
+                    .decrypt_to_string(&row.value_encrypted)
+                    .map_err(CommandError::internal)?;
+                Ok(BoundSecret {
+                    info: bound_info(&row),
+                    value,
+                })
+            })
+            .collect()
+    }
+}
+
+fn bound_info(row: &crate::storage::BoundSecretRow) -> BoundSecretInfo {
+    BoundSecretInfo {
+        name: row.name.clone(),
+        binding: row.binding.0.clone(),
+        scope: if row.scope == "agent" {
+            SecretScope::Agent
+        } else {
+            SecretScope::Session
+        },
     }
 }

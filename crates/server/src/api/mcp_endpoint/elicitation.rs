@@ -46,6 +46,12 @@ use uuid::Uuid;
 
 type HmacSha256 = Hmac<Sha256>;
 
+pub use everruns_contracts::runtime::{SecretAuth, SecretBinding, SecretScope};
+
+fn is_session_scope(scope: &SecretScope) -> bool {
+    *scope == SecretScope::Session
+}
+
 /// Per-request client-capabilities `_meta` key.
 const CLIENT_CAPABILITIES_META_KEY: &str = "io.modelcontextprotocol/clientCapabilities";
 
@@ -66,7 +72,19 @@ pub const ELICITATION_PATH: &str = "/mcp/elicitations";
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ElicitationIntent {
     /// Store an encrypted session secret, typed into a server-rendered form.
-    SessionSecret { session_id: String, name: String },
+    ///
+    /// With a `binding` the secret is bound (write-only, sent by the platform
+    /// to that URL only); with `scope: agent` it is stored on the session's
+    /// agent for all of its sessions. Both travel in the signed token, so the
+    /// page cannot be pointed at another host (TM-BASH-032).
+    SessionSecret {
+        session_id: String,
+        name: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        binding: Option<SecretBinding>,
+        #[serde(default, skip_serializing_if = "is_session_scope")]
+        scope: SecretScope,
+    },
     /// Authorize a third-party provider connection for this user.
     Connect { provider: String },
 }
@@ -84,11 +102,34 @@ impl ElicitationIntent {
     /// opening the URL. Names what will happen and where.
     pub fn message(&self) -> String {
         match self {
-            Self::SessionSecret { session_id, name } => format!(
+            Self::SessionSecret {
+                session_id,
+                name,
+                binding: None,
+                ..
+            } => format!(
                 "Everruns needs the value of '{name}' for session {session_id}. \
                  Open the secure form to enter it — the value is encrypted at rest \
                  and is never sent through this MCP client or the model."
             ),
+            Self::SessionSecret {
+                session_id,
+                name,
+                binding: Some(binding),
+                scope,
+            } => {
+                let place = match scope {
+                    SecretScope::Session => format!("session {session_id}"),
+                    SecretScope::Agent => format!("every session of session {session_id}'s agent"),
+                };
+                format!(
+                    "Everruns needs an API key '{name}' for {place}, sent only to {url}. \
+                     Open the secure form to enter it — the value is write-only: the agent \
+                     uses it as ${name} but can never read it, and it never passes through \
+                     this MCP client or the model.",
+                    url = binding.url
+                )
+            }
             Self::Connect { provider } => format!(
                 "Everruns needs your authorization to act on your behalf in '{provider}'. \
                  Open the connection page to sign in — the credentials stay with Everruns \
@@ -462,10 +503,43 @@ fn elicitation_intent(tool_name: &str, arguments: &Value) -> Result<ElicitationI
             .ok_or_else(|| format!("Missing '{key}' in arguments"))
     };
     match tool_name {
-        "session_set_secret" => Ok(ElicitationIntent::SessionSecret {
-            session_id: string_arg("session_id")?,
-            name: string_arg("name")?,
-        }),
+        "session_set_secret" => {
+            let name = string_arg("name")?;
+            let optional = |key: &str| string_arg(key).ok();
+            let binding = match optional("url") {
+                None => None,
+                Some(url) => {
+                    let auth = match optional("auth").as_deref() {
+                        None | Some("bearer") => SecretAuth::Bearer,
+                        Some("header") => SecretAuth::Header {
+                            name: string_arg("header")?,
+                        },
+                        Some(other) => {
+                            return Err(format!("'auth' must be bearer or header, got '{other}'"));
+                        }
+                    };
+                    let binding = SecretBinding { url, auth };
+                    let url = binding.validate()?;
+                    crate::domains::session_storage::validate_bound_name(&name)
+                        .map_err(|e| e.to_string())?;
+                    Some(SecretBinding { url, ..binding })
+                }
+            };
+            let scope = match optional("scope").as_deref() {
+                None | Some("session") => SecretScope::Session,
+                Some("agent") if binding.is_some() => SecretScope::Agent,
+                Some("agent") => return Err("Agent scope needs a 'url' to bind to".to_string()),
+                Some(other) => {
+                    return Err(format!("'scope' must be session or agent, got '{other}'"));
+                }
+            };
+            Ok(ElicitationIntent::SessionSecret {
+                session_id: string_arg("session_id")?,
+                name,
+                binding,
+                scope,
+            })
+        }
         "connect" => Ok(ElicitationIntent::Connect {
             provider: string_arg("provider")?,
         }),
@@ -481,14 +555,41 @@ async fn elicitation_satisfied(
     state: &AppState,
 ) -> Result<bool, String> {
     match intent {
-        ElicitationIntent::SessionSecret { session_id, name } => {
+        ElicitationIntent::SessionSecret {
+            session_id,
+            name,
+            binding,
+            scope: SecretScope::Session,
+        } => {
             let secrets = crate::domains::session_storage::ListSessionSecrets {
                 session_id: session_id.clone(),
             }
             .run(&mcp_ctx(org, state))
             .await
             .map_err(|e| e.to_string())?;
-            Ok(secrets.iter().any(|secret| &secret.name == name))
+            // A different binding is a different request: rebinding needs the
+            // value again.
+            Ok(secrets
+                .iter()
+                .any(|secret| &secret.name == name && &secret.binding == binding))
+        }
+        ElicitationIntent::SessionSecret {
+            session_id,
+            name,
+            binding,
+            scope: SecretScope::Agent,
+        } => {
+            let ctx = mcp_ctx(org, state);
+            let agent_id = crate::domains::session_storage::agent_of_session(&ctx, session_id)
+                .await
+                .map_err(|e| e.to_string())?;
+            let secrets = crate::domains::session_storage::ListAgentSecrets { agent_id }
+                .run(&ctx)
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(secrets
+                .iter()
+                .any(|secret| &secret.name == name && Some(&secret.binding) == binding.as_ref()))
         }
         ElicitationIntent::Connect { provider } => {
             // The connection belongs to the authenticated user, not the org:
@@ -506,7 +607,9 @@ async fn elicitation_satisfied(
 /// Structured result for an intent that is already satisfied.
 fn satisfied_payload(intent: &ElicitationIntent) -> Value {
     let structured = match intent {
-        ElicitationIntent::SessionSecret { session_id, name } => json!({
+        ElicitationIntent::SessionSecret {
+            session_id, name, ..
+        } => json!({
             "name": name,
             "session_id": session_id,
             "stored": true,
@@ -525,7 +628,9 @@ fn satisfied_payload(intent: &ElicitationIntent) -> Value {
 /// the model should tell the user nothing was stored, not retry.
 fn declined_payload(intent: &ElicitationIntent) -> Value {
     let structured = match intent {
-        ElicitationIntent::SessionSecret { session_id, name } => json!({
+        ElicitationIntent::SessionSecret {
+            session_id, name, ..
+        } => json!({
             "name": name,
             "session_id": session_id,
             "stored": false,
@@ -551,7 +656,79 @@ mod tests {
         ElicitationIntent::SessionSecret {
             session_id: "sess_1".to_string(),
             name: "OPENAI_API_KEY".to_string(),
+            binding: None,
+            scope: SecretScope::Session,
         }
+    }
+
+    #[test]
+    fn session_set_secret_reads_a_binding_and_refuses_unsafe_ones() {
+        let intent = elicitation_intent(
+            "session_set_secret",
+            &json!({
+                "session_id": "sess_1", "name": "JEV_API_KEY",
+                "url": "https://api.typesafe.ai/", "scope": "agent",
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            intent,
+            ElicitationIntent::SessionSecret {
+                session_id: "sess_1".to_string(),
+                name: "JEV_API_KEY".to_string(),
+                binding: Some(SecretBinding {
+                    url: "https://api.typesafe.ai".to_string(),
+                    auth: SecretAuth::Bearer,
+                }),
+                scope: SecretScope::Agent,
+            }
+        );
+        assert!(
+            intent
+                .message()
+                .contains("sent only to https://api.typesafe.ai")
+        );
+
+        let header = elicitation_intent(
+            "session_set_secret",
+            &json!({
+                "session_id": "s", "name": "K", "url": "https://h.example",
+                "auth": "header", "header": "X-Api-Key",
+            }),
+        )
+        .unwrap();
+        assert!(matches!(
+            header,
+            ElicitationIntent::SessionSecret {
+                binding: Some(SecretBinding {
+                    auth: SecretAuth::Header { .. },
+                    ..
+                }),
+                ..
+            }
+        ));
+
+        for bad in [
+            json!({"session_id": "s", "name": "K", "url": "http://h.example"}),
+            json!({"session_id": "s", "name": "K", "scope": "agent"}),
+            json!({"session_id": "s", "name": "not-env", "url": "https://h.example"}),
+            json!({"session_id": "s", "name": "K", "url": "https://h.example", "auth": "header"}),
+        ] {
+            assert!(
+                elicitation_intent("session_set_secret", &bad).is_err(),
+                "{bad}"
+            );
+        }
+    }
+
+    /// Tokens minted before bindings existed carry no binding and still mean
+    /// an ordinary session secret; a bound intent changes the signed payload.
+    #[test]
+    fn unbound_intents_serialize_as_before() {
+        assert_eq!(
+            serde_json::to_value(intent()).unwrap(),
+            json!({"kind": "session_secret", "session_id": "sess_1", "name": "OPENAI_API_KEY"})
+        );
     }
 
     #[test]
