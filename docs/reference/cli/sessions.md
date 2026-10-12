@@ -28,7 +28,7 @@ Running and archived sessions, their state and participants.
 | [`sessions resume`](#sessions-resume) | Resume all paused session budgets for a session. |
 | [`sessions unarchive`](#sessions-unarchive) | Restore an archived session to default lists. |
 | [`sessions unpin`](#sessions-unpin) | Unpin a session for the current user. |
-| [`sessions update`](#sessions-update) | Update session title, tags, or locale. |
+| [`sessions update`](#sessions-update) | Update session title, tags, locale, or model. |
 | [`sessions budget-check check`](#sessions-budget-check-check) | Check all budgets for a session. |
 | [`sessions budgets list`](#sessions-budgets-list) | List all budgets for a session. |
 | [`sessions databases create`](#sessions-databases-create) | Create a new SQL database inside a session. |
@@ -408,7 +408,7 @@ everruns sessions unpin session_01h9 --reason 'Incident resolved'
 
 ## sessions update
 
-Update session title, tags, or locale.
+Update session title, tags, locale, or model. A null `model_id` clears the session model so turns follow the agent's default again.
 
 ```bash
 everruns sessions update [OPTIONS] [SESSION]
@@ -419,6 +419,7 @@ everruns sessions update [OPTIONS] [SESSION]
 | `--session <SESSION_ID>` | Session's prefixed public identifier. |
 | `--goal <GOAL>` | Updated session objective. |
 | `--locale <LOCALE>` | Session locale (BCP 47, e.g. |
+| `--model-id <MODEL_ID>` | Model for this session's turns. |
 | `--tags <TAGS>` | Tags for organizing and filtering sessions. Comma-separated or a JSON array of strings. Repeatable. |
 | `--title <TITLE>` | Human-readable title for the session. |
 | `--virtual-user-id <VIRTUAL_USER_ID>` | Optional resident virtual user used for unattended/background execution. |
@@ -428,6 +429,9 @@ Example:
 ```bash
 # Retitle a session so it is findable later
 everruns sessions update session_01h9 --title 'Release triage' --reason 'Clarify the session topic'
+
+# Switch a running session to another model
+everruns sessions update session_01h9 --model-id model_01933b5a00007000800000000000001 --reason 'Provider limit on the current model'
 ```
 
 ## sessions budget-check check
