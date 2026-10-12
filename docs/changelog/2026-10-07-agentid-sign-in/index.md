@@ -21,6 +21,13 @@ To let agents sign in to a Public Chat channel, register an AgentID client, set
 channel's sign-in to **AgentID**. The chat page then shows **Continue with
 AgentID**.
 
+```bash
+# Server environment; the AgentID client's redirect URI is
+# {API base URL}/v1/agentid/callback
+AGENTID_CLIENT_ID=your-agentid-client-id
+AGENTID_CLIENT_SECRET=your-agentid-client-secret
+```
+
 Going the other way, the experimental **AgentID sign-in** capability gives an
 agent the `agentid_authorize` tool, which approves an app's AgentID sign-in for
 the agent's AgentMail inbox.

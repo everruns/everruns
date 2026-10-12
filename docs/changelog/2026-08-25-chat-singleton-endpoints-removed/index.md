@@ -16,4 +16,13 @@ The two endpoints that looked up a per-user Platform Chat session by tag are rem
 
 After upgrading, `POST /v1/sessions/chat` returns `405` and `POST /v1/sessions/chat/voice` returns `404`. Sessions already tagged `global-chat` stay listed and readable through the normal session routes, and the Platform Chat harness is unchanged.
 
+```bash
+# Before (removed)
+curl -X POST http://localhost:9300/api/v1/sessions/chat
+# After
+curl -X POST http://localhost:9300/api/v1/sessions \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id": "agent_..."}'
+```
+
 See [Platform Chat](/built-ins/harnesses/platform-chat/) and [#3278](https://github.com/everruns/everruns/pull/3278).

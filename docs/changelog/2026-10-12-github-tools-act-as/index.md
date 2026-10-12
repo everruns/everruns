@@ -11,7 +11,7 @@ links:
   prs: [everruns/everruns#4604]
 ---
 
-The GitHub capability's tools now act on GitHub as exactly one identity, set by
+The [GitHub capability](/capabilities/github/)'s tools now act on GitHub as exactly one identity, set by
 the new `acts_as` setting: `agent` (the default), `person`, or
 `person_or_agent`. Before, a run started by a person who had connected GitHub
 used that person's connection, so a review bot could post as the Everruns app

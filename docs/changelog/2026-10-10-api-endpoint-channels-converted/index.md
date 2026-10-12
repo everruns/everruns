@@ -20,5 +20,14 @@ Clients must move to the Agent API routes under `/v1/channels/{channel_id}`.
 Old request shapes get `400 api_endpoint_retired` pointing at the Agent API
 docs, and `/v1/apps/{app}/api/{chan}` routes return `410`.
 
+```bash
+# Before: an App-scoped api_endpoint route, now 410 Gone
+curl -X POST "$EVERRUNS/v1/apps/$APP_ID/api/$CHANNEL_ID/sessions" \
+  -H "Authorization: Bearer $EVERRUNS_AGENT_KEY"
+# After: the Agent API route, same key
+curl -X POST "$EVERRUNS/v1/channels/$CHANNEL_ID/sessions" \
+  -H "Authorization: Bearer $EVERRUNS_AGENT_KEY"
+```
+
 See [Call your agent from code](/how-to/call-your-agent-from-code/),
 [Agent API](/features/channels/#agent-api) and [#4527](https://github.com/everruns/everruns/pull/4527).

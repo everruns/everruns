@@ -19,6 +19,17 @@ pickers without extra setup.
 Its profile has tiered pricing, up to 128K output tokens, always-on adaptive
 thinking with medium effort by default, preserved thinking, tool search and the
 computer toolset. Select it in an agent's model picker or reference
-`claude-haiku-5-5` wherever a model ID is accepted.
+`claude-haiku-5-5` wherever a model ID is accepted, such as the compaction
+summarization model:
+
+```json
+{
+  "ref": "compaction",
+  "config": {
+    "strategy": "summarization",
+    "summarization": { "model": "claude-haiku-5-5" }
+  }
+}
+```
 
 See [Anthropic](/providers/anthropic/) and [#4359](https://github.com/everruns/everruns/pull/4359).

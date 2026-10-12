@@ -20,7 +20,14 @@ behind a header that marks it as workspace content.
 
 This keeps untrusted repository instructions below harness safety instructions
 and keeps the system prompt stable for caching. Resolution is bounded to 16 files,
-32 KiB each and 128 KiB in total.
+32 KiB each and 128 KiB in total. To resolve another file at every level, set
+`files` on the capability:
+
+```json
+{
+  "files": ["AGENTS.md", "CLAUDE.md"]
+}
+```
 
 See [Agent instructions](/capabilities/agent-instructions/) and
 [Use AGENTS.md](/how-to/use-agents-md/). [#3501](https://github.com/everruns/everruns/pull/3501)

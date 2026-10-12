@@ -20,6 +20,12 @@ to follow the task with `GetTask`, `SubscribeToTask` or a push notification.
 `ListTasks` is supported, and push notification configs receive the full task
 when it settles.
 
+```bash
+CARD="$EVERRUNS/v1/channels/$CHANNEL_ID/a2a/.well-known/agent-card.json"
+a2a card get -a "$CARD"
+a2a send -a "$CARD" --auth "Bearer $KEY" "Summarize the A2A spec in three bullets."
+```
+
 **In code:** the `a2a` feature of `everruns-serve` answers A2A 1.0 for every
 top-level agent at `POST /v1/e/{agent}/a2a`, the same paths an Everruns A2A
 endpoint uses.

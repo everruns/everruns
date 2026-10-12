@@ -24,6 +24,13 @@ Upgrade your configuration:
 - `true` becomes `adoption` to keep organization opt-in, and `false` becomes
   `off`.
 
+```bash
+# Before
+FEATURE_PUBLIC_CHAT=preview
+# After
+FEATURE_PUBLIC_CHAT=internal
+```
+
 Invalid values, including the old ones, disable the feature. The separate
 `DEPLOYMENT_GRADE=preview` is unchanged.
 

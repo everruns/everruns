@@ -23,5 +23,11 @@ Three additions for agents running in Slack:
   `slack_update_message`, `slack_lookup_user` and `slack_upload_file`, using the
   endpoint's own bot token instead of a separate Slack MCP server.
 
+```json
+{
+  "capabilities": [{ "ref": "soft_approval" }, { "ref": "slack" }]
+}
+```
+
 See [Slack approvals](/capabilities/slack/#approvals), [task progress](/capabilities/slack/#task-progress)
 and [Slack actions](/capabilities/slack/#slack-actions). [#3696](https://github.com/everruns/everruns/pull/3696), [#3697](https://github.com/everruns/everruns/pull/3697), [#3693](https://github.com/everruns/everruns/pull/3693)

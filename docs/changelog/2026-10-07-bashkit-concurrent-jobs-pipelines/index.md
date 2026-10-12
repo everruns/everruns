@@ -22,6 +22,12 @@ stream into each other through a pipe with backpressure. When a reader stops,
 the writer gets SIGPIPE and exits with 141, so
 `while :; do echo x; done | head -n 2` prints two lines as in bash.
 
+```bash
+sleep 1 & sleep 1 & wait      # about one second
+sleep 5 & jobs; kill %1
+while :; do echo x; done | head -n 2
+```
+
 Both are on by default; `BashBuilder::concurrent_jobs(false)` turns them off.
 
 See the [compatibility scorecard](https://github.com/everruns/bashkit/blob/main/crates/bashkit/docs/compatibility.md), [#2527](https://github.com/everruns/bashkit/pull/2527) and [#2541](https://github.com/everruns/bashkit/pull/2541).

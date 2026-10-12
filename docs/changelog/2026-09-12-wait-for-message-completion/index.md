@@ -19,6 +19,13 @@ turn result when the turn completes or fails, or `202` with partial messages whe
 `timeout_ms` (default 120 s, at most 600 s) expires. Without `wait` it still
 returns `201` immediately, so existing clients are unaffected.
 
+```bash
+curl -X POST "http://localhost:9300/api/v1/sessions/$SESSION_ID/messages?wait=true&timeout_ms=60000" \
+  -H "Authorization: Bearer $EVERRUNS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"message": {"role": "user", "content": [{"type": "text", "text": "Hello!"}]}}'
+```
+
 **In code:** `RunOptions::timeout` bounds `Session::run_with`; when it expires the
 in-process turn is cancelled and its outcome returned.
 

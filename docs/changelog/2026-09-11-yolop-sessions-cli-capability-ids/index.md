@@ -24,6 +24,16 @@ commands that the agent runs in its shell:
 - Capability IDs drop the `yolop_` prefix: `yolop_approval` is now `approval`.
 
 **Upgrade note:** settings overrides that use the old capability IDs fail
-validation. Rename them to the bare IDs.
+validation. Rename them to the bare IDs:
+
+```toml
+# Before, in settings.toml
+[[capabilities]]
+ref = "session_history"
+
+# After
+[[capabilities]]
+ref = "sessions"
+```
 
 See [CLI essentials](https://github.com/everruns/yolop#cli-essentials), [#691](https://github.com/everruns/yolop/pull/691) and [#693](https://github.com/everruns/yolop/pull/693).

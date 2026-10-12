@@ -22,4 +22,12 @@ agent in the web UI, the API, agent packages, the Framework builder and the CLI,
 and it replaces Slack's per-endpoint reply mode. Every sent message is recorded
 as a `conversation.message` event.
 
+```toml
+# agent.toml
+schema_version = 1
+name = "release-coordinator"
+instructions = "You coordinate releases for the team."
+communication = "explicit"
+```
+
 See [Explicit communication](/features/explicit-communication/) and [#4447](https://github.com/everruns/everruns/pull/4447).

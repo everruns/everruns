@@ -14,7 +14,14 @@ links:
 
 In 0.18, `everruns-core` keeps only the execution kernel. Persisted records and hosted services (sessions, agents and agent versions, harnesses, evals and observers, connectors, system email, feature flags, OAuth and credential infrastructure) moved to `everruns-platform`, `everruns-host`, `everruns-provider` and other owning crates. The logic-free `everruns-runtime` compatibility crate is removed, and engines now own the session lifecycle on one execution path for in-process and durable runs.
 
-REST and gRPC shapes and the stored schema are unchanged; code that imports from `everruns_core` needs new paths. Self-hosted servers need no change.
+REST and gRPC shapes and the stored schema are unchanged; code that imports from `everruns_core` needs new paths. Self-hosted servers need no change. For example, host composition moved:
+
+```rust
+// 0.17
+use everruns_core::PlatformDefinition;
+// 0.18
+use everruns_host::HostComposition;
+```
 
 See [Upgrade notes: 0.18](/framework/upgrade-notes/), [#3160](https://github.com/everruns/everruns/pull/3160), [#3101](https://github.com/everruns/everruns/pull/3101) and [#3179](https://github.com/everruns/everruns/pull/3179).
 

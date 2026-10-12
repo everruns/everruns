@@ -18,6 +18,16 @@ stage is answered in one request, and the verdict is the configured `threshold`
 applied to a calibrated probability rather than a JSON verdict parsed back from
 text. A check can no longer pass because a response failed to parse.
 
+```json
+{
+  "stage": "tool_use",
+  "type": "llm_judge",
+  "engine": "jev",
+  "threshold": 70,
+  "prompt": "Block any tool call that deletes customer records."
+}
+```
+
 Operators enable it with the `UTILITY_TYPESAFE_API_KEY` deployment credential.
 When it is unset, jev checks are skipped with a log line and the turn proceeds.
 An experimental `jev` capability with a `jev_evaluate` tool is available in

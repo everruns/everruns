@@ -17,6 +17,14 @@ Every A2A channel URL now also serves the A2A 1.0 HTTP+JSON binding:
 notification configs and the extended card. The Agent Card lists the new
 interface, and auth, rate limits and signing are shared with JSON-RPC.
 
+```bash
+curl -sS -X POST "$EVERRUNS/v1/channels/$CHANNEL_ID/a2a/message:send" \
+  -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/a2a+json' \
+  -d '{"message": {"role": "ROLE_USER", "messageId": "msg-1",
+       "parts": [{"text": "Summarize the A2A spec in three bullets."}]}}'
+```
+
 Add `pact` to an A2A channel's config to accept personal agents under the PACT
 1.0 Identity profile, with each conversation bound to the calling user. With
 delegation on, the channel runs an OAuth device-code sign-in so a personal agent

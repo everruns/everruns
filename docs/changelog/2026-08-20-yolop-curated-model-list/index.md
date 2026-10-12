@@ -23,4 +23,11 @@ one pick switches both. Manage the list with `yolop models list`, `add`, `rm`,
 `yolop models pull` is now `yolop weights pull`. The per-provider `models`
 config key is now `default_models`; an existing `models` table is still read.
 
+```bash
+# Before
+yolop models pull
+# After
+yolop weights pull
+```
+
 See [Providers and models](https://github.com/everruns/yolop#providers-and-models) and [#618](https://github.com/everruns/yolop/pull/618).

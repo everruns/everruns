@@ -19,6 +19,11 @@ generated from the running server's configuration, so a self-hosted deployment
 describes itself correctly. Under `AUTH_MODE=none` they say no credentials are
 required.
 
+```bash
+curl -fsS https://your-host/auth.md | head -1
+curl -fsS https://your-host/.well-known/mcp/server-card.json
+```
+
 The descriptions of `create_agent`, `create_session` and `create_message` also
 state their argument constraints, so an agent gets them right on the first call.
 

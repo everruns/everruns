@@ -20,6 +20,17 @@ triple and places the binary in the package's `bin/` directory.
 
 The archive's `.sha256` file is required: an archive without one, or with a
 mismatched checksum, is refused and nothing is written. `yolop-extension-logfire`
-0.2.0 is the first extension published this way.
+0.2.0 is the first extension published this way. Its manifest declares:
+
+```json
+{
+  "yolop": {
+    "capabilityServer": {
+      "command": "yolop-extension-logfire",
+      "binaries": "https://github.com/everruns/yolop/releases/download/yolop-extension-logfire-v{version}/yolop-extension-logfire-{version}-{target}.tar.gz"
+    }
+  }
+}
+```
 
 See [Extensions](https://github.com/everruns/yolop/blob/main/docs/extensions.md) and [#620](https://github.com/everruns/yolop/pull/620).

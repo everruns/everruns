@@ -26,11 +26,15 @@ frontmatter from a recent entry. Leave `release:` and `cloud:` out: `/prepare-re
 
 - `title` 30 to 70 characters: the change in plain words, with the product noun people search for.
 - `description` 120 to 160 characters: one sentence adding detail beyond the title.
-- Body 40 to 150 words: what changed, how to use it (UI path, request, CLI command or a short code
-  block that compiles), then links. For a change that matters to both audiences, two paragraphs:
-  **In the UI:** and **In code:**.
-- `links.docs` must name pages that exist; `links.prs` uses `everruns/<repo>#<n>`. Never link
-  private `saas` PRs or files.
+- Body 40 to 150 words: what changed, how to use it, then where to read more. For a change that
+  matters to both audiences, two paragraphs: **In the UI:** and **In code:**.
+- Show an example. A `feature`, `improvement`, `breaking` or `deprecation` entry carries the
+  request, CLI command, config or code a reader would write (a short code block that compiles),
+  or a screenshot of the changed UI. A breaking change shows before and after.
+- Link docs in the sentence that names them (`see [Prompt caching](/features/prompt-caching/)`),
+  not as a separate list. Every `links.docs` page must be linked from the body; the check fails
+  otherwise. `links.docs` must name pages that exist; `links.prs` uses `everruns/<repo>#<n>` and
+  renders at the end of the entry. Never link private `saas` PRs or files.
 - No marketing words, exclamation marks, future promises or em-dashes.
 
 ## Screenshots and video
