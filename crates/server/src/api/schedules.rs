@@ -636,6 +636,7 @@ mod tests {
                     name: "Test Org".to_string(),
                     role: OrgRole::Owner,
                 }],
+                pat_scope: None,
             })
         }
 

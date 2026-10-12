@@ -14,6 +14,7 @@ pub mod mcp_grant_guard;
 pub mod mcp_oauth;
 pub mod middleware;
 pub mod oauth;
+pub mod pat_scope;
 pub mod personal_access_token;
 pub mod personal_access_token_routes;
 pub mod rate_limit;

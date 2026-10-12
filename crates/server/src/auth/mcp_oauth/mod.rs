@@ -709,15 +709,13 @@ async fn issue_authorization_code(
     );
 
     tracing::info!(user_id = %user.id, client_id = %query.client_id, redirect_uri = %query.redirect_uri, "MCP OAuth: auth code issued, redirecting");
-    // RFC 6749 §3.1.2 — the registered redirect URI MAY contain a query
-    // component, which must be retained when appending `code` and `state`.
-    // Use `Url::query_pairs_mut` so a redirect like `https://app/cb?next=1`
-    // becomes `https://app/cb?next=1&code=...&state=...`, not the malformed
-    // `...?next=1?code=...` that naive string concatenation would produce.
-    // RFC 9207 — `iss` lets the client confirm which authorization server
-    // answered, defeating mix-up attacks when it talks to several. Advertised
-    // via `authorization_response_iss_parameter_supported` in server metadata,
-    // which obliges us to send it on every authorization response.
+    // RFC 6749 §3.1.2 — the registered redirect URI MAY contain a query component, which must be
+    // retained when appending `code` and `state`. Use `Url::query_pairs_mut` so a redirect like
+    // `https://app/cb?next=1` becomes `https://app/cb?next=1&code=...&state=...`, not the malformed
+    // `...?next=1?code=...` that naive string concatenation would produce. RFC 9207 — `iss` lets
+    // the client confirm which authorization server answered, defeating mix-up attacks when it
+    // talks to several. Advertised via `authorization_response_iss_parameter_supported` in server
+    // metadata, which obliges us to send it on every authorization response.
     build_oauth_redirect_url(
         &query.redirect_uri,
         &[
@@ -1480,6 +1478,7 @@ mod tests {
                 name: "User Personal".to_string(),
                 role: everruns_core::OrgRole::Admin,
             }],
+            pat_scope: None,
         }
     }
 

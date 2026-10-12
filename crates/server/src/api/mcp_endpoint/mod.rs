@@ -157,10 +157,9 @@ const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &[
     MCP_PROTOCOL_VERSION_FALLBACK,
 ];
 
-/// The richer tool shape introduced in MCP 2025-06-18 — `title`,
-/// `outputSchema`, `structuredContent`, and entity-card tools — applies to
-/// that version and every later one (2025-11-25 and 2026-07-28 are supersets). Only the
-/// 2025-03-26 fallback omits it.
+/// The richer tool shape introduced in MCP 2025-06-18 — `title`, `outputSchema`,
+/// `structuredContent`, and entity-card tools — applies to that version and every later one
+/// (2025-11-25 and 2026-07-28 are supersets). Only the 2025-03-26 fallback omits it.
 pub(crate) fn supports_rich_tool_shape(protocol_version: &str) -> bool {
     matches!(
         protocol_version,
@@ -1552,6 +1551,7 @@ mod org_override_scope_tests {
                 name: "Default".to_string(),
                 role: OrgRole::Member,
             }],
+            pat_scope: None,
         }
     }
 
