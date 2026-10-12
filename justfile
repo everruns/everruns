@@ -253,3 +253,12 @@ load-test profile="medium" *args:
 bench-turn-latency *args:
     DATABASE_URL="${DATABASE_URL:-postgres://everruns:everruns@localhost:${DB_PORT:-9332}/everruns_test}" \
         cargo bench --package everruns-server --bench turn_latency -- {{args}}
+
+# Needs running infra (PORT_PREFIX=433 bash scripts/lib/infra.sh start) and release
+# binaries in ${CARGO_TARGET_DIR:-target}/release. Example: just chaos --sessions 200 --no-chaos
+# Multi-process chaos + load harness: 2 servers, 3 workers, SIGKILLs, turn assertions
+[no-cd]
+chaos *args:
+    python3 scripts/chaos/run.py \
+        --server-bin "${CARGO_TARGET_DIR:-target}/release/everruns-server" \
+        --worker-bin "${CARGO_TARGET_DIR:-target}/release/everruns-worker" {{args}}

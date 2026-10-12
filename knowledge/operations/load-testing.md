@@ -301,6 +301,18 @@ Baselines to start from (numbers, not targets):
 
 Known gaps in the method: a single driver machine hits the per-IP limit early, and a few long idle SSE streams were cut on the client or edge side during the hosted run, so the driver reconnects with `since_id` like the UI does.
 
+## Chaos Harness
+
+`scripts/chaos/` (Python 3 stdlib, `just chaos`) answers a question the benches above do not: are turns still correct when processes die under load? It runs a multi-process topology from release binaries against already running PostgreSQL, NATS and Valkey (`PORT_PREFIX=433`), drives it only through the public HTTP API, SIGKILLs processes on a schedule, and then asserts over the persisted event log.
+
+- **Topology.** Two API servers and three gRPC workers (`DEV_MODE=false`, `AUTH_MODE=none`), workers spread round robin over the servers' gRPC ports. Each process logs to its own file in the run directory, with a marker line at every start and kill. Provider keys are stripped from the environment, so only llmsim can answer.
+- **Load.** N sessions (default 200) round robin over both servers, in a fixed mix: plain turns, tool turns (llmsim scenario markers), a second message sent mid-turn (steering), tool approvals (`tool_approval` capability in protective mode), and cancels followed by a new message. Each message carries a `client_message_id`, so a retry after a killed server is deduplicated by the server.
+- **Chaos.** `--chaos "kill:worker-0@15,restart:worker-0@21,kill:server-1@35,restart:server-1@41"` by default; `--no-chaos` runs the same load with no kills.
+- **Assertions.** Every user message gets exactly one completed turn, or a cancelled one when it was cancelled. No turn has two terminal events, and no events follow a terminal event, apart from session lifecycle events and the cancel note. No duplicate assistant output, and every steered message is read by a later reason step. Every session ends idle. No session runs on two workers at once: on the step engine this is checked from worker task spans; on the actor runtime it is checked from `session_actors` lease samples (fence order, takeovers before expiry) and from per-worker activity spans in the logs. The run prints PASS or FAIL with counts and offending session ids, and exits non-zero on FAIL.
+- **Metrics.** Turns per second, end-to-end latency p50/p95/p99 per session kind, pickup latency, recovery time per kill (when the last turn open at the kill ended), and PostgreSQL statements per terminal turn (`pg_stat_statements`, when it is preloaded).
+
+The harness reads `session_actors` and the `durable_workflow_instances` session mapping directly; everything else goes through the API. Run artifacts (`result.json`, `runs.json`, per-process logs) stay in the run directory for evidence.
+
 ## Related Testing Specs
 
 See also: [fail-rs-testing.md](../evaluation/fail-rs-testing.md) (failure injection), [agent-reliability-tests.md](../runtime-resources/agent-reliability-tests.md) (E2E reliability), [format.md](../test-cases/format.md) (manual tests), [evals.md](../evaluation/evals.md) (behavioral evals)
