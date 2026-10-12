@@ -6,9 +6,12 @@
 //! deterministic list of the attachments it replaced.
 
 // Design: knowledge/runtime-resources/session-attachments.md.
+// Used by the engine (summary list) and builtins (masking, history search);
+// a build with only one of them leaves the other's helpers unused.
+#![cfg_attr(not(all(feature = "engine", feature = "builtins")), allow(dead_code))]
 
-use crate::builtins::driver_registry::{LlmContentPart, Message, MessageContent};
-use crate::builtins::message::ContentPart;
+use crate::driver_registry::{LlmContentPart, Message, MessageContent};
+use crate::message::ContentPart;
 
 /// Media type of a `data:` URL, if it has one.
 fn data_url_media_type(url: &str) -> Option<&str> {
@@ -118,7 +121,7 @@ fn truncate_at_char_boundary(content: &str, max_bytes: usize) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::builtins::driver_registry::MessageRole;
+    use crate::driver_registry::MessageRole;
 
     fn make_user_msg(text: &str) -> Message {
         Message::text(MessageRole::User, text)
@@ -134,6 +137,7 @@ mod tests {
         msg
     }
 
+    #[cfg(feature = "builtins")]
     #[test]
     fn summarization_input_keeps_attachment_labels() {
         let messages = vec![user_msg_with_parts(vec![
@@ -145,7 +149,7 @@ mod tests {
             LlmContentPart::image("data:image/png;base64,iVBORw0KGgo="),
         ])];
 
-        let formatted = crate::builtins::compaction::format_messages_for_summarization(&messages);
+        let formatted = crate::builtins::format_messages_for_summarization(&messages);
 
         assert!(formatted.contains("Please review this contract."));
         assert!(formatted.contains("[Attached file: contract.pdf (application/pdf)]"));

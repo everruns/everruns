@@ -1658,7 +1658,7 @@ fn extract_text(content: &MessageContent) -> String {
             .iter()
             .filter_map(|p| match p {
                 LlmContentPart::Text { text } => Some(text.clone()),
-                other => super::attachment_labels::attachment_label(other),
+                other => crate::attachment_labels::attachment_label(other),
             })
             .collect::<Vec<_>>()
             .join(" "),

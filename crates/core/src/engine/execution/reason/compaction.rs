@@ -955,11 +955,10 @@ pub(super) async fn apply_reactive_compaction(
             {
                 Ok(response) => {
                     let system_message = has_system_prompt.then(|| messages[0].clone());
-                    let summary_text =
-                        crate::builtins::attachment_labels::summary_with_attachment_list(
-                            &response.text,
-                            to_summarize,
-                        );
+                    let summary_text = crate::attachment_labels::summary_with_attachment_list(
+                        &response.text,
+                        to_summarize,
+                    );
                     *messages = context.policy.compose_summary_with_recent(
                         system_message,
                         &summary_text,
