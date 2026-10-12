@@ -38,12 +38,7 @@ async fn run(name: &str, params: Value, ctx: &Ctx) -> Result<Value, CommandError
 }
 
 async fn workspace(ctx: &Ctx, name: &str) -> String {
-    run("create_workspace", json!({ "name": name }), ctx)
-        .await
-        .unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .to_string()
+    crate::domains::workspaces::seed_workspace(ctx, name).await
 }
 
 fn with_reason(ctx: &Ctx, reason: &str) -> Ctx {
