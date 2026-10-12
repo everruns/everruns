@@ -83,7 +83,6 @@ The durable engine uses these tables (created by migration 002_durable_execution
 - `durable_task_queue` - Distributed task queue
 - `durable_dead_letter_queue` - Failed tasks for manual inspection
 - `durable_workers` - Worker registration and heartbeats
-- `durable_signals` - Workflow signals (cancel, custom)
 - `durable_circuit_breaker_state` - Circuit breaker states
 
 ## Turn Lifecycle

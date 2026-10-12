@@ -36,9 +36,10 @@ not an extension trait. Applications do not implement it.
 `everruns_core::engine` is the shared execution kernel, enabled by the `engine`
 feature. Advanced hosts
 compose its `Execution` contract and serializable `TurnExecution` state machine,
-`InputAtom`/`ReasonAtom`/`ActAtom`, and phase values. The immediate implementation
-lives in `everruns_core::host`; the checkpointed implementation lives in
-`everruns-durable-engine`, on the generic `everruns-durable` engine. Both use narrow contracts from `everruns-core`. The engine feature has no dependency on host effects, platform, server, worker,
+`InputAtom`/`ReasonAtom`/`ActAtom`, and phase values. The implementation lives
+in `everruns_core::host`, and the Platform's workers drive the same turn loop
+under a session lease. Both use narrow contracts from `everruns-core`. The
+engine feature has no dependency on host effects, platform, server, worker,
 or durable crates. Do not
 copy state advancement or the phase loop into a custom backend; implement the
 execution boundary and keep deployment-specific service selection in the host.
@@ -46,8 +47,8 @@ execution boundary and keep deployment-specific service selection in the host.
 Where a turn runs is a separate interface: `everruns_core::host::TurnBackend`
 starts, cancels, and observes a session's turns. `InProcessBackend` runs a
 turn in process, `ActorRunner` (what every facade session uses) runs it there
-under the session's lease, and the Platform's `DurableRunner` in
-`everruns-durable-engine` runs it as queued, checkpointed steps. A host that records input
+under the session's lease, and the Platform's server marks the session
+runnable for a worker that leases it and runs the whole turn. A host that records input
 through its own event store starts turns from it with
 `TurnInput::StoredMessage` and continues a parked turn with
 `TurnInput::RecordedToolResults`, which every backend serves. The trait is

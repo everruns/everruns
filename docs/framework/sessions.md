@@ -381,11 +381,11 @@ that long before it resumes a turn the old process was running.
 
 ### Platform: distributed durable execution
 
-The Everruns Platform uses the same `everruns-core` (`engine` feature) turn state machine as the
-Framework, driven by `everruns-durable-engine` on the `everruns-durable` engine. The server schedules work,
-workers claim each step over gRPC, execute it, and apply its effects, and PostgreSQL stores workflow
-checkpoints and canonical events. A worker can disappear between phases and a
-later worker can continue from the committed checkpoint.
+The Everruns Platform uses the same `everruns-core` (`engine` feature) turn state machine and
+turn loop as the Framework. The server stores each input and marks the session runnable; a
+worker leases the session over gRPC and runs the whole turn, and PostgreSQL stores the canonical
+events. If a worker disappears mid-turn, its lease expires and a later worker resumes the turn
+from the session's event log.
 
 The Platform is a deployment boundary, not another configuration mode on
 `everruns::Engine`. Remote applications use the Platform API or an SDK; product

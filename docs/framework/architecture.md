@@ -78,11 +78,10 @@ backend serves the stored forms, so a host that persists input itself starts
 and continues turns the way the Platform server does.
 
 `everruns-durable` is a generic core the Platform uses for background work: a
-task queue, an event log, signals, a worker registry and pool, a dead letter
-queue, circuit breakers, and schedules, with an in-memory store and a
-PostgreSQL store. It knows nothing about agents or turns. `everruns-durable-engine`,
-which runs a turn as queued, checkpointed steps on it, remains a published
-experimental backend.
+task queue, an event log, a worker registry and pool, a dead letter queue,
+circuit breakers, and schedules, with an in-memory store and a PostgreSQL
+store. It knows nothing about agents or turns; Platform turns do not run on
+it.
 
 Neither path owns a private copy of the turn algorithm. `everruns-core` (`engine` feature) owns
 the `Execution` contract, `TurnExecution` state, Input/Reason/Act atoms, phase
@@ -113,9 +112,9 @@ not implemented by applications. Provider integrations implement the open
 `EventLog`/`EventReader` through `everruns-core` (`host` feature).
 
 An application that is itself an execution host may compose
-`everruns_core::engine::Execution` with `everruns-core` (`host` feature) or
-`everruns-durable-engine`, or implement `TurnBackend` for its own backend. Both
-interfaces are experimental. That is
+`everruns_core::engine::Execution` with `everruns-core` (`host` feature), or
+implement `TurnBackend` for its own backend. Both interfaces are
+experimental. That is
 an advanced deployment boundary: preserve event ordering, workspace isolation,
 credential separation, cancellation, and committed effect semantics. Start
 with [Custom Backends](/framework/custom-backends/) before crossing it.

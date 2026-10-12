@@ -39,7 +39,7 @@ A worker that stalls instead of crashing cannot interfere: each lease has a fenc
 
 ## Why a custom engine
 
-The obvious alternative is Temporal (or Cadence, or Restate). Everruns deliberately built its own minimal durable execution instead: session leases and the event log for turns, and `everruns-durable`, a generic, published Rust crate (task queue, event log, signals, schedules, retries, dead letter queue, circuit breakers) with no agent concepts, for the background work around them. The reasoning:
+The obvious alternative is Temporal (or Cadence, or Restate). Everruns deliberately built its own minimal durable execution instead: session leases and the event log for turns, and `everruns-durable`, a generic, published Rust crate (task queue, event log, schedules, retries, dead letter queue, circuit breakers) with no agent concepts, for the background work around them. The reasoning:
 
 1. **Single dependency.** PostgreSQL is the only required stateful infrastructure (Valkey and NATS are optional). Operators don't need to run a second cluster with its own ops story.
 2. **Co-located with the rest of the platform.** Workflow events and session events live in the same database, in the same transaction when needed. There's no eventual consistency between "what happened" and "what was reported."
