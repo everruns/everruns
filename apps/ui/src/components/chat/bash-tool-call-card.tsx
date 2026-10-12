@@ -6,6 +6,7 @@ import type { ToolCompletedData } from "@/lib/api/types";
 import type { ToolOutputStreams } from "@/app/(main)/sessions/[sessionId]/session-context";
 import { useLocale } from "@/providers/locale-provider";
 import { cn } from "@/lib/utils";
+import { failureTextClass, toolFailureSeverity } from "./failure-severity";
 import { ExecutedArgumentsNotice } from "./executed-arguments";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
 
@@ -140,6 +141,8 @@ export function BashToolCallCard({ toolCall, toolResult, streamedOutput }: BashT
   const description = toolCall.arguments.description as string | undefined;
   const isComplete = !!toolResult;
   const hasError = toolResult?.error !== undefined && toolResult?.error !== null;
+  // A failed call went back to the model: an issue, not a turn error.
+  const failureClass = failureTextClass(toolFailureSeverity(toolResult) ?? "issue");
 
   // Parse structured bash output
   const fullText = toolResult?.result ? getFullText(toolResult.result) : "";
@@ -176,7 +179,7 @@ export function BashToolCallCard({ toolCall, toolResult, streamedOutput }: BashT
   // Status icon
   const statusIcon = isComplete ? (
     exitedWithError ? (
-      <span className="text-destructive text-xs font-bold">!</span>
+      <span className={cn(failureClass, "text-xs font-bold")}>!</span>
     ) : (
       <Check className="h-3 w-3 text-success/80" />
     )
@@ -207,7 +210,7 @@ export function BashToolCallCard({ toolCall, toolResult, streamedOutput }: BashT
               {command ?? "bash"}
             </span>
             {exitCodeLabel && (
-              <span className="flex-shrink-0 text-[10px] leading-none text-destructive/70">
+              <span className={cn("flex-shrink-0 text-[10px] leading-none", failureClass)}>
                 {exitCodeLabel}
               </span>
             )}
@@ -239,7 +242,7 @@ export function BashToolCallCard({ toolCall, toolResult, streamedOutput }: BashT
 
       {/* Tool-level error (not bash stderr) */}
       {hasError && !bashOutput && (
-        <div className="text-destructive ml-[22px] mt-0.5 text-[10px]">
+        <div className={cn(failureClass, "ml-[22px] mt-0.5 text-[10px]")}>
           {t("error_prefix", { value: toolResult?.error ?? "" })}
         </div>
       )}

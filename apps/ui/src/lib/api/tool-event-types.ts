@@ -12,6 +12,11 @@ declare module "./legacy-api-types" {
     /** True when `executed_arguments` is a truncated preview. */
     executed_arguments_truncated?: OpenApiToolCompletedData["executed_arguments_truncated"];
     /**
+     * Severity of a failed call, absent on success. A failed call goes back to the model, so it is
+     * an `issue`; failures recorded before the field existed omit it and read as issues too.
+     */
+    severity?: OpenApiToolCompletedData["severity"];
+    /**
      * Details for people (chat details view, Session Trace) that the model never saw. Web
      * search puts the provider that answered, every attempt and the raw responses here.
      */

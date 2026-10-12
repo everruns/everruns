@@ -4,7 +4,7 @@
  * Dev page: Turn work log
  *
  * The folded "Working" section in its three states: a live turn (collapsed,
- * with elapsed time, latest step, and error count), the same turn opened, and
+ * with elapsed time, latest step, and issue count), the same turn opened, and
  * a completed turn. Timestamps are anchored to mount time so the live counter
  * ticks. The first section shows every turn status row phase from Enter on.
  */
@@ -63,7 +63,7 @@ function act(
         status: outcome === "ok" ? "success" : "error",
         narration: headline,
         result: [{ type: "text", text: outcome === "ok" ? "ok" : (error ?? "failed") }],
-        ...(outcome === "error" ? { error } : {}),
+        ...(outcome === "error" ? { error, severity: "issue" as const } : {}),
       },
     },
   ];

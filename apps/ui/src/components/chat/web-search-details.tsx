@@ -7,14 +7,7 @@
 // model was told. See knowledge/integrations/web-search.md (Details view).
 
 import { useState } from "react";
-import {
-  AlertCircle,
-  ChevronDown,
-  ChevronRight,
-  Download,
-  ExternalLink,
-  Search,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, Download, ExternalLink, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -38,6 +31,7 @@ import {
   type WebSearchDetails,
 } from "@/lib/web-search";
 import { cn } from "@/lib/utils";
+import { FailureIcon } from "./failure-severity";
 
 /** Raw bodies show this much until "Show all"; the rest is one click or a download away. */
 const RAW_PREVIEW_BYTES = 2048;
@@ -83,7 +77,8 @@ export function WebSearchRow({
         )}
       >
         {summary.failed ? (
-          <AlertCircle className="size-3.5 shrink-0 text-destructive" aria-hidden="true" />
+          // A failed search goes back to the model like any failed call: an issue.
+          <FailureIcon severity="issue" className="size-3.5 shrink-0" />
         ) : (
           <Search className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         )}

@@ -79,6 +79,8 @@ pub struct OpenTurn {
     started_at: DateTime<Utc>,
     reasons: u32,
     tool_call_count: u32,
+    /// Failed `tool.completed` calls so far: issues the turn carries on from.
+    issue_count: u32,
     usage: Option<TokenUsage>,
     final_message_id: Option<MessageId>,
     /// The tool calls of the turn's latest agent message.
@@ -172,6 +174,7 @@ impl TurnLogFold {
                     started_at: event.ts,
                     reasons: 0,
                     tool_call_count: 0,
+                    issue_count: 0,
                     usage: None,
                     final_message_id: None,
                     calls: Vec::new(),
@@ -219,6 +222,9 @@ impl TurnLogFold {
                 turn.settled.clear();
             }
             EventData::ToolCompleted(data) => {
+                if !data.success {
+                    turn.issue_count = turn.issue_count.saturating_add(1);
+                }
                 turn.settled.insert(data.tool_call_id);
             }
             _ => {}
@@ -341,6 +347,10 @@ pub async fn resume_open_turn<A: RuntimeHostAdapter>(
         cumulative_usage: turn.usage.clone(),
         tool_call_count: turn.tool_call_count,
         llm_call_count: turn.reasons,
+        // The calls settled as interrupted above are failed calls too.
+        issue_count: turn
+            .issue_count
+            .saturating_add(u32::try_from(not_rerun.len()).unwrap_or(u32::MAX)),
         time_to_first_token_ms: None,
         final_message_id: turn.final_message_id,
         final_answer_preview: None,

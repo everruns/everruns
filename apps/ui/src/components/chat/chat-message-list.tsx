@@ -86,6 +86,12 @@ import {
   getCompletedTurnDurationsByTurn,
 } from "@/components/chat/turn-delimiter";
 import { TurnWorkLog, WorkLogEntries } from "@/components/chat/turn-work-log";
+import {
+  NO_FAILURES,
+  countToolCallFailures,
+  sumFailureCounts,
+  type FailureCounts,
+} from "@/components/chat/failure-severity";
 import { RunCards } from "@/components/chat/run-card";
 import type { ChatRun } from "@/components/chat/run-cards";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
@@ -708,14 +714,18 @@ export const ChatMessageList = memo(function ChatMessageList({
     return undefined;
   };
 
-  const countWorkLogErrors = (workEvents: Event[]): number =>
-    workEvents.reduce(
-      (total, event) =>
-        total +
-        (activityGroups.byAnchorEventId.get(event.id)?.rows.filter((row) => row.state === "error")
-          .length ?? 0),
-      0,
-    );
+  // Failed tool calls are issues (the turn carried on); only runtime-marked
+  // errors count as errors. A failed turn renders its own red alert.
+  const countWorkLogFailures = (workEvents: Event[]): FailureCounts => {
+    const counts = { issues: 0, errors: 0 };
+    for (const event of workEvents) {
+      for (const row of activityGroups.byAnchorEventId.get(event.id)?.rows ?? []) {
+        if (row.state === "issue") counts.issues += 1;
+        else if (row.state === "error") counts.errors += 1;
+      }
+    }
+    return counts;
+  };
 
   const renderStreamingWorkRow = () =>
     streamingWork ? (
@@ -735,7 +745,7 @@ export const ChatMessageList = memo(function ChatMessageList({
     event: Event,
     workEvents: Event[],
     renderBody: (isActive: boolean) => ReactNode,
-    extraErrorCount = 0,
+    extraFailures: FailureCounts = NO_FAILURES,
   ) => {
     if (!collapseWorkLog) return <Fragment key={event.id}>{renderBody(false)}</Fragment>;
     const turnId = getKnownTurnId(event);
@@ -758,7 +768,7 @@ export const ChatMessageList = memo(function ChatMessageList({
         isActive={isActive}
         startedAtMs={Number.isNaN(startedAtMs) ? undefined : startedAtMs}
         status={isActive ? liveWorkStatus(turnId) || getWorkLogStatus(workEvents) : undefined}
-        errorCount={countWorkLogErrors(workEvents) + extraErrorCount}
+        {...sumFailureCounts(countWorkLogFailures(workEvents), extraFailures)}
         attention={attentionCards.length > 0 ? attentionCards : null}
       >
         {() => renderBody(isActive)}
@@ -864,7 +874,7 @@ export const ChatMessageList = memo(function ChatMessageList({
         durationMs={row.durationMs}
         hasSteps={group.length > 0 || streamsHere}
         status={live ? liveWorkStatus(turnId) || getWorkLogStatus(group) : undefined}
-        errorCount={countWorkLogErrors(group)}
+        {...sumFailureCounts(countWorkLogFailures(group))}
         attention={attention.length > 0 ? attention : null}
       >
         {() => {
@@ -1178,7 +1188,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                     />
                   </div>
                 ),
-                toolCalls.filter((toolCall) => toolResultsMap.get(toolCall.id)?.error).length,
+                countToolCallFailures(toolCalls, toolResultsMap),
               );
             }
 

@@ -167,8 +167,8 @@ pub struct BackendStrings {
     pub working: &'static str,
     pub current_directory: &'static str,
     pub and_more_actions: &'static str,
-    pub with_errors_one: &'static str,
-    pub with_errors_many: &'static str,
+    pub with_issues_one: &'static str,
+    pub with_issues_many: &'static str,
     pub completed_tool_batch_one: &'static str,
     pub completed_tool_batch_many: &'static str,
 }
@@ -177,20 +177,20 @@ const EN_STRINGS: BackendStrings = BackendStrings {
     working: "Working",
     current_directory: "current directory",
     and_more_actions: "and {count} more actions",
-    with_errors_one: " with 1 error",
-    with_errors_many: " with {count} errors",
-    completed_tool_batch_one: "Completed tool batch with 1 error",
-    completed_tool_batch_many: "Completed tool batch with {count} errors",
+    with_issues_one: " with 1 issue",
+    with_issues_many: " with {count} issues",
+    completed_tool_batch_one: "Completed tool batch with 1 issue",
+    completed_tool_batch_many: "Completed tool batch with {count} issues",
 };
 
 const UK_STRINGS: BackendStrings = BackendStrings {
     working: "Працюю",
     current_directory: "поточній директорії",
     and_more_actions: "і ще {count} дій",
-    with_errors_one: " з 1 помилкою",
-    with_errors_many: " з {count} помилками",
-    completed_tool_batch_one: "Пакет інструментів завершено з 1 помилкою",
-    completed_tool_batch_many: "Пакет інструментів завершено з {count} помилками",
+    with_issues_one: " з 1 проблемою",
+    with_issues_many: " з {count} проблемами",
+    completed_tool_batch_one: "Пакет інструментів завершено з 1 проблемою",
+    completed_tool_batch_many: "Пакет інструментів завершено з {count} проблемами",
 };
 
 pub fn backend_strings(locale: Option<&str>) -> &'static BackendStrings {
@@ -200,13 +200,15 @@ pub fn backend_strings(locale: Option<&str>) -> &'static BackendStrings {
     }
 }
 
-pub fn format_error_suffix(locale: Option<&str>, error_count: u32) -> String {
+/// Headline suffix for an act whose failed calls went back to the model.
+/// They are issues, not errors: the turn carried on (EVE-1236).
+pub fn format_issue_suffix(locale: Option<&str>, error_count: u32) -> String {
     let strings = backend_strings(locale);
     if error_count == 1 {
-        strings.with_errors_one.to_string()
+        strings.with_issues_one.to_string()
     } else {
         strings
-            .with_errors_many
+            .with_issues_many
             .replace("{count}", &error_count.to_string())
     }
 }

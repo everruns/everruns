@@ -91,6 +91,33 @@ fn reviewed_data_never_exceeds_the_canonical_payload() {
 }
 
 #[test]
+fn failure_severity_and_issue_count_reach_the_reviewed_surface() {
+    // Whether a failure stopped work is outcome, not content: an embedder
+    // must not have to reach for the canonical surface to tell a recovered
+    // tool failure (an issue) from a failed turn (an error).
+    let failed_tool = json!({
+        "tool_call_id": "call_1",
+        "tool_name": "lookup",
+        "success": false,
+        "status": "error",
+        "severity": "issue",
+        "error": "upstream said no",
+    });
+    let kind = SessionEventKind::ToolCompleted {
+        tool_call_id: "call_1".to_string(),
+        tool_name: "lookup".to_string(),
+        success: false,
+    };
+    let reviewed = SessionEvent::reviewed_data(&kind, &failed_tool);
+    assert_eq!(reviewed["severity"], "issue");
+    assert!(reviewed.get("error").is_none());
+
+    let completed = json!({ "turn_id": "turn_1", "iterations": 2, "issue_count": 1 });
+    let reviewed = SessionEvent::reviewed_data(&SessionEventKind::TurnCompleted, &completed);
+    assert_eq!(reviewed, json!({ "issue_count": 1 }));
+}
+
+#[test]
 fn a_cancellation_field_nobody_promoted_stays_off_the_reviewed_surface() {
     // `TurnCancelled` is the one kind whose reviewed payload comes entirely
     // from the event data rather than from variant fields, so it is the one
