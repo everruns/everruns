@@ -1683,12 +1683,7 @@ impl EventEmitter for GrpcAdapter {
         // Blocking gRPC round-trip (needs server-assigned id + sequence)
         let mut client = self.client.inner.client();
 
-        let proto_event_request = core_event_request_to_proto(&request)?;
-
-        let grpc_request = proto::EmitEventRequest {
-            event: Some(proto_event_request),
-            actor_fence: None,
-        };
+        let grpc_request = event_batch::unfenced_request(&request)?;
 
         let response = client
             .emit_event(grpc_request)
@@ -1712,11 +1707,7 @@ impl GrpcAdapter {
         use everruns_contracts::typed_id::EventId;
 
         // Convert to proto while we still have &request
-        let proto_event_request = core_event_request_to_proto(&request)?;
-        let grpc_request = proto::EmitEventRequest {
-            event: Some(proto_event_request),
-            actor_fence: None,
-        };
+        let grpc_request = event_batch::unfenced_request(&request)?;
 
         // Destructure to avoid clones
         let session_id = request.session_id;

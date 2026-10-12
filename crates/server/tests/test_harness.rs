@@ -27,6 +27,7 @@ use everruns_server::{
     api, auth, domains, services,
     setup::seed,
     storage::{EncryptionService, StorageBackend},
+    turns::ActorTurnBackend,
 };
 
 // Relative to this file's directory; a sibling `tests/*.rs` would be its own
@@ -673,13 +674,8 @@ impl TestServer {
 
         // The requested runner, or production's: turns start as session actors.
         // No worker runs here, so a started turn stays runnable until cancelled.
-        let runner = match runner_override {
-            Some(runner) => runner,
-            None => Arc::new(everruns_server::turns::ActorTurnBackend::new(
-                db.clone(),
-                None,
-            )),
-        };
+        let runner =
+            runner_override.unwrap_or_else(|| Arc::new(ActorTurnBackend::new(db.clone(), None)));
 
         // Create driver registry
         let driver_registry = Arc::new(host_composition.driver_registry().clone());

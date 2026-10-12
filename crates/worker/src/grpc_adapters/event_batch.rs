@@ -15,6 +15,14 @@ fn proto_fence(fence: &ActorFence) -> proto::ActorFence {
     }
 }
 
+/// `request` as an unfenced `EmitEvent` (no actor lease writes it).
+pub(super) fn unfenced_request(request: &EventRequest) -> Result<proto::EmitEventRequest> {
+    Ok(proto::EmitEventRequest {
+        event: Some(core_event_request_to_proto(request)?),
+        actor_fence: None,
+    })
+}
+
 /// A refused fenced append is the lease-lost error; anything else maps as
 /// usual.
 fn fenced_status_to_error(
@@ -51,8 +59,9 @@ impl GrpcAdapter {
         fence: &ActorFence,
     ) -> Result<Option<Event>> {
         let session_id = fence.session_id;
-        if requests.len() == 1 {
-            let request = requests.pop().expect("one request");
+        if requests.len() == 1
+            && let Some(request) = requests.pop()
+        {
             if request.is_ephemeral() && super::server_supports_ephemeral_skip() {
                 return crate::core::event_emitter::EventEmitter::emit(self, request)
                     .await

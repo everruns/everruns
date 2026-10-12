@@ -23,7 +23,7 @@ fn fenced_append_status(error: anyhow::Error) -> Status {
             everruns_worker::ACTOR_LEASE_LOST
         ));
     }
-    tracing::error!("Failed to emit fenced events: {}", error);
+    tracing::error!(error = %error, "Failed to emit fenced events");
     Status::internal("Failed to store events")
 }
 

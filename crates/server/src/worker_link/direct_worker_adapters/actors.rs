@@ -121,3 +121,38 @@ impl ActorLeaseStore for DirectActorLeaseStore {
         })
     }
 }
+
+impl super::DirectWorkerAdapters {
+    /// `WorkerAdapters::emit_events_fenced`: store `requests` only while
+    /// `fence` is still the holder's live lease.
+    pub(super) async fn emit_fenced(
+        &self,
+        requests: Vec<everruns_core::events::EventRequest>,
+        fence: &everruns_worker::ActorFence,
+    ) -> Result<Option<everruns_core::events::Event>> {
+        self.event_service
+            .emit_batch_fenced(
+                requests,
+                crate::services::ActorAppendFence {
+                    holder: &fence.holder,
+                    fence: fence.fence_i64(),
+                },
+            )
+            .await
+            .map(|(_, last)| last)
+            .map_err(|e| fenced_append_error(fence, e))
+    }
+}
+
+/// A fenced append's failure as the worker sees it: a refused fence is the
+/// lease-lost error the actor runtime stops on, anything else a store error.
+pub(crate) fn fenced_append_error(
+    fence: &everruns_worker::ActorFence,
+    error: anyhow::Error,
+) -> AgentLoopError {
+    if let Some(rejected) = error.downcast_ref::<crate::storage::ActorLeaseFenceRejected>() {
+        return everruns_worker::actor_lease_lost(fence.session_id, rejected.to_string());
+    }
+    tracing::error!(error = %error, "Failed to emit fenced events");
+    store_error("Failed to emit event")
+}
