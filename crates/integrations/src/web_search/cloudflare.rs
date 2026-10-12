@@ -333,16 +333,22 @@ fn cut(text: &str, chars: usize) -> String {
     }
 }
 
-/// The first message of a Cloudflare error envelope
-/// (`{"success": false, "errors": [{"code", "message"}]}`).
+/// The message of a Cloudflare error: the Web Search API's
+/// `{"ok": false, "error": {"code", "message"}}`, or the v4 API envelope
+/// `{"success": false, "errors": [{"code", "message"}]}`.
 fn error_message(body: &[u8]) -> Option<String> {
     let json: Value = serde_json::from_slice(body).ok()?;
-    json.get("errors")?
-        .as_array()?
-        .iter()
-        .find_map(|error| error.get("message")?.as_str())
-        .map(|message| cut(message.trim(), 200))
-        .filter(|message| !message.is_empty())
+    let message = json
+        .get("error")
+        .and_then(|error| error.get("message"))
+        .and_then(Value::as_str)
+        .or_else(|| {
+            json.get("errors")?
+                .as_array()?
+                .iter()
+                .find_map(|error| error.get("message")?.as_str())
+        })?;
+    Some(cut(message.trim(), 200)).filter(|message| !message.is_empty())
 }
 
 #[cfg(test)]
@@ -487,8 +493,13 @@ mod tests {
         let server = MockServer::builder().start().await;
         Mock::given(method("POST"))
             .respond_with(ResponseTemplate::new(400).set_body_json(json!({
-                "success": false,
-                "errors": [{"code": 7003, "message": "BYOK alias team-exa is not configured"}]
+                "ok": false,
+                "error": {
+                    "category": "credential",
+                    "code": "web_search_byok_not_configured",
+                    "status": 400,
+                    "message": "No provider key is configured on this gateway for the requested provider."
+                }
             })))
             .mount(&server)
             .await;
@@ -502,7 +513,12 @@ mod tests {
         assert_eq!(failure.kind, SearchFailureKind::Unavailable);
         assert_eq!(
             failure.message,
-            "Cloudflare (Ceramic) returned an error (400): BYOK alias team-exa is not configured"
+            "Cloudflare (Ceramic) returned an error (400): No provider key is configured on this gateway for the requested provider."
+        );
+        assert_eq!(
+            error_message(br#"{"success": false, "errors": [{"code": 10000, "message": "Authentication error"}]}"#)
+                .as_deref(),
+            Some("Authentication error")
         );
 
         let server = MockServer::builder().start().await;
