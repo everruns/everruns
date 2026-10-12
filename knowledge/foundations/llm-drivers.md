@@ -185,6 +185,8 @@ Current provider mappings:
 
 `llm.generation.metadata.request_options.prompt_cache` records which provider-specific mode the driver actually attempted.
 
+Provider caches match an exact request prefix, so a driver that reorders tools or rewrites an earlier message turns every call into a silent miss. [`prompt_prefix_wire.rs`](../../crates/drivers/drivers/tests/prompt_prefix_wire.rs) pins, per driver, that two consecutive calls of one conversation differ only by entries appended to the conversation array (cache markers aside).
+
 ### Cache Accounting and OpenAI Compatibility
 
 Cache accounting and persistence follow the [disjoint usage contract](../security/usage-tracking.md#disjoint-bucket-convention).
