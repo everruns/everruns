@@ -314,7 +314,10 @@ production and DEV_MODE alike; the worker side is
   `interrupted`; an open turn whose answer is already in the log is completed
   without another model call. With no open turn, the first unconsumed input
   starts a fresh turn through core's `turn_entry_plan`, the entry step the
-  in-process runtime uses.
+  in-process runtime uses. A closed latest turn whose terminal event has no
+  `session.idled` after it lost its holder between the two: the next holder
+  idles the session (the log keeps that idempotent) and treats the turn's
+  input as consumed even when no renew committed it, so it never runs twice.
 - **The inbox is the log; the cursor is `consumed_seq`.** A turn input is an
   `input.message` without a turn id; everything a turn or a resolution writes
   carries the turn's id. Before each reason (and when a reason would finish)

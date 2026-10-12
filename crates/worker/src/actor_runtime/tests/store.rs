@@ -152,6 +152,13 @@ impl MemoryActors {
         }
     }
 
+    /// A renew committed the cursor up to `sequence` before the holder died.
+    pub(super) fn commit(&self, session_id: SessionId, sequence: i64) {
+        if let Some(row) = self.rows.lock().unwrap().get_mut(&session_id) {
+            row.consumed_seq = row.consumed_seq.max(sequence);
+        }
+    }
+
     /// The session is deleted: its actor row goes with it (FK cascade).
     pub(super) fn delete(&self, session_id: SessionId) {
         self.rows.lock().unwrap().remove(&session_id);

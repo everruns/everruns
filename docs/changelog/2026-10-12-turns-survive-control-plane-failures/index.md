@@ -18,3 +18,7 @@ could not tell which. A message and the start of its turn are now stored
 together: a failed send stores nothing, and retrying it with the same
 `client_message_id` either sends it or, when it was already stored, makes
 sure its turn runs.
+
+A session whose worker failed right after its turn ended could stay `active`
+with nothing running, since `session.idled` was never written. The next worker
+now idles it, and never answers that turn's message a second time.
