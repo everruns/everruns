@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui, api]
 links:
   docs: [/capabilities/web-search/, /integrations/cloudflare-web-search/]
-  prs: []
+  prs: [everruns/everruns#4643]
 ---
 
 [Cloudflare Web Search](/integrations/cloudflare-web-search/) is now a Web Search provider next to
