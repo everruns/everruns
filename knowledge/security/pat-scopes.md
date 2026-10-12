@@ -11,15 +11,21 @@ tags:
 # Personal Access Token Scopes
 
 > Status: **Approved; rollout steps 1 (classification), 2 (enforcement on
-> REST and `/v1/commands`) and 3 (enforcement on `/mcp` and the execution API)
-> landed.** A narrow token is refused with `403 insufficient_scope` on every
+> REST and `/v1/commands`), 3 (enforcement on `/mcp` and the execution API)
+> and 4 (creation) landed.** A user can mint a `read` token
+> (`normalize_pat_scopes` in
+> [`personal_access_token_routes.rs`](../../crates/server/src/auth/personal_access_token_routes.rs)
+> accepts `[]`, `["*"]` or `["read"]`), and the token UI offers Full access or
+> Read-only. A narrow token is refused with `403 insufficient_scope` on every
 > `/v1` route outside its scope
 > ([`auth/pat_scope`](../../crates/server/src/auth/pat_scope/mod.rs)), sees and
 > calls only the read-only tools on `/mcp`
 > ([`mcp_endpoint/scope.rs`](../../crates/server/src/api/mcp_endpoint/scope.rs)),
-> and is not an org member on an API channel. Remaining: step 4 opens creation,
-> which still accepts only `*` (EVE-701); step 2 deleted the legacy narrow rows
-> (see [Legacy narrow tokens](#legacy-narrow-tokens)).
+> and is not an org member on an API channel. `GET /v1/auth/me` reports
+> `token_scope`, and the creation audit event records `scopes`. Remaining:
+> step 5 (CLI `whoami` scope and `insufficient_scope` message) and the
+> optional step 6; step 2 deleted the legacy narrow rows (see
+> [Legacy narrow tokens](#legacy-narrow-tokens)).
 
 ## Abstract
 
@@ -422,6 +428,19 @@ Settled while building step 3:
   read token is `403 insufficient_scope` on an `org_members` channel, rendered
   like the extractor's denial. A channel without `org_members` still answers
   `401` for any PAT, so the scope is never the first thing revealed there.
+
+Settled while building step 4:
+
+- **Creation is exact, not normalized.** `[]` and `["*"]` store `["*"]`,
+  `["read"]` stores `["read"]`, and everything else is
+  `400 unsupported_pat_scopes`, including `["*", "*"]`, which earlier builds
+  collapsed to `["*"]`. What is stored is always what was asked for.
+- **`token_scope` names the credential, not the user.** It is `*` or `read`
+  for a PAT and `null` for a cookie or JWT. A token whose stored scopes parse
+  to no scope never reaches `/v1/auth/me`, so it has no wire value.
+- **The UI picker defaults to Full access** and describes Read-only as "read
+  access to all your organizations", listing what it cannot do; the token
+  list shows each token's scope. The page's warning now covers both scopes.
 
 ## Rejected options
 

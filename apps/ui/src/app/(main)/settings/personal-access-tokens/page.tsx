@@ -67,6 +67,37 @@ function formatExpiryDate(days: number): string {
   });
 }
 
+// Token scopes (knowledge/security/pat-scopes.md): exactly one per token.
+// "Read-only" must never read as "safe to share": the token still reads every
+// organization the account belongs to, so the copy says so.
+type TokenScope = "*" | "read";
+
+const TOKEN_SCOPES: { value: TokenScope; slug: string; label: string; description: string }[] = [
+  {
+    value: "*",
+    slug: "full",
+    label: "Full access",
+    description: "Everything your account can do, in every organization you belong to.",
+  },
+  {
+    value: "read",
+    slug: "read",
+    label: "Read-only",
+    description:
+      "Read access to all your organizations. Cannot create, change, run or delete anything, manage tokens, or export your account data.",
+  },
+];
+
+const DEFAULT_TOKEN_SCOPE: TokenScope = "*";
+
+// A stored scope list as one label. The server only mints ["*"] or ["read"];
+// anything else authenticates but is allowed nothing.
+function scopeLabel(scopes: string[] | undefined): string {
+  if (scopes?.length === 1 && scopes[0] === "*") return "Full access";
+  if (scopes?.length === 1 && scopes[0] === "read") return "Read-only";
+  return "No access";
+}
+
 function PersonalAccessTokenRow({
   token,
   onDelete,
@@ -91,6 +122,9 @@ function PersonalAccessTokenRow({
         </div>
       </div>
       <div className="flex items-center gap-4">
+        <Badge variant="secondary" className="text-xs">
+          {scopeLabel(token.scopes)}
+        </Badge>
         <div className="text-sm text-muted-foreground">
           <Clock className="h-3 w-3 inline mr-1" />
           Last used: {formatDate(token.last_used_at)}
@@ -123,6 +157,7 @@ function CreatePersonalAccessTokenDialog({
   onTokenCreated: (token: string) => void;
 }) {
   const [name, setName] = useState("");
+  const [scope, setScope] = useState<TokenScope>(DEFAULT_TOKEN_SCOPE);
   const [expiryPreset, setExpiryPreset] = useState<TokenExpiryValue>(DEFAULT_TOKEN_EXPIRY);
   const [customDays, setCustomDays] = useState("");
   const [neverExpires, setNeverExpires] = useState(false);
@@ -137,6 +172,7 @@ function CreatePersonalAccessTokenDialog({
 
   const resetForm = () => {
     setName("");
+    setScope(DEFAULT_TOKEN_SCOPE);
     setExpiryPreset(DEFAULT_TOKEN_EXPIRY);
     setCustomDays("");
     setNeverExpires(false);
@@ -154,6 +190,7 @@ function CreatePersonalAccessTokenDialog({
     if (!expiryValid) return;
     const data: CreatePersonalAccessTokenRequest = {
       name,
+      scopes: [scope],
       expires_in_days: expiresInDays,
     };
     const result = await createToken.mutateAsync(data);
@@ -168,7 +205,8 @@ function CreatePersonalAccessTokenDialog({
           <DialogTitle>Create personal access token</DialogTitle>
           <DialogDescription>
             Personal access tokens are tied to your user account, not to an organization. The token
-            inherits access to every organization and resource available to your account.
+            inherits access to every organization and resource available to your account, limited by
+            the access you choose below.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -182,6 +220,36 @@ function CreatePersonalAccessTokenDialog({
               required
             />
           </div>
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">Access</legend>
+            {TOKEN_SCOPES.map((option) => (
+              <label
+                key={option.value}
+                className={`flex cursor-pointer items-start gap-3 border p-3 ${
+                  scope === option.value ? "border-primary bg-muted" : "border-border"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="token-scope"
+                  value={option.value}
+                  checked={scope === option.value}
+                  onChange={() => setScope(option.value)}
+                  className="mt-1"
+                  aria-describedby={`token-scope-${option.slug}`}
+                />
+                <span className="space-y-0.5">
+                  <span className="block text-sm font-medium">{option.label}</span>
+                  <span
+                    id={`token-scope-${option.slug}`}
+                    className="block text-xs text-muted-foreground"
+                  >
+                    {option.description}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
           <div className="space-y-2">
             <Label>Expiration</Label>
             <div className="flex" role="group" aria-label="Expiration">
@@ -387,11 +455,12 @@ export default function PersonalAccessTokensPage() {
           icon={<ShieldAlert className="h-5 w-5 shrink-0" aria-hidden="true" />}
           className="mb-4"
         >
-          <NoticeTitle>Full account access</NoticeTitle>
+          <NoticeTitle>Account-wide access</NoticeTitle>
           <NoticeDescription>
-            Personal access tokens are tied to your user account (not an organization) and grant
-            access to every organization and resource available to your account. Treat them like
-            passwords &mdash; do not share or commit them to source control.
+            Personal access tokens are tied to your user account (not an organization) and reach
+            every organization available to your account. A full-access token can do anything you
+            can; a read-only token can still read everything you can. Treat both like passwords
+            &mdash; do not share or commit them to source control.
           </NoticeDescription>
         </Notice>
 

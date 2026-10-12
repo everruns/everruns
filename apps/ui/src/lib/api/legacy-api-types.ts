@@ -726,7 +726,7 @@ export interface PersonalAccessTokenListItem {
 
 export interface CreatePersonalAccessTokenRequest {
   name: string;
-  scopes?: string[];
+  scopes?: ["*"] | ["read"];
   expires_in_days?: number;
 }
 

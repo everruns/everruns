@@ -24,6 +24,14 @@ use serde_json::{Value, json};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+// A fresh server per test, not one from wiremock's pool: the driver shares one
+// process-wide HTTP client, so a keep-alive connection left to a pooled
+// server's port by an earlier test can fail on reuse, and the driver's
+// transparent reconnect then sends the request twice.
+async fn server() -> MockServer {
+    MockServer::builder().start().await
+}
+
 fn hosted_driver(server: &MockServer, hosted_tools: bool) -> Provider {
     Provider::new(
         "openai",
@@ -92,7 +100,7 @@ async fn drain(provider: &Provider, config: &LlmCallConfig) -> Vec<LlmStreamEven
 
 #[tokio::test]
 async fn web_search_is_sent_without_function_tools() {
-    let server = MockServer::start().await;
+    let server = server().await;
     mount(&server, completed_only()).await;
 
     drain(
@@ -112,7 +120,7 @@ async fn web_search_is_sent_without_function_tools() {
 
 #[tokio::test]
 async fn web_search_follows_function_tools() {
-    let server = MockServer::start().await;
+    let server = server().await;
     mount(&server, completed_only()).await;
     let mut config = web_search_config("gpt-6.1-sol");
     config.tools = vec![ToolDefinition::function(
@@ -135,7 +143,7 @@ async fn web_search_follows_function_tools() {
 
 #[tokio::test]
 async fn endpoint_without_hosted_tools_refuses_instead_of_dropping() {
-    let server = MockServer::start().await;
+    let server = server().await;
     mount(&server, completed_only()).await;
 
     let Err(error) = hosted_driver(&server, false)
@@ -153,7 +161,7 @@ async fn endpoint_without_hosted_tools_refuses_instead_of_dropping() {
 
 #[tokio::test]
 async fn no_option_sends_no_hosted_tools() {
-    let server = MockServer::start().await;
+    let server = server().await;
     mount(&server, completed_only()).await;
 
     drain(
@@ -211,7 +219,7 @@ fn web_search_stream() -> String {
 
 #[tokio::test]
 async fn web_search_response_streams_as_answer_text() {
-    let server = MockServer::start().await;
+    let server = server().await;
     mount(&server, web_search_stream()).await;
 
     let events = drain(
@@ -281,7 +289,7 @@ fn mcp_config() -> LlmCallConfig {
 
 #[tokio::test]
 async fn mcp_approval_request_pauses_as_a_synthetic_call() {
-    let server = MockServer::start().await;
+    let server = server().await;
     let approval = json!({
         "type": "mcp_approval_request", "id": "mcpr_1", "server_label": "deepwiki",
         "name": "ask_question", "arguments": "{\"repoName\":\"everruns/everruns\"}"
@@ -329,7 +337,7 @@ async fn mcp_approval_request_pauses_as_a_synthetic_call() {
 
 #[tokio::test]
 async fn approved_call_replays_as_approval_response() {
-    let server = MockServer::start().await;
+    let server = server().await;
     mount(&server, completed_only()).await;
     let arguments =
         json!({ "server_label": "deepwiki", "name": "ask_question", "arguments": "{}" });
@@ -393,7 +401,7 @@ fn registered_mcp_config() -> LlmCallConfig {
 
 #[tokio::test]
 async fn registered_mcp_server_sends_resolved_credentials() {
-    let server = MockServer::start().await;
+    let server = server().await;
     mount(&server, completed_only()).await;
     let inner = OpenResponsesProtocolChatDriver::new()
         .with_native_features(true, true)
@@ -416,7 +424,7 @@ async fn registered_mcp_server_sends_resolved_credentials() {
 
 #[tokio::test]
 async fn registered_mcp_server_without_a_resolver_is_refused() {
-    let server = MockServer::start().await;
+    let server = server().await;
     mount(&server, completed_only()).await;
 
     let Err(error) = hosted_driver(&server, true)
@@ -482,7 +490,7 @@ fn tool_entries(body: &Value) -> Vec<(String, Option<String>)> {
 
 #[tokio::test]
 async fn native_search_replaces_the_web_search_function_tool() {
-    let server = MockServer::start().await;
+    let server = server().await;
     mount(&server, completed_only()).await;
     let native = everruns_contracts::native_web_search::NativeWebSearch {
         provider: "auto".into(),
@@ -529,7 +537,7 @@ async fn native_search_declines_and_keeps_the_function_tool() {
         (false, "gpt-6.1-sol", NativeWebSearch::default()),
     ];
     for (hosted, model, native) in cases {
-        let server = MockServer::start().await;
+        let server = server().await;
         mount(&server, completed_only()).await;
         drain(
             &hosted_driver(&server, hosted),
@@ -549,7 +557,7 @@ async fn native_search_declines_and_keeps_the_function_tool() {
 
 #[tokio::test]
 async fn configured_hosted_web_search_is_not_sent_twice() {
-    let server = MockServer::start().await;
+    let server = server().await;
     mount(&server, completed_only()).await;
     let mut config = native_search_config("gpt-6.1-sol", Default::default());
     config
@@ -576,7 +584,7 @@ async fn configured_hosted_web_search_is_not_sent_twice() {
 /// provider-specific is sent, and the function tool is back.
 #[tokio::test]
 async fn history_after_native_search_replays_on_a_model_without_it() {
-    let server = MockServer::start().await;
+    let server = server().await;
     mount(&server, completed_only()).await;
     let mut config = native_search_config("gpt-3.5-turbo", Default::default());
     // The earlier turn's continuation handle belongs to the other model.
@@ -614,7 +622,7 @@ async fn history_after_native_search_replays_on_a_model_without_it() {
 
 #[tokio::test]
 async fn gateway_server_tool_use_reaches_completion_metadata() {
-    let server = MockServer::start().await;
+    let server = server().await;
     mount(
         &server,
         sse(&[json!({
