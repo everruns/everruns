@@ -24,7 +24,7 @@ pub struct SecretInfo {
 
 /// How a bound secret is put on an outbound request.
 ///
-/// Header-only by design (see `knowledge/security/bound-secrets.md`): a value
+/// Header-only by design: a value
 /// is never placed in a URL or a body.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

@@ -111,8 +111,7 @@ const EMPTY_DRAFT = {
 function bindingTarget(binding: AgentCredentialBinding): string {
   if (binding.kind === "http") {
     const auth = binding.binding?.auth;
-    const header =
-      auth?.type === "header" ? `${auth.name} header` : "Authorization: Bearer";
+    const header = auth?.type === "header" ? `${auth.name} header` : "Authorization: Bearer";
     return `$${binding.env_name} → ${binding.binding?.url} (${header})`;
   }
   return `${binding.mcp_server_name} / ${binding.tool_name} → ${binding.parameter_name}`;
@@ -177,10 +176,10 @@ export function AgentCredentialsPanel({ agentId }: { agentId: string }) {
             </CardTitle>
             <CardDescription>
               Agent-scoped and durable across shared or per-invocation sessions. Values are
-              encrypted and never readable after saving. An MCP tool credential is injected into
-              the bound tool call; an HTTP API credential is a placeholder in the agent&apos;s
-              shell, replaced only in requests to its URL. Neither enters prompts, chat history,
-              or anything the model sees.
+              encrypted and never readable after saving. An MCP tool credential is injected into the
+              bound tool call; an HTTP API credential is a placeholder in the agent&apos;s shell,
+              replaced only in requests to its URL. Neither enters prompts, chat history, or
+              anything the model sees.
             </CardDescription>
           </div>
           <Button variant="outline" onClick={() => setShowCreate((value) => !value)}>
