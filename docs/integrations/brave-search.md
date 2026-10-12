@@ -8,6 +8,13 @@ appliesTo: [platform]
 
 Everruns integrates with [Brave Search](https://brave.com/search/api/) to give agents full web search capabilities. Agents can search the web and get relevant results including titles, URLs, and descriptions, perfect for research, fact-checking, and finding current information.
 
+:::tip[Provider-neutral search]
+For most agents, use [Web Search](/capabilities/web-search/) instead: one `web_search` tool that
+can search with Brave, the model's own search or free search. An organization admin connects a
+Brave Search account once under **Registers > Web search**, and every agent can use it. This
+capability stays for agents built around one Brave key.
+:::
+
 ## What You Get
 
 - **Full Web Search**: Query the web and get ranked results with titles, URLs, and descriptions
@@ -90,7 +97,7 @@ Both capabilities can be enabled simultaneously, the agent will choose the right
 
 ## Status
 
-Experimental, behind the `brave_search` feature flag at the `adoption` rollout grade: an organisation owner or admin enables it in Settings → Features. `FEATURE_BRAVE_SEARCH` can override the grade. This capability may change in future releases.
+Experimental, available without a feature flag. This capability may change in future releases. For provider-neutral search, use [Web Search](/capabilities/web-search/), which can also use an organization Brave Search account.
 
 ## Links
 

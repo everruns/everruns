@@ -45,7 +45,7 @@ pub struct HealthIssue {
     /// Whether the evidence is old, unavailable, or for a previous channel revision.
     #[schema(example = false)]
     pub stale: bool,
-    /// Current user's announcement identifier, when notifications are enabled.
+    /// Current user's announcement identifier, when one was issued.
     #[schema(example = "notification_550e8400e29b41d4a716446655440001")]
     pub notification_id: Option<String>,
     /// Current user's reminder suppression deadline, if snoozed.

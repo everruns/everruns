@@ -34,8 +34,8 @@ offline profile registry keyed by provider wire ID; `model_profiles` keeps the t
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-contracts)
-- [Everruns Framework](https://docs.everruns.com/framework/)
-- [Everruns documentation](https://docs.everruns.com)
+- [Everruns Framework](https://everruns.com/docs/framework/)
+- [Everruns documentation](https://everruns.com/docs)
 
 ## License
 

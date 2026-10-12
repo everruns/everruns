@@ -1,28 +1,18 @@
 //! Send a correction to a live Framework session, then inspect its transcript.
 //!
-//! Offline (no API key):
+//! Requires OPENAI_API_KEY:
 //! ```text
-//! cargo run -p everruns --example live_session
-//! ```
-//! OpenAI (requires OPENAI_API_KEY and API credits):
-//! ```text
-//! cargo run -p everruns --features openai --example live_session -- --live
+//! cargo run -p everruns --features openai --example live_session
 //! ```
 //! Optional positional arguments replace the initial request and correction.
 //! Framework steering queues input for the next iteration boundary; it does not
 //! send OpenAI's WebSocket response.steer event.
 
-use std::time::Duration;
-
-use everruns::{Agent, Engine, LlmSimConfig, MessageRole, Model, SendDisposition};
+use everruns::{Agent, Engine, MessageRole, OpenAI, SendDisposition};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut args = std::env::args().skip(1).peekable();
-    let live = args.peek().is_some_and(|arg| arg == "--live");
-    if live {
-        args.next();
-    }
+    let mut args = std::env::args().skip(1);
     let prompt = args
         .next()
         .unwrap_or_else(|| "Plan a three-day trip from Paris to Amsterdam.".into());
@@ -30,33 +20,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Prefer trains, keep the budget under EUR 500, and include a museum.".into()
     });
     if args.next().is_some() || prompt.trim().is_empty() || update.trim().is_empty() {
-        return Err("Usage: live_session [--live] [INITIAL_REQUEST [CORRECTION]]".into());
+        return Err("Usage: live_session [INITIAL_REQUEST [CORRECTION]]".into());
     }
 
-    let builder = Agent::builder()
+    println!("OpenAI gpt-6.1-sol over HTTP; corrections apply at iteration boundaries.");
+    let agent = Agent::builder()
         .name("steering-example")
-        .instructions("Incorporate every user message. Keep the final answer within 150 words.");
-    let agent = if live {
-        #[cfg(feature = "openai")]
-        {
-            println!("OpenAI gpt-6-astra over HTTP; corrections apply at iteration boundaries.");
-            builder
-                .provider(everruns::OpenAI::from_env()?)
-                .model("gpt-6-astra")
-                .build()?
-        }
-        #[cfg(not(feature = "openai"))]
-        {
-            return Err("Live mode requires: cargo run -p everruns --features openai --example live_session -- --live".into());
-        }
-    } else {
-        println!("Offline simulator: echoes the latest user input; no model inference.");
-        builder
-            .model(Model::simulated_with_config(
-                LlmSimConfig::echo().with_response_delay(Duration::from_millis(100)),
-            ))
-            .build()?
-    };
+        .instructions("Incorporate every user message. Keep the final answer within 150 words.")
+        .provider(OpenAI::from_env()?)
+        .model("gpt-6.1-sol")
+        .build()?;
     let engine = Engine::new();
     let session = engine.create(agent);
 

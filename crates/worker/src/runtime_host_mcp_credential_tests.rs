@@ -547,6 +547,13 @@ impl WorkerAdapters for StubAdapters {
     ) -> CoreResult<crate::core::events::Event> {
         unimplemented!()
     }
+    async fn emit_events_fenced(
+        &self,
+        _requests: Vec<crate::core::events::EventRequest>,
+        _fence: &crate::actor_lease_store::ActorFence,
+    ) -> CoreResult<Option<crate::core::events::Event>> {
+        unimplemented!()
+    }
     async fn get_model_spec(
         &self,
         _org_id: i64,
@@ -683,7 +690,7 @@ impl WorkerAdapters for StubAdapters {
         &self,
         _limit: u32,
         _stale_after_seconds: u32,
-    ) -> CoreResult<Vec<crate::core::leased_resource::LeasedResource>> {
+    ) -> CoreResult<Vec<(i64, crate::core::leased_resource::LeasedResource)>> {
         unimplemented!()
     }
     async fn mark_leased_resource_released(
@@ -706,7 +713,7 @@ impl WorkerAdapters for StubAdapters {
         &self,
         _stale_after: chrono::Duration,
         _limit: i64,
-    ) -> CoreResult<Vec<(everruns_contracts::typed_id::SessionId, String)>> {
+    ) -> CoreResult<Vec<(i64, everruns_contracts::typed_id::SessionId, String)>> {
         unimplemented!()
     }
     async fn prune_terminal_session_tasks(
@@ -714,6 +721,10 @@ impl WorkerAdapters for StubAdapters {
         _ttl: chrono::Duration,
         _limit: i64,
     ) -> CoreResult<usize> {
+        unimplemented!()
+    }
+
+    fn actor_lease_store(&self) -> std::sync::Arc<dyn crate::actor_lease_store::ActorLeaseStore> {
         unimplemented!()
     }
 
@@ -736,11 +747,6 @@ impl WorkerAdapters for StubAdapters {
         unimplemented!()
     }
 
-    fn storage_store_unscoped(
-        &self,
-    ) -> Arc<dyn crate::core::session_services::SessionStorageStore> {
-        self.storage_store(crate::core::DEFAULT_ORG_ID)
-    }
     fn image_artifact_store(
         &self,
         _org_id: i64,
@@ -768,21 +774,20 @@ impl WorkerAdapters for StubAdapters {
     }
     fn connection_resolver(
         &self,
+        _org_id: i64,
     ) -> Arc<dyn crate::core::connection_services::UserConnectionResolver> {
         self.resolver.clone()
     }
-    fn leased_resource_store(&self) -> Arc<dyn crate::core::session_services::LeasedResourceStore> {
+    fn leased_resource_store(
+        &self,
+        _org_id: i64,
+    ) -> Arc<dyn crate::core::session_services::LeasedResourceStore> {
         unimplemented!()
     }
     fn schedule_store(
         &self,
         _org_id: i64,
     ) -> Arc<dyn crate::core::session_services::SessionScheduleStore> {
-        unimplemented!()
-    }
-    fn reaper_session_task_registry(
-        &self,
-    ) -> Arc<dyn crate::core::session_task::SessionTaskRegistry> {
         unimplemented!()
     }
 }

@@ -21,7 +21,7 @@ applications can select their own integrations.
 
 ## Documentation
 
-[Everruns documentation](https://docs.everruns.com) · [Rust API](https://docs.rs/everruns-capabilities)
+[Everruns documentation](https://everruns.com/docs) · [Rust API](https://docs.rs/everruns-capabilities)
 
 ## License
 

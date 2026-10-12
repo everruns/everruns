@@ -81,6 +81,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
         // Trailing zeros of 2024! = floor(2024/5) + floor(2024/25) +
         // floor(2024/125) + floor(2024/625) = 404 + 80 + 16 + 3 = 503.
         let input = InputMessage {
+            external_actor: None,
             role: RuntimeMessageRole::User,
             content: vec![ContentPart::text(
                 "How many trailing zeros does 2024! (factorial) have? Work it out carefully, then state the final count as a plain number.",
@@ -277,6 +278,7 @@ async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
                 .await
                 .unwrap();
             let input = InputMessage {
+                external_actor: None,
                 role: RuntimeMessageRole::User,
                 // The user turn also asks for a tool check: with the system
                 // instruction alone, Sonnet 5 still skipped the tool on ~2/7

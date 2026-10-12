@@ -205,7 +205,7 @@ test("chat breadcrumbs return to Playground and session/workspace inspection use
   );
   expect(screen.getAllByRole("link", { name: "Open session" })[0]).toHaveAttribute(
     "href",
-    "/sessions/session_test/transcript",
+    "/sessions/session_test/trace",
   );
   expect(screen.queryByRole("link", { name: "Trace" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Pin chat" })).not.toBeInTheDocument();

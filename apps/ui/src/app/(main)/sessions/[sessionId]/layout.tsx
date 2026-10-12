@@ -17,8 +17,7 @@ import { getDisplayName } from "@/lib/entity-lifecycle";
 import { useLocale } from "@/providers/locale-provider";
 
 const SESSION_TAB_LABELS: Record<SessionNavKey, string> = {
-  transcript: "Transcript",
-  timeline: "Timeline",
+  trace: "Trace",
   approvals: "Approvals",
   work: "Work",
   events: "Events",
@@ -53,14 +52,13 @@ export function SessionLayoutContent({ children, sessionId }: SessionLayoutConte
 
   // Determine active tab from pathname
   const getActiveTab = (): SessionNavKey => {
-    if (pathname.endsWith("/transcript")) return "transcript";
+    if (pathname.endsWith("/trace")) return "trace";
     if (pathname.endsWith("/files")) return "files";
     if (pathname.endsWith("/events")) return "events";
     if (pathname.endsWith("/work")) return "work";
     if (pathname.endsWith("/cost")) return "cost";
-    if (pathname.endsWith("/timeline")) return "timeline";
     if (pathname.endsWith("/approvals")) return "approvals";
-    return "transcript"; // Default while the base route redirects.
+    return "trace"; // Default while the base route and old tabs redirect.
   };
   const activeTab = getActiveTab();
 

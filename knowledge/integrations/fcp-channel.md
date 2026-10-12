@@ -152,14 +152,17 @@ its contents.
 
 FCP sessions are reused via the `fcp_session` cookie:
 
-- First `POST` creates a session tagged `fcp:app:{app_id}`. The response
-  sets `fcp_session=<uuid>; Path=/; HttpOnly; SameSite=Lax`, plus
-  `Max-Age` when `session_expiration_seconds > 0`.
-- Subsequent `POST`s with the cookie resume that session if it still
-  matches the tag and has not expired.
-- A stale or unknown cookie is silently ignored, the next `POST`
-  creates a fresh session. This avoids stranding clients on the wrong
-  side of an operator config change.
+- The cookie carries a conversation token, not a session id. The first
+  `POST` starts a conversation on the shared channel host, which binds a
+  new token to a new session for this channel. The response sets
+  `fcp_session=<token>; Path=/; HttpOnly; SameSite=Lax`, plus `Max-Age`
+  when `session_expiration_seconds > 0`.
+- Subsequent `POST`s with the cookie resume the session the token is bound
+  to on this channel, if it has not expired. Cookies set before the host
+  carried session ids; those ids were bound as tokens, so they keep working.
+- A stale or unknown token is silently ignored, the next `POST` starts a
+  fresh conversation under a new token (never one the client picked). This
+  avoids stranding clients on the wrong side of an operator config change.
 - Expired sessions return `410 Gone` with body instructing the client to
   drop the cookie.
 

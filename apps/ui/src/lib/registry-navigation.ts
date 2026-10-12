@@ -1,4 +1,10 @@
-import { Blocks, BookOpen, Cpu, Plug } from "lucide-react";
+import {
+  CapabilitiesIcon,
+  ModelsIcon,
+  PluginsIcon,
+  SkillsIcon,
+} from "@/components/icons/facet-icons";
+import { Globe } from "lucide-react";
 import { capabilityIconMap, type IconComponent } from "@/lib/capability-icons";
 
 export interface RegistryNavigationItem {
@@ -9,11 +15,12 @@ export interface RegistryNavigationItem {
 }
 
 export const registryDomainIcons = {
-  models: Cpu,
+  models: ModelsIcon,
+  webSearch: Globe,
   mcpServers: capabilityIconMap.mcp,
-  skills: BookOpen,
-  capabilities: Blocks,
-  plugins: Plug,
+  skills: SkillsIcon,
+  capabilities: CapabilitiesIcon,
+  plugins: PluginsIcon,
 } satisfies Record<string, IconComponent>;
 
 // The org MCP catalog is not a register: it is an admin registry under
@@ -23,7 +30,29 @@ export const registryNavigationByHref = {
     name: "Models",
     href: "/models",
     icon: registryDomainIcons.models,
-    keywords: ["llm", "openai", "anthropic", "default model"],
+    keywords: [
+      "llm",
+      "openai",
+      "anthropic",
+      "default model",
+      "providers",
+      "credentials",
+      "api key",
+    ],
+  },
+  "/web-search": {
+    name: "Web search",
+    href: "/web-search",
+    icon: registryDomainIcons.webSearch,
+    keywords: [
+      "search",
+      "brave",
+      "duckduckgo",
+      "free search",
+      "search provider",
+      "native search",
+      "search account",
+    ],
   },
   "/skills": {
     name: "Skills",

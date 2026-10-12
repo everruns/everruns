@@ -19,7 +19,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::storage::models::UserPreferenceRow;
+use crate::storage::UserPreferenceRow;
 
 const MAX_PREFERENCES_PER_USER: usize = 100;
 const MAX_PREFERENCE_VALUE_BYTES: usize = 4 * 1024;
@@ -71,7 +71,10 @@ pub fn routes(state: ApiState) -> Router {
                 .put(set_preference)
                 .delete(delete_preference),
         )
-        .with_state(state)
+        .with_state(state.clone())
+        // Other `/v1/user/*` routes ride along here: app_builder sits at the
+        // file-size ratchet and may not grow.
+        .merge(super::connected_clients::routes(state))
 }
 
 /// GET /v1/user/preferences — list all of the user's preferences.

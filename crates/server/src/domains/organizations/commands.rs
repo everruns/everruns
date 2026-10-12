@@ -2,7 +2,7 @@ use super::queries as q;
 use super::types::{ListOrganizationsResponse, OrganizationResponse, ResolveOrgResponse};
 use crate::domains::common::*;
 use crate::domains::org_resolver;
-use crate::records::validate_org_public_id;
+use crate::domains::organizations::record::validate_org_public_id;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -14,6 +14,7 @@ pub struct ListOrgs {}
     category = "organizations",
     description = "List organizations for the current user.",
     method = "GET",
+    cli = CliRoute::new(&["orgs"], "list").with_examples(&[CliExample::new("See which organizations you belong to and their ids", "everruns orgs list")]),
     path = "/v1/orgs"
 )]
 impl Command for ListOrgs {
@@ -35,6 +36,7 @@ impl Command for ListOrgs {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetOrg {
+    /// Organization's prefixed public identifier.
     pub org: String,
 }
 
@@ -43,6 +45,7 @@ pub struct GetOrg {
     category = "organizations",
     description = "Get organization details.",
     method = "GET",
+    cli = CliRoute::new(&["orgs"], "get").with_args(&[CliArg::new("org").at(1)]).with_examples(&[CliExample::new("Show an organization's details", "everruns orgs get org_01h9")]),
     path = "/v1/orgs/{org}",
     positional = "org"
 )]
@@ -73,7 +76,7 @@ impl Command for GetOrg {
 // (Cross-Org Resource Resolution).
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ResolveOrg {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -106,8 +109,8 @@ impl Command for ResolveOrg {
 #[cfg(test)]
 mod tests {
     use crate::domains::common::{CommandError, CommandErrorKind, Ctx};
+    use crate::storage::CreateAgentRow;
     use crate::storage::StorageBackend;
-    use crate::storage::models::CreateAgentRow;
     use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
     use serde_json::json;
     use std::sync::Arc;
@@ -127,10 +130,10 @@ mod tests {
     #[tokio::test]
     async fn resolve_org_returns_owning_org_when_caller_is_member() {
         let db = Arc::new(StorageBackend::test_database());
-        crate::seed::seed_all(
+        crate::setup::seed::seed_all(
             &db,
             everruns_core::DeploymentGrade::Dev,
-            &crate::seed::SeedAuthContext::default(),
+            &crate::setup::seed::SeedAuthContext::default(),
         )
         .await
         .expect("seed test data");
@@ -156,6 +159,7 @@ mod tests {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -163,7 +167,11 @@ mod tests {
         .await
         .expect("create agent");
 
-        let ctx = Ctx::minimal_for_test(seed_caller(crate::records::ANONYMOUS_USER_ID), db, None);
+        let ctx = Ctx::minimal_for_test(
+            seed_caller(crate::domains::organizations::record::ANONYMOUS_USER_ID),
+            db,
+            None,
+        );
 
         let json =
             crate::domains::common::dispatch("resolve_org", json!({ "id": agent_public_id }), &ctx)
@@ -204,6 +212,7 @@ mod tests {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -232,7 +241,11 @@ mod tests {
     #[tokio::test]
     async fn resolve_org_returns_not_found_for_unknown_prefix() {
         let db = Arc::new(StorageBackend::test_database());
-        let ctx = Ctx::minimal_for_test(seed_caller(crate::records::ANONYMOUS_USER_ID), db, None);
+        let ctx = Ctx::minimal_for_test(
+            seed_caller(crate::domains::organizations::record::ANONYMOUS_USER_ID),
+            db,
+            None,
+        );
 
         let err = crate::domains::common::dispatch(
             "resolve_org",
@@ -256,10 +269,10 @@ mod tests {
     #[tokio::test]
     async fn list_orgs_dispatch_accepts_empty_object_params() {
         let db = Arc::new(StorageBackend::test_database());
-        crate::seed::seed_all(
+        crate::setup::seed::seed_all(
             &db,
             everruns_core::DeploymentGrade::Dev,
-            &crate::seed::SeedAuthContext::default(),
+            &crate::setup::seed::SeedAuthContext::default(),
         )
         .await
         .expect("seed test data");
@@ -268,7 +281,7 @@ mod tests {
             Caller {
                 org_id: DEFAULT_ORG_ID,
                 org_public_id: "org_00000000000000000000000000000001".to_string(),
-                user_id: Some(crate::records::ANONYMOUS_USER_ID),
+                user_id: Some(crate::domains::organizations::record::ANONYMOUS_USER_ID),
                 role: OrgRole::Owner,
                 is_platform_user: false,
                 is_internal: false,

@@ -35,6 +35,7 @@ impl DocsServer {
 
 fn result(result: Option<Value>, error: Option<String>) -> ToolResult {
     ToolResult {
+        details: None,
         tool_call_id: String::new(),
         result,
         images: None,

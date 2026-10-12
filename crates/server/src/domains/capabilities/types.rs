@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-pub use crate::storage::models::{
+pub use crate::storage::{
     CreateDeclarativeCapabilityRow, DeclarativeCapabilityRow, UpdateDeclarativeCapability,
 };
 

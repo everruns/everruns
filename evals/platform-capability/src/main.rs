@@ -20,6 +20,7 @@
 //! `EVERRUNS_EVAL_TARGETS`).
 
 mod control_plane;
+mod friction;
 mod offline;
 mod scorers;
 mod subject;
@@ -27,10 +28,11 @@ mod subject;
 use mira::scorer::succeeded;
 use mira::{Dataset, Eval, Target, eval};
 
+use crate::friction::FrictionRun;
 use crate::offline::OfflineSubject;
 use crate::scorers::{
-    confirmation_boundary, expected_tools, forbidden_tools, platform_commands, response_matches,
-    scheduled_agent_state, tool_budget,
+    cli_friction, confirmation_boundary, expected_tools, forbidden_tools, platform_commands,
+    response_matches, scheduled_agent_state, tool_budget,
 };
 use crate::subject::EverrunsServerSubject;
 
@@ -101,6 +103,9 @@ fn platform_capability() -> Eval {
         .scorer(platform_commands())
         .scorer(scheduled_agent_state())
         .scorer(tool_budget())
+        // cli_friction(): what the shell calls were spent on (help reads,
+        // rejected guesses, real commands); informational, never failing.
+        .scorer(cli_friction())
         .scorer(response_matches())
         .build()
 }
@@ -163,10 +168,34 @@ async fn main() -> std::io::Result<()> {
         report.total()
     );
 
+    let runs: Vec<FrictionRun> = report.outcomes.iter().map(friction_run).collect();
+    print!("{}", friction::summary_table(&runs));
+
+    if let Some(path) = value_of("--friction-report")
+        .or_else(|| std::env::var("EVERRUNS_EVAL_FRICTION_REPORT").ok())
+        .filter(|path| !path.trim().is_empty())
+    {
+        std::fs::write(&path, friction::report_jsonl(&runs, "everruns"))?;
+        println!("friction report: {path}");
+    }
+
     if report.all_passed() {
         Ok(())
     } else {
         std::process::exit(1);
+    }
+}
+
+/// One run's friction, kept with what identifies it.
+fn friction_run(outcome: &mira::CaseOutcome) -> FrictionRun {
+    FrictionRun {
+        case: outcome.sample_id.clone(),
+        target: outcome.target.clone(),
+        trial: outcome.trial.index,
+        passed: outcome.passed,
+        tool_calls: outcome.transcript.tool_calls_count,
+        error: outcome.transcript.error.clone(),
+        friction: scorers::friction_of(&outcome.transcript),
     }
 }
 
@@ -361,6 +390,66 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn friction_summary_and_report_cover_every_run() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../fixtures/friction-shell-run.json")).unwrap();
+        let transcript = mira::Transcript {
+            events: fixture["events"].as_array().unwrap().clone(),
+            ..Default::default()
+        };
+        let shell = |trial, passed| FrictionRun {
+            case: "cli-tree-nested-noun".into(),
+            target: "m".into(),
+            trial,
+            passed,
+            tool_calls: 8,
+            error: None,
+            friction: scorers::friction_of(&transcript),
+        };
+        let legacy = FrictionRun {
+            case: "legacy-only".into(),
+            target: "m".into(),
+            trial: 0,
+            passed: true,
+            tool_calls: 2,
+            error: Some("OPENROUTER_API_KEY is not set".into()),
+            friction: friction::Friction::default(),
+        };
+        let runs = vec![shell(0, true), shell(1, false), legacy];
+
+        let summary = friction::summary_table(&runs);
+        let row = |label: &str| {
+            summary
+                .lines()
+                .find(|line| line.starts_with(label))
+                .unwrap_or_else(|| panic!("no {label} row in\n{summary}"))
+                .split_whitespace()
+                .skip(1)
+                .collect::<Vec<_>>()
+        };
+        // runs, calls, help, reject, real, other, passed
+        assert_eq!(
+            row("cli-tree-nested-noun"),
+            ["2", "8.00", "2.00", "3.00", "1.00", "1.00", "1/2"]
+        );
+        assert_eq!(row("overall")[0], "2", "the legacy run has no breakdown");
+        assert!(!summary.contains("legacy-only"), "{summary}");
+
+        let report = friction::report_jsonl(&runs, "everruns");
+        let lines: Vec<serde_json::Value> = report
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(lines.len(), 3, "one line per run, legacy included");
+        assert_eq!(lines[1]["trial"], 1);
+        assert_eq!(lines[1]["passed"], false);
+        assert_eq!(lines[1]["case"], "cli-tree-nested-noun");
+        assert_eq!(lines[2]["calls"], 0);
+        assert_eq!(lines[2]["error"], "OPENROUTER_API_KEY is not set");
+        assert!(lines[0]["error"].is_null());
     }
 
     #[test]

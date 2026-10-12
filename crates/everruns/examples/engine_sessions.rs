@@ -1,11 +1,18 @@
-use everruns::{Agent, Engine, Model};
+//! Concrete Engine ownership, isolated sessions, and engine-scoped resume.
+//!
+//! ```text
+//! cargo run -p everruns --features openai --example engine_sessions
+//! ```
+
+use everruns::{Agent, Engine, OpenAI};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let engine = Engine::new();
     let agent = Agent::builder()
         .instructions("Be concise.")
-        .model(Model::simulated("Hello."))
+        .provider(OpenAI::from_env()?)
+        .model("gpt-6.1-sol")
         .build()?;
 
     let session = engine.create(agent);

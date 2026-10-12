@@ -6,6 +6,7 @@
 //! transport clients directly.
 
 use crate::runtime::network_access::NetworkAccessList;
+use crate::runtime::typed_id::{OrgId, SessionId};
 use async_trait::async_trait;
 use futures::Stream;
 use serde::{Deserialize, Serialize};
@@ -92,6 +93,19 @@ pub struct EgressRequest {
     /// runtime-only hint owned by the egress boundary.
     #[serde(skip)]
     pub pinned_addrs: Option<(String, Vec<std::net::SocketAddr>)>,
+    /// Org and session the request is made for. Stamped by the host's
+    /// [`ScopedEgressService`], never by the caller, so tools cannot claim
+    /// another tenant. Runtime-only: the egress boundary uses it for the
+    /// outbound audit log and per-org policy.
+    #[serde(skip)]
+    pub scope: Option<EgressScope>,
+}
+
+/// Tenant context an outbound request is made for.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EgressScope {
+    pub org_id: Option<OrgId>,
+    pub session_id: Option<SessionId>,
 }
 
 impl EgressRequest {
@@ -107,6 +121,7 @@ impl EgressRequest {
             timeout_ms: None,
             dns_pinning_required: false,
             pinned_addrs: None,
+            scope: None,
         }
     }
 
@@ -163,6 +178,11 @@ impl EgressRequest {
         self.timeout_ms = Some(timeout_ms);
         self
     }
+
+    pub fn scope(mut self, scope: EgressScope) -> Self {
+        self.scope = Some(scope);
+        self
+    }
 }
 
 /// Provider-neutral HTTP response returned by the egress boundary.
@@ -187,6 +207,40 @@ pub trait EgressService: Send + Sync {
 
     fn name(&self) -> &'static str {
         "EgressService"
+    }
+}
+
+/// Stamps every request with the tenant it is made for, then delegates.
+///
+/// The host wraps the per-turn egress service in this, so the boundary can
+/// attribute traffic (audit log, per-org limits and allowlist extensions)
+/// without every tool threading org and session through its requests. The
+/// wrapper overwrites any caller-set scope: attribution is host-owned.
+pub struct ScopedEgressService {
+    inner: std::sync::Arc<dyn EgressService>,
+    scope: EgressScope,
+}
+
+impl ScopedEgressService {
+    pub fn new(inner: std::sync::Arc<dyn EgressService>, scope: EgressScope) -> Self {
+        Self { inner, scope }
+    }
+}
+
+#[async_trait]
+impl EgressService for ScopedEgressService {
+    async fn send(&self, mut request: EgressRequest) -> EgressResult<EgressResponse> {
+        request.scope = Some(self.scope.clone());
+        self.inner.send(request).await
+    }
+
+    async fn send_stream(&self, mut request: EgressRequest) -> EgressResult<EgressStreamResponse> {
+        request.scope = Some(self.scope.clone());
+        self.inner.send_stream(request).await
+    }
+
+    fn name(&self) -> &'static str {
+        self.inner.name()
     }
 }
 

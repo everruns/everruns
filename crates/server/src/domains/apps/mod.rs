@@ -3,6 +3,7 @@
 // The live endpoint invocation runtime lives in `domains::agent_channels`.
 // See knowledge/foundations/domains.md for the pattern.
 mod archival;
+pub mod record;
 
 pub mod queries;
 pub mod types;

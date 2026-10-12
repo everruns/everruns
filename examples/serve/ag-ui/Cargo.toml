@@ -1,4 +1,4 @@
-# A serve app streamed to CopilotKit or any AG-UI 1.0 client. Runs offline.
+# A serve app streamed to CopilotKit or any AG-UI 1.0 client. Runs on a real model (`OPENAI_API_KEY`).
 [package]
 name = "serve-example-ag-ui"
 version = "0.1.0"

@@ -72,6 +72,13 @@ impl WorkerAdapters for NoopAdapters {
     ) -> CoreResult<crate::core::events::Event> {
         unimplemented!()
     }
+    async fn emit_events_fenced(
+        &self,
+        _requests: Vec<crate::core::events::EventRequest>,
+        _fence: &crate::actor_lease_store::ActorFence,
+    ) -> CoreResult<Option<crate::core::events::Event>> {
+        unimplemented!()
+    }
     async fn get_model_spec(
         &self,
         _org_id: i64,
@@ -208,7 +215,7 @@ impl WorkerAdapters for NoopAdapters {
         &self,
         _limit: u32,
         _stale_after_seconds: u32,
-    ) -> CoreResult<Vec<crate::core::leased_resource::LeasedResource>> {
+    ) -> CoreResult<Vec<(i64, crate::core::leased_resource::LeasedResource)>> {
         unimplemented!()
     }
     async fn mark_leased_resource_released(
@@ -231,7 +238,7 @@ impl WorkerAdapters for NoopAdapters {
         &self,
         _stale_after: chrono::Duration,
         _limit: i64,
-    ) -> CoreResult<Vec<(everruns_contracts::typed_id::SessionId, String)>> {
+    ) -> CoreResult<Vec<(i64, everruns_contracts::typed_id::SessionId, String)>> {
         unimplemented!()
     }
     async fn prune_terminal_session_tasks(
@@ -240,6 +247,11 @@ impl WorkerAdapters for NoopAdapters {
         _limit: i64,
     ) -> CoreResult<usize> {
         unimplemented!()
+    }
+
+    /// No actors are ever runnable: the worker's actor loop idles.
+    fn actor_lease_store(&self) -> std::sync::Arc<dyn crate::actor_lease_store::ActorLeaseStore> {
+        std::sync::Arc::new(IdleActorLeaseStore)
     }
 
     fn capability_registry(&self) -> crate::core::capabilities::CapabilityRegistry {
@@ -257,11 +269,6 @@ impl WorkerAdapters for NoopAdapters {
     fn storage_store(
         &self,
         _org_id: i64,
-    ) -> Arc<dyn crate::core::session_services::SessionStorageStore> {
-        unimplemented!()
-    }
-    fn storage_store_unscoped(
-        &self,
     ) -> Arc<dyn crate::core::session_services::SessionStorageStore> {
         unimplemented!()
     }
@@ -292,10 +299,14 @@ impl WorkerAdapters for NoopAdapters {
     }
     fn connection_resolver(
         &self,
+        _org_id: i64,
     ) -> Arc<dyn crate::core::connection_services::UserConnectionResolver> {
         unimplemented!()
     }
-    fn leased_resource_store(&self) -> Arc<dyn crate::core::session_services::LeasedResourceStore> {
+    fn leased_resource_store(
+        &self,
+        _org_id: i64,
+    ) -> Arc<dyn crate::core::session_services::LeasedResourceStore> {
         unimplemented!()
     }
     fn schedule_store(
@@ -304,9 +315,54 @@ impl WorkerAdapters for NoopAdapters {
     ) -> Arc<dyn crate::core::session_services::SessionScheduleStore> {
         unimplemented!()
     }
-    fn reaper_session_task_registry(
+}
+
+/// An actor index with nothing runnable.
+struct IdleActorLeaseStore;
+
+#[async_trait::async_trait]
+impl crate::actor_lease_store::ActorLeaseStore for IdleActorLeaseStore {
+    async fn lease_actors(
         &self,
-    ) -> Arc<dyn crate::core::session_task::SessionTaskRegistry> {
-        unimplemented!()
+        _holder: &str,
+        _limit: u32,
+        _ttl: std::time::Duration,
+        _max_leased_per_org: Option<u32>,
+    ) -> CoreResult<Vec<crate::actor_lease_store::LeasedActor>> {
+        Ok(Vec::new())
+    }
+
+    async fn renew_actor_lease(
+        &self,
+        _session_id: everruns_contracts::typed_id::SessionId,
+        _holder: &str,
+        _fence: u64,
+        _ttl: std::time::Duration,
+        _consumed_seq: i64,
+    ) -> CoreResult<Option<crate::actor_lease_store::ActorRenewal>> {
+        Ok(None)
+    }
+
+    async fn release_actor(
+        &self,
+        _session_id: everruns_contracts::typed_id::SessionId,
+        _holder: &str,
+        _fence: u64,
+        _consumed_inbox_seq: i64,
+    ) -> CoreResult<crate::actor_lease_store::ActorRelease> {
+        Ok(crate::actor_lease_store::ActorRelease::LeaseLost)
+    }
+
+    async fn read_actor_journal(
+        &self,
+        _session_id: everruns_contracts::typed_id::SessionId,
+        _after_sequence: Option<i32>,
+        _limit: u32,
+    ) -> CoreResult<crate::actor_lease_store::ActorJournal> {
+        Ok(crate::actor_lease_store::ActorJournal {
+            events: Vec::new(),
+            has_more: false,
+            head_sequence: None,
+        })
     }
 }

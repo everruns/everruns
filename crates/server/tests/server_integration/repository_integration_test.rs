@@ -18,7 +18,7 @@ use uuid::Uuid;
 use crate::session_row_fixture::base_session_row;
 use everruns_core::message_filter::MessageQuery;
 use everruns_server::api::common::Pagination;
-use everruns_server::org_init;
+use everruns_server::setup::org_init;
 use everruns_server::storage::UpdateField;
 use everruns_server::storage::{
     CreateAgentCapabilityRow, CreateAgentHealthCheckRunRow, CreateAgentRow, CreateAppRow,
@@ -263,7 +263,6 @@ async fn test_agent_crud() {
                 starters: serde_json::json!([]),
                 system_prompt: "Test prompt".to_string(),
                 default_model_id: None,
-
                 harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
@@ -272,6 +271,7 @@ async fn test_agent_crud() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -349,7 +349,6 @@ async fn test_agent_upsert_initial_files() {
                 starters: serde_json::json!([]),
                 system_prompt: "prompt".to_string(),
                 default_model_id: None,
-
                 harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([
@@ -360,6 +359,7 @@ async fn test_agent_upsert_initial_files() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -384,7 +384,6 @@ async fn test_agent_upsert_initial_files() {
                 starters: serde_json::json!([]),
                 system_prompt: "prompt".to_string(),
                 default_model_id: None,
-
                 harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([
@@ -395,6 +394,7 @@ async fn test_agent_upsert_initial_files() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -541,7 +541,6 @@ async fn test_agent_get_by_name() {
                 starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
-
                 harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
@@ -550,6 +549,7 @@ async fn test_agent_get_by_name() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -633,7 +633,6 @@ async fn test_session_crud() {
                 starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
-
                 harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
@@ -642,6 +641,7 @@ async fn test_session_crud() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -911,7 +911,6 @@ async fn test_event_crud() {
                 starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
-
                 harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
@@ -920,6 +919,7 @@ async fn test_event_crud() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -992,7 +992,6 @@ async fn test_event_exclude_types() {
                 starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
-
                 harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
@@ -1001,6 +1000,7 @@ async fn test_event_exclude_types() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -1081,7 +1081,6 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
                 starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
-
                 harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
@@ -1090,6 +1089,7 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -1164,7 +1164,6 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
                 starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
-
                 harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
@@ -1173,6 +1172,7 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -1263,7 +1263,6 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
                 starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
-
                 harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
@@ -1272,6 +1271,7 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -1471,7 +1471,6 @@ async fn test_event_filter_types() {
                 starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
-
                 harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
@@ -1480,6 +1479,7 @@ async fn test_event_filter_types() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -1763,7 +1763,6 @@ async fn test_session_file_crud() {
                 starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
-
                 harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
@@ -1772,6 +1771,7 @@ async fn test_session_file_crud() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -2107,7 +2107,6 @@ async fn test_agent_capabilities() {
                 starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
-
                 harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
@@ -2116,6 +2115,7 @@ async fn test_agent_capabilities() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -2392,7 +2392,6 @@ async fn test_session_usage_tracking() {
                 starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
-
                 harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
@@ -2401,6 +2400,7 @@ async fn test_session_usage_tracking() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -2482,7 +2482,6 @@ async fn test_session_previews() {
                 starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
-
                 harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
@@ -2491,6 +2490,7 @@ async fn test_session_previews() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -3602,9 +3602,8 @@ async fn list_org_session_tasks_pg() {
     );
 }
 
-/// EVE-898: knowledge-index sync has no session to attribute its embedding
-/// spend to, so `llm_generations.session_id` is nullable. The row must still
-/// insert and stay org-attributed — `org_id` is what usage reporting reads.
+/// EVE-898: knowledge-index sync has no session for its embedding spend, so `session_id` is
+/// nullable. The row must still insert and stay org-attributed (usage reads `org_id`).
 #[tokio::test]
 async fn test_llm_generation_without_session_is_org_attributed() {
     let backend = create_test_backend().await;
@@ -3627,6 +3626,7 @@ async fn test_llm_generation_without_session_is_org_attributed() {
             None,
             None,
             None,
+            Default::default(),
             chrono::Utc::now(),
         )
         .await
@@ -4061,7 +4061,7 @@ async fn expired_session_schedule_claim_is_reclaimable_pg() {
 }
 
 const SYNTHESIZE_AGENTLESS_APPS_MIGRATION: &str =
-    include_str!("../../migrations/134_synthesize_agents_for_agentless_apps.sql");
+    include_str!("../../migrations/legacy/134_synthesize_agents_for_agentless_apps.sql");
 
 async fn create_agent_synthesis_fixture_schema(conn: &mut PgConnection) {
     sqlx::raw_sql(

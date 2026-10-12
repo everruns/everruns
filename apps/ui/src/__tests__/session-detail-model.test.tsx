@@ -78,7 +78,7 @@ describe("SessionCard - LLM Model Display", () => {
 
     // Check that the link points to the org-level session path
     const link = screen.getByTestId("session-link");
-    expect(link).toHaveAttribute("data-href", "/sessions/session-1/transcript");
+    expect(link).toHaveAttribute("data-href", "/sessions/session-1/trace");
   });
 
   it("displays agent name when provided", async () => {

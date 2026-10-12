@@ -512,6 +512,7 @@ fn test_tool_result_image_serialization() {
 #[test]
 fn test_tool_result_with_images_serialization() {
     let result = everruns_contracts::tool_types::ToolResult {
+        details: None,
         tool_call_id: "call_1".to_string(),
         result: Some(json!({"ok": true})),
         images: Some(vec![ToolResultImage {
@@ -573,6 +574,7 @@ fn test_connection_required_into_tool_result() {
 #[test]
 fn test_connection_required_serialization_roundtrip() {
     let result = everruns_contracts::tool_types::ToolResult {
+        details: None,
         tool_call_id: "call_conn".to_string(),
         result: Some(json!({"connection_required": "daytona"})),
         images: None,

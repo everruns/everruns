@@ -20,7 +20,7 @@
 
 use std::collections::HashSet;
 
-use crate::records::SessionStatus;
+use crate::domains::sessions::record::SessionStatus;
 use everruns_contracts::tool_types::{ClientSideTool, ToolDefinition};
 use everruns_core::ag_ui::{Message as AgUiMessage, Tool as AgUiTool, ToolCall as AgUiToolCall};
 use everruns_core::events::ToolCallRequestedData;
@@ -130,7 +130,7 @@ pub(crate) fn trailing_results(messages: &[AgUiMessage]) -> Vec<ClientToolResult
 pub(crate) async fn submit_results(
     services: &ResumeServices<'_>,
     org_id: i64,
-    session: &crate::records::Session,
+    session: &crate::domains::sessions::record::Session,
     names: &HashSet<String>,
     results: Vec<ClientToolResult>,
 ) -> Result<ResumeOutcome, ResumeError> {
@@ -191,7 +191,10 @@ pub(crate) async fn submit_results(
         )));
     }
 
-    let plan = tool_results_plan(session.id, &results);
+    let context = crate::turns::open_turn_context(services.db, session.id)
+        .await
+        .map_err(ResumeError::Internal)?;
+    let plan = tool_results_plan(session.id, context, &results);
     let claim = match services
         .db
         .claim_waiting_turn(org_id, session.id, plan)
@@ -208,7 +211,7 @@ pub(crate) async fn submit_results(
             return Err(ResumeError::Conflict("the thread is gone".to_string()));
         }
     };
-    crate::services::waiting_turn_resolution::execute_waiting_turn_resolution(
+    crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution(
         services.db,
         services.event_service,
         &services.runner,
@@ -228,7 +231,7 @@ pub(crate) async fn submit_results(
 }
 
 fn warn_unrecognised<'a>(
-    session: &crate::records::Session,
+    session: &crate::domains::sessions::record::Session,
     results: impl Iterator<Item = &'a ClientToolResult>,
 ) {
     for result in results {

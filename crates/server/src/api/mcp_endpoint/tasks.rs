@@ -74,7 +74,7 @@ impl TaskStatus {
 
 /// Map an Everruns session status string to a Tasks lifecycle state.
 ///
-/// Session statuses (see `crate::records::SessionStatus`):
+/// Session statuses (see `crate::domains::sessions::record::SessionStatus`):
 /// - `started` / `active` → `working` (a turn is or will be running)
 /// - `waiting_for_tool_results` / `paused` → `input_required` (needs client
 ///   input: tool results, or a budget/limit action)

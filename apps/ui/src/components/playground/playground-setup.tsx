@@ -49,6 +49,7 @@ function Setup() {
               <NewPlaygroundChatForm
                 endUserId={subject}
                 initialAgentId={searchParams.get("agent") ?? undefined}
+                initialDryRun={searchParams.get("dry_run") === "1"}
               >
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-muted-foreground">Talk as</p>

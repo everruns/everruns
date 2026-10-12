@@ -138,7 +138,7 @@ A configured API provider such as OpenAI or Anthropic. Providers store encrypted
 
 ### LLM model
 
-A specific model within a provider, such as `gpt-5.2` or `claude-sonnet-5`. Models are predefined, discovered from the provider API, or added manually. Resolution order: message controls → session override → agent default → system default.
+A specific model within a provider, such as `gpt-6.1-sol` or `claude-sonnet-5`. Models are predefined, discovered from the provider API, or added manually. Resolution order: message controls → session override → agent default → system default.
 
 ### MCP server
 

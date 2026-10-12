@@ -17,11 +17,11 @@ use everruns_server::domains::agent_triggers::invoke_agent_trigger;
 use everruns_server::domains::budgets::BudgetService;
 use everruns_server::domains::messages::MessageService;
 use everruns_server::domains::sessions::SessionService;
-use everruns_server::event_delivery::EventDelivery;
-use everruns_server::records::{AgentChannelId, SessionSource};
-use everruns_server::storage::models::{
-    CreateAgentTriggerRow, CreateBudgetLedgerRow, CreateBudgetRow, UpdateApp,
-};
+use everruns_server::domains::sessions::record::SessionSource;
+use everruns_server::live_updates::event_delivery::EventDelivery;
+use everruns_server::records::AgentChannelId;
+use everruns_server::storage::UpdateApp;
+use everruns_server::storage::{CreateAgentTriggerRow, CreateBudgetLedgerRow, CreateBudgetRow};
 
 async fn create_agent(server: &TestServer, name: &str) -> Value {
     server
@@ -608,7 +608,6 @@ async fn agent_trigger_binds_schedule_and_invokes_shared_session() {
     let message_service = MessageService::new(
         server.db.clone(),
         server.runner.clone(),
-        false,
         EventDelivery::in_memory(),
     );
 
@@ -733,7 +732,6 @@ async fn agent_trigger_session_per_invocation_creates_distinct_sessions() {
     let message_service = MessageService::new(
         server.db.clone(),
         server.runner.clone(),
-        false,
         EventDelivery::in_memory(),
     );
 

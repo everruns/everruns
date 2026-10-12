@@ -19,7 +19,7 @@
 //! ```
 
 use everruns_contracts::typed_id::PrincipalId;
-use everruns_server::storage::models::CreateSessionRow;
+use everruns_server::storage::CreateSessionRow;
 
 /// Every field at its inert value: no agent, no ingress, no workspace, no
 /// blueprint, no capabilities. `owner_principal_id` is a fresh principal, which
@@ -27,7 +27,7 @@ use everruns_server::storage::models::CreateSessionRow;
 pub fn base_session_row(org_id: i64) -> CreateSessionRow {
     CreateSessionRow {
         playground_user_id: None,
-        source: everruns_server::records::SessionSource::Api,
+        source: everruns_server::domains::sessions::record::SessionSource::Api,
         workspace_id: None,
         org_id,
         app_id: None,

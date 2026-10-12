@@ -5,7 +5,7 @@
 // membership/role changes. We keep inserts + invalidation hooks so follow-up
 // work can safely reintroduce cache reads with fresh-state guarantees.
 
-use crate::records::OrgMembership;
+use crate::domains::organizations::record::OrgMembership;
 use async_trait::async_trait;
 use axum::Router;
 use everruns_core::OrgRole;
@@ -18,6 +18,7 @@ use uuid::Uuid;
 use super::backend::AuthBackend;
 use super::config::AuthConfig;
 use super::jwt::JwtService;
+use super::mcp_grant_guard::McpGrantGuard;
 use super::middleware::{AuthError, AuthMethod, AuthUser};
 use super::personal_access_token::{
     ValidatedPersonalAccessToken, hash_personal_access_token, is_valid_personal_access_token_format,
@@ -39,7 +40,7 @@ const PAT_CACHE_MAX_CAPACITY: u64 = 10_000;
 /// HARNESS-SEED SAFETY NET:
 /// When default-org auto-join is enabled, `register` and `oauth_callback`
 /// add new users to `DEFAULT_ORG_ID`.
-/// Startup [`crate::seed::prepare_seed_task`] provisions that org's identities
+/// Startup [`crate::setup::seed::prepare_seed_task`] provisions that org's identities
 /// and harnesses before serving. The signup safety net still repairs missing
 /// harnesses using the operator-composed set, without relying on background
 /// catalog seeding or a completely provisioned database.
@@ -67,9 +68,13 @@ pub struct BuiltinAuthBackend {
     /// Operator-composed built-in harness set. Used by the signup safety-net
     /// in `register` / `oauth_callback` so a pre-seed signup still lands in
     /// an org with the correct (operator-chosen) harnesses.
-    pub built_in_harnesses: Arc<Vec<crate::records::BuiltInHarnessDefinition>>,
-    /// In-process cache: token_hash -> AuthUser. Avoids 4 sequential DB queries per token request.
+    pub built_in_harnesses: Arc<Vec<crate::domains::harnesses::record::BuiltInHarnessDefinition>>,
+    /// In-process cache: token_hash -> AuthUser (including its parsed
+    /// `pat_scope`; scopes are immutable after creation, so nothing to
+    /// invalidate). Avoids 4 sequential DB queries per token request.
     personal_access_token_cache: Cache<String, AuthUser>,
+    /// Rejects MCP tokens whose grant was revoked (connected AI clients).
+    mcp_grant_guard: McpGrantGuard,
 }
 
 fn build_personal_access_token_cache() -> Cache<String, AuthUser> {
@@ -111,12 +116,13 @@ impl BuiltinAuthBackend {
         Self {
             config,
             jwt_service,
-            db,
             rate_limiter: AuthRateLimiter::new(),
             host_composition,
             email_sender: crate::platform::system_email_sender(),
             built_in_harnesses: Arc::new(crate::platform::oss_built_in_harnesses()),
             personal_access_token_cache: build_personal_access_token_cache(),
+            mcp_grant_guard: McpGrantGuard::new(db.clone()),
+            db,
         }
     }
 
@@ -124,7 +130,7 @@ impl BuiltinAuthBackend {
     /// `ServerAppBuilder` calls this with its resolved (operator-chosen) set.
     pub fn with_built_in_harnesses(
         mut self,
-        built_in_harnesses: Arc<Vec<crate::records::BuiltInHarnessDefinition>>,
+        built_in_harnesses: Arc<Vec<crate::domains::harnesses::record::BuiltInHarnessDefinition>>,
     ) -> Self {
         self.built_in_harnesses = built_in_harnesses;
         self
@@ -151,12 +157,13 @@ impl BuiltinAuthBackend {
         Self {
             config,
             jwt_service,
-            db,
             rate_limiter: AuthRateLimiter::with_valkey(valkey),
             host_composition,
             email_sender: crate::platform::system_email_sender(),
             built_in_harnesses: Arc::new(crate::platform::oss_built_in_harnesses()),
             personal_access_token_cache: build_personal_access_token_cache(),
+            mcp_grant_guard: McpGrantGuard::new(db.clone()),
+            db,
         }
     }
 
@@ -196,7 +203,7 @@ impl BuiltinAuthBackend {
         // THREAT[TM-AUTH-032]: anonymous-admin PATs minted under AUTH_MODE=none
         // must never authenticate after the deployment enables auth, even if a
         // seed pass has not yet deleted the row.
-        if token_row.user_id == crate::records::ANONYMOUS_USER_ID {
+        if token_row.user_id == crate::domains::organizations::record::ANONYMOUS_USER_ID {
             return Err(AuthError::unauthorized("Invalid personal access token"));
         }
 
@@ -261,6 +268,9 @@ impl BuiltinAuthBackend {
             roles,
             auth_method: AuthMethod::PersonalAccessToken,
             organizations,
+            // Parsed from the raw column, fail-closed: a value that is not
+            // exactly `["*"]` or only `read` is in scope for no route.
+            pat_scope: Some(super::pat_scope::PatScope::parse_stored(&token_row.scopes)),
         })
     }
 }
@@ -315,6 +325,7 @@ impl BuiltinAuthBackend {
             is_platform_user,
             auth_method,
             organizations,
+            pat_scope: None,
         })
     }
 }
@@ -349,6 +360,9 @@ impl AuthBackend for BuiltinAuthBackend {
                 tracing::debug!("MCP JWT validation failed: {}", e);
                 AuthError::unauthorized("Invalid or expired MCP token")
             })?;
+        // A token minted under a grant stops working once the user revokes
+        // that client (cached ~30s; fails closed on lookup errors).
+        self.mcp_grant_guard.check(&claims).await?;
 
         self.auth_user_from_claims(claims, AuthMethod::Mcp).await
     }
@@ -394,6 +408,10 @@ impl AuthBackend for BuiltinAuthBackend {
 
     fn on_personal_access_token_deleted(&self) {
         self.invalidate_all_personal_access_token_cache();
+    }
+
+    async fn on_mcp_grant_revoked(&self, grant_id: Uuid) {
+        self.mcp_grant_guard.forget(grant_id).await;
     }
 
     fn public_routes(&self) -> Option<Router> {
@@ -475,7 +493,7 @@ mod tests {
         use super::super::super::backend::AuthBackend;
         use super::super::*;
         use crate::storage::StorageBackend;
-        use crate::storage::models::{CreatePersonalAccessTokenRow, CreateUserRow, UpdateUser};
+        use crate::storage::{CreatePersonalAccessTokenRow, CreateUserRow, UpdateUser};
 
         async fn seed_user_with_key(
             db: &Arc<StorageBackend>,
@@ -560,6 +578,11 @@ mod tests {
                 .validate_personal_access_token(&plaintext_key)
                 .await
                 .expect("first validation");
+            assert_eq!(
+                first.pat_scope,
+                Some(crate::auth::pat_scope::PatScope::Full),
+                "a `[\"*\"]` token carries the full scope onto AuthUser"
+            );
             assert_eq!(first.name, "Original Name");
 
             // Rename the user in the DB. With read-through caching this change
@@ -602,7 +625,9 @@ mod tests {
         #[tokio::test]
         async fn validate_personal_access_token_rejects_anonymous_user_tokens() {
             use crate::auth::config::AuthMode;
-            use crate::records::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME};
+            use crate::domains::organizations::record::{
+                ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME,
+            };
 
             let db = Arc::new(StorageBackend::test_database());
             db.create_user_with_id(
@@ -660,8 +685,8 @@ mod tests {
     mod jwt_roles_trust_boundary {
         use super::super::super::backend::AuthBackend;
         use super::super::*;
+        use crate::storage::CreateUserRow;
         use crate::storage::StorageBackend;
-        use crate::storage::models::CreateUserRow;
 
         const MCP_RESOURCE: &str = "https://app.example.com/mcp";
 
@@ -765,7 +790,7 @@ mod tests {
         use super::super::super::backend::AuthBackend;
         use super::super::*;
         use crate::storage::StorageBackend;
-        use crate::storage::models::{CreateUserRow, UpdateUser};
+        use crate::storage::{CreateUserRow, UpdateUser};
 
         const MCP_RESOURCE: &str = "https://app.example.com/mcp";
 
@@ -868,8 +893,8 @@ mod tests {
         use super::super::super::backend::AuthBackend;
         use super::super::super::middleware::AuthMethod;
         use super::super::*;
+        use crate::storage::CreateUserRow;
         use crate::storage::StorageBackend;
-        use crate::storage::models::CreateUserRow;
 
         const RESOURCE: &str = "https://app.example.com/mcp";
 

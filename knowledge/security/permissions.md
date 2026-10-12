@@ -20,7 +20,9 @@ Identifier for an action. Format: `org:<resource>:<action>`.
 
 See `crates/core/src/permissions.rs` for the full `Permission` enum with all variants.
 
-Permissions are scoped **per domain**: each managed resource (MCP servers, plugins, skills, capabilities, agent identities, harnesses, providers, …) has its own `Org<Domain>View` / `Org<Domain>Manage` (and, where applicable, `Org<Domain>Dangerous`) permission rather than sharing one coarse grant. This keeps the role map least-privilege-ready: a custom resolver or a future role can grant one domain without implying the others (EVE-656, TM-AUTHZ-013).
+Permissions are scoped **per domain**: each managed resource (MCP servers, plugins, skills, capabilities, agent identities, harnesses, models, …) has its own `Org<Domain>View` / `Org<Domain>Manage` (and, where applicable, `Org<Domain>Dangerous`) permission rather than sharing one coarse grant. This keeps the role map least-privilege-ready: a custom resolver or a future role can grant one domain without implying the others (EVE-656, TM-AUTHZ-013).
+
+Models and providers are one domain: `OrgModelsView` / `OrgModelsManage` gate both the `model.*` and the `provider.*` policies. Providers live on the Models page, and connecting one, syncing it, and choosing its models is one task, so splitting the grant would let a role do half of it.
 
 ### Rule
 

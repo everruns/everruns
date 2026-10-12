@@ -25,7 +25,7 @@
 use crate::api::channel_auth::verify_agentid_claims;
 use crate::api::channel_ingress::{IngressChannel, IngressContext};
 use crate::channels::ag_ui::AgUiState;
-use crate::records::{AGENTID_ISSUER, ChannelAuthConfig, ChannelType};
+use crate::domains::agent_channels::record::{AGENTID_ISSUER, ChannelAuthConfig, ChannelType};
 use crate::storage::agentid::{AgentIdAgent, AgentIdLoginState, AgentIdSignIn};
 use axum::{
     Router,

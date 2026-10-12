@@ -1,5 +1,6 @@
 "use client";
 
+import { HarnessDomainIcon } from "@/components/icons/facet-icons";
 import Link from "next/link";
 import { EntityStatus } from "@/components/ui/entity-status";
 import { LinkButton } from "@/components/ui/button";
@@ -12,7 +13,7 @@ import {
   EntityCardCapabilities,
 } from "@/components/ui/entity-card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Pencil, Shield } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { IconTile } from "@/components/layout/page-layout";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import type { Agent, Capability, CapabilityId } from "@/lib/api/types";
@@ -113,7 +114,7 @@ export function AgentCard({
                 aria-label={harnessTooltip}
                 className="inline-flex cursor-help items-center"
               >
-                <Shield className="icon-sharp size-3.5" />
+                <HarnessDomainIcon className="icon-sharp size-3.5" />
               </TooltipTrigger>
               <TooltipContent>{harnessTooltip}</TooltipContent>
             </Tooltip>

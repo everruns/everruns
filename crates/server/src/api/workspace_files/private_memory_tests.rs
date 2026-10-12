@@ -6,7 +6,8 @@
 
 use super::*;
 use crate::auth::AuthConfig;
-use crate::storage::models::{CreateMemoryRow, CreateSessionRow};
+use crate::storage::CreateMemoryRow;
+use crate::storage::CreateSessionRow;
 use everruns_contracts::typed_id::PrincipalId;
 use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole};
 use serde_json::json;
@@ -35,7 +36,7 @@ fn org_for(user_id: Uuid, role: OrgRole) -> ResolvedOrg {
 fn session_row(owner: Uuid) -> CreateSessionRow {
     CreateSessionRow {
         playground_user_id: None,
-        source: crate::records::SessionSource::Api,
+        source: crate::domains::sessions::record::SessionSource::Api,
         org_id: DEFAULT_ORG_ID,
         app_id: None,
         channel_id: None,

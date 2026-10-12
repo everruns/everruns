@@ -1,5 +1,5 @@
 use super::*;
-use crate::records::slack_provisioning::*;
+use crate::domains::agent_channels::record::slack_provisioning::*;
 use crate::storage::CreateAgentChannelRow;
 use serde_json::json;
 use std::sync::Mutex;
@@ -121,7 +121,7 @@ async fn branding_update_is_scoped_and_failure_does_not_block_other_apps() {
         .await
         .unwrap();
     endpoint(&ctx, &other, Some("A-other"), "T1").await;
-    crate::org_init::initialize_org_harnesses(&db, 2)
+    crate::setup::org_init::initialize_org_harnesses(&db, 2)
         .await
         .unwrap();
     let mut other_ctx = ctx.clone();

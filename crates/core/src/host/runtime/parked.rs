@@ -6,8 +6,6 @@ use super::*;
 
 mod interrupted;
 
-pub use interrupted::InterruptedToolCalls;
-
 /// The client-side tool calls a turn parked on, as
 /// [`InProcessRuntime::parked_tool_calls`] reports them.
 #[derive(Debug, Clone, PartialEq)]

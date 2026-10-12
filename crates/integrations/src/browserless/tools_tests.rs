@@ -395,3 +395,21 @@ async fn test_navigate_tool_no_context_error() {
         other => panic!("Expected ToolError, got: {other:?}"),
     }
 }
+
+#[test]
+fn every_browser_tool_shares_one_concurrency_class() {
+    // The browserless_* tools and the browser tool drive the same persistent
+    // browser; run concurrently they abort each other's navigations.
+    let tools = crate::browserless::BrowserlessCapability
+        .tools()
+        .into_iter()
+        .chain(crate::browserless::browser_use::BrowserUseCapability.tools());
+    for tool in tools {
+        assert_eq!(
+            tool.hints().concurrency_class.as_deref(),
+            Some(crate::browserless::SESSION_BROWSER_CONCURRENCY_CLASS),
+            "{} must share the session browser's concurrency class",
+            tool.name()
+        );
+    }
+}

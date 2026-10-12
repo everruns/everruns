@@ -25,13 +25,17 @@ import type { Capability } from "@/lib/api/types";
 import { localizedConfigDescription, localizedConfigSchema } from "@/lib/capability-localization";
 import { formatMessage, type MessageKey, type SupportedLocale } from "@/lib/i18n";
 import { useLocale } from "@/providers/locale-provider";
+import { GuardrailsConfigEditor } from "./guardrails-config-editor";
 import { KnowledgeIndexConfigEditor } from "./knowledge-index-config-editor";
 import { MemoryConfigEditor } from "./memory-config-editor";
+import { WebSearchConfigEditor } from "./web-search-config-editor";
 
 // Capability IDs with purpose-built editors. Mirrors the constants exported
 // from crates/core/src/capabilities/*.
 const MEMORY_CAPABILITY_ID = "memory";
 const KNOWLEDGE_INDEX_CAPABILITY_ID = "knowledge_index";
+const GUARDRAILS_CAPABILITY_ID = "guardrails";
+const WEB_SEARCH_CAPABILITY_ID = "web_search";
 
 interface CapabilitySettingsEditorProps {
   /** Full capability metadata, including optional config schema */
@@ -55,6 +59,12 @@ export function CapabilitySettingsEditor({
   }
   if (capability.id === KNOWLEDGE_INDEX_CAPABILITY_ID) {
     return <KnowledgeIndexConfigEditor config={config} onChange={onChange} disabled={disabled} />;
+  }
+  if (capability.id === GUARDRAILS_CAPABILITY_ID) {
+    return <GuardrailsConfigEditor config={config} onChange={onChange} disabled={disabled} />;
+  }
+  if (capability.id === WEB_SEARCH_CAPABILITY_ID) {
+    return <WebSearchConfigEditor config={config} onChange={onChange} disabled={disabled} />;
   }
   return (
     <SchemaCapabilityEditor

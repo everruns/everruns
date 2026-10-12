@@ -58,7 +58,7 @@ separate:
 |---|---|---|
 | Scope | Organization | User |
 | Purpose | Infrastructure that runs agents | A user's identity on an external service, used by tools |
-| Configured in | Settings → Providers | Settings → My agent experience |
+| Configured in | Models → Providers | Settings → My agent experience |
 | Examples | OpenAI, Anthropic, Bedrock | Daytona, GitHub, Slack |
 
 Use a provider to decide **which model runs your agents**. Use a connection to

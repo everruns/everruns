@@ -101,7 +101,9 @@ impl Command for PreviewAgent {
             .await?;
         let prompt = preview.system_prompt;
         let mut tools = preview.tools;
-        tools.extend(
+        // Tools that no capability contributes: the duplicate web search check
+        // matches these by name, capabilities declare their own search.
+        let mut external_tools =
             crate::domains::mcp_servers::scoped_mcp::build_materialized_scoped_mcp_tool_definitions(
                 &ctx.db,
                 ctx.org_id(),
@@ -110,10 +112,9 @@ impl Command for PreviewAgent {
                 None,
                 ctx.capability_service.egress_service().as_ref(),
             )
-            .await
-            ?,
-        );
-        tools.extend(self.tools);
+            .await?;
+        external_tools.extend(self.tools);
+        tools.extend(external_tools.iter().cloned());
         // Apply org rule config (phase 4): override built-in severities/enabled
         // and run custom declarative rules. Defaults to no-op when unconfigured.
         let rule_config = super::check_rules::load_effective_config(&ctx.db, ctx.org_id()).await;
@@ -126,6 +127,11 @@ impl Command for PreviewAgent {
         builtin.extend(super::checks::check_superseded_capabilities(
             &effective.capabilities,
             ctx.capability_service.registry(),
+        ));
+        builtin.extend(super::checks::check_duplicate_web_search(
+            &effective.capabilities,
+            ctx.capability_service.registry(),
+            &external_tools,
         ));
         let mut findings = super::checks::apply_rule_overrides(builtin, &rule_config.overrides);
         findings.extend(super::checks::run_declarative_rules(

@@ -1,16 +1,26 @@
 //! Reqwest-backed implementation of the neutral Everruns egress contract.
 
+use super::egress_proxy::ProxyRoute;
+use super::org_egress_allowlist::{
+    ORG_EGRESS_ALLOWLIST_CACHE_TTL, OrgAllowlistCache, OrgAllowlistSource,
+};
 use crate::{
     EgressError, EgressRequest, EgressResponse, EgressResult, EgressService, EgressSigning,
     EgressStreamResponse, SystemAllowlist,
 };
 use async_trait::async_trait;
+use everruns_contracts::runtime::org_egress_allowlist::OrgEgressAllowlist;
+use everruns_contracts::runtime::{
+    EgressAccess, EgressPolicyDenial, EgressPolicyGrant, SystemEgressPolicy,
+};
 use everruns_contracts::url_validation::{validate_url_dns_pinned, validate_url_with_resolver};
 use futures::StreamExt;
+use std::collections::HashMap;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -22,10 +32,21 @@ type DnsResolver = Arc<dyn Fn(String, u16) -> DnsResolveFuture + Send + Sync>;
 #[derive(Clone)]
 pub struct DirectEgressService {
     client: reqwest::Client,
-    /// Optional host-wide allowlist applied to every outbound request,
-    /// independently of the per-request `network_access`. `None` means no
-    /// global enforcement. See `crate::system_allowlist`.
-    system_allowlist: Option<Arc<SystemAllowlist>>,
+    /// Optional host-wide egress policy (allowlist, deny list, mode) applied
+    /// to every outbound request, independently of the per-request
+    /// `network_access`. `None` means no global enforcement. See
+    /// `crate::system_allowlist`.
+    system_policy: Option<Arc<SystemEgressPolicy>>,
+    /// Per-org meter for open reads (`curated-writes`).
+    open_reads: Arc<OpenReadMeter>,
+    /// Optional domain reputation consulted before an open read.
+    reputation: Option<Arc<super::egress_reputation::DomainReputation>>,
+    /// Where org allowlist extensions come from. Consulted only for a request
+    /// the system policy would refuse as not allowlisted.
+    org_allowlist: OrgAllowlistSource,
+    /// Where tenant requests leave from: directly, or through the tenant
+    /// egress proxy (`EVERRUNS_EGRESS_PROXY_URL`).
+    proxy: ProxyRoute,
     /// Optional DNS override for `dns_pinning_required` requests. Production
     /// leaves this unset and uses the system resolver; tests install a
     /// controlled resolver to prove private answers are denied before connect.
@@ -54,7 +75,11 @@ impl DirectEgressService {
                 .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .expect("build direct egress HTTP client"),
-            system_allowlist: None,
+            system_policy: None,
+            open_reads: Arc::new(OpenReadMeter::from_env()),
+            reputation: None,
+            org_allowlist: OrgAllowlistSource::None,
+            proxy: ProxyRoute::Direct,
             dns_resolver: None,
         }
     }
@@ -62,7 +87,11 @@ impl DirectEgressService {
     pub fn with_client(client: reqwest::Client) -> Self {
         Self {
             client,
-            system_allowlist: None,
+            system_policy: None,
+            open_reads: Arc::new(OpenReadMeter::from_env()),
+            reputation: None,
+            org_allowlist: OrgAllowlistSource::None,
+            proxy: ProxyRoute::Direct,
             dns_resolver: None,
         }
     }
@@ -83,7 +112,7 @@ impl DirectEgressService {
 
     /// Construct the default direct transport for tenant/agent runtime egress.
     ///
-    /// This honors `EVERRUNS_SYSTEM_ALLOWLIST_ENABLED` and is the right default
+    /// This honors `EVERRUNS_EGRESS_POLICY` and is the right default
     /// for capabilities, MCP, integrations, and runtime HTTP surfaces.
     pub fn for_runtime_traffic_from_env() -> Self {
         Self::from_env()
@@ -91,22 +120,113 @@ impl DirectEgressService {
 
     /// Construct with the global system allowlist resolved from the environment.
     ///
-    /// Enforcement is active only when `EVERRUNS_SYSTEM_ALLOWLIST_ENABLED` is
-    /// set; otherwise this behaves exactly like [`DirectEgressService::new`].
+    /// Enforcement is active only when `EVERRUNS_EGRESS_POLICY` (or the legacy
+    /// `EVERRUNS_SYSTEM_ALLOWLIST_ENABLED`) selects a curated mode; otherwise
+    /// this behaves exactly like [`DirectEgressService::new`].
     /// Prefer [`DirectEgressService::for_runtime_traffic_from_env`] for new
     /// runtime/agent call sites. Host-owned services should use direct provider
     /// clients instead of `EgressService`.
+    /// Org allowlist extensions come from the process-wide resolver the host
+    /// installs (`install_runtime_org_egress_allowlist`), when there is one.
     pub fn from_env() -> Self {
-        Self::new().with_system_allowlist(SystemAllowlist::from_env())
+        let mut service = Self::new()
+            .with_system_policy(SystemEgressPolicy::from_env())
+            .with_reputation(super::egress_reputation::DomainReputation::from_env().map(Arc::new));
+        service.org_allowlist = OrgAllowlistSource::Runtime;
+        service.proxy = ProxyRoute::from_env();
+        service
     }
 
-    /// Attach (or clear) the host-wide system allowlist.
-    pub fn with_system_allowlist(mut self, system_allowlist: Option<Arc<SystemAllowlist>>) -> Self {
-        self.system_allowlist = system_allowlist;
+    /// Send tenant requests through `proxy` (or directly with `None`).
+    pub fn with_tenant_proxy(mut self, proxy: Option<super::TenantEgressProxy>) -> Self {
+        self.proxy = proxy.map_or(ProxyRoute::Direct, ProxyRoute::Proxy);
         self
     }
 
-    fn validate_request(&self, request: &EgressRequest) -> EgressResult<()> {
+    /// Attach (or clear) the domain reputation check for open reads.
+    pub fn with_reputation(
+        mut self,
+        reputation: Option<Arc<super::egress_reputation::DomainReputation>>,
+    ) -> Self {
+        self.reputation = reputation;
+        self
+    }
+
+    /// Resolve org allowlist extensions through `resolver` (cached for
+    /// [`ORG_EGRESS_ALLOWLIST_CACHE_TTL`]) instead of the process-wide one.
+    pub fn with_org_allowlist(mut self, resolver: Arc<dyn OrgEgressAllowlist>) -> Self {
+        self.org_allowlist = OrgAllowlistSource::Explicit(Arc::new(OrgAllowlistCache::new(
+            resolver,
+            ORG_EGRESS_ALLOWLIST_CACHE_TTL,
+        )));
+        self
+    }
+
+    /// Attach (or clear) the host-wide system egress policy.
+    pub fn with_system_policy(mut self, system_policy: Option<Arc<SystemEgressPolicy>>) -> Self {
+        self.system_policy = system_policy;
+        self
+    }
+
+    /// Attach (or clear) an allowlist-only policy: every request must match.
+    pub fn with_system_allowlist(self, system_allowlist: Option<Arc<SystemAllowlist>>) -> Self {
+        self.with_system_policy(
+            system_allowlist.map(|list| Arc::new(SystemEgressPolicy::allowlist_only(list))),
+        )
+    }
+
+    /// Replace the open-read meter's per-org limit (requests per minute).
+    pub fn with_open_read_limit(mut self, per_minute: u32) -> Self {
+        self.open_reads = Arc::new(OpenReadMeter::new(per_minute));
+        self
+    }
+
+    /// Decide the system policy for one request. The org's grant is
+    /// consulted only when the policy alone would not allow the request
+    /// outright: an open grant lifts everything but the deny list, and an
+    /// allowlist extension can admit a request refused as not allowlisted.
+    async fn decide_policy(&self, request: &EgressRequest) -> PolicyDecision {
+        let Some(policy) = &self.system_policy else {
+            return PolicyDecision::NoPolicy;
+        };
+        let access = request_access(request);
+        let initial = match policy.check(&request.url, access, None) {
+            Ok(EgressPolicyGrant::Allowlisted) => return PolicyDecision::Allowlisted,
+            // The deny list holds for every org, granted or not.
+            Err(EgressPolicyDenial::Denylisted) => {
+                return PolicyDecision::Denied(EgressPolicyDenial::Denylisted);
+            }
+            Ok(EgressPolicyGrant::OpenRead) => PolicyDecision::OpenRead,
+            Err(denial) => PolicyDecision::Denied(denial),
+        };
+        let org = request
+            .scope
+            .as_ref()
+            .and_then(|scope| scope.org_id.as_ref());
+        let Some(grant) = (match (org, self.org_allowlist.resolve()) {
+            (Some(org), Some(cache)) => cache.grant(org).await,
+            _ => None,
+        }) else {
+            return initial;
+        };
+        if grant.open {
+            return PolicyDecision::OpenOrg;
+        }
+        if initial == PolicyDecision::Denied(EgressPolicyDenial::NotAllowlisted)
+            && let Some(extension) = &grant.extension
+            && policy.check(&request.url, access, Some(extension))
+                == Ok(EgressPolicyGrant::Allowlisted)
+        {
+            return PolicyDecision::AllowlistedOrg;
+        }
+        initial
+    }
+
+    fn validate_request(
+        &self,
+        request: &EgressRequest,
+        decision: PolicyDecision,
+    ) -> EgressResult<()> {
         if request.method.trim().is_empty() {
             return Err(EgressError::invalid("method is required"));
         }
@@ -127,26 +247,58 @@ impl DirectEgressService {
                 url: request.url.clone(),
             });
         }
-        // Host-wide allowlist: when enabled, every request routed through this
-        // runtime egress boundary must match one of the curated public
-        // resources. Host-owned services should not use `EgressService`.
-        if let Some(allowlist) = &self.system_allowlist
-            && !allowlist.is_url_allowed(&request.url)
-        {
-            return Err(EgressError::NetworkAccessDenied {
-                url: request.url.clone(),
-            });
+        // Host-wide policy: when enabled, every request routed through this
+        // runtime egress boundary passes the deny list, and requests that can
+        // carry data out must match the curated allowlist (or the org's
+        // granted extension). Host-owned services should not use
+        // `EgressService`.
+        match decision {
+            PolicyDecision::NoPolicy
+            | PolicyDecision::Allowlisted
+            | PolicyDecision::AllowlistedOrg
+            | PolicyDecision::OpenOrg => {}
+            PolicyDecision::OpenRead => {
+                let org = request
+                    .scope
+                    .as_ref()
+                    .and_then(|scope| scope.org_id.as_ref())
+                    .map(ToString::to_string);
+                if !self.open_reads.admit(org.as_deref()) {
+                    return Err(EgressError::NetworkAccessDenied {
+                        url: format!(
+                            "{} (open-read rate limit reached for this organization; \
+                             retry in a minute)",
+                            request.url
+                        ),
+                    });
+                }
+            }
+            PolicyDecision::Denied(_) => {
+                return Err(EgressError::NetworkAccessDenied {
+                    url: request.url.clone(),
+                });
+            }
         }
         Ok(())
     }
 
-    async fn prepare_request(&self, mut request: EgressRequest) -> EgressResult<EgressRequest> {
-        self.validate_request(&request)?;
+    async fn prepare_request(
+        &self,
+        mut request: EgressRequest,
+        decision: PolicyDecision,
+    ) -> EgressResult<EgressRequest> {
+        self.validate_request(&request, decision)?;
         if request.signing == EgressSigning::Required {
             return Err(EgressError::SigningUnavailable);
         }
-        if request.dns_pinning_required {
-            let validated = match &self.dns_resolver {
+        // The reputation lookup and the DNS-pinning resolution are independent
+        // network round trips, so a first read of an unknown host pays for one,
+        // not both. The reputation verdict still decides first.
+        let pinning = async {
+            if !request.dns_pinning_required {
+                return None;
+            }
+            Some(match &self.dns_resolver {
                 Some(resolve) => {
                     let resolve = Arc::clone(resolve);
                     validate_url_with_resolver(&request.url, move |host, port| {
@@ -156,7 +308,11 @@ impl DirectEgressService {
                     .await
                 }
                 None => validate_url_dns_pinned(&request.url).await,
-            };
+            })
+        };
+        let (reputation, pinned) = tokio::join!(self.check_reputation(&request, decision), pinning);
+        reputation?;
+        if let Some(validated) = pinned {
             let (validated_url, resolved_addrs) =
                 validated.map_err(|error| EgressError::NetworkAccessDenied {
                     url: format!("{} ({error})", request.url),
@@ -167,7 +323,36 @@ impl DirectEgressService {
         Ok(request)
     }
 
+    /// Open reads and open-org requests reach hosts nobody curated, so ask the
+    /// reputation source about the host first. Allowlisted and unpoliced
+    /// traffic skips it.
+    async fn check_reputation(
+        &self,
+        request: &EgressRequest,
+        decision: PolicyDecision,
+    ) -> EgressResult<()> {
+        let Some(reputation) = &self.reputation else {
+            return Ok(());
+        };
+        if !matches!(decision, PolicyDecision::OpenRead | PolicyDecision::OpenOrg) {
+            return Ok(());
+        }
+        let Some(host) = reqwest::Url::parse(&request.url)
+            .ok()
+            .and_then(|url| url.host_str().map(str::to_string))
+        else {
+            return Ok(());
+        };
+        if reputation.is_flagged(&host).await {
+            return Err(EgressError::NetworkAccessDenied {
+                url: format!("{} (domain flagged by reputation check)", request.url),
+            });
+        }
+        Ok(())
+    }
+
     fn build_request(&self, request: EgressRequest) -> EgressResult<reqwest::RequestBuilder> {
+        let proxy = self.proxy.for_kind(&request.kind)?.cloned();
         let EgressRequest {
             method,
             url,
@@ -175,16 +360,29 @@ impl DirectEgressService {
             body,
             timeout_ms,
             pinned_addrs,
+            scope,
             ..
         } = request;
 
         let method = reqwest::Method::from_bytes(method.as_bytes())
             .map_err(|error| EgressError::invalid(format!("invalid HTTP method: {error}")))?;
 
+        // Tenant traffic through the proxy: a per-request client carrying the
+        // request's signed scope token. The proxy connects to the target, so
+        // it re-validates the resolved address instead of the pins.
+        let mut builder = if let Some(proxy) = proxy {
+            reqwest::Client::builder()
+                .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
+                .timeout(DEFAULT_REQUEST_TIMEOUT)
+                .redirect(reqwest::redirect::Policy::none())
+                .proxy(proxy.reqwest_proxy(scope.as_ref())?)
+                .build()
+                .map_err(|e| EgressError::invalid(format!("proxied client build failed: {e}")))?
+                .request(method, &url)
         // When pre-resolved addresses are provided, build a per-request client
         // pinned to those IPs.  This closes the TOCTOU window between
         // validate_url_dns_pinned and the actual TCP connect (TM-TOOL-018).
-        let mut builder = if let Some((ref host, ref addrs)) = pinned_addrs {
+        } else if let Some((ref host, ref addrs)) = pinned_addrs {
             reqwest::Client::builder()
                 .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
                 .redirect(reqwest::redirect::Policy::none())
@@ -212,7 +410,39 @@ impl DirectEgressService {
 #[async_trait]
 impl EgressService for DirectEgressService {
     async fn send(&self, request: EgressRequest) -> EgressResult<EgressResponse> {
-        let request = self.prepare_request(request).await?;
+        let decision = self.decide_policy(&request).await;
+        let audit = EgressAudit::start(&request, decision);
+        let result = self.send_unaudited(request, decision).await;
+        audit.finish(
+            result
+                .as_ref()
+                .map(|response| (response.status, Some(response.body.len()))),
+        );
+        result
+    }
+
+    async fn send_stream(&self, request: EgressRequest) -> EgressResult<EgressStreamResponse> {
+        let decision = self.decide_policy(&request).await;
+        let audit = EgressAudit::start(&request, decision);
+        let result = self.send_stream_unaudited(request, decision).await;
+        // Streamed bodies are not buffered here, so the response size is
+        // unknown; the status and request side are still recorded.
+        audit.finish(result.as_ref().map(|response| (response.status, None)));
+        result
+    }
+
+    fn name(&self) -> &'static str {
+        "DirectEgressService"
+    }
+}
+
+impl DirectEgressService {
+    async fn send_unaudited(
+        &self,
+        request: EgressRequest,
+        decision: PolicyDecision,
+    ) -> EgressResult<EgressResponse> {
+        let request = self.prepare_request(request, decision).await?;
         let response = self
             .build_request(request)?
             .send()
@@ -242,8 +472,12 @@ impl EgressService for DirectEgressService {
         })
     }
 
-    async fn send_stream(&self, request: EgressRequest) -> EgressResult<EgressStreamResponse> {
-        let request = self.prepare_request(request).await?;
+    async fn send_stream_unaudited(
+        &self,
+        request: EgressRequest,
+        decision: PolicyDecision,
+    ) -> EgressResult<EgressStreamResponse> {
+        let request = self.prepare_request(request, decision).await?;
         let response = self
             .build_request(request)?
             .send()
@@ -272,393 +506,193 @@ impl EgressService for DirectEgressService {
             body: Box::pin(body),
         })
     }
+}
 
-    fn name(&self) -> &'static str {
-        "DirectEgressService"
+/// How the system policy treated one request, as enforced and audited.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PolicyDecision {
+    /// No system policy is active.
+    NoPolicy,
+    /// The curated allowlist matched.
+    Allowlisted,
+    /// Only the org's granted allowlist extension matched.
+    AllowlistedOrg,
+    /// A read of a host outside the allowlist (`curated-writes`), metered.
+    OpenRead,
+    /// The org holds an open grant: any host the deny list allows.
+    OpenOrg,
+    Denied(EgressPolicyDenial),
+}
+
+impl PolicyDecision {
+    fn label(self) -> String {
+        match self {
+            Self::NoPolicy => "none".to_string(),
+            Self::Allowlisted => "allowlisted".to_string(),
+            Self::AllowlistedOrg => "allowlisted_org".to_string(),
+            Self::OpenRead => "open_read".to_string(),
+            Self::OpenOrg => "open_org".to_string(),
+            Self::Denied(denial) => format!("denied:{}", denial.reason()),
+        }
+    }
+}
+
+/// Whether a request can carry data out. MCP and integration traffic is
+/// treated as a write whatever its method: those clients exchange tenant data
+/// with the endpoint by design.
+fn request_access(request: &EgressRequest) -> EgressAccess {
+    match request.kind {
+        crate::EgressRequestKind::Mcp | crate::EgressRequestKind::Integration => {
+            EgressAccess::Write
+        }
+        _ => EgressAccess::classify(&request.method, !request.body.is_empty()),
+    }
+}
+
+/// Environment variable overriding the per-org open-read limit (requests per
+/// minute, per process). `0` disables open reads entirely.
+pub const OPEN_READS_PER_MINUTE_ENV: &str = "EVERRUNS_EGRESS_OPEN_READS_PER_MINUTE";
+const DEFAULT_OPEN_READS_PER_MINUTE: u32 = 120;
+
+/// Fixed-window per-org counter for open reads. Per process, so a tenant
+/// spread across workers gets a multiple of the limit; it bounds bulk abuse,
+/// not precise quotas. Requests with no org share one bucket.
+struct OpenReadMeter {
+    per_minute: u32,
+    windows: Mutex<HashMap<String, (u64, u32)>>,
+}
+
+impl OpenReadMeter {
+    fn new(per_minute: u32) -> Self {
+        Self {
+            per_minute,
+            windows: Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn from_env() -> Self {
+        let per_minute = std::env::var(OPEN_READS_PER_MINUTE_ENV)
+            .ok()
+            .and_then(|value| value.trim().parse().ok())
+            .unwrap_or(DEFAULT_OPEN_READS_PER_MINUTE);
+        Self::new(per_minute)
+    }
+
+    fn admit(&self, org: Option<&str>) -> bool {
+        let minute = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_secs() / 60)
+            .unwrap_or(0);
+        let mut windows = self
+            .windows
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // Drop stale windows so the map tracks only orgs active this minute.
+        windows.retain(|_, (window, _)| *window == minute);
+        let (_, count) = windows
+            .entry(org.unwrap_or("").to_string())
+            .or_insert((minute, 0));
+        if *count >= self.per_minute {
+            return false;
+        }
+        *count += 1;
+        true
+    }
+}
+
+/// Target of the outbound audit log. One `info` event per request that
+/// reaches this boundary, allowed or denied, so abuse can be traced to an org
+/// and session (TM-AGENT-018 residual). The query string is never logged, only
+/// its length: queries routinely carry tokens.
+pub const EGRESS_AUDIT_TARGET: &str = "everruns::egress::audit";
+
+struct EgressAudit {
+    started: std::time::Instant,
+    kind: String,
+    method: String,
+    host: String,
+    path: String,
+    query_len: usize,
+    request_bytes: usize,
+    org_id: Option<String>,
+    session_id: Option<String>,
+    /// How the system policy classified the request: `allowlisted`,
+    /// `allowlisted_org` (passed only through the org's granted extension),
+    /// `open_read`, `denied:<reason>`, or `none` when no policy is active.
+    policy: String,
+}
+
+/// Decision label, status, response size, and error text for one outcome. A
+/// policy denial logs no error text: it repeats the URL, query included.
+type AuditOutcome = (&'static str, Option<u16>, Option<usize>, Option<String>);
+
+fn audit_outcome(outcome: Result<(u16, Option<usize>), &EgressError>) -> AuditOutcome {
+    match outcome {
+        Ok((status, bytes)) => ("allowed", Some(status), bytes, None),
+        Err(EgressError::NetworkAccessDenied { .. }) => ("denied", None, None, None),
+        Err(error) => ("failed", None, None, Some(error.to_string())),
+    }
+}
+
+impl EgressAudit {
+    fn start(request: &EgressRequest, decision: PolicyDecision) -> Self {
+        let parsed = reqwest::Url::parse(&request.url).ok();
+        let scope = request.scope.as_ref();
+        Self {
+            started: std::time::Instant::now(),
+            kind: match &request.kind {
+                crate::EgressRequestKind::Provider => "provider".to_string(),
+                crate::EgressRequestKind::Capability => "capability".to_string(),
+                crate::EgressRequestKind::Integration => "integration".to_string(),
+                crate::EgressRequestKind::SystemEmail => "system_email".to_string(),
+                crate::EgressRequestKind::UtilityLlm => "utility_llm".to_string(),
+                crate::EgressRequestKind::Mcp => "mcp".to_string(),
+                crate::EgressRequestKind::Other(label) => format!("other:{label}"),
+            },
+            method: request.method.to_ascii_uppercase(),
+            host: parsed
+                .as_ref()
+                .and_then(|url| url.host_str().map(str::to_string))
+                .unwrap_or_default(),
+            path: parsed
+                .as_ref()
+                .map(|url| url.path().to_string())
+                .unwrap_or_default(),
+            query_len: parsed
+                .as_ref()
+                .and_then(|url| url.query().map(str::len))
+                .unwrap_or(0),
+            request_bytes: request.body.len(),
+            org_id: scope.and_then(|scope| scope.org_id.as_ref().map(ToString::to_string)),
+            session_id: scope.and_then(|scope| scope.session_id.map(|id| id.to_string())),
+            policy: decision.label(),
+        }
+    }
+
+    fn finish(self, outcome: Result<(u16, Option<usize>), &EgressError>) {
+        let duration_ms = self.started.elapsed().as_millis() as u64;
+        let (decision, status, response_bytes, error) = audit_outcome(outcome);
+        tracing::info!(
+            target: EGRESS_AUDIT_TARGET,
+            decision,
+            kind = %self.kind,
+            policy = %self.policy,
+            method = %self.method,
+            host = %self.host,
+            path = %self.path,
+            query_len = self.query_len,
+            request_bytes = self.request_bytes,
+            status,
+            response_bytes,
+            duration_ms,
+            org_id = self.org_id.as_deref(),
+            session_id = self.session_id.as_deref(),
+            error = error.as_deref(),
+            "egress"
+        );
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::EgressRequestKind;
-    use crate::network_access::NetworkAccessList;
-    use futures::StreamExt;
-    use serde_json::json;
-    use wiremock::matchers::{body_json, header, method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
-
-    #[tokio::test]
-    async fn direct_service_sends_json_request() {
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/v1/test"))
-            .and(header("Authorization", "Bearer test"))
-            .and(body_json(json!({"ok": true})))
-            .respond_with(
-                ResponseTemplate::new(201)
-                    .set_body_json(json!({
-                        "id": "response_123"
-                    }))
-                    .insert_header("X-Request-Id", "request-42"),
-            )
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        let response = DirectEgressService::new()
-            .send(
-                EgressRequest::new(
-                    "POST",
-                    format!("{}/v1/test", server.uri()),
-                    EgressRequestKind::Capability,
-                )
-                .header("Authorization", "Bearer test")
-                .header("Content-Type", "application/json")
-                .body(serde_json::to_vec(&json!({"ok": true})).unwrap()),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status, 201);
-        assert_eq!(
-            response.headers.get("x-request-id").map(String::as_str),
-            Some("request-42")
-        );
-        assert_eq!(
-            serde_json::from_slice::<serde_json::Value>(&response.body).unwrap()["id"],
-            "response_123"
-        );
-    }
-
-    #[tokio::test]
-    async fn direct_service_enforces_network_access() {
-        let error = DirectEgressService::new()
-            .send(
-                EgressRequest::new(
-                    "GET",
-                    "https://blocked.example.com/path",
-                    EgressRequestKind::Capability,
-                )
-                .network_access(Some(NetworkAccessList::allow_only(["allowed.example.com"]))),
-            )
-            .await
-            .unwrap_err();
-
-        assert!(matches!(error, EgressError::NetworkAccessDenied { .. }));
-    }
-
-    #[tokio::test]
-    async fn system_allowlist_blocks_unlisted_hosts() {
-        use crate::SystemAllowlist;
-        let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/blocked"))
-            .respond_with(ResponseTemplate::new(200))
-            .expect(0)
-            .mount(&server)
-            .await;
-        let allowlist = SystemAllowlist::from_toml(
-            r#"
-            [groups.test]
-            allowed = ["allowed.example.com"]
-            "#,
-        )
-        .unwrap();
-
-        let service = DirectEgressService::new().with_system_allowlist(Some(Arc::new(allowlist)));
-        let error = service
-            .send(EgressRequest::new(
-                "GET",
-                format!("{}/blocked", server.uri()),
-                EgressRequestKind::Capability,
-            ))
-            .await
-            .unwrap_err();
-
-        assert!(matches!(error, EgressError::NetworkAccessDenied { .. }));
-    }
-
-    #[tokio::test]
-    async fn system_allowlist_cannot_be_overridden_by_request_acl() {
-        use crate::SystemAllowlist;
-        // The system allowlist is a hard ceiling: even a request whose own
-        // network_access explicitly permits the host must still be denied when
-        // the system allowlist does not list it. Sessions can narrow, never widen.
-        let allowlist = SystemAllowlist::from_toml(
-            r#"
-            [groups.test]
-            allowed = ["allowed.example.com"]
-            "#,
-        )
-        .unwrap();
-
-        let service = DirectEgressService::new().with_system_allowlist(Some(Arc::new(allowlist)));
-        let error = service
-            .send(
-                EgressRequest::new(
-                    "GET",
-                    "https://blocked.example.com/path",
-                    EgressRequestKind::Capability,
-                )
-                // A maximally-permissive per-request ACL that allows the host.
-                .network_access(Some(NetworkAccessList::allow_only(["blocked.example.com"]))),
-            )
-            .await
-            .unwrap_err();
-
-        assert!(matches!(error, EgressError::NetworkAccessDenied { .. }));
-    }
-
-    #[tokio::test]
-    async fn system_allowlist_permits_listed_hosts() {
-        use crate::SystemAllowlist;
-        let server = MockServer::start().await;
-        let host = reqwest::Url::parse(&server.uri())
-            .unwrap()
-            .host_str()
-            .unwrap()
-            .to_string();
-        Mock::given(method("GET"))
-            .and(path("/ok"))
-            .respond_with(ResponseTemplate::new(200))
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        let allowlist =
-            SystemAllowlist::from_toml(&format!("[groups.test]\nallowed = [\"{host}\"]\n"))
-                .unwrap();
-        let service = DirectEgressService::new().with_system_allowlist(Some(Arc::new(allowlist)));
-        let response = service
-            .send(EgressRequest::new(
-                "GET",
-                format!("{}/ok", server.uri()),
-                EgressRequestKind::Capability,
-            ))
-            .await
-            .unwrap();
-
-        assert_eq!(response.status, 200);
-    }
-
-    #[tokio::test]
-    async fn dns_pinning_blocks_loopback_after_request_policy_passes() {
-        let error = DirectEgressService::new()
-            .send(
-                EgressRequest::new(
-                    "GET",
-                    "http://127.0.0.1/latest/meta-data",
-                    EgressRequestKind::Capability,
-                )
-                .network_access(Some(NetworkAccessList::allow_only(["127.0.0.1"])))
-                .require_dns_pinning(),
-            )
-            .await
-            .unwrap_err();
-
-        assert!(matches!(error, EgressError::NetworkAccessDenied { .. }));
-        assert!(error.to_string().contains("private/internal address"));
-    }
-
-    /// EVE-1154: bashkit can hand the egress boundary an unpinned hostname
-    /// after its DNS precheck fails open. With `require_dns_pinning`, a
-    /// subsequent private/link-local/loopback answer must be refused before
-    /// any TCP connect — proved here with a controlled resolver aimed at a
-    /// live mock server that must see zero requests.
-    #[tokio::test]
-    async fn require_dns_pinning_denies_private_answers_before_connect() {
-        use std::net::{IpAddr, SocketAddr};
-
-        let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/secret"))
-            .respond_with(ResponseTemplate::new(200).set_body_string("leaked"))
-            .expect(0)
-            .mount(&server)
-            .await;
-
-        let listen = reqwest::Url::parse(&server.uri()).unwrap();
-        let port = listen.port().unwrap();
-        for blocked in ["127.0.0.1", "169.254.169.254", "10.0.0.1"] {
-            let blocked_ip: IpAddr = blocked.parse().unwrap();
-            let service =
-                DirectEgressService::new().with_dns_resolver(move |_host, resolved_port| {
-                    let addr = SocketAddr::new(blocked_ip, resolved_port);
-                    async move { Ok(vec![addr]) }
-                });
-            let error = service
-                .send(
-                    EgressRequest::new(
-                        "GET",
-                        format!("http://rebind.example:{port}/secret"),
-                        EgressRequestKind::Capability,
-                    )
-                    .network_access(Some(NetworkAccessList::allow_only(["rebind.example"])))
-                    // Same flag BashkitEgressTransport sets when pins are empty.
-                    .require_dns_pinning(),
-                )
-                .await
-                .unwrap_err();
-            assert!(
-                matches!(error, EgressError::NetworkAccessDenied { .. }),
-                "blocked answer {blocked} must deny: {error}"
-            );
-            assert!(
-                error.to_string().contains(blocked)
-                    || error.to_string().contains("blocked address")
-                    || error.to_string().contains("private"),
-                "denial must mention the blocked answer {blocked}: {error}"
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn dns_pinning_does_not_run_before_system_allowlist_denial() {
-        use crate::SystemAllowlist;
-        let allowlist = SystemAllowlist::from_toml(
-            r#"
-            [groups.test]
-            allowed = ["allowed.example.com"]
-            "#,
-        )
-        .unwrap();
-
-        let blocked_url = "https://blocked.invalid/path";
-        let error = DirectEgressService::new()
-            .with_system_allowlist(Some(Arc::new(allowlist)))
-            .send(
-                EgressRequest::new("GET", blocked_url, EgressRequestKind::Capability)
-                    .network_access(Some(NetworkAccessList::allow_only(["blocked.invalid"])))
-                    .require_dns_pinning(),
-            )
-            .await
-            .unwrap_err();
-
-        assert!(
-            matches!(error, EgressError::NetworkAccessDenied { ref url } if url == blocked_url)
-        );
-    }
-
-    #[tokio::test]
-    async fn required_signing_fails_when_no_signer_is_configured() {
-        let error = DirectEgressService::new()
-            .send(
-                EgressRequest::new("GET", "https://example.com", EgressRequestKind::Capability)
-                    .signing(EgressSigning::Required),
-            )
-            .await
-            .unwrap_err();
-
-        assert!(matches!(error, EgressError::SigningUnavailable));
-    }
-
-    #[tokio::test]
-    async fn direct_service_does_not_follow_redirects() {
-        let redirect_server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/secret"))
-            .respond_with(ResponseTemplate::new(200).set_body_string("secret"))
-            .expect(0)
-            .mount(&redirect_server)
-            .await;
-
-        let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/start"))
-            .respond_with(
-                ResponseTemplate::new(302)
-                    .insert_header("Location", format!("{}/secret", redirect_server.uri())),
-            )
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        let response = DirectEgressService::new()
-            .send(EgressRequest::new(
-                "GET",
-                format!("{}/start", server.uri()),
-                EgressRequestKind::Capability,
-            ))
-            .await
-            .unwrap();
-
-        assert_eq!(response.status, 302);
-    }
-
-    #[tokio::test]
-    async fn direct_service_streams_response_body() {
-        let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/stream"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_raw("data: one\n\ndata: two\n\n", "text/event-stream"),
-            )
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        let mut response = DirectEgressService::new()
-            .send_stream(EgressRequest::new(
-                "GET",
-                format!("{}/stream", server.uri()),
-                EgressRequestKind::Capability,
-            ))
-            .await
-            .unwrap();
-
-        assert_eq!(response.status, 200);
-        assert_eq!(
-            response.headers.get("content-type").map(String::as_str),
-            Some("text/event-stream")
-        );
-        let mut body = Vec::new();
-        while let Some(chunk) = response.body.next().await {
-            body.extend(chunk.unwrap());
-        }
-        assert_eq!(
-            String::from_utf8(body).unwrap(),
-            "data: one\n\ndata: two\n\n"
-        );
-    }
-    #[tokio::test]
-    async fn merged_network_policy_denies_escaped_urls_before_transport() {
-        use crate::network_access::merge_network_access;
-        let service = DirectEgressService::new();
-        for (parent, child, target) in [
-            (
-                "*.example.com",
-                "https://outside.invalid/path.example.com",
-                "https://outside.invalid/path.example.com",
-            ),
-            (
-                "https://api.example.com/v1/",
-                "https://api.example.com/v1/../admin",
-                "https://api.example.com/admin",
-            ),
-            (
-                "https://",
-                "https://outside.invalid/data",
-                "https://outside.invalid/data",
-            ),
-        ] {
-            let parent = NetworkAccessList::allow_only([parent]);
-            let child = NetworkAccessList::allow_only([child]);
-            let policy = merge_network_access(Some(&parent), Some(&child));
-            for streaming in [false, true] {
-                let request = EgressRequest::new("GET", target, EgressRequestKind::Capability)
-                    .network_access(policy.clone());
-                let error = if streaming {
-                    match service.send_stream(request).await {
-                        Err(error) => error,
-                        Ok(_) => panic!("streaming request escaped policy: {target}"),
-                    }
-                } else {
-                    service.send(request).await.unwrap_err()
-                };
-                assert!(matches!(error, EgressError::NetworkAccessDenied { url } if url == target));
-            }
-        }
-    }
-}
+#[path = "egress_tests.rs"]
+mod tests;

@@ -6,6 +6,17 @@ const mockPush = jest.fn();
 const mockSetCurrentOrg = jest.fn();
 const mockMutateAsync = jest.fn();
 const mockUpdateOrganization = jest.fn();
+const mockSaveEgressPatterns = jest.fn();
+type MockEgressAllowlist = {
+  granted: boolean;
+  open?: boolean;
+  patterns: string[];
+  mode: string;
+  max_patterns: number;
+  can_edit: boolean;
+  can_grant: boolean;
+};
+let mockEgressAllowlist: MockEgressAllowlist | undefined;
 let mockOrganization = {
   id: "org-1",
   name: "Current Org",
@@ -52,6 +63,16 @@ jest.mock("@/hooks/use-organizations", () => ({
     mutateAsync: mockMutateAsync,
     isPending: false,
     isError: false,
+    error: null,
+  }),
+  useOrgEgressAllowlist: () => ({
+    data: mockEgressAllowlist,
+    isLoading: false,
+    error: null,
+  }),
+  useSetOrgEgressAllowlist: () => ({
+    mutateAsync: mockSaveEgressPatterns,
+    isPending: false,
     error: null,
   }),
 }));
@@ -121,6 +142,9 @@ describe("OrganizationPage", () => {
     mockMutateAsync.mockClear();
     mockUpdateOrganization.mockClear();
     mockUpdateOrganization.mockResolvedValue({});
+    mockEgressAllowlist = undefined;
+    mockSaveEgressPatterns.mockReset();
+    mockSaveEgressPatterns.mockResolvedValue({});
     mockOrganization = {
       id: "org-1",
       name: "Current Org",
@@ -463,5 +487,67 @@ describe("OrganizationPage", () => {
     expect(screen.getByLabelText("Organization Name")).toHaveValue("Second Org");
 
     jest.useRealTimers();
+  });
+
+  describe("outbound allowlist", () => {
+    const allowlist = (overrides: Partial<MockEgressAllowlist> = {}): MockEgressAllowlist => ({
+      granted: false,
+      patterns: [],
+      mode: "curated-writes",
+      max_patterns: 50,
+      can_edit: true,
+      can_grant: false,
+      ...overrides,
+    });
+
+    it("tells org admins a platform administrator must enable it", () => {
+      mockEgressAllowlist = allowlist({ patterns: ["api.acme.com"] });
+      render(<OrganizationPage />);
+
+      expect(screen.getByRole("heading", { name: "Outbound allowlist" })).toBeInTheDocument();
+      expect(screen.getByText(/A platform administrator must enable this/)).toBeInTheDocument();
+      expect(screen.queryByLabelText("Host patterns")).not.toBeInTheDocument();
+      expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    });
+
+    it("lets a granted org admin save one pattern per line", async () => {
+      mockEgressAllowlist = allowlist({ granted: true, patterns: ["api.acme.com"] });
+      render(<OrganizationPage />);
+
+      const editor = screen.getByLabelText("Host patterns");
+      expect(editor).toHaveValue("api.acme.com");
+      fireEvent.change(editor, { target: { value: "api.acme.com\n\n *.acme.io " } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      });
+
+      expect(mockSaveEgressPatterns).toHaveBeenCalledWith(["api.acme.com", "*.acme.io"]);
+    });
+
+    it("shows a granted list read-only to members", () => {
+      mockEgressAllowlist = allowlist({
+        granted: true,
+        patterns: ["api.acme.com"],
+        can_edit: false,
+      });
+      render(<OrganizationPage />);
+
+      expect(screen.getByLabelText("Host patterns")).toHaveAttribute("readonly");
+      expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    });
+
+    it("tells an org with open outbound access the list is not needed", () => {
+      mockEgressAllowlist = allowlist({ open: true });
+      render(<OrganizationPage />);
+
+      expect(screen.getByText(/This organization has open outbound access/)).toBeInTheDocument();
+    });
+
+    it("never offers a grant toggle, even to platform users", () => {
+      mockEgressAllowlist = allowlist({ can_grant: true });
+      render(<OrganizationPage />);
+
+      expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    });
   });
 });

@@ -84,6 +84,9 @@ struct State {
     from_turn: u32,
     /// The phase started: stop memoizing.
     setup_done: bool,
+    /// When the current phase's setup began, once a host that runs a whole
+    /// turn began a later phase ([`PhaseReads::begin_phase`]).
+    phase_began: Option<Instant>,
 }
 
 type Map<K, T> = fn(&mut State) -> &mut HashMap<K, Entry<T>>;
@@ -445,17 +448,30 @@ impl PhaseReads {
         });
     }
 
+    /// A new phase of the same turn begins on this host (a worker running a
+    /// whole turn on a session lease keeps one host for the turn): memoize its
+    /// setup afresh and time it from now. The turn's shared reads stay.
+    pub fn begin_phase(&self) {
+        self.with_state(|s| {
+            *s = State {
+                phase_began: Some(Instant::now()),
+                ..State::default()
+            }
+        });
+    }
+
     /// Log the phase's setup time when its start event goes out. Once per memo.
     pub fn note_event(&self, event_type: &str) {
         if event_type != crate::core::REASON_STARTED && event_type != crate::core::ACT_STARTED {
             return;
         }
-        let (fetched, saved, from_turn, first) = self.with_state(|s| {
+        let (fetched, saved, from_turn, first, began) = self.with_state(|s| {
             let counts = (
                 s.fetched.saturating_sub(s.from_turn),
                 s.saved,
                 s.from_turn,
                 !s.setup_done,
+                s.phase_began.unwrap_or(self.started),
             );
             *s = State {
                 setup_done: true,
@@ -466,7 +482,7 @@ impl PhaseReads {
         if first {
             tracing::info!(
                 phase = event_type,
-                setup_ms = self.started.elapsed().as_millis() as u64,
+                setup_ms = began.elapsed().as_millis() as u64,
                 reads_fetched = fetched,
                 reads_saved = saved,
                 reads_from_turn = from_turn,

@@ -16,7 +16,7 @@ use everruns_core::tools::{Tool, ToolExecutionResult};
 use serde_json::{Value, json};
 use tracing::{debug, error};
 
-use super::client::{ContainerCreateConfig, DockerClient, HostConfig};
+use super::client::{ContainerCreateConfig, DockerClient, HostConfig, is_name_conflict};
 use super::config::ContainerSandboxConfig;
 use super::state::{
     SandboxState, container_name, delete_sandbox_state, get_sandbox_state, network_name,
@@ -149,7 +149,7 @@ impl Tool for SandboxCreateTool {
             .await
         {
             Ok(id) => (id, true),
-            Err(e) if e.contains("already exists") || e.contains("Conflict") => {
+            Err(e) if is_name_conflict(&e) => {
                 // Network exists, that's fine — reuse
                 debug!(name = %n_name, "Network already exists, reusing");
                 (n_name.clone(), false)
@@ -179,11 +179,49 @@ impl Tool for SandboxCreateTool {
             },
         };
 
-        let container = match client.create_container(&c_name, &create_config).await {
-            Ok(c) => c,
+        // Idempotent create: a 409 on the container name means this session's
+        // container already exists (e.g. state lost, or a retry). Reuse it after
+        // proving ownership, and start it if it is not running. A network that
+        // already existed is never removed.
+        let container_id = match client.create_container(&c_name, &create_config).await {
+            Ok(c) => {
+                if let Err(e) = client.start_container(&c.id).await {
+                    let _ = client.remove_container(&c.id).await;
+                    if network_created {
+                        let _ = client.remove_network(&network_id).await;
+                    }
+                    return ToolExecutionResult::tool_error(format!(
+                        "Failed to start container: {e}"
+                    ));
+                }
+                c.id
+            }
+            Err(e) if is_name_conflict(&e) => {
+                debug!(name = %c_name, "Container already exists, reusing");
+                let existing = match client.inspect_container(&c_name).await {
+                    Ok(i) => i,
+                    Err(e) => {
+                        return ToolExecutionResult::tool_error(format!(
+                            "Container {c_name} already exists but could not be inspected: {e}"
+                        ));
+                    }
+                };
+                if let Err(e) =
+                    verify_sandbox_container_ownership(&client, &session_id, &existing.id).await
+                {
+                    return e;
+                }
+                if !existing.state.running
+                    && let Err(e) = client.start_container(&existing.id).await
+                {
+                    return ToolExecutionResult::tool_error(format!(
+                        "Failed to start existing container: {e}"
+                    ));
+                }
+                existing.id
+            }
             Err(e) => {
                 // Only remove network if we just created it
-                // TODO: idempotent create (409/name conflict) is a follow-up
                 if network_created {
                     let _ = client.remove_network(&network_id).await;
                 }
@@ -191,18 +229,9 @@ impl Tool for SandboxCreateTool {
             }
         };
 
-        // Start container
-        if let Err(e) = client.start_container(&container.id).await {
-            let _ = client.remove_container(&container.id).await;
-            if network_created {
-                let _ = client.remove_network(&network_id).await;
-            }
-            return ToolExecutionResult::tool_error(format!("Failed to start container: {e}"));
-        }
-
         let now = chrono::Utc::now().to_rfc3339();
         let state = SandboxState {
-            container_id: container.id.clone(),
+            container_id,
             network_id: network_id.clone(),
             container_name: c_name.clone(),
             network_name: n_name,
@@ -215,7 +244,7 @@ impl Tool for SandboxCreateTool {
         if let Err(e) = save_sandbox_state(context, &state).await {
             return e;
         }
-        if let Err(e) = touch_sandbox_lease(context, &state).await {
+        if let Err(e) = touch_sandbox_lease(context, &state, &config).await {
             return e;
         }
 
@@ -336,7 +365,7 @@ impl Tool for SandboxExecTool {
         };
 
         // Refresh lease on successful exec
-        let _ = touch_sandbox_lease(context, &state).await;
+        let _ = touch_sandbox_lease(context, &state, &ContainerSandboxConfig::default()).await;
 
         // Sanitize output. EVE-489: resolve `auto` against the exit code so
         // successes get a compact summary and failures still get a diagnostic
@@ -817,7 +846,8 @@ impl Tool for SandboxManageTool {
                 if let Err(e) = client.start_container(&state.container_id).await {
                     return ToolExecutionResult::tool_error(format!("Failed to start: {e}"));
                 }
-                let _ = touch_sandbox_lease(context, &state).await;
+                let _ =
+                    touch_sandbox_lease(context, &state, &ContainerSandboxConfig::default()).await;
                 ToolExecutionResult::success("Sandbox started.")
             }
             "remove" => {

@@ -11,6 +11,7 @@ pub mod app_builder;
 mod catalog_cli;
 pub use everruns_durable_engine::durable_runner;
 pub use everruns_durable_engine::durable_turn;
+pub mod grpc_actor_lease_store;
 pub mod grpc_adapters;
 pub mod grpc_command_transport;
 pub mod grpc_durable_runner;
@@ -24,9 +25,11 @@ pub mod grpc_sqldb_adapter;
 mod grpc_task_store;
 pub mod grpc_user_mcp;
 pub mod grpc_worker_adapters;
+pub mod internal_commands;
 pub mod leased_resource_cleanup;
 pub mod mcp_elicitation_consent;
 pub mod mcp_executor;
+mod model_wait_slots;
 pub mod phase_reads;
 pub mod platform;
 mod reveal_storage;
@@ -41,6 +44,8 @@ pub use everruns_durable_engine::task_heartbeat;
 pub use everruns_durable_engine::turn_store;
 pub mod task_wakeup;
 pub use everruns_durable_engine::turn_driver;
+pub mod actor_lease_store;
+pub mod actor_runtime;
 pub mod turn_host;
 pub mod unified_worker;
 #[cfg(test)]
@@ -71,6 +76,11 @@ pub use grpc_adapters::{
 };
 
 // Re-export task worker types
+pub use actor_lease_store::{
+    ACTOR_LEASE_LOST, ActorFence, ActorJournal, ActorLeaseLost, ActorLeaseStore, ActorRelease,
+    ActorRenewal, LeasedActor, actor_lease_lost, is_actor_lease_lost,
+};
+pub use grpc_actor_lease_store::GrpcActorLeaseStore;
 pub use grpc_worker_adapters::GrpcWorkerAdapters;
 pub use runtime_host::WorkerRuntimeHost;
 pub use stream_heartbeater::GrpcTaskHeartbeater;

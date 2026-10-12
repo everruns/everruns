@@ -1,8 +1,9 @@
 "use client";
 
+import { VirtualUserIcon } from "@/components/icons/facet-icons";
 import { use, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ArchiveRestore, Check, Pencil, UserRound } from "lucide-react";
+import { ArchiveRestore, Check, Pencil } from "lucide-react";
 import {
   useVirtualUser,
   useDeleteVirtualUser,
@@ -166,7 +167,7 @@ export default function VirtualUserDetailPage({
       />
 
       <PageMasthead
-        icon={<UserRound />}
+        icon={<VirtualUserIcon />}
         entityId={identity.id}
         title={<span className={getEntityNameClassName(identity.status)}>{identity.name}</span>}
         badges={

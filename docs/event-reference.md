@@ -13,6 +13,7 @@ This page lists every event type in the Everruns event protocol and documents th
 | [`output.message.started`](#outputmessagestarted) | Assistant message started. |
 | [`output.message.delta`](#outputmessagedelta) | Streaming chunk of assistant text. |
 | [`output.message.completed`](#outputmessagecompleted) | Assistant message finished and persisted. |
+| [`conversation.message`](#conversationmessage) | An agent that uses explicit communication sent a message with `send_message`. |
 | `output.message.replaced` | Clients discard streamed text for the turn and show a replacement; the next `output.message.completed` carries it. |
 | [`turn.started`](#turnstarted) | Turn began. |
 | [`turn.completed`](#turncompleted) | Turn finished successfully. |
@@ -35,6 +36,7 @@ This page lists every event type in the Everruns event protocol and documents th
 | `tool.call_requested` | A client-side tool call is waiting for a result from the client. |
 | `tool.call_repaired` | A malformed tool call was repaired, or repair was attempted, by the `tool_call_repair` capability. |
 | `tool.hosted_call` | A provider-executed (hosted) tool call changed state. |
+| `tool.nested_call` | A tool a shell script called through `tools` ([Tools in Shell](/capabilities/tools-in-shell/)) finished, was refused, or stopped the script for approval. Carries the parent `bash` call id. |
 | `transcript.repaired` | The conversation transcript was repaired before a provider request. |
 | `capability.usage` | Usage of a capability by the agent. |
 | [`llm.generation`](#llmgeneration) | One LLM call: model, usage, and timing. |
@@ -47,7 +49,9 @@ This page lists every event type in the Everruns event protocol and documents th
 | [`sandbox.recovered`](#sandboxrecovered) | Managed Sandbox compute was replaced and its durable workspace restored. |
 | [`environment.instance_lost`](#sandboxinstance_lost) | Legacy compatibility name for `sandbox.instance_lost`. |
 | [`environment.recovered`](#sandboxrecovered) | Legacy compatibility name for `sandbox.recovered`. |
-| `schedule.triggered` | A schedule fired. |
+| `timer.set` | The session set a timer, such as a schedule. |
+| `timer.fired` | A timer's occurrence was delivered to the session. |
+| `timer.cancelled` | A timer will not fire again. |
 | `task.created` | Session task created. |
 | `task.updated` | Session task changed. |
 | `task.message.sent` | Message sent to a session task. |
@@ -113,7 +117,7 @@ Events](#reasoning-events)) and its own channel.
   "type": "output.message.started",
   "data": {
     "turn_id": "turn_...",
-    "model": "gpt-5.2"
+    "model": "gpt-6.1-sol"
   }
 }
 ```
@@ -167,6 +171,44 @@ content parts inside `message.content`, in the order the provider emitted them.
     "usage": {
       "input_tokens": 50,
       "output_tokens": 25
+    }
+  }
+}
+```
+
+### conversation.message
+
+Emitted when an agent that uses
+[explicit communication](/features/explicit-communication/) sends a message
+with the `send_message` tool. For these agents this event, not
+`output.message.completed`, carries what the agent said: their assistant text
+is recorded as `output.message.completed` with `message.phase: "commentary"`
+and is working notes, not a reply.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `message_id` | string | Identifier of the sent message |
+| `text` | string | The message as the agent wrote it, in Markdown |
+| `tool_call_id` | string | The `send_message` call that sent it |
+| `delivery` | object? | Present only when an external platform accepted the message (for example a Slack thread) |
+| `delivery.platform` | string | Destination platform, such as `slack` |
+| `delivery.channel` | string | Platform channel or conversation identifier |
+| `delivery.message_ref` | string | Platform message identifier |
+
+When the conversation is the session itself (web chat, API, A2A, AG-UI, MCP,
+FCP), `delivery` is absent and this event is the delivery.
+
+```json
+{
+  "type": "conversation.message",
+  "data": {
+    "message_id": "message_...",
+    "text": "The report is ready. Revenue grew 12% quarter over quarter.",
+    "tool_call_id": "call_abc123",
+    "delivery": {
+      "platform": "slack",
+      "channel": "C0123456789",
+      "message_ref": "1712345678.000200"
     }
   }
 }
@@ -379,7 +421,7 @@ events or on any API surface.
   "data": {
     "turn_id": "turn_...",
     "provider": "openai",
-    "model": "gpt-5.2",
+    "model": "gpt-6.1-sol",
     "item_id": "rs_68a1f...",
     "summary": ["Checking the build logs before answering."],
     "token_count": 412
@@ -408,7 +450,7 @@ Emitted when LLM inference begins.
   "data": {
     "agent_id": "agent_...",
     "metadata": {
-      "model": "gpt-5.2"
+      "model": "gpt-6.1-sol"
     }
   }
 }
@@ -583,7 +625,7 @@ dropped calls.
       "tool_calls": []
     },
     "metadata": {
-      "model": "gpt-5.2",
+      "model": "gpt-6.1-sol",
       "provider": "openai",
       "usage": {"input_tokens": 100, "output_tokens": 50},
       "duration_ms": 1200,
@@ -732,7 +774,7 @@ Information about the model used.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `model` | string | Model name (e.g., "gpt-5.2") |
+| `model` | string | Model name (e.g., "gpt-6.1-sol") |
 | `model_id` | string? | Internal model ID |
 | `provider_id` | string? | Internal provider ID |
 

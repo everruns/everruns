@@ -17,7 +17,7 @@
 // - Templates live here rather than in `seed.rs`, which is at its file-size
 //   ceiling.
 
-use crate::seed::{SEED_AGENTS, SeedAgent, SeedCapability};
+use crate::setup::seed::{SEED_AGENTS, SeedAgent, SeedCapability};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -153,7 +153,7 @@ pub(crate) const AGENT_TEMPLATES: &[AgentTemplate] = &[
         agent: SeedAgent {
             id: PR_REVIEWER_ID,
             name: "pr-reviewer",
-            harness_name: "worker-base",
+            harness_name: "bashkit-worker",
             display_name: "PR Reviewer",
             description: "Reviews every pull request on a repository with inline comments, on any model. Wakes on GitHub pull request events through its own GitHub App and does not repeat itself on new pushes.",
             system_prompt: PR_REVIEWER_PROMPT,
@@ -172,7 +172,7 @@ pub(crate) const AGENT_TEMPLATES: &[AgentTemplate] = &[
         agent: SeedAgent {
             id: SECURITY_SCANNER_ID,
             name: "security-scanner",
-            harness_name: "worker-base",
+            harness_name: "bashkit-worker",
             display_name: "Security Scanner",
             description: "Scans a repository on a schedule in a cloud sandbox and files deduplicated security findings as GitHub issues. Can open draft fix pull requests when you allow it.",
             system_prompt: SECURITY_SCANNER_PROMPT,
@@ -217,8 +217,8 @@ pub(crate) const AGENT_TEMPLATES: &[AgentTemplate] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domains::agent_triggers::record::AgentTriggerType;
     use crate::domains::agent_triggers::types::CreateAgentTriggerRequest;
-    use crate::records::agent_trigger::AgentTriggerType;
     use std::collections::HashSet;
 
     fn substitute(value: &Value, repository: &str) -> Value {

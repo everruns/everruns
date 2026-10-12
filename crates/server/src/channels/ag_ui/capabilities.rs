@@ -7,7 +7,7 @@
 //! decides, and nothing a public caller could not learn by running the agent
 //! (TM-API-026). The stream stays authoritative, as 1.0 says.
 
-use crate::records::AgUiChannelConfig;
+use crate::domains::agent_channels::record::AgUiChannelConfig;
 use everruns_core::ag_ui::{
     AgentCapabilities, HumanInTheLoopCapabilities, IdentityCapabilities, MultiAgentCapabilities,
     MultimodalCapabilities, MultimodalInputCapabilities, ReasoningCapabilities, StateCapabilities,

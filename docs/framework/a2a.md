@@ -44,7 +44,7 @@ use serve::prelude::*;
 #[agent]
 fn researcher() -> Agent {
     Agent::builder()
-        .model("openai/gpt-5.6-terra")
+        .model("openai/gpt-6.1-sol")
         .description("Researches a topic and answers with short factual notes.")
         .instructions(md!("instructions.md"))
         .build()
@@ -109,7 +109,7 @@ let agent = Agent::builder()
          Then write one paragraph from its notes.",
     )
     .provider(OpenAI::from_env()?)
-    .model("gpt-5.6-terra")
+    .model("gpt-6.1-sol")
     .capability(CapabilityRef::new("a2a_agent_delegation").config(json!({
         "agents": [{
             "id": "researcher",

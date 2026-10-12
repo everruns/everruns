@@ -1,6 +1,6 @@
 // PostgreSQL repository: User Preferences (per-user key/value store)
 
-use super::super::models::*;
+use super::super::VirtualUserPreferenceRow;
 use super::Database;
 use anyhow::Result;
 use everruns_server_macros::sql;

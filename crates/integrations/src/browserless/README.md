@@ -37,9 +37,9 @@ assert_eq!(capability.id(), "browserless");
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-integrations)
-- [Browserless integration](https://docs.everruns.com/capabilities/browserless/)
-- [Give an agent web access](https://docs.everruns.com/how-to/give-an-agent-web-access/)
-- [Everruns documentation](https://docs.everruns.com)
+- [Browserless integration](https://everruns.com/docs/capabilities/browserless/)
+- [Give an agent web access](https://everruns.com/docs/how-to/give-an-agent-web-access/)
+- [Everruns documentation](https://everruns.com/docs)
 
 ## License
 

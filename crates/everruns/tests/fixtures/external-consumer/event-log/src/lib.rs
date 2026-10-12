@@ -54,8 +54,31 @@ impl ExternalEventLog {
     }
 
     fn insert(&self, request: EventRequest, visible: bool) -> Event {
+        self.insert_checked(request, visible, None)
+            .expect("an unconditional append has no precondition")
+    }
+
+    /// `expected`: `Some(last)` appends only when the session's physical log
+    /// (hidden entries included) ends at `last`, checked under the same mutex
+    /// that assigns the sequence.
+    fn insert_checked(
+        &self,
+        request: EventRequest,
+        visible: bool,
+        expected: Option<Option<i32>>,
+    ) -> Result<Event, EventLogError> {
         let mut sessions = self.sessions.lock().expect("event log mutex");
         let entries = sessions.entry(request.session_id).or_default();
+        if let Some(expected) = expected {
+            let actual = entries.last().and_then(|entry| entry.event.sequence);
+            if actual != expected {
+                return Err(EventLogError::SequenceConflict {
+                    session_id: request.session_id,
+                    expected,
+                    actual,
+                });
+            }
+        }
         // The log owns identity: it assigns the event id and the next
         // per-session sequence, then finalizes the request into an `Event`.
         let sequence = entries
@@ -68,7 +91,7 @@ impl ExternalEventLog {
             event: event.clone(),
             visible,
         });
-        event
+        Ok(event)
     }
 }
 
@@ -160,6 +183,22 @@ impl EventLog for ExternalEventLog {
             });
         }
         Ok(self.insert(request, true))
+    }
+
+    async fn append_conditional(
+        &self,
+        request: EventRequest,
+        expected_last_sequence: Option<i32>,
+    ) -> Result<Event, EventLogError> {
+        if request.is_ephemeral() {
+            return Err(EventLogError::InvalidAppend {
+                detail: format!(
+                    "ephemeral event {} must be routed sink-only",
+                    request.event_type
+                ),
+            });
+        }
+        self.insert_checked(request, true, Some(expected_last_sequence))
     }
 
     fn durability(&self) -> EventDurability {

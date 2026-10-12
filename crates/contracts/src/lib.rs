@@ -49,6 +49,7 @@ pub mod driver_helpers;
 mod driver_oauth;
 pub mod driver_registry;
 pub mod error;
+pub mod execution_api;
 pub mod execution_phase;
 pub mod form_elicitation_types;
 pub mod hosted_mcp;

@@ -177,19 +177,27 @@ fn linear() -> McpServer {
 ```rust
 #[channel]
 pub fn slack() -> Slack {
-    Slack::from_secrets().mention_only()
+    Slack::from_env().mention_only()
 }
 ```
 
 This serves `POST /v1/channels/slack`. Each Slack thread maps to one session,
-so follow-ups keep their context, and each turn's reply is posted back to the
-thread. Without `SLACK_BOT_TOKEN`, replies are printed instead. When
-`SLACK_SIGNING_SECRET` is set, requests are verified.
+so follow-ups keep their context, and replies are posted back to the thread
+while the turn runs. Slack's retries are dropped, and a reply cut off by a
+restart is finished when the app starts again. Without `SLACK_BOT_TOKEN`,
+replies are printed instead. Requests are verified with
+`SLACK_SIGNING_SECRET`; without it `dev` accepts unsigned requests, and
+`start` refuses to boot.
 
-`Webhook` is a generic JSON channel that takes `{"thread", "text",
-"callback"?}`. To add another channel, implement the `Channel` trait.
+`#[channel(agent = "researcher")]` picks the agent that answers; the default
+agent does otherwise. A channel cannot share its name with an agent, since
+both live under `/v1/channels/{name}`.
 
-The macro also generates a module of the same name, so code can address the
+`Webhook` is a generic JSON channel that takes `{"thread", "text", "user"?,
+"id"?}`. Other platforms implement `ChannelDriver`, the same driver contract
+the Framework and the everruns server use.
+
+The macro also generates a module of the same name, so code can post to the
 channel: `slack::channel("C0123ABC")`.
 
 ## 7. Schedules

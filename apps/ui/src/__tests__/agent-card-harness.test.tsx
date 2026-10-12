@@ -1,5 +1,4 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import AgentsPage from "@/app/(main)/agents/page";
 import { AgentCard } from "@/components/agents/agent-card";
 import type { Agent } from "@/lib/api/types";
 
@@ -14,43 +13,8 @@ jest.mock("next/link", () => ({
   ),
 }));
 
-jest.mock("next/navigation", () => ({
-  usePathname: () => "/agents",
-  useRouter: () => ({
-    push: jest.fn(),
-    prefetch: jest.fn(),
-    replace: jest.fn(),
-    back: jest.fn(),
-  }),
-}));
-
-jest.mock("@/providers/locale-provider", () => ({
-  useLocale: () => ({ locale: "en" }),
-}));
-
 jest.mock("@/components/chat/streamdown-message", () => ({
   InlineStreamdownMessage: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-}));
-
-const mockAgents: Agent[] = [];
-let mockAgentsLoading = false;
-
-// The legacy registry page is what renders while the `agents_home` flag is off.
-jest.mock("@/providers/feature-flags-provider", () => ({
-  useFeatureFlagsState: () => ({ flags: { agents_home: false }, isLoading: false }),
-}));
-
-jest.mock("@/components/agents/home/agents-home", () => ({
-  AgentsHome: () => null,
-}));
-
-jest.mock("@/hooks", () => ({
-  usePageTitle: () => {},
-  useAgents: () => ({ data: mockAgents, isLoading: mockAgentsLoading, error: null }),
-  useCapabilities: () => ({ data: [] }),
-  useAgentExamples: () => ({ data: [], isLoading: false, error: null }),
-  useImportAgent: () => ({ mutateAsync: jest.fn(), isPending: false }),
-  useImportAgentExample: () => ({ mutateAsync: jest.fn(), isPending: false }),
 }));
 
 function agent(overrides: Partial<Agent> = {}): Agent {
@@ -81,11 +45,6 @@ function agent(overrides: Partial<Agent> = {}): Agent {
 }
 
 describe("AgentCard harness metadata", () => {
-  afterEach(() => {
-    mockAgents.splice(0);
-    mockAgentsLoading = false;
-  });
-
   it("links an explicitly selected effective harness", () => {
     render(<AgentCard agent={agent()} />);
 
@@ -165,37 +124,5 @@ describe("AgentCard harness metadata", () => {
 
     expect(screen.getByText("unavailable harness")).toHaveAttribute("title", "harness_missing");
     expect(screen.queryByRole("link", { name: /Harness: unavailable/ })).not.toBeInTheDocument();
-  });
-
-  it("keeps harness metadata visible when the collection switches to list view", () => {
-    mockAgents.push(
-      agent({
-        effective_harness: {
-          id: "harness_long",
-          name: "long-harness",
-          display_name: "A deliberately long harness name that must stay within the card",
-          source: "organization_default",
-          status: "active",
-        },
-      }),
-    );
-
-    render(<AgentsPage />);
-    fireEvent.click(screen.getByRole("button", { name: "List view" }));
-
-    const harnessLink = screen.getByRole("link", {
-      name: /Harness: A deliberately long harness name.*organization default/,
-    });
-    expect(harnessLink).toHaveClass("truncate");
-    expect(harnessLink.closest('[data-slot="entity-card-detail"]')).toBeInTheDocument();
-  });
-
-  it("keeps the collection loading state independent of card metadata", () => {
-    mockAgentsLoading = true;
-
-    const { container } = render(<AgentsPage />);
-
-    expect(container.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(18);
-    expect(container.querySelector('[data-slot="entity-card-detail"]')).not.toBeInTheDocument();
   });
 });

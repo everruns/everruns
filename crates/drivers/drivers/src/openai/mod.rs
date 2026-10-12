@@ -25,11 +25,12 @@
 //!
 //! Application authors normally configure OpenAI through the
 //! application-facing `everruns::OpenAI` value. See the
-//! [Framework model guide](https://docs.everruns.com/framework/models-and-providers/).
+//! [Framework model guide](https://everruns.com/docs/framework/models-and-providers/).
 
 mod driver;
 pub(crate) mod embeddings;
 pub mod realtime;
+pub mod speech;
 mod types;
 
 #[cfg(test)]
@@ -41,6 +42,7 @@ pub use driver::{
 };
 pub use embeddings::OpenAIEmbeddingsDriver;
 pub use realtime::OpenAIRealtimeDriver;
+pub use speech::OpenAISpeechDriver;
 pub use types::{
     ChatMessage, ChatRequest, CompletionMetadata, LlmConfig, LlmStreamEvent, MessageRole,
 };

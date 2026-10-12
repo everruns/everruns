@@ -31,8 +31,8 @@ use everruns_durable::InMemoryWorkflowEventStore;
 use everruns_contracts::typed_id::PrincipalId;
 use everruns_server::EventDelivery;
 use everruns_server::api;
-use everruns_server::domains::agent_channels::{hash_a2a_api_key, hash_channel_api_key};
-use everruns_server::records::ChannelType;
+use everruns_server::domains::agent_channels::hash_a2a_api_key;
+use everruns_server::domains::agent_channels::record::ChannelType;
 use everruns_server::storage::Database;
 use everruns_server::storage::StorageBackend;
 use everruns_worker::DurableRunner;
@@ -59,7 +59,6 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
     let fcp_token = "migration-fcp-token";
     let webhook_token = "migration-webhook-token";
     let a2a_key = "evra2a_migration_key";
-    let api_key = "evr_app_migration_key";
     let slack_signing_secret = "migration-slack-signing-secret";
     let migrated_webhook_token = "migration-trigger-webhook-token";
     seed_ingress_channel(
@@ -112,17 +111,6 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         }),
     )
     .await;
-    let api_id = seed_ingress_channel(
-        &pool,
-        &fixture,
-        ChannelType::ApiEndpoint,
-        json!({
-            "api_key_hash": hash_channel_api_key(api_key),
-            "api_key_prefix": "evr_app_test...",
-            "session_mode": "session_per_invocation"
-        }),
-    )
-    .await;
     seed_ingress_channel(
         &pool,
         &fixture,
@@ -170,7 +158,10 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
              virtual_users, virtual_user_bindings, runtime_invocations, principals
          TO {role};
          GRANT UPDATE ON sessions, agent_channels, event_sequences, virtual_user_bindings, principals, virtual_users, runtime_invocations, session_participants, reporting_outbox TO {role};
-         GRANT SELECT, INSERT, UPDATE, DELETE ON agent_trigger_deliveries TO {role};"
+         GRANT SELECT, INSERT, UPDATE, DELETE ON agent_trigger_deliveries TO {role};
+         GRANT SELECT, INSERT, UPDATE, DELETE ON
+             channel_bindings, channel_seen, channel_pending_deliveries
+         TO {role};"
     );
     sqlx::raw_sql(sqlx::AssertSqlSafe(grants.as_str()))
         .execute(&pool)
@@ -474,52 +465,15 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
     assert_eq!(a2a_result["result"]["status"]["state"], "submitted");
     assert!(a2a_result["result"]["contextId"].as_str().is_some());
 
-    let api_authorization = format!("Bearer {api_key}");
-    let api_create_response = request_route(
+    // The App-scoped api_endpoint aliases are retired (Agent Execution API
+    // phase 6) and answer 410 without resolving anything.
+    assert_route_status(
         &router,
         Method::POST,
-        &format!("/v1/apps/{app_id}/api/{api_id}/sessions"),
-        &[
-            ("content-type", "application/json"),
-            ("authorization", &api_authorization),
-        ],
+        &format!("/v1/apps/{app_id}/api/appchan_{}/sessions", hex32()),
+        &[("content-type", "application/json")],
         br#"{"message":"legacy API alias"}"#,
-    )
-    .await;
-    assert_eq!(api_create_response.status(), StatusCode::CREATED);
-    let api_session = response_json(api_create_response).await;
-    assert_eq!(api_session["created_session"], true);
-    let api_session_id = api_session["session_id"]
-        .as_str()
-        .expect("API alias session id");
-    assert_route_status(
-        &router,
-        Method::GET,
-        &format!("/v1/apps/{app_id}/api/{api_id}/sessions/{api_session_id}"),
-        &[("authorization", &api_authorization)],
-        b"",
-        StatusCode::OK,
-    )
-    .await;
-    assert_route_status(
-        &router,
-        Method::POST,
-        &format!("/v1/apps/{app_id}/api/{api_id}/sessions/{api_session_id}/messages"),
-        &[
-            ("content-type", "application/json"),
-            ("authorization", &api_authorization),
-        ],
-        br#"{"message":"legacy API follow-up"}"#,
-        StatusCode::ACCEPTED,
-    )
-    .await;
-    assert_route_status(
-        &router,
-        Method::POST,
-        &format!("/v1/apps/{app_id}/api/{api_id}/sessions/{api_session_id}/cancel"),
-        &[("authorization", &api_authorization)],
-        b"",
-        StatusCode::OK,
+        StatusCode::GONE,
     )
     .await;
 
@@ -530,8 +484,8 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
             .await
             .expect("count final App sessions");
     assert!(
-        final_session_count >= initial_session_count + 6,
-        "AG-UI, Public Chat, FCP, Webhook, A2A, and API aliases must create sessions"
+        final_session_count >= initial_session_count + 5,
+        "AG-UI, Public Chat, FCP, Webhook, and A2A aliases must create sessions"
     );
 
     restricted_pool.close().await;
@@ -611,7 +565,6 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         db.clone(),
         None,
         runner.clone(),
-        false,
         event_delivery.clone(),
         sse_tracker.clone(),
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-ag-ui"),
@@ -620,7 +573,6 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         db.clone(),
         None,
         runner.clone(),
-        false,
         event_delivery.clone(),
         sse_tracker.clone(),
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-public-chat"),
@@ -630,7 +582,6 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         db.clone(),
         None,
         runner.clone(),
-        false,
         event_delivery.clone(),
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-fcp"),
     );
@@ -638,16 +589,14 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         db.clone(),
         None,
         runner.clone(),
-        None,
-        false,
         event_delivery.clone(),
         "https://example.com/api".to_string(),
-    );
+    )
+    .with_channel_host();
     let webhook_state = api::channel_webhooks::ChannelWebhookState::new(
         db.clone(),
         None,
         runner.clone(),
-        false,
         event_delivery.clone(),
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-webhook"),
     );
@@ -655,9 +604,8 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         db.clone(),
         None,
         runner.clone(),
-        false,
         event_delivery.clone(),
-        sse_tracker,
+        sse_tracker.clone(),
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-a2a"),
         everruns_server::channels::a2a::signing::A2aReplayStore::in_memory(),
         "https://app.everruns.test".to_string(),
@@ -666,8 +614,8 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         db,
         None,
         runner,
-        false,
         event_delivery,
+        sse_tracker,
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-api"),
     );
 
@@ -1344,10 +1292,12 @@ async fn channel_auth_migration_only_backfills_plaintext_transport_rows() {
         .expect("seed pre-migration endpoint");
     }
 
-    sqlx::raw_sql(include_str!("../../migrations/139_agent_endpoint_auth.sql"))
-        .execute(&mut *tx)
-        .await
-        .expect("apply endpoint auth migration");
+    sqlx::raw_sql(include_str!(
+        "../../migrations/legacy/139_agent_endpoint_auth.sql"
+    ))
+    .execute(&mut *tx)
+    .await
+    .expect("apply endpoint auth migration");
 
     let (config, auth): (serde_json::Value, Option<serde_json::Value>) =
         sqlx::query_as("SELECT channel_config, auth FROM agent_endpoints WHERE id = $1")

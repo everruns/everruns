@@ -1,15 +1,7 @@
 "use client";
 
-import {
-  Info,
-  MessageSquare,
-  Loader2,
-  Zap,
-  Pin,
-  PinOff,
-  CalendarClock,
-  Download,
-} from "lucide-react";
+import { SessionIcon } from "@/components/icons/facet-icons";
+import { Info, Loader2, Zap, Pin, PinOff, CalendarClock, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { EntityCard } from "@/components/ui/entity-card";
 import { ProviderIcon } from "@/components/providers/provider-icon";
@@ -160,7 +152,7 @@ export function SessionCard({
   // Show output preview from session (last assistant message)
   const outputPreview = session.output_preview;
   // Sessions are org-level entities
-  const sessionUrl = `/sessions/${session.id}/transcript`;
+  const sessionUrl = `/sessions/${session.id}/trace`;
   const isPinned = session.is_pinned === true;
 
   return (
@@ -173,7 +165,7 @@ export function SessionCard({
         statusInfo.isRunning ? (
           <Loader2 className="w-4 h-4 text-primary animate-spin" />
         ) : (
-          <MessageSquare className="w-4 h-4 text-muted-foreground" />
+          <SessionIcon className="w-4 h-4 text-muted-foreground" />
         )
       }
       inlineBadges={

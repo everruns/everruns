@@ -1,7 +1,7 @@
 use super::queries::prepare_channel_config;
+use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
+use crate::domains::agent_channels::record::slack_provisioning::SlackProvisioningError;
 use crate::domains::common::{CommandError, Ctx};
-use crate::records::SlackChannelConfig;
-use crate::records::slack_provisioning::SlackProvisioningError;
 use crate::storage::{UpdateAgentChannelRow, UpdateField};
 use uuid::Uuid;
 

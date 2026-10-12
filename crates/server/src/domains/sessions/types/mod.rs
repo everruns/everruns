@@ -4,10 +4,11 @@
 // the domain never imports `api`. The `api` module re-exports them, keeping
 // OpenAPI schema names and JSON shapes unchanged.
 
+use crate::domains::sandbox_templates::record::SandboxSelection;
+use crate::domains::sessions::record::{SessionParticipantKind, SessionParticipantRole};
 use crate::kernel_imports::{
     ScopedMcpServers, SessionSeedMode, contracts::tool_types::ToolDefinition, is_mcp_tool,
 };
-use crate::records::{SandboxSelection, SessionParticipantKind, SessionParticipantRole};
 use crate::storage::UpdateField;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::typed_id::{
@@ -52,6 +53,13 @@ pub struct ForkSessionRequest {
     /// Override the session-level system prompt.
     #[serde(default)]
     pub system_prompt: Option<String>,
+    /// Branch from a message: copy history only up to and including the turn
+    /// that holds this message (a user or agent message id, `msg_...`).
+    /// Workspace files and session storage are copied as they are now.
+    /// Omitted copies the whole history.
+    #[serde(default)]
+    #[schema(example = "msg_01933b5a00007000800000000000001")]
+    pub up_to_message_id: Option<String>,
 }
 
 // Trust boundary (client-side tools deprecation rollout): the `tools` field

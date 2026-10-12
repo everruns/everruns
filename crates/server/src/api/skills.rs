@@ -9,8 +9,8 @@ use crate::api::common::{ErrorResponse, UrlBuilder, WithUrls};
 use crate::api::state::ApiState;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::skills;
+use crate::domains::skills::record::Skill;
 use crate::domains::skills::{SKILL_DANGEROUS, SKILL_MANAGE, SKILL_VIEW};
-use crate::records::Skill;
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, State},

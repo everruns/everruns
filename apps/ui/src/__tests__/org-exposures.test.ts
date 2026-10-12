@@ -190,9 +190,9 @@ describe("publicly reachable detection", () => {
   });
 
   // Every other transport authenticates by construction — Slack signs, webhook
-  // and api_endpoint carry a token or key, A2A carries an API key, and a
-  // schedule has no inbound caller at all.
-  it.each(["slack", "webhook", "api_endpoint", "a2a", "schedule"] as const)(
+  // and api carry a token or key, A2A carries an API key, and a schedule has
+  // no inbound caller at all.
+  it.each(["slack", "webhook", "api", "a2a", "schedule"] as const)(
     "does not count %s as anonymous",
     (kind) => {
       expect(isAnonymousExposure(channel({ channel_type: kind, channel_config: {} }))).toBe(false);

@@ -4,6 +4,7 @@
 pub mod commands;
 pub mod judge;
 pub mod listener;
+pub mod record;
 pub mod service;
 pub mod types;
 pub mod worker;

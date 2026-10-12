@@ -37,7 +37,7 @@ use crate::domains::agents::avatar::{
     AVATAR_CONTENT_TYPE, MAX_AVATAR_UPLOAD_BYTES, is_known_variant, render_avatar,
 };
 use crate::domains::agents::avatar_presets::{AvatarPreset, PRESETS, find_preset};
-use crate::records::AgentAvatar;
+use crate::domains::agents::record::AgentAvatar;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -218,6 +218,7 @@ async fn store_avatar(
     if let Some(provisioner) = state.slack_provisioner.clone() {
         let (db, encryption) = (state.db.clone(), state.encryption.clone());
         let (org_id, agent_uuid) = (org.org_id, agent.id.uuid());
+        let api_base_url = crate::domains::agents::avatar_slack::deployment_api_base();
         tokio::spawn(async move {
             crate::domains::agents::avatar_slack::push_avatar_to_agent_slack_apps(
                 db,
@@ -226,6 +227,7 @@ async fn store_avatar(
                 org_id,
                 agent_uuid,
                 avatar_id,
+                &api_base_url,
             )
             .await;
         });

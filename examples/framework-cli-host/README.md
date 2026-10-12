@@ -32,16 +32,12 @@ $ everruns fleet scale api --replicas 4
 ## Run it
 
 ```bash
-# Deterministic, no key, no network: the simulator issues the shell calls.
-cargo run -p everruns-framework-cli-host -- --offline
-
-# Against a real model. Either key works; Anthropic wins if both are set.
-ANTHROPIC_API_KEY=... cargo run -p everruns-framework-cli-host
-OPENAI_API_KEY=...    cargo run -p everruns-framework-cli-host
+# OpenAI's gpt-6.1-sol; ANTHROPIC_API_KEY alone selects Anthropic instead.
+OPENAI_API_KEY=... cargo run -p everruns-framework-cli-host
 
 # Any trailing words become the prompt, so you can drive a mutation and check
 # it against the fleet state printed afterwards.
-ANTHROPIC_API_KEY=... cargo run -p everruns-framework-cli-host -- \
+OPENAI_API_KEY=... cargo run -p everruns-framework-cli-host -- \
   "Scale the api service to 4 replicas, then list the whole fleet."
 ```
 
@@ -64,7 +60,8 @@ tree it cannot serve — `tests/cli_in_session.rs` covers that case explicitly.
 
 ## What the tests prove
 
-`tests/cli_in_session.rs` runs real turns through the real interpreter. The
+`tests/cli_in_session.rs` runs real turns through the real interpreter, with a
+test-only scripted model issuing the shell calls. The
 load-bearing assertion is that a `scale` command moves the application's own
 state from 2 replicas to 4: a simulated final message can claim anything, but
 only the builtin can move that number.

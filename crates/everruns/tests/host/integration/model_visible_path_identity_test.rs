@@ -233,6 +233,7 @@ async fn assert_persistence_identity(store: Arc<dyn SessionFileSystem>, wrap_mou
     let stdout_path = format!("{root}/outputs/call_identity.stdout");
 
     let mut persist_result = ToolResult {
+        details: None,
         tool_call_id: "call_identity".to_string(),
         result: Some(json!({
             "stdout": "stdout preview",
@@ -262,6 +263,7 @@ async fn assert_persistence_identity(store: Arc<dyn SessionFileSystem>, wrap_mou
         .map(|i| json!({"id": i, "name": format!("row-{i}")}))
         .collect();
     let mut distill_result = ToolResult {
+        details: None,
         tool_call_id: "call_identity".to_string(),
         result: Some(json!({"rows": rows})),
         images: None,

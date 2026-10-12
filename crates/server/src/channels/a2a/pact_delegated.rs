@@ -36,9 +36,9 @@ use uuid::Uuid;
 use super::ChannelA2aState;
 use super::pact_keys::ProviderKey;
 use super::pact_oauth::{ACCESS_TOKEN_TYPE, DelegationClaims, Urls, parse_scope};
-use crate::records::pact_delegation::PactDelegationConfig;
+use crate::domains::agent_channels::record::pact_delegation::PactDelegationConfig;
 use crate::storage::EventRow;
-use crate::storage::models::{UpdateSession, UpsertMcpOAuthSessionCredentials};
+use crate::storage::{UpdateSession, UpsertMcpOAuthSessionCredentials};
 
 /// §5.5: the header a personal agent sends the delegation token in.
 pub(super) const DELEGATION_HEADER: &str = "x-a2a-user-delegation";
@@ -176,7 +176,7 @@ pub(super) async fn runtime_subject(
             management_user_id: None,
         })
         .await?;
-    let principals = crate::services::PrincipalService::new(state.db.clone());
+    let principals = crate::domains::users::PrincipalService::new(state.db.clone());
     let parent = principals
         .ensure_system_principal(org_id, "external-users")
         .await?;
@@ -443,7 +443,7 @@ mod tests {
         let claims = receipt_claims(
             &config,
             &delegation,
-            "https://x.example/v1/a2a/c",
+            "https://x.example/v1/channels/c/a2a/pact",
             &[
                 run("list_trips", true),
                 run("search", true),
@@ -455,7 +455,7 @@ mod tests {
         assert_eq!(value["actions"].as_array().unwrap().len(), 1);
         assert_eq!(value["actions"][0]["tool"], "list_trips");
         assert_eq!(value["grantId"], "g1");
-        assert_eq!(value["brand"], "https://x.example/v1/a2a/c");
+        assert_eq!(value["brand"], "https://x.example/v1/channels/c/a2a/pact");
     }
 
     #[test]

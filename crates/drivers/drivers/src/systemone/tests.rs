@@ -92,3 +92,33 @@ async fn same_account_resolves_refreshable_auth_for_every_service_call() {
     assert_eq!(auth.0.load(Ordering::SeqCst), 2);
     assert_eq!(openrouter_model("other/jev-1.13.0"), "other/jev-1.13.0");
 }
+
+/// OpenRouter's System One rejects a Noul `criteria` object unless it carries
+/// both `true` and `false` (probed 2026-10-12); TypeSafe accepts either. A
+/// bare question therefore sends no criteria, and a half-described one is
+/// completed so the same request works on both endpoints.
+#[test]
+fn noul_criteria_are_omitted_or_complete_on_the_wire() {
+    let bare = encode(
+        &DecisionRequest::new("s")
+            .model("m")
+            .ask("q", DecisionQuestion::noul("True?")),
+    )
+    .unwrap();
+    assert!(bare["questions"]["q"].get("criteria").is_none(), "{bare}");
+
+    let half = DecisionRequest::new("s").model("m").ask(
+        "q",
+        DecisionQuestion::Noul {
+            instructions: "Fails WCAG 1.3.1?".into(),
+            yes: Some("It fails 1.3.1".into()),
+            no: None,
+        },
+    );
+    let half = encode(&half).unwrap();
+    assert_eq!(half["questions"]["q"]["criteria"]["true"], "It fails 1.3.1");
+    assert!(
+        half["questions"]["q"]["criteria"]["false"].is_string(),
+        "{half}"
+    );
+}

@@ -28,6 +28,12 @@ use crate::builtins::{Message, MessageRole};
 use crate::tool_context::ToolContext;
 use crate::{DecisionAnswer, DecisionQuestion, DecisionRequest, DecisionsService};
 
+#[path = "guardrails_output.rs"]
+mod output;
+#[path = "guardrails_schema.rs"]
+mod schema;
+use output::MessageOutputGuardrail;
+
 pub const GUARDRAILS_CAPABILITY_ID: &str = "guardrails";
 
 pub struct GuardrailsCapability;
@@ -71,110 +77,7 @@ impl Capability for GuardrailsCapability {
     }
 
     fn config_schema(&self) -> Option<serde_json::Value> {
-        Some(json!({
-            "type": "object",
-            "properties": {
-                "mode": {
-                    "type": "string",
-                    "enum": ["active", "advisory"],
-                    "default": "active",
-                    "description": "Advisory runs all checks but only logs hits — use it to tune checks against false positives before enforcing."
-                },
-                "checks": {
-                    "type": "array",
-                    "maxItems": MAX_CHECKS,
-                    "items": {
-                        "type": "object",
-                        "required": ["stage", "type"],
-                        "properties": {
-                            "id": {
-                                "type": "string",
-                                "maxLength": MAX_CHECK_ID_LEN,
-                                "description": "Stable identifier surfaced in reason codes and logs."
-                            },
-                            "stage": {
-                                "type": "string",
-                                "enum": ["output", "tool_use", "tool_output"],
-                                "description": "Where the check runs: streamed model output, tool calls before execution, or tool results before they enter context."
-                            },
-                            "type": {
-                                "type": "string",
-                                "enum": ["regex", "blocklist", "tool_pattern", "llm_judge", "mcp", "moderation"],
-                                "description": "regex/blocklist match stage text; tool_pattern matches tool names (tool_use stage only); llm_judge evaluates a natural-language policy via the utility LLM (tool_use/tool_output stages only); mcp delegates the decision to an external guardrail served over scoped MCP (tool_use/tool_output stages only — sends stage content off-platform); moderation scores the finalized assistant message via the utility LLM as a content decisions (output stage only — runs on the end-of-message seam, sends the message to the utility model)."
-                            },
-                            "patterns": {
-                                "type": "array",
-                                "items": {"type": "string", "maxLength": MAX_ENTRY_LEN},
-                                "maxItems": MAX_ENTRIES_PER_CHECK,
-                                "description": "Regex patterns (type=regex)."
-                            },
-                            "words": {
-                                "type": "array",
-                                "items": {"type": "string", "maxLength": MAX_ENTRY_LEN},
-                                "maxItems": MAX_ENTRIES_PER_CHECK,
-                                "description": "Words or phrases matched as substrings (type=blocklist)."
-                            },
-                            "case_sensitive": {
-                                "type": "boolean",
-                                "default": false,
-                                "description": "Blocklist matching case sensitivity."
-                            },
-                            "tools": {
-                                "type": "array",
-                                "items": {"type": "string", "maxLength": MAX_ENTRY_LEN},
-                                "maxItems": MAX_ENTRIES_PER_CHECK,
-                                "description": "Tool name patterns with * wildcards (type=tool_pattern)."
-                            },
-                            "on_fail": {
-                                "type": "string",
-                                "enum": ["block", "log"],
-                                "default": "block",
-                                "description": "block stops the output/tool call; log records the hit and continues."
-                            },
-                            "prompt": {
-                                "type": "string",
-                                "maxLength": MAX_JUDGE_PROMPT_LEN,
-                                "description": "Natural-language policy prompt for llm_judge. Example: 'Block any tool call that reads files outside /home/user.' Evaluated by the engine selected in `engine`; fails open on timeout or error."
-                            },
-                            "server": {
-                                "type": "string",
-                                "maxLength": MAX_MCP_REF_LEN,
-                                "description": "Scoped-MCP server reference for type=mcp (sanitized server name). Required for mcp checks."
-                            },
-                            "tool": {
-                                "type": "string",
-                                "maxLength": MAX_MCP_REF_LEN,
-                                "description": "Guardrail tool/method to call on the MCP server for type=mcp. Required for mcp checks. Sends a bounded stage payload off-platform; fails open on timeout, connection error, parse failure, or server-not-configured."
-                            },
-                            "engine": {
-                                "type": "string",
-                                "enum": ["utility_llm", "jev"],
-                                "default": "utility_llm",
-                                "description": "Which system model answers a model-backed check (type=llm_judge or moderation). utility_llm prompts the utility model for a verdict, one request per check. jev asks TypeSafe's Jev model a typed question and gets a calibrated probability back; every jev check on a stage rides a single request, and `threshold` decides the verdict. jev requires UTILITY_TYPESAFE_API_KEY on the deployment, or an organization that answers system decisions with its own decision model; without either the check is skipped. Both fail open."
-                            },
-                            "categories": {
-                                "type": "array",
-                                "items": {"type": "string", "maxLength": MAX_ENTRY_LEN},
-                                "maxItems": MAX_ENTRIES_PER_CHECK,
-                                "description": "Moderation categories to score (type=moderation). Defaults to a built-in safety set (hate, harassment, self_harm, sexual, violence, illicit) when omitted."
-                            },
-                            "threshold": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 100,
-                                "default": 50,
-                                "description": "Block threshold as a percentage (0-100). For type=moderation, a category scoring at or above this value trips the check. For type=llm_judge with engine=jev, the judged probability of a violation at or above this value trips the check; the utility_llm engine returns a verdict directly and ignores it."
-                            },
-                            "replacement": {
-                                "type": "string",
-                                "maxLength": MAX_REPLACEMENT_LEN,
-                                "description": "Text shown in place of blocked output or as the user-facing message for blocked tool calls."
-                            }
-                        }
-                    }
-                }
-            }
-        }))
+        Some(schema::config_schema())
     }
 
     fn validate_config(&self, config: &serde_json::Value) -> Result<(), String> {
@@ -189,20 +92,12 @@ impl Capability for GuardrailsCapability {
         &self,
         config: &serde_json::Value,
     ) -> Vec<Arc<dyn PostGenerationOutputGuardrail>> {
-        // Contribute the model-backed moderation provider only when an
-        // output-stage moderation check is configured. Deterministic output
-        // checks run on the streaming seam (`output_guardrails`), not here.
-        match compile_config_for_stage(config, GuardrailStage::Output) {
-            Some(compiled)
-                if compiled
-                    .moderation_checks_for_stage(GuardrailStage::Output)
-                    .next()
-                    .is_some() =>
-            {
-                vec![Arc::new(ModerationOutputGuardrail { compiled })]
-            }
-            _ => vec![],
-        }
+        // Model-backed and MCP output checks run once on the finalized message;
+        // deterministic output checks run on the streaming seam (`output_guardrails`).
+        compile_config_for_stage(config, GuardrailStage::Output)
+            .and_then(MessageOutputGuardrail::for_compiled)
+            .map(|guardrail| vec![Arc::new(guardrail) as Arc<dyn PostGenerationOutputGuardrail>])
+            .unwrap_or_default()
     }
 
     fn pre_tool_use_hooks_with_config(
@@ -265,14 +160,14 @@ async fn run_judge_check(
     service: &dyn crate::builtins::UtilityLlmService,
     check: &crate::builtins::guardrail_checks::CompiledJudgeCheck,
     stage: GuardrailStage,
-    tool_name: &str,
+    tool_name: Option<&str>,
     content: &str,
 ) -> Option<GuardrailAction> {
     let user_prompt = format!(
         "Policy: {}\nStage: {}\nTool: {}\nContent:\n{}",
         check.prompt,
         stage.as_str(),
-        xml_escape(tool_name),
+        xml_escape(tool_name.unwrap_or("none (assistant message)")),
         truncate_on_char_boundary(content, JUDGE_CONTENT_CAP),
     );
     let request = UtilityLlmRequest::new(vec![
@@ -583,111 +478,6 @@ async fn stage_decisions(
     }
 }
 
-/// Timeout for a single moderation decisions call. Fail-open on expiry —
-/// a utility-model outage must never wedge a turn.
-const MODERATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
-/// Maximum moderation checks evaluated per finalized message (TM-DOS: bounds
-/// added latency on the end-of-message seam).
-const MAX_MODERATION_CALLS_PER_INVOCATION: usize = 4;
-/// Bytes of assistant text sent to the moderation decisions.
-const MODERATION_CONTENT_CAP: usize = 4_000;
-
-/// System prompt sent to the utility LLM for moderation scoring.
-const MODERATION_SYSTEM_PROMPT: &str = r#"You are a content-moderation decisions for an AI agent runtime.
-Score the provided assistant message for each requested category from 0 to 100, where 0 means clearly absent and 100 means a clear, severe violation.
-Respond ONLY with valid JSON on a single line. No explanation, no prose, no markdown.
-Format: {"scores":{"<category>":<integer 0-100>, ...}} — include every requested category."#;
-
-/// Evaluate one moderation check against `content` via the utility LLM as a
-/// decisions. Returns `Some(GuardrailAction::Block)` when any requested
-/// category scores at or above the check's threshold, `Some(Log)` when all
-/// score below it, and `None` on any error/timeout/parse failure (fail-open).
-/// The caller applies advisory-mode downgrade via `compiled.async_action()`.
-async fn run_moderation_check(
-    service: &dyn crate::builtins::UtilityLlmService,
-    check: &crate::builtins::guardrail_checks::CompiledModerationCheck,
-    content: &str,
-) -> Option<GuardrailAction> {
-    let payload = truncate_on_char_boundary(content, MODERATION_CONTENT_CAP);
-    let user_prompt = format!(
-        "Categories: {}\nMessage:\n{}",
-        check.categories.join(", "),
-        payload,
-    );
-    let request = UtilityLlmRequest::new(vec![
-        Message::text(MessageRole::System, MODERATION_SYSTEM_PROMPT),
-        Message::text(MessageRole::User, user_prompt),
-    ])
-    .with_reasoning_effort(UtilityLlmReasoningEffort::Low)
-    .with_max_tokens(128);
-
-    let response =
-        match tokio::time::timeout(MODERATION_TIMEOUT, service.chat_completion(request)).await {
-            Ok(Ok(r)) => r,
-            Ok(Err(e)) => {
-                tracing::warn!(
-                    check = %check.label,
-                    error = %e,
-                    "guardrails: moderation call failed, failing open"
-                );
-                return None;
-            }
-            Err(_) => {
-                tracing::warn!(
-                    check = %check.label,
-                    "guardrails: moderation call timed out, failing open"
-                );
-                return None;
-            }
-        };
-
-    // Parse the scores object from the first JSON-like fragment.
-    let text = response.text.trim();
-    let start = text.find('{').unwrap_or(0);
-    let end = text.rfind('}').map(|i| i + 1).unwrap_or(text.len());
-    let fragment = &text[start..end];
-    let parsed = match serde_json::from_str::<serde_json::Value>(fragment) {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!(
-                check = %check.label,
-                parse_error = %e,
-                raw = %fragment,
-                "guardrails: moderation response parse failed, failing open"
-            );
-            return None;
-        }
-    };
-    let Some(scores) = parsed.get("scores").and_then(|s| s.as_object()) else {
-        tracing::warn!(
-            check = %check.label,
-            "guardrails: moderation response missing scores field, failing open"
-        );
-        return None;
-    };
-
-    for category in &check.categories {
-        // Accept both integer and float scores; ignore unparseable entries.
-        let score = scores
-            .get(category)
-            .and_then(|v| v.as_f64())
-            .map(|s| s.round() as i64);
-        if let Some(score) = score
-            && score >= check.threshold as i64
-        {
-            tracing::warn!(
-                check = %check.label,
-                category = %category,
-                score,
-                threshold = check.threshold,
-                "guardrails: moderation category at/over threshold"
-            );
-            return Some(GuardrailAction::Block);
-        }
-    }
-    Some(GuardrailAction::Log)
-}
-
 /// Truncate `content` to at most `cap` bytes on a UTF-8 char boundary.
 fn truncate_on_char_boundary(content: &str, cap: usize) -> &str {
     let mut end = content.len().min(cap);
@@ -768,7 +558,7 @@ async fn run_mcp_check(
     invoker: &dyn crate::builtins::McpToolInvoker,
     check: &crate::builtins::guardrail_checks::CompiledMcpCheck,
     stage: GuardrailStage,
-    tool_name: &str,
+    tool_name: Option<&str>,
     content: &str,
 ) -> Option<GuardrailAction> {
     if !crate::mcp_server::is_valid_mcp_server_name(&check.server) {
@@ -934,104 +724,6 @@ impl OutputGuardrailRun for DeclarativeOutputRun {
 }
 
 // ============================================================================
-// Output stage: end-of-message moderation seam (EVE-573)
-// ============================================================================
-
-/// Async, model-backed output guardrail run once on the finalized assistant
-/// message. Holds the compiled output-stage moderation checks; the streaming
-/// deterministic checks are handled separately by `DeclarativeOutputGuardrail`.
-struct ModerationOutputGuardrail {
-    compiled: Arc<CompiledGuardrails>,
-}
-
-#[async_trait]
-impl PostGenerationOutputGuardrail for ModerationOutputGuardrail {
-    fn id(&self) -> &str {
-        "moderation"
-    }
-
-    async fn check_message(&self, ctx: &PostGenerationOutputContext<'_>) -> GuardrailDecision {
-        // Jev-engine checks resolve in one request, before the per-check
-        // utility-LLM calls.
-        let judged = stage_decisions(
-            ctx.decisions,
-            &self.compiled,
-            GuardrailStage::Output,
-            None,
-            ctx.message_text,
-            MODERATION_CONTENT_CAP,
-        )
-        .await;
-        let utility = ctx
-            .utility_llm_service
-            .filter(|service| service.is_configured());
-        let mut utility_calls = 0usize;
-
-        for check in self
-            .compiled
-            .moderation_checks_for_stage(GuardrailStage::Output)
-        {
-            let raw_action = match check.engine {
-                GuardrailEngine::Jev => judged.get(&check.index).copied(),
-                GuardrailEngine::UtilityLlm => {
-                    let Some(service) = utility else {
-                        tracing::warn!(
-                            check = %check.label,
-                            "guardrails: moderation skipped — no utility LLM service available \
-                             (fail-open)"
-                        );
-                        continue;
-                    };
-                    if utility_calls >= MAX_MODERATION_CALLS_PER_INVOCATION {
-                        tracing::warn!(
-                            "guardrails: moderation call cap reached \
-                             ({MAX_MODERATION_CALLS_PER_INVOCATION}); utility-LLM output check \
-                             skipped (fail-open)"
-                        );
-                        continue;
-                    }
-                    utility_calls += 1;
-                    run_moderation_check(service.as_ref(), check, ctx.message_text).await
-                }
-            };
-            let Some(raw_action) = raw_action else {
-                continue; // fail-open on error/timeout/parse failure
-            };
-            if raw_action != GuardrailAction::Block {
-                continue; // scored below threshold → allow
-            }
-            // Apply advisory-mode / on_fail downgrade.
-            match self.compiled.async_action(check.on_fail) {
-                GuardrailAction::Block => {
-                    tracing::warn!(
-                        check = %check.label,
-                        reason_code = "guardrail.moderation",
-                        "guardrails: blocking model output (moderation)"
-                    );
-                    return GuardrailDecision::Block(
-                        crate::builtins::output_guardrail::GuardrailBlock {
-                            reason_code: "guardrail.moderation".to_string(),
-                            replacement: check
-                                .replacement
-                                .clone()
-                                .unwrap_or_else(|| DEFAULT_OUTPUT_REPLACEMENT.to_string()),
-                        },
-                    );
-                }
-                GuardrailAction::Log => {
-                    tracing::warn!(
-                        check = %check.label,
-                        reason_code = "guardrail.moderation",
-                        "guardrails: moderation hit (log only)"
-                    );
-                }
-            }
-        }
-        GuardrailDecision::Pass
-    }
-}
-
-// ============================================================================
 // Tool-use stage: pre-tool hook
 // ============================================================================
 
@@ -1122,7 +814,7 @@ impl PreToolUseHook for GuardrailPreToolHook {
                             service.as_ref(),
                             check,
                             GuardrailStage::ToolUse,
-                            &tool_call.name,
+                            Some(&tool_call.name),
                             &args_text,
                         )
                         .await
@@ -1179,7 +871,7 @@ impl PreToolUseHook for GuardrailPreToolHook {
                     invoker.as_ref(),
                     check,
                     GuardrailStage::ToolUse,
-                    &tool_call.name,
+                    Some(&tool_call.name),
                     &args_text,
                 )
                 .await
@@ -1330,7 +1022,7 @@ impl PostToolExecHook for GuardrailPostToolHook {
                             service.as_ref(),
                             check,
                             GuardrailStage::ToolOutput,
-                            &tool_call.name,
+                            Some(&tool_call.name),
                             &haystack,
                         )
                         .await
@@ -1388,7 +1080,7 @@ impl PostToolExecHook for GuardrailPostToolHook {
                     invoker.as_ref(),
                     check,
                     GuardrailStage::ToolOutput,
-                    &tool_call.name,
+                    Some(&tool_call.name),
                     &haystack,
                 )
                 .await
@@ -1534,6 +1226,7 @@ mod tests {
             message_text: text,
             utility_llm_service: service.as_ref(),
             decisions: judgment.as_ref(),
+            mcp_invoker: None,
         };
         provider.check_message(&ctx).await
     }
@@ -1740,10 +1433,7 @@ mod tests {
                 McpBehavior::Result(v) => ToolResult {
                     tool_call_id: tool_call.id.clone(),
                     result: Some(v.clone()),
-                    images: None,
-                    error: None,
-                    connection_required: None,
-                    raw_output: None,
+                    ..Default::default()
                 },
                 McpBehavior::Error(msg) => {
                     return Err(AgentLoopError::tool(msg.clone()));
@@ -1759,10 +1449,7 @@ mod tests {
                         // Not a valid verdict — fails open — but the recorded
                         // call's content is what the truncation test inspects.
                         result: Some(serde_json::Value::String(content.to_string())),
-                        images: None,
-                        error: None,
-                        connection_required: None,
-                        raw_output: None,
+                        ..Default::default()
                     }
                 }
             };
@@ -1956,10 +1643,7 @@ mod tests {
         let mut result = ToolResult {
             tool_call_id: "call_1".to_string(),
             result: Some(json!("key is AKIAIOSFODNN7EXAMPLE ok")),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
@@ -1993,10 +1677,8 @@ mod tests {
         let mut result = ToolResult {
             tool_call_id: "call_1".to_string(),
             result: Some(json!("(truncated output)")),
-            images: None,
-            error: None,
-            connection_required: None,
             raw_output: Some("full log: AKIAIOSFODNN7EXAMPLE trailing".to_string()),
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
@@ -2027,10 +1709,7 @@ mod tests {
         let mut result = ToolResult {
             tool_call_id: "call_1".to_string(),
             result: Some(json!("nothing to see")),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
@@ -2215,10 +1894,7 @@ mod tests {
         let mut result = ToolResult {
             tool_call_id: "call_1".to_string(),
             result: Some(json!("user email: alice@example.com")),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
@@ -2247,10 +1923,7 @@ mod tests {
         let mut result = ToolResult {
             tool_call_id: "call_1".to_string(),
             result: Some(json!("no pii here")),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
@@ -2547,6 +2220,7 @@ mod tests {
     }
 
     include!("guardrails_cap_regression_tests.rs");
+    include!("guardrails_output_tests.rs");
     #[tokio::test]
     async fn jev_checks_fail_open_without_a_service() {
         let hooks = GuardrailsCapability.pre_tool_use_hooks_with_config(&judge_config(json!({})));
@@ -2623,10 +2297,7 @@ mod tests {
         let mut result = ToolResult {
             tool_call_id: "call_1".to_string(),
             result: Some(json!("ssn 123-45-6789")),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
@@ -2763,12 +2434,32 @@ mod tests {
         assert!(error.contains("threshold must be 0..=100"), "{error}");
     }
 
+    fn labeled_consts(node: &serde_json::Value) -> Vec<String> {
+        node["oneOf"]
+            .as_array()
+            .expect("oneOf")
+            .iter()
+            .map(|option| option["const"].as_str().expect("const").to_string())
+            .collect()
+    }
+
     #[test]
     fn config_schema_documents_the_engine_selector() {
         let schema = GuardrailsCapability.config_schema().expect("schema");
         let engine = &schema["properties"]["checks"]["items"]["properties"]["engine"];
-        assert_eq!(engine["enum"], json!(["utility_llm", "jev"]));
+        assert_eq!(
+            labeled_consts(engine),
+            vec!["utility_llm".to_string(), "jev".to_string()]
+        );
+        assert_eq!(engine["oneOf"][1]["title"], "Decision API");
         assert_eq!(engine["default"], "utility_llm");
+        let mode = &schema["properties"]["mode"];
+        assert_eq!(
+            labeled_consts(mode),
+            vec!["active".to_string(), "advisory".to_string()]
+        );
+        assert_eq!(mode["oneOf"][0]["title"], "Active");
+        assert_eq!(mode["oneOf"][1]["title"], "Advisory");
     }
 
     #[test]
@@ -2784,16 +2475,10 @@ mod tests {
     fn config_schema_includes_llm_judge() {
         let cap = GuardrailsCapability;
         let schema = cap.config_schema().unwrap();
-        let type_enum = &schema["properties"]["checks"]["items"]["properties"]["type"]["enum"];
-        let values: Vec<&str> = type_enum
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter_map(|v| v.as_str())
-            .collect();
+        let values = labeled_consts(&schema["properties"]["checks"]["items"]["properties"]["type"]);
         assert!(
-            values.contains(&"llm_judge"),
-            "schema enum must include llm_judge"
+            values.iter().any(|value| value == "llm_judge"),
+            "schema options must include llm_judge"
         );
     }
 
@@ -2803,14 +2488,11 @@ mod tests {
     fn config_schema_includes_mcp() {
         let cap = GuardrailsCapability;
         let schema = cap.config_schema().unwrap();
-        let type_enum = &schema["properties"]["checks"]["items"]["properties"]["type"]["enum"];
-        let values: Vec<&str> = type_enum
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter_map(|v| v.as_str())
-            .collect();
-        assert!(values.contains(&"mcp"), "schema enum must include mcp");
+        let values = labeled_consts(&schema["properties"]["checks"]["items"]["properties"]["type"]);
+        assert!(
+            values.iter().any(|value| value == "mcp"),
+            "schema options must include mcp"
+        );
         let props = &schema["properties"]["checks"]["items"]["properties"];
         assert!(props["server"].is_object(), "schema must define server");
         assert!(props["tool"].is_object(), "schema must define tool");
@@ -2949,10 +2631,7 @@ mod tests {
                 Ok(ToolResult {
                     tool_call_id: tool_call.id.clone(),
                     result: Some(json!({"verdict": "allow"})),
-                    images: None,
-                    error: None,
-                    connection_required: None,
-                    raw_output: None,
+                    ..Default::default()
                 })
             }
         }
@@ -3011,10 +2690,7 @@ mod tests {
         let mut result = ToolResult {
             tool_call_id: "call_1".to_string(),
             result: Some(json!("user email: alice@example.com")),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
@@ -3042,10 +2718,7 @@ mod tests {
         let mut result = ToolResult {
             tool_call_id: "call_1".to_string(),
             result: Some(json!("no pii here")),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         };
         hooks[0]
             .after_exec(

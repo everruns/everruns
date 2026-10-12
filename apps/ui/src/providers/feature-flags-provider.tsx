@@ -14,21 +14,15 @@ import { useOrg } from "@/providers/org-provider";
 
 const DEFAULT_FLAGS: FeatureFlags = {
   chat_threads: false,
-  agents_home: false,
-  notifications: false,
   evals: false,
   skills: false,
   memory: false,
   knowledge: false,
   plugins: false,
-  channel_budgets: false,
   voice: false,
-  agent_delegation: false,
   observers: false,
   public_chat: false,
-  webmcp: false,
   reports: false,
-  chatgpt_plan: false,
   machine_payments: false,
 };
 
@@ -65,7 +59,6 @@ function FeatureFlagsLoader({ children }: { children: ReactNode }) {
       ...(activeQuery.data ?? DEFAULT_FLAGS),
       // Deployment availability is not adoption: only the org-effective flag enables this UI.
       chat_threads: !!orgId && (activeQuery.data?.chat_threads ?? false),
-      agents_home: !!orgId && (activeQuery.data?.agents_home ?? false),
     },
     isLoading: activeQuery.isLoading,
   };

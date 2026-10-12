@@ -1,5 +1,5 @@
 # The layout from the serve design: tools, a channel, a schedule, connections,
-# a subagent, a skill and evals, each in its own file. Runs offline.
+# a subagent, a skill and evals, each in its own file. Runs on a real model (`OPENAI_API_KEY`).
 [package]
 name = "serve-example-revenue-analyst"
 version = "0.1.0"

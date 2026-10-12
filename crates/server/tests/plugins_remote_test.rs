@@ -141,10 +141,10 @@ async fn seeded_db() -> Arc<everruns_server::storage::StorageBackend> {
     unsafe { std::env::set_var("DEPLOYMENT_GRADE", "dev") };
     let db = Arc::new(StorageBackend::test_database());
     let grade = DeploymentGrade::from_env();
-    everruns_server::seed::seed_all(
+    everruns_server::setup::seed::seed_all(
         &db,
         grade,
-        &everruns_server::seed::SeedAuthContext::default(),
+        &everruns_server::setup::seed::SeedAuthContext::default(),
     )
     .await
     .unwrap();

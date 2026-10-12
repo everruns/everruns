@@ -18,7 +18,7 @@ use axum::{Json, Router};
 #[cfg(test)]
 use serde_json::{Map, Value};
 
-use crate::records::eval::*;
+use crate::domains::evals::record::*;
 
 use crate::api::command_http::CommandRouterExt;
 use crate::api::common::{ApiResult, ErrorResponse};

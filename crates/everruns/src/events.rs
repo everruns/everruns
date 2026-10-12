@@ -138,6 +138,15 @@ pub enum SessionEventKind {
         /// Stable id shared by the output's start and deltas.
         message_id: String,
     },
+    /// The agent sent a message to the conversation with `send_message`
+    /// (explicit communication). Its output messages are then working notes;
+    /// this is what it said.
+    MessageSent {
+        /// Stable id of the sent message.
+        message_id: String,
+        /// The message, as the agent wrote it.
+        text: String,
+    },
     /// A tool call started executing.
     ToolStarted {
         /// Opaque id of the tool call.
@@ -420,6 +429,13 @@ impl SessionEvent {
                 },
                 _ => Self::other_kind(event),
             },
+            events::CONVERSATION_MESSAGE => match &event.data {
+                EventData::ConversationMessage(data) => SessionEventKind::MessageSent {
+                    message_id: data.message_id.to_string(),
+                    text: data.text.clone(),
+                },
+                _ => Self::other_kind(event),
+            },
             events::TOOL_STARTED => match &event.data {
                 EventData::ToolStarted(ToolStartedData { tool_call, .. }) => {
                     SessionEventKind::ToolStarted {
@@ -556,6 +572,9 @@ impl SessionEvent {
             }
             SessionEventKind::OutputCompleted { message_id } => {
                 serde_json::json!({ "message_id": message_id })
+            }
+            SessionEventKind::MessageSent { message_id, text } => {
+                serde_json::json!({ "message_id": message_id, "text": text })
             }
             SessionEventKind::OutputReplaced {
                 message_id,

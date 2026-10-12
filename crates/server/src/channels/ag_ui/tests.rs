@@ -3,11 +3,11 @@
 //! Split out of `ag_ui.rs` to keep it under the file-size ratchet.
 
 use super::*;
+use crate::domains::agent_channels::record::exposure::PublicToolVisibility;
 use crate::kernel_imports::{
     Event, EventContext, MessageId, OutputMessageCompletedData, OutputMessageDeltaData,
     RuntimeMessage, SessionId, ToolCall, ToolCompletedData, ToolStartedData, TurnId,
 };
-use crate::records::PublicToolVisibility;
 use chrono::Duration as ChronoDuration;
 use everruns_contracts::execution_phase::ExecutionPhase;
 use everruns_core::events::{
@@ -88,6 +88,11 @@ impl TestRun {
 
     fn send(&mut self, data: impl Into<everruns_core::EventData>) {
         let event = Event::new(self.session_id, self.context(), data);
+        // As the channel host's session port hands it over.
+        let event = everruns_core::channel_runtime::DeliveryEvent::from_envelope(
+            &serde_json::to_value(&event).expect("event serializes"),
+        )
+        .expect("event envelope");
         translate_event(
             &mut self.projector,
             &self.config,
@@ -137,6 +142,7 @@ impl TestRun {
     fn tool_completed(&mut self, id: &str, name: &str, result: &str) {
         self.send(ToolCompletedData {
             severity: None,
+            details: None,
             tool_call_id: id.to_string(),
             tool_name: name.to_string(),
             tool_call_fingerprint: None,

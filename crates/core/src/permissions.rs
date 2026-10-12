@@ -60,10 +60,12 @@ pub enum Permission {
     OrgPluginsManage,
     /// CRUD on sessions
     OrgSessionsManage,
-    /// View LLM providers (read-only)
-    OrgProvidersView,
-    /// CRUD on LLM providers
-    OrgProvidersManage,
+    /// View models and the providers that serve them (read-only). Providers
+    /// and their models are one registry: connecting a provider, syncing it,
+    /// and choosing its models is one task, so one permission pair covers both.
+    OrgModelsView,
+    /// CRUD on models and providers (connect, rotate keys, enable models)
+    OrgModelsManage,
     /// View organization settings (read-only)
     OrgSettingsView,
     /// Organization settings
@@ -110,8 +112,8 @@ impl Permission {
             Permission::OrgPluginsView => "org:plugins:view",
             Permission::OrgPluginsManage => "org:plugins:manage",
             Permission::OrgSessionsManage => "org:sessions:manage",
-            Permission::OrgProvidersView => "org:providers:view",
-            Permission::OrgProvidersManage => "org:providers:manage",
+            Permission::OrgModelsView => "org:models:view",
+            Permission::OrgModelsManage => "org:models:manage",
             Permission::OrgSettingsView => "org:settings:view",
             Permission::OrgSettingsManage => "org:settings:manage",
             Permission::OrgMembersView => "org:members:view",
@@ -148,8 +150,8 @@ impl Permission {
         Permission::OrgPluginsView,
         Permission::OrgPluginsManage,
         Permission::OrgSessionsManage,
-        Permission::OrgProvidersView,
-        Permission::OrgProvidersManage,
+        Permission::OrgModelsView,
+        Permission::OrgModelsManage,
         Permission::OrgSettingsView,
         Permission::OrgSettingsManage,
         Permission::OrgMembersView,
@@ -196,8 +198,8 @@ const OWNER_PERMISSIONS: &[Permission] = &[
     Permission::OrgPluginsView,
     Permission::OrgPluginsManage,
     Permission::OrgSessionsManage,
-    Permission::OrgProvidersView,
-    Permission::OrgProvidersManage,
+    Permission::OrgModelsView,
+    Permission::OrgModelsManage,
     Permission::OrgSettingsView,
     Permission::OrgSettingsManage,
     Permission::OrgMembersView,
@@ -230,8 +232,8 @@ const ADMIN_PERMISSIONS: &[Permission] = &[
     Permission::OrgPluginsView,
     Permission::OrgPluginsManage,
     Permission::OrgSessionsManage,
-    Permission::OrgProvidersView,
-    Permission::OrgProvidersManage,
+    Permission::OrgModelsView,
+    Permission::OrgModelsManage,
     Permission::OrgSettingsView,
     Permission::OrgSettingsManage,
     Permission::OrgMembersView,
@@ -263,7 +265,7 @@ const MEMBER_PERMISSIONS: &[Permission] = &[
     // required OrgPluginsManage, which Members never held (Admin+ only). (EVE-656)
     Permission::OrgPluginsView,
     Permission::OrgSessionsManage,
-    Permission::OrgProvidersView,
+    Permission::OrgModelsView,
     Permission::OrgSettingsView,
     Permission::OrgMembersView,
     Permission::OrgReportsView,
@@ -1146,15 +1148,10 @@ mod tests {
                 true,
                 true,
             ),
+            (Permission::OrgModelsView, "org:models:view", true, true),
             (
-                Permission::OrgProvidersView,
-                "org:providers:view",
-                true,
-                true,
-            ),
-            (
-                Permission::OrgProvidersManage,
-                "org:providers:manage",
+                Permission::OrgModelsManage,
+                "org:models:manage",
                 true,
                 false,
             ),

@@ -953,6 +953,7 @@ pub async fn apply_capabilities(
         // Conversation context (e.g. hierarchical AGENTS.md) renders as the
         // leading user-role message, never as system prompt.
         conversation_context,
+        communication: base_runtime_agent.communication,
     };
 
     AppliedCapabilities {

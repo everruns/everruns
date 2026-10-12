@@ -55,6 +55,7 @@ pub(crate) struct Pending {
 
 /// Every tool the shell may call, in a stable order, plus the deferred
 /// servers not loaded yet.
+#[derive(Clone)]
 pub(crate) struct Catalog {
     entries: Vec<Entry>,
     pending: Vec<Pending>,
@@ -221,7 +222,8 @@ impl Catalog {
              Usage:\n  tools <server> <tool> '{\"key\":\"value\"}'\n  \
              tools <tool> '{...}'\n  jq -n '{key: 1}' | tools <tool>\n  \
              tools <tool> key=value --other-key value\n  \
-             tools search <words>\n  tools <server> --help\n  tools <tool> --help\n",
+             tools search <words>\n  tools <server> --help\n  tools <tool> --help\n  \
+             tools plan < script.sh   (list a script's calls and their risk; runs nothing)\n",
         );
         let sources = self.sources();
         if !sources.is_empty() || !self.pending.is_empty() {

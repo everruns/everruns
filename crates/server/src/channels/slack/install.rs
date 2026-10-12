@@ -15,11 +15,12 @@
 //!   the operator's browser to it and carries none of our auth. It is
 //!   protected by the single-use `install_state` nonce instead.
 
-use crate::records::slack_provisioning::{
+use crate::domains::agent_channels::record::ChannelType;
+use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
+use crate::domains::agent_channels::record::slack_provisioning::{
     ProvisionedSlackApp, SlackAppProvisioner, SlackProvisioningConnectionStatus,
     SlackProvisioningError, UnavailableSlackAppProvisioner,
 };
-use crate::records::{ChannelType, SlackChannelConfig};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -489,13 +490,15 @@ async fn begin_install(
                 .create_app(org.org_id, team_id.as_deref(), &manifest)
                 .await
                 .map_err(provisioning_error_response)?;
-            // A manifest cannot carry an icon; the avatar follows separately.
+            // A manifest cannot carry an icon. Set it now, and again after
+            // OAuth: Slack may ignore an icon set before the bot user exists.
             let (db, provisioner) = (state.slack.db.clone(), state.provisioner.clone());
             let (agent_id, icon_team, icon_app) = (
                 app.agent_internal_id,
                 team_id.clone(),
                 created.app_id.clone(),
             );
+            let api_base = state.slack.api_base_url.clone();
             tokio::spawn(async move {
                 crate::domains::agents::avatar_slack::push_agent_avatar_to_slack_app(
                     &db,
@@ -504,6 +507,7 @@ async fn begin_install(
                     agent_id,
                     icon_team.as_deref(),
                     &icon_app,
+                    &api_base,
                 )
                 .await;
             });
@@ -647,7 +651,16 @@ async fn finish_install(
         ),
         None => format!("{ui_base}/agents"),
     };
-    let result = finish_install_inner(&state, &endpoint, config, provisioned, query).await;
+    let result = finish_install_inner(
+        &state,
+        &endpoint,
+        config,
+        provisioned,
+        query,
+        context.org_id,
+        context.agent_internal_id,
+    )
+    .await;
     drop(_install_lock);
     let outcome = match result {
         Ok(()) => {
@@ -679,6 +692,8 @@ async fn finish_install_inner(
     mut config: SlackChannelConfig,
     provisioned: ProvisionedSlackApp,
     query: CallbackQuery,
+    org_id: i64,
+    agent_id: uuid::Uuid,
 ) -> Result<(), &'static str> {
     if query.error.is_some() {
         // Slack reports a declined consent this way; it is not an error of ours.
@@ -725,6 +740,37 @@ async fn finish_install_inner(
     persist(state, endpoint.internal_id, &config)
         .await
         .map_err(|_| "failed to store install result")?;
+
+    // The create-time push can land before Slack has a bot user to copy the
+    // icon onto. Set it again now that the install is stored.
+    let app_id = config
+        .provisioned_app
+        .as_ref()
+        .map(|app| app.app_id.clone())
+        .unwrap_or_default();
+    let team_id = config
+        .provisioned_app
+        .as_ref()
+        .and_then(|app| app.team_id.clone());
+    if !app_id.is_empty() {
+        let (db, provisioner, api_base) = (
+            state.slack.db.clone(),
+            state.provisioner.clone(),
+            state.slack.api_base_url.clone(),
+        );
+        tokio::spawn(async move {
+            crate::domains::agents::avatar_slack::push_agent_avatar_to_slack_app(
+                &db,
+                provisioner.as_ref(),
+                org_id,
+                agent_id,
+                team_id.as_deref(),
+                &app_id,
+                &api_base,
+            )
+            .await;
+        });
+    }
     Ok(())
 }
 
@@ -884,12 +930,14 @@ fn provisioning_error_response(error: SlackProvisioningError) -> (StatusCode, Js
             tracing::warn!(slack_error = %code, "Slack app provisioning rejected");
             ErrorResponse::new(format!("Slack rejected the app creation: {code}"))
                 .with_code(code)
-                .into_response(StatusCode::BAD_GATEWAY)
+                .into_response(StatusCode::UNPROCESSABLE_ENTITY)
         }
+        // Not 502: the edge proxy replaces a 502 body with its own error page,
+        // so the person never saw which part of the setup Slack refused.
         SlackProvisioningError::Unreachable(detail) => {
             tracing::warn!(detail, "Slack app creation unreachable");
             ErrorResponse::new("Could not reach Slack to create the app")
-                .into_response(StatusCode::BAD_GATEWAY)
+                .into_response(StatusCode::FAILED_DEPENDENCY)
         }
     }
 }
@@ -1259,8 +1307,11 @@ mod tests {
         assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
         let (status, Json(problem)) =
             provisioning_error_response(SlackProvisioningError::Rejected("ratelimited".into()));
-        assert_eq!(status, StatusCode::BAD_GATEWAY);
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(problem.code.as_deref(), Some("ratelimited"));
+        let (status, _) =
+            provisioning_error_response(SlackProvisioningError::Unreachable("timeout".into()));
+        assert_eq!(status, StatusCode::FAILED_DEPENDENCY);
     }
 
     #[tokio::test]

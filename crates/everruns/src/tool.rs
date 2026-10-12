@@ -243,6 +243,7 @@ pub struct FunctionTool {
     schema: Value,
     handler: HandlerFn,
     approval: Option<ApprovalPredicate>,
+    idempotent: bool,
 }
 
 impl FunctionTool {
@@ -279,6 +280,7 @@ impl FunctionTool {
             schema: json_schema,
             handler,
             approval: None,
+            idempotent: false,
         }
     }
 
@@ -330,6 +332,7 @@ impl FunctionTool {
             schema: json_schema,
             handler,
             approval: None,
+            idempotent: false,
         }
     }
 
@@ -365,6 +368,21 @@ impl FunctionTool {
         self.needs_approval(|_| true)
     }
 
+    /// Declare that running a call of this tool twice is harmless: a lookup,
+    /// or a write keyed so a repeat changes nothing.
+    ///
+    /// When a process exit cuts a turn off while this tool runs,
+    /// [`Session::resume_interrupted_turn`](crate::Session::resume_interrupted_turn)
+    /// runs the call again. Without it the call runs at most once: resume
+    /// records it as interrupted and the model learns its outcome is unknown.
+    ///
+    /// Stability: alpha — may change without a major bump; see
+    /// [`stability`](crate::stability).
+    pub fn idempotent(mut self) -> Self {
+        self.idempotent = true;
+        self
+    }
+
     /// Whether any call of this tool may need approval.
     pub(crate) fn approval(&self) -> Option<&ApprovalPredicate> {
         self.approval.as_ref()
@@ -393,6 +411,7 @@ impl fmt::Debug for FunctionTool {
             .field("description", &self.description)
             .field("schema", &self.schema)
             .field("needs_approval", &self.approval.is_some())
+            .field("idempotent", &self.idempotent)
             .finish_non_exhaustive()
     }
 }
@@ -409,6 +428,16 @@ impl CoreTool for FunctionTool {
 
     fn parameters_schema(&self) -> Value {
         self.schema.clone()
+    }
+
+    fn hints(&self) -> everruns_contracts::tool_types::ToolHints {
+        let hints = everruns_contracts::tool_types::ToolHints::default();
+        if self.idempotent {
+            hints
+                .with_side_effect_class(everruns_contracts::tool_types::SideEffectClass::Idempotent)
+        } else {
+            hints
+        }
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {
@@ -434,6 +463,19 @@ fn into_execution_result<T: IntoToolResult, E: fmt::Display>(
         Ok(value) => value.into_tool_result(),
         Err(err) => ToolExecutionResult::internal_error_msg(err.to_string()),
     }
+}
+
+/// The approval rule of each tool in `tools` that has one, by tool name.
+pub(crate) fn approval_predicates<'a>(
+    tools: impl IntoIterator<Item = &'a FunctionTool>,
+) -> Vec<(String, ApprovalPredicate)> {
+    tools
+        .into_iter()
+        .filter_map(|tool| {
+            tool.approval()
+                .map(|predicate| (tool.name().to_string(), predicate.clone()))
+        })
+        .collect()
 }
 
 /// A closure-backed [`Capability`] exposing exactly one [`FunctionTool`].

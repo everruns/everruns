@@ -5,18 +5,20 @@
 // servers. Tool discovery is live (no persisted cache) to keep this feature
 // narrowly scoped and avoid mutating config rows during runtime.
 
+use crate::domains::agents::record::Agent;
+use crate::domains::harnesses::record::Harness;
+use crate::domains::sessions::record::Session;
 use crate::kernel_imports::{
     Capability, EgressService, McpProtocolMode, McpServerActsAs, McpServerAuthMode,
     McpServerTransportType, ScopedMcpServer, ScopedMcpServers,
     contracts::tool_types::ToolDefinition, contracts::typed_id::SessionId,
     contracts::url_validation::validate_safe_url, merge_scoped_mcp_servers,
 };
-use crate::records::{Agent, Harness, Session};
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::connection_services::UserConnectionResolver;
-use everruns_core::mcp::{CacheHints, CacheScope, McpCapability};
+use everruns_core::mcp::{CacheHints, CacheScope, McpCapability, McpToolLabels};
 use everruns_core::mcp_server::sanitize_mcp_server_name;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
@@ -270,7 +272,10 @@ pub fn merge_effective_scoped_mcp_servers(
     if let Some(agent) = agent {
         layers.push(&agent.mcp_servers);
     }
-    layers.push(&session.mcp_servers);
+    // Session servers can be written mid-session, by the agent itself among
+    // others, so they never carry tool labels: a label only relaxes approval.
+    let session_servers = without_tool_labels(&session.mcp_servers);
+    layers.push(&session_servers);
 
     let merged = merge_scoped_mcp_server_layers(layers);
     strip_untrusted_oauth_from_scoped_mcp_servers(&merged)
@@ -288,6 +293,18 @@ pub fn merge_agent_scoped_mcp_servers(
         .into_iter()
         .chain(std::iter::once(&agent.mcp_servers));
     strip_untrusted_oauth_from_scoped_mcp_servers(&merge_scoped_mcp_server_layers(layers))
+}
+
+/// The servers with every inline tool label dropped.
+fn without_tool_labels(servers: &ScopedMcpServers) -> ScopedMcpServers {
+    servers
+        .iter()
+        .map(|(name, server)| {
+            let mut server = server.clone();
+            server.tool_labels.clear();
+            (name.clone(), server)
+        })
+        .collect()
 }
 
 /// Sanitize explicit (user-controlled) scoped MCP servers so they cannot
@@ -738,6 +755,16 @@ async fn discover_catalog_tools(
             .await
             {
                 Ok(result) => {
+                    if let Some(info) = &result.server_info {
+                        super::presentation::merge_server_info(
+                            db,
+                            org_id,
+                            preset_id,
+                            &server.url,
+                            info,
+                        )
+                        .await;
+                    }
                     if let Some(hints) = result.cache_hints {
                         store_cached_tools(db, identity, &hash, hints, &result.tools).await?;
                     }
@@ -763,6 +790,9 @@ async fn discover_catalog_tools(
         &server.headers,
     )
     .await?;
+    if let Some(info) = &result.server_info {
+        super::presentation::merge_server_info(db, org_id, preset_id, &server.url, info).await;
+    }
     if let Some(hints) = result.cache_hints {
         store_cached_tools(db, identity, &hash, hints, &result.tools).await?;
     }
@@ -778,16 +808,44 @@ pub async fn build_materialized_scoped_mcp_tool_definitions(
     egress_service: &dyn EgressService,
 ) -> Result<Vec<ToolDefinition>> {
     let materialized = materialize_scoped_mcp_servers(db, org_id, servers).await?;
+    // Saved risk labels of the catalog presets, in one query, keyed by the
+    // attachment name the definitions are published under.
+    let preset_names: Vec<String> = servers
+        .values()
+        .filter_map(|server| Some(server.preset.as_ref()?.catalog_name().to_string()))
+        .collect();
+    let preset_labels =
+        super::tool_labels::load_tool_labels_by_server_names(db, org_id, &preset_names)
+            .await
+            .unwrap_or_else(|error| {
+                tracing::warn!(%error, "Failed to load MCP tool labels; using tool annotations");
+                HashMap::new()
+            });
+    // A server's own inline labels win over its preset's saved ones.
+    let labels: HashMap<String, McpToolLabels> = servers
+        .iter()
+        .map(|(name, server)| {
+            let mut labels = server
+                .preset
+                .as_ref()
+                .and_then(|preset| preset_labels.get(preset.catalog_name()))
+                .cloned()
+                .unwrap_or_default();
+            labels.extend(server.tool_labels.clone());
+            (name.clone(), labels)
+        })
+        .filter(|(_, labels)| !labels.is_empty())
+        .collect();
+    // Read the session only when there is a server to cache tools for.
     let mut cache_context = match session_id {
-        Some(session_id) => {
-            db.get_session(org_id, session_id)
-                .await?
-                .map(|session| ScopedMcpCacheContext {
-                    agent_id: session.agent_id.map(|id| id.uuid()),
-                    user_id: None,
-                })
-        }
-        None => None,
+        Some(session_id) if !materialized.is_empty() => db
+            .get_session(org_id, session_id)
+            .await?
+            .map(|session| ScopedMcpCacheContext {
+                agent_id: session.agent_id.map(|id| id.uuid()),
+                user_id: None,
+            }),
+        _ => None,
     };
     let mut definitions = Vec::new();
     for (name, server) in &materialized {
@@ -817,8 +875,9 @@ pub async fn build_materialized_scoped_mcp_tool_definitions(
             !server.acts_as.is_none() && source.preset.is_some() && session_id.is_some();
         if !runtime_identity_attachment {
             definitions.extend(
-                build_scoped_mcp_tool_definitions(
+                build_labeled_scoped_mcp_tool_definitions(
                     &ScopedMcpServers::from([(name.clone(), server.clone())]),
+                    &labels,
                     session_id,
                     connection_resolver,
                     egress_service,
@@ -879,13 +938,39 @@ pub async fn build_materialized_scoped_mcp_tool_definitions(
             .map(|id| scoped_mcp_server_uuid(id.uuid(), name))
             .unwrap_or_else(Uuid::nil);
         definitions.extend(
-            McpCapability::new(capability_id, name.clone(), None, tools).tool_definitions(),
+            McpCapability::new(capability_id, name.clone(), None, tools)
+                .with_tool_labels(labels.get(name).cloned().unwrap_or_default())
+                .tool_definitions(),
         );
     }
     Ok(definitions)
 }
 pub async fn build_scoped_mcp_tool_definitions(
     servers: &ScopedMcpServers,
+    session_id: Option<SessionId>,
+    connection_resolver: Option<&Arc<dyn UserConnectionResolver>>,
+    egress_service: &dyn EgressService,
+) -> Result<Vec<ToolDefinition>> {
+    let labels: HashMap<String, McpToolLabels> = servers
+        .iter()
+        .filter(|(_, server)| !server.tool_labels.is_empty())
+        .map(|(name, server)| (name.clone(), server.tool_labels.clone()))
+        .collect();
+    build_labeled_scoped_mcp_tool_definitions(
+        servers,
+        &labels,
+        session_id,
+        connection_resolver,
+        egress_service,
+    )
+    .await
+}
+
+/// [`build_scoped_mcp_tool_definitions`] with saved risk labels, keyed by the
+/// scoped server name.
+async fn build_labeled_scoped_mcp_tool_definitions(
+    servers: &ScopedMcpServers,
+    labels: &HashMap<String, McpToolLabels>,
     session_id: Option<SessionId>,
     connection_resolver: Option<&Arc<dyn UserConnectionResolver>>,
     egress_service: &dyn EgressService,
@@ -948,7 +1033,8 @@ pub async fn build_scoped_mcp_tool_definitions(
         let capability_id = session_id
             .map(|id| scoped_mcp_server_uuid(id.uuid(), name))
             .unwrap_or_else(Uuid::nil);
-        let capability = McpCapability::new(capability_id, name.clone(), None, tools);
+        let capability = McpCapability::new(capability_id, name.clone(), None, tools)
+            .with_tool_labels(labels.get(name).cloned().unwrap_or_default());
         definitions.extend(capability.tool_definitions());
     }
 
@@ -1166,11 +1252,17 @@ pub async fn validate_scoped_mcp_servers_for_org(
                 row.status
             )).into());
         }
+        // An identity attachment only needs an OAuth preset. The preset may not
+        // be registered yet (`settings.oauth == None`): the first authorize
+        // (agent Authorize, a person's Connect, or a chat Connect card) runs
+        // discovery and client registration. Until then the attachment reports
+        // `connection_missing` and token resolution yields no token, so the
+        // server's tools stay unavailable.
         if server.acts_as != McpServerActsAs::None {
             let settings = McpServerService::settings_from_row(&row);
-            if settings.auth_mode != McpServerAuthMode::OAuth || settings.oauth.is_none() {
+            if settings.auth_mode != McpServerAuthMode::OAuth {
                 return Err(BadRequestError::new(format!(
-                    "Scoped MCP server '{name}' with actsAs '{}' requires catalog preset '{preset_name}' to have OAuth configuration",
+                    "Scoped MCP server '{name}' with actsAs '{}' requires catalog preset '{preset_name}' to use OAuth",
                     server.acts_as
                 )).into());
             }

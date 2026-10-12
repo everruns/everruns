@@ -37,7 +37,7 @@ export type {
 // From legacy virtual-user-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 
 // Generated enums used by entities that remain hand-maintained here.
-import type { Agent, AgentStatus, ConversationStarter } from "./agent-types";
+import type { Agent, ConversationStarter } from "./agent-types";
 export type {
   Agent,
   AgentStatus,
@@ -46,79 +46,17 @@ export type {
   ConversationStarter,
 } from "./agent-types";
 import type { SlackChannelConfig } from "./slack-api-types";
-export type { SlackChannelConfig, SlackReplyMode, SlackResponsePolicy } from "./slack-api-types";
+export type { SlackChannelConfig, SlackResponsePolicy } from "./slack-api-types";
 import type { DriverId } from "./provider-driver-types";
-import type { ChannelStatus, LlmRetryInfo, SessionActivity, SessionSource } from "./schema-types";
+import type {
+  ChannelStatus,
+  ConversationMessageData,
+  LlmRetryInfo,
+  SessionActivity,
+  SessionSource,
+} from "./schema-types";
 
-// From legacy agent-types.ts; retained as UI compatibility over generated OpenAPI schemas.
-// ============================================
-// Agent types (M2)
-// ============================================
-export interface CreateAgentRequest {
-  service_virtual_user_id?: string;
-  /** Addressable name (slug): lowercase alphanumeric and hyphens */
-  name: string;
-  /** Human-readable display name shown in UI */
-  display_name?: string;
-  description?: string;
-  /** Markdown intro for fresh Platform Chat threads (agent wins). */
-  intro_markdown?: string | null;
-  /** One-line description in simplified Markdown (agent wins). */
-  short_description?: string | null;
-  /** Conversation starters (agent wins when non-empty). */
-  starters?: ConversationStarter[];
-  system_prompt: string;
-  /** Base execution harness (id). Mutually exclusive with `harness_name`. Omit both to use the organization default (Conversation for new organizations). */
-  harness_id?: string;
-  /** Base execution harness (name), resolved within the org. Mutually exclusive with `harness_id`. */
-  harness_name?: string;
-  default_model_id?: string;
-  tags?: string[];
-  /** Capabilities with per-agent configuration */
-  capabilities?: AgentCapabilityConfig[];
-  initial_files?: InitialFile[];
-  /** Tool definitions (including client-side tools) */
-  tools?: ToolDefinition[];
-  /** Network access list for URL filtering */
-  network_access?: NetworkAccessList;
-}
-
-export interface UpdateAgentRequest {
-  service_virtual_user_id?: string | null;
-  /** Addressable name (slug): lowercase alphanumeric and hyphens */
-  name?: string;
-  /** Human-readable display name shown in UI */
-  display_name?: string;
-  description?: string;
-  /** Markdown intro; omit to leave unchanged, null clears. */
-  intro_markdown?: string | null;
-  /** One-line description; omit to leave unchanged, null clears. */
-  short_description?: string | null;
-  /** Conversation starters; omit to leave unchanged, empty clears. */
-  starters?: ConversationStarter[] | null;
-  system_prompt?: string;
-  /** Base execution harness (id). Omit to leave unchanged; never clearable to null. Mutually exclusive with `harness_name`. */
-  harness_id?: string;
-  /** Base execution harness (name), resolved within the org. Mutually exclusive with `harness_id`. */
-  harness_name?: string;
-  default_model_id?: string;
-  tags?: string[];
-  /** Capabilities with per-agent configuration */
-  capabilities?: AgentCapabilityConfig[];
-  initial_files?: InitialFile[];
-  status?: AgentStatus;
-  /** Tool definitions (including client-side tools) */
-  tools?: ToolDefinition[];
-  /** Network access list for URL filtering */
-  network_access?: NetworkAccessList | null;
-  /**
-   * Session this one was forked from (knowledge/runtime-resources/forking-sessions.md).
-   * NULL for sessions that were not forked. Distinct from a subagent's parent.
-   */
-  forked_from_session_id?: string | null;
-  /** Parent event sequence the fork was taken at. NULL unless this is a fork. */
-  forked_from_sequence?: number | null;
-}
+export type { CreateAgentRequest, UpdateAgentRequest } from "./agent-request-types";
 
 export type FindingSeverity = "warning" | "info" | "suggestion";
 
@@ -364,7 +302,7 @@ export type SessionStrategy = Extract<SessionBinding, "per_thread" | "per_channe
 /**
  * The bindings a trigger or request/reply endpoint can offer — nothing is
  * listening on a thread, so the exposure owns the session. Mirrors
- * `ChannelType::allowed_bindings()` for schedule, webhook, A2A and api_endpoint.
+ * `ChannelType::allowed_bindings()` for schedule, webhook and A2A.
  */
 export type InvocationSessionMode = Extract<
   SessionBinding,
@@ -826,45 +764,13 @@ export interface ProfileResponse {
   avatar_url?: string;
 }
 
-// ============================================
-// User Connection types
-// ============================================
-export interface UserConnection {
-  provider: string;
-  connection_type: string;
-  provider_username?: string;
-  scopes?: string;
-  connected_at: string;
-}
-
-export interface ConnectionProvider {
-  provider_id: string;
-  display_name: string;
-  description: string;
-  icon: string;
-  connection_type: "oauth" | "api_key";
-  capabilities: string[];
-  form_schema?: ConnectionFormSchema;
-}
-
-export interface ConnectionFormSchema {
-  fields: ConnectionFormField[];
-  instructions_markdown: string;
-}
-
-export interface ConnectionFormField {
-  name: string;
-  label: string;
-  field_type: "password" | "text" | "url";
-  required: boolean;
-  placeholder?: string;
-  help_text?: string;
-}
-
-export interface VerifyConnectionResponse {
-  valid: boolean;
-  error?: string;
-}
+export type {
+  ConnectionFormField,
+  ConnectionFormSchema,
+  ConnectionProvider,
+  UserConnection,
+  VerifyConnectionResponse,
+} from "./connection-provider-types";
 
 // From legacy capability-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 // NOTE: CapabilityId is defined in common-types for proper ordering
@@ -2377,6 +2283,7 @@ export type EventData =
   | ContextCompactingData
   | ContextCompactedData
   | SessionModelChangedData
+  | ConversationMessageData
   | Record<string, unknown>; // Raw/unknown event data
 
 // ============================================
@@ -2391,6 +2298,8 @@ export interface EventTypeMap {
   "output.message.delta": OutputMessageDeltaData;
   "output.message.replaced": LegacyOutputMessageReplacedData;
   "output.message.completed": OutputMessageCompletedData;
+  /** A message the agent sent with `send_message` (explicit communication). */
+  "conversation.message": ConversationMessageData;
   "turn.started": TurnStartedData;
   "turn.completed": TurnCompletedData;
   "turn.failed": TurnFailedData;
@@ -3150,11 +3059,7 @@ export interface ProviderRequestHeader {
   value: string;
 }
 
-/**
- * Per-connection request options: extra headers sent with every request to the
- * provider, and the prompt-cache diagnostics opt-in (honored by drivers with a
- * diagnostics protocol, today Anthropic).
- */
+/** Per-connection extra request headers and prompt-cache diagnostics opt-in (Anthropic today). */
 export interface ProviderRequestOptions {
   headers?: ProviderRequestHeader[];
   cache_diagnostics?: boolean;
@@ -3169,6 +3074,10 @@ export interface Provider {
   status: ProviderStatus;
   /** Whether this provider is host-managed (read-only to org admins). */
   managed: boolean;
+  /** Most recent successful model sync from the provider's API. */
+  last_synced_at?: string;
+  /** When someone last reviewed this provider's discovered models. */
+  models_reviewed_at?: string;
   created_at: string;
   updated_at: string;
   /** Resolved trace/observability link configuration (driver defaults + overrides). */

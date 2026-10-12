@@ -7,9 +7,10 @@
 # a Rust import, a publish entry, or a current documentation recommendation
 # comes back.
 #
-# Two historical records are allowed to name it: CHANGELOG.md carries the
-# breaking change and the 0.17 migration mapping, and knowledge/log.md records
-# the dated knowledge update.
+# Three historical records are allowed to name it: CHANGELOG.md carries the
+# breaking change and the 0.17 migration mapping, knowledge/log.md records the
+# dated knowledge update, and docs/changelog/ entries describe what shipped on
+# their date.
 
 set -euo pipefail
 
@@ -154,7 +155,8 @@ if [ -n "$source_violations" ]; then
 fi
 
 # 5. No current documentation, skill, or workflow may recommend or build it.
-#    CHANGELOG.md and knowledge/log.md are excluded as historical records, and
+#    CHANGELOG.md, knowledge/log.md and docs/changelog/ are excluded as
+#    historical records, and
 #    naming this guard script itself is always allowed.
 doc_violations="$(
   rg -n \
@@ -163,6 +165,7 @@ doc_violations="$(
     --glob '!Cargo.lock' \
     --glob '!CHANGELOG.md' \
     --glob '!knowledge/log.md' \
+    --glob '!docs/changelog/**' \
     'everruns[_-]runtime' \
     README.md CONTRIBUTING.md docs knowledge skills crates integrations examples \
     justfile scripts .github </dev/null 2>/dev/null \

@@ -178,6 +178,63 @@ async fn an_openai_decision_model_runs_on_the_decisions_api_and_is_priced() {
     assert!((cost - 0.0001).abs() < 1e-12, "{cost}");
 }
 
+/// Answers like Microsoft Foundry's System One route and checks the request.
+struct FoundryNetwork;
+#[async_trait]
+impl EgressService for FoundryNetwork {
+    async fn send(&self, _: EgressRequest) -> EgressResult<EgressResponse> {
+        panic!("must stream")
+    }
+    async fn send_stream(&self, request: EgressRequest) -> EgressResult<EgressStreamResponse> {
+        assert_eq!(request.kind, EgressRequestKind::Provider);
+        // The resource root, not the project path the provider was saved with.
+        assert_eq!(
+            request.url,
+            "https://res.services.ai.azure.com/providers/microsoft/v1/systemone"
+        );
+        assert_eq!(request.headers["api-key"], "saved-account-key");
+        assert!(!request.headers.contains_key("authorization"));
+        let body: Value = serde_json::from_slice(&request.body).unwrap();
+        // Foundry routes by deployment name, sent as saved.
+        assert_eq!(body["model"], "Decision-1");
+        assert_eq!(body["questions"]["q"]["type"], "noul");
+        let response = json!({"model":"microsoft-decision-1","answers":{"q":{"type":"noul","noul":0.97}},"usage":{"input_tokens":1000,"output_tokens":3}});
+        Ok(EgressStreamResponse {
+            status: 200,
+            headers: Default::default(),
+            body: Box::pin(futures::stream::iter(vec![Ok(serde_json::to_vec(
+                &response,
+            )
+            .unwrap())])),
+        })
+    }
+}
+
+#[tokio::test]
+async fn a_foundry_decision_model_runs_on_system_one_and_is_priced() {
+    let (mut context, events) = context(vec![], "active");
+    context.egress_service = Some(Arc::new(FoundryNetwork));
+    let binding = DecisionModelBinding {
+        provider_type: "mai".into(),
+        model: "Decision-1".into(),
+        profile_key: "microsoft/microsoft-decision-1".into(),
+        base_url: Some("https://res.services.ai.azure.com/api/projects/dev".into()),
+        headers: Default::default(),
+        ..binding()
+    };
+    let result = evaluate(binding, input(), &context).await.unwrap();
+    assert_eq!(result["model"], "microsoft-decision-1");
+    assert_eq!(result["answers"]["q"]["probability_yes"], 0.97);
+    let events = events.0.lock().unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["data"]["metadata"]["success"], true);
+    // $0.042 per 1M input tokens, output free.
+    let cost = events[0]["data"]["metadata"]["usage"]["estimated_cost_usd"]
+        .as_f64()
+        .unwrap();
+    assert!((cost - 0.000042).abs() < 1e-12, "{cost}");
+}
+
 /// A deployment-owned check asked of the org's model: the binding's model
 /// wins over whatever the caller named, and the call is budgeted and metered
 /// like the Jev tool.
@@ -224,4 +281,32 @@ async fn unmetered_decisions_need_only_egress() {
         outcome.get("q").and_then(|a| a.probability_yes()),
         Some(0.95)
     );
+}
+
+/// A provider that refuses the request, the way OpenRouter answered a
+/// half-described yes/no question with a 400.
+struct Refusing(u16);
+#[async_trait]
+impl EgressService for Refusing {
+    async fn send(&self, _: EgressRequest) -> EgressResult<EgressResponse> {
+        panic!("must stream")
+    }
+    async fn send_stream(&self, _: EgressRequest) -> EgressResult<EgressStreamResponse> {
+        Ok(EgressStreamResponse {
+            status: self.0,
+            headers: Default::default(),
+            body: Box::pin(futures::stream::iter(vec![Ok(
+                br#"{"error":{"message":"provider detail with private content"}}"#.to_vec(),
+            )])),
+        })
+    }
+}
+
+#[tokio::test]
+async fn a_refused_request_names_the_http_status_but_not_the_body() {
+    let request = DecisionRequest::new("s").ask("q", DecisionQuestion::noul("True?"));
+    let error = evaluate_unmetered(&binding(), request, &Refusing(400))
+        .await
+        .unwrap_err();
+    assert_eq!(error, "Decision provider request failed (HTTP 400)");
 }

@@ -1,10 +1,11 @@
 // Agent-scripts domain queries — shared read/mapping helpers.
 
+use crate::domains::agent_scripts::record::AgentScript;
 use crate::domains::common::{CommandError, classify_anyhow};
 use crate::errors::ResourceNotFoundError;
-use crate::records::AgentScript;
+use crate::storage::AgentRow;
+use crate::storage::AgentScriptRow;
 use crate::storage::StorageBackend;
-use crate::storage::models::{AgentRow, AgentScriptRow};
 use everruns_contracts::typed_id::{AgentId, ScriptId};
 use std::sync::Arc;
 

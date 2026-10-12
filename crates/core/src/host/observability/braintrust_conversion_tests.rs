@@ -100,6 +100,7 @@ fn test_convert_llm_generation_with_parent() {
     let turn_id = TurnId::new();
 
     let data = LlmGenerationData {
+        request_body: None,
         messages: vec![
             RuntimeMessage::user("Hello"),
             RuntimeMessage::assistant("Hi there!"),
@@ -113,6 +114,7 @@ fn test_convert_llm_generation_with_parent() {
             model: "gpt-4".to_string(),
             provider: Some("openai".to_string()),
             response_model: None,
+            provider_id: None,
             usage: Some(TokenUsage {
                 input_tokens: 10,
                 output_tokens: 5,
@@ -380,6 +382,7 @@ fn test_llm_generation_with_span_context_has_reason_as_parent() {
     context.parent_span_id = Some(reason_span_id.clone());
 
     let data = LlmGenerationData {
+        request_body: None,
         messages: vec![RuntimeMessage::user("Hello")],
         tools: vec![],
         output: LlmGenerationOutput {
@@ -490,6 +493,7 @@ fn test_tool_call_events_have_act_as_parent() {
 
     let data = ToolCompletedData {
         severity: None,
+        details: None,
         tool_call_id: "call_123".to_string(),
         tool_name: "search".to_string(),
         tool_call_fingerprint: None,

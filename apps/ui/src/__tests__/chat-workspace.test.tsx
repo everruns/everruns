@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { ChatWorkspace } from "@/components/chat/chat-workspace";
 import { useChatThreads } from "@/hooks/use-chat-threads";
@@ -124,6 +126,17 @@ it("starts in permanent Chat and opens creation and history inside Threads", () 
   expect(screen.getByTestId("conversation-permanent")).toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Threads" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Threads" }));
+  // The conversation column clips and the threads pane stacks above it, so a
+  // thread row cannot paint across the transcript.
+  expect(screen.getByTestId("conversation-permanent").parentElement).toHaveClass(
+    "overflow-hidden",
+    "isolate",
+  );
+  expect(screen.getByRole("region", { name: "Threads" })).toHaveClass(
+    "overflow-hidden",
+    "z-10",
+    "bg-background",
+  );
   expect(screen.getByRole("link", { name: "New thread" })).toHaveAttribute("href", "/chats/new");
   expect(screen.getByRole("link", { name: /Investigate latency/ })).toHaveAttribute(
     "href",
@@ -161,6 +174,13 @@ it("preserves the permanent conversation while opening and expanding a separate 
   expect(screen.getByRole("button", { name: "Restore split view" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Close threads" }));
   expect(mockPush).toHaveBeenLastCalledWith("/chats");
+});
+it("keeps transcript rows from remembering an inline size", () => {
+  const css = readFileSync(join(process.cwd(), "src/app/design-system.css"), "utf8");
+  const block = css.slice(css.indexOf(".chat-transcript-row"));
+  const rule = block.slice(0, block.indexOf("}"));
+  expect(rule).toContain("contain-intrinsic-block-size: auto 4rem");
+  expect(rule).not.toContain("contain-intrinsic-size:");
 });
 it("opens bookmarked drafts beside permanent Chat", () => {
   mockPath = "/chats/new";

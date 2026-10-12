@@ -2,10 +2,10 @@
 
 use everruns_contracts::runtime::exec_tool_result::ExecToolResultPayload;
 use everruns_contracts::session_sandbox::{
-    SessionSandboxConfig, SessionSandboxContext, SessionSandboxExecRequest,
-    SessionSandboxExecResponse, SessionSandboxInstance, SessionSandboxProvider,
-    SessionSandboxReadFileResponse, SessionSandboxState, SessionSandboxStatus,
-    SessionSandboxStatusResponse, SessionSandboxWriteFileResponse,
+    OwnedSandbox, SandboxAdminError, SessionSandboxConfig, SessionSandboxContext,
+    SessionSandboxExecRequest, SessionSandboxExecResponse, SessionSandboxInstance,
+    SessionSandboxProvider, SessionSandboxReadFileResponse, SessionSandboxState,
+    SessionSandboxStatus, SessionSandboxStatusResponse, SessionSandboxWriteFileResponse,
 };
 use everruns_contracts::tools::ToolExecutionResult;
 use everruns_contracts::typed_id::SessionId;
@@ -16,6 +16,7 @@ use tracing::{debug, warn};
 
 use crate::daytona::client::DaytonaClient;
 use crate::daytona::naming::create_sandbox_with_unique_name;
+use crate::daytona::owned;
 use crate::daytona::state::{
     SandboxInfo, SandboxState, VolumeInfo, get_managed_api_key, release_sandbox_lease,
     touch_sandbox_lease_with_credential,
@@ -364,7 +365,7 @@ fn requested_sandbox_name(
 async fn sandbox_labels(
     context: &dyn SessionSandboxContext,
 ) -> serde_json::Map<String, serde_json::Value> {
-    context.resource_labels().await
+    context.managed_resource_labels().await
 }
 
 async fn run_sandbox_maintenance_command(
@@ -621,6 +622,22 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         "daytona"
     }
 
+    async fn list_owned(
+        &self,
+        token: &str,
+        labels: &std::collections::BTreeMap<String, String>,
+    ) -> Result<Vec<OwnedSandbox>, SandboxAdminError> {
+        owned::list_owned(&DaytonaClient::new(token.to_string()), labels).await
+    }
+
+    async fn stop_by_id(&self, token: &str, external_id: &str) -> Result<(), SandboxAdminError> {
+        owned::stop(&DaytonaClient::new(token.to_string()), external_id).await
+    }
+
+    async fn delete_by_id(&self, token: &str, external_id: &str) -> Result<(), SandboxAdminError> {
+        owned::delete(&DaytonaClient::new(token.to_string()), external_id).await
+    }
+
     async fn create(
         &self,
         context: &dyn SessionSandboxContext,
@@ -755,7 +772,27 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
                     ..instance.clone()
                 });
             }
-            Err(err) => return Err(ToolExecutionResult::tool_error(err)),
+            // Managed sandboxes carry Daytona's own autoStopInterval, so Daytona has
+            // often stopped or archived the sandbox before our idle pause fires and
+            // rejects the stop (400 "not in a stoppable state", or 409 mid-transition).
+            // Reconcile against the live state so the pause converges instead of
+            // failing on every idle sweep (Sentry EVERRUNS-2M).
+            Err(err) => {
+                let current = client
+                    .get_sandbox(&instance.external_id)
+                    .await
+                    .map_err(|_| ToolExecutionResult::tool_error(err.clone()))?;
+                match current.state.as_str() {
+                    "stopped" | "archived" => {
+                        return Ok(SessionSandboxInstance {
+                            metadata: json!({ "remote_state": current.state }),
+                            ..instance.clone()
+                        });
+                    }
+                    "stopping" => {}
+                    _ => return Err(ToolExecutionResult::tool_error(err)),
+                }
+            }
         }
         let info = wait_for_sandbox_state(&client, &instance.external_id, "stopped").await?;
 

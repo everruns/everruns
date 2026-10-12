@@ -14,7 +14,11 @@
 //!   feature, `POST /v1/channels/{agent}/ag-ui` mirrors the server's AG-UI channel
 //!   route (see `ag_ui`); with `a2a`, `POST /v1/channels/{agent}/a2a` and its Agent
 //!   Card mirror the server's A2A endpoint (see `a2a`); with `voice`,
-//!   `/v1/channels/{agent}/voice` takes browser calls (see `voice`).
+//!   `/v1/channels/{agent}/voice` takes calls (see `voice`).
+//! - Each top-level agent also has the Agent Execution API under
+//!   `/v1/channels/{agent}` (see `agent_api`).
+//! - Open unless auth is configured; then every route but discovery needs a
+//!   bearer credential (see `auth`).
 //! - Events are the engine's durable canonical log, replayed then followed
 //!   live through `Session::events_from`; serve writes none.
 
@@ -38,7 +42,7 @@ use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
 use crate::app::Mode;
-use crate::channel::Inbound;
+use crate::channels::ChannelRequest;
 use crate::host::{ApiError, Host, NewSession, wire_json};
 
 /// The fixed organization a serve app reports; it has no tenants.
@@ -60,7 +64,11 @@ pub(crate) fn router(host: Arc<Host>) -> Router {
         .route("/v1/sessions/{id}/events", get(list_events))
         .route("/v1/sessions/{id}/question-answers", post(question_answers))
         .route("/v1/sessions/{id}/approvals/{tool_call_id}", post(approval))
-        .route("/v1/channels/{name}", post(channel));
+        .route(
+            "/v1/channels/{name}",
+            get(crate::agent_api::card).post(channel),
+        );
+    router = crate::agent_api::routes(router);
     #[cfg(feature = "ag-ui")]
     {
         router = router
@@ -76,6 +84,7 @@ pub(crate) fn router(host: Arc<Host>) -> Router {
         router = router
             .route("/v1/channels/{name}/voice", get(crate::voice::page))
             .route("/v1/channels/{name}/voice/calls", post(crate::voice::call))
+            .route("/v1/channels/{name}/voice/ws", get(crate::voice::socket))
             .route(
                 "/v1/channels/{name}/voice/calls/{call_id}/end",
                 post(crate::voice::end),
@@ -85,7 +94,12 @@ pub(crate) fn router(host: Arc<Host>) -> Router {
         // Dev only: fire a schedule without waiting for its cron.
         router = router.route("/dev/schedules/{name}", post(run_schedule));
     }
-    router.with_state(host)
+    router
+        .layer(axum::middleware::from_fn_with_state(
+            host.clone(),
+            crate::auth::require,
+        ))
+        .with_state(host)
 }
 
 pub(crate) struct Failure(anyhow::Error);
@@ -129,9 +143,9 @@ impl IntoResponse for Failure {
     }
 }
 
-type ApiResult<T> = Result<T, Failure>;
+pub(crate) type ApiResult<T> = Result<T, Failure>;
 
-fn bad_request(why: impl Into<String>) -> Failure {
+pub(crate) fn bad_request(why: impl Into<String>) -> Failure {
     ApiError::BadRequest(why.into()).into()
 }
 
@@ -211,7 +225,7 @@ struct CreateSessionBody {
 }
 
 /// A session in the server's `Session` shape, plus serve's optional extras.
-fn session_json(host: &Host, id: &str) -> crate::Result<Value> {
+pub(crate) fn session_json(host: &Host, id: &str) -> crate::Result<Value> {
     let row = host.session_row(id)?;
     let mut session = json!({
         "id": row.id,
@@ -258,7 +272,6 @@ async fn create_session(
             tags: body.tags,
             hints: body.hints,
             metadata: body.metadata,
-            deliver_to: None,
         })
         .await?;
     Ok((
@@ -269,7 +282,7 @@ async fn create_session(
         .into_response())
 }
 
-async fn get_session(
+pub(crate) async fn get_session(
     State(host): State<Arc<Host>>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<Value>> {
@@ -279,7 +292,7 @@ async fn get_session(
 }
 
 #[derive(Deserialize)]
-struct CreateMessageBody {
+pub(crate) struct CreateMessageBody {
     message: InputMessage,
     #[serde(default)]
     metadata: Option<Value>,
@@ -322,7 +335,7 @@ fn message_text(message: &InputMessage) -> Result<String, Failure> {
 
 /// `POST /v1/sessions/{id}/messages`: starts a turn when idle, steers the
 /// running turn otherwise. Answers with the server's `Message` shape.
-async fn create_message(
+pub(crate) async fn create_message(
     State(host): State<Arc<Host>>,
     Path(id): Path<String>,
     Json(body): Json<CreateMessageBody>,
@@ -361,7 +374,10 @@ async fn create_message(
     Ok((StatusCode::CREATED, Json(message)).into_response())
 }
 
-async fn cancel(State(host): State<Arc<Host>>, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+pub(crate) async fn cancel(
+    State(host): State<Arc<Host>>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Value>> {
     host.session_row(&id)?;
     Ok(Json(if host.cancel(&id).await? {
         json!({ "status": "cancelled", "message": "Turn cancelled successfully" })
@@ -414,7 +430,7 @@ enum SubmittedStatus {
 
 /// The server's `QuestionAnswersRequest`.
 #[derive(Deserialize)]
-struct QuestionAnswersBody {
+pub(crate) struct QuestionAnswersBody {
     #[serde(default)]
     tool_call_id: Option<String>,
     #[serde(default = "answered")]
@@ -436,7 +452,7 @@ struct SubmittedAnswer {
     other_text: Option<String>,
 }
 
-async fn question_answers(
+pub(crate) async fn question_answers(
     State(host): State<Arc<Host>>,
     Path(id): Path<String>,
     Json(body): Json<QuestionAnswersBody>,
@@ -471,8 +487,9 @@ async fn channel(
     Path(name): Path<String>,
     headers: HeaderMap,
     body: Bytes,
-) -> ApiResult<Json<Value>> {
-    let inbound = Inbound {
+) -> Response {
+    let request = ChannelRequest {
+        path: String::new(),
         headers: headers
             .iter()
             .filter_map(|(key, value)| {
@@ -484,7 +501,9 @@ async fn channel(
             .collect(),
         body: body.to_vec(),
     };
-    Ok(Json(host.inbound(&name, inbound).await?))
+    let response = host.channels().handle(&name, &request).await;
+    let status = StatusCode::from_u16(response.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    (status, Json(response.body)).into_response()
 }
 
 async fn run_schedule(
@@ -513,7 +532,7 @@ impl Filters {
 }
 
 #[derive(Deserialize, Default)]
-struct SseQuery {
+pub(crate) struct SseQuery {
     #[serde(default)]
     since_id: Option<String>,
     #[serde(default)]
@@ -555,7 +574,7 @@ fn sse_event(event: &SessionEvent) -> Event {
 /// `GET /v1/sessions/{id}/sse`: `connected`, then durable events after the
 /// cursor, then live events (deltas included). Without a cursor the stream
 /// starts live, as on the server.
-async fn sse(
+pub(crate) async fn sse(
     State(host): State<Arc<Host>>,
     Path(id): Path<String>,
     Query(query): Query<SseQuery>,
@@ -631,7 +650,7 @@ async fn forward(
 }
 
 #[derive(Deserialize, Default)]
-struct ListQuery {
+pub(crate) struct ListQuery {
     #[serde(default)]
     since_id: Option<String>,
     #[serde(default)]
@@ -648,7 +667,7 @@ struct ListQuery {
 
 /// `GET /v1/sessions/{id}/events`: durable events as `{data: [...]}`, oldest
 /// first. `limit` keeps the last N and sets `X-Total-Count`.
-async fn list_events(
+pub(crate) async fn list_events(
     State(host): State<Arc<Host>>,
     Path(id): Path<String>,
     Query(query): Query<ListQuery>,

@@ -31,12 +31,6 @@ cargo add everruns-durable-engine
   It holds no session runtime, so it starts turns only from input the caller
   already stored (`TurnInput::StoredMessage` with the request's `TurnScope`,
   `TurnInput::RecordedToolResults`).
-- `DurableBackend`, which runs a framework application's turns with workers in
-  its own process, each step on the session's `InProcessRuntime`:
-  `DurableBackend::memory` over an in-memory store, `DurableBackend::postgres`
-  over a PostgreSQL store several processes may share, each claiming only its
-  own sessions' steps. The `everruns` facade selects it with its `durable`
-  feature.
 - `TurnTaskDriver`, which runs one claimed turn task against any `TurnStore`:
   cancellation check, heartbeat, the step, completion or failure, then the next
   step's enqueue or the workflow's completion. A `TurnTaskHost` supplies the
@@ -111,7 +105,7 @@ each to a `TurnTaskDriver`.
 
 ## Documentation
 
-- [Durable execution](https://docs.everruns.com/explanation/durable-execution/)
+- [Durable execution](https://everruns.com/docs/explanation/durable-execution/)
 - [API reference](https://docs.rs/everruns-durable-engine)
 
 ## License

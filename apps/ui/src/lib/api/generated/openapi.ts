@@ -133,6 +133,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/draft": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Revise an agent draft from a conversation with the agent builder. Returns the draft only; nothing is created. */
+    post: operations["draft_agent"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/import": {
     parameters: {
       query?: never;
@@ -306,6 +323,58 @@ export interface paths {
     head?: never;
     /** @description Update an ingress channel owned by an Agent. */
     patch: operations["update_agent_channel"];
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/channels/{channel_id}/keys": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List the agent keys of an agent's API channel. Secrets are never returned. */
+    get: operations["list_agent_keys"];
+    put?: never;
+    /** @description Create an agent key for an agent's API channel. The secret is in this response only. */
+    post: operations["create_agent_key"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/revoke": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Revoke an agent key. It never works again, including a secret still in its rotation overlap. */
+    post: operations["revoke_agent_key"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/rotate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Replace an agent key's secret, keeping its id. The new secret is in this response only; the old one keeps working for the overlap. */
+    post: operations["rotate_agent_key"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   "/v1/agents/{agent_id}/channels/{channel_id}/publish": {
@@ -610,6 +679,41 @@ export interface paths {
     put?: never;
     /** POST /v1/agents/{agent_id}/exposures/suspend - Take every endpoint offline */
     post: operations["suspend_agent_exposures"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/github": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks. */
+    get: operations["get_agent_github"];
+    put?: never;
+    post?: never;
+    /** Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. When the App was never installed, forget it instead, so the next connect creates a new one (for example in a GitHub organization). */
+    delete: operations["disconnect_agent_github"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/github/connect": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Start connecting an agent to GitHub through its own GitHub App. Returns `install` with a URL to open in a browser when the App exists, or `create_app` when GitHub must first create it, which needs the web UI (Agent > Integrations > Connect GitHub). */
+    post: operations["connect_agent_github"];
     delete?: never;
     options?: never;
     head?: never;
@@ -929,74 +1033,6 @@ export interface paths {
     get: operations["agent_card_legacy"];
     put?: never;
     post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/api/{channel_id}/sessions": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** POST /v1/apps/{app_id}/api/{channel_id}/sessions */
-    post: operations["create_session"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** GET /v1/apps/{app_id}/api/{channel_id}/sessions/{session_id} */
-    get: operations["get_session"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}/cancel": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** POST /v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}/cancel */
-    post: operations["cancel_session"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}/messages": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** POST /v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}/messages */
-    post: operations["post_message"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1323,6 +1359,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/channels/{channel_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Agent card of an api channel: what a caller needs to start talking to the agent. */
+    get: operations["agent_api_get_card"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/channels/{channel_id}/a2a": {
     parameters: {
       query?: never;
@@ -1398,10 +1451,11 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get?: never;
+    /** @description The calling key's sessions on an api channel, most recently active first. */
+    get: operations["agent_api_list_sessions"];
     put?: never;
-    /** @description Create a session through an api_endpoint channel. Authenticate with the channel bearer key or configured endpoint auth. */
-    post: operations["create_session_channel"];
+    /** @description Start a session on an api channel. The session starts idle; send a message to start a turn. */
+    post: operations["agent_api_create_session"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1415,8 +1469,8 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get derived status and completed agent messages for a session owned by an api_endpoint channel. */
-    get: operations["get_session_channel"];
+    /** @description One of the caller's sessions on an api channel, with the questions and approvals it waits on. */
+    get: operations["agent_api_get_session"];
     put?: never;
     post?: never;
     delete?: never;
@@ -1434,8 +1488,25 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Cancel the active turn for a session owned by an api_endpoint channel. */
-    post: operations["cancel_session_channel"];
+    /** @description Cancel the running turn of one of the caller's sessions. */
+    post: operations["agent_api_cancel"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/sessions/{session_id}/events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description A session's events, oldest first, as the channel's visibility allows. */
+    get: operations["agent_api_list_events"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -1451,8 +1522,59 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Post a follow-up message to a session owned by an api_endpoint channel. */
-    post: operations["post_message_channel"];
+    /** @description Send a user message to one of the caller's sessions: starts a turn, or steers the running one. */
+    post: operations["agent_api_send_message"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/sessions/{session_id}/question-answers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Answer the question set the agent asked with `ask_user`, and resume the turn. */
+    post: operations["agent_api_answer_questions"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/sessions/{session_id}/sse": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Follow a session's events live, as the channel's visibility allows. Same framing as `/v1/sessions/{id}/sse`: `connected`, `id:` on durable events (resume with `since_id`), a heartbeat, and `disconnecting` before the server cycles the connection. */
+    get: operations["agent_api_stream_events"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/sessions/{session_id}/tool-approvals": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`. */
+    post: operations["agent_api_submit_tool_approvals"];
     delete?: never;
     options?: never;
     head?: never;
@@ -2156,9 +2278,9 @@ export interface paths {
     put?: never;
     /**
      * @deprecated
-     * @description Create a session through an api_endpoint channel. Authenticate with the channel bearer key or configured endpoint auth.
+     * @description Start a session on an api channel. The session starts idle; send a message to start a turn.
      */
-    post: operations["create_session_endpoint"];
+    post: operations["agent_api_create_session_legacy"];
     delete?: never;
     options?: never;
     head?: never;
@@ -2174,9 +2296,9 @@ export interface paths {
     };
     /**
      * @deprecated
-     * @description Get derived status and completed agent messages for a session owned by an api_endpoint channel.
+     * @description One of the caller's sessions on an api channel, with the questions and approvals it waits on.
      */
-    get: operations["get_session_endpoint"];
+    get: operations["agent_api_get_session_legacy"];
     put?: never;
     post?: never;
     delete?: never;
@@ -2196,9 +2318,9 @@ export interface paths {
     put?: never;
     /**
      * @deprecated
-     * @description Cancel the active turn for a session owned by an api_endpoint channel.
+     * @description Cancel the running turn of one of the caller's sessions.
      */
-    post: operations["cancel_session_endpoint"];
+    post: operations["agent_api_cancel_legacy"];
     delete?: never;
     options?: never;
     head?: never;
@@ -2216,9 +2338,69 @@ export interface paths {
     put?: never;
     /**
      * @deprecated
-     * @description Post a follow-up message to a session owned by an api_endpoint channel.
+     * @description Send a user message to one of the caller's sessions: starts a turn, or steers the running one.
      */
-    post: operations["post_message_endpoint"];
+    post: operations["agent_api_send_message_legacy"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions/{session_id}/question-answers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * @deprecated
+     * @description Answer the question set the agent asked with `ask_user`, and resume the turn.
+     */
+    post: operations["agent_api_answer_questions_legacy"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions/{session_id}/sse": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * @deprecated
+     * @description Follow a session's events live, as the channel's visibility allows. Same framing as `/v1/sessions/{id}/sse`: `connected`, `id:` on durable events (resume with `since_id`), a heartbeat, and `disconnecting` before the server cycles the connection.
+     */
+    get: operations["agent_api_stream_events_legacy"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions/{session_id}/tool-approvals": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * @deprecated
+     * @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`.
+     */
+    post: operations["agent_api_submit_tool_approvals_legacy"];
     delete?: never;
     options?: never;
     head?: never;
@@ -3226,6 +3408,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/mcp-servers/{id}/check-connection": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Check again whether an OAuth MCP server's sign-in service is reachable, and record the result on the server. */
+    post: operations["check_mcp_server_connection"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/mcp-servers/{id}/delete": {
     parameters: {
       query?: never;
@@ -3237,6 +3436,57 @@ export interface paths {
     put?: never;
     /** Permanently delete an archived MCP server. */
     post: operations["destroy_mcp_server"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/mcp-servers/{id}/tools": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List the tools an MCP server offers, with each tool's annotations and saved risk label. */
+    get: operations["list_mcp_server_tools"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/mcp-servers/{id}/tools/suggest-labels": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Ask the organization's decision model (or the deployment's decision service when the organization does not select its own) to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label. */
+    post: operations["suggest_mcp_tool_labels"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/mcp-servers/{id}/tools/{tool_name}/label": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Set or clear a person's risk label for one MCP server tool. read_only never asks for approval in normal mode, changes always asks, null clears. */
+    put: operations["set_mcp_tool_label"];
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -3718,6 +3968,41 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/orgs/{org}/egress-allowlist": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get the organization's outbound allowlist extension: whether a platform administrator granted it, its host patterns, and the deployment's egress policy mode. */
+    get: operations["get_org_egress_allowlist"];
+    /** Replace the organization's outbound allowlist extension. Requires an organization admin and a grant from a platform administrator. Patterns must name public hosts: `example.com`, `*.example.com`, or an `https://example.com/path/` prefix. */
+    put: operations["set_org_egress_allowlist"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/orgs/{org}/egress-allowlist/grant": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Platform administrators only: allow or stop an organization extending the outbound allowlist (revoking keeps its patterns but stops enforcing them), and give or take back open egress (any public host the deny list allows, reads and writes). Omitted fields keep their value. */
+    put: operations["set_org_egress_allowlist_grant"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/orgs/{org}/feature-flags": {
     parameters: {
       query?: never;
@@ -3813,7 +4098,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List non-secret metadata for organization-owned sandbox provider accounts. */
+    /** @description List non-secret metadata for organization-owned provider accounts: sandbox provider accounts and web search accounts. */
     get: operations["list_connections"];
     put?: never;
     post?: never;
@@ -3832,7 +4117,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Create and validate an encrypted organization-owned sandbox provider account. */
+    /** @description Create and validate an encrypted organization-owned account for a connector that declares sandbox_provisioning or web_search. */
     post: operations["create_connection"];
     delete?: never;
     options?: never;
@@ -3848,7 +4133,7 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** @description Replace the name and credential for an organization-owned sandbox provider account. */
+    /** @description Replace the name and credential for an organization-owned provider account. */
     put: operations["update_connection"];
     post?: never;
     /** @description Delete an organization-owned provider account when no active sandbox configuration or lease references it. */
@@ -3867,7 +4152,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Revalidate an organization-owned sandbox provider credential without returning the secret. */
+    /** @description Revalidate an organization-owned provider credential without returning the secret. */
     post: operations["verify_connection"];
     delete?: never;
     options?: never;
@@ -4164,6 +4449,27 @@ export interface paths {
     head?: never;
     /** Update an LLM provider */
     patch: operations["update_provider"];
+    trace?: never;
+  };
+  "/v1/providers/{id}/models/review": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Mark a provider's discovered models as reviewed
+     * @description Clears the `is_new` flag on the provider's discovered models: only models
+     *     discovered after this call, and still disabled, read back as new.
+     */
+    post: operations["review_models"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   "/v1/providers/{id}/sync-models": {
@@ -4592,6 +4898,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/search-providers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List the web search providers of the active organization: built-in free and model provider search, connected model providers that search natively, connectors that hold search accounts, connected search accounts with status, and the organization's web search defaults. */
+    get: operations["list_search_providers"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/search-providers/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Resolve an agent's web search setting and model to the ordered plan its searches follow, with the organization's current defaults. Optionally run a test query against one provider (`free` or `account:<id>`; organization admins only). */
+    post: operations["preview_search_plan"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions": {
     parameters: {
       query?: never;
@@ -4603,7 +4943,7 @@ export interface paths {
     get: operations["list_sessions"];
     put?: never;
     /** POST /v1/sessions - Create a new session */
-    post: operations["create_session_post_v1_sessions"];
+    post: operations["create_session"];
     delete?: never;
     options?: never;
     head?: never;
@@ -4669,7 +5009,7 @@ export interface paths {
       cookie?: never;
     };
     /** GET /v1/sessions/{session_id} - Get session */
-    get: operations["get_session_get_v1_sessions_session_id"];
+    get: operations["get_session"];
     put?: never;
     post?: never;
     /** DELETE /v1/sessions/{session_id} - Delete session */
@@ -4908,6 +5248,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/feedback": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List your good and bad ratings of the messages in a session. */
+    get: operations["list_message_feedback"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/fork": {
     parameters: {
       query?: never;
@@ -5098,6 +5455,23 @@ export interface paths {
     put?: never;
     /** POST /v1/sessions/{session_id}/messages - Create message (user message triggers workflow) */
     post: operations["create_message"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/messages/{message_id}/feedback": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Rate one message in a session good or bad, with an optional comment. A null rating clears your rating. */
+    put: operations["set_message_feedback"];
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -5504,6 +5878,108 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/trace": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Summarize a session's trace: turn, step and error totals, a minimap of turn buckets, and the turns that failed. */
+    get: operations["get_session_trace"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/trace/turns": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List a page of a session's turns with their steps: model calls, tool calls, approvals, sub-agents and messages, with repeated calls folded into batches. */
+    get: operations["list_session_trace_turns"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/trace/turns/{turn}/events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List the raw events of one turn of a session's trace, without deltas; small payloads are inlined. */
+    get: operations["list_session_trace_turn_events"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/trace/turns/{turn}/steps": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Page through the steps of one turn of a session's trace, optionally only the failed ones. */
+    get: operations["list_session_trace_steps"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read one step of a session's trace in full: tool input and output, the model request and response, and its raw events. */
+    get: operations["get_session_trace_step"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}/request": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Page through the messages a model call in a session's trace was sent, with each message's full content. */
+    get: operations["list_session_trace_request"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/voice/calls": {
     parameters: {
       query?: never;
@@ -5726,6 +6202,46 @@ export interface paths {
     put?: never;
     post?: never;
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/user/connected-clients": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List the AI clients you connected to Everruns MCP.
+     * @description External MCP clients (Claude, ChatGPT, Cursor, ...) you approved to act as you on `/mcp`, most recently used first.
+     */
+    get: operations["list_connected_clients"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/user/connected-clients/{grant_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Disconnect an AI client.
+     * @description Revokes the grant: the client's refresh tokens are deleted and `/mcp` rejects its access tokens within about 30 seconds. Reconnecting needs a new approval.
+     */
+    delete: operations["revoke_connected_client"];
     options?: never;
     head?: never;
     patch?: never;
@@ -6080,6 +6596,40 @@ export interface paths {
     patch: operations["update_user_mcp_server"];
     trace?: never;
   };
+  "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}/tools": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List the tools of one of the person's custom MCP servers, asked live, with their risk labels. */
+    get: operations["list_user_mcp_server_tools"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}/tools/{tool_name}/label": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Set or clear the person's risk label for one tool of their custom MCP server. */
+    put: operations["set_user_mcp_tool_label"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/virtual-users/{identity_id}/preferences": {
     parameters: {
       query?: never;
@@ -6418,6 +6968,13 @@ export interface components {
        */
       capabilities?: components["schemas"]["AgentCapabilityConfig"][];
       /**
+       * @description How the agent talks to people. `direct` (default): its replies are
+       *     what it writes. `explicit`: what it writes is private working notes,
+       *     and people see only the messages it sends with `send_message`. Applies
+       *     on every surface: web chat, API, Slack, A2A, AG-UI, MCP.
+       */
+      communication?: components["schemas"]["Communication"];
+      /**
        * Format: date-time
        * @description Timestamp when the agent was created.
        * @example 2026-04-01T10:00:00Z
@@ -6630,6 +7187,11 @@ export interface components {
       max_active_turns: number;
       /**
        * Format: int64
+       * @description Distinct end users across every channel in the last 7 days.
+       */
+      people_reached: number;
+      /**
+       * Format: int64
        * @description Sessions executing a turn right now, across every agent.
        */
       running_sessions: number;
@@ -6659,7 +7221,7 @@ export interface components {
        */
       circle_url: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example avatar_01933b5a000070008000000000000001
        */
       id: string;
@@ -6691,6 +7253,65 @@ export interface components {
       config?: unknown;
       /** @description Reference to the capability ID */
       ref: string;
+    };
+    /** @description What a caller learns from `GET {agent base URL}`. */
+    AgentCard: {
+      /** @description Credentials the agent base URL accepts. Empty means anonymous. */
+      auth?: components["schemas"]["AgentCardAuth"][];
+      /** @description Prompts a client may offer to start a conversation. */
+      conversation_starters?: string[];
+      /** @description What the agent is for. */
+      description?: string | null;
+      /** @description Which message content the agent accepts. */
+      input: components["schemas"]["AgentCardInput"];
+      /** @description Where to go next. */
+      links: components["schemas"]["AgentCardLinks"];
+      /**
+       * @description Display name of the agent.
+       * @example Support agent
+       */
+      name: string;
+      /** @description Session events can be followed live over SSE. */
+      streaming: boolean;
+    };
+    /** @description One accepted credential kind. Mirrors the HTTP auth scheme a client sends. */
+    AgentCardAuth:
+      | {
+          /** @enum {string} */
+          type: "agent_key";
+        }
+      | {
+          /** @description Issuer the token must come from. */
+          issuer: string;
+          /** @enum {string} */
+          type: "oidc";
+        }
+      | {
+          /** @enum {string} */
+          type: "o_auth2";
+        }
+      | {
+          /** @enum {string} */
+          type: "runtime_token";
+        }
+      | {
+          /** @enum {string} */
+          type: "personal_access_token";
+        };
+    /** @description Message content an agent accepts. */
+    AgentCardInput: {
+      files: boolean;
+      images: boolean;
+      text: boolean;
+    };
+    /** @description Links from an agent card. */
+    AgentCardLinks: {
+      /** @description The same agent's A2A Agent Card, when one is live. */
+      a2a?: string | null;
+      /** @description The same agent's AG-UI endpoint, when one is live. */
+      ag_ui?: string | null;
+      /** @description The session collection: create with `POST`, list yours with `GET`. */
+      sessions: string;
     };
     /**
      * @description An independently published communication channel owned by an Agent.
@@ -6795,6 +7416,34 @@ export interface components {
        * @example 2026-08-08T16:05:00Z
        */
       updated_at: string;
+    };
+    /**
+     * @description The agent the builder is shaping. Nothing is created from it until the
+     *     user confirms.
+     */
+    AgentDraft: {
+      /** @description Capability ids to attach. */
+      capabilities?: string[];
+      /** @description Channel kinds to create as drafts: `public_chat`, `ag_ui`, `webhook`, `slack`. */
+      channels?: string[];
+      description?: string;
+      display_name?: string;
+      github_trigger?: components["schemas"]["DraftGitHubTrigger"] | null;
+      /** @description Org catalog MCP servers to attach. */
+      mcp_servers?: components["schemas"]["DraftMcpServer"][];
+      /** @description Model to pin, set only when the org default has no working key. */
+      model_id?: string | null;
+      /** @description Addressable name (lowercase slug). */
+      name?: string;
+      schedule?: components["schemas"]["DraftSchedule"] | null;
+      system_prompt?: string;
+    };
+    AgentDraftResult: {
+      draft: components["schemas"]["AgentDraft"];
+      /** @description The builder's answer to the last message. */
+      reply: string;
+      /** @description Short follow-ups the user can send next. */
+      suggestions: string[];
     };
     /** @description A read-only agent example defined in code */
     AgentExample: {
@@ -6906,6 +7555,41 @@ export interface components {
        */
       trigger: Record<string, unknown>;
     };
+    /** @description Result of disconnecting an agent from GitHub. */
+    AgentGitHubDisconnect: {
+      outcome: components["schemas"]["GitHubDisconnectOutcome"];
+    };
+    /** @description GitHub as seen from an agent's page. */
+    AgentGitHubStatus: {
+      /** @description GitHub account the App is installed on. */
+      account?: string | null;
+      /**
+       * @description The App exists. Without `connected` it was never installed, or its
+       *     installation was removed.
+       */
+      app_created: boolean;
+      app_slug?: string | null;
+      app_url?: string | null;
+      /** @description An installation is bound, so tools and triggers work. */
+      connected: boolean;
+      /** @description The agent's identity, once it has one; disconnect goes through it. */
+      identity_id?: string | null;
+      /**
+       * @description Permissions new Apps request that this installation lacks (`name:level`),
+       *     e.g. `actions:read` for CI triggers on an App created before them.
+       *     Empty when not connected.
+       */
+      missing_permissions: string[];
+      /** @description `all` or `selected`. */
+      repository_selection?: string | null;
+      /**
+       * @description GitHub accounts this organization already reached, as candidates for
+       *     `owner_org` when creating the App: installation accounts of its GitHub
+       *     connections and owners of its other agents' Apps. Organizations first,
+       *     then users, then accounts of unknown kind; by login within each.
+       */
+      suggested_owners: components["schemas"]["GitHubOwnerSuggestion"][];
+    };
     /** @enum {string} */
     AgentHarnessSource: "explicit" | "organization_default";
     /** @enum {string} */
@@ -6917,6 +7601,66 @@ export interface components {
       name?: string | null;
       source: components["schemas"]["AgentHarnessSource"];
       status: components["schemas"]["AgentHarnessStatus"];
+    };
+    /** @description An agent key as management sees it. Never carries the secret. */
+    AgentKey: {
+      /**
+       * @description The api channel the key calls.
+       * @example appchan_01933b5a000070008000000000000001
+       */
+      channel_id: string;
+      /** Format: date-time */
+      created_at: string;
+      /**
+       * Format: date-time
+       * @description When the key stops working, if ever.
+       */
+      expires_at?: string | null;
+      /**
+       * @description Key id (`agentkey_…`). Stable across rotations.
+       * @example agentkey_01933b5a000070008000000000000001
+       */
+      id: string;
+      /**
+       * Format: date-time
+       * @description Last successful use (updated at most once a minute).
+       */
+      last_used_at?: string | null;
+      /**
+       * @description Display name.
+       * @example Support backend
+       */
+      name: string;
+      /** @description What the key may do. */
+      permissions: components["schemas"]["AgentKeyPermission"][];
+      /**
+       * @description Non-secret display prefix of the current secret.
+       * @example evr_ak_1a2b3c4d...
+       */
+      prefix: string;
+      /**
+       * Format: date-time
+       * @description Until when the secret replaced by the last rotation still works.
+       */
+      previous_valid_until?: string | null;
+      /**
+       * Format: date-time
+       * @description When the key was revoked; a revoked key never works again.
+       */
+      revoked_at?: string | null;
+    };
+    /**
+     * @description What a key may do.
+     * @enum {string}
+     */
+    AgentKeyPermission: "sessions" | "end_user";
+    /** @description A key with its secret, returned once by create and rotate. */
+    AgentKeyWithSecret: components["schemas"]["AgentKey"] & {
+      /**
+       * @description The secret. Shown only in this response; store it now.
+       * @example evr_ak_1a2b3c4d5e6f…
+       */
+      secret: string;
     };
     /** @description Effective MCP attachment projected for an agent and the current caller. */
     AgentMcpAttachment: {
@@ -7004,10 +7748,6 @@ export interface components {
      * @enum {string}
      */
     AgentMcpAttachmentState: "ready" | "connection_missing" | "preset_missing";
-    AgentMessage: {
-      role: string;
-      text: string;
-    };
     /** @description Response showing the final agent shape after applying capabilities */
     AgentPreviewResponse: {
       /** @description Session features from effective capabilities and their dependencies. */
@@ -7063,6 +7803,36 @@ export interface components {
        * Format: date-time
        * @description Last update timestamp.
        */
+      updated_at: string;
+    };
+    /**
+     * @description A session as an execution caller sees it: no instructions, tools, owners
+     *     or costs, which are management's.
+     */
+    AgentSessionView: {
+      /** Format: date-time */
+      created_at: string;
+      /** @example session_01933b5a000070008000000000000001 */
+      id: string;
+      /** @description Outcome of the last finished turn: `completed`, `failed` or `cancelled`. */
+      last_turn_status?: string | null;
+      /**
+       * @description Held-back tool calls the session waits on. Same rule as
+       *     `pending_questions`.
+       */
+      pending_approvals?: components["schemas"]["PendingApprovalView"][] | null;
+      /**
+       * @description Question sets the session waits on. Only `GET …/sessions/{id}` reads
+       *     them; a list leaves them out.
+       */
+      pending_questions?: components["schemas"]["PendingQuestionView"][] | null;
+      /**
+       * @description `started`, `active`, `idle`, `waitingforinput` or `failed`.
+       * @example idle
+       */
+      status: string;
+      title?: string | null;
+      /** Format: date-time */
       updated_at: string;
     };
     /**
@@ -7554,7 +8324,7 @@ export interface components {
        * @example auth.login
        */
       event_type: string;
-      /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+      /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
       id: string;
       /** @description Client IP address of the request, when known. */
       ip_address?: string | null;
@@ -7641,6 +8411,16 @@ export interface components {
         protocol_mode?: components["schemas"]["McpProtocolMode"];
         /** @description Whether to discover tool definitions live from this server. */
         tool_discovery?: boolean;
+        /**
+         * @description Risk labels for this server's tools, by the tool's own name:
+         *     `read_only` never asks for approval in the normal mode, `changes`
+         *     always asks. They win over the tool's annotations and over a catalog
+         *     preset's saved labels. Honored on harness, agent and person-owned
+         *     servers; dropped from session-scoped servers.
+         */
+        tool_labels?: {
+          [key: string]: components["schemas"]["McpToolLabel"];
+        };
         /** @description MCP transport type. Only remote HTTP is supported today. */
         type?: components["schemas"]["McpServerTransportType"];
         /**
@@ -7681,6 +8461,32 @@ export interface components {
       /** @description Number of secrets stored */
       count: number;
     };
+    /** @description Where a new App is created and where the browser lands afterwards. */
+    BeginConnectRequest: {
+      /**
+       * @description GitHub organization that should own a new App. Omit for the personal
+       *     account of whoever confirms it on GitHub. A private App can only be
+       *     installed on the account that owns it.
+       */
+      owner_org?: string | null;
+      /** @description UI path to return to when the flow ends. */
+      return_to?: string | null;
+    };
+    /** @description What happens next. */
+    BeginConnectResponse:
+      | {
+          action: string;
+          /** @enum {string} */
+          kind: "create_app";
+          manifest: string;
+          next_step: string;
+        }
+      | {
+          app_slug: string;
+          /** @enum {string} */
+          kind: "install";
+          url: string;
+        };
     /** @description Budget — a stored spending cap for a platform subject. */
     Budget: {
       /**
@@ -7812,6 +8618,18 @@ export interface components {
       | "organization"
       | "agent_trigger"
       | "agent_channel";
+    /** @description A provider that needs no setup. */
+    BuiltInSearchProvider: {
+      description: string;
+      /**
+       * @description `free` or `native`.
+       * @example free
+       */
+      id: string;
+      name: string;
+      /** @description Plain-words cost, when the provider bills per search. */
+      price_note?: string | null;
+    };
     /**
      * @description Built-in tool configuration
      *
@@ -7911,7 +8729,7 @@ export interface components {
        */
       description: string;
       /**
-       * @description Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.
+       * @description Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.
        * @example session_file_system
        */
       docs_slug?: string | null;
@@ -8083,10 +8901,28 @@ export interface components {
       /** @description Sessions per day, oldest first; the last day ends at `generated_at`. */
       daily: number[];
       /**
+       * Format: int64
+       * @description Sessions that carried an end-user identity. Zero means the channel
+       *     cannot tell people apart (webhook, API, anonymous callers), so
+       *     `people` says nothing about its audience.
+       */
+      identified_sessions: number;
+      /**
        * Format: date-time
        * @description When the channel last started a session inside the window.
        */
       last_session_at?: string | null;
+      /**
+       * Format: int64
+       * @description Median milliseconds from a session's first user message to the agent's
+       *     first completed reply, over sessions that got one.
+       */
+      median_first_reply_ms?: number | null;
+      /**
+       * Format: int64
+       * @description Distinct end users behind the channel's sessions in the window.
+       */
+      people: number;
       /**
        * Format: int64
        * @description Sessions the channel started in the window.
@@ -8218,9 +9054,10 @@ export interface components {
       | "webhook"
       | "a2a"
       | "fcp"
-      | "api_endpoint"
       | "public_chat"
-      | "voice";
+      | "voice"
+      | "api"
+      | "poppy";
     /** @description Request body for a call to an agent's voice channel. */
     ChannelVoiceCallRequest: {
       /** @description Realtime provider binding, as in `VoiceCallRequest`. */
@@ -8492,6 +9329,12 @@ export interface components {
       tree_oid: string;
     };
     /**
+     * @description How an agent talks to the people in its conversations. The agent owns this
+     *     setting; every surface (web chat, API, Slack, A2A, AG-UI, MCP) honors it.
+     * @enum {string}
+     */
+    Communication: "direct" | "explicit";
+    /**
      * @description Which stage of a compaction attempt failed.
      * @enum {string}
      */
@@ -8530,6 +9373,44 @@ export interface components {
      * @enum {string}
      */
     CompactionTrigger: "context_budget" | "cost_pressure";
+    /** @description An external MCP client the person approved. */
+    ConnectedClient: {
+      access: components["schemas"]["ConnectedClientAccess"];
+      /** @description True when the client may act in every organization the person belongs to. */
+      all_organizations: boolean;
+      /**
+       * @description Name the client registered with. Self-declared: show it with the
+       *     redirect hosts, which tell a real client apart from a lookalike.
+       */
+      client_name: string;
+      /**
+       * Format: date-time
+       * @description When the person approved the client.
+       */
+      created_at: string;
+      /**
+       * Format: uuid
+       * @description Grant id. Pass it to the revoke endpoint.
+       */
+      id: string;
+      /**
+       * Format: date-time
+       * @description Last request the client made on `/mcp`. Updated at most every few
+       *     minutes.
+       */
+      last_used_at?: string | null;
+      /** @description Hosts the client's registered redirect URIs point at. */
+      redirect_hosts: string[];
+    };
+    /**
+     * @description What a connected client may do.
+     * @enum {string}
+     */
+    ConnectedClientAccess: "read_only" | "read_and_run";
+    /** @description List response for connected clients. */
+    ConnectedClientsResponse: {
+      data: components["schemas"]["ConnectedClient"][];
+    };
     /** @description Connection info returned in API responses (never includes token) */
     Connection: {
       /**
@@ -9008,6 +9889,35 @@ export interface components {
        */
       verbosity?: string | null;
     };
+    /** @description An external platform's acceptance of a sent message. */
+    ConversationDelivery: {
+      /** @description Platform channel or conversation identifier. */
+      channel: string;
+      /** @description Platform message identifier, usable by platform-specific editing tools. */
+      message_ref: string;
+      /** @description Destination platform, such as `slack`. */
+      platform: string;
+    };
+    /**
+     * @description Data for `conversation.message`: a message the agent sent to the
+     *     conversation with `send_message`.
+     *
+     *     For an agent that talks explicitly this is the whole of what people see;
+     *     its assistant text is working notes. Every surface reads it through
+     *     [`crate::runtime::conversation`], never directly.
+     */
+    ConversationMessageData: {
+      delivery?: components["schemas"]["ConversationDelivery"] | null;
+      /**
+       * @description Identifier of this sent message, for later references (edits, replies).
+       * @example message_550e8400e29b41d4a716446655440000
+       */
+      message_id: string;
+      /** @description The message as the agent wrote it. Markdown. */
+      text: string;
+      /** @description The `send_message` call that sent it. */
+      tool_call_id: string;
+    };
     /**
      * @description A conversation starter shown on a fresh Platform Chat thread.
      *     Selecting one inserts its text into the composer. `icon` reuses the
@@ -9121,6 +10031,24 @@ export interface components {
       /** @description Whether the channel can accept ingress traffic. */
       enabled?: boolean;
     };
+    /** @description Request to create an agent key. */
+    CreateAgentKeyRequest: {
+      /**
+       * Format: date-time
+       * @description When the key stops working. Omit for no expiry.
+       */
+      expires_at?: string | null;
+      /**
+       * @description Display name, e.g. the application that holds the key.
+       * @example Support backend
+       */
+      name: string;
+      /**
+       * @description What the key may do. Default `["sessions"]`; add `end_user` to let the
+       *     key act for the application's users with the `End-User` header.
+       */
+      permissions?: components["schemas"]["AgentKeyPermission"][] | null;
+    };
     /** @description Request to create a new agent */
     CreateAgentRequest: {
       /**
@@ -9138,6 +10066,12 @@ export interface components {
        *     ]
        */
       capabilities?: components["schemas"]["AgentCapabilityConfig"][];
+      /**
+       * @description How the agent talks to people. `direct` (default): its replies are
+       *     what it writes. `explicit`: what it writes is private working notes,
+       *     and people see only the messages it sends with `send_message`.
+       */
+      communication?: components["schemas"]["Communication"];
       /**
        * @description The ID of the default LLM model to use for this agent.
        *     If not specified, the system default model will be used.
@@ -9282,6 +10216,16 @@ export interface components {
        * @example daily-digest
        */
       name: string;
+    };
+    /**
+     * @description `POST {agent base URL}/sessions`. The URL names the agent, so there is no
+     *     agent or harness field.
+     */
+    CreateAgentSessionRequest: {
+      /** @description Caller-owned key/value data kept with the session. */
+      metadata?: Record<string, unknown> | null;
+      /** @description Optional title for the session. */
+      title?: string | null;
     };
     /** @description Request to create a trigger on an agent. */
     CreateAgentTriggerRequest: {
@@ -9824,6 +10768,14 @@ export interface components {
        * @example part_01933b5a00007000800000000000001
        */
       addressed_participant_id?: string | null;
+      /**
+       * @description Client-minted id for this send (a UUID). A repeat of the same id in the
+       *     same session returns the stored message instead of starting another
+       *     turn, so a client can retry a send whose response it never saw. The
+       *     stored message echoes it as `everruns_client_message_id` metadata.
+       * @example 0199d0f2-6c1e-7a3b-9f00-1a2b3c4d5e6f
+       */
+      client_message_id?: string | null;
       controls?: components["schemas"]["Controls"] | null;
       external_actor?: components["schemas"]["ExternalActor"] | null;
       /** @description The message to create. Example shape is defined on `InputMessage`. */
@@ -9978,7 +10930,7 @@ export interface components {
       allowed_hosts?: string[];
       /**
        * Format: double
-       * @description Maximum cumulative amount (USD) per UTC day. **Advisory only — not yet enforced.** Stored for forward compatibility; the authority currently checks only `max_amount_usd_per_request`. `None` means no per-day cap.
+       * @description Maximum cumulative amount (USD) over a rolling 24 hours, enforced before signing by reserving each request's maximum. `None` means no per-day cap.
        * @example 100
        */
       max_amount_usd_per_day?: number | null;
@@ -9990,7 +10942,7 @@ export interface components {
       max_amount_usd_per_request?: number | null;
       /**
        * Format: double
-       * @description Maximum cumulative amount (USD) per agent turn. **Advisory only — not yet enforced.** Stored for forward compatibility; the authority currently checks only `max_amount_usd_per_request`. `None` means no per-turn cap.
+       * @description Maximum cumulative amount (USD) per agent turn, enforced before signing by reserving each request's maximum against the turn. A request with no turn binding fails closed. `None` means no per-turn cap.
        * @example 20
        */
       max_amount_usd_per_turn?: number | null;
@@ -10735,6 +11687,45 @@ export interface components {
       /** @description Total number of items matching the query, across all pages. */
       total: number;
     };
+    /** @description A GitHub trigger to create once GitHub is connected on the agent. */
+    DraftGitHubTrigger: {
+      /** @description CI events only: branches to accept, e.g. `main`; empty means every branch. */
+      branches?: string[];
+      /**
+       * @description Run only when a CI outcome differs from the previous one for the same
+       *     repository and branch.
+       */
+      changes_only?: boolean;
+      /** @description Events from the builder's fixed list, e.g. `workflow_run.completed`. */
+      events?: string[];
+      /** @description Message the agent receives for each event. */
+      message?: string;
+      /** @description `owner/name` repositories; empty means every repository the App sees. */
+      repositories?: string[];
+      /**
+       * @description CI events only: workflow (or check suite app) names to accept, e.g. `CI`;
+       *     empty means every workflow.
+       */
+      workflows?: string[];
+    };
+    /** @description A catalog MCP server to attach. */
+    DraftMcpServer: {
+      /**
+       * @description Whose grant the attachment uses, set from the preset's auth.
+       * @example service
+       */
+      acts_as: string;
+      /** @description Catalog preset name. */
+      name: string;
+    };
+    /** @description When the agent wakes itself. */
+    DraftSchedule: {
+      /** @description Five-field cron expression (minute hour day month weekday). */
+      cron: string;
+      /** @description Message the agent receives on each scheduled run. */
+      message: string;
+      timezone?: string;
+    };
     /**
      * @description A driver's declared credential schema, so the Settings UI can render
      *     discrete typed inputs (multi-field AWS keys, Entra OAuth fields) instead of
@@ -10949,7 +11940,7 @@ export interface components {
       title: string;
       /**
        * @description RFC 9457 problem type URI. Optional; identifies the problem class.
-       * @example https://docs.everruns.com/errors/session_not_found
+       * @example https://everruns.com/docs/errors/session_not_found
        */
       type?: string | null;
     };
@@ -11544,6 +12535,7 @@ export interface components {
       | components["schemas"]["OutputMessageDeltaData"]
       | components["schemas"]["OutputMessageStartedData"]
       | components["schemas"]["OutputMessageReplacedData"]
+      | components["schemas"]["ConversationMessageData"]
       | components["schemas"]["OutputMessageCompletedData"]
       | components["schemas"]["TurnStartedData"]
       | components["schemas"]["TurnCompletedData"]
@@ -11562,6 +12554,7 @@ export interface components {
       | components["schemas"]["TranscriptRepairedData"]
       | components["schemas"]["ToolCallRepairedData"]
       | components["schemas"]["HostedToolCallData"]
+      | components["schemas"]["ToolNestedCallData"]
       | components["schemas"]["LlmGenerationData"]
       | components["schemas"]["ReasonThinkingDeltaData"]
       | components["schemas"]["ReasonItemData"]
@@ -11574,6 +12567,9 @@ export interface components {
       | components["schemas"]["SessionIdledData"]
       | components["schemas"]["SessionTitleUpdatedData"]
       | components["schemas"]["SessionModelChangedData"]
+      | components["schemas"]["TimerSetData"]
+      | components["schemas"]["TimerFiredData"]
+      | components["schemas"]["TimerCancelledData"]
       | components["schemas"]["SandboxLifecycleData"]
       | components["schemas"]["SandboxLifecycleData"]
       | components["schemas"]["SandboxLifecycleData"]
@@ -11715,7 +12711,7 @@ export interface components {
        */
       org_id: number;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example org_01933b5a000070008000000000000001
        */
       public_id: string;
@@ -11740,7 +12736,7 @@ export interface components {
        */
       expires_at?: string | null;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example 019e8957539a7aa0bb92e0d2b49427b1
        */
       id: string;
@@ -11798,7 +12794,7 @@ export interface components {
        */
       email_verified: boolean;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example user_01933b5a000070008000000000000001
        */
       id: string;
@@ -12116,6 +13112,14 @@ export interface components {
        * @example Branch: try the async rewrite
        */
       title?: string | null;
+      /**
+       * @description Branch from a message: copy history only up to and including the turn
+       *     that holds this message (a user or agent message id, `msg_...`).
+       *     Workspace files and session storage are copied as they are now.
+       *     Omitted copies the whole history.
+       * @example msg_01933b5a00007000800000000000001
+       */
+      up_to_message_id?: string | null;
     };
     /** @description A single form field. */
     FormField: {
@@ -12278,6 +13282,16 @@ export interface components {
        */
       insertions: number;
     };
+    /**
+     * @description What kind of GitHub account a login is.
+     * @enum {string}
+     */
+    GitHubAccountKind: "organization" | "user" | "unknown";
+    /**
+     * @description What a disconnect did.
+     * @enum {string}
+     */
+    GitHubDisconnectOutcome: "disconnected" | "started_over";
     /** @description Request body for GitHub memory source. */
     GitHubMemorySourceRequest: {
       /**
@@ -12312,6 +13326,11 @@ export interface components {
        * @description Automatic resync interval in seconds. Omit or set 0 for manual-only; scheduled sync accepts 300 through 604800.
        */
       sync_interval_secs?: number | null;
+    };
+    /** @description A GitHub account a new App could be created in. */
+    GitHubOwnerSuggestion: {
+      kind: components["schemas"]["GitHubAccountKind"];
+      login: string;
     };
     /** @description Request body for git memory source. */
     GitMemorySourceRequest: {
@@ -12800,7 +13819,7 @@ export interface components {
        */
       missing_scopes: string[];
       /**
-       * @description Current user's announcement identifier, when notifications are enabled.
+       * @description Current user's announcement identifier, when one was issued.
        * @example notification_550e8400e29b41d4a716446655440001
        */
       notification_id?: string | null;
@@ -13005,7 +14024,7 @@ export interface components {
       created_at: string;
       filename: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example img_01933b5a00007000800000000000001
        */
       id: string;
@@ -13024,7 +14043,7 @@ export interface components {
       created_at: string;
       filename: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example img_01933b5a00007000800000000000001
        */
       id: string;
@@ -13330,7 +14349,7 @@ export interface components {
       /** @description Optional embedding model for hybrid retrieval. `null` = keyword search only. */
       embedding_model_id?: string | null;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example kb_01933b5a000070008000000000000001
        */
       id: string;
@@ -13353,7 +14372,7 @@ export interface components {
        */
       created_at: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example kbe_01933b5a000070008000000000000001
        */
       id: string;
@@ -13394,7 +14413,7 @@ export interface components {
        */
       created_at: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example kidoc_01933b5a000070008000000000000001
        */
       id: string;
@@ -13449,7 +14468,7 @@ export interface components {
       /** @description Embedding model used to embed chunks. Required. */
       embedding_model_id: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example kidx_01933b5a000070008000000000000001
        */
       id: string;
@@ -13740,6 +14759,13 @@ export interface components {
          */
         capabilities?: components["schemas"]["AgentCapabilityConfig"][];
         /**
+         * @description How the agent talks to people. `direct` (default): its replies are
+         *     what it writes. `explicit`: what it writes is private working notes,
+         *     and people see only the messages it sends with `send_message`. Applies
+         *     on every surface: web chat, API, Slack, A2A, AG-UI, MCP.
+         */
+        communication?: components["schemas"]["Communication"];
+        /**
          * Format: date-time
          * @description Timestamp when the agent was created.
          * @example 2026-04-01T10:00:00Z
@@ -13986,7 +15012,7 @@ export interface components {
          * @example auth.login
          */
         event_type: string;
-        /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+        /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
         id: string;
         /** @description Client IP address of the request, when known. */
         ip_address?: string | null;
@@ -14037,7 +15063,7 @@ export interface components {
          */
         description: string;
         /**
-         * @description Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.
+         * @description Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.
          * @example session_file_system
          */
         docs_slug?: string | null;
@@ -14764,7 +15790,7 @@ export interface components {
         /** @description Optional embedding model for hybrid retrieval. `null` = keyword search only. */
         embedding_model_id?: string | null;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example kb_01933b5a000070008000000000000001
          */
         id: string;
@@ -14793,7 +15819,7 @@ export interface components {
          */
         created_at: string;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example kbe_01933b5a000070008000000000000001
          */
         id: string;
@@ -14840,7 +15866,7 @@ export interface components {
          */
         created_at: string;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example kidoc_01933b5a000070008000000000000001
          */
         id: string;
@@ -14901,7 +15927,7 @@ export interface components {
         /** @description Embedding model used to embed chunks. Required. */
         embedding_model_id: string;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example kidx_01933b5a000070008000000000000001
          */
         id: string;
@@ -14950,6 +15976,7 @@ export interface components {
         archived_at?: string | null;
         /** @description Authentication mode for this MCP server. */
         auth_mode?: components["schemas"]["McpServerAuthMode"];
+        connection_check?: components["schemas"]["McpConnectionCheck"] | null;
         /**
          * Format: date-time
          * @description Timestamp when the MCP server was created.
@@ -14986,6 +16013,7 @@ export interface components {
         name: string;
         /** @description Stable provider id used for user-scoped OAuth connections. */
         oauth_provider_id?: string | null;
+        presentation?: components["schemas"]["McpServerPresentation"] | null;
         /** @description Protocol-era adoption policy for the MCP client (`auto` negotiates). */
         protocol_mode?: components["schemas"]["McpProtocolMode"];
         /**
@@ -15041,7 +16069,7 @@ export interface components {
          */
         description?: string | null;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example mem_01933b5a000070008000000000000001
          */
         id: string;
@@ -15157,6 +16185,7 @@ export interface components {
          * @description Timestamp when this resource was created (RFC 3339).
          */
         created_at: string;
+        delivery?: components["schemas"]["MessageDelivery"] | null;
         external_actor?: components["schemas"]["ExternalActor"] | null;
         /**
          * @description Unique message ID (format: message_{32-hex})
@@ -15303,6 +16332,13 @@ export interface components {
          * @description When the organization was last updated
          */
         updated_at: string;
+        /**
+         * @description Web search defaults: the provider agents on "Organization default"
+         *     use, the Automatic order, whether model provider search is allowed,
+         *     the fallback, results per search and blocked domains. Built-in
+         *     defaults (Automatic) when the organization never set any.
+         */
+        web_search_defaults: components["schemas"]["WebSearchDefaults"];
       }[];
     };
     /**
@@ -15389,7 +16425,7 @@ export interface components {
         /** @description When `true`, the LLM is prevented from auto-invoking this skill; only the user can trigger it explicitly. */
         disable_model_invocation?: boolean;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example skill_01933b5a00007000800000000000001
          */
         id: string;
@@ -15528,7 +16564,7 @@ export interface components {
          */
         created_at: string;
         email: string;
-        /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+        /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
         id: string;
         /** @description Human-readable name. Safe to render in user-facing messages. */
         name: string;
@@ -15724,6 +16760,7 @@ export interface components {
         archived_at?: string | null;
         /** @description Authentication mode for this MCP server. */
         auth_mode?: components["schemas"]["McpServerAuthMode"];
+        connection_check?: components["schemas"]["McpConnectionCheck"] | null;
         /**
          * Format: date-time
          * @description Timestamp when the MCP server was created.
@@ -15760,6 +16797,7 @@ export interface components {
         name: string;
         /** @description Stable provider id used for user-scoped OAuth connections. */
         oauth_provider_id?: string | null;
+        presentation?: components["schemas"]["McpServerPresentation"] | null;
         /** @description Protocol-era adoption policy for the MCP client (`auto` negotiates). */
         protocol_mode?: components["schemas"]["McpProtocolMode"];
         /**
@@ -15817,7 +16855,7 @@ export interface components {
         /** @description Whether this model is selectable. Controls UI visibility AND server-side resolution: `ProviderResolverService` requires `enabled = true`, and org default-model validation rejects disabled models. Disabled models stay visible in raw list endpoints (so admins can re-enable them) but cannot be used in active sessions or as a session/agent default. */
         enabled: boolean;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example model_01933b5a00007000800000000000001
          */
         id: string;
@@ -15898,7 +16936,7 @@ export interface components {
          */
         healthy: boolean;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example model_01933b5a00007000800000000000001
          */
         id: string;
@@ -15907,6 +16945,11 @@ export interface components {
          * @example true
          */
         is_favorite: boolean;
+        /**
+         * @description Derived: a discovered model that is still disabled and appeared after
+         *     the provider's models were last reviewed. Not persisted.
+         */
+        is_new?: boolean;
         /**
          * @description Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).
          * @example claude-sonnet-5-5
@@ -15932,6 +16975,12 @@ export interface components {
         service: components["schemas"]["ServiceKind"];
         /** @description How this model entry was added (manually, discovered, or seeded as predefined). */
         source: components["schemas"]["ModelSource"];
+        /**
+         * @description Derived: a discovered model the provider no longer lists (not seen in
+         *     its most recent sync). Kept, not deleted, so defaults and agents that
+         *     use it can be fixed first. Not persisted.
+         */
+        stale?: boolean;
         /**
          * Format: date-time
          * @description Timestamp when this model was last updated (RFC 3339).
@@ -15971,7 +17020,7 @@ export interface components {
          */
         created_at: string;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example provider_01933b5a00007000800000000000001
          */
         id: string;
@@ -15986,6 +17035,13 @@ export interface components {
          *     on it (403). Read-only to org admins. Defaults to `false`.
          */
         managed: boolean;
+        /**
+         * Format: date-time
+         * @description When someone last reviewed this provider's discovered models (RFC 3339).
+         *     A discovered model created later that is still disabled is reported as
+         *     `is_new` on the model. `None` means never reviewed.
+         */
+        models_reviewed_at?: string | null;
         /** @description Human-readable provider name. Safe to render in user-facing messages. */
         name: string;
         /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
@@ -16202,7 +17258,7 @@ export interface components {
         /** @description When `true`, the LLM is prevented from auto-invoking this skill; only the user can trigger it explicitly. */
         disable_model_invocation?: boolean;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example skill_01933b5a00007000800000000000001
          */
         id: string;
@@ -16382,6 +17438,20 @@ export interface components {
       metadata: components["schemas"]["LlmGenerationMetadata"];
       /** @description Output from the LLM */
       output: components["schemas"]["LlmGenerationOutput"];
+      /**
+       * @description The request body exactly as the driver serialized it for the
+       *     provider, when the driver captures it (see
+       *     [`crate::driver_registry::LlmCallConfig::capture_request`]).
+       *
+       *     `messages` above is the runtime's view of the prompt; this is the
+       *     provider's: its roles, its content blocks, its tool schemas and cache
+       *     markers. Absent for drivers that do not capture.
+       *
+       *     THREAT[TM-LLM-039]: the body repeats the prompt `messages` already
+       *     carries, so it widens nothing beyond this event's existing audience.
+       *     Credentials travel in headers and are never part of it.
+       */
+      request_body?: Record<string, unknown> | null;
       /** @description Tools available to the LLM for this generation */
       tools?: components["schemas"]["ToolDefinitionSummary"][];
     };
@@ -16433,6 +17503,15 @@ export interface components {
        * @example max_tokens
        */
       provider_finish_reason?: string | null;
+      /**
+       * @description The provider account that served the call: the id of the org's
+       *     provider row (`provider_...`) when the host resolves models from
+       *     stored providers. Usage tracking reads it to record which provider row
+       *     was billed and whether that row is host-managed, which is what tells
+       *     managed spend apart from the org's own keys (BYOK).
+       * @example provider_01933b5a00007000800000000000001
+       */
+      provider_id?: string | null;
       request_options?: components["schemas"]["LlmRequestOptions"] | null;
       /**
        * @description Unique response identifier from the LLM provider
@@ -16530,6 +17609,12 @@ export interface components {
       enabled: boolean;
       /** @description Provider-specific prompt-cache mode used by the driver. */
       provider_mode?: string | null;
+      /**
+       * @description Cache retention the driver requested after snapping to what the
+       *     provider supports (`5m`, `30m`, `1h`). Absent when the provider's
+       *     retention is not configurable.
+       */
+      retention?: string | null;
       /** @description Strategy used to enable prompt caching. */
       strategy: components["schemas"]["PromptCacheStrategy"];
     };
@@ -16666,6 +17751,7 @@ export interface components {
       channels?: {
         [key: string]: components["schemas"]["Channel"];
       };
+      communication?: components["schemas"]["Communication"] | null;
       /** @description Optional description of the agent's purpose. */
       description?: string | null;
       /** @description Human-readable agent label. Defaults to the stable name at the host. */
@@ -16727,6 +17813,38 @@ export interface components {
      * @enum {string}
      */
     McpConnectInChat: "ask" | "never";
+    /**
+     * @description Whether an OAuth preset's sign-in service (discovery and dynamic client
+     *     registration) works from this deployment. Never carries secrets or raw
+     *     upstream bodies; `host` is shown to admins so they know what to allow.
+     */
+    McpConnectionCheck: {
+      /**
+       * Format: date-time
+       * @description When the check ran; absent when it has not run.
+       */
+      checked_at?: string | null;
+      /**
+       * @description Host of the request that failed, when the check failed.
+       * @example mcp.linear.app
+       */
+      host?: string | null;
+      /** @description Short, safe explanation of a failed check. */
+      reason?: string | null;
+      /** @description Check outcome. */
+      status: components["schemas"]["McpConnectionCheckStatus"];
+    };
+    /**
+     * @description Outcome of the connection check an OAuth preset gets when it is saved and
+     *     on "Check again".
+     * @enum {string}
+     */
+    McpConnectionCheckStatus:
+      | "ready"
+      | "blocked_by_network_policy"
+      | "unreachable"
+      | "failed"
+      | "not_checked";
     /**
      * @description Which MCP elicitation modes the client declares to one server.
      *
@@ -16842,6 +17960,7 @@ export interface components {
       archived_at?: string | null;
       /** @description Authentication mode for this MCP server. */
       auth_mode?: components["schemas"]["McpServerAuthMode"];
+      connection_check?: components["schemas"]["McpConnectionCheck"] | null;
       /**
        * Format: date-time
        * @description Timestamp when the MCP server was created.
@@ -16878,6 +17997,7 @@ export interface components {
       name: string;
       /** @description Stable provider id used for user-scoped OAuth connections. */
       oauth_provider_id?: string | null;
+      presentation?: components["schemas"]["McpServerPresentation"] | null;
       /** @description Protocol-era adoption policy for the MCP client (`auto` negotiates). */
       protocol_mode?: components["schemas"]["McpProtocolMode"];
       /**
@@ -16942,6 +18062,30 @@ export interface components {
        */
       next_cursor?: string | null;
     };
+    McpServerIcon: {
+      mime_type?: string | null;
+      sizes?: string[];
+      /** @description `https` URL on the MCP server's origin, or a raster `data:` URI. */
+      src: string;
+      theme?: components["schemas"]["McpServerIconTheme"] | null;
+    };
+    /** @enum {string} */
+    McpServerIconTheme: "light" | "dark";
+    /** @description What the remote server says about itself. Absent fields were not published. */
+    McpServerPresentation: {
+      description?: string | null;
+      documentation_url?: string | null;
+      /** Format: date-time */
+      fetched_at?: string | null;
+      icons?: components["schemas"]["McpServerIcon"][];
+      /** @description Which documents contributed. Not shown in the UI. */
+      sources?: string[];
+      /** @example GitHub MCP Server */
+      title?: string | null;
+      version?: string | null;
+      /** @example https://github.com */
+      website_url?: string | null;
+    };
     /**
      * @description Reference to an organization MCP server catalog entry.
      * @example catalog:linear
@@ -16957,6 +18101,21 @@ export interface components {
      * @enum {string}
      */
     McpServerStatus: "active" | "disabled" | "archived" | "deleted";
+    /** @description One tool an MCP server offers, with its saved risk label. */
+    McpServerTool: {
+      annotations?: components["schemas"]["McpToolAnnotations"] | null;
+      /** @description What the tool does, as the server describes it. */
+      description?: string | null;
+      label?: components["schemas"]["McpToolLabel"] | null;
+      /**
+       * @description The tool's own name on the MCP server.
+       * @example search_docs
+       */
+      name: string;
+      suggested_label?: components["schemas"]["McpToolLabel"] | null;
+      /** @description Human-readable title the server gives the tool. */
+      title?: string | null;
+    };
     /**
      * @description MCP Server transport type.
      * @example http
@@ -16995,6 +18154,17 @@ export interface components {
       openWorldHint?: boolean | null;
       readOnlyHint?: boolean | null;
     };
+    /**
+     * @description A person's saved risk label for one MCP tool.
+     *
+     *     Decision (2026-10-10): a person's label always wins over the tool's own
+     *     annotations, because a remote server describes itself and a person who
+     *     owns the integration knows better. `read_only` also clears `open_world`,
+     *     since tool approval treats an outward-reaching tool like a destructive one;
+     *     without that a read-only MCP tool would still ask every time.
+     * @enum {string}
+     */
+    McpToolLabel: "read_only" | "changes";
     /** @description Response body for memory. */
     Memory: {
       /**
@@ -17021,7 +18191,7 @@ export interface components {
        */
       description?: string | null;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example mem_01933b5a000070008000000000000001
        */
       id: string;
@@ -17145,6 +18315,7 @@ export interface components {
        * @description Timestamp when this resource was created (RFC 3339).
        */
       created_at: string;
+      delivery?: components["schemas"]["MessageDelivery"] | null;
       external_actor?: components["schemas"]["ExternalActor"] | null;
       /**
        * @description Unique message ID (format: message_{32-hex})
@@ -17166,13 +18337,32 @@ export interface components {
        */
       session_id: string;
     };
-    MessageBody: {
+    /**
+     * @description How a created user message reached the session's turn.
+     * @enum {string}
+     */
+    MessageDelivery: "started" | "steered" | "resumed" | "duplicate";
+    /** @description The caller's rating of one message. */
+    MessageFeedback: {
+      /** @description Optional note kept with the rating. */
+      comment?: string | null;
       /**
-       * @description Message text dispatched to the agent.
-       * @example Summarize the latest support tickets.
+       * @description Message the rating is for (`msg_...`).
+       * @example msg_01933b5a00007000800000000000001
        */
-      message: string;
+      message_id: string;
+      rating?: components["schemas"]["MessageRating"] | null;
+      /**
+       * Format: date-time
+       * @description When the rating was last set or cleared.
+       */
+      updated_at: string;
     };
+    /**
+     * @description A person's verdict on one message.
+     * @enum {string}
+     */
+    MessageRating: "good" | "bad";
     /**
      * @description Message role (API layer)
      *
@@ -17300,7 +18490,7 @@ export interface components {
       /** @description Whether this model is selectable. Controls UI visibility AND server-side resolution: `ProviderResolverService` requires `enabled = true`, and org default-model validation rejects disabled models. Disabled models stay visible in raw list endpoints (so admins can re-enable them) but cannot be used in active sessions or as a session/agent default. */
       enabled: boolean;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example model_01933b5a00007000800000000000001
        */
       id: string;
@@ -17534,7 +18724,7 @@ export interface components {
        */
       healthy: boolean;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example model_01933b5a00007000800000000000001
        */
       id: string;
@@ -17543,6 +18733,11 @@ export interface components {
        * @example true
        */
       is_favorite: boolean;
+      /**
+       * @description Derived: a discovered model that is still disabled and appeared after
+       *     the provider's models were last reviewed. Not persisted.
+       */
+      is_new?: boolean;
       /**
        * @description Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).
        * @example claude-sonnet-5-5
@@ -17569,6 +18764,12 @@ export interface components {
       /** @description How this model entry was added (manually, discovered, or seeded as predefined). */
       source: components["schemas"]["ModelSource"];
       /**
+       * @description Derived: a discovered model the provider no longer lists (not seen in
+       *     its most recent sync). Kept, not deleted, so defaults and agents that
+       *     use it can be fixed first. Not persisted.
+       */
+      stale?: boolean;
+      /**
        * Format: date-time
        * @description Timestamp when this model was last updated (RFC 3339).
        * @example 2026-05-27T15:24:00Z
@@ -17592,6 +18793,14 @@ export interface components {
       id: string;
       org_name: string;
       role: string;
+    };
+    /** @description A connected model provider whose models search natively. */
+    NativeSearchProvider: {
+      name: string;
+      price_note: string;
+      provider_id: string;
+      /** @example anthropic */
+      provider_type: string;
     };
     /**
      * @description A complete provider-native call, retaining its original identity and payload.
@@ -17695,7 +18904,7 @@ export interface components {
        */
       href?: string | null;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example notification_01933b5a00007000800000000000001
        */
       id: string;
@@ -17880,6 +19089,41 @@ export interface components {
       /** @description Non-fatal issues (broken docs, oversized bodies). OKF consumers degrade gracefully. */
       warnings: string[];
     };
+    /** @description An organization's egress allowlist extension. */
+    OrgEgressAllowlistResponse: {
+      /**
+       * @description Whether the caller may edit the patterns (an organization admin; the
+       *     edit also needs `granted`).
+       */
+      can_edit: boolean;
+      /** @description Whether the caller may grant or revoke (a platform administrator). */
+      can_grant: boolean;
+      /**
+       * @description Whether a platform administrator allowed this organization to extend
+       *     the deployment's outbound allowlist. Patterns are enforced only while
+       *     this is true.
+       */
+      granted: boolean;
+      /** @description Most patterns one organization may add. */
+      max_patterns: number;
+      /**
+       * @description The deployment's egress policy: `open`, `curated-writes`, or
+       *     `curated-all`. Extensions only matter in a curated mode.
+       * @example curated-writes
+       */
+      mode: string;
+      /**
+       * @description Whether a platform administrator granted this organization open
+       *     egress: its agents reach any public host the deny list allows, for
+       *     reads and writes, whatever the deployment's curated policy.
+       */
+      open: boolean;
+      /**
+       * @description Host patterns this organization adds to the allowlist: `example.com`,
+       *     `*.example.com`, or an `https://example.com/path/` prefix.
+       */
+      patterns: string[];
+    };
     OrgFeatureFlagSetting: {
       can_manage: boolean;
       default_enabled: boolean;
@@ -17895,7 +19139,7 @@ export interface components {
     OrgFeatureFlagsSettingsResponse: {
       flags: components["schemas"]["OrgFeatureFlagSetting"][];
     };
-    /** @description Non-secret metadata for an organization-owned sandbox provider account. */
+    /** @description Non-secret metadata for an organization-owned provider account. */
     OrganizationConnectionResponse: {
       /**
        * Format: date-time
@@ -17905,7 +19149,7 @@ export interface components {
       connected_at: string;
       /**
        * Format: uuid
-       * @description Stable connection identifier used by Sandbox Templates.
+       * @description Stable connection identifier used by Sandbox Templates and web search.
        * @example 00000000-0000-0000-0000-000000000002
        */
       id: string;
@@ -17915,7 +19159,7 @@ export interface components {
        */
       name: string;
       /**
-       * @description Sandbox provider connector identifier.
+       * @description Connector identifier, e.g. `daytona` or `brave_search`.
        * @example daytona
        */
       provider: string;
@@ -17978,6 +19222,13 @@ export interface components {
        * @description When the organization was last updated
        */
       updated_at: string;
+      /**
+       * @description Web search defaults: the provider agents on "Organization default"
+       *     use, the Automatic order, whether model provider search is allowed,
+       *     the fallback, results per search and blocked domains. Built-in
+       *     defaults (Automatic) when the organization never set any.
+       */
+      web_search_defaults: components["schemas"]["WebSearchDefaults"];
     };
     /** @description Data for output.message.completed event */
     OutputMessageCompletedData: {
@@ -18583,7 +19834,7 @@ export interface components {
          */
         description: string;
         /**
-         * @description Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.
+         * @description Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.
          * @example session_file_system
          */
         docs_slug?: string | null;
@@ -19035,7 +20286,7 @@ export interface components {
        * @example 2026-04-01T10:00:00Z
        */
       created_at: string;
-      /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+      /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
       id: components["schemas"]["payacctId"];
       /**
        * @description Human-readable label for this account. Safe to render in user-facing messages.
@@ -19105,7 +20356,7 @@ export interface components {
        * @example rail.insufficient_funds: settled balance below minimum
        */
       error_message?: string | null;
-      /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+      /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
       id: components["schemas"]["payattId"];
       /**
        * @description Capability-specific operation name that originated this paid call.
@@ -19178,11 +20429,11 @@ export interface components {
        * @example 2026-04-01T10:00:00Z
        */
       created_at: string;
-      /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+      /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
       id: components["schemas"]["paypolId"];
       /**
        * Format: double
-       * @description Maximum cumulative amount (USD) per UTC day. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; the payment authority currently checks only `max_amount_usd_per_request`. `None` means no per-day cap.
+       * @description Maximum cumulative amount (USD) over a rolling 24 hours, enforced before signing by reserving each request's maximum. `None` means no per-day cap.
        * @example 50
        */
       max_amount_usd_per_day?: number | null;
@@ -19194,7 +20445,7 @@ export interface components {
       max_amount_usd_per_request?: number | null;
       /**
        * Format: double
-       * @description Maximum cumulative amount (USD) per agent turn. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; the payment authority currently checks only `max_amount_usd_per_request`. `None` means no per-turn cap.
+       * @description Maximum cumulative amount (USD) per agent turn, enforced before signing by reserving each request's maximum against the turn. A request with no turn binding fails closed. `None` means no per-turn cap.
        * @example 5
        */
       max_amount_usd_per_turn?: number | null;
@@ -19247,6 +20498,45 @@ export interface components {
      */
     PaymentStatus: "active" | "disabled" | "pending" | "succeeded" | "failed" | "released";
     /**
+     * @description A held-back tool call the session waits on. Same shape as serve's
+     *     `pending_approvals` item, plus `answerable`.
+     */
+    PendingApprovalView: {
+      /**
+       * @description Whether this caller may answer it. When `false` an operator decides in
+       *     Everruns and the tool is not shown.
+       */
+      answerable: boolean;
+      arguments?: Record<string, unknown> | null;
+      /**
+       * @description `arguments` is a truncated preview; the decision still binds to the
+       *     full arguments.
+       */
+      arguments_truncated?: boolean;
+      /** @description When the request counts as rejected (RFC 3339). */
+      expires_at: string;
+      /** @description Why the gate asked: `destructive`, `open_world`, `mutating` or `policy`. */
+      risk?: string | null;
+      /** @description The request to name in `POST …/tool-approvals`. */
+      tool_call_id: string;
+      tool_name?: string | null;
+    };
+    /**
+     * @description An `ask_user` question set the session waits on. Same shape as serve's
+     *     `pending_questions` item.
+     */
+    PendingQuestionView: {
+      /** @description When the server stops waiting (RFC 3339). */
+      expires_at?: string | null;
+      /**
+       * @description The questions as asked: `kind`, `id`, `header`, `question`, `options`,
+       *     `multi_select`, `allow_other`.
+       */
+      questions: Record<string, unknown>[];
+      /** @description The `ask_user` call to name in `POST …/question-answers`. */
+      tool_call_id: string;
+    };
+    /**
      * @description Where a message's [`ExecutionPhase`] came from.
      *
      *     Only some providers report a phase. For the rest the runtime infers one from
@@ -19256,7 +20546,7 @@ export interface components {
      *     from the phase value alone, so the source travels with it.
      * @enum {string}
      */
-    PhaseSource: "provider" | "derived";
+    PhaseSource: "provider" | "derived" | "communication";
     /** @description Request body for posting an inbound task message. */
     PostTaskMessageBody: {
       /** @description Structured message parts (alternative to `text`). */
@@ -19355,7 +20645,7 @@ export interface components {
     ProfileResponse: {
       avatar_url?: string | null;
       email: string;
-      /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+      /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
       id: string;
       /** @description Human-readable name. Safe to render in user-facing messages. */
       name: string;
@@ -19414,7 +20704,7 @@ export interface components {
        */
       created_at: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example provider_01933b5a00007000800000000000001
        */
       id: string;
@@ -19429,6 +20719,13 @@ export interface components {
        *     on it (403). Read-only to org admins. Defaults to `false`.
        */
       managed: boolean;
+      /**
+       * Format: date-time
+       * @description When someone last reviewed this provider's discovered models (RFC 3339).
+       *     A discovered model created later that is still disabled is reported as
+       *     `is_new` on the model. `None` means never reviewed.
+       */
+      models_reviewed_at?: string | null;
       /** @description Human-readable provider name. Safe to render in user-facing messages. */
       name: string;
       /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
@@ -19511,10 +20808,19 @@ export interface components {
        */
       icon: string;
       /**
+       * @description Theme-neutral icon published by an MCP server. The named `icon` remains
+       *     the fallback when this is absent.
+       */
+      icon_url?: string | null;
+      /** @description Icons published by an MCP server, including light and dark variants. */
+      icons?: components["schemas"]["McpServerIcon"][];
+      /**
        * @description Stable provider identifier.
        * @example github
        */
       provider_id: string;
+      /** @description Operator slug when the heading is a discovered title or a plugin name. */
+      slug?: string | null;
     };
     /**
      * @description LLM provider status
@@ -20340,6 +21646,14 @@ export interface components {
      * @enum {string}
      */
     RiskLevel: "low" | "medium" | "high";
+    /** @description Request to rotate an agent key. */
+    RotateAgentKeyRequest: {
+      /**
+       * Format: int32
+       * @description Hours the replaced secret keeps working (0 to 168, default 24).
+       */
+      overlap_hours?: number | null;
+    };
     /** @description Turns started and failed in one bucket. */
     RunBucket: {
       /** Format: int64 */
@@ -20985,10 +22299,10 @@ export interface components {
       /** @description Spans clipped to the window, oldest first. */
       spans: components["schemas"]["SandboxStateSpan"][];
     };
-    /** @description Organization-owned sandbox provider account input. */
+    /** @description Organization-owned provider account input (sandbox provider or search account). */
     SaveOrganizationConnectionRequest: components["schemas"]["CreateConnectionRequest"] & {
       /**
-       * @description Human-readable account name shown in Sandbox Template selectors.
+       * @description Human-readable account name shown in Sandbox Template and web search selectors.
        * @example Production Daytona
        */
       name: string;
@@ -21368,6 +22682,16 @@ export interface components {
       protocol_mode?: components["schemas"]["McpProtocolMode"];
       /** @description Whether to discover tool definitions live from this server. */
       tool_discovery?: boolean;
+      /**
+       * @description Risk labels for this server's tools, by the tool's own name:
+       *     `read_only` never asks for approval in the normal mode, `changes`
+       *     always asks. They win over the tool's annotations and over a catalog
+       *     preset's saved labels. Honored on harness, agent and person-owned
+       *     servers; dropped from session-scoped servers.
+       */
+      tool_labels?: {
+        [key: string]: components["schemas"]["McpToolLabel"];
+      };
       /** @description MCP transport type. Only remote HTTP is supported today. */
       type?: components["schemas"]["McpServerTransportType"];
       /**
@@ -21537,6 +22861,120 @@ export interface components {
        *     which then answers in the same turn. Off: the run only records it.
        */
       wake_agent_on_failure?: boolean;
+    };
+    /** @description A connected organization search account (never its key). */
+    SearchAccountSummary: {
+      /** @description Place in the Automatic order (1-based), counting native and accounts. */
+      automatic_position?: number | null;
+      /** Format: date-time */
+      connected_at: string;
+      /** Format: uuid */
+      id: string;
+      /** @description Account name the admin gave it. */
+      name: string;
+      /** @example brave_search */
+      provider: string;
+      /**
+       * @description `ready` when a key is stored, `missing_key` otherwise.
+       * @example ready
+       */
+      status: string;
+    };
+    /** @description A connector whose organization accounts answer web search. */
+    SearchConnector: {
+      description: string;
+      icon: string;
+      name: string;
+      /**
+       * @description Connector id, used to connect an account at
+       *     `/v1/orgs/{org}/organization-connections/providers/{provider}`.
+       * @example brave_search
+       */
+      provider: string;
+    };
+    /**
+     * @description What happens when a provider cannot answer.
+     * @enum {string}
+     */
+    SearchFallbackMode: "next" | "none";
+    /** @description The plan an agent's search would follow. */
+    SearchPlanPreview: {
+      /** Format: uuid */
+      account_id?: string | null;
+      fallback: components["schemas"]["SearchFallbackMode"];
+      /**
+       * Format: int32
+       * @description Results per search when the model does not ask.
+       */
+      limit: number;
+      /** @description Whether the model searches natively (and the organization allows it). */
+      model_has_native: boolean;
+      org_blocked_domains: string[];
+      /** @description The setting in effect after following the organization default. */
+      provider: components["schemas"]["SearchProviderSetting"];
+      steps: components["schemas"]["SearchPlanStep"][];
+      test?: components["schemas"]["SearchTestOutcome"] | null;
+    };
+    /** @description Resolve an agent's web search setting and model to a plan. */
+    SearchPlanPreviewRequest: {
+      /**
+       * @description The agent's `web_search` capability config; omitted means
+       *     `{"provider": "org_default"}`.
+       */
+      config?: Record<string, unknown>;
+      /** @description The model the agent runs; omitted uses the organization's default model. */
+      model_id?: string | null;
+      test?: components["schemas"]["SearchTestQuery"] | null;
+    };
+    /** @description One provider in a previewed plan. */
+    SearchPlanStep: {
+      /** @description Whether this step can answer for this model now. */
+      available: boolean;
+      /** @description `native`, `brave`, `account:<id>` or `free`. */
+      id: string;
+      label: string;
+      /** @description Why it cannot, or what it relies on. */
+      note?: string | null;
+      price_note?: string | null;
+    };
+    /** @description Everything the organization can search with. */
+    SearchProviderCatalog: {
+      accounts: components["schemas"]["SearchAccountSummary"][];
+      built_in: components["schemas"]["BuiltInSearchProvider"][];
+      connectors: components["schemas"]["SearchConnector"][];
+      defaults: components["schemas"]["WebSearchDefaults"];
+      native_providers: components["schemas"]["NativeSearchProvider"][];
+    };
+    /**
+     * @description Which provider web search uses.
+     * @enum {string}
+     */
+    SearchProviderSetting: "org_default" | "auto" | "native" | "brave" | "account" | "free";
+    /** @description What a test query returned. */
+    SearchTestOutcome: {
+      /** Format: int64 */
+      duration_ms: number;
+      message?: string | null;
+      ok: boolean;
+      provider: string;
+      results: components["schemas"]["SearchTestResult"][];
+    };
+    /** @description Run one query against one provider. */
+    SearchTestQuery: {
+      /**
+       * @description `free` or `account:<id>`.
+       * @example free
+       */
+      provider: string;
+      /** @example tokio release notes */
+      query: string;
+    };
+    /** @description One result of a test query. */
+    SearchTestResult: {
+      site: string;
+      snippet?: string | null;
+      title: string;
+      url: string;
     };
     /** @description Secret entry info (name and timestamps only, no value) */
     SecretInfo: {
@@ -22105,11 +23543,6 @@ export interface components {
      * @enum {string}
      */
     SessionParticipantRole: "host" | "member";
-    SessionRef: {
-      created_session?: boolean | null;
-      session_id: string;
-      status: string;
-    };
     /** @description The model the runtime will use when a turn has no per-message override. */
     SessionResolvedModelResponse: {
       model_id?: string | null;
@@ -22287,11 +23720,15 @@ export interface components {
        */
       waiting_for_tool_results: number;
     };
-    SessionStatus: {
-      messages: components["schemas"]["AgentMessage"][];
-      session_id: string;
-      status: string;
-    };
+    /**
+     * @description Session execution status.
+     *     - `started`: Session just created, no turn executed yet
+     *     - `active`: A turn is currently running
+     *     - `idle`: Turn completed, session waiting for next input
+     *     - `paused`: Budget limit reached, waiting for user to increase limit or resume
+     * @enum {string}
+     */
+    SessionStatus: "started" | "active" | "idle" | "waitingfortoolresults" | "paused";
     /** @description A unit of background work owned by a session. */
     SessionTask: {
       artifacts?: components["schemas"]["TaskArtifact"][];
@@ -22405,6 +23842,10 @@ export interface components {
     SetPreferenceRequest: {
       value: Record<string, unknown>;
     };
+    /** @description Set or clear the person's risk label for one tool. */
+    SetUserMcpToolLabelRequest: {
+      label?: components["schemas"]["McpToolLabel"] | null;
+    };
     /**
      * @description How many times a tool call may safely be executed given the same inputs.
      *
@@ -22448,7 +23889,7 @@ export interface components {
       /** @description When `true`, the LLM is prevented from auto-invoking this skill; only the user can trigger it explicitly. */
       disable_model_invocation?: boolean;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example skill_01933b5a00007000800000000000001
        */
       id: string;
@@ -22557,7 +23998,7 @@ export interface components {
     StatRequest: {
       path: string;
     };
-    /** @description Request to answer pending tool-approval requests. */
+    /** @description Request to answer pending tool-approval requests, `POST …/sessions/{id}/tool-approvals`. */
     SubmitToolApprovalsRequest: {
       /**
        * @description Decisions for the pending requests. A pending request in the same batch
@@ -22913,6 +24354,63 @@ export interface components {
       annotations?: components["schemas"]["TextAnnotation"][];
       text: string;
     };
+    /** @description Data for `timer.cancelled`. */
+    TimerCancelledData: {
+      /**
+       * @description Timer that will not fire again.
+       * @example sched_01933b5a00007000800000000000001
+       */
+      timer_id: string;
+    };
+    /** @description Data for `timer.fired`. */
+    TimerFiredData: {
+      /**
+       * Format: date-time
+       * @description When the occurrence was delivered.
+       */
+      fired_at: string;
+      /**
+       * Format: date-time
+       * @description Next time the timer is due; absent when this was its last occurrence.
+       */
+      next_fire_at?: string | null;
+      /**
+       * @description Timer that fired.
+       * @example sched_01933b5a00007000800000000000001
+       */
+      timer_id: string;
+    };
+    /**
+     * @description What a timer wakes the session for.
+     * @enum {string}
+     */
+    TimerPurpose: "schedule";
+    /** @description Data for `timer.set`. */
+    TimerSetData: {
+      /** @description Cron expression for a recurring timer; absent for a one-shot timer. */
+      cron_expression?: string | null;
+      /** @description Text delivered to the session when the timer fires. */
+      description?: string | null;
+      /**
+       * Format: date-time
+       * @description First time the timer is due.
+       */
+      fire_at: string;
+      /** @description Host-defined fields kept with the timer (for example a schedule's name). */
+      metadata?: Record<string, unknown>;
+      /** @description What the timer wakes the session for. */
+      purpose: components["schemas"]["TimerPurpose"];
+      /**
+       * @description Timer identity. For a schedule, the schedule id.
+       * @example sched_01933b5a00007000800000000000001
+       */
+      timer_id: string;
+      /**
+       * @description IANA timezone the cron expression is read in.
+       * @example UTC
+       */
+      timezone?: string | null;
+    };
     /**
      * @description Token usage statistics
      *
@@ -22995,13 +24493,13 @@ export interface components {
       /** @description The person's decision. */
       decision: components["schemas"]["ToolApprovalDecision"];
       /**
-       * @description The `approve_tool_call` call being answered.
+       * @description The pending approval being answered.
        * @example tool_approval_toolu_01933b5a00007000800000000000001
        */
       tool_call_id: string;
     };
     /**
-     * @description What a person decided about one gated call.
+     * @description What a person decided about one gated tool call.
      * @enum {string}
      */
     ToolApprovalDecision: "allow" | "allow_always" | "reject" | "reject_always";
@@ -23015,7 +24513,7 @@ export interface components {
       outcome: string;
       /** @description The gated tool. */
       tool: string;
-      /** @description The `approve_tool_call` call that was answered. */
+      /** @description The approval that was answered. */
       tool_call_id: string;
     };
     /** @description Tool call from LLM response */
@@ -23088,6 +24586,12 @@ export interface components {
       capability_id?: string | null;
       /** @description Human-readable capability name snapshot, when known. */
       capability_name?: string | null;
+      /**
+       * @description Details for people reading the run (chat details view, Session
+       *     Trace) that the model never saw. Web search puts the provider that
+       *     answered, every attempt and the raw provider responses here.
+       */
+      details?: unknown;
       /** @description Human-readable display name for UI rendering */
       display_name?: string | null;
       /**
@@ -23272,6 +24776,39 @@ export interface components {
       supports_background?: boolean | null;
     };
     /**
+     * @description Data for the `tool.nested_call` event (Tools in Shell).
+     *
+     *     A shell script called one of the agent's tools through the `tools` command,
+     *     inside the `bash` call named by `parent_tool_call_id`. Informational: the
+     *     model did not make this call, so there is no matching `tool.started` /
+     *     `tool.completed` or tool-result message; the `bash` result carries what the
+     *     script printed.
+     */
+    ToolNestedCallData: {
+      /** @description This call's id: unique within the parent call. */
+      call_id: string;
+      /** @description How the script spelled it, e.g. `github list-pulls`. */
+      command: string;
+      /**
+       * Format: int64
+       * @description Wall-clock time the tool ran, in milliseconds; absent when it did not run.
+       */
+      duration_ms?: number | null;
+      /** @description What went wrong, for `failed` and `refused`. */
+      error?: string | null;
+      /** @description The call's input, shortened for display. */
+      input_preview: string;
+      /** @description The `bash` tool call the script ran in. */
+      parent_tool_call_id: string;
+      /**
+       * @description `completed`, `failed`, `needs_approval` (the script stopped here and a
+       *     person is asked), or `refused` (a pre-tool hook blocked the call).
+       */
+      status: string;
+      /** @description Registry name of the tool that was called, e.g. `mcp_github__list_pulls`. */
+      tool_name: string;
+    };
+    /**
      * @description Data for tool.output.delta event.
      *
      *     Emitted by tools during execution to stream incremental output chunks.
@@ -23340,6 +24877,465 @@ export interface components {
       amount: number;
       /** @description Human-readable description. Safe to render in user-facing messages. */
       description?: string | null;
+    };
+    /** @description Consecutive calls of one tool, folded. */
+    TraceBatch: {
+      /**
+       * Format: int64
+       * @description Calls in the batch.
+       * @example 60
+       */
+      count: number;
+      /**
+       * Format: int64
+       * @description Calls that failed.
+       * @example 2
+       */
+      failed: number;
+      /** @description The first failed calls, at most 20; page the rest with the steps list. */
+      failures: components["schemas"]["TraceStep"][];
+      /**
+       * Format: int32
+       * @description First step number in the batch.
+       * @example 4
+       */
+      first_step: number;
+      /**
+       * Format: int32
+       * @description Last step number in the batch.
+       * @example 63
+       */
+      last_step: number;
+      /**
+       * @description Tool name shared by every call.
+       * @example web_fetch
+       */
+      name: string;
+      /**
+       * Format: int64
+       * @description Start relative to the turn's start.
+       */
+      offset_ms: number;
+      /**
+       * Format: int64
+       * @description Median call duration.
+       * @example 410
+       */
+      p50_ms?: number | null;
+      /**
+       * Format: int64
+       * @description 95th percentile call duration.
+       * @example 1830
+       */
+      p95_ms?: number | null;
+      /**
+       * Format: int64
+       * @description Calls still running.
+       * @example 0
+       */
+      running: number;
+      /**
+       * Format: date-time
+       * @description When the first call started.
+       */
+      started_at: string;
+      /**
+       * Format: int64
+       * @description Calls that succeeded.
+       * @example 58
+       */
+      succeeded: number;
+      /**
+       * Format: int32
+       * @description Turn the batch belongs to.
+       */
+      turn: number;
+      /**
+       * Format: int64
+       * @description From the first start to the last end.
+       */
+      wall_ms?: number | null;
+    };
+    /** @description A range of turns on the minimap. */
+    TraceBucket: {
+      /**
+       * Format: int64
+       * @description Summed turn durations.
+       * @example 421000
+       */
+      duration_ms: number;
+      /**
+       * Format: int64
+       * @description Failed steps and turns in the bucket.
+       * @example 2
+       */
+      errors: number;
+      /**
+       * Format: int32
+       * @description First turn in the bucket.
+       * @example 1
+       */
+      from_turn: number;
+      /**
+       * Format: int64
+       * @description Steps across the bucket's turns.
+       * @example 142
+       */
+      steps: number;
+      /**
+       * Format: int32
+       * @description Last turn in the bucket.
+       * @example 10
+       */
+      to_turn: number;
+    };
+    /**
+     * @description A prompt-cache reset: the cache read fell to under half of what the
+     *     previous model call left cached.
+     */
+    TraceCacheReset: {
+      /**
+       * Format: int64
+       * @description Seconds between the end of the previous call and the start of this one.
+       * @example 42
+       */
+      idle_seconds: number;
+      /**
+       * Format: int64
+       * @description How many of those this call did not read back.
+       * @example 18420
+       */
+      lost_tokens: number;
+      /**
+       * Format: int64
+       * @description Prompt tokens the previous call left in the cache (read plus written).
+       * @example 18420
+       */
+      previous_cached_tokens: number;
+      /**
+       * @description Likely cause, the first difference found: `model_changed`,
+       *     `tools_changed`, `system_changed`, `history_changed`, `expired` (idle
+       *     longer than the cache retention), or `unknown`.
+       * @example tools_changed
+       */
+      reason: string;
+    };
+    /** @description An event in the session log. */
+    TraceEventRef: {
+      /** @description Payload, when small enough to inline. */
+      data?: unknown;
+      /**
+       * @description Event identifier.
+       * @example event_01a124cd8a1b7f02a5c4e6d1b2f3a4c5
+       */
+      id: string;
+      /**
+       * Format: int32
+       * @description Sequence in the session event log.
+       * @example 14
+       */
+      sequence: number;
+      /**
+       * Format: int32
+       * @description Size of the serialized payload.
+       * @example 512
+       */
+      size_bytes: number;
+      /**
+       * Format: date-time
+       * @description When the event happened.
+       */
+      ts: string;
+      /**
+       * @description Event type, such as `tool.call_completed`.
+       * @example tool.started
+       */
+      type: string;
+    };
+    /** @description Events of a turn, for the lifecycle rows. */
+    TraceEventsPage: {
+      /** @description Events in sequence order. */
+      events: components["schemas"]["TraceEventRef"][];
+      /**
+       * Format: int32
+       * @description Sequence to continue after, when more remain.
+       * @example 31
+       */
+      next_after_sequence?: number | null;
+    };
+    /** @description Steps of a long turn not returned inline. */
+    TraceGap: {
+      /**
+       * Format: int64
+       * @description Steps not returned.
+       * @example 376
+       */
+      count: number;
+      /**
+       * Format: int64
+       * @description Failed steps among them.
+       * @example 4
+       */
+      errors: number;
+      /**
+       * Format: int32
+       * @description First step number not returned.
+       * @example 13
+       */
+      first_step: number;
+      /**
+       * Format: int32
+       * @description Last step number not returned.
+       * @example 388
+       */
+      last_step: number;
+      /**
+       * Format: int32
+       * @description Turn the gap belongs to.
+       */
+      turn: number;
+    };
+    /** @description One row of a turn. */
+    TraceItem:
+      | (components["schemas"]["TraceStep"] & {
+          /** @enum {string} */
+          type: "step";
+        })
+      | (components["schemas"]["TraceBatch"] & {
+          /** @enum {string} */
+          type: "batch";
+        })
+      | (components["schemas"]["TraceGap"] & {
+          /** @enum {string} */
+          type: "gap";
+        });
+    /** @description Session-wide trace summary and minimap. */
+    TraceOverview: {
+      /**
+       * Format: int32
+       * @description Turns per minimap bucket.
+       * @example 10
+       */
+      bucket_size: number;
+      /** @description Minimap buckets in turn order. */
+      buckets: components["schemas"]["TraceBucket"][];
+      /**
+       * Format: int64
+       * @description Steps and turns that failed, across the session.
+       * @example 27
+       */
+      error_count: number;
+      /** @description Turns with errors, newest first, at most 500. */
+      error_turns: number[];
+      /**
+       * Format: date-time
+       * @description Start of the first turn.
+       */
+      first_started_at?: string | null;
+      /**
+       * Format: int64
+       * @description Prompt tokens across all model calls.
+       * @example 4812330
+       */
+      input_tokens: number;
+      /**
+       * Format: date-time
+       * @description Latest start or end of any turn.
+       */
+      last_activity_at?: string | null;
+      /**
+       * Format: int64
+       * @description Completion tokens across all model calls.
+       * @example 91204
+       */
+      output_tokens: number;
+      /**
+       * Format: int64
+       * @description Steps across all turns.
+       * @example 18311
+       */
+      step_count: number;
+      /**
+       * Format: int64
+       * @description Turns in the session.
+       * @example 1240
+       */
+      turn_count: number;
+    };
+    /** @description A JSON payload, cut when over the inline limit. */
+    TracePayload: {
+      /** @description The first part of the serialized value, when it was cut. */
+      preview?: string | null;
+      /**
+       * @description Size of the serialized value.
+       * @example 221
+       */
+      size_bytes: number;
+      /**
+       * @description Whether the value was cut to `preview`.
+       * @example false
+       */
+      truncated: boolean;
+      /** @description The value, when it fits or `full` was asked for. */
+      value?: unknown;
+    };
+    /** @description One message of a model request. */
+    TraceRequestMessage: {
+      /** @description The whole message, when asked for and within the limit. */
+      content?: unknown;
+      /**
+       * Format: int32
+       * @description Position in the request.
+       * @example 12
+       */
+      index: number;
+      /** @description Start of the message text. */
+      preview: string;
+      /**
+       * @description Role as handed to the provider driver: `system`, `user`, `assistant`
+       *     or `tool`. Stored messages say `agent` and `tool_result`; each driver
+       *     then maps these four onto its own wire format.
+       * @example tool
+       */
+      role: string;
+      /**
+       * @description Size of the serialized message.
+       * @example 244
+       */
+      size_bytes: number;
+    };
+    /** @description A page of a model request's messages. */
+    TraceRequestPage: {
+      /**
+       * @description Whether the provider request body was recorded for this call.
+       * @example true
+       */
+      has_native_request: boolean;
+      /**
+       * Format: int32
+       * @description Messages sent in the call.
+       * @example 14
+       */
+      message_count: number;
+      /** @description Requested messages, in order. */
+      messages: components["schemas"]["TraceRequestMessage"][];
+      /** @description Model that served the call. */
+      model?: string | null;
+      /**
+       * @description The request body exactly as the driver sent it to the provider, with
+       *     inline media and reasoning replay state replaced; only when asked for
+       *     with `native`, on the first page.
+       */
+      native_request?: unknown;
+      /**
+       * Format: int32
+       * @description Messages before this index were already in the previous call.
+       * @example 12
+       */
+      new_from: number;
+      /**
+       * @description Provider that served the call.
+       * @example openrouter
+       */
+      provider?: string | null;
+      /**
+       * @description Request options sent with the call (temperature, caching, ...); on
+       *     the first page only.
+       */
+      request_options?: unknown;
+      /** @description Tools offered in the call; on the first page only. */
+      tools: components["schemas"]["TraceRequestTool"][];
+      usage?: components["schemas"]["TraceRequestUsage"] | null;
+    };
+    /** @description What one model call was sent. */
+    TraceRequestSummary: {
+      /**
+       * Format: int32
+       * @description Messages sent in the call.
+       * @example 14
+       */
+      message_count: number;
+      /**
+       * Format: int32
+       * @description Messages before this index were already in the previous call.
+       * @example 12
+       */
+      new_from: number;
+      /** @description The new messages, at most 50. */
+      new_messages: components["schemas"]["TraceRequestMessage"][];
+      /** @description Start of the system prompt. */
+      system_preview?: string | null;
+      /**
+       * Format: int32
+       * @description Tools offered in the call.
+       * @example 9
+       */
+      tool_count: number;
+      usage?: components["schemas"]["TraceRequestUsage"] | null;
+    };
+    /** @description A tool offered to a model call. */
+    TraceRequestTool: {
+      /**
+       * @description Tool description the model sees.
+       * @example Read a file from the workspace.
+       */
+      description?: string | null;
+      /**
+       * @description Tool name the model sees.
+       * @example read_file
+       */
+      name: string;
+    };
+    /**
+     * @description Prompt and completion tokens of one model call, with the prompt split the
+     *     way providers bill it: read from cache, written to cache, and uncached.
+     */
+    TraceRequestUsage: {
+      /**
+       * Format: int64
+       * @description Prompt tokens written to the provider's cache.
+       * @example 0
+       */
+      cache_creation_tokens: number;
+      /**
+       * Format: int64
+       * @description Prompt tokens read from the provider's cache.
+       * @example 12529
+       */
+      cache_read_tokens: number;
+      cache_reset?: components["schemas"]["TraceCacheReset"] | null;
+      /**
+       * Format: int32
+       * @description Estimated index of the last message inside the cached prefix: the
+       *     cache-read share of the prompt laid over the messages by size. `-1`
+       *     when only the tools fit; absent when nothing was read from cache.
+       * @example 11
+       */
+      cached_through?: number | null;
+      /**
+       * @description A long prompt sent with caching off that neither read nor wrote the
+       *     cache: turning on prompt caching would likely make calls like it
+       *     cheaper.
+       */
+      caching_would_help?: boolean;
+      /**
+       * Format: int64
+       * @description Prompt tokens neither read from nor written to the cache.
+       * @example 10295
+       */
+      input_tokens: number;
+      /**
+       * Format: int64
+       * @description Completion tokens.
+       * @example 197
+       */
+      output_tokens: number;
+      /**
+       * @description How prompt caching was requested, such as `auto` or
+       *     `anthropic_cache_control`; absent when caching was off.
+       * @example auto
+       */
+      prompt_cache?: string | null;
     };
     /**
      * @description One score produced by an observer scorer for one trace slice. Linked back
@@ -23418,6 +25414,241 @@ export interface components {
      */
     TraceScoreStatus: "pending" | "scoring" | "completed" | "errored" | "skipped";
     /**
+     * @description A model call, tool call, approval, sub-agent or message. Empty fields are
+     *     left out: a page carries hundreds of these.
+     */
+    TraceStep: {
+      /** @description Session a `spawn_agent` call started. */
+      child_session_id?: string | null;
+      /**
+       * Format: int64
+       * @description Wall time of the step; absent while running.
+       * @example 269
+       */
+      duration_ms?: number | null;
+      /**
+       * Format: int32
+       * @description Last event sequence of the step.
+       * @example 21
+       */
+      end_sequence?: number | null;
+      /**
+       * Format: int32
+       * @description Prompt tokens of a model call.
+       */
+      input_tokens?: number | null;
+      /**
+       * @description `model`, `answer`, `tool`, `approval`, `agent` or `send`.
+       * @example tool
+       */
+      kind: string;
+      /**
+       * @description Model that served the call, for model steps.
+       * @example gpt-6.1-sol
+       */
+      model?: string | null;
+      /**
+       * @description Tool name, or model for model calls.
+       * @example bash
+       */
+      name?: string | null;
+      /** @description What the model said alongside this call (model calls and answers). */
+      narration?: string | null;
+      /**
+       * Format: int64
+       * @description Start relative to the turn's start.
+       * @example 3010
+       */
+      offset_ms: number;
+      /**
+       * Format: int32
+       * @description Completion tokens of a model call.
+       */
+      output_tokens?: number | null;
+      /** @description Tool calls this model call asked for. */
+      requested_tool_call_ids?: string[];
+      /** @description Short result or error. */
+      result?: string | null;
+      /**
+       * Format: int32
+       * @description First event sequence of the step.
+       * @example 14
+       */
+      start_sequence: number;
+      /**
+       * Format: date-time
+       * @description When the step started.
+       */
+      started_at: string;
+      /**
+       * @description `running`, `success`, `error` or `cancelled`.
+       * @example success
+       */
+      status: string;
+      /**
+       * Format: int32
+       * @description Per-turn step number, 1-based.
+       * @example 2
+       */
+      step: number;
+      /** @description What the call acted on, from the tool's narration. */
+      target?: string | null;
+      /**
+       * @description Tool call identifier, for tool steps.
+       * @example call_PzDcvnFaUll8os3tPhWj
+       */
+      tool_call_id?: string | null;
+      /**
+       * Format: int32
+       * @description Turn the step belongs to.
+       * @example 1240
+       */
+      turn: number;
+    };
+    /** @description Everything about one step, for the inspector. */
+    TraceStepDetail: {
+      /** @description Raw events of the step, in sequence order. */
+      events: components["schemas"]["TraceEventRef"][];
+      input?: components["schemas"]["TracePayload"] | null;
+      output?: components["schemas"]["TracePayload"] | null;
+      request?: components["schemas"]["TraceRequestSummary"] | null;
+      /** @description The step itself. */
+      step: components["schemas"]["TraceStep"];
+    };
+    /** @description A page of plain steps of one turn. */
+    TraceStepsPage: {
+      /**
+       * Format: int32
+       * @description Step number to continue from, when more remain in the range.
+       * @example 101
+       */
+      next_step?: number | null;
+      /** @description Steps in step order. */
+      steps: components["schemas"]["TraceStep"][];
+    };
+    /** @description One turn: what the user asked, how it went, and what happened. */
+    TraceTurn: {
+      /**
+       * Format: int64
+       * @description Wall time of the turn.
+       * @example 4998
+       */
+      duration_ms?: number | null;
+      /**
+       * Format: int32
+       * @description Last event sequence of the turn; absent while running.
+       * @example 31
+       */
+      end_sequence?: number | null;
+      /**
+       * Format: date-time
+       * @description When the turn ended; absent while running.
+       */
+      ended_at?: string | null;
+      /** @description Why the turn failed, when it did. */
+      error?: string | null;
+      /**
+       * Format: int32
+       * @description Failed steps in the turn.
+       * @example 0
+       */
+      error_count: number;
+      /**
+       * Format: int64
+       * @description Prompt tokens across the turn's model calls.
+       * @example 4210
+       */
+      input_tokens: number;
+      /**
+       * @description Steps, with repeated calls folded into batches and the middle of very
+       *     long turns folded into a gap.
+       */
+      items: components["schemas"]["TraceItem"][];
+      /**
+       * Format: int32
+       * @description Model calls in the turn.
+       * @example 2
+       */
+      model_calls: number;
+      /**
+       * Format: int64
+       * @description Completion tokens across the turn's model calls.
+       * @example 129
+       */
+      output_tokens: number;
+      /**
+       * @description The user message that started the turn.
+       * @example Check the links on the docs site
+       */
+      prompt?: string | null;
+      /**
+       * Format: int32
+       * @description First and last event sequence of the turn, for links into Events.
+       * @example 12
+       */
+      start_sequence: number;
+      /**
+       * Format: date-time
+       * @description When the turn started.
+       */
+      started_at: string;
+      /**
+       * @description `running`, `completed`, `failed`, `cancelled` or `sealed`.
+       * @example completed
+       */
+      status: string;
+      /**
+       * Format: int32
+       * @description Steps in the turn.
+       * @example 3
+       */
+      step_count: number;
+      /**
+       * Format: int32
+       * @description Sub-agent calls in the turn.
+       * @example 0
+       */
+      subagent_calls: number;
+      /**
+       * Format: int32
+       * @description Tool calls in the turn.
+       * @example 1
+       */
+      tool_calls: number;
+      /**
+       * Format: int32
+       * @description Per-session turn number, 1-based.
+       * @example 1240
+       */
+      turn: number;
+      /**
+       * @description Public turn identifier.
+       * @example turn_01a124cd7e9571ac95c312b3c6d0cd82
+       */
+      turn_id: string;
+    };
+    /** @description A page of turns with their steps. */
+    TraceTurnsPage: {
+      /**
+       * @description Turns exist before the first one returned.
+       * @example true
+       */
+      has_earlier: boolean;
+      /**
+       * @description Turns exist after the last one returned.
+       * @example false
+       */
+      has_later: boolean;
+      /**
+       * Format: int64
+       * @description Turns in the session.
+       * @example 1240
+       */
+      turn_count: number;
+      /** @description Turns in turn order. */
+      turns: components["schemas"]["TraceTurn"][];
+    };
+    /**
      * @description Action taken during transcript repair for a dangling tool call.
      * @enum {string}
      */
@@ -23457,6 +25688,16 @@ export interface components {
       session_id: components["schemas"]["sessionId"];
     };
     /**
+     * @description "Only when it changes": the trigger remembers the last value at `path` per
+     *     event subject and filters out events that repeat it. The first event for a
+     *     subject only records its value, and an event with no value there (a
+     *     cancelled CI run has no outcome) is filtered without touching the record.
+     */
+    TriggerChangesOnly: {
+      /** @description Dotted path into the event context, e.g. `github.ci.outcome`. */
+      path: string;
+    };
+    /**
      * @description What happened to one event delivered to a trigger.
      * @enum {string}
      */
@@ -23470,6 +25711,7 @@ export interface components {
      *     `filtered` deliveries and start no session.
      */
     TriggerEventFilter: {
+      changes_only?: components["schemas"]["TriggerChangesOnly"] | null;
       /** @description Conditions that must all hold. */
       conditions?: components["schemas"]["TriggerFilterCondition"][];
     };
@@ -23696,6 +25938,7 @@ export interface components {
        *     ]
        */
       capabilities?: components["schemas"]["AgentCapabilityConfig"][] | null;
+      communication?: components["schemas"]["Communication"] | null;
       /**
        * @description The ID of the default LLM model to use for this agent.
        * @example model_01933b5a00007000800000000000001
@@ -23766,8 +26009,13 @@ export interface components {
        */
       short_description?: string | null;
       /**
-       * @description Conversation starters; omit to leave unchanged, send empty to clear.
-       *     `icon` reuses the harness icon name set.
+       * @description Conversation starters as `[{"text": "..."}]`; omit to keep, `[]` to clear.
+       *     An optional `icon` reuses the harness icon name set.
+       * @example [
+       *       {
+       *         "text": "Who does the dishes today?"
+       *       }
+       *     ]
        */
       starters?: components["schemas"]["ConversationStarter"][] | null;
       status?: components["schemas"]["AgentStatus"] | null;
@@ -24338,6 +26586,30 @@ export interface components {
       scorers?: components["schemas"]["ObserverScorerConfig"][] | null;
       status?: components["schemas"]["ObserverStatus"] | null;
     };
+    /**
+     * @description Body of `PUT /v1/orgs/{org}/egress-allowlist/grant`. Omitted fields keep
+     *     their current value; at least one is required.
+     */
+    UpdateOrgEgressAllowlistGrantRequest: {
+      /**
+       * @description Allow (`true`) or stop (`false`) this organization extending the
+       *     allowlist. Revoking keeps its patterns but stops enforcing them.
+       */
+      granted?: boolean | null;
+      /**
+       * @description Give (`true`) or take back (`false`) open egress: any public host the
+       *     deny list allows, reads and writes.
+       */
+      open?: boolean | null;
+    };
+    /** @description Body of `PUT /v1/orgs/{org}/egress-allowlist`. */
+    UpdateOrgEgressAllowlistRequest: {
+      /**
+       * @description The full list of host patterns; replaces the stored list. Blank entries
+       *     are ignored and duplicates collapsed.
+       */
+      patterns: string[];
+    };
     UpdateOrgFeatureFlagsRequest: {
       /** @description Map of flag name -> enabled. Omitted flags are unchanged. */
       flags: {
@@ -24392,6 +26664,7 @@ export interface components {
        */
       name?: string | null;
       system_decisions?: components["schemas"]["SystemDecisions"] | null;
+      web_search_defaults?: components["schemas"]["WebSearchDefaults"] | null;
     };
     /** @description Request body for the `update_payment_account` operation. */
     UpdatePaymentAccountRequest: {
@@ -24441,7 +26714,7 @@ export interface components {
       allowed_hosts?: string[] | null;
       /**
        * Format: double
-       * @description New per-day cap (USD). **Advisory only — not yet enforced.** Outer `None` leaves the field unchanged; inner `None` clears the cap.
+       * @description New per-day cap (USD). Outer `None` leaves the field unchanged; inner `None` clears the cap.
        */
       max_amount_usd_per_day?: number | null;
       /**
@@ -24451,7 +26724,7 @@ export interface components {
       max_amount_usd_per_request?: number | null;
       /**
        * Format: double
-       * @description New per-turn cap (USD). **Advisory only — not yet enforced.** Outer `None` leaves the field unchanged; inner `None` clears the cap.
+       * @description New per-turn cap (USD). Outer `None` leaves the field unchanged; inner `None` clears the cap.
        */
       max_amount_usd_per_turn?: number | null;
       /**
@@ -24480,7 +26753,9 @@ export interface components {
     };
     /** @description Request body for updating a plugin marketplace. */
     UpdatePluginMarketplaceRequest: {
+      /** @description New marketplace name. */
       name?: string | null;
+      /** @description New lifecycle status, e.g. `active` or `disabled`. */
       status?: string | null;
     };
     /** @description Request to update current user's profile */
@@ -24688,7 +26963,7 @@ export interface components {
        */
       created_at: string;
       email: string;
-      /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+      /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
       id: string;
       /** @description Human-readable name. Safe to render in user-facing messages. */
       name: string;
@@ -24792,6 +27067,7 @@ export interface components {
       /** @example mcp_01933b5a00007000800000000000001 */
       id: string;
       name: string;
+      presentation?: components["schemas"]["McpServerPresentation"] | null;
       source: components["schemas"]["UserMcpServerSource"];
       /** Format: date-time */
       updated_at: string;
@@ -24814,6 +27090,10 @@ export interface components {
      * @enum {string}
      */
     UserMcpServerSource: "catalog" | "custom";
+    /** @description List response for the tools of a user MCP server. */
+    UserMcpServerToolsResponse: {
+      data: components["schemas"]["McpServerTool"][];
+    };
     /** @description List response for user MCP servers. */
     UserMcpServersResponse: {
       data: components["schemas"]["UserMcpServer"][];
@@ -25104,6 +27384,41 @@ export interface components {
       /** @description Prefixed voice connection identifier this transcript belongs to. */
       voice_connection_id: string;
     };
+    /** @description An organization's web search defaults. */
+    WebSearchDefaults: {
+      /**
+       * Format: uuid
+       * @description The search account when `provider` is `account`.
+       */
+      account_id?: string | null;
+      /**
+       * @description Whether agents may use the model provider's own search (billed by the
+       *     model provider).
+       */
+      allow_native?: boolean;
+      /**
+       * @description Automatic order: `native`, search account ids, and `free`, which is
+       *     always last. Entries left out keep their natural place.
+       */
+      automatic_order?: string[];
+      /** @description Sites no search in this organization returns, on top of each agent's. */
+      blocked_domains?: string[];
+      /**
+       * @description When a provider cannot answer: `next` falls back (free search last),
+       *     `none` stops. An agent's own `fallback` wins.
+       */
+      fallback?: components["schemas"]["SearchFallbackMode"];
+      /**
+       * @description Provider for agents set to the organization default: `auto`, `native`,
+       *     `brave`, `account` (with `account_id`) or `free`.
+       */
+      provider?: components["schemas"]["SearchProviderSetting"];
+      /**
+       * Format: int32
+       * @description Results per search when neither the model nor the agent asks (1 to 20).
+       */
+      results_per_search?: number;
+    };
     /** @description Response body for webhook invocation. */
     WebhookInvocationResponse: {
       accepted: boolean;
@@ -25138,6 +27453,13 @@ export interface components {
        *     Capabilities add tools and system prompt modifications.
        */
       capabilities?: components["schemas"]["AgentCapabilityConfig"][];
+      /**
+       * @description How the agent talks to people. `direct` (default): its replies are
+       *     what it writes. `explicit`: what it writes is private working notes,
+       *     and people see only the messages it sends with `send_message`. Applies
+       *     on every surface: web chat, API, Slack, A2A, AG-UI, MCP.
+       */
+      communication?: components["schemas"]["Communication"];
       /**
        * Format: date-time
        * @description Timestamp when the agent was created.
@@ -25519,7 +27841,7 @@ export interface components {
        */
       description: string;
       /**
-       * @description Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.
+       * @description Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.
        * @example session_file_system
        */
       docs_slug?: string | null;
@@ -25873,6 +28195,7 @@ export interface components {
       archived_at?: string | null;
       /** @description Authentication mode for this MCP server. */
       auth_mode?: components["schemas"]["McpServerAuthMode"];
+      connection_check?: components["schemas"]["McpConnectionCheck"] | null;
       /**
        * Format: date-time
        * @description Timestamp when the MCP server was created.
@@ -25909,6 +28232,7 @@ export interface components {
       name: string;
       /** @description Stable provider id used for user-scoped OAuth connections. */
       oauth_provider_id?: string | null;
+      presentation?: components["schemas"]["McpServerPresentation"] | null;
       /** @description Protocol-era adoption policy for the MCP client (`auto` negotiates). */
       protocol_mode?: components["schemas"]["McpProtocolMode"];
       /**
@@ -25968,7 +28292,7 @@ export interface components {
       /** @description Whether this model is selectable. Controls UI visibility AND server-side resolution: `ProviderResolverService` requires `enabled = true`, and org default-model validation rejects disabled models. Disabled models stay visible in raw list endpoints (so admins can re-enable them) but cannot be used in active sessions or as a session/agent default. */
       enabled: boolean;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example model_01933b5a00007000800000000000001
        */
       id: string;
@@ -26051,7 +28375,7 @@ export interface components {
        */
       healthy: boolean;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example model_01933b5a00007000800000000000001
        */
       id: string;
@@ -26060,6 +28384,11 @@ export interface components {
        * @example true
        */
       is_favorite: boolean;
+      /**
+       * @description Derived: a discovered model that is still disabled and appeared after
+       *     the provider's models were last reviewed. Not persisted.
+       */
+      is_new?: boolean;
       /**
        * @description Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).
        * @example claude-sonnet-5-5
@@ -26085,6 +28414,12 @@ export interface components {
       service: components["schemas"]["ServiceKind"];
       /** @description How this model entry was added (manually, discovered, or seeded as predefined). */
       source: components["schemas"]["ModelSource"];
+      /**
+       * @description Derived: a discovered model the provider no longer lists (not seen in
+       *     its most recent sync). Kept, not deleted, so defaults and agents that
+       *     use it can be fixed first. Not persisted.
+       */
+      stale?: boolean;
       /**
        * Format: date-time
        * @description Timestamp when this model was last updated (RFC 3339).
@@ -26126,7 +28461,7 @@ export interface components {
        */
       created_at: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example provider_01933b5a00007000800000000000001
        */
       id: string;
@@ -26141,6 +28476,13 @@ export interface components {
        *     on it (403). Read-only to org admins. Defaults to `false`.
        */
       managed: boolean;
+      /**
+       * Format: date-time
+       * @description When someone last reviewed this provider's discovered models (RFC 3339).
+       *     A discovered model created later that is still disabled is reported as
+       *     `is_new` on the model. `None` means never reviewed.
+       */
+      models_reviewed_at?: string | null;
       /** @description Human-readable provider name. Safe to render in user-facing messages. */
       name: string;
       /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
@@ -26656,7 +28998,7 @@ export interface components {
       /** @description When `true`, the LLM is prevented from auto-invoking this skill; only the user can trigger it explicitly. */
       disable_model_invocation?: boolean;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example skill_01933b5a00007000800000000000001
        */
       id: string;
@@ -27236,6 +29578,26 @@ export interface operations {
         };
         content: {
           "application/json": unknown;
+        };
+      };
+    };
+  };
+  draft_agent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentDraftResult"];
         };
       };
     };
@@ -27958,6 +30320,172 @@ export interface operations {
         };
       };
       /** @description Channel not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_agent_keys: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description API channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent keys, newest first */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentKey"][];
+        };
+      };
+      /** @description Agent or API channel not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  create_agent_key: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description API channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateAgentKeyRequest"];
+      };
+    };
+    responses: {
+      /** @description Key created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentKeyWithSecret"];
+        };
+      };
+      /** @description Invalid request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent or API channel not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  revoke_agent_key: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description API channel ID */
+        channel_id: string;
+        /** @description Agent key ID */
+        key_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Key revoked */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentKey"];
+        };
+      };
+      /** @description Key not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  rotate_agent_key: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description API channel ID */
+        channel_id: string;
+        /** @description Agent key ID */
+        key_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RotateAgentKeyRequest"];
+      };
+    };
+    responses: {
+      /** @description Key rotated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentKeyWithSecret"];
+        };
+      };
+      /** @description Invalid overlap */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Key not found or revoked */
       404: {
         headers: {
           [name: string]: unknown;
@@ -28703,6 +31231,100 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  get_agent_github: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentGitHubStatus"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  disconnect_agent_github: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentGitHubDisconnect"];
+        };
+      };
+      /** @description Agent or GitHub connection not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  connect_agent_github: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["BeginConnectRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BeginConnectResponse"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -29676,264 +32298,6 @@ export interface operations {
       };
     };
   };
-  create_session: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-        /** @description api_endpoint channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["MessageBody"];
-      };
-    };
-    responses: {
-      /** @description Session created and message dispatched */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["SessionRef"];
-        };
-      };
-      /** @description Missing or invalid API key */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App not published or channel disabled */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App or channel not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Per-channel rate limit exceeded */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  get_session: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-        /** @description api_endpoint channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Derived status and the agent's completed messages (no raw tool detail) */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["SessionStatus"];
-        };
-      };
-      /** @description Missing or invalid API key */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App not published or channel disabled */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel or session not found / not owned by this channel */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Per-channel rate limit exceeded */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  cancel_session: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-        /** @description api_endpoint channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description In-flight turn canceled */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["SessionRef"];
-        };
-      };
-      /** @description Missing or invalid API key */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App not published or channel disabled */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel or session not found / not owned by this channel */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Per-channel rate limit exceeded */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  post_message: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-        /** @description api_endpoint channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["MessageBody"];
-      };
-    };
-    responses: {
-      /** @description Follow-up message dispatched */
-      202: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["SessionRef"];
-        };
-      };
-      /** @description Missing or invalid API key */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App not published or channel disabled */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel or session not found / not owned by this channel */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Per-channel rate limit exceeded */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
   handshake: {
     parameters: {
       query?: never;
@@ -30792,6 +33156,56 @@ export interface operations {
       };
     };
   };
+  agent_api_get_card: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent card */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentCard"];
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not available */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   invoke_a2a_channel: {
     parameters: {
       query?: never;
@@ -30992,6 +33406,13 @@ export interface operations {
           "application/json": unknown;
         };
       };
+      /** @description An agent key without an End-User id */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
       /** @description Authentication required */
       401: {
         headers: {
@@ -31008,32 +33429,42 @@ export interface operations {
       };
     };
   };
-  create_session_channel: {
+  agent_api_list_sessions: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Page size, 1 to 200 (default 50). */
+        limit?: number | null;
+        /** @description `next_page_token` of the previous page. */
+        page_token?: string | null;
+      };
       header?: never;
       path: {
-        /** @description api_endpoint channel ID */
+        /** @description api channel ID */
         channel_id: string;
       };
       cookie?: never;
     };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["MessageBody"];
-      };
-    };
+    requestBody?: never;
     responses: {
-      /** @description Session created and message dispatched */
-      201: {
+      /** @description One page of sessions: `{data, next_page_token?}` */
+      200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["SessionRef"];
+          "application/json": unknown;
         };
       };
-      /** @description Missing or invalid endpoint credentials */
+      /** @description Invalid page size or token */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid agent key */
       401: {
         headers: {
           [name: string]: unknown;
@@ -31042,7 +33473,62 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description App not published or channel disabled */
+      /** @description Channel not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_create_session: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    /** @description Optional title. May be empty. */
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateAgentSessionRequest"];
+      };
+    };
+    responses: {
+      /** @description Session started */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentSessionView"];
+        };
+      };
+      /** @description Invalid body, or the retired api_endpoint body `{"message": …}` */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not available */
       403: {
         headers: {
           [name: string]: unknown;
@@ -31060,7 +33546,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Per-channel rate limit exceeded */
+      /** @description Rate or daily spending limit reached */
       429: {
         headers: {
           [name: string]: unknown;
@@ -31071,12 +33557,12 @@ export interface operations {
       };
     };
   };
-  get_session_channel: {
+  agent_api_get_session: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description api_endpoint channel ID */
+        /** @description api channel ID */
         channel_id: string;
         /** @description Session ID */
         session_id: string;
@@ -31085,16 +33571,16 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Derived session status and completed agent messages */
+      /** @description The session */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["SessionStatus"];
+          "application/json": components["schemas"]["AgentSessionView"];
         };
       };
-      /** @description Missing or invalid endpoint credentials */
+      /** @description Missing or invalid credentials */
       401: {
         headers: {
           [name: string]: unknown;
@@ -31103,7 +33589,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description App not published or channel disabled */
+      /** @description Agent not available */
       403: {
         headers: {
           [name: string]: unknown;
@@ -31112,17 +33598,8 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Channel or session not found, or session not owned by this channel */
+      /** @description Channel or session not found */
       404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Per-channel rate limit exceeded */
-      429: {
         headers: {
           [name: string]: unknown;
         };
@@ -31132,12 +33609,12 @@ export interface operations {
       };
     };
   };
-  cancel_session_channel: {
+  agent_api_cancel: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description api_endpoint channel ID */
+        /** @description api channel ID */
         channel_id: string;
         /** @description Session ID */
         session_id: string;
@@ -31146,16 +33623,16 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description In-flight turn canceled */
+      /** @description Turn cancelled */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["SessionRef"];
+          "application/json": unknown;
         };
       };
-      /** @description Missing or invalid endpoint credentials */
+      /** @description Missing or invalid credentials */
       401: {
         headers: {
           [name: string]: unknown;
@@ -31164,7 +33641,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description App not published or channel disabled */
+      /** @description Agent not available */
       403: {
         headers: {
           [name: string]: unknown;
@@ -31173,7 +33650,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Channel or session not found, or session not owned by this channel */
+      /** @description Channel or session not found */
       404: {
         headers: {
           [name: string]: unknown;
@@ -31182,7 +33659,130 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Per-channel rate limit exceeded */
+    };
+  };
+  agent_api_list_events: {
+    parameters: {
+      query?: {
+        /** @description Return events after this sequence number (exclusive). */
+        after_sequence?: number | null;
+        /** @description Page size, 1 to 500 (default 100). */
+        limit?: number | null;
+      };
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Events: `{data}`, each in the canonical event envelope */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Invalid page size */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel or session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_send_message: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    /** @description `{"message": {"role": "user", "content": [{"type": "text", "text": …}]}}` */
+    requestBody: {
+      content: {
+        "application/json": unknown;
+      };
+    };
+    responses: {
+      /** @description Message stored */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Invalid body, or the retired api_endpoint body `{"message": "text"}` */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not available */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel or session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Rate or daily spending limit reached */
       429: {
         headers: {
           [name: string]: unknown;
@@ -31193,12 +33793,12 @@ export interface operations {
       };
     };
   };
-  post_message_channel: {
+  agent_api_answer_questions: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description api_endpoint channel ID */
+        /** @description api channel ID */
         channel_id: string;
         /** @description Session ID */
         session_id: string;
@@ -31207,20 +33807,29 @@ export interface operations {
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["MessageBody"];
+        "application/json": components["schemas"]["QuestionAnswersRequest"];
       };
     };
     responses: {
-      /** @description Follow-up message dispatched */
-      202: {
+      /** @description Answer recorded and turn resumed */
+      200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["SessionRef"];
+          "application/json": components["schemas"]["QuestionAnswersResponse"];
         };
       };
-      /** @description Missing or invalid endpoint credentials */
+      /** @description Answers that do not match what was asked, or a credential */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid agent key */
       401: {
         headers: {
           [name: string]: unknown;
@@ -31229,16 +33838,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description App not published or channel disabled */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel or session not found, or session not owned by this channel */
+      /** @description Channel, session or pending question set not found */
       404: {
         headers: {
           [name: string]: unknown;
@@ -31247,8 +33847,139 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Per-channel rate limit exceeded */
+      /** @description Not waiting, or already answered */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_stream_events: {
+    parameters: {
+      query?: {
+        /** @description Resume after this event (the last `id:` received). */
+        since_id?: components["schemas"]["eventId"] | null;
+        /** @description Replay events after this sequence first. `0` replays the whole session. */
+        after_sequence?: number | null;
+      };
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Server-Sent Events stream of canonical event envelopes */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/event-stream": unknown;
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel or session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Too many open streams */
       429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_submit_tool_approvals: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SubmitToolApprovalsRequest"];
+      };
+    };
+    responses: {
+      /** @description Decisions recorded and turn resumed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SubmitToolApprovalsResponse"];
+        };
+      };
+      /** @description Invalid decisions */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description An operator answers this agent's tool approvals */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel, session or pending request not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not waiting, expired, or already answered */
+      409: {
         headers: {
           [name: string]: unknown;
         };
@@ -33188,32 +35919,42 @@ export interface operations {
       };
     };
   };
-  create_session_endpoint: {
+  agent_api_create_session_legacy: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description api_endpoint channel ID */
+        /** @description api channel ID */
         channel_id: string;
       };
       cookie?: never;
     };
+    /** @description Optional title. May be empty. */
     requestBody: {
       content: {
-        "application/json": components["schemas"]["MessageBody"];
+        "application/json": components["schemas"]["CreateAgentSessionRequest"];
       };
     };
     responses: {
-      /** @description Session created and message dispatched */
+      /** @description Session started */
       201: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["SessionRef"];
+          "application/json": components["schemas"]["AgentSessionView"];
         };
       };
-      /** @description Missing or invalid endpoint credentials */
+      /** @description Invalid body, or the retired api_endpoint body `{"message": …}` */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid credentials */
       401: {
         headers: {
           [name: string]: unknown;
@@ -33222,7 +35963,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description App not published or channel disabled */
+      /** @description Agent not available */
       403: {
         headers: {
           [name: string]: unknown;
@@ -33240,7 +35981,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Per-channel rate limit exceeded */
+      /** @description Rate or daily spending limit reached */
       429: {
         headers: {
           [name: string]: unknown;
@@ -33251,12 +35992,12 @@ export interface operations {
       };
     };
   };
-  get_session_endpoint: {
+  agent_api_get_session_legacy: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description api_endpoint channel ID */
+        /** @description api channel ID */
         channel_id: string;
         /** @description Session ID */
         session_id: string;
@@ -33265,16 +36006,16 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Derived session status and completed agent messages */
+      /** @description The session */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["SessionStatus"];
+          "application/json": components["schemas"]["AgentSessionView"];
         };
       };
-      /** @description Missing or invalid endpoint credentials */
+      /** @description Missing or invalid credentials */
       401: {
         headers: {
           [name: string]: unknown;
@@ -33283,7 +36024,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description App not published or channel disabled */
+      /** @description Agent not available */
       403: {
         headers: {
           [name: string]: unknown;
@@ -33292,17 +36033,8 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Channel or session not found, or session not owned by this channel */
+      /** @description Channel or session not found */
       404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Per-channel rate limit exceeded */
-      429: {
         headers: {
           [name: string]: unknown;
         };
@@ -33312,12 +36044,12 @@ export interface operations {
       };
     };
   };
-  cancel_session_endpoint: {
+  agent_api_cancel_legacy: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description api_endpoint channel ID */
+        /** @description api channel ID */
         channel_id: string;
         /** @description Session ID */
         session_id: string;
@@ -33326,16 +36058,16 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description In-flight turn canceled */
+      /** @description Turn cancelled */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["SessionRef"];
+          "application/json": unknown;
         };
       };
-      /** @description Missing or invalid endpoint credentials */
+      /** @description Missing or invalid credentials */
       401: {
         headers: {
           [name: string]: unknown;
@@ -33344,7 +36076,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description App not published or channel disabled */
+      /** @description Agent not available */
       403: {
         headers: {
           [name: string]: unknown;
@@ -33353,7 +36085,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Channel or session not found, or session not owned by this channel */
+      /** @description Channel or session not found */
       404: {
         headers: {
           [name: string]: unknown;
@@ -33362,7 +36094,73 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Per-channel rate limit exceeded */
+    };
+  };
+  agent_api_send_message_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    /** @description `{"message": {"role": "user", "content": [{"type": "text", "text": …}]}}` */
+    requestBody: {
+      content: {
+        "application/json": unknown;
+      };
+    };
+    responses: {
+      /** @description Message stored */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Invalid body, or the retired api_endpoint body `{"message": "text"}` */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not available */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel or session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Rate or daily spending limit reached */
       429: {
         headers: {
           [name: string]: unknown;
@@ -33373,12 +36171,12 @@ export interface operations {
       };
     };
   };
-  post_message_endpoint: {
+  agent_api_answer_questions_legacy: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description api_endpoint channel ID */
+        /** @description api channel ID */
         channel_id: string;
         /** @description Session ID */
         session_id: string;
@@ -33387,20 +36185,29 @@ export interface operations {
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["MessageBody"];
+        "application/json": components["schemas"]["QuestionAnswersRequest"];
       };
     };
     responses: {
-      /** @description Follow-up message dispatched */
-      202: {
+      /** @description Answer recorded and turn resumed */
+      200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["SessionRef"];
+          "application/json": components["schemas"]["QuestionAnswersResponse"];
         };
       };
-      /** @description Missing or invalid endpoint credentials */
+      /** @description Answers that do not match what was asked, or a credential */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid agent key */
       401: {
         headers: {
           [name: string]: unknown;
@@ -33409,16 +36216,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description App not published or channel disabled */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel or session not found, or session not owned by this channel */
+      /** @description Channel, session or pending question set not found */
       404: {
         headers: {
           [name: string]: unknown;
@@ -33427,8 +36225,139 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Per-channel rate limit exceeded */
+      /** @description Not waiting, or already answered */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_stream_events_legacy: {
+    parameters: {
+      query?: {
+        /** @description Resume after this event (the last `id:` received). */
+        since_id?: components["schemas"]["eventId"] | null;
+        /** @description Replay events after this sequence first. `0` replays the whole session. */
+        after_sequence?: number | null;
+      };
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Server-Sent Events stream of canonical event envelopes */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/event-stream": unknown;
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel or session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Too many open streams */
       429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_submit_tool_approvals_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SubmitToolApprovalsRequest"];
+      };
+    };
+    responses: {
+      /** @description Decisions recorded and turn resumed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SubmitToolApprovalsResponse"];
+        };
+      };
+      /** @description Invalid decisions */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description An operator answers this agent's tool approvals */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel, session or pending request not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not waiting, expired, or already answered */
+      409: {
         headers: {
           [name: string]: unknown;
         };
@@ -33520,6 +36449,13 @@ export interface operations {
         content: {
           "application/json": unknown;
         };
+      };
+      /** @description An agent key without an End-User id */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Authentication required */
       401: {
@@ -36336,6 +39272,36 @@ export interface operations {
       };
     };
   };
+  check_mcp_server_connection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_McpServer"];
+        };
+      };
+      /** @description MCP server not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   destroy_mcp_server: {
     parameters: {
       query?: never;
@@ -36356,6 +39322,105 @@ export interface operations {
         content?: never;
       };
       /** @description MCP server not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_mcp_server_tools: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["McpServerTool"][];
+        };
+      };
+      /** @description MCP server not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  suggest_mcp_tool_labels: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["McpServerTool"][];
+        };
+      };
+      /** @description MCP server not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No decision model is available to rate the tools */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_mcp_tool_label: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+        /** @description Prefixed public identifier */
+        tool_name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["McpServerTool"];
+        };
+      };
+      /** @description MCP server or tool not found */
       404: {
         headers: {
           [name: string]: unknown;
@@ -37900,6 +40965,132 @@ export interface operations {
       };
     };
   };
+  get_org_egress_allowlist: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        org: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrgEgressAllowlistResponse"];
+        };
+      };
+      /** @description Organization not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_org_egress_allowlist: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        org: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateOrgEgressAllowlistRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrgEgressAllowlistResponse"];
+        };
+      };
+      /** @description Invalid pattern or too many patterns */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not an organization admin, or the organization is not granted */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Organization not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_org_egress_allowlist_grant: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        org: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateOrgEgressAllowlistGrantRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrgEgressAllowlistResponse"];
+        };
+      };
+      /** @description Neither granted nor open given */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Platform user access required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Organization not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   get_org_feature_flags: {
     parameters: {
       query?: never;
@@ -39415,6 +42606,50 @@ export interface operations {
       };
     };
   };
+  review_models: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Provider ID (prefixed, e.g., prov_...) */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Provider with its review time updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Provider"];
+        };
+      };
+      /** @description Invalid provider ID */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Caller cannot manage providers */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Provider not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   sync_models: {
     parameters: {
       query?: never;
@@ -39450,8 +42685,8 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Sync failed */
-      500: {
+      /** @description Provider rejected or could not serve the model list (code `provider_sync_failed`) */
+      422: {
         headers: {
           [name: string]: unknown;
         };
@@ -40535,6 +43770,66 @@ export interface operations {
       };
     };
   };
+  list_search_providers: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SearchProviderCatalog"];
+        };
+      };
+    };
+  };
+  preview_search_plan: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SearchPlanPreviewRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SearchPlanPreview"];
+        };
+      };
+      /** @description Invalid config, unknown model, or unknown test provider */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Test queries need an organization admin */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   list_sessions: {
     parameters: {
       query?: {
@@ -40617,7 +43912,7 @@ export interface operations {
       };
     };
   };
-  create_session_post_v1_sessions: {
+  create_session: {
     parameters: {
       query?: never;
       header?: never;
@@ -40680,7 +43975,7 @@ export interface operations {
            *       "detail": "Harness 'generic' not found in org org_00000000000000000000000000000001.",
            *       "status": 404,
            *       "title": "Not Found",
-           *       "type": "https://docs.everruns.com/errors/harness_not_found"
+           *       "type": "https://everruns.com/docs/errors/harness_not_found"
            *     }
            */
           "application/json": components["schemas"]["ErrorResponse"];
@@ -40793,7 +44088,7 @@ export interface operations {
       };
     };
   };
-  get_session_get_v1_sessions_session_id: {
+  get_session: {
     parameters: {
       query?: never;
       header?: never;
@@ -41103,7 +44398,7 @@ export interface operations {
            *       "detail": "Session session_01933b5a000070008000000000000001 not found in org org_00000000000000000000000000000001.",
            *       "status": 404,
            *       "title": "Not Found",
-           *       "type": "https://docs.everruns.com/errors/session_not_found"
+           *       "type": "https://everruns.com/docs/errors/session_not_found"
            *     }
            */
           "application/json": components["schemas"]["ErrorResponse"];
@@ -41525,6 +44820,36 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_message_feedback: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MessageFeedback"][];
+        };
+      };
+      /** @description Session not found */
+      404: {
         headers: {
           [name: string]: unknown;
         };
@@ -42042,6 +45367,38 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_message_feedback: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+        /** @description Prefixed public identifier */
+        message_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MessageFeedback"];
+        };
+      };
+      /** @description Session or message not found */
+      404: {
         headers: {
           [name: string]: unknown;
         };
@@ -43132,6 +46489,198 @@ export interface operations {
       };
     };
   };
+  get_session_trace: {
+    parameters: {
+      query?: {
+        /** @description Minimap buckets wanted, 1 to 500. Defaults to 120. */
+        buckets?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceOverview"];
+        };
+      };
+    };
+  };
+  list_session_trace_turns: {
+    parameters: {
+      query?: {
+        /** @description Turns before this turn number. Without a cursor, the last turns. */
+        before?: number;
+        /** @description Turns after this turn number. */
+        after?: number;
+        /** @description Turns centered on this turn number. */
+        around?: number;
+        /** @description Turns centered on the turn holding this event sequence. */
+        sequence?: number;
+        /** @description Turns per page, 1 to 50. Defaults to 20. */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceTurnsPage"];
+        };
+      };
+    };
+  };
+  list_session_trace_turn_events: {
+    parameters: {
+      query?: {
+        /** @description Only events after this sequence. */
+        after_sequence?: number;
+        /** @description Events per page, 1 to 500. Defaults to 500. */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+        /** @description Prefixed public identifier */
+        turn: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceEventsPage"];
+        };
+      };
+    };
+  };
+  list_session_trace_steps: {
+    parameters: {
+      query?: {
+        /** @description First step of the range, inclusive. Defaults to 1. */
+        from_step?: number;
+        /** @description Last step of the range, inclusive. Defaults to the turn's last step. */
+        to_step?: number;
+        /** @description Only failed steps. */
+        errors_only?: boolean;
+        /** @description Steps per page, 1 to 500. Defaults to 100. */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+        /** @description Prefixed public identifier */
+        turn: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceStepsPage"];
+        };
+      };
+    };
+  };
+  get_session_trace_step: {
+    parameters: {
+      query?: {
+        /** @description Return payloads whole, however large. */
+        full?: boolean;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+        /** @description Prefixed public identifier */
+        turn: string;
+        /** @description Prefixed public identifier */
+        step: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceStepDetail"];
+        };
+      };
+    };
+  };
+  list_session_trace_request: {
+    parameters: {
+      query?: {
+        /** @description Only messages of this role: `system`, `user`, `assistant` or `tool`. */
+        role?: string;
+        /** @description First message index. Defaults to 0. */
+        offset?: number;
+        /** @description Messages per page, 1 to 200. Defaults to 100. */
+        limit?: number;
+        /** @description Return every message's content whole, however large. */
+        full?: boolean;
+        /** @description Also return the provider request body as the driver sent it. */
+        native?: boolean;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+        /** @description Prefixed public identifier */
+        turn: string;
+        /** @description Prefixed public identifier */
+        step: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceRequestPage"];
+        };
+      };
+    };
+  };
   create_call: {
     parameters: {
       query?: never;
@@ -43820,6 +47369,68 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["SessionTask"][];
         };
+      };
+    };
+  };
+  list_connected_clients: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConnectedClientsResponse"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  revoke_connected_client: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Connected client (grant) id */
+        grant_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revoked */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -44992,6 +48603,115 @@ export interface operations {
       };
       /** @description Name already used */
       409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_user_mcp_server_tools: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description `me` or a virtual user id */
+        identity_id: string;
+        server_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UserMcpServerToolsResponse"];
+        };
+      };
+      /** @description Server was added from the catalog */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_user_mcp_tool_label: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description `me` or a virtual user id */
+        identity_id: string;
+        server_id: string;
+        tool_name: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetUserMcpToolLabelRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["McpServerTool"];
+        };
+      };
+      /** @description Server was added from the catalog */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Server or tool not found */
+      404: {
         headers: {
           [name: string]: unknown;
         };

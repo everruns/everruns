@@ -12,6 +12,7 @@ import {
   updateProvider,
   deleteProvider,
   syncProviderModels,
+  reviewProviderModels,
   getModels,
   getProviderModels,
   getModel,
@@ -282,4 +283,51 @@ export function useDecisionDefault() {
     onSuccess: () => client.invalidateQueries({ queryKey: ["decision-default"] }),
   });
   return { ...query, setDefault: mutation };
+}
+
+/** Mark providers' discovered models as reviewed (clears `is_new`). */
+export function useReviewProviderModels() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (providerIds: string[]) => {
+      await Promise.all(providerIds.map((id) => reviewProviderModels(id)));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.providers.all });
+    },
+  });
+}
+
+// PATCHes run a few at a time: a catalog can hold hundreds of models and there
+// is no bulk endpoint, so an unbounded fan-out would trip rate limits.
+const BULK_CONCURRENCY = 8;
+
+/**
+ * Enable and disable many models in one action. Resolves with the ids that
+ * failed so the caller can report a partial result instead of a blanket error.
+ */
+export function useSetModelsEnabled() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (changes: { id: string; enabled: boolean }[]) => {
+      const failed: string[] = [];
+      for (let start = 0; start < changes.length; start += BULK_CONCURRENCY) {
+        const batch = changes.slice(start, start + BULK_CONCURRENCY);
+        const results = await Promise.allSettled(
+          batch.map((change) => updateModel(change.id, { enabled: change.enabled })),
+        );
+        results.forEach((result, index) => {
+          if (result.status === "rejected") failed.push(batch[index].id);
+        });
+      }
+      return { failed };
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
+      // Disabling the org default clears it server-side.
+      queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
+      queryClient.invalidateQueries({ queryKey: ["decision-default"] });
+    },
+  });
 }

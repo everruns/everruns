@@ -432,26 +432,33 @@ fn test_with_defaults_has_expected_tools() {
     let registry = ToolRegistry::with_defaults();
     // Exact inventory excludes test doubles and capability-owned tools:
     // exposing those here would bypass host composition or capability policy.
-    assert_eq!(registry.tool_names(), ["channel_post_message"]);
-    assert!(registry.tool_definitions()[0].display_name().is_some());
+    let mut names = registry.tool_names();
+    names.sort_unstable();
+    assert_eq!(names, ["no_reply", "send_message"]);
+    assert!(
+        registry
+            .tool_definitions()
+            .iter()
+            .all(|tool| tool.display_name().is_some())
+    );
 }
 
 #[tokio::test]
 async fn test_with_defaults_tools_are_executable() {
     let registry = ToolRegistry::with_defaults();
 
-    // A context-free executor must never report success for a real external post.
+    // Without an external conversation the session itself is the
+    // conversation: the message is sent, with no platform delivery.
     let tool_call = ToolCall {
         id: "call_1".into(),
-        name: "channel_post_message".into(),
+        name: "send_message".into(),
         arguments: serde_json::json!({"text":"Boundary audit complete"}),
     };
-    let tool_def = registry
-        .get("channel_post_message")
-        .unwrap()
-        .to_definition();
+    let tool_def = registry.get("send_message").unwrap().to_definition();
     let result = registry.execute(&tool_call, &tool_def).await.unwrap();
-    assert!(result.error.unwrap().contains("external conversation"));
+    let value = result.result.unwrap();
+    assert_eq!(value["sent"], true);
+    assert!(value.get("delivery").is_none());
 }
 
 /// Regression: with_defaults() must NOT include capability-provided tools like
@@ -535,4 +542,39 @@ async fn invalid_registered_schema_fails_configuration_before_dispatch() {
             matches!(error,AgentLoopError::Configuration(message) if message.contains("invalid_schema") && message.contains("invalid parameters schema"))
         );
     }
+}
+
+#[test]
+fn success_with_details_keeps_details_out_of_the_model_result() {
+    let res = ToolExecutionResult::success_with_details(
+        serde_json::json!({"query": "tokio", "results": []}),
+        serde_json::json!({"provider": "free", "attempts": [{"provider": "free", "ok": true}]}),
+    );
+    let tool_result = res.into_tool_result("call_1", "web_search");
+    assert_eq!(
+        tool_result.result,
+        Some(serde_json::json!({"query": "tokio", "results": []}))
+    );
+    assert_eq!(
+        tool_result.details.as_ref().and_then(|d| d.get("provider")),
+        Some(&serde_json::json!("free"))
+    );
+}
+
+#[test]
+fn success_with_details_wraps_and_unwraps_scalar_values() {
+    let res = ToolExecutionResult::success_with_details(
+        serde_json::json!("done"),
+        serde_json::json!({"n": 1}),
+    );
+    let tool_result = res.into_tool_result("call_1", "t");
+    assert_eq!(tool_result.result, Some(serde_json::json!("done")));
+    assert_eq!(tool_result.details, Some(serde_json::json!({"n": 1})));
+}
+
+#[test]
+fn plain_success_has_no_details() {
+    let tool_result =
+        ToolExecutionResult::success(serde_json::json!({"a": 1})).into_tool_result("c", "t");
+    assert!(tool_result.details.is_none());
 }

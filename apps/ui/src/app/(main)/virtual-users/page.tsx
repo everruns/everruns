@@ -1,8 +1,9 @@
 "use client";
 
+import { VirtualUserIcon } from "@/components/icons/facet-icons";
 import { EntityStatus } from "@/components/ui/entity-status";
 import { useMemo, useState } from "react";
-import { Plus, UserRound } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Button, LinkButton } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { Badge } from "@/components/ui/badge";
@@ -30,7 +31,7 @@ type StatusTab = "all" | "active" | "archived";
 export function VirtualUserCard({ identity }: { identity: VirtualUser }) {
   return (
     <EntityCard
-      icon={<IconTile size="md" icon={<UserRound />} />}
+      icon={<IconTile size="md" icon={<VirtualUserIcon />} />}
       title={identity.name}
       href={`/virtual-users/${identity.id}`}
       titleClassName={getEntityNameClassName(identity.status)}
@@ -100,7 +101,7 @@ export default function VirtualUsersPage() {
       <PageBreadcrumb items={[{ label: "Virtual Users" }]} />
 
       <PageMasthead
-        icon={<UserRound />}
+        icon={<VirtualUserIcon />}
         title="Virtual Users"
         description="Profiles and connections for people using agents and service accounts."
         actions={
@@ -153,7 +154,7 @@ export default function VirtualUsersPage() {
           </div>
         ) : filteredIdentities.length === 0 ? (
           <EmptyState
-            icon={<UserRound />}
+            icon={<VirtualUserIcon />}
             title={
               search || statusTab !== "active"
                 ? "No virtual users match your filters."

@@ -157,12 +157,6 @@ pub(crate) struct SlackAttachment {
     pub(crate) app_unfurl_url: Option<String>,
 }
 
-/// Response for URL verification challenge.
-#[derive(Serialize)]
-pub(crate) struct ChallengeResponse {
-    pub(crate) challenge: String,
-}
-
 /// Acknowledgement response for event callbacks.
 #[derive(Serialize)]
 pub(crate) struct AckResponse {

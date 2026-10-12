@@ -6,16 +6,14 @@
 use crate::auth::audit;
 use crate::auth::middleware::{AuthState, AuthUser, OrgAdmin, OrgContext};
 use crate::auth::rate_limit::OrgRateLimiter;
+use crate::domains::audit_logs::record::{AuditEvent, ManagementAction};
+use crate::domains::harnesses::record::BuiltInHarnessDefinition;
+use crate::domains::organizations::record::{
+    Organization, generate_org_public_id, validate_org_public_id,
+};
 pub use crate::domains::organizations::types::OrganizationResponse;
-use crate::records::{
-    AuditEvent, BuiltInHarnessDefinition, ManagementAction, Organization, generate_org_public_id,
-    validate_org_public_id,
-};
 use crate::storage::UpdateField;
-use crate::storage::{
-    StorageBackend,
-    models::{AddOrganizationMemberOutcome, UpdateOrganizationSettings},
-};
+use crate::storage::{AddOrganizationMemberOutcome, StorageBackend, UpdateOrganizationSettings};
 use axum::{
     Json, Router,
     extract::{ConnectInfo, Extension, Path, State},
@@ -23,6 +21,8 @@ use axum::{
     routing::get,
 };
 use everruns_core::{DEFAULT_ORG_ID, OrgRole};
+
+use crate::api::command_http::CommandRouterExt;
 
 use super::common::{
     ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, ListResponse, impl_auth_state,
@@ -106,7 +106,7 @@ pub struct AppState {
     /// Wrapper-supplied post-create initializers (EVE-811). Run after built-in
     /// harnesses and the default marketplace are provisioned for a new org; empty
     /// keeps default OSS behavior.
-    pub org_initializers: Vec<Arc<dyn crate::org_init::OrgInitializer>>,
+    pub org_initializers: Vec<Arc<dyn crate::setup::org_init::OrgInitializer>>,
 }
 
 impl AppState {
@@ -139,7 +139,22 @@ impl AppState {
     }
 }
 
+impl AppState {
+    /// Domain context for the commands served on these routes (the org
+    /// egress allowlist). Commands resolve their path org themselves.
+    pub fn ctx(&self, org: &crate::auth::ResolvedOrg) -> crate::domains::common::Ctx {
+        crate::domains::common::Ctx::minimal(
+            everruns_core::Caller::from(org),
+            self.db.clone(),
+            None,
+            self.auth.permission_resolver.clone(),
+        )
+        .with_feature_flags(org.feature_flags.clone())
+    }
+}
+
 impl_auth_state!(AppState);
+super::dispatch::impl_dispatchable!(AppState);
 
 /// Request to create a new organization
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -200,6 +215,13 @@ pub struct UpdateOrganizationRequest {
     #[serde(default, deserialize_with = "double_option")]
     #[schema(value_type = Option<i32>, example = 5, minimum = 0)]
     pub agentid_agents_per_owner: Option<Option<i32>>,
+    /// Web search defaults; replaces the stored defaults as a whole. Omitted
+    /// fields take their built-in default. `provider` cannot be
+    /// `org_default`, `account_id` and `automatic_order` entries must name
+    /// this organization's search accounts, free search is always last in
+    /// the Automatic order, and `results_per_search` is 1 to 20.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub web_search_defaults: Option<everruns_contracts::runtime::web_search::WebSearchDefaults>,
 }
 
 fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
@@ -226,6 +248,9 @@ pub fn routes(state: AppState) -> Router {
             axum::routing::post(complete_org_onboarding),
         )
         // Organization members
+        .command::<crate::domains::organizations::egress_allowlist::GetOrgEgressAllowlist>()
+        .command::<crate::domains::organizations::egress_allowlist::SetOrgEgressAllowlist>()
+        .command::<crate::domains::organizations::egress_allowlist::SetOrgEgressAllowlistGrant>()
         .route("/v1/orgs/{org}/members", get(list_members).post(add_member))
         .route(
             "/v1/orgs/{org}/members/{user_id}",
@@ -298,7 +323,7 @@ pub async fn create_organization(
     headers: HeaderMap,
     Json(req): Json<CreateOrganizationRequest>,
 ) -> Result<(StatusCode, Json<OrganizationResponse>), (StatusCode, Json<ErrorResponse>)> {
-    use crate::storage::models::CreateOrganizationRow;
+    use crate::storage::CreateOrganizationRow;
 
     // Check per-user org creation rate limit before any DB work
     if state
@@ -379,7 +404,7 @@ pub async fn create_organization(
         .log_internal_error_json("add organization member")?;
 
     // Initialize built-in harnesses for the new organization
-    if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
+    if let Err(e) = crate::setup::org_init::initialize_org_harnesses_with_definitions(
         &state.db,
         row.org_id,
         &state.built_in_harnesses,
@@ -393,9 +418,9 @@ pub async fn create_organization(
         );
     }
 
-    // Seed the default plugin marketplace (everruns/everruns) for the new org.
+    // Seed the default plugin marketplace (everruns/plugins) for the new org.
     // Non-fatal: if it fails (e.g. name conflict), org creation still succeeds.
-    crate::org_init::seed_default_plugin_marketplace(&state.db, row.org_id).await;
+    crate::setup::org_init::seed_default_plugin_marketplace(&state.db, row.org_id).await;
 
     // Post-create org initializers (EVE-811). Runs after built-in harnesses and
     // the default marketplace are provisioned, so embedder-provisioned per-org
@@ -406,7 +431,7 @@ pub async fn create_organization(
     // A required initializer that fails aborts creation: the org row is rolled
     // back best-effort and a 500 is returned, so a caller never sees a "created"
     // org missing host-mandated resources. Optional initializers only log.
-    if let Err(e) = crate::org_init::run_org_initializers(
+    if let Err(e) = crate::setup::org_init::run_org_initializers(
         &state.org_initializers,
         &state.db,
         row.org_id,
@@ -524,7 +549,7 @@ pub async fn update_organization(
     Path(org_public_id): Path<String>,
     Json(req): Json<UpdateOrganizationRequest>,
 ) -> ApiResult<OrganizationResponse> {
-    use crate::storage::models::UpdateOrganization;
+    use crate::storage::UpdateOrganization;
 
     // Validate format
     if !validate_org_public_id(&org_public_id) {
@@ -584,6 +609,7 @@ pub async fn update_organization(
         default_provider_per_service,
         system_decisions,
         agentid_agents_per_owner,
+        web_search_defaults,
     } = req;
     if agentid_agents_per_owner
         .flatten()
@@ -624,7 +650,7 @@ pub async fn update_organization(
             .ok_or_else(|| {
                 ErrorResponse::new("Model not found").into_response(StatusCode::BAD_REQUEST)
             })?;
-        crate::services::model_catalog::require_chat(model.provider_metadata.as_ref()).map_err(
+        crate::domains::models::catalog::require_chat(model.provider_metadata.as_ref()).map_err(
             |_| {
                 ErrorResponse::new("Default model must be a chat model")
                     .into_response(StatusCode::BAD_REQUEST)
@@ -683,6 +709,26 @@ pub async fn update_organization(
         }
     }
 
+    let web_search_defaults = match web_search_defaults {
+        Some(defaults) => Some(
+            crate::domains::organizations::web_search::validate_defaults(
+                &state.db,
+                org_row.org_id,
+                defaults,
+            )
+            .await
+            .map_err(|error| match error {
+                Ok(message) => ErrorResponse::new(message).into_response(StatusCode::BAD_REQUEST),
+                Err(error) => {
+                    tracing::error!(%error, "Failed to validate web search defaults");
+                    ErrorResponse::new("Internal error")
+                        .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+                }
+            })?,
+        ),
+        None => None,
+    };
+
     // Update organization
     let input = UpdateOrganization { name };
 
@@ -720,6 +766,13 @@ pub async fn update_organization(
             )
             .await
             .log_internal_error_json("update organization settings")?;
+    }
+    if let Some(defaults) = &web_search_defaults {
+        state
+            .db
+            .set_org_web_search_defaults(org_row.org_id, defaults)
+            .await
+            .log_internal_error_json("update web search defaults")?;
     }
     if let Some(cap) = agentid_agents_per_owner {
         state
@@ -857,6 +910,10 @@ async fn build_organization_response(
         .agentid_agents_per_owner_setting(org_id)
         .await
         .log_internal_error_json("get AgentID owner cap")?;
+    let web_search_defaults = db
+        .org_web_search_defaults(org_id)
+        .await
+        .log_internal_error_json("get web search defaults")?;
 
     let onboarding_completed_at = row.onboarding_completed_at;
     let org = Organization {
@@ -881,6 +938,7 @@ async fn build_organization_response(
             .map(|s| crate::storage::SystemDecisions::from_db(&s.system_decisions))
             .unwrap_or_default(),
         agentid_agents_per_owner,
+        web_search_defaults,
         created_at: org.created_at,
         updated_at: org.updated_at,
         onboarding_completed_at,

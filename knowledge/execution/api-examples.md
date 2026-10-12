@@ -92,7 +92,7 @@ non-deterministic `examples` map ordering (same caveat as
             description = "Harness, Agent, or Model not found",
             body = ErrorResponse,
             example = json!({
-                "type": "https://docs.everruns.com/errors/harness_not_found",
+                "type": "https://everruns.com/docs/errors/harness_not_found",
                 "title": "Not Found",
                 "status": 404,
                 "detail": "Harness 'generic' not found in org org_00000000000000000000000000000001.",

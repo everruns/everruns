@@ -16,5 +16,10 @@ declare module "./legacy-api-types" {
      * an `issue`; failures recorded before the field existed omit it and read as issues too.
      */
     severity?: OpenApiToolCompletedData["severity"];
+    /**
+     * Details for people (chat details view, Session Trace) that the model never saw. Web
+     * search puts the provider that answered, every attempt and the raw responses here.
+     */
+    details?: OpenApiToolCompletedData["details"];
   }
 }

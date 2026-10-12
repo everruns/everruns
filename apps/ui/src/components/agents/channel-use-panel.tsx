@@ -18,8 +18,8 @@ function ingressPath(kind: ChannelType, channelId: string, agentId?: string): st
       return agentId ? `/v1/agents/${agentId}/channels/${channelId}/voice/calls` : null;
     case "webhook":
       return `/v1/channels/${channelId}/webhook`;
-    case "api_endpoint":
-      return `/v1/channels/${channelId}/sessions`;
+    case "api":
+      return `/v1/channels/${channelId}`;
     case "a2a":
       return `/v1/channels/${channelId}/a2a`;
     case "ag_ui":
@@ -45,8 +45,8 @@ function describe(kind: ChannelType): string {
       return "A2A callers send a task here; the agent card is at the same path plus /.well-known/agent-card.json.";
     case "voice":
       return "POST the browser's WebRTC SDP offer with an organization API key, then set the returned answer_sdp on the peer connection.";
-    case "api_endpoint":
-      return "Create a session with the channel's API key, then post messages to it.";
+    case "api":
+      return "This is the agent's base URL. Call it from code with an agent key: create a session at /sessions, then post messages to it.";
     default:
       return "Send a request here to invoke the agent through this channel.";
   }
@@ -73,6 +73,16 @@ export function ChannelUsePanel({ channel, agentId }: { channel: AgentChannel; a
     }
     if (channel.channel_type === "slack") {
       return [{ label: "Request URL", language: "text", code: url }];
+    }
+    if (channel.channel_type === "api") {
+      return [
+        {
+          label: "curl",
+          language: "bash",
+          code: `# Start a session; the response carries its id\ncurl -X POST '${url}/sessions' \\\n  -H 'authorization: Bearer <agent_key>' \\\n  -H 'content-type: application/json' \\\n  -d '{}'\n\n# Send a message, then follow ${url}/sessions/<session_id>/sse\ncurl -X POST '${url}/sessions/<session_id>/messages' \\\n  -H 'authorization: Bearer <agent_key>' \\\n  -H 'content-type: application/json' \\\n  -d '{"message": {"role": "user", "content": [{"type": "text", "text": "hello"}]}}'`,
+        },
+        { label: "URL", language: "text", code: url },
+      ];
     }
     if (channel.channel_type === "voice") {
       return [

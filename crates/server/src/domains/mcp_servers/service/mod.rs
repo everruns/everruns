@@ -10,10 +10,10 @@
 // live here together because they share internal helpers (encryption,
 // settings mapping, tool fetching).
 
-use crate::records::{McpServer, McpServerStatus};
+use crate::domains::mcp_servers::record::{McpServer, McpServerStatus};
 use crate::storage::{
-    EncryptionService, McpServerRow, StorageBackend,
-    models::{CreateMcpServerRow, UpdateMcpServer, UpdateMcpServerTools},
+    CreateMcpServerRow, EncryptionService, McpServerRow, StorageBackend, UpdateMcpServer,
+    UpdateMcpServerTools,
 };
 use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
@@ -105,6 +105,10 @@ pub struct McpServerSettings {
     /// instead of an MCP OAuth grant. Persisted in `settings`, so no migration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub service_connection_provider: Option<String>,
+    /// Last connection check of an OAuth preset (`connection_check` module).
+    /// Kept in `settings` so no migration is needed; absent until one runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connection_check: Option<crate::domains::mcp_servers::record::McpConnectionCheck>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -176,6 +180,7 @@ impl McpServerService {
                 elicitation_policy: McpElicitationPolicy::Url,
                 oauth: None,
                 service_connection_provider: None,
+                connection_check: None,
             });
 
         if row.settings.get("auth_mode").is_none() {
@@ -260,6 +265,7 @@ impl McpServerService {
             elicitation_policy: req.elicitation_policy.unwrap_or_default(),
             oauth: None,
             service_connection_provider,
+            connection_check: None,
         };
 
         let input = CreateMcpServerRow {
@@ -275,7 +281,7 @@ impl McpServerService {
         };
 
         let row = self.db.create_mcp_server(caller.org_id, input).await?;
-        Ok(Self::row_to_mcp_server(&row))
+        Ok(super::queries::row_to_mcp_server(&row))
     }
 
     pub async fn get(&self, caller: &Caller, id: Uuid) -> Result<Option<McpServer>> {
@@ -283,7 +289,7 @@ impl McpServerService {
         Ok(row
             .as_ref()
             .filter(|row| row.status != "deleted")
-            .map(Self::row_to_mcp_server))
+            .map(super::queries::row_to_mcp_server))
     }
 
     /// Batch fetch multiple MCP servers with their cached tools in a single query.
@@ -297,7 +303,7 @@ impl McpServerService {
         let mut servers = HashMap::with_capacity(rows.len());
 
         for row in rows {
-            let server = Self::row_to_mcp_server(&row);
+            let server = super::queries::row_to_mcp_server(&row);
             let server_id = row.id.uuid();
             let tools = self.tools_for_row(caller.org_id, &row).await;
             servers.insert(server_id, (server, tools));
@@ -316,7 +322,7 @@ impl McpServerService {
             .db
             .list_mcp_servers(caller.org_id, search, include_archived)
             .await?;
-        Ok(rows.iter().map(Self::row_to_mcp_server).collect())
+        Ok(rows.iter().map(super::queries::row_to_mcp_server).collect())
     }
 
     pub async fn update(
@@ -437,7 +443,7 @@ impl McpServerService {
         };
 
         let row = self.db.update_mcp_server(caller.org_id, id, input).await?;
-        Ok(row.as_ref().map(Self::row_to_mcp_server))
+        Ok(row.as_ref().map(super::queries::row_to_mcp_server))
     }
 
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
@@ -457,7 +463,7 @@ impl McpServerService {
     /// List active MCP servers (for capability listing)
     pub async fn list_active(&self, caller: &Caller) -> Result<Vec<McpServer>> {
         let rows = self.db.list_active_mcp_servers(caller.org_id).await?;
-        Ok(rows.iter().map(Self::row_to_mcp_server).collect())
+        Ok(rows.iter().map(super::queries::row_to_mcp_server).collect())
     }
 
     /// List active MCP servers with their cached tools
@@ -507,14 +513,18 @@ impl McpServerService {
             );
         }
 
-        // Fetch tools from MCP server
-        let tools = fetch_mcp_tools(
+        let listed = fetch_mcp_tools_with_cache_hints(
             self.egress_service.as_ref(),
             &row.url,
             api_key.as_deref(),
             &headers,
         )
         .await?;
+        if let Some(info) = &listed.server_info {
+            super::presentation::merge_server_info(&self.db, caller.org_id, id, &row.url, info)
+                .await;
+        }
+        let tools = listed.tools;
 
         // Cache tools in database
         let cached_tools = serde_json::to_value(&tools)?;
@@ -538,14 +548,18 @@ impl McpServerService {
             .ok_or_else(|| crate::errors::ResourceNotFoundError::new("MCP server"))?;
         let headers: HashMap<String, String> =
             serde_json::from_value(row.headers.clone()).unwrap_or_default();
-        let tools = fetch_mcp_tools(
+        let listed = fetch_mcp_tools_with_cache_hints(
             self.egress_service.as_ref(),
             &row.url,
             Some(token),
             &headers,
         )
         .await?;
-        Ok(tools)
+        if let Some(info) = &listed.server_info {
+            super::presentation::merge_server_info(&self.db, caller.org_id, id, &row.url, info)
+                .await;
+        }
+        Ok(listed.tools)
     }
 
     /// Age of a cached tool list, if one exists. A small future timestamp
@@ -580,7 +594,7 @@ impl McpServerService {
         })
     }
 
-    fn cached_tools(row: &McpServerRow) -> Vec<McpToolDefinition> {
+    pub(crate) fn cached_tools(row: &McpServerRow) -> Vec<McpToolDefinition> {
         if Self::settings_from_row(row).auth_mode == McpServerAuthMode::OAuth {
             return Vec::new();
         }
@@ -869,12 +883,8 @@ impl McpServerService {
         }))
     }
 
-    fn row_to_mcp_server(row: &McpServerRow) -> McpServer {
-        super::queries::row_to_mcp_server(row)
-    }
-
     fn row_to_mcp_server_with_tools(row: &McpServerRow) -> McpServerWithTools {
-        let server = Self::row_to_mcp_server(row);
+        let server = super::queries::row_to_mcp_server(row);
         let cached_tools = Self::cached_tools(row);
 
         McpServerWithTools {

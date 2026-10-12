@@ -53,7 +53,7 @@ reach without a separate integration via the
 | Integration | What it provides |
 |---|---|
 | [A2A](/features/a2a/) | Let other agents call an Agent over A2A 1.0, and delegate work to external A2A agents |
-| [AgentID Sign-In](/integrations/agentid/) | Let an Agent sign in to apps that support AgentID with its own AgentMail inbox. Experimental, organisation opt-in |
+| [AgentID Sign-In](/integrations/agentid/) | Let an Agent sign in to apps that support AgentID with its own AgentMail inbox. Experimental |
 
 ## Credentials
 

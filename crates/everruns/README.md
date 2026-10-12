@@ -27,7 +27,7 @@ cargo add tokio --features macros,rt-multi-thread
 export OPENAI_API_KEY=sk-...
 ```
 
-Define a typed tool, give it to an agent powered by GPT-5.6 Terra, and run a
+Define a typed tool, give it to an agent powered by GPT-6.1 Sol, and run a
 turn:
 
 ```rust
@@ -37,7 +37,7 @@ use everruns::{Agent, Engine, OpenAI};
 
 /// Return the current Unix time in seconds.
 #[everruns::tool]
-async fn current_time() -> Result<u64, String> {
+async fn unix_time() -> Result<u64, String> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
@@ -48,10 +48,10 @@ async fn current_time() -> Result<u64, String> {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
         .name("assistant")
-        .instructions("Use current_time when asked about time. Be concise.")
+        .instructions("Use unix_time when asked about time. Be concise.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-5.6-terra")
-        .tool(current_time())
+        .model("gpt-6.1-sol")
+        .tool(unix_time())
         .build()?;
 
     let session = Engine::new().create(agent);
@@ -89,11 +89,11 @@ call the model directly — same provider, same credentials, no agent loop:
 ```rust
 use everruns::{Model, OpenAI};
 
-let model = Model::new("gpt-5.6-terra", OpenAI::from_env()?);
+let model = Model::new("gpt-6.1-sol", OpenAI::from_env()?);
 let answer = model.complete("Name the three primary colors.").await?;
 ```
 
-See [Direct model calls](https://docs.everruns.com/framework/direct-model-calls/).
+See [Direct model calls](https://everruns.com/docs/framework/direct-model-calls/).
 
 Picking that model id is the same provider, asked a different question:
 
@@ -105,7 +105,7 @@ for model in models::list(OpenAI::from_env()?).await? {
 }
 ```
 
-See [Model catalogs](https://docs.everruns.com/framework/models-and-providers/).
+See [Model catalogs](https://everruns.com/docs/framework/models-and-providers/).
 
 And when the answer is a number rather than prose — *does this hold, how severe
 is it, which of these* — ask for a judgment instead of parsing one out of text:
@@ -118,7 +118,7 @@ let spam = judge.probability("Is this message spam?", text).await?;
 ```
 
 The threshold stays in your code, so there is no written verdict to misparse.
-See [Direct decision](https://docs.everruns.com/framework/direct-model-calls/).
+See [Direct decision](https://everruns.com/docs/framework/direct-model-calls/).
 
 ## Credentials come from your vendor's own variables
 
@@ -145,7 +145,7 @@ that declares nothing is never configured from the environment.
 This is for standalone, CLI, and development use. Server deployments resolve
 credentials from encrypted storage and read no environment variables — drivers
 only declare names, they never read them. See
-[Credentials](https://docs.everruns.com/framework/models-and-providers/).
+[Credentials](https://everruns.com/docs/framework/models-and-providers/).
 
 ## Give agents tools and capabilities
 
@@ -164,7 +164,7 @@ use everruns::{Agent, CompactionConfig, ToolSearch};
 let agent = Agent::builder()
     .instructions("Find the right tool and keep long sessions focused.")
     .provider(everruns::OpenAI::from_env()?)
-    .model("gpt-5.6-terra")
+    .model("gpt-6.1-sol")
     .capability(ToolSearch::automatic())
     .capability(CompactionConfig::new().budget_percent(0.85))
     .build()?;
@@ -172,18 +172,19 @@ let agent = Agent::builder()
 
 You can also define reusable capability packages in Rust or load open,
 configuration-driven capability references. See [Tools and
-macros](https://docs.everruns.com/framework/agents/), [capability
-integrations](https://docs.everruns.com/framework/capability-integrations/),
+macros](https://everruns.com/docs/framework/agents/), [capability
+integrations](https://everruns.com/docs/framework/capability-integrations/),
 and [authoring advanced
-capabilities](https://docs.everruns.com/framework/advanced-capabilities/).
+capabilities](https://everruns.com/docs/framework/advanced-capabilities/).
 
 ## Choose a reusable harness foundation
 
-`Harness::base()`, `Harness::conversation()`, `Harness::worker_base()` and
-`Harness::worker()` share the hosted platform's presets. Conversation provides
-context management; Worker Base adds files and bash; Worker adds skills,
-long-context support, budgeting and delegation. Enable optional host integrations
-for the tools your application uses.
+`Harness::base()`, `Harness::conversation()`, `Harness::worker()` and
+`Harness::bashkit_worker()` share the hosted platform's presets. Base carries
+context management and tool-call robustness; Conversation adds chat
+affordances; Worker adds files, project instructions, skills, long context,
+budgeting and delegation without a shell; Bashkit Worker adds the Bashkit
+shell. Enable optional host integrations for the tools your application uses.
 Presets retain the read-only workspace default; file writes require an explicit
 `Agent::builder().workspace_policy(WorkspacePolicy::read_write())`.
 
@@ -247,7 +248,7 @@ opt-in.
 | `a2a` | Outbound Agent2Agent delegation; includes `local` |
 | `ag-ui` | Serve a session to AG-UI 1.0 clients (CopilotKit, `@ag-ui/client`) with `Session::ag_ui` |
 | `ag-ui-axum` | `ag-ui` plus `AgUiHandler`, a ready-made axum route with an authorizer, thread resolution and SSE framing |
-| `durable` | Experimental: run an `Engine`'s turns as queued, checkpointed steps on in-process workers with `durable::Backend` |
+| `channel-auth` | `channel_auth`: the everruns server's credential verifier for agent endpoints (OIDC/JWKS, OAuth 2.0 introspection, claim requirements) |
 
 Combine features as needed:
 
@@ -262,7 +263,7 @@ includes the exact command for each one.
 
 ### Start here
 
-- [`hello`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/hello.rs) — a small GPT-5.6 Terra agent with a typed tool
+- [`hello`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/hello.rs) — a small GPT-6.1 Sol agent with a typed tool
   and live events.
 - [`production_agent`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/production_agent.rs) — defensive tool
   boundaries and a multi-turn support agent.
@@ -303,19 +304,19 @@ includes the exact command for each one.
 
 ## Documentation
 
-- [Framework guide](https://docs.everruns.com/framework/)
-- [Agents](https://docs.everruns.com/framework/agents/)
-- [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
-- [Direct model calls](https://docs.everruns.com/framework/direct-model-calls/)
-- [Model catalogs](https://docs.everruns.com/framework/models-and-providers/)
-- [Direct decision](https://docs.everruns.com/framework/direct-model-calls/)
-- [Credentials](https://docs.everruns.com/framework/models-and-providers/)
-- [Sessions](https://docs.everruns.com/framework/sessions/)
-- [Events and cancellation](https://docs.everruns.com/framework/events-and-cancellation/)
-- [Persistence](https://docs.everruns.com/framework/sessions/)
-- [Workspaces and environments](https://docs.everruns.com/framework/workspaces-and-environments/)
-- [Custom providers](https://docs.everruns.com/framework/models-and-providers/)
-- [Custom backends](https://docs.everruns.com/framework/custom-backends/)
+- [Framework guide](https://everruns.com/docs/framework/)
+- [Agents](https://everruns.com/docs/framework/agents/)
+- [Models and providers](https://everruns.com/docs/framework/models-and-providers/)
+- [Direct model calls](https://everruns.com/docs/framework/direct-model-calls/)
+- [Model catalogs](https://everruns.com/docs/framework/models-and-providers/)
+- [Direct decision](https://everruns.com/docs/framework/direct-model-calls/)
+- [Credentials](https://everruns.com/docs/framework/models-and-providers/)
+- [Sessions](https://everruns.com/docs/framework/sessions/)
+- [Events and cancellation](https://everruns.com/docs/framework/events-and-cancellation/)
+- [Persistence](https://everruns.com/docs/framework/sessions/)
+- [Workspaces and environments](https://everruns.com/docs/framework/workspaces-and-environments/)
+- [Custom providers](https://everruns.com/docs/framework/models-and-providers/)
+- [Custom backends](https://everruns.com/docs/framework/custom-backends/)
 - [API reference](https://docs.rs/everruns)
 
 ## License

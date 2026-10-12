@@ -1,136 +1,46 @@
-# Focused crates for Framework applications and advanced hosts
+# Dependencies for Framework applications and advanced hosts
 
-Start with `everruns`, then add only the provider, integration, or host crates
-you use. This catalog lists focused crates, how to register them, and what they
-contribute.
+Start with `everruns`. Select only the features the application needs; use the
+installed version's Cargo features and documentation as the authority.
 
-The primary and advanced-host entrypoints are:
+| Dependency | When needed |
+|---|---|
+| `everruns` | Application agents, Engine-owned sessions, tools, providers, and workspace policies |
+| `everruns-core` with `host` | Advanced composition, backend replacement, and host phase contracts via `everruns_core::host` |
+| `everruns-core` with `engine` | Backend-neutral execution kernel via `everruns_core::engine` |
+| `everruns-contracts` | Neutral service, provider, capability, and execution contracts |
+| `everruns-drivers` | Direct vendor-driver composition for an advanced host |
+| `everruns-integrations` | Direct integration composition for an advanced host |
+| `everruns-durable-engine` and `everruns-durable` | Explicitly selected checkpointed deployment orchestration |
 
-- `everruns`, application-facing Framework entrypoint ([docs.rs](https://docs.rs/everruns))
-- `everruns-host`, low-level host composition for advanced integrators ([docs.rs](https://docs.rs/everruns-host))
+Do not add retired `everruns-host`, `everruns-engine`, or `everruns-mcp` crates.
+Their current boundaries are modules/features of `everruns-core`.
 
-## LLM provider crates (drivers)
+## Select facade features
 
-Each vendor module of `everruns-drivers` registers a driver keyed by a `DriverId`. Register the
-driver, then point `default_model.provider_type` at the matching `DriverId`.
+Enable a provider such as `openai` and configure `OpenAI::from_env()` for a live
+model. `Model::simulated` bundles an offline provider for deterministic tests.
+Provider driver identities are wire IDs, not a closed enum of all providers.
 
-| Crate | `DriverId` | Notes |
-|---|---|---|
-| `everruns-drivers` feature `openai` | `DriverId::OpenAI` (Responses API), `DriverId::AzureOpenAI` (Azure OpenAI Responses API), `DriverId::OpenAICompletions` (Chat Completions) | One `register_driver` call registers all three; also reaches OpenAI-compatible endpoints via `base_url` |
-| `everruns-drivers` feature `anthropic` | `DriverId::Anthropic` | Supports prompt caching |
-| `everruns-drivers` feature `gemini` | `DriverId::Gemini` | Google Gemini |
-| `everruns-drivers` feature `openrouter` | `DriverId::OpenRouter` | OpenRouter model gateway |
-| `everruns-drivers` feature `fireworks` | `DriverId::Fireworks` | Fireworks AI, open-model inference (Llama, Qwen, DeepSeek, GLM, …) |
-| `everruns-drivers` feature `mistral` | `DriverId::Mistral` | Mistral AI (La Plateforme): Mistral Large, Medium, Small, Codestral |
-| `everruns-drivers` feature `mai` | `DriverId::Mai` | Microsoft MAI |
-| `everruns-drivers` feature `bedrock` | `DriverId::Bedrock` | AWS Bedrock |
-| built into `everruns-core` | `DriverId::LlmSim` | Deterministic simulator for tests/examples; no real API key |
+Use `mcp` for scoped remote MCP and `mcp-stdio` for opt-in local processes.
+Integration features such as `filesystem`, `bashkit`, `web-fetch`, `duckduckgo`,
+and `lua` select their concrete implementations. Host command execution through
+`host-shell` or `host-compute` requires a deliberate containment policy.
 
-Registration pattern:
+The `local` feature supplies local persistence and workspace support. When
+replacing stores directly, use `HostBackends` from `everruns_core::host` and
+keep the canonical event log as the conversation write path. Connection-aware
+tools require the host's credential resolver; a capability alone supplies no
+user credentials.
 
-```rust,ignore
-let mut drivers = DriverRegistry::new();
-everruns_drivers::openai::register_driver(&mut drivers);
-let platform = HostComposition::new(capabilities, drivers);
-```
+Use `everruns::batteries::runtime_builder()` when an advanced host wants the
+facade's selected integration presets. Supplying a custom `HostComposition`
+replaces the default capability registry; register each capability that the
+host will reference.
 
-For an OpenAI-compatible local server (e.g. Ollama, a gateway), keep the
-matching `DriverId` and set `base_url` on the `ResolvedModel`.
-
-## Integration crates (capabilities / tools)
-
-Integration crates ship optional capabilities. Construct the capability and
-`register` it on a `CapabilityRegistry`, then reference it by name on a harness.
-
-### Integrations
-
-The maintained feature modules live in `everruns-integrations`; Deno and Sprites
-live in `everruns-integrations-experimental`:
-
-| Crate feature | Capability | Notes |
-|---|---|---|
-| `everruns-integrations` `daytona` | `DaytonaCapability` | Daytona cloud sandbox; connection-aware |
-| `everruns-integrations` `e2b` | E2B sandbox | E2B cloud sandbox |
-| `everruns-integrations` `docker` | Docker | Local Docker container sandbox |
-| `everruns-integrations-experimental` `deno` | Deno | Experimental cloud sandbox |
-| `everruns-integrations-experimental` `sprites` | Sprites | Experimental cloud sandbox |
-| `everruns-integrations` `cursor` | Cursor | Cursor Cloud Agents |
-| `everruns-integrations` `duckduckgo` | `DuckDuckGoCapability` | Free instant answers; no API key |
-| `everruns-integrations` `brave-search` | Brave Search | Requires Brave API key |
-| `everruns-integrations` `parallel` | Parallel | Parallel web search MCP |
-| `everruns-integrations` `browserless` | Browserless | Headless browser automation |
-
-### Discovery
-
-Platform-level discovery capability (a sibling of MCP / A2A, not an external
-integration).
-
-| Crate | Capability | Notes |
-|---|---|---|
-| `everruns-ard` | `resource_discovery` | Agentic Resource Discovery client, discover + attach external MCP servers / A2A agents at runtime |
-
-### Blueprints
-
-| Crate | Contributes | Notes |
-|---|---|---|
-| `everruns-integrations` `github` | Agent blueprints | GitHub-backed agent blueprints |
-
-Registration pattern:
-
-```rust,ignore
-let mut capabilities = CapabilityRegistry::new();
-capabilities.register(DuckDuckGoCapability);
-capabilities.register(DaytonaCapability);
-let platform = HostComposition::new(capabilities, drivers);
-```
-
-## Connection-aware integrations (credentials)
-
-Some integrations, Daytona is the canonical example, need a per-user
-credential resolved at tool-execution time. Advanced hosts supply a credential
-source through `HostBackends`:
-
-```rust,ignore
-let backends = HostBackends::in_memory()
-    .with_connection_resolver(my_connection_resolver); // Arc<dyn UserConnectionResolver>
-```
-
-The runtime then exposes it via `ToolContext.connection_resolver`. There is no
-in-memory default: a resolver implies a real credential source the embedder
-owns. When unset, connection-aware tools fall back to their own guidance
-(session secret, then "connect the provider"). See
-`knowledge/integrations/user-connections.md` in the repo.
-
-## Durable local backends
-
-The `everruns::local` module (feature `local`) provides SQLite-backed,
-restart-survivable stores for single-process hosts: `LocalSessionTaskRegistry`,
-`LocalScheduleStore`, `LocalPlatformStore`, `LocalProfile`, composable
-`LocalBackends`, and `LocalRuntimeBuilder`.
-
-The module populates optional `everruns-host` backend slots
-(`session_task_registry`, `schedule_store_factory`, `platform_store_factory`),
-which otherwise default to in-memory. Use it when background tasks, schedules, or
-session state must survive a process restart.
-
-## Framework and host features
-
-| Feature | Effect | Default |
-|---|---|---|
-| `mcp-stdio` | Enables local-process (stdio) MCP servers | off |
-| `lua` on `everruns-host` | Compiles the experimental sandboxed Lua execution engine for advanced hosts | off |
-
-```bash
-cargo add everruns --features mcp-stdio
-```
-
-## Backend store override traits (in `everruns-host`)
-
-Supply your own implementation through `HostBackends`; anything
-not overridden stays in-memory:
-
-`RuntimeHarnessStore`, `RuntimeAgentStore`, `RuntimeSessionStore`,
-`RuntimeProviderStore`, `EventLog`, `EventSink`, and `EventReader`. Session files come
-from the platform's `SessionFileSystemFactory`
-(`InMemorySessionFileSystemFactory`, `RealDiskSessionFileSystemFactory`, or a
-custom factory such as S3).
+- [Custom backends](https://docs.everruns.com/framework/custom-backends/)
+- [Capability integrations](https://docs.everruns.com/framework/capability-integrations/)
+- [Capability boundaries](https://docs.everruns.com/framework/capability-boundaries/)
+- [Workspaces and environments](https://docs.everruns.com/framework/workspaces-and-environments/)
+- [Core API](https://docs.rs/everruns-core)
+- [Contracts API](https://docs.rs/everruns-contracts)

@@ -24,8 +24,11 @@ export interface NotebookEntry {
 
 const notebookManifest = manifest as Record<string, NotebookEntry>;
 
+// Manifest routes are base-less (`/tutorials/x/`); page URLs carry the base.
 export function normalizeNotebookRoute(route: string) {
-  return route.replace(/\/?$/, "/");
+  const base = import.meta.env.BASE_URL.replace(/\/+$/, "");
+  const withoutBase = base && route.startsWith(`${base}/`) ? route.slice(base.length) : route;
+  return withoutBase.replace(/\/?$/, "/");
 }
 
 export function findNotebookEntry({

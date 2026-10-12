@@ -7,7 +7,7 @@ reach, and `[voice]` in `serve.toml` sets how calls sound.
 
 ```sh
 OPENAI_API_KEY=… cargo run -p serve-example-voice   # dev server on :3000
-cargo run -p serve-example-voice -- eval            # 1 passed
+OPENAI_API_KEY=… cargo run -p serve-example-voice -- eval   # 1 passed
 ```
 
 Open <http://127.0.0.1:3000/v1/channels/concierge/voice> and select
@@ -20,8 +20,14 @@ speaks, and the agent, on its own model and tools, writes every answer. The
 key stays on the server; the browser exchanges its WebRTC offer through
 `POST /v1/channels/concierge/voice/calls` and audio flows straight to OpenAI.
 
-Without `OPENAI_API_KEY`, `dev` places calls on the offline speech simulator:
-the routes answer, but no audio plays. `start` refuses calls without a key.
+`OPENAI_API_KEY` is required: it carries both the agent's model
+(`openai/gpt-6.1-sol`) and the realtime speech.
+
+Uncomment `mode = "cascaded"` in `serve.toml` to run the same agent in
+cascaded mode: `gpt-4o-transcribe` listens, `gpt-4o-mini-tts` speaks, and the
+test page streams microphone audio to serve over a WebSocket
+(`/v1/channels/concierge/voice/ws`) instead of WebRTC. That transport also
+works where WebRTC to OpenAI cannot reach, such as a network that blocks UDP.
 
 ## Call it from your own page
 

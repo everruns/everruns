@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use crate::records::observer::{ObserverMatch, ObserverScope, ObserverScorerConfig};
+use crate::domains::observers::record::{ObserverMatch, ObserverScope, ObserverScorerConfig};
 use async_trait::async_trait;
 use everruns_contracts::typed_id::TraceScoreId;
 use everruns_core::EventListener;
@@ -16,8 +16,8 @@ use everruns_core::events::{Event, EventData, TURN_COMPLETED};
 use tracing::{error, instrument};
 use uuid::Uuid;
 
+use crate::storage::CreateTraceScoreRow;
 use crate::storage::StorageBackend;
-use crate::storage::models::CreateTraceScoreRow;
 
 /// Tag marking synthetic eval-run sessions, which observers must never score.
 const EVAL_SESSION_TAG: &str = "eval";

@@ -25,7 +25,7 @@ use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
 use crate::domains::sessions::types::CreateSessionRequest;
 use crate::storage::StorageBackend;
-use crate::storage::models::UpdateAgentHealthCheckRunRow;
+use crate::storage::UpdateAgentHealthCheckRunRow;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 const CASE_TIMEOUT: Duration = Duration::from_secs(120);
@@ -175,7 +175,7 @@ async fn run_case(
             Some(agent_internal_id),
             Some(agent_public_id),
             // A health check is an internal API-shaped run, not a user session.
-            crate::records::SessionSource::Api,
+            crate::domains::sessions::record::SessionSource::Api,
             CreateSessionRequest {
                 playground_user_id: None,
                 source: None,
@@ -201,6 +201,7 @@ async fn run_case(
                 forked_from_session_id: None,
                 budget_root_session_id: None,
                 seed: everruns_core::SessionSeedMode::Fresh,
+                fork_up_to_sequence: None,
                 workspace_id: None,
                 // Bound per-case work: the wall-clock timeout is a backstop,
                 // but a hard iteration cap prevents expensive tool/LLM loops
@@ -281,7 +282,7 @@ async fn run_case(
 async fn run_turn(
     ctx: &HealthCheckRunContext,
     org_id: i64,
-    session: &crate::records::Session,
+    session: &crate::domains::sessions::record::Session,
     harness_id: Uuid,
     agent_internal_id: Uuid,
     content: &str,
@@ -307,6 +308,7 @@ async fn run_turn(
         metadata: None,
         tags: None,
         external_actor: None,
+        client_message_id: None,
     };
     ctx.message_service
         .create(msg_ctx, msg_req)
@@ -473,27 +475,11 @@ pub(super) fn summarize(results: &[HealthCheckCaseResult]) -> HealthCheckSummary
     }
 }
 
-fn extract_final_assistant_content(events: &[crate::storage::models::EventRow]) -> String {
-    for event in events.iter().rev() {
-        if event.event_type == "output.message.completed"
-            && let Some(parts) = event
-                .data
-                .get("message")
-                .and_then(|m| m.get("content"))
-                .and_then(|c| c.as_array())
-        {
-            return parts
-                .iter()
-                .filter(|p| p.get("type").and_then(|t| t.as_str()) == Some("text"))
-                .filter_map(|p| p.get("text").and_then(|t| t.as_str()))
-                .collect::<Vec<_>>()
-                .join("\n");
-        }
-    }
-    String::new()
+fn extract_final_assistant_content(events: &[crate::storage::EventRow]) -> String {
+    crate::domains::evals::runner::extract_final_assistant_content(events)
 }
 
-fn count_turns(events: &[crate::storage::models::EventRow]) -> u32 {
+fn count_turns(events: &[crate::storage::EventRow]) -> u32 {
     events
         .iter()
         .filter(|e| e.event_type == TURN_COMPLETED)

@@ -1,12 +1,12 @@
 use super::invocation::{cron_min_interval_seconds, normalize_cron_expression};
-use crate::domains::common::{CommandError, classify_anyhow};
-use crate::records::PublicToolVisibility;
-use crate::records::agent_channel::{ScheduleChannelConfig, WebhookChannelConfig};
-use crate::records::{
-    A2aChannelConfig, AgUiChannelConfig, ApiChannelConfig, ChannelAuthConfig, ChannelAuthMode,
+use crate::domains::agent_channels::record::exposure::PublicToolVisibility;
+use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
+use crate::domains::agent_channels::record::{
+    A2aChannelConfig, AgUiChannelConfig, ChannelAuthConfig, ChannelAuthMode,
     ChannelAuthProviderConfig, ChannelType, FcpChannelConfig, PublicChatChannelConfig,
-    SlackChannelConfig,
 };
+use crate::domains::agent_channels::record::{ScheduleChannelConfig, WebhookChannelConfig};
+use crate::domains::common::{CommandError, classify_anyhow};
 use crate::storage::password::hash_password;
 use serde_json::Value;
 use std::str::FromStr;
@@ -25,17 +25,18 @@ pub(crate) fn normalize_and_validate_channel_config(
     mut channel_config: Value,
 ) -> Result<Value, CommandError> {
     match channel_type {
-        ChannelType::AgUi
-        | ChannelType::A2a
-        | ChannelType::ApiEndpoint
-        | ChannelType::PublicChat => {
+        ChannelType::AgUi | ChannelType::A2a | ChannelType::PublicChat => {
             normalize_inline_channel_auth(&channel_type, &mut channel_config)?;
         }
         ChannelType::Fcp
         | ChannelType::Slack
         | ChannelType::Schedule
         | ChannelType::Webhook
-        | ChannelType::Voice => {
+        | ChannelType::Voice
+        | ChannelType::Api
+        | ChannelType::Poppy => {
+            // An api channel is called with agent keys, managed on their own.
+            // A Poppy channel authenticates personal agents by protocol.
             // Voice calls are placed by org members and API keys today.
             // FCP deliberately runs its own minimal auth stack (anonymous +
             // shared bearer token) so it never shares verifier code with
@@ -195,32 +196,48 @@ pub(crate) fn normalize_and_validate_channel_config(
                 validate_pact_profile(pact)?;
             }
         }
-        ChannelType::ApiEndpoint => {
-            let config: ApiChannelConfig =
+        ChannelType::Api => {
+            let config: super::record::api::AgentApiChannelConfig =
                 serde_json::from_value(channel_config.clone()).map_err(|e| {
-                    CommandError::bad_request(format!("Invalid api_endpoint channel config: {e}"))
+                    CommandError::bad_request(format!("Invalid api channel config: {e}"))
                 })?;
-            validate_session_binding(&channel_type, config.session_mode)?;
-            if config.api_key_hash.trim().is_empty() {
-                return Err(CommandError::bad_request(
-                    "api_endpoint channel config requires a non-empty api_key_hash",
-                ));
-            }
-            if config.api_key_prefix.trim().is_empty() {
-                return Err(CommandError::bad_request(
-                    "api_endpoint channel config requires a non-empty api_key_prefix",
-                ));
-            }
-            // Mirror the A2A/AG-UI cap so a typo cannot silently disable the
-            // per-channel limit by overflowing reasonable expectations. `0` is
-            // allowed and means "no per-channel cap".
-            if let Some(limit) = config.rate_limit_per_minute
-                && limit > 1_000_000
+            validate_session_binding(&channel_type, config.session_binding)?;
+            if config
+                .rate_limit_per_minute
+                .is_some_and(|limit| limit > 1_000_000)
             {
                 return Err(CommandError::bad_request(
-                    "api_endpoint rate_limit_per_minute must be at most 1,000,000",
+                    "api rate_limit_per_minute must be at most 1,000,000",
                 ));
             }
+            if config
+                .tool_activity_text
+                .as_deref()
+                .is_some_and(|text| text.chars().count() > 200)
+            {
+                return Err(CommandError::bad_request(
+                    "api tool_activity_text must be at most 200 characters",
+                ));
+            }
+            validate_api_auth_methods(&channel_type, &channel_config, &config.auth_methods)?;
+            validate_api_cors_origins(&config.cors_origins)?;
+            if config.daily_spend_limit_usd.is_some_and(|limit| {
+                !(limit > 0.0 && limit <= super::record::api::MAX_DAILY_SPEND_LIMIT_USD)
+            }) {
+                return Err(CommandError::bad_request(
+                    "api daily_spend_limit_usd must be above 0 and at most 1,000,000",
+                ));
+            }
+            strip_api_auth_method_flags(&mut channel_config);
+        }
+        ChannelType::Poppy => {
+            let config: super::record::poppy::PoppyChannelConfig =
+                serde_json::from_value(channel_config.clone()).map_err(|e| {
+                    CommandError::bad_request(format!("Invalid poppy channel config: {e}"))
+                })?;
+            config.validate().map_err(|e| {
+                CommandError::bad_request(format!("Invalid poppy channel config: {e}"))
+            })?;
         }
         ChannelType::Fcp => {
             let config: FcpChannelConfig =
@@ -262,6 +279,13 @@ pub(crate) fn normalize_and_validate_channel_config(
             config.validate().map_err(|e| {
                 CommandError::bad_request(format!("Invalid voice channel config: {e}"))
             })?;
+            // Cascaded calls relay audio through the host, and the server has
+            // no audio transport yet (Framework and serve do).
+            if config.mode != everruns_contracts::voice::VoiceMode::Delegated {
+                return Err(CommandError::bad_request(
+                    "Invalid voice channel config: only delegated voice channels run on the server; cascaded mode is available in the Framework and serve",
+                ));
+            }
             // Store the normalized config so defaults are visible on read.
             channel_config = serde_json::to_value(&config).map_err(|e| {
                 CommandError::bad_request(format!("Invalid voice channel config: {e}"))
@@ -445,9 +469,9 @@ fn validate_channel_auth_config(
             }
         }
         ChannelAuthMode::ApiKey => {
-            if *channel_type != ChannelType::A2a && *channel_type != ChannelType::ApiEndpoint {
+            if *channel_type != ChannelType::A2a {
                 return Err(CommandError::bad_request(
-                    "API key auth is only supported for A2A and api_endpoint channels",
+                    "API key auth is only supported for A2A channels",
                 ));
             }
             let has_hash = channel_config
@@ -657,16 +681,6 @@ pub(crate) fn merge_preserved_secret_fields(
                 out.insert("token".to_string(), existing_value.clone());
             }
         }
-        ChannelType::ApiEndpoint => {
-            // api_key_hash is write-only on the wire (redacted on read), so a
-            // PATCH that edits session_mode / rate_limit must preserve the
-            // existing frozen key rather than wipe it.
-            for key in ["api_key_hash", "api_key_prefix"] {
-                if let Some(existing_value) = existing.get(key) {
-                    out.insert(key.to_string(), existing_value.clone());
-                }
-            }
-        }
         ChannelType::PublicChat => {
             let should_preserve = out
                 .get("token")
@@ -695,9 +709,117 @@ pub(crate) fn merge_preserved_secret_fields(
                 }
             }
         }
-        ChannelType::Schedule | ChannelType::Voice => {}
+        ChannelType::Api => {
+            merge_preserved_api_auth_method_secrets(final_channel_config, existing_decrypted);
+        }
+        ChannelType::Schedule | ChannelType::Voice | ChannelType::Poppy => {}
     }
     merge_preserved_channel_auth_secrets(final_channel_config, existing_decrypted);
+}
+
+/// The customer identity methods of an api channel: only the modes that prove
+/// a person, each valid on its own.
+fn validate_api_auth_methods(
+    channel_type: &ChannelType,
+    channel_config: &Value,
+    methods: &[ChannelAuthConfig],
+) -> Result<(), CommandError> {
+    use super::record::api::{API_AUTH_MODES, MAX_AUTH_METHODS};
+    if methods.len() > MAX_AUTH_METHODS {
+        return Err(CommandError::bad_request(format!(
+            "api auth_methods holds at most {MAX_AUTH_METHODS} methods"
+        )));
+    }
+    for method in methods {
+        if !API_AUTH_MODES.contains(&method.mode) {
+            return Err(CommandError::bad_request(
+                "api auth_methods accepts oidc, google_oidc and oauth2_introspection; use an agent key to identify an application",
+            ));
+        }
+        validate_channel_auth_config(channel_type, channel_config, method)?;
+    }
+    Ok(())
+}
+
+/// Browser origins of an api channel, each exactly as a browser sends it, so
+/// the CORS check is a plain string match.
+fn validate_api_cors_origins(origins: &[String]) -> Result<(), CommandError> {
+    use super::record::api::{MAX_CORS_ORIGINS, valid_cors_origin};
+    if origins.len() > MAX_CORS_ORIGINS {
+        return Err(CommandError::bad_request(format!(
+            "api cors_origins holds at most {MAX_CORS_ORIGINS} origins"
+        )));
+    }
+    if let Some(bad) = origins.iter().find(|origin| !valid_cors_origin(origin)) {
+        return Err(CommandError::bad_request(format!(
+            "api cors_origins entry {bad:?} must be an origin like https://app.example.com (http only for localhost), with no path or trailing slash"
+        )));
+    }
+    Ok(())
+}
+
+/// `*_configured` flags are read-side only; a client echoing them back must
+/// not store them.
+fn strip_api_auth_method_flags(channel_config: &mut Value) {
+    let Some(methods) = channel_config
+        .get_mut("auth_methods")
+        .and_then(Value::as_array_mut)
+    else {
+        return;
+    };
+    for provider in methods
+        .iter_mut()
+        .filter_map(|method| method.get_mut("provider"))
+        .filter_map(Value::as_object_mut)
+    {
+        provider.remove("client_secret_configured");
+    }
+}
+
+/// An introspection client secret left blank on update keeps the stored one
+/// of the method with the same introspection URL.
+fn merge_preserved_api_auth_method_secrets(
+    final_channel_config: &mut Value,
+    existing_decrypted: &Value,
+) {
+    let Some(existing) = existing_decrypted
+        .get("auth_methods")
+        .and_then(Value::as_array)
+    else {
+        return;
+    };
+    let Some(methods) = final_channel_config
+        .get_mut("auth_methods")
+        .and_then(Value::as_array_mut)
+    else {
+        return;
+    };
+    for provider in methods
+        .iter_mut()
+        .filter_map(|method| method.get_mut("provider"))
+        .filter_map(Value::as_object_mut)
+    {
+        let blank = provider
+            .get("client_secret")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .is_none_or(str::is_empty);
+        let Some(url) = provider.get("introspection_url").and_then(Value::as_str) else {
+            continue;
+        };
+        if !blank {
+            continue;
+        }
+        let stored = existing
+            .iter()
+            .filter_map(|method| method.get("provider"))
+            .find(|old| old.get("introspection_url").and_then(Value::as_str) == Some(url))
+            .and_then(|old| old.get("client_secret"))
+            .cloned();
+        if let Some(secret) = stored {
+            provider.insert("client_secret".to_string(), secret);
+        }
+    }
 }
 
 fn merge_preserved_channel_auth_secrets(
@@ -740,7 +862,7 @@ const MAX_PACT_PERSONAL_AGENTS: usize = 50;
 const MAX_PACT_INLINE_JWKS_BYTES: usize = 16 * 1024;
 
 fn validate_pact_profile(
-    pact: &crate::records::agent_channel::PactProfileConfig,
+    pact: &crate::domains::agent_channels::record::PactProfileConfig,
 ) -> Result<(), CommandError> {
     let invalid = |message: &str| Err(CommandError::bad_request(format!("A2A pact: {message}")));
     if pact.audience.trim().is_empty() {
@@ -760,7 +882,7 @@ fn validate_pact_profile(
             (Some(uri), None) => {
                 // The server fetches this URL, so only HTTPS is stored; the
                 // fetch itself still refuses private addresses
-                // (`channel_auth::build_pinned_client`).
+                // (`everruns_core::channel_auth`, `build_pinned_client`).
                 if !uri.starts_with("https://") || url::Url::parse(uri).is_err() {
                     return invalid("jwks_uri must be an https URL");
                 }
@@ -816,7 +938,7 @@ mod tests {
             "tool_visibility": "none",
             "generic_tool_text": "Working"
         });
-        let mut edited = json!({ "session_strategy": "per_channel", "reply_mode": "all_messages" });
+        let mut edited = json!({ "session_strategy": "per_channel" });
         merge_preserved_secret_fields(ChannelType::Slack, &mut edited, &existing);
         for key in [
             "signing_secret",
@@ -883,10 +1005,6 @@ mod tests {
             (
                 ChannelType::A2a,
                 json!({ "api_key_hash": "hash", "api_key_prefix": "prefix", "message": "run" }),
-            ),
-            (
-                ChannelType::ApiEndpoint,
-                json!({ "api_key_hash": "hash", "api_key_prefix": "prefix" }),
             ),
         ];
         for (channel_type, base_config) in invocation_configs {

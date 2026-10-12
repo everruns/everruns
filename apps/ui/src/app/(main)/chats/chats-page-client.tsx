@@ -7,7 +7,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { MessageCircle, Plus, Sparkles } from "lucide-react";
+import { ChatIcon } from "@/components/icons/facet-icons";
+import { Plus, Sparkles } from "lucide-react";
 import { AgentAvatar } from "@/components/chat/agent-avatar";
 import { ChatArchiveButton } from "@/components/chat/chat-archive-button";
 import { ChatPinButton } from "@/components/chat/chat-pin-button";
@@ -111,7 +112,7 @@ export default function ChatsPageClient() {
   return (
     <PageContainer>
       <PageMasthead
-        icon={<MessageCircle />}
+        icon={<ChatIcon />}
         title="All chats"
         description="Your side conversations for managing Everruns."
         actions={
@@ -158,7 +159,7 @@ export default function ChatsPageClient() {
             />
           ) : (
             <EmptyState
-              icon={<MessageCircle />}
+              icon={<ChatIcon />}
               title="No side chats yet"
               description="Start a fresh conversation with your Everruns assistant."
               action={

@@ -10,9 +10,9 @@ use crate::domains::agent_triggers::webhook_invocation::{
     WebhookTriggerInvocationRequest, invoke_webhook_agent_trigger,
 };
 use crate::domains::common::Ctx;
-use crate::event_delivery::EventDelivery;
+use crate::live_updates::event_delivery::EventDelivery;
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateAgentRow, CreateHarnessRow, CreateSessionRow};
+use crate::storage::{CreateAgentRow, CreateHarnessRow, CreateSessionRow};
 use async_trait::async_trait;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::channel::SessionBinding;
@@ -21,6 +21,7 @@ use everruns_core::{Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole};
 use everruns_durable::{PostgresWorkflowEventStore, Schedules};
 use std::sync::{Arc, Mutex};
 
+mod changes_only_tests;
 mod script_target_tests;
 
 // Serializes the env-mutating cap tests.
@@ -107,6 +108,7 @@ async fn seed_agent(db: &Arc<StorageBackend>) -> (String, everruns_contracts::ty
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            communication: Default::default(),
             environments: None,
             is_built_in: false,
         },
@@ -258,7 +260,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
     ));
     let app_id = Some(uuid::Uuid::from_u128(60));
     let now = chrono::Utc::now();
-    let agent = crate::storage::models::AgentRow {
+    let agent = crate::storage::AgentRow {
         avatar_id: None,
         id: AgentId::from_uuid(uuid::Uuid::from_u128(70)),
         public_id: AgentId::from_uuid(uuid::Uuid::from_u128(71)).to_string(),
@@ -289,6 +291,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        communication: String::new(),
         environments: None,
         total_input_tokens: 0,
         total_output_tokens: 0,
@@ -299,7 +302,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         total_cost_usd: 0.0,
         is_built_in: false,
     };
-    let trigger = crate::storage::models::AgentTriggerRow {
+    let trigger = crate::storage::AgentTriggerRow {
         id: everruns_contracts::typed_id::TriggerId::from_uuid(uuid::Uuid::from_u128(80)),
         org_id: DEFAULT_ORG_ID,
         agent_id: agent.id,
@@ -373,7 +376,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
     let session = db
         .create_session(CreateSessionRow {
             playground_user_id: None,
-            source: crate::records::SessionSource::Api,
+            source: crate::domains::sessions::record::SessionSource::Api,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
             channel_id: None,
@@ -409,8 +412,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
 
     let runner = Arc::new(RecordingRunner::default());
     let message_service_db = db.clone();
-    let message_service =
-        MessageService::new(db, runner.clone(), false, EventDelivery::in_memory());
+    let message_service = MessageService::new(db, runner.clone(), EventDelivery::in_memory());
     dispatch_trigger_message(
         &message_service,
         DEFAULT_ORG_ID,
@@ -796,7 +798,7 @@ async fn binding_torn_down_on_delete() {
 // ---- ensure_identity_for_agent (EVE-758) --------------------------------
 
 /// Full `AgentRow` for identity tests (the helper above returns only ids).
-async fn seed_agent_row(db: &Arc<StorageBackend>) -> crate::storage::models::AgentRow {
+async fn seed_agent_row(db: &Arc<StorageBackend>) -> crate::storage::AgentRow {
     let (public_id, _) = seed_agent(db).await;
     db.get_agent_by_public_id(DEFAULT_ORG_ID, &public_id)
         .await
@@ -848,7 +850,7 @@ async fn ensure_identity_for_agent_is_idempotent_across_fires() {
 
 #[tokio::test]
 async fn ensure_identity_for_agent_never_overrides_explicit_identity() {
-    use crate::storage::models::CreateVirtualUserRow;
+    use crate::storage::CreateVirtualUserRow;
     use everruns_contracts::typed_id::VirtualUserId;
 
     let db = Arc::new(StorageBackend::test_database());
@@ -902,7 +904,7 @@ async fn ensure_identity_for_agent_never_overrides_explicit_identity() {
 
 #[tokio::test]
 async fn ensure_identity_for_agent_rejects_archived_linked_identity() {
-    use crate::storage::models::CreateVirtualUserRow;
+    use crate::storage::CreateVirtualUserRow;
     use everruns_contracts::typed_id::VirtualUserId;
 
     let db = Arc::new(StorageBackend::test_database());
@@ -1048,14 +1050,17 @@ async fn webhook_events_are_filtered_deduplicated_and_routed_per_subject() {
             subject_template: Some(
                 "{{payload.repository.full_name}}#{{payload.number}}".to_string(),
             ),
-            filter: Some(crate::records::TriggerEventFilter {
-                conditions: vec![crate::records::TriggerFilterCondition {
-                    path: "payload.action".to_string(),
-                    any_of: vec![
-                        serde_json::json!("opened"),
-                        serde_json::json!("synchronize"),
-                    ],
-                }],
+            filter: Some(crate::domains::agent_triggers::record::TriggerEventFilter {
+                changes_only: None,
+                conditions: vec![
+                    crate::domains::agent_triggers::record::TriggerFilterCondition {
+                        path: "payload.action".to_string(),
+                        any_of: vec![
+                            serde_json::json!("opened"),
+                            serde_json::json!("synchronize"),
+                        ],
+                    },
+                ],
             }),
             ..webhook_req(true)
         },
@@ -1067,12 +1072,8 @@ async fn webhook_events_are_filtered_deduplicated_and_routed_per_subject() {
 
     let runner = Arc::new(RecordingRunner::default());
     let session_service = SessionService::new(db.clone());
-    let message_service = MessageService::new(
-        db.clone(),
-        runner.clone(),
-        false,
-        EventDelivery::in_memory(),
-    );
+    let message_service =
+        MessageService::new(db.clone(), runner.clone(), EventDelivery::in_memory());
     let encryption = ctx.encryption.clone();
     let fire = async |event: WebhookTriggerInvocationRequest| {
         invoke_webhook_agent_trigger(
@@ -1146,7 +1147,7 @@ async fn webhook_events_are_filtered_deduplicated_and_routed_per_subject() {
             )
         })
         .collect();
-    use crate::records::TriggerDeliveryStatus::*;
+    use crate::domains::agent_triggers::record::TriggerDeliveryStatus::*;
     assert_eq!(
         summary,
         vec![
@@ -1195,11 +1196,14 @@ async fn filter_conditions_need_a_path_and_values() {
     let error = CreateAgentTrigger {
         agent_id,
         req: CreateAgentTriggerRequest {
-            filter: Some(crate::records::TriggerEventFilter {
-                conditions: vec![crate::records::TriggerFilterCondition {
-                    path: "payload.action".to_string(),
-                    any_of: vec![],
-                }],
+            filter: Some(crate::domains::agent_triggers::record::TriggerEventFilter {
+                changes_only: None,
+                conditions: vec![
+                    crate::domains::agent_triggers::record::TriggerFilterCondition {
+                        path: "payload.action".to_string(),
+                        any_of: vec![],
+                    },
+                ],
             }),
             ..webhook_req(true)
         },
@@ -1288,7 +1292,7 @@ fn github_delivery(
 #[tokio::test]
 async fn github_trigger_needs_the_identitys_app_and_routes_its_deliveries() {
     use crate::domains::agent_triggers::github::dispatch_github_delivery;
-    use crate::storage::github_app_rows::CreateGitHubAppRow;
+    use crate::storage::CreateGitHubAppRow;
 
     let db = Arc::new(StorageBackend::test_database());
     let (agent_id, _) = seed_agent(&db).await;
@@ -1346,12 +1350,8 @@ async fn github_trigger_needs_the_identitys_app_and_routes_its_deliveries() {
 
     let runner = Arc::new(RecordingRunner::default());
     let session_service = SessionService::new(db.clone());
-    let message_service = MessageService::new(
-        db.clone(),
-        runner.clone(),
-        false,
-        EventDelivery::in_memory(),
-    );
+    let message_service =
+        MessageService::new(db.clone(), runner.clone(), EventDelivery::in_memory());
     let fire = async |delivery| {
         dispatch_github_delivery(
             &db,

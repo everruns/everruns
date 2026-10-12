@@ -61,7 +61,7 @@ async fn main() -> anyhow::Result<()> {
     // Configure the model
     let model = ModelSpec::on(
         (DriverId::Anthropic).as_str(),
-        "claude-sonnet-4-20250514".to_string(),
+        "claude-sonnet-5-5".to_string(),
     );
 
     // Build the agent with current_time capability

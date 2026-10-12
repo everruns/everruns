@@ -10,6 +10,8 @@ import type {
   CapabilityId,
   CreateDeclarativeCapabilityRequest,
   DeclarativeCapability,
+  GuardrailExample,
+  GuardrailExamplesResponse,
   ListResponse,
   UpdateDeclarativeCapabilityRequest,
 } from "./types";
@@ -30,6 +32,11 @@ export async function listCapabilities(includeRetired = false): Promise<Capabili
 export async function getCapability(capabilityId: CapabilityId): Promise<Capability> {
   const response = await api.get<Capability>(`/v1/capabilities/${capabilityId}`);
   return response.data;
+}
+
+export async function listGuardrailExamples(): Promise<GuardrailExample[]> {
+  const response = await api.get<GuardrailExamplesResponse>("/v1/capabilities/guardrails/examples");
+  return response.data.examples;
 }
 
 export async function listDeclarativeCapabilities(): Promise<DeclarativeCapability[]> {

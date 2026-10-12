@@ -1,5 +1,9 @@
-//! Run a Markdown agent or an asset folder without credentials.
-use everruns::{AgentPackage, Engine, Model};
+//! Run a Markdown agent or an asset folder against a real model.
+//!
+//! ```text
+//! cargo run -p everruns --features openai --example file_agent [-- PATH]
+//! ```
+use everruns::{AgentPackage, Engine, OpenAI};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -12,9 +16,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let package = AgentPackage::load(path)?;
     let agent = package
         .builder()?
-        .model(Model::simulated(
-            "The package is loaded and ready to triage.",
-        ))
+        .provider(OpenAI::from_env()?)
+        .model("gpt-6.1-sol")
         .build()?;
     let session = package.create(&Engine::new(), agent)?;
     let result = session.send_and_wait("Help me triage an issue.").await?;

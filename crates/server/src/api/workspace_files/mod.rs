@@ -26,7 +26,7 @@ use crate::domains::session_files::{
 };
 use crate::domains::workspaces::{WORKSPACE_MANAGE, WORKSPACE_VIEW};
 use crate::storage::StorageBackend;
-use crate::storage::models::WorkspaceRow;
+use crate::storage::WorkspaceRow;
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Path, Query, State},

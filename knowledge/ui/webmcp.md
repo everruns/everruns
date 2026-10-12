@@ -87,5 +87,5 @@ Threats and mitigations are tracked under the Web Security section of
 - A browser agent can search and navigate using the returned resource identifier.
 - Mutation execution cannot proceed without an explicit visible confirmation.
 - Organization changes cannot execute a callback captured under the previous organization.
-- With the flag off or API unavailable, no tools are registered and the UI behaves unchanged.
+- With the browser API unavailable, no tools are registered and the UI behaves unchanged.
 - Unit tests cover lifecycle and contracts; a real-browser smoke test discovers and executes tools.

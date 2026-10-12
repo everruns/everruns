@@ -2,7 +2,7 @@ use std::path::Path;
 
 use everruns::{Agent, BashkitShell, BuildError, Provider, WorkspacePolicy};
 
-pub const MODEL: &str = "gpt-5.6-terra";
+pub const MODEL: &str = "gpt-6.1-sol";
 
 pub fn build(provider: impl Into<Provider>, workspace: &Path) -> Result<Agent, BuildError> {
     Agent::builder()

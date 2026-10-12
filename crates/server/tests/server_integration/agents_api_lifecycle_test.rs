@@ -20,7 +20,7 @@ async fn postgres_agents_api_provider_sessions_are_tombstoned_retained_and_delet
         AgentsApiCheckpoint, AgentsApiLease, AgentsApiStore, ParkReason, ToolResultOutbox,
         ToolResultState,
     };
-    use everruns_server::agents_api_lifecycle::{
+    use everruns_server::background::agents_api_lifecycle::{
         DeletionAttempt, MAX_DELETE_ATTEMPTS, ProviderDeletionRow, ProviderSessionDeleter,
         drain_deletions,
     };

@@ -84,6 +84,7 @@ fn request(harness_id: HarnessId, blueprint_id: Option<&str>) -> PlatformCreateS
         forked_from_session_id: None,
         budget_root_session_id: None,
         seed: SessionSeedMode::Fresh,
+        reason: "test: start child".to_string(),
     }
 }
 

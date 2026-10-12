@@ -7,9 +7,10 @@
 // URL, so a filtered view (for example Needs attention) can be bookmarked and
 // shared.
 
+import { SandboxIcon } from "@/components/icons/facet-icons";
 import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Container } from "lucide-react";
+
 import { usePageTitle } from "@/hooks";
 import { useSandboxTargets } from "@/hooks/use-sandbox-templates";
 import {
@@ -143,7 +144,7 @@ export default function SandboxesPageClient() {
     <PageContainer>
       <PageBreadcrumb items={[{ label: "Fleet" }]} />
       <PageMasthead
-        icon={<Container />}
+        icon={<SandboxIcon />}
         title="Sandboxes"
         description="Every Sandbox your Sessions ran in, across providers: running, paused, lost and deleted."
       />
@@ -219,13 +220,13 @@ export default function SandboxesPageClient() {
             </div>
           ) : fleet.error ? (
             <EmptyState
-              icon={<Container />}
+              icon={<SandboxIcon />}
               title="Sandboxes could not be loaded"
               description={fleet.error instanceof Error ? fleet.error.message : undefined}
             />
           ) : items.length === 0 ? (
             <EmptyState
-              icon={<Container />}
+              icon={<SandboxIcon />}
               title={needsAttention ? "Nothing needs attention" : "No Sandboxes match"}
               description={
                 needsAttention
@@ -267,13 +268,13 @@ export default function SandboxesPageClient() {
           <Skeleton className="h-64 w-full" />
         ) : timeline.error ? (
           <EmptyState
-            icon={<Container />}
+            icon={<SandboxIcon />}
             title="The timeline could not be loaded"
             description={timeline.error instanceof Error ? timeline.error.message : undefined}
           />
         ) : !timeline.data || timeline.data.lanes.length === 0 ? (
           <EmptyState
-            icon={<Container />}
+            icon={<SandboxIcon />}
             title="No Sandbox ran in this window"
             description="Pick a longer window or clear the filters."
           />

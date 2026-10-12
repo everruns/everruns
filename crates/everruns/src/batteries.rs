@@ -76,6 +76,7 @@ pub fn runtime_egress_service() -> Arc<dyn EgressService> {
         feature = "bashkit",
         feature = "web-fetch",
         feature = "duckduckgo",
+        feature = "web-search",
         feature = "lua",
         feature = "mcp"
     ))]
@@ -86,6 +87,7 @@ pub fn runtime_egress_service() -> Arc<dyn EgressService> {
         feature = "bashkit",
         feature = "web-fetch",
         feature = "duckduckgo",
+        feature = "web-search",
         feature = "lua",
         feature = "mcp"
     )))]
@@ -110,6 +112,8 @@ fn register_selected_integrations(_registry: &mut CapabilityRegistry) {
     _registry.register(everruns_integrations::web_fetch::WebFetchCapability::from_env());
     #[cfg(feature = "duckduckgo")]
     _registry.register(everruns_integrations::duckduckgo::DuckDuckGoCapability);
+    #[cfg(feature = "web-search")]
+    _registry.register(everruns_integrations::web_search::WebSearchCapability::from_env());
     #[cfg(feature = "lua")]
     if everruns_core::InternalFeatureFlags::from_env().lua {
         _registry.register(everruns_integrations::lua::LuaCapability);
@@ -176,6 +180,7 @@ mod tests {
         assert_eq!(registry.has("host_shell"), cfg!(feature = "host-shell"));
         assert_eq!(registry.has("web_fetch"), cfg!(feature = "web-fetch"));
         assert_eq!(registry.has("duckduckgo"), cfg!(feature = "duckduckgo"));
+        assert_eq!(registry.has("web_search"), cfg!(feature = "web-search"));
         assert!(!registry.has("openui"));
         assert!(!registry.has("a2ui"));
         assert!(!registry.has("openrouter_server_tools"));
@@ -209,6 +214,7 @@ mod tests {
             feature = "bashkit",
             feature = "web-fetch",
             feature = "duckduckgo",
+            feature = "web-search",
             feature = "lua",
             feature = "mcp"
         ));

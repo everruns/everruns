@@ -1,11 +1,11 @@
 //! Deprecated Generic bundle, retained for existing bindings.
 
-use crate::records::BuiltInHarnessDefinition;
+use crate::domains::harnesses::record::BuiltInHarnessDefinition;
 pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         "generic",
         "Generic — deprecated",
-        "Deprecated legacy bundle for existing agents. Choose Conversation for dialogue, Worker Base for files and bash, or Worker for delegation.",
+        "Deprecated legacy bundle for existing agents. Choose Conversation for dialogue, Worker for tools, or Bashkit or Sandbox Worker for a shell.",
         SYSTEM_PROMPT,
     )
     .with_icon("box")

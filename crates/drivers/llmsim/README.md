@@ -32,14 +32,17 @@ let model = Model::simulated("Hello from the simulator.");
 - Fixed, echo, lorem, sequence, and scripted multi-turn responses
 - Deterministic text, tool-call, mixed, error, and stalled-stream turns
 - Latency, metadata, reasoning-effort, and provider-message controls
+- Named load-test scenarios selected by a `[[llmsim:<name>]]` marker in the
+  user message (or an `llmsim-scenario-<name>` model id), stateless across
+  concurrent sessions
 - Driver registry helpers for product and embedded runtimes
 - Optional `host` feature with registration-only `.llm_sim(...)` and explicit
   `.llm_sim_as_default(...)` runtime-builder integration
 
 ## Documentation
 
-- [Framework testing and simulation](https://docs.everruns.com/framework/testing-and-simulation/)
-- [Framework models and providers](https://docs.everruns.com/framework/models-and-providers/)
+- [Framework testing and simulation](https://everruns.com/docs/framework/testing-and-simulation/)
+- [Framework models and providers](https://everruns.com/docs/framework/models-and-providers/)
 - [API reference](https://docs.rs/everruns-llmsim)
 
 ## License

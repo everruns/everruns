@@ -1,11 +1,10 @@
 "use client";
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { Suspense, useState, type ReactNode } from "react";
 import {
   Activity,
   AlertTriangle,
-  Bot,
-  Boxes,
   Check,
   ChevronDown,
   CirclePlus,
@@ -130,7 +129,7 @@ const sampleAgent: Agent = {
     { id: "aep_chat", channel_type: "public_chat", enabled: true, status: "live" },
     { id: "aep_hook", channel_type: "webhook", enabled: true, status: "draft" },
     { id: "aep_a2a", channel_type: "a2a", enabled: false, status: "disabled" },
-    { id: "aep_api", channel_type: "api_endpoint", enabled: true, status: "live" },
+    { id: "aep_api", channel_type: "api", enabled: true, status: "live" },
   ],
 };
 
@@ -172,7 +171,7 @@ function ShowcaseSection({
 }
 
 function SampleIconTile() {
-  return <IconTile size="md" icon={<Bot />} />;
+  return <IconTile size="md" icon={<AgentIcon />} />;
 }
 
 export default function DevUiComponentsPage() {
@@ -227,7 +226,7 @@ export default function DevUiComponentsPage() {
               {/* A gallery sample, not this page's own location — no group prefix. */}
               <PageBreadcrumb group={false} items={[{ label: "Agents" }]} />
               <PageMasthead
-                icon={<Boxes />}
+                icon={<AgentIcon />}
                 title="Agents"
                 badges={
                   <Badge variant="outline" className="font-mono">
@@ -750,7 +749,7 @@ export default function DevUiComponentsPage() {
               </Notice>
             </div>
             <EmptyState
-              icon={<Bot />}
+              icon={<AgentIcon />}
               title="No agents yet"
               description="Create an agent to start a session and see activity here."
               action={

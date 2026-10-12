@@ -14,15 +14,18 @@ target for new sessions.
 
 | Harness | Description | Capabilities |
 |---------|-------------|-------------|
-| [Base](/built-ins/harnesses/base/) | Empty harness, full control | None |
-| [Conversation](/built-ins/harnesses/conversation/) | Default for dialogue | Context management |
-| [Worker Base](/built-ins/harnesses/worker-base/) | Files, bash, project instructions | Specialized workers |
-| [Worker](/built-ins/harnesses/worker/) | Skills, long context and delegation | Task coordination |
-| [Bashkit Worker](/built-ins/harnesses/bashkit-worker/) | Worker with a sealed Bashkit primary Sandbox | Support and virtual-workspace agents |
+| [Base](/built-ins/harnesses/base/) | System essentials every agent needs | Compaction, error disclosure, tool-call repair, loop detection, approval guidance |
+| [Conversation](/built-ins/harnesses/conversation/) | Default for dialogue, no workspace | Base + structured questions, message timestamps |
+| [Worker](/built-ins/harnesses/worker/) | Worker without compute | Base + files, AGENTS.md, skills, long context, budgeting, subagents, tasks |
+| [Bashkit Worker](/built-ins/harnesses/bashkit-worker/) | Worker with the Bashkit virtual shell | Worker + Bashkit shell, fixed Sandbox Template |
+| [Sandbox Worker](/built-ins/harnesses/sandbox-worker/) | Worker with a full sandbox | Worker + the shell of a container or managed Sandbox Template |
+| [Worker Base (deprecated)](/built-ins/harnesses/worker-base/) | Deprecated legacy bundle | Files, bash, project instructions |
 | [Generic (deprecated)](/built-ins/harnesses/generic/) | Deprecated legacy bundle | 25 configured |
-| [Data Analyst](/built-ins/harnesses/data-analyst/) | SQL databases, charts, persistent memory | Worker Base + data capabilities; available as a built-in example |
+| [Data Analyst](/built-ins/harnesses/data-analyst/) | SQL databases, charts, persistent memory | Bashkit Worker + data capabilities; available as a built-in example |
 
 [Platform Chat](/built-ins/harnesses/platform-chat/) is a managed Agent bound to Bashkit Worker.
+
+![Built-in harness tree](../images/features/harness-tree.svg)
 
 See the [Harnesses feature guide](/features/harnesses/) for harness selection, API management, and the prompt stack model.
 
@@ -32,8 +35,8 @@ Harness examples are adoptable templates. Import them when you want a preconfigu
 
 | Example | Import Name | Description |
 |---------|-------------|-------------|
-| Coding | `coding` | Provider-neutral coding behavior + GitHub Scout; the Agent Sandbox Template binding selects Bashkit, Daytona, or another target |
-| Data Analyst | `data-analyst` | Worker Base + SQL databases, charts, persistent memory, and curated data knowledge |
+| Coding | `coding` | Sandbox Worker + coding behavior and GitHub Scout; the Agent Sandbox Template binding selects Daytona, a container, or another full sandbox |
+| Data Analyst | `data-analyst` | Bashkit Worker + SQL databases, charts, persistent memory, and curated data knowledge |
 
 ## Capabilities
 

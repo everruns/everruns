@@ -1,8 +1,8 @@
 use super::*;
+use crate::domains::agent_channels::record::{ChannelStatus, ChannelType};
 use crate::domains::agent_channels::types::{CreateAgentChannelRequest, UpdateAgentChannelRequest};
-use crate::records::{ChannelStatus, ChannelType};
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateAgentRow, CreateHarnessRow};
+use crate::storage::{CreateAgentRow, CreateHarnessRow};
 use everruns_core::{Caller, DEFAULT_ORG_ID};
 use serde_json::json;
 use std::sync::Arc;
@@ -53,6 +53,7 @@ async fn seed_agent(db: &StorageBackend) -> String {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            communication: Default::default(),
             environments: None,
             is_built_in: false,
         },
@@ -382,7 +383,7 @@ async fn live_channel_exposure_changes_require_dangerous_permission() {
     assert_eq!(stored.status, ChannelStatus::Live);
     assert_eq!(
         stored.auth.as_ref().map(|auth| auth.mode.clone()),
-        Some(crate::records::ChannelAuthMode::SharedSecret)
+        Some(crate::domains::agent_channels::record::ChannelAuthMode::SharedSecret)
     );
 
     // Re-saving a live channel without changing it (secrets omitted or shown
@@ -483,7 +484,7 @@ async fn agent_channel_summaries_are_page_scoped_and_exclude_triggers() {
         .unwrap();
     for (kind, enabled, status) in [
         ("webhook", true, "live"),
-        ("api_endpoint", false, "disabled"),
+        ("a2a", false, "disabled"),
         ("schedule", true, "live"),
     ] {
         db.create_agent_channel(
@@ -514,7 +515,7 @@ async fn agent_channel_summaries_are_page_scoped_and_exclude_triggers() {
     assert_eq!(rows[0].channel_type, "webhook");
     assert!(rows[0].enabled);
     assert_eq!(rows[0].status, "live");
-    assert_eq!(rows[1].channel_type, "api_endpoint");
+    assert_eq!(rows[1].channel_type, "a2a");
     assert!(!rows[1].enabled);
     assert_eq!(rows[1].status, "disabled");
     assert!(
@@ -567,45 +568,4 @@ async fn slack_response_policies_are_available_without_feature_enrollment() {
         assert_eq!(reset.channel_config["response_policy"], "all_messages");
     }
     assert!(create("not_a_policy").run(&ctx).await.is_err());
-}
-
-#[tokio::test]
-async fn native_slack_channel_reads_normalize_stored_progress_mode() {
-    for encrypted in [false, true] {
-        let db = Arc::new(StorageBackend::test_database());
-        let agent_id = seed_agent(&db).await;
-        let encryption = encrypted.then(|| {
-            Arc::new(
-                crate::storage::EncryptionService::new(
-                    &crate::storage::encryption::generate_encryption_key("channel-mode-test"),
-                    &[],
-                )
-                .unwrap(),
-            )
-        });
-        let ctx = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db, encryption);
-        let created = CreateAgentChannel {
-            agent_id: agent_id.clone(),
-            req: CreateAgentChannelRequest {
-                channel_type: ChannelType::Slack,
-                channel_config: json!({"reply_mode":"report_progress_only", "bot_token":"xoxb-test", "signing_secret":"s"}),
-                enabled: true,
-            },
-        }.run(&ctx).await.unwrap();
-        let channel_id = created.public_id.to_string();
-        assert_eq!(created.channel_config["reply_mode"], "tool_only");
-        let fetched = GetAgentChannel {
-            agent_id: agent_id.clone(),
-            channel_id,
-        }
-        .run(&ctx)
-        .await
-        .unwrap();
-        let listed = ListAgentChannels { agent_id }.run(&ctx).await.unwrap();
-        for endpoint in [fetched, listed.into_iter().next().unwrap()] {
-            assert_eq!(endpoint.channel_config["reply_mode"], "tool_only");
-            assert_eq!(endpoint.channel_config["bot_token_configured"], true);
-            assert!(endpoint.channel_config.get("bot_token").is_none());
-        }
-    }
 }

@@ -7,13 +7,14 @@ license.workspace = true
 publish = false
 
 [dependencies]
-async-trait.workspace = true
 everruns = { path = "../../crates/everruns", features = ["local", "openai"] }
-everruns-llmsim = { path = "../../crates/drivers/llmsim" }
-serde_json.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 
 [dev-dependencies]
+# The scripted model in tests/team_sim stays out of the example's build.
+async-trait.workspace = true
+everruns-llmsim = { path = "../../crates/drivers/llmsim" }
+serde_json.workspace = true
 tempfile.workspace = true
 
 [lints]

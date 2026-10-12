@@ -17,7 +17,7 @@
 //!    exactly as it would have if the person had typed "yes".
 //!
 //! That second point is what keeps attribution honest for free.
-//! [`crate::services::approval_audit`] resolves the approver from the
+//! [`crate::domains::audit_logs::approval_listener`] resolves the approver from the
 //! `input.message` event the API wrote, never from anything the model said. A
 //! click posts a real message from a real Slack identity, so the audit row names
 //! the person who clicked without approvals needing their own identity path.
@@ -45,9 +45,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-/// Tool whose completion raises a Slack approval card.
-pub(crate) const REQUEST_APPROVAL_TOOL: &str = "request_approval";
-
 /// Session hint a Slack endpoint declares when it can draw approval cards.
 ///
 /// Deliberately its own key rather than reusing `setup_connection`: a surface
@@ -66,12 +63,10 @@ const MAX_ACTION_VALUE_BYTES: usize = 2000;
 pub(crate) const APPROVE_ACTION_ID: &str = "everruns_approve";
 pub(crate) const DECLINE_ACTION_ID: &str = "everruns_decline";
 
-/// What the agent stopped in front of, read back out of its `tool.completed`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ApprovalRequest {
-    pub action: String,
-    pub question: Option<String>,
-}
+/// What the agent stopped in front of, read out of its `tool.completed` by the
+/// shared channel runtime.
+pub(crate) use everruns_core::channel::ApprovalPrompt;
+pub(crate) use everruns_core::channel_runtime::approval_prompt;
 
 /// The binding a click is checked against, round-tripped through Slack.
 ///
@@ -210,79 +205,8 @@ pub(crate) fn approvals_enabled(hints: Option<&Value>) -> bool {
     hint_is_set(hints.and_then(|hints| hints.get(SLACK_APPROVAL_HINT)))
 }
 
-/// Same question, asked of the decoded hint map the session API carries.
-///
-/// Two entry points rather than one because the hints reach this crate in two
-/// shapes — a raw JSONB column and a decoded map — and converting one to the
-/// other just to ask a boolean would allocate on every registration.
-pub(crate) fn approvals_enabled_in(
-    hints: Option<&std::collections::HashMap<String, Value>>,
-) -> bool {
-    hint_is_set(hints.and_then(|hints| hints.get(SLACK_APPROVAL_HINT)))
-}
-
 fn hint_is_set(hint: Option<&Value>) -> bool {
     hint.and_then(Value::as_bool).unwrap_or(false)
-}
-
-/// Read an approval request out of a `tool.completed` event's data.
-///
-/// Returns `None` for every other tool, for a failed call, and for a
-/// `request_approval` result that does not actually say it is waiting — the
-/// context-free `execute` path returns the same shape without raising a pause,
-/// and rendering a card for it would leave a button nothing answers.
-pub(crate) fn extract_approval_request(data: &Value) -> Option<ApprovalRequest> {
-    if data.get("tool_name")?.as_str()? != REQUEST_APPROVAL_TOOL {
-        return None;
-    }
-    if !data.get("success")?.as_bool().unwrap_or(false) {
-        return None;
-    }
-
-    let text = data.get("result")?.as_array()?.iter().find_map(|part| {
-        match part.get("type")?.as_str()? {
-            "text" => part.get("text")?.as_str(),
-            _ => None,
-        }
-    })?;
-    let payload: Value = serde_json::from_str(text).ok()?;
-
-    if !payload
-        .get("awaiting_approval")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-    {
-        return None;
-    }
-
-    let action = payload.get("action")?.as_str()?.trim();
-    if action.is_empty() {
-        return None;
-    }
-    Some(ApprovalRequest {
-        action: action.to_string(),
-        question: payload
-            .get("question")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string),
-    })
-}
-
-/// The turn a `request_approval` result says it was raised in.
-pub(crate) fn approval_turn_id(data: &Value) -> Option<String> {
-    let text = data.get("result")?.as_array()?.iter().find_map(|part| {
-        match part.get("type")?.as_str()? {
-            "text" => part.get("text")?.as_str(),
-            _ => None,
-        }
-    })?;
-    let payload: Value = serde_json::from_str(text).ok()?;
-    payload
-        .get("asked_in_turn")
-        .and_then(Value::as_str)
-        .map(str::to_string)
 }
 
 /// Build the Block Kit blocks for an approval card.
@@ -292,7 +216,7 @@ pub(crate) fn approval_turn_id(data: &Value) -> Option<String> {
 /// caller falls back to posting the question as text, which is exactly the
 /// no-hint behaviour: the model asks, the human answers in prose.
 pub(crate) fn build_approval_blocks(
-    request: &ApprovalRequest,
+    request: &ApprovalPrompt,
     binding: &ApprovalBinding,
 ) -> Option<Value> {
     let value = serde_json::to_string(binding).ok()?;
@@ -333,21 +257,13 @@ pub(crate) fn build_approval_blocks(
     ]))
 }
 
-/// The card's fallback/notification text, and what it degrades to without a hint.
-pub(crate) fn approval_fallback_text(request: &ApprovalRequest) -> String {
-    match &request.question {
-        Some(question) => format!("Approval needed: {}\n{}", request.action, question),
-        None => format!("Approval needed: {}", request.action),
-    }
-}
-
 /// Replacement blocks for a card that has been answered.
 ///
 /// Answering rewrites the message rather than posting beside it, which is what
 /// makes a second click harmless: the buttons are gone, so there is nothing
 /// left to click, and the thread reads as a decision rather than as a question
 /// with an answer somewhere below it.
-pub(crate) fn build_resolved_blocks(request: &ApprovalRequest, resolution: &str) -> Value {
+pub(crate) fn build_resolved_blocks(request: &ApprovalPrompt, resolution: &str) -> Value {
     json!([
         {
             "type": "section",
@@ -366,81 +282,6 @@ pub(crate) fn build_resolved_blocks(request: &ApprovalRequest, resolution: &str)
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn completed(tool: &str, success: bool, payload: Value) -> Value {
-        json!({
-            "tool_name": tool,
-            "success": success,
-            "result": [{ "type": "text", "text": payload.to_string() }],
-        })
-    }
-
-    fn waiting_payload() -> Value {
-        json!({
-            "ok": true,
-            "awaiting_approval": true,
-            "action": "delete the staging database",
-            "question": "This drops 12k rows. Go ahead?",
-            "asked_in_turn": "turn_1",
-        })
-    }
-
-    #[test]
-    fn an_awaiting_request_approval_is_a_card() {
-        let request =
-            extract_approval_request(&completed(REQUEST_APPROVAL_TOOL, true, waiting_payload()))
-                .expect("a waiting approval is a card");
-        assert_eq!(request.action, "delete the staging database");
-        assert_eq!(
-            request.question.as_deref(),
-            Some("This drops 12k rows. Go ahead?")
-        );
-    }
-
-    #[test]
-    fn another_tool_is_not_a_card() {
-        assert!(
-            extract_approval_request(&completed("sql_query", true, waiting_payload())).is_none()
-        );
-    }
-
-    #[test]
-    fn a_failed_call_is_not_a_card() {
-        assert!(
-            extract_approval_request(&completed(REQUEST_APPROVAL_TOOL, false, waiting_payload()))
-                .is_none()
-        );
-    }
-
-    /// The context-free `execute` path returns the same shape without raising a
-    /// pause. A card for it would be a button nothing answers.
-    #[test]
-    fn a_result_that_is_not_waiting_is_not_a_card() {
-        let payload = json!({
-            "ok": true,
-            "awaiting_approval": false,
-            "action": "delete the staging database",
-        });
-        assert!(
-            extract_approval_request(&completed(REQUEST_APPROVAL_TOOL, true, payload)).is_none()
-        );
-    }
-
-    #[test]
-    fn an_empty_action_is_not_a_card() {
-        let payload = json!({ "ok": true, "awaiting_approval": true, "action": "   " });
-        assert!(
-            extract_approval_request(&completed(REQUEST_APPROVAL_TOOL, true, payload)).is_none()
-        );
-    }
-
-    #[test]
-    fn the_turn_is_carried_through() {
-        assert_eq!(
-            approval_turn_id(&completed(REQUEST_APPROVAL_TOOL, true, waiting_payload())).as_deref(),
-            Some("turn_1")
-        );
-    }
 
     fn binding() -> ApprovalBinding {
         ApprovalBinding {
@@ -483,9 +324,10 @@ mod tests {
     #[test]
     fn the_binding_round_trips_through_a_button_value() {
         let blocks = build_approval_blocks(
-            &ApprovalRequest {
+            &ApprovalPrompt {
                 action: "delete the staging database".to_string(),
                 question: None,
+                turn_id: None,
             },
             &binding(),
         )
@@ -509,9 +351,10 @@ mod tests {
         };
         assert!(
             build_approval_blocks(
-                &ApprovalRequest {
+                &ApprovalPrompt {
                     action: "x".to_string(),
-                    question: None
+                    question: None,
+                    turn_id: None,
                 },
                 &oversized,
             )
@@ -522,9 +365,10 @@ mod tests {
     #[test]
     fn both_buttons_are_offered_and_map_to_decisions() {
         let blocks = build_approval_blocks(
-            &ApprovalRequest {
+            &ApprovalPrompt {
                 action: "x".to_string(),
                 question: None,
+                turn_id: None,
             },
             &binding(),
         )
@@ -561,9 +405,10 @@ mod tests {
     /// has nothing to hit.
     #[test]
     fn an_answered_card_has_no_buttons_left() {
-        let request = ApprovalRequest {
+        let request = ApprovalPrompt {
             action: "delete the staging database".to_string(),
             question: Some("Go ahead?".to_string()),
+            turn_id: None,
         };
         let resolved =
             build_resolved_blocks(&request, &ApprovalDecision::Approved.as_resolution("U_R"));
@@ -589,31 +434,5 @@ mod tests {
         )));
         assert!(!approvals_enabled(Some(&json!({}))));
         assert!(!approvals_enabled(None));
-
-        // The decoded-map entry point must answer identically.
-        let enabled =
-            std::collections::HashMap::from([(SLACK_APPROVAL_HINT.to_string(), json!(true))]);
-        assert!(approvals_enabled_in(Some(&enabled)));
-        assert!(!approvals_enabled_in(Some(
-            &std::collections::HashMap::new()
-        )));
-        assert!(!approvals_enabled_in(None));
-    }
-
-    #[test]
-    fn the_fallback_text_carries_the_ask() {
-        let with_question = ApprovalRequest {
-            action: "delete the staging database".to_string(),
-            question: Some("Go ahead?".to_string()),
-        };
-        let text = approval_fallback_text(&with_question);
-        assert!(text.contains("delete the staging database"));
-        assert!(text.contains("Go ahead?"));
-
-        let without = ApprovalRequest {
-            action: "delete the staging database".to_string(),
-            question: None,
-        };
-        assert!(approval_fallback_text(&without).contains("delete the staging database"));
     }
 }

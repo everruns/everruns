@@ -22,10 +22,10 @@ use super::KnowledgeIndexSearchService;
 use crate::services::ProviderResolverService;
 use crate::storage::StorageBackend;
 use crate::storage::encryption::{EncryptionService, generate_encryption_key};
-use crate::storage::models::{
+use crate::storage::{
     CreateKnowledgeIndexChunkRow, CreateKnowledgeIndexDocumentWithChunks, CreateKnowledgeIndexRow,
-    CreateModelRow, CreateProviderRow,
 };
+use crate::storage::{CreateModelRow, CreateProviderRow};
 
 /// Deterministic embeddings driver: maps text to a stable 3-dim vector so that
 /// ranking is reproducible without any network call. The first dimension is the

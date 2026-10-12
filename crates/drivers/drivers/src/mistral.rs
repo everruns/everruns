@@ -77,7 +77,9 @@ impl MistralChatDriver {
     /// Create the Mistral Chat Completions wire driver.
     pub fn new() -> Self {
         Self {
-            inner: OpenAIProtocolChatDriver::new(),
+            // Mistral routes requests that share a `prompt_cache_key` to the
+            // same prompt cache; cached input bills at 10%.
+            inner: OpenAIProtocolChatDriver::new().with_prompt_cache_key(true),
         }
     }
 }
@@ -482,6 +484,65 @@ mod tests {
             assert_eq!(body["max_tokens"], json!(2000));
             assert!(body.get("max_completion_tokens").is_none());
         }
+    }
+
+    /// Prompt caching sends a `prompt_cache_key` stable across a session's
+    /// calls and distinct between sessions; caching off sends none.
+    #[tokio::test]
+    async fn prompt_caching_sends_a_session_scoped_cache_key() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("connection", "close")
+                    .set_body_raw(REASONING_STREAM, "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+        let provider =
+            provider("mistral", "synthetic-key").base_url(format!("{}/v1", server.uri()));
+        let send = |session: Option<&str>, caching: bool| {
+            let mut config = LlmCallConfig::new("mistral-large-4");
+            if let Some(session) = session {
+                config.metadata.insert("session_id".into(), session.into());
+            }
+            if caching {
+                config.prompt_cache =
+                    Some(everruns_contracts::driver_registry::PromptCacheConfig {
+                        enabled: true,
+                        ..Default::default()
+                    });
+            }
+            let provider = provider.clone();
+            async move {
+                let stream = provider
+                    .chat_completion_stream(vec![Message::text(MessageRole::User, "hi")], &config)
+                    .await
+                    .unwrap();
+                drain(stream).await;
+            }
+        };
+        send(Some("s1"), true).await;
+        send(Some("s1"), true).await;
+        send(Some("s2"), true).await;
+        send(Some("s1"), false).await;
+
+        let keys: Vec<Value> = server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .map(|request| request.body_json::<Value>().unwrap()["prompt_cache_key"].clone())
+            .collect();
+        let first = keys[0].as_str().expect("caching sends a key");
+        assert!(
+            first.starts_with("everruns:") && first.len() <= 64,
+            "{first}"
+        );
+        assert_eq!(keys[0], keys[1]);
+        assert_ne!(keys[0], keys[2]);
+        assert!(keys[3].is_null());
     }
 
     /// A graded effort Mistral Large 4 does not take becomes its one "on"

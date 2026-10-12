@@ -25,6 +25,11 @@ import { useLocale } from "@/providers/locale-provider";
 import { cn } from "@/lib/utils";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 
+// Web search is the provider-neutral way to search; Brave Search, DuckDuckGo
+// and the hosted-tools capabilities stay for agents built around one
+// provider. It leads its category with a badge so it is the obvious pick.
+const RECOMMENDED_CAPABILITIES = new Set(["web_search"]);
+
 interface CapabilityDialogProps {
   capabilities: Capability[];
   selectedIds: Set<CapabilityId>;
@@ -63,9 +68,13 @@ export function CapabilityDialog({
         )
       : available;
 
-    // Group by category
+    // Group by category, recommended capabilities first within each.
     const grouped = new Map<string, Capability[]>();
-    for (const cap of filtered) {
+    const ordered = [
+      ...filtered.filter((c) => RECOMMENDED_CAPABILITIES.has(c.id)),
+      ...filtered.filter((c) => !RECOMMENDED_CAPABILITIES.has(c.id)),
+    ];
+    for (const cap of ordered) {
       const category = cap.category || "General";
       const existing = grouped.get(category) || [];
       grouped.set(category, [...existing, cap]);
@@ -188,6 +197,11 @@ export function CapabilityDialog({
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 text-sm font-medium">
                                   {localizedCapabilityName(cap, locale)}
+                                  {RECOMMENDED_CAPABILITIES.has(cap.id) && (
+                                    <Badge variant="accent" className="text-xs px-1.5 py-0 h-5">
+                                      Recommended
+                                    </Badge>
+                                  )}
                                   {cap.is_mcp && (
                                     <Badge
                                       variant="outline"

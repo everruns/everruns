@@ -234,7 +234,7 @@ mod tests {
 
     #[tokio::test]
     async fn resolve_agent_returns_owning_org_id() {
-        use crate::storage::models::CreateAgentRow;
+        use crate::storage::CreateAgentRow;
 
         let db = StorageBackend::test_database();
 
@@ -259,6 +259,7 @@ mod tests {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            communication: Default::default(),
             environments: None,
             is_built_in: false,
         };
@@ -290,7 +291,8 @@ mod tests {
     #[tokio::test]
     async fn resolve_virtual_capability_returns_underlying_resource_org_id() {
         use crate::kernel_imports::{capabilities::skill_capability_id, typed_id::SkillId};
-        use crate::storage::models::{CreateMcpServerRow, CreateSkillRow};
+        use crate::storage::CreateMcpServerRow;
+        use crate::storage::CreateSkillRow;
         use everruns_core::mcp::mcp_capability_id;
 
         let db = StorageBackend::test_database();

@@ -11,9 +11,9 @@ tags:
 
 # Secret-leak guardrails
 
-Status: active design. The model-backed `llm_judge` preset ships. A dedicated
-secret-leak decisions, output-stage semantic checks, and deterministic
-known-value redaction remain proposed.
+Status: active design. The model-backed `llm_judge` preset ships, and
+`llm_judge`/`mcp` checks run on the `output` stage (EVE-572). A dedicated
+secret-leak decisions and deterministic known-value redaction remain proposed.
 
 ## The scenario
 
@@ -48,8 +48,8 @@ faithful match is the second:
 **Yes, and the model-backed primitive already ships.** everruns' `llm_judge`
 check on the `tool_use` stage reproduces the screenshot end-to-end today:
 dynamic, value-agnostic, block-and-feed-reason-back so the model self-corrects.
-Full parity needs one thing everruns hasn't enabled yet (judge on the `output`
-stage, EVE-572) and benefits from one new thing (a dedicated, cheaper
+The prose-echo half (judge on the `output` stage, EVE-572) now ships too, as
+configuration; full parity benefits from one new thing (a dedicated, cheaper
 secret-leak decisions). A deterministic known-value redactor is a valuable
 *complementary* layer, not the primary mechanism.
 
@@ -85,8 +85,9 @@ secret before it reaches context.
 
 ### Known operational limits (from the shipped implementation)
 
-- **Async, hook-path only.** `llm_judge` never runs in the streaming hot path.
-  Runs in pre/post-tool hooks with a 10 s timeout (`JUDGE_TIMEOUT`).
+- **Async, never in the streaming hot path.** `llm_judge` runs in pre/post-tool
+  hooks, or once on the finalized message for `output`, with a 10 s timeout
+  (`JUDGE_TIMEOUT`).
 - **Fail-open.** Timeout, LLM error, or unparseable verdict ⇒ `allow`, so a judge
   outage never wedges a turn. A secret-leak guardrail that fails open is a real
   security limitation to state plainly, advisory rollout, plus the deterministic
@@ -94,10 +95,13 @@ secret before it reaches context.
 - **Cost + latency.** Each judged tool call is a utility-LLM round trip (low
   reasoning effort), capped at `MAX_JUDGE_CALLS_PER_INVOCATION` (4) per
   invocation, accounted through utility-LLM billing, not the session budget.
-- **`output` stage not yet enabled.** Today only `moderation` runs on `output`
-  (the end-of-message boundary, EVE-573); `llm_judge`/`mcp` on `output` is tracked in
-  EVE-572. So the prose-echo case ("model writes the secret in its answer") needs
-  either EVE-572 or a `moderation`-style decisions on `output`.
+- **`output` runs after generation, not mid-stream.** `llm_judge`/`mcp` on
+  `output` (EVE-572) run on the end-of-message boundary
+  ([`guardrails_output.rs`](../../crates/core/src/builtins/guardrails_output.rs)):
+  a block replaces the whole finalized message before it is persisted, but the
+  stream itself is not cut short the way a deterministic match cuts it. Each
+  finalized message costs a judge round trip, so the gallery preset stays on
+  the tool stages; adding an `output` check is a per-agent choice.
 
 ## A better fit for the hot/common case: a dedicated secret-leak decisions
 
@@ -162,8 +166,10 @@ positives before it goes active.
   any encoding.
 - **Self-correction is not guaranteed.** Feeding the reason back usually yields a
   compliant retry; per-turn tool-call limits bound loops.
-- **`output`-stage semantic checks are gated on EVE-572** (or a new decisions);
-  today only `moderation` runs on `output`.
+- **`output`-stage semantic checks inspect the finished message only.** They run
+  once per message after streaming, fail open like every model-backed check, and
+  judge the first 2 000 bytes (utility LLM) or 4 000 bytes (jev batch) of it, so
+  a secret past that excerpt goes unseen.
 
 ## Phasing
 
@@ -175,8 +181,9 @@ positives before it goes active.
    all three stages, cheaper, more consistent, and covers prose echo on `output`.
 3. **Deterministic `SecretValues` redactor** + `redact` action, sourced from
    `secret_store`, as the fail-closed exact layer.
-4. **EVE-572** (`llm_judge`/`mcp` on `output`) if an open-ended judge is wanted on
-   prose output rather than the fixed decisions.
+4. **Shipped (EVE-572):** `llm_judge`/`mcp` on `output`, for an open-ended judge
+   on prose output rather than the fixed decisions. Configuration-only; the
+   `secret-leak-judge` preset does not enable it by default.
 
 Phase 1 is configuration-only and reproduces the screenshot's tool-call behavior
 immediately; phases 2–3 add coverage and a fail-closed backstop.
