@@ -136,16 +136,78 @@ impl NativeWebSearch {
         if let Some(max_uses) = self.max_uses {
             parameters["max_uses"] = Value::from(max_uses);
         }
-        if let Some(location) = &self.user_location {
-            let mut wire = serde_json::to_value(location).unwrap_or_default();
-            if wire.as_object().is_some_and(|fields| !fields.is_empty()) {
-                wire["type"] = Value::from("approximate");
-                parameters["user_location"] = wire;
-            }
+        if let Some(location) = self.approximate_location() {
+            parameters["user_location"] = location;
         }
         Some(parameters)
     }
+
+    /// Anthropic's `web_search` server tool for this request, or `None` when
+    /// Anthropic cannot honor it: it takes allowed or blocked domains, never
+    /// both in one request.
+    ///
+    /// Decision: the basic `web_search_20250305` version. The later versions
+    /// (`_20260209`, `_20260318`) run searches from inside code execution
+    /// (dynamic filtering), which is not ZDR eligible by default and needs
+    /// models with programmatic tool calling; the basic one runs everywhere
+    /// Claude has web search. Source: Anthropic's web search tool guide
+    /// (2026-10).
+    ///
+    /// Decision: without an agent cap, at most
+    /// [`ANTHROPIC_DEFAULT_MAX_USES`] searches per generation. The API runs
+    /// searches in a server-side loop that pauses (`pause_turn`) when it runs
+    /// long; the driver does not continue a paused turn, so a cap well under
+    /// that loop's limit keeps a generation from ending mid-search.
+    pub fn anthropic_tool(&self) -> Option<Value> {
+        let allowed = !self.allowed_domains.is_empty();
+        let blocked = !self.blocked_domains.is_empty();
+        if allowed && blocked {
+            return None;
+        }
+        let mut tool = serde_json::json!({
+            "type": ANTHROPIC_WEB_SEARCH_TOOL_TYPE,
+            "name": WEB_SEARCH_FUNCTION_TOOL,
+            "max_uses": self.max_uses.unwrap_or(ANTHROPIC_DEFAULT_MAX_USES),
+        });
+        if allowed {
+            tool["allowed_domains"] = serde_json::json!(self.allowed_domains);
+        }
+        if blocked {
+            tool["blocked_domains"] = serde_json::json!(self.blocked_domains);
+        }
+        if let Some(location) = self.approximate_location() {
+            tool["user_location"] = location;
+        }
+        Some(tool)
+    }
+
+    /// Gemini's Grounding with Google Search tool for this request, or `None`
+    /// when Gemini cannot honor it: grounding takes no domain filters, allowed
+    /// or blocked. It takes no location or search cap either; those are
+    /// dropped, as the freshness hint is everywhere.
+    pub fn gemini_tool(&self) -> Option<Value> {
+        (self.allowed_domains.is_empty() && self.blocked_domains.is_empty())
+            .then(|| serde_json::json!({ "google_search": {} }))
+    }
+
+    /// `user_location` as `{"type": "approximate", ...}`, or `None` when no
+    /// field is set (Anthropic and OpenRouter reject an empty location).
+    fn approximate_location(&self) -> Option<Value> {
+        let mut wire = serde_json::to_value(self.user_location.as_ref()?).ok()?;
+        if wire.as_object().is_none_or(|fields| fields.is_empty()) {
+            return None;
+        }
+        wire["type"] = Value::from("approximate");
+        Some(wire)
+    }
 }
+
+/// Anthropic's web search server tool version (see
+/// [`NativeWebSearch::anthropic_tool`]).
+pub const ANTHROPIC_WEB_SEARCH_TOOL_TYPE: &str = "web_search_20250305";
+
+/// Searches per generation on Anthropic when the agent sets no cap.
+pub const ANTHROPIC_DEFAULT_MAX_USES: u32 = 5;
 
 /// Whose search a native call runs, for domain-filter support and pricing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -180,6 +242,55 @@ pub fn openai_has_native_web_search(model: &str) -> bool {
     model == "o3" || model.starts_with("o3-pro") || model.starts_with("o4-mini")
 }
 
+/// Whether a Claude model takes Anthropic's web search tool: Claude 3.5
+/// Haiku, 3.7 Sonnet, and every Claude 4 and later model. Takes first-party
+/// ids (`claude-sonnet-4-5-20250929`, `claude-3-5-haiku-20241022`,
+/// `claude-opus-5-5[1m]`) and OpenRouter names (`claude-3.7-sonnet`,
+/// `claude-sonnet-4.5`), with or without an `anthropic/` prefix. Source: the
+/// web search tool guide and tool reference (2026-10).
+pub fn anthropic_has_native_web_search(model: &str) -> bool {
+    let model = model.rsplit('/').next().unwrap_or(model);
+    let Some(rest) = model.strip_prefix("claude-") else {
+        return false;
+    };
+    let Some(digits) = rest.find(|c: char| c.is_ascii_digit()) else {
+        return false;
+    };
+    match version(&rest[digits..]) {
+        Some((major, _)) if major >= 4 => true,
+        Some((3, Some(5))) => rest.contains("haiku"),
+        Some((3, Some(7))) => rest.contains("sonnet"),
+        _ => false,
+    }
+}
+
+/// Whether a Gemini model takes Grounding with Google Search (the
+/// `google_search` tool) on the Gemini API: Gemini 2.0 Flash, the 2.5 family
+/// and every Gemini 3 and later model, conservatively leaving out the 2.0
+/// Flash-Lite, speech, live, embedding and image generation variants of the
+/// 2.x line. Older models only take the retired `google_search_retrieval`.
+/// Source: the Grounding with Google Search guide (2026-10).
+pub fn gemini_has_native_web_search(model: &str) -> bool {
+    let model = model.rsplit('/').next().unwrap_or(model);
+    let Some(rest) = model.strip_prefix("gemini-") else {
+        return false;
+    };
+    if ["embedding", "tts", "live", "audio"]
+        .iter()
+        .any(|variant| rest.contains(variant))
+    {
+        return false;
+    }
+    match version(rest) {
+        Some((major, _)) if major >= 3 => true,
+        Some((2, Some(5))) => !rest.contains("image"),
+        Some((2, Some(0))) => {
+            rest.starts_with("2.0-flash") && !rest.contains("lite") && !rest.contains("image")
+        }
+        _ => false,
+    }
+}
+
 /// The vendor whose own search OpenRouter runs for `model`, from OpenRouter's
 /// native search list (2026-10), or `None` when OpenRouter would answer with
 /// its fallback engine instead.
@@ -198,16 +309,7 @@ pub fn openrouter_native_vendor(model: &str) -> Option<NativeSearchVendor> {
             native.then_some(NativeSearchVendor::OpenAi)
         }
         "anthropic" => {
-            let rest = name.strip_prefix("claude-")?;
-            // `claude-3.7-sonnet`, `claude-sonnet-4.5`, `claude-opus-5-5`.
-            let digits = rest.find(|c: char| c.is_ascii_digit())?;
-            let native = match version(&rest[digits..])? {
-                (major, _) if major >= 4 => true,
-                (3, Some(5)) => rest.contains("haiku"),
-                (3, Some(7)) => rest.contains("sonnet"),
-                _ => false,
-            };
-            native.then_some(NativeSearchVendor::Anthropic)
+            anthropic_has_native_web_search(name).then_some(NativeSearchVendor::Anthropic)
         }
         "google" => version(name.strip_prefix("gemini-")?)
             .is_some_and(|(major, _)| major >= 3)
@@ -302,6 +404,131 @@ mod tests {
             "o1",
         ] {
             assert!(!openai_has_native_web_search(model), "{model}");
+        }
+    }
+
+    #[test]
+    fn anthropic_models_with_web_search() {
+        for model in [
+            "claude-opus-5-5",
+            "claude-haiku-5-5",
+            "claude-opus-5-5[1m]",
+            "claude-sonnet-4-5-20250929",
+            "claude-opus-4-1-20250805",
+            "claude-sonnet-4-20250514",
+            "claude-3-7-sonnet-20250219",
+            "claude-3-5-haiku-20241022",
+            "anthropic/claude-sonnet-4.5",
+        ] {
+            assert!(anthropic_has_native_web_search(model), "{model}");
+        }
+        for model in [
+            "claude-3-5-sonnet-20241022",
+            "claude-3-opus-20240229",
+            "claude-3-haiku-20240307",
+            "claude-2.1",
+            "gpt-5",
+            "claude",
+        ] {
+            assert!(!anthropic_has_native_web_search(model), "{model}");
+        }
+    }
+
+    #[test]
+    fn gemini_models_with_google_search() {
+        for model in [
+            "gemini-3.8-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-pro-preview",
+            "gemini-3-flash-preview",
+            "gemini-2.5-pro",
+            "gemini-2.5-flash-lite",
+            "gemini-2.0-flash",
+            "models/gemini-2.5-flash",
+        ] {
+            assert!(gemini_has_native_web_search(model), "{model}");
+        }
+        for model in [
+            "gemini-2.0-flash-lite",
+            "gemini-1.5-pro",
+            "gemini-2.5-flash-preview-tts",
+            "gemini-2.5-flash-image",
+            "gemini-embedding-001",
+            "gemini-live-2.5-flash",
+            "gpt-5",
+        ] {
+            assert!(!gemini_has_native_web_search(model), "{model}");
+        }
+    }
+
+    #[test]
+    fn anthropic_tool_takes_one_kind_of_domain_filter() {
+        assert_eq!(
+            NativeWebSearch::default().anthropic_tool(),
+            Some(json!({ "type": "web_search_20250305", "name": "web_search", "max_uses": 5 }))
+        );
+        let blocked = NativeWebSearch {
+            blocked_domains: vec!["reddit.com".into()],
+            max_uses: Some(2),
+            user_location: Some(WebSearchUserLocation {
+                city: Some("Kyiv".into()),
+                country: Some("UA".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert_eq!(
+            blocked.anthropic_tool(),
+            Some(json!({
+                "type": "web_search_20250305", "name": "web_search", "max_uses": 2,
+                "blocked_domains": ["reddit.com"],
+                "user_location": { "type": "approximate", "city": "Kyiv", "country": "UA" }
+            }))
+        );
+        let allowed = NativeWebSearch {
+            allowed_domains: vec!["docs.rs".into()],
+            user_location: Some(WebSearchUserLocation::default()),
+            ..Default::default()
+        };
+        // An empty location is left out rather than sent empty.
+        assert_eq!(
+            allowed.anthropic_tool(),
+            Some(
+                json!({ "type": "web_search_20250305", "name": "web_search", "max_uses": 5,
+                         "allowed_domains": ["docs.rs"] })
+            )
+        );
+        let both = NativeWebSearch {
+            allowed_domains: vec!["docs.rs".into()],
+            blocked_domains: vec!["reddit.com".into()],
+            ..Default::default()
+        };
+        assert_eq!(both.anthropic_tool(), None);
+    }
+
+    #[test]
+    fn gemini_tool_declines_any_domain_filter() {
+        let located = NativeWebSearch {
+            max_uses: Some(3),
+            freshness: Some("week".into()),
+            user_location: Some(WebSearchUserLocation {
+                country: Some("UA".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert_eq!(located.gemini_tool(), Some(json!({ "google_search": {} })));
+        for filtered in [
+            NativeWebSearch {
+                allowed_domains: vec!["docs.rs".into()],
+                ..Default::default()
+            },
+            NativeWebSearch {
+                blocked_domains: vec!["reddit.com".into()],
+                ..Default::default()
+            },
+        ] {
+            assert_eq!(filtered.gemini_tool(), None);
         }
     }
 

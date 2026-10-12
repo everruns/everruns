@@ -119,8 +119,10 @@ describe("Web search page", () => {
     ).toBeInTheDocument();
     expect(within(native).getByText("Mistral")).toBeInTheDocument();
     expect(within(native).getByText("1 of your 2 model providers support it")).toBeInTheDocument();
-    // OpenAI and OpenRouter drivers run native search; Anthropic and Gemini are next.
-    expect(within(native).getByText("Anthropic and Gemini")).toBeInTheDocument();
+    // OpenAI, Anthropic, Gemini and OpenRouter drivers run native search.
+    expect(within(native).getByText("Anthropic · not connected")).toBeInTheDocument();
+    expect(within(native).getByText("Gemini · not connected")).toBeInTheDocument();
+    expect(within(native).queryByText("Coming next")).not.toBeInTheDocument();
     expect(within(native).queryByText(/do not run it yet/)).not.toBeInTheDocument();
 
     const account = screen.getByTestId("search-account-card");

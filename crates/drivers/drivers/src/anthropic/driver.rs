@@ -930,19 +930,6 @@ impl AnthropicChatDriver {
     }
 }
 
-/// Store a `diagnostics` payload from the stream and log its headline.
-///
-/// The payload shape is Anthropic's, so it is carried verbatim on the
-/// completion metadata; the log line exists because a cache divergence is the
-/// kind of thing an operator wants to see without reading stored metadata.
-fn record_cache_diagnostics(slot: &Arc<Mutex<Option<serde_json::Value>>>, diagnostics: Value) {
-    tracing::info!(
-        diagnostics = %diagnostics,
-        "AnthropicDriver: received prompt cache diagnostics"
-    );
-    *slot.lock().unwrap() = Some(diagnostics);
-}
-
 mod chat_driver;
 
 impl std::fmt::Debug for AnthropicChatDriver {
@@ -1506,6 +1493,10 @@ struct AnthropicUsage {
     /// Cache writes split by TTL; prices the 1 hour share.
     #[serde(default)]
     cache_creation: Option<cache::AnthropicCacheCreation>,
+    /// Server tool counts, e.g. `{"web_search_requests": 2}` (native web
+    /// search, billed per search).
+    #[serde(default)]
+    server_tool_use: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1615,6 +1606,9 @@ enum AnthropicDelta {
     /// Cryptographic signature for thinking content (sent after thinking_delta completes)
     #[serde(rename = "signature_delta")]
     SignatureDelta { signature: String },
+    /// A citation added to the text block being streamed (web search).
+    #[serde(rename = "citations_delta")]
+    CitationsDelta { citation: Value },
     #[serde(rename = "compaction_delta")]
     CompactionDelta {
         #[serde(default)]
@@ -1965,7 +1959,7 @@ impl AnthropicModelInfo {
 mod cache;
 #[path = "driver_layout.rs"]
 mod layout;
-use cache::AnthropicCacheControl;
+use cache::{AnthropicCacheControl, record_cache_diagnostics};
 
 #[cfg(test)]
 #[path = "driver_family_tests.rs"]

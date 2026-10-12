@@ -277,7 +277,9 @@ async fn preview_native_step_follows_the_models_driver_support() {
         ("openai", "gpt-3.5-turbo", false),
         ("openrouter", "anthropic/claude-opus-5-5", true),
         ("openrouter", "mistralai/mistral-large", false),
-        ("anthropic", "claude-opus-5-5", false),
+        ("anthropic", "claude-opus-5-5", true),
+        ("anthropic", "claude-3-5-sonnet-20241022", false),
+        ("gemini", "gemini-3.8-flash", true),
     ];
     for (provider_type, model_id, native) in cases {
         let id = model(provider_type, model_id).await;

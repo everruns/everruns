@@ -8,13 +8,13 @@ products: [platform, cloud, framework]
 surfaces: [ui, api, code]
 links:
   docs: [/capabilities/web-search/]
-  prs: [everruns/everruns#4551, everruns/everruns#4584, everruns/everruns#4605, everruns/everruns#4611, everruns/everruns#4614]
+  prs: [everruns/everruns#4551, everruns/everruns#4584, everruns/everruns#4605, everruns/everruns#4611, everruns/everruns#4614, everruns/everruns#4621]
 ---
 
 Agents now search with one `web_search` tool, whichever provider answers. The Conversation and
 Worker harnesses include it, and keyless free search answers whenever the chosen provider cannot.
-On OpenAI and OpenRouter models with their own search, Automatic uses it first, billed by the
-provider and counted on the model call's cost. Anthropic and Gemini come next.
+On OpenAI, Anthropic, Gemini and OpenRouter models with their own search, Automatic uses it
+first, billed by the provider and counted on the model call's cost.
 
 **In the UI:** **Registers > Web search** lists the providers (model provider search with its
 price, Brave Search accounts, free search) and holds the organization defaults: default provider,

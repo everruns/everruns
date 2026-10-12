@@ -11,6 +11,22 @@ use serde_json::Value;
 
 use super::{AnthropicRequest, AnthropicSystem, AnthropicSystemBlock, AnthropicToolEntry};
 
+/// Store a `diagnostics` payload from the stream and log its headline.
+///
+/// The payload shape is Anthropic's, so it is carried verbatim on the
+/// completion metadata; the log line exists because a cache divergence is the
+/// kind of thing an operator wants to see without reading stored metadata.
+pub(super) fn record_cache_diagnostics(
+    slot: &std::sync::Arc<std::sync::Mutex<Option<Value>>>,
+    diagnostics: Value,
+) {
+    tracing::info!(
+        diagnostics = %diagnostics,
+        "AnthropicDriver: received prompt cache diagnostics"
+    );
+    *slot.lock().unwrap() = Some(diagnostics);
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct AnthropicCacheControl {
     pub(super) r#type: String,
