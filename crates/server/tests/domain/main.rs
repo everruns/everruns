@@ -30,6 +30,7 @@ mod agent_budget_subject_test;
 mod agent_channels_migration_test;
 mod agent_trigger_invocation_integration_test;
 mod agent_versions_retirement_migration_test;
+mod api_endpoint_check_migration_test;
 mod api_endpoint_conversion_test;
 mod app_budget_retirement_test;
 mod app_invocation_channels_integration_test;
