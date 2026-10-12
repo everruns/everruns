@@ -135,6 +135,15 @@ fn split_tool_result_images(msg: &Message) -> (OpenAiMessage, Option<OpenAiMessa
                 r#type: "image_url".to_string(),
                 image_url: OpenAiImageUrl { url: url.clone() },
             }),
+            // A PDF a tool returned (`read_file` on an attachment) rides the
+            // same carrier: `user` is also the role that takes file parts.
+            LlmContentPart::File { url, filename } => Some(OpenAiContentPart::File {
+                r#type: "file".to_string(),
+                file: OpenAiFile {
+                    filename: filename.clone(),
+                    file_data: url.clone(),
+                },
+            }),
             _ => None,
         })
         .collect();
@@ -157,9 +166,17 @@ fn split_tool_result_images(msg: &Message) -> (OpenAiMessage, Option<OpenAiMessa
     let mut tool_message = converted;
     tool_message.content = Some(OpenAiContent::Text(text));
 
+    let kind = if images
+        .iter()
+        .all(|part| matches!(part, OpenAiContentPart::ImageUrl { .. }))
+    {
+        "Image output"
+    } else {
+        "Output"
+    };
     let label = match msg.tool_call_id.as_deref() {
-        Some(id) => format!("Image output from tool call {id}."),
-        None => "Image output from the preceding tool call.".to_string(),
+        Some(id) => format!("{kind} from tool call {id}."),
+        None => format!("{kind} from the preceding tool call."),
     };
     let mut carrier = Vec::with_capacity(images.len() + 1);
     carrier.push(OpenAiContentPart::Text {
@@ -183,6 +200,32 @@ fn split_tool_result_images(msg: &Message) -> (OpenAiMessage, Option<OpenAiMessa
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn tool_result_pdf_moves_to_a_user_message() {
+        use crate::message::{LlmContentPart, MessageContent};
+        let mut tool = Message::text(MessageRole::Tool, "");
+        tool.tool_call_id = Some("call".into());
+        tool.content = MessageContent::Parts(vec![
+            LlmContentPart::text("{\"path\":\"/attachments/a1/report.pdf\"}"),
+            LlmContentPart::file("data:application/pdf;base64,JVBERi0=", None),
+        ]);
+
+        let wire = serde_json::to_value(convert_messages(&[tool])).unwrap();
+
+        assert_eq!(wire[0]["role"], "tool");
+        assert_eq!(
+            wire[0]["content"],
+            "{\"path\":\"/attachments/a1/report.pdf\"}"
+        );
+        assert_eq!(wire[1]["role"], "user");
+        assert_eq!(wire[1]["content"][0]["text"], "Output from tool call call.");
+        assert_eq!(wire[1]["content"][1]["type"], "file");
+        assert_eq!(
+            wire[1]["content"][1]["file"]["file_data"],
+            "data:application/pdf;base64,JVBERi0="
+        );
+    }
 
     /// EVE-1133: chat-completions takes a `tool` message's content as a string.
     /// An image part on one is not an error the provider reports — it is

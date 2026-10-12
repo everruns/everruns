@@ -243,14 +243,26 @@ impl GeminiChatDriver {
                             json!({"result": response_value})
                         };
 
+                        let mut parts = vec![GeminiPart::FunctionResponse {
+                            function_response: GeminiFunctionResponse {
+                                name: String::from(*name),
+                                response: response_value,
+                            },
+                        }];
+                        // Images and PDFs the tool returned (a screenshot, an
+                        // attachment `read_file` reopened) follow the response
+                        // as inline data in the same turn, instead of dropping.
+                        parts.extend(Self::convert_content(&msg.content).into_iter().filter(
+                            |part| {
+                                matches!(
+                                    part,
+                                    GeminiPart::InlineData { .. } | GeminiPart::FileData { .. }
+                                )
+                            },
+                        ));
                         contents.push(GeminiContent {
                             role: Some("user".to_string()),
-                            parts: vec![GeminiPart::FunctionResponse {
-                                function_response: GeminiFunctionResponse {
-                                    name: String::from(*name),
-                                    response: response_value,
-                                },
-                            }],
+                            parts,
                         });
                     }
                 }

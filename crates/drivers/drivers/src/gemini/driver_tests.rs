@@ -583,3 +583,25 @@ fn grounding_supports_become_web_citations_over_the_streamed_answer() {
         assert_eq!(span.text, "Rust 1.95 ist da.");
     }
 }
+
+#[test]
+fn function_response_is_followed_by_returned_pdf() {
+    let mut result = result_message(Some("call_8"), "");
+    result.content = MessageContent::Parts(vec![
+        LlmContentPart::text(r#"{"path":"/attachments/a1/report.pdf"}"#),
+        LlmContentPart::file("data:application/pdf;base64,JVBERi0=", None),
+    ]);
+
+    let (_, contents) = GeminiChatDriver::convert_messages(&[
+        call_message("call_8", "read_file", json!({})),
+        result,
+    ]);
+
+    assert_eq!(
+        serde_json::to_value(&contents[1]).unwrap(),
+        json!({"role":"user","parts":[
+            {"functionResponse":{"name":"read_file","response":{"path":"/attachments/a1/report.pdf"}}},
+            {"inlineData":{"mimeType":"application/pdf","data":"JVBERi0="}}
+        ]})
+    );
+}
