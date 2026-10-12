@@ -10,11 +10,34 @@
 //! when its identity created one, otherwise the deployment's shared App.
 
 use super::*;
-use crate::github_apps::{AppCredentials, TokenScope};
+use crate::github_apps::{AppCredentials, GITHUB_APP_CONNECTION_TYPE, TokenScope};
 use everruns_contracts::runtime::{GitHubAccess, McpResolvedCredential};
 use everruns_core::McpServerActsAs;
 
 const PROVIDER: &str = "github";
+
+/// Which of the three GitHub identities (D1) a connection is. Derived from the
+/// row rather than stored in its own column: `connection_type` already marks an
+/// agent App's installation, any other installation belongs to the shared
+/// Everruns App, and a row without one holds a person's own token.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GitHubIdentityKind {
+    AgentApp,
+    EverrunsApp,
+    Person,
+}
+
+impl GitHubIdentityKind {
+    pub(crate) fn of(row: &VirtualUserConnectionRow) -> Self {
+        if row.connection_type == GITHUB_APP_CONNECTION_TYPE {
+            Self::AgentApp
+        } else if row.installation_id.is_some() {
+            Self::EverrunsApp
+        } else {
+            Self::Person
+        }
+    }
+}
 
 /// The token scope for a use. GitHub limits a token to repositories of the
 /// installation's own account, so every repository must share one owner.
@@ -73,7 +96,7 @@ impl GitHubAppTokenMinter {
 
 impl DbConnectionResolver {
     /// Credentials of the agent's own App, when `row`'s identity created one.
-    pub(super) async fn agent_app_credentials(
+    async fn agent_app_credentials(
         &self,
         scope: OAuthScope,
         row: &VirtualUserConnectionRow,
@@ -98,20 +121,24 @@ impl DbConnectionResolver {
         }))
     }
 
-    /// Credentials of the App that owns `row`'s installation: the agent's own
-    /// App when its identity created one, else the deployment's shared App.
-    async fn github_app_credentials(
+    /// Credentials of the App that minted `row`'s installation, chosen by its
+    /// kind. An agent App's installation mints only with that App's key and a
+    /// shared App installation only with the shared key; neither stands in for
+    /// the other when one is missing.
+    async fn installation_credentials(
         &self,
         scope: OAuthScope,
         row: &VirtualUserConnectionRow,
     ) -> Result<Option<AppCredentials>> {
-        if let Some(credentials) = self.agent_app_credentials(scope, row).await? {
-            return Ok(Some(credentials));
+        match GitHubIdentityKind::of(row) {
+            GitHubIdentityKind::AgentApp => self.agent_app_credentials(scope, row).await,
+            GitHubIdentityKind::EverrunsApp => self
+                .github_app
+                .as_ref()
+                .map(GitHubAppTokenMinter::credentials)
+                .transpose(),
+            GitHubIdentityKind::Person => Ok(None),
         }
-        self.github_app
-            .as_ref()
-            .map(GitHubAppTokenMinter::credentials)
-            .transpose()
     }
 
     /// Resolve a GitHub token for one use; see `get_github_token`.
@@ -171,22 +198,28 @@ impl DbConnectionResolver {
             .await
     }
 
-    async fn scoped_github_token(
+    /// A token for `row` limited to `token_scope`; an empty scope gets
+    /// everything the installation holds.
+    pub(super) async fn scoped_github_token(
         &self,
         scope: OAuthScope,
         row: VirtualUserConnectionRow,
         token_scope: &TokenScope,
     ) -> Result<Option<String>> {
-        let Some(installation_id) = row.installation_id else {
-            // A stored OAuth token (a person's own login) cannot be narrowed;
-            // it reaches what the person can.
-            return row
-                .access_token_encrypted
-                .as_deref()
-                .map(|value| self.decrypt(value, "connection token"))
-                .transpose();
+        let installation_id = match (GitHubIdentityKind::of(&row), row.installation_id) {
+            (GitHubIdentityKind::Person, _) => {
+                // A stored OAuth token (a person's own login) cannot be
+                // narrowed; it reaches what the person can.
+                return row
+                    .access_token_encrypted
+                    .as_deref()
+                    .map(|value| self.decrypt(value, "connection token"))
+                    .transpose();
+            }
+            (_, Some(installation_id)) => installation_id,
+            (_, None) => return Ok(None),
         };
-        let Some(credentials) = self.github_app_credentials(scope, &row).await? else {
+        let Some(credentials) = self.installation_credentials(scope, &row).await? else {
             return Ok(None);
         };
         self.github_apps
@@ -236,6 +269,40 @@ mod tests {
         assert_eq!(
             token_scope(&access(&[], &[])).unwrap(),
             TokenScope::default()
+        );
+    }
+
+    #[test]
+    fn kind_follows_the_connection_type_and_installation() {
+        let row = |connection_type: &str, installation_id: Option<i64>| VirtualUserConnectionRow {
+            id: Uuid::nil(),
+            virtual_user_id: VirtualUserId::from_uuid(Uuid::nil()),
+            provider: PROVIDER.to_string(),
+            owner_scope: "user".to_string(),
+            name: None,
+            connection_type: connection_type.to_string(),
+            provider_user_id: None,
+            provider_username: None,
+            access_token_encrypted: None,
+            refresh_token_encrypted: None,
+            scopes: None,
+            expires_at: None,
+            installation_id,
+            provider_metadata: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        assert_eq!(
+            GitHubIdentityKind::of(&row(GITHUB_APP_CONNECTION_TYPE, Some(1))),
+            GitHubIdentityKind::AgentApp
+        );
+        assert_eq!(
+            GitHubIdentityKind::of(&row("oauth", Some(1))),
+            GitHubIdentityKind::EverrunsApp
+        );
+        assert_eq!(
+            GitHubIdentityKind::of(&row("oauth", None)),
+            GitHubIdentityKind::Person
         );
     }
 }
