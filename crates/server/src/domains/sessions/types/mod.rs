@@ -189,6 +189,15 @@ pub struct UpdateSessionRequest {
         nullable = true
     )]
     pub virtual_user_id: UpdateField<VirtualUserId>,
+    /// Model for this session's turns. `null` clears it so turns follow the
+    /// agent's default model again.
+    #[serde(default, with = "crate::domains::change_history::update_field")]
+    #[schema(
+        value_type = Option<String>,
+        example = "model_01933b5a00007000800000000000001",
+        nullable = true
+    )]
+    pub model_id: UpdateField<ModelId>,
     /// Session locale (BCP 47, e.g. `uk-UA`).
     #[serde(default)]
     #[schema(example = "uk-UA")]

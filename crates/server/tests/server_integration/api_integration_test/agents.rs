@@ -1021,12 +1021,14 @@ async fn test_session_inherits_agent_default_model() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    // Session should inherit agent's default_model_id
-    assert_eq!(
-        session.model_id,
-        Some(model.id),
-        "Session should inherit agent's default_model_id"
-    );
+    // The session binds no model of its own; its turns resolve the agent's.
+    assert_eq!(session.model_id, None, "agent default must not be copied");
+    let resolved: Value = server
+        .get(&format!("/v1/sessions/{}/resolved-model", session.id))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(resolved["model_id"], model.id.to_string());
 
     // Cleanup in correct order: session -> agent -> model -> provider
     server.delete(&format!("/v1/sessions/{}", session.id)).await;

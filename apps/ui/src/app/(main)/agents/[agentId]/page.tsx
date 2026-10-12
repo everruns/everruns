@@ -668,7 +668,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
               {activeTab === "stats" && (
                 <ResourceStatsPanel stats={stats} isLoading={statsLoading} error={statsError} />
               )}
-              {activeTab === "sessions" && <AgentSessionsPanel agentId={agentId} />}
+              {activeTab === "sessions" && (
+                <AgentSessionsPanel agentId={agentId} defaultModelId={agent?.default_model_id} />
+              )}
             </div>
           )}
         </div>

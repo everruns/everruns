@@ -3497,7 +3497,7 @@ export interface UpdateSessionRequest {
   title?: string;
   locale?: string;
   tags?: string[];
-  model_id?: string;
+  model_id?: string | null;
 }
 
 // ============================================

@@ -1273,11 +1273,11 @@ impl Database {
                 resolved_owner_user_id = CASE WHEN $9 THEN $10 ELSE resolved_owner_user_id END,
                 locale = COALESCE($11, locale),
                 tags = COALESCE($12, tags),
-                model_id = COALESCE($13, model_id),
-                status = COALESCE($14, status),
-                started_at = COALESCE($15, started_at),
-                finished_at = COALESCE($16, finished_at),
-                tools = COALESCE($17, tools)
+                model_id = CASE WHEN $13 THEN $14 ELSE model_id END,
+                status = COALESCE($15, status),
+                started_at = COALESCE($16, started_at),
+                finished_at = COALESCE($17, finished_at),
+                tools = COALESCE($18, tools)
             WHERE org_id = $1 AND id = $2
             RETURNING id, org_id, workspace_id, app_id, channel_id, trigger_id, harness_id, agent_id, agent_revision, virtual_user_id, playground_user_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
@@ -1296,7 +1296,8 @@ impl Database {
         .bind(input.resolved_owner_user_id.into_value())
         .bind(&input.locale)
         .bind(&input.tags)
-        .bind(input.model_id.map(|m| m.uuid()))
+        .bind(input.model_id.is_changed())
+        .bind(input.model_id.into_value().map(|m| m.uuid()))
         .bind(&input.status)
         .bind(input.started_at)
         .bind(input.finished_at)

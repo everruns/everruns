@@ -780,11 +780,11 @@ pub struct UpdateSessionCmd {
 #[command(
     name = "update_session",
     category = "sessions",
-    description = "Update session title, tags, or locale.",
+    description = "Update session title, tags, locale, or model. A null `model_id` clears the session model so turns follow the agent's default again.",
     method = "PATCH",
     path = "/v1/sessions/{session_id}",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions"], "update").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Retitle a session so it is findable later", "everruns sessions update session_01h9 --title 'Release triage' --reason 'Clarify the session topic'",)]),
+    cli = CliRoute::new(&["sessions"], "update").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Retitle a session so it is findable later", "everruns sessions update session_01h9 --title 'Release triage' --reason 'Clarify the session topic'",), CliExample::new("Switch a running session to another model", "everruns sessions update session_01h9 --model-id model_01933b5a00007000800000000000001 --reason 'Provider limit on the current model'",)]),
 )]
 impl Command for UpdateSessionCmd {
     type Output = Session;

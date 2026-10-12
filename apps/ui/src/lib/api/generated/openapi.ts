@@ -27031,6 +27031,12 @@ export interface components {
        */
       locale?: string | null;
       /**
+       * @description Model for this session's turns. `null` clears it so turns follow the
+       *     agent's default model again.
+       * @example model_01933b5a00007000800000000000001
+       */
+      model_id?: string | null;
+      /**
        * @description Tags for organizing and filtering sessions.
        * @example [
        *       "resolved"
