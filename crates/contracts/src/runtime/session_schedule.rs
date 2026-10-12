@@ -64,6 +64,27 @@ fn unix_weekdays_to_names(field: &str) -> String {
                 Some((range, step)) => (range, Some(step)),
                 None => (part, None),
             };
+            // 7 is Sunday at the end of the week, but as a name it starts
+            // the week, so `FRI-SUN` runs backwards and `SUN-SUN` keeps only
+            // Sunday. A numeric range ending at 7 is spelled out day by day.
+            if let Some((start, "7")) = range.split_once('-')
+                && let Ok(start) = start.parse::<usize>()
+                && start <= 7
+            {
+                let step = match step {
+                    None => 1,
+                    Some(step) => match step.parse::<usize>() {
+                        Ok(step) if step > 0 => step,
+                        // Leave a malformed step for the parser to reject.
+                        _ => return part.to_string(),
+                    },
+                };
+                return (start..=7)
+                    .step_by(step)
+                    .map(|index| NAMES[index])
+                    .collect::<Vec<_>>()
+                    .join(",");
+            }
             let range = range.split('-').map(day).collect::<Vec<_>>().join("-");
             match step {
                 Some(step) => format!("{range}/{step}"),
@@ -289,11 +310,51 @@ mod limit_tests {
         assert_eq!(unix_weekdays_to_names("0,6"), "SUN,SAT");
         assert_eq!(unix_weekdays_to_names("*/2"), "*/2");
         assert_eq!(unix_weekdays_to_names("MON"), "MON");
+        assert_eq!(unix_weekdays_to_names("5-7"), "FRI,SAT,SUN");
+        assert_eq!(unix_weekdays_to_names("1-7/2"), "MON,WED,FRI,SUN");
+        assert_eq!(unix_weekdays_to_names("7-7"), "SUN");
+        assert_eq!(unix_weekdays_to_names("5-7/0"), "5-7/0");
         assert_eq!(
             normalize_session_cron(" 0 0 7 * * * ").as_deref(),
             Some("0 0 7 * * *")
         );
         assert_eq!(normalize_session_cron("* * *"), None);
+    }
+
+    /// Standard cron allows a weekday range to end at 7 (Sunday as the last
+    /// day of the week). As names that range runs backwards (`FRI-SUN`) or
+    /// collapses (`SUN-SUN`), so `5-7` was rejected and `0-7`, which is every
+    /// day, fired only on Sundays.
+    #[test]
+    fn weekday_ranges_ending_at_seven_keep_their_days() {
+        use chrono::{Datelike, TimeZone, Weekday};
+        use std::str::FromStr;
+        let days = |cron: &str| {
+            let normalized = normalize_session_cron(cron).unwrap();
+            let schedule = cron::Schedule::from_str(&normalized)
+                .unwrap_or_else(|error| panic!("{cron} as {normalized}: {error}"));
+            // A Monday; the next seven runs of a daily-or-sparser cron.
+            let after = Utc.with_ymd_and_hms(2026, 10, 12, 12, 0, 0).unwrap();
+            let mut days: Vec<_> = schedule
+                .after(&after)
+                .take(7)
+                .map(|t| t.weekday())
+                .collect();
+            days.sort_by_key(|day| day.num_days_from_monday());
+            days.dedup();
+            days
+        };
+        use Weekday::*;
+        assert_eq!(
+            days("0 10 * * 0-7"),
+            vec![Mon, Tue, Wed, Thu, Fri, Sat, Sun]
+        );
+        assert_eq!(days("0 10 * * 5-7"), vec![Fri, Sat, Sun]);
+        assert_eq!(days("0 10 * * 6-7"), vec![Sat, Sun]);
+        assert_eq!(days("0 10 * * 1-3,6-7"), vec![Mon, Tue, Wed, Sat, Sun]);
+        assert_eq!(days("0 10 * * 7-7"), vec![Sun]);
+        assert_eq!(days("0 10 * * 1-7/2"), vec![Mon, Wed, Fri, Sun]);
+        assert_eq!(days("0 10 * * 1-5"), vec![Mon, Tue, Wed, Thu, Fri]);
     }
 
     #[test]

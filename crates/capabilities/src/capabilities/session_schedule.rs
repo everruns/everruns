@@ -114,7 +114,7 @@ impl Tool for CreateScheduleTool {
                 },
                 "cron_expression": {
                     "type": "string",
-                    "description": "Standard 5-field cron expression for recurring schedules (e.g., '0 3 * * *' for daily at 3am)"
+                    "description": "Standard 5-field cron expression for recurring schedules: minute hour day-of-month month day-of-week, with day-of-week 0-6 from Sunday (7 is also Sunday), read in `timezone` (e.g., '0 3 * * *' daily at 03:00, '0 18 * * 0' Sundays at 18:00)"
                 },
                 "scheduled_at": {
                     "type": "string",

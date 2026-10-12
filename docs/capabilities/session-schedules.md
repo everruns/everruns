@@ -52,7 +52,8 @@ work, there is no separate recurring-task primitive to configure.
 
 - Maximum 5 active schedules per session
 - Cron uses standard 5-field format (minute, hour, day, month, weekday), with
-  weekdays counted 0-6 from Sunday (7 is also Sunday)
+  weekdays counted 0-6 from Sunday (7 is also Sunday, so `5-7` is Friday through
+  Sunday and `0 18 * * 0` is Sundays at 18:00), read in the schedule's timezone
 - A recurring schedule fires at most once every 5 minutes by default
 - An invalid cron expression or timezone, or a schedule over a limit, fails the
   tool call with the reason, so the agent can correct it
