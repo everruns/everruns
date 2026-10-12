@@ -250,6 +250,6 @@ describe("CredentialFields", () => {
 describe("/settings/providers", () => {
   it("redirects to the Providers tab", () => {
     ProvidersRedirect();
-    expect(mockRedirect).toHaveBeenCalledWith("/models?tab=providers");
+    expect(mockRedirect).toHaveBeenCalledWith("/models/providers");
   });
 });

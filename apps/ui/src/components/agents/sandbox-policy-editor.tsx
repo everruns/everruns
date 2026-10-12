@@ -562,7 +562,7 @@ function TemplateSpecEditor({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                <Link href="/sandbox-provider-accounts" className="underline underline-offset-2">
+                <Link href="/sandboxes/accounts" className="underline underline-offset-2">
                   Manage organization provider accounts
                 </Link>
               </p>
@@ -905,7 +905,7 @@ export function SandboxPolicyEditor({
                   </Button>
                 ))}
               </div>
-              <Link href="/sandbox-templates" className="text-xs text-muted-foreground underline">
+              <Link href="/sandboxes/templates" className="text-xs text-muted-foreground underline">
                 Manage Sandbox Templates
               </Link>
             </>

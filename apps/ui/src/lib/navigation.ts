@@ -21,11 +21,9 @@ import {
   MemoryIcon,
   ObserverIcon,
   PlaygroundIcon,
-  ProviderAccountIcon,
   QueueIcon,
   ReportIcon,
   SandboxIcon,
-  SandboxTemplateIcon,
   ScheduleIcon,
   SessionIcon,
   SettingsIcon,
@@ -115,6 +113,26 @@ export const defaultBuildingNavigation: NavigationItem[] = [
     icon: HarnessDomainIcon,
     keywords: ["template", "config"],
   },
+  // One page with tabs, like Models: the fleet (what is running), the
+  // templates that configure it, and the provider accounts it runs on.
+  {
+    name: "Sandboxes",
+    href: "/sandboxes",
+    icon: SandboxIcon,
+    keywords: [
+      "fleet",
+      "compute",
+      "daytona",
+      "modal",
+      "containers",
+      "running",
+      "sandbox templates",
+      "environment",
+      "workspace",
+      "provider accounts",
+      "sandbox credentials",
+    ],
+  },
   {
     name: "Virtual Users",
     href: "/virtual-users",
@@ -186,30 +204,6 @@ export const defaultBottomNavigation: NavigationItem[] = [
   },
 ];
 
-// Sandboxes get their own group, collapsed by default: the fleet (what is
-// running) and the templates that configure it, side by side.
-export const defaultSandboxesNavigation: NavigationItem[] = [
-  {
-    name: "Fleet",
-    href: "/sandboxes",
-    icon: SandboxIcon,
-    keywords: ["sandboxes", "compute", "daytona", "modal", "containers", "running"],
-  },
-  {
-    name: "Templates",
-    href: "/sandbox-templates",
-    icon: SandboxTemplateIcon,
-    keywords: ["sandbox templates", "environment", "compute", "workspace"],
-  },
-  {
-    name: "Provider Accounts",
-    href: "/sandbox-provider-accounts",
-    icon: ProviderAccountIcon,
-    keywords: ["sandbox credentials", "daytona", "modal", "e2b", "organization accounts"],
-    minimumRole: "admin",
-  },
-];
-
 export const defaultDurableNavigation: NavigationItem[] = [
   { name: "Overview", href: "/durable", icon: DurableIcon, exact: true },
   { name: "Workers", href: "/durable/workers", icon: WorkerIcon },
@@ -234,7 +228,6 @@ export const defaultNavigationSections: NavigationSection[] = [
   { label: "Operational", items: defaultOperationalNavigation },
   { label: "Registers", items: defaultRegistriesNavigation },
   { label: "Quality", items: defaultQualityNavigation },
-  { label: "Sandboxes", items: defaultSandboxesNavigation, defaultCollapsed: true },
   { items: defaultBottomNavigation },
   { label: "Durable Execution", items: defaultDurableNavigation, defaultCollapsed: true },
   { label: "Dev", items: defaultDevNavigation, devOnly: true },

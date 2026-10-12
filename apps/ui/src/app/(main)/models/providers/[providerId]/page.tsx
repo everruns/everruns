@@ -95,7 +95,7 @@ export default function ProviderDetailPage({
       <ResourceNotFound
         title="Provider not found"
         description="This provider may have been deleted, moved to another organization, or the URL may be wrong."
-        backHref="/models?tab=providers"
+        backHref="/models/providers"
         backLabel="Back to providers"
         resourceId={providerId}
       />
@@ -105,7 +105,7 @@ export default function ProviderDetailPage({
   return (
     <PageShell>
       <Link
-        href="/models?tab=providers"
+        href="/models/providers"
         className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
       >
         <ArrowLeft className="w-4 h-4 mr-2" />

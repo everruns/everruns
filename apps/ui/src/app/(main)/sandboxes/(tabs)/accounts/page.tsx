@@ -3,6 +3,7 @@
 import { ProviderAccountIcon } from "@/components/icons/facet-icons";
 import { useMemo, useState } from "react";
 import { Plus, RefreshCw, Trash2 } from "lucide-react";
+import { usePageTitle } from "@/hooks";
 import { useConnectionProviders } from "@/hooks/use-user-connections";
 import {
   useDeleteOrganizationConnection,
@@ -16,15 +17,12 @@ import { OrganizationAccountDialog } from "@/components/connections/organization
 import { Button } from "@/components/ui/button";
 import { EntityCard, EntityCardDescription, EntityCardFooter } from "@/components/ui/entity-card";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
-import {
-  EmptyState,
-  PageBreadcrumb,
-  PageContainer,
-  PageMain,
-  PageMasthead,
-} from "@/components/layout";
+import { EmptyState, PageMain } from "@/components/layout";
 
+// Provider accounts tab. The page header and tabs come from the shell
+// (../sandboxes-shell.tsx).
 export default function SandboxProviderAccountsPage() {
+  usePageTitle("Provider accounts", "Sandboxes");
   const connections = useOrganizationConnections();
   const { data: allProviders = [] } = useConnectionProviders();
   const providers = useMemo(
@@ -51,13 +49,7 @@ export default function SandboxProviderAccountsPage() {
   const remove = useDeleteOrganizationConnection();
   const verify = useVerifyOrganizationConnection();
   return (
-    <PageContainer>
-      <PageBreadcrumb items={[{ label: "Provider Accounts" }]} />
-      <PageMasthead
-        icon={<ProviderAccountIcon />}
-        title="Sandbox Provider Accounts"
-        description="Organization-owned credentials that managed Sandbox Templates can use for every Session."
-      />
+    <>
       <PageMain className="space-y-8">
         {notice ? <p className="border bg-muted px-4 py-3 text-sm">{notice}</p> : null}
         <QueryStateWrapper
@@ -182,6 +174,6 @@ export default function SandboxProviderAccountsPage() {
         }}
         onSaved={setNotice}
       />
-    </PageContainer>
+    </>
   );
 }
