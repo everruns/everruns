@@ -13,8 +13,11 @@
 //    as the identity's `github` connection.
 //
 // The agent page drives the same flow through `/v1/agents/{agent_id}/github`
-// (status) and `/v1/agents/{agent_id}/github/connect`, which first gives the
-// agent its identity when it has none, so connecting needs no identity setup.
+// (status, disconnect) and `/v1/agents/{agent_id}/github/connect`, which first
+// gives the agent its identity when it has none, so connecting needs no
+// identity setup. Those are commands (`crate::domains::agents::github`), served
+// here by `agent_routes` and to the CLI and MCP by the command catalog; the
+// identity routes below call the same functions.
 //
 // The two GET callback routes are browser redirects from GitHub and carry none of our
 // auth. See `crate::github_apps` for why they are safe anyway, and
@@ -31,29 +34,28 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
+use super::command_http::CommandRouterExt;
 use super::common::{ErrorResponse, impl_auth_state};
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::domains::agents::AGENT_VIEW;
-use crate::domains::virtual_users::VIRTUAL_USER_MANAGE;
-use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
+use crate::domains::agents::github::{
+    self as agent_github, BeginConnectRequest, BeginConnectResponse, ConnectAgentGitHub,
+    DisconnectAgentGitHub, GetAgentGitHub,
+};
 use crate::github_apps::{
-    AppCredentials, GitHubAppApi, ManifestInput, SetupState, build_manifest, default_app_name,
-    install_url, manifest_form_action,
+    AppCredentials, GITHUB_APP_CONNECTION_TYPE, GITHUB_PROVIDER, GitHubAppContext, SetupState,
+    install_url,
 };
 use crate::kernel_imports::{Caller, contracts::typed_id::VirtualUserId};
 use crate::storage::CreateVirtualUserConnectionRow;
 use crate::storage::{CreateGitHubAppRow, GitHubAppRow};
 use crate::storage::{EncryptionService, StorageBackend};
 
-pub const GITHUB_PROVIDER: &str = "github";
-pub const GITHUB_APP_CONNECTION_TYPE: &str = "github_app";
-
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub encryption: Option<Arc<EncryptionService>>,
     pub auth: AuthState,
-    pub github: GitHubAppApi,
+    pub github: GitHubAppContext,
 }
 
 impl AppState {
@@ -64,18 +66,14 @@ impl AppState {
             db: state.db.clone(),
             encryption: state.encryption.clone(),
             auth: state.auth.clone(),
-            github: GitHubAppApi::new(crate::github_apps::GitHubEndpoints::from_env()),
+            github: GitHubAppContext::from_env()
+                .with_public_urls(&state.auth.config.base_url, &state.auth.config.frontend_url),
         }
-    }
-
-    /// Public base URL of this API, as GitHub must call it.
-    fn api_base_url(&self) -> &str {
-        &self.auth.config.base_url
     }
 
     /// Public UI origin; where the browser returns when a flow ends.
     fn frontend_url(&self) -> &str {
-        &self.auth.config.frontend_url
+        &self.github.frontend_url
     }
 }
 
@@ -91,59 +89,23 @@ pub fn routes(state: AppState) -> Router {
             "/v1/virtual-users/{identity_id}/connections/github/repositories",
             get(list_repositories),
         )
-        .route("/v1/agents/{agent_id}/github", get(agent_status))
-        .route("/v1/agents/{agent_id}/github/connect", post(agent_connect))
         .route("/v1/github/app-manifest/callback", get(manifest_callback))
         .route("/v1/github/apps/{app_row_id}/setup", get(setup_callback))
+        .with_state(state)
+}
+
+/// The agent page's GitHub routes: commands, served by the generic adapter.
+pub fn agent_routes(state: super::state::ApiState) -> Router {
+    Router::new()
+        .command::<GetAgentGitHub>()
+        .command::<ConnectAgentGitHub>()
+        .command::<DisconnectAgentGitHub>()
         .with_state(state)
 }
 
 // ============================================================================
 // Types
 // ============================================================================
-
-#[derive(Debug, Default, Deserialize)]
-pub struct BeginConnectRequest {
-    /// GitHub organization that should own the App. Omit for the user's
-    /// personal account.
-    #[serde(default)]
-    pub owner_org: Option<String>,
-    /// UI path to return to when the flow ends.
-    #[serde(default)]
-    pub return_to: Option<String>,
-}
-
-/// What the browser does next.
-#[derive(Debug, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum BeginConnectResponse {
-    /// Post `manifest` as the `manifest` form field to `action` (a top-level
-    /// navigation, so GitHub's confirmation page is shown).
-    CreateApp { action: String, manifest: String },
-    /// The agent already has an App; open its installation page.
-    Install { url: String, app_slug: String },
-}
-
-/// GitHub as seen from an agent's page.
-#[derive(Debug, Default, Serialize, PartialEq)]
-pub struct AgentGitHubStatus {
-    /// The agent's identity, once it has one; disconnect goes through it.
-    pub identity_id: Option<String>,
-    /// An installation is bound, so tools and triggers work.
-    pub connected: bool,
-    /// The App exists but is not installed (an abandoned or removed install).
-    pub app_created: bool,
-    pub app_slug: Option<String>,
-    pub app_url: Option<String>,
-    /// GitHub account the App is installed on.
-    pub account: Option<String>,
-    /// `all` or `selected`.
-    pub repository_selection: Option<String>,
-    /// Permissions new Apps request that this installation lacks (`name:level`),
-    /// e.g. `actions:read` for CI triggers on an App created before them.
-    /// Empty when not connected.
-    pub missing_permissions: Vec<String>,
-}
 
 #[derive(Debug, Serialize)]
 pub struct RepositoryResponse {
@@ -207,13 +169,6 @@ async fn resolve_identity(
     Ok((identity_id, identity.name))
 }
 
-fn encryption(state: &AppState) -> Result<&EncryptionService, ApiError> {
-    state
-        .encryption
-        .as_deref()
-        .ok_or_else(|| error(StatusCode::SERVICE_UNAVAILABLE, "Encryption not configured"))
-}
-
 /// POST /v1/virtual-users/{identity_id}/connections/github/app
 async fn begin_connect(
     org: ResolvedOrg,
@@ -223,209 +178,38 @@ async fn begin_connect(
 ) -> Result<Json<BeginConnectResponse>, ApiError> {
     let (identity_id, identity_name) = resolve_identity(&state, &org, &identity_id).await?;
     let request = body.map(|Json(body)| body).unwrap_or_default();
-    begin_for_identity(&state, &org, identity_id, &identity_name, request)
-        .await
-        .map(Json)
-}
-
-async fn begin_for_identity(
-    state: &AppState,
-    org: &ResolvedOrg,
-    identity_id: VirtualUserId,
-    identity_name: &str,
-    request: BeginConnectRequest,
-) -> Result<BeginConnectResponse, ApiError> {
-    let encryption = encryption(state)?;
-    let user_id = org
-        .user_id
-        .ok_or_else(|| error(StatusCode::FORBIDDEN, "A signed-in user is required"))?;
-
-    let existing = state
-        .db
-        .get_github_app_for_identity(org.org_id, identity_id)
-        .await
-        .map_err(|e| internal("Failed to look up GitHub App", e))?;
-
-    let app_row_id = existing.as_ref().map_or_else(Uuid::new_v4, |app| app.id);
-    let setup_state = SetupState::new(
+    let response = agent_github::begin_connect(
+        &state.db,
+        &state.github,
+        state.encryption.as_deref(),
         org.org_id,
-        identity_id.uuid(),
-        user_id,
-        app_row_id,
-        request.return_to,
+        org.user_id,
+        identity_id,
+        &identity_name,
+        request,
     )
-    .seal(encryption)
-    .map_err(|e| internal("Failed to seal GitHub setup state", e))?;
-
-    let web_url = &state.github.endpoints().web_url;
-    if let Some(app) = existing {
-        return Ok(BeginConnectResponse::Install {
-            url: install_url(web_url, &app.slug, &setup_state),
-            app_slug: app.slug,
-        });
-    }
-
-    let name = default_app_name(identity_name);
-    let manifest = build_manifest(&ManifestInput {
-        name: &name,
-        api_base_url: state.api_base_url(),
-        frontend_url: state.frontend_url(),
-        app_row_id,
-    });
-    Ok(BeginConnectResponse::CreateApp {
-        action: manifest_form_action(web_url, request.owner_org.as_deref(), &setup_state),
-        manifest: manifest.to_string(),
-    })
-}
-
-async fn load_agent(
-    state: &AppState,
-    org: &ResolvedOrg,
-    agent_id: &str,
-) -> Result<crate::storage::AgentRow, ApiError> {
-    state
-        .db
-        .get_agent_by_public_id(org.org_id, agent_id)
-        .await
-        .map_err(|e| internal("Failed to get agent", e))?
-        .filter(|agent| agent.status == "active")
-        .ok_or_else(|| error(StatusCode::NOT_FOUND, "Agent not found"))
-}
-
-/// GET /v1/agents/{agent_id}/github
-async fn agent_status(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(agent_id): Path<String>,
-) -> Result<Json<AgentGitHubStatus>, ApiError> {
-    AGENT_VIEW
-        .evaluate_with(state.auth.permission_resolver.as_ref(), &Caller::from(&org))
-        .map_err(|_| error(StatusCode::FORBIDDEN, "Permission denied"))?;
-    let agent = load_agent(&state, &org, &agent_id).await?;
-    let Some(identity_id) = agent.virtual_user_id else {
-        return Ok(Json(AgentGitHubStatus::default()));
-    };
-    let app = state
-        .db
-        .get_github_app_for_identity(org.org_id, identity_id)
-        .await
-        .map_err(|e| internal("Failed to look up GitHub App", e))?;
-    let connection = state
-        .db
-        .get_virtual_user_connection(identity_id, GITHUB_PROVIDER)
-        .await
-        .map_err(|e| internal("Failed to look up GitHub connection", e))?
-        .filter(|c| c.connection_type == GITHUB_APP_CONNECTION_TYPE);
-    let metadata = connection
-        .as_ref()
-        .and_then(|c| c.provider_metadata.clone());
-    Ok(Json(AgentGitHubStatus {
-        identity_id: Some(identity_id.to_string()),
-        connected: connection.is_some(),
-        app_created: app.is_some(),
-        app_slug: app.as_ref().map(|app| app.slug.clone()),
-        app_url: app.as_ref().map(|app| app.html_url.clone()),
-        missing_permissions: connection
-            .as_ref()
-            .map(|c| crate::github_apps::missing_permissions(c.scopes.as_deref()))
-            .unwrap_or_default(),
-        account: connection.and_then(|c| c.provider_username),
-        repository_selection: metadata
-            .as_ref()
-            .and_then(|m| m.get("repository_selection"))
-            .and_then(|v| v.as_str())
-            .map(str::to_string),
-    }))
-}
-
-/// POST /v1/agents/{agent_id}/github/connect
-async fn agent_connect(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(agent_id): Path<String>,
-    body: Option<Json<BeginConnectRequest>>,
-) -> Result<Json<BeginConnectResponse>, ApiError> {
-    VIRTUAL_USER_MANAGE
-        .evaluate_with(state.auth.permission_resolver.as_ref(), &Caller::from(&org))
-        .map_err(|_| error(StatusCode::FORBIDDEN, "Permission denied"))?;
-    let agent = load_agent(&state, &org, &agent_id).await?;
-    let (identity_id, _) = ensure_identity_for_agent(&state.db, org.org_id, &agent)
-        .await
-        .map_err(|e| internal("Failed to give the agent an identity", e))?;
-    let identity = state
-        .db
-        .get_virtual_user(org.org_id, identity_id)
-        .await
-        .map_err(|e| internal("Failed to get agent identity", e))?
-        .ok_or_else(|| error(StatusCode::NOT_FOUND, "Virtual user not found"))?;
-    let request = body.map(|Json(body)| body).unwrap_or_default();
-    begin_for_identity(&state, &org, identity_id, &identity.name, request)
-        .await
-        .map(Json)
+    .await?;
+    Ok(Json(response))
 }
 
 /// DELETE /v1/virtual-users/{identity_id}/connections/github/app
 ///
-/// Uninstalls the App (best effort) and removes the identity's `github`
-/// connection. The App itself stays so a reconnect reuses it; GitHub offers no
-/// API to delete an App. With no installation yet, forgets the App instead so
-/// the next connect creates a fresh one.
+/// See [`agent_github::disconnect_identity`]: uninstalls, or forgets an App
+/// that was never installed.
 async fn disconnect(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(identity_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let (identity_id, _) = resolve_identity(&state, &org, &identity_id).await?;
-    let connection = state
-        .db
-        .get_virtual_user_connection(identity_id, GITHUB_PROVIDER)
-        .await
-        .map_err(|e| internal("Failed to look up GitHub connection", e))?;
-    let app = state
-        .db
-        .get_github_app_for_identity(org.org_id, identity_id)
-        .await
-        .map_err(|e| internal("Failed to look up GitHub App", e))?;
-
-    if let (Some(app), Some(installation_id)) = (
-        app.as_ref(),
-        connection.as_ref().and_then(|c| c.installation_id),
-    ) {
-        match app_credentials(&state, app) {
-            Ok(credentials) => {
-                if let Err(err) = state
-                    .github
-                    .delete_installation(&credentials, installation_id)
-                    .await
-                {
-                    tracing::warn!(error = %err, app_id = app.app_id, "GitHub uninstall failed");
-                }
-            }
-            Err(err) => tracing::warn!(error = %err, "GitHub App key unavailable for uninstall"),
-        }
-    }
-
-    // An App that was created but never installed has no connection. Removing
-    // it lets the user start over, for example to create the App in an
-    // organization instead of their personal account: a private App can only
-    // be installed on the account that owns it. The App itself stays on GitHub
-    // for the user to delete there; nothing here can reach it any more.
-    let Some(_) = connection else {
-        let Some(app) = app else {
-            return Err(error(StatusCode::NOT_FOUND, "Connection not found"));
-        };
-        state
-            .db
-            .delete_github_app(app.id)
-            .await
-            .map_err(|e| internal("Failed to forget GitHub App", e))?;
-        return Ok(StatusCode::NO_CONTENT);
-    };
-    state
-        .db
-        .delete_virtual_user_connection(identity_id, GITHUB_PROVIDER)
-        .await
-        .map_err(|e| internal("Failed to delete GitHub connection", e))?;
+    agent_github::disconnect_identity(
+        &state.db,
+        &state.github.api,
+        state.encryption.as_deref(),
+        org.org_id,
+        identity_id,
+    )
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -456,6 +240,7 @@ async fn list_repositories(
         app_credentials(&state, &app).map_err(|e| internal("GitHub App key unavailable", e))?;
     let token = state
         .github
+        .api
         .mint_installation_token(&credentials, installation_id)
         .await
         .map_err(|e| {
@@ -464,6 +249,7 @@ async fn list_repositories(
         })?;
     let repositories = state
         .github
+        .api
         .list_installation_repositories(&token)
         .await
         .map_err(|e| {
@@ -486,14 +272,7 @@ async fn list_repositories(
 }
 
 fn app_credentials(state: &AppState, app: &GitHubAppRow) -> anyhow::Result<AppCredentials> {
-    let encryption = state
-        .encryption
-        .as_deref()
-        .ok_or_else(|| anyhow::anyhow!("encryption not configured"))?;
-    Ok(AppCredentials {
-        app_id: app.app_id,
-        private_key_pem: encryption.decrypt_to_string(&app.private_key_encrypted)?,
-    })
+    crate::github_apps::app_credentials(state.encryption.as_deref(), app)
 }
 
 // ============================================================================
@@ -536,7 +315,7 @@ async fn manifest_callback(
             // Reuse the same sealed state for the install hop.
             let sealed = query.state.unwrap_or_default();
             Redirect::to(&install_url(
-                &state.github.endpoints().web_url,
+                &state.github.api.endpoints().web_url,
                 &slug,
                 &sealed,
             ))
@@ -598,6 +377,7 @@ async fn finish_manifest(
     let code = code.filter(|c| !c.is_empty()).ok_or("missing code")?;
     let app = state
         .github
+        .api
         .convert_manifest(code)
         .await
         .map_err(|_| "manifest conversion failed")?;
@@ -682,6 +462,7 @@ async fn finish_setup(
     let credentials = app_credentials(state, &app).map_err(|_| "app key unavailable")?;
     let installation = state
         .github
+        .api
         .get_installation(&credentials, installation_id)
         .await
         .map_err(|_| "installation not found for this app")?;
@@ -774,14 +555,19 @@ mod tests {
         )
         .unwrap();
         let auth = AuthState::builtin(crate::auth::config::AuthConfig::default(), db.clone());
+        let api = crate::github_apps::GitHubAppApi::new(crate::github_apps::GitHubEndpoints {
+            api_url: github.uri(),
+            web_url: "https://github.example".to_string(),
+        });
         let state = AppState {
             db,
             encryption: Some(Arc::new(encryption)),
+            github: GitHubAppContext {
+                api,
+                api_base_url: auth.config.base_url.clone(),
+                frontend_url: auth.config.frontend_url.clone(),
+            },
             auth,
-            github: GitHubAppApi::new(crate::github_apps::GitHubEndpoints {
-                api_url: github.uri(),
-                web_url: "https://github.example".to_string(),
-            }),
         };
         (state, identity_id)
     }
@@ -1088,63 +874,6 @@ mod tests {
         }
     }
 
-    async fn seed_agent(db: &Arc<StorageBackend>) -> String {
-        use crate::storage::{CreateAgentRow, CreateHarnessRow};
-        let harness = db
-            .create_harness(
-                DEFAULT_ORG_ID,
-                CreateHarnessRow {
-                    name: "gh-harness".to_string(),
-                    display_name: None,
-                    icon: None,
-                    description: None,
-                    intro_markdown: None,
-                    short_description: None,
-                    starters: serde_json::json!([]),
-                    system_prompt: Some(String::new()),
-                    parent_harness_id: None,
-                    default_model_id: None,
-                    tags: vec![],
-                    initial_files: serde_json::json!([]),
-                    mcp_servers: serde_json::json!({}),
-                    network_access: None,
-                    embedder_metadata: serde_json::json!({}),
-                    is_built_in: false,
-                },
-            )
-            .await
-            .unwrap();
-        let public_id = crate::kernel_imports::contracts::typed_id::AgentId::new().to_string();
-        db.create_agent(
-            DEFAULT_ORG_ID,
-            CreateAgentRow {
-                public_id: public_id.clone(),
-                name: "pr-summarizer".to_string(),
-                display_name: Some("PR Summarizer".to_string()),
-                description: None,
-                intro_markdown: None,
-                short_description: None,
-                starters: serde_json::json!([]),
-                system_prompt: String::new(),
-                default_model_id: None,
-                harness_id: harness.id,
-                tags: vec![],
-                initial_files: serde_json::json!([]),
-                tools: serde_json::json!([]),
-                mcp_servers: serde_json::json!({}),
-                network_access: None,
-                max_iterations: None,
-                parallel_tool_calls: None,
-                communication: Default::default(),
-                environments: None,
-                is_built_in: false,
-            },
-        )
-        .await
-        .unwrap();
-        public_id
-    }
-
     fn owner() -> ResolvedOrg {
         ResolvedOrg {
             org_id: DEFAULT_ORG_ID,
@@ -1155,32 +884,5 @@ mod tests {
             is_platform_user: false,
             feature_flags: Default::default(),
         }
-    }
-
-    #[tokio::test]
-    async fn agent_connect_gives_the_agent_an_identity_and_status_follows() {
-        let github = MockServer::start().await;
-        let (state, _) = state(&github).await;
-        let agent_id = seed_agent(&state.db).await;
-
-        let Json(before) = agent_status(owner(), State(state.clone()), Path(agent_id.clone()))
-            .await
-            .unwrap();
-        assert_eq!(before, AgentGitHubStatus::default());
-
-        let Json(response) =
-            agent_connect(owner(), State(state.clone()), Path(agent_id.clone()), None)
-                .await
-                .unwrap();
-        assert!(matches!(response, BeginConnectResponse::CreateApp { .. }));
-
-        let Json(after) = agent_status(owner(), State(state.clone()), Path(agent_id.clone()))
-            .await
-            .unwrap();
-        assert!(after.identity_id.is_some(), "connect creates the identity");
-        assert!(!after.connected && !after.app_created);
-
-        let missing = agent_status(owner(), State(state), Path("agent_missing".to_string())).await;
-        assert_eq!(missing.unwrap_err().0, StatusCode::NOT_FOUND);
     }
 }

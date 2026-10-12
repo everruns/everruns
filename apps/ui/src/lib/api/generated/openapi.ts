@@ -685,6 +685,41 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/github": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks. */
+    get: operations["get_agent_github"];
+    put?: never;
+    post?: never;
+    /** Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. When the App was never installed, forget it instead, so the next connect creates a new one (for example in a GitHub organization). */
+    delete: operations["disconnect_agent_github"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/github/connect": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Start connecting an agent to GitHub through its own GitHub App. Returns `install` with a URL to open in a browser when the App exists, or `create_app` when GitHub must first create it, which needs the web UI (Agent > Integrations > Connect GitHub). */
+    post: operations["connect_agent_github"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/health-checks": {
     parameters: {
       query?: never;
@@ -7484,6 +7519,34 @@ export interface components {
        */
       trigger: Record<string, unknown>;
     };
+    /** @description Result of disconnecting an agent from GitHub. */
+    AgentGitHubDisconnect: {
+      outcome: components["schemas"]["GitHubDisconnectOutcome"];
+    };
+    /** @description GitHub as seen from an agent's page. */
+    AgentGitHubStatus: {
+      /** @description GitHub account the App is installed on. */
+      account?: string | null;
+      /**
+       * @description The App exists. Without `connected` it was never installed, or its
+       *     installation was removed.
+       */
+      app_created: boolean;
+      app_slug?: string | null;
+      app_url?: string | null;
+      /** @description An installation is bound, so tools and triggers work. */
+      connected: boolean;
+      /** @description The agent's identity, once it has one; disconnect goes through it. */
+      identity_id?: string | null;
+      /**
+       * @description Permissions new Apps request that this installation lacks (`name:level`),
+       *     e.g. `actions:read` for CI triggers on an App created before them.
+       *     Empty when not connected.
+       */
+      missing_permissions: string[];
+      /** @description `all` or `selected`. */
+      repository_selection?: string | null;
+    };
     /** @enum {string} */
     AgentHarnessSource: "explicit" | "organization_default";
     /** @enum {string} */
@@ -8355,6 +8418,32 @@ export interface components {
       /** @description Number of secrets stored */
       count: number;
     };
+    /** @description Where a new App is created and where the browser lands afterwards. */
+    BeginConnectRequest: {
+      /**
+       * @description GitHub organization that should own a new App. Omit for the personal
+       *     account of whoever confirms it on GitHub. A private App can only be
+       *     installed on the account that owns it.
+       */
+      owner_org?: string | null;
+      /** @description UI path to return to when the flow ends. */
+      return_to?: string | null;
+    };
+    /** @description What happens next. */
+    BeginConnectResponse:
+      | {
+          action: string;
+          /** @enum {string} */
+          kind: "create_app";
+          manifest: string;
+          next_step: string;
+        }
+      | {
+          app_slug: string;
+          /** @enum {string} */
+          kind: "install";
+          url: string;
+        };
     /** @description Budget — a stored spending cap for a platform subject. */
     Budget: {
       /**
@@ -13120,6 +13209,11 @@ export interface components {
        */
       insertions: number;
     };
+    /**
+     * @description What a disconnect did.
+     * @enum {string}
+     */
+    GitHubDisconnectOutcome: "disconnected" | "started_over";
     /** @description Request body for GitHub memory source. */
     GitHubMemorySourceRequest: {
       /**
@@ -30820,6 +30914,100 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  get_agent_github: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentGitHubStatus"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  disconnect_agent_github: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentGitHubDisconnect"];
+        };
+      };
+      /** @description Agent or GitHub connection not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  connect_agent_github: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["BeginConnectRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BeginConnectResponse"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
