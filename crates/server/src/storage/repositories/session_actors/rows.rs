@@ -22,6 +22,10 @@ pub struct SessionActorRow {
     pub lease_fence: i64,
     pub lease_expires_at: Option<DateTime<Utc>>,
     pub cancel_requested_at: Option<DateTime<Utc>>,
+    /// The inbox position the pending cancel targets: the turn whose input is
+    /// at or before it. `None` with no cancel (or one requested before the
+    /// column existed, which lease and renew read as the inbox position).
+    pub cancel_inbox_seq: Option<i64>,
     /// A lease or renew told the holder about the pending cancel.
     pub cancel_reported: bool,
     /// The inbox cursor: input up to this sequence reached a turn.
@@ -47,7 +51,14 @@ pub struct LeasedActorRow {
     pub next_input_seq: i64,
     /// Leases since the last release, this one included.
     pub attempts: i32,
-    pub cancel_requested: bool,
+    /// The inbox position of the pending cancel, `None` when none is pending.
+    pub cancel_inbox_seq: Option<i64>,
+}
+
+impl LeasedActorRow {
+    pub fn cancel_requested(&self) -> bool {
+        self.cancel_inbox_seq.is_some()
+    }
 }
 
 /// What a cancel request did; see the repository header.
@@ -66,7 +77,14 @@ pub enum ActorCancel {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromRow)]
 pub struct ActorRenewalRow {
     pub inbox_seq: i64,
-    pub cancel_requested: bool,
+    /// The inbox position of the pending cancel, `None` when none is pending.
+    pub cancel_inbox_seq: Option<i64>,
+}
+
+impl ActorRenewalRow {
+    pub fn cancel_requested(&self) -> bool {
+        self.cancel_inbox_seq.is_some()
+    }
 }
 
 /// A bounded slice of a session's event log for an actor to fold.

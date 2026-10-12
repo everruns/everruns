@@ -59,6 +59,7 @@ hosted-integration-catalog = [
     "everruns-integrations/parallel",
     "everruns-integrations/typesafe",
     "everruns-integrations/typesafe-hosted",
+    "everruns-integrations/web-search",
     "dep:everruns-integrations-experimental",
     "everruns-integrations-experimental/agentid",
     "everruns-integrations-experimental/deno",

@@ -131,6 +131,17 @@ async fn openrouter_answers_the_web_search_tool_with_the_native_engine() {
     assert_searched_natively(provider, config("openai/gpt-6-luna")).await;
 }
 
+/// A vendor whose search OpenRouter reports as its own `openrouter:web_search`
+/// item and `server_tool_use_details`, not a `web_search_call`.
+#[tokio::test]
+async fn openrouter_counts_a_claude_search_through_its_server_tool() {
+    let Some(api_key) = key("OPENROUTER_API_KEY") else {
+        return;
+    };
+    let provider = everruns_drivers::openrouter::provider("openrouter", api_key);
+    assert_searched_natively(provider, config("anthropic/claude-haiku-4.5")).await;
+}
+
 #[tokio::test]
 async fn anthropic_answers_the_web_search_tool_with_its_server_tool() {
     let Some(api_key) = key("ANTHROPIC_API_KEY") else {

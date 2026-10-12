@@ -533,6 +533,7 @@ mod tests {
                         id,
                         provider: "brave_search".into(),
                         name: format!("{id}"),
+                        options: None,
                     },
                 )
                 .collect(),

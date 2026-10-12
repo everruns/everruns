@@ -611,6 +611,12 @@ export default defineConfig({
                       ],
                     },
                     {
+                      label: "Browser & web",
+                      items: [
+                        { label: "Cloudflare Web Search", slug: "integrations/cloudflare-web-search" },
+                      ],
+                    },
+                    {
                       label: "Credentials",
                       items: [
                         { label: "Secure MCP Credentials", slug: "integrations/mcp-credentials" },

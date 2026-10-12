@@ -362,17 +362,35 @@ pub fn count_hosted_tool_calls(output: &[Value]) -> BTreeMap<String, u32> {
         if let Some(kind) = item.get("type").and_then(Value::as_str)
             && hosted_call_tool(kind).is_some()
         {
-            *counts.entry(kind.to_string()).or_insert(0) += 1;
+            *counts
+                .entry(billed_call_kind(kind).to_string())
+                .or_insert(0) += 1;
         }
     }
     counts
+}
+
+/// Output item type OpenRouter's Responses API emits for its own
+/// `openrouter:web_search` server tool when the model vendor does not answer
+/// with its own `web_search_call` item (Claude, for one). OpenRouter bills it
+/// like any native search, so it counts as a `web_search_call`.
+pub const OPENROUTER_WEB_SEARCH_ITEM: &str = "openrouter:web_search";
+
+/// The billing key of a hosted call item type: OpenRouter's search item
+/// counts as the `web_search_call` it bills like.
+fn billed_call_kind(item_type: &str) -> &str {
+    if item_type == OPENROUTER_WEB_SEARCH_ITEM {
+        "web_search_call"
+    } else {
+        item_type
+    }
 }
 
 /// The configured tool name for a hosted call output item type, or `None`
 /// when the item is not a hosted call.
 pub fn hosted_call_tool(item_type: &str) -> Option<&'static str> {
     match item_type {
-        "web_search_call" => Some("web_search"),
+        "web_search_call" | OPENROUTER_WEB_SEARCH_ITEM => Some("web_search"),
         "code_interpreter_call" => Some("code_interpreter"),
         "shell_call" => Some("shell"),
         "file_search_call" => Some("file_search"),

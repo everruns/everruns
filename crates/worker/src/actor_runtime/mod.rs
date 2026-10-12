@@ -134,8 +134,11 @@ pub trait ActorHosts: Send + Sync + 'static {
     /// A phase of `drive`'s turn begins on `host`.
     fn begin_phase(&self, _host: &Self::Host, _drive: &TurnDrive, _phase: Phase) {}
 
-    /// Wait until the events `host` queued are stored.
-    async fn flush(&self, _host: &Self::Host) {}
+    /// Wait until the events `host` queued are stored; an error when one of
+    /// those stores gave up (the log has a gap; see `crate::write_behind`).
+    async fn flush(&self, _host: &Self::Host) -> everruns_contracts::error::Result<()> {
+        Ok(())
+    }
 
     /// Drop the events `host` queued and has not stored (the lease is lost).
     fn abandon(&self, _host: &Self::Host) {}
@@ -438,8 +441,8 @@ impl<A: WorkerAdapters> ActorHosts for WorkerActorHosts<A> {
         }));
     }
 
-    async fn flush(&self, host: &Self::Host) {
-        host.flush_events().await;
+    async fn flush(&self, host: &Self::Host) -> everruns_contracts::error::Result<()> {
+        host.stored_events().await
     }
 
     fn abandon(&self, host: &Self::Host) {

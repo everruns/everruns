@@ -32,12 +32,18 @@ pub(super) struct Row {
     pub fence: u64,
     pub expires: Option<Instant>,
     pub cancel_requested: bool,
+    /// The inbox position the pending cancel targets.
+    pub cancel_inbox_seq: i64,
     pub cancel_reported: bool,
 }
 
 impl Row {
     fn leased(&self) -> bool {
         self.holder.is_some() && self.expires.is_some_and(|at| at > Instant::now())
+    }
+
+    fn cancel(&self) -> Option<i64> {
+        self.cancel_requested.then_some(self.cancel_inbox_seq)
     }
 }
 
@@ -131,6 +137,7 @@ impl MemoryActors {
         };
         if row.leased() {
             row.cancel_requested = true;
+            row.cancel_inbox_seq = row.inbox_seq;
             row.cancel_reported = false;
             Cancel::Requested
         } else {
@@ -187,7 +194,7 @@ impl ActorLeaseStore for MemoryActors {
                 org_id: row.org_id,
                 fence: row.fence,
                 inbox_seq: row.inbox_seq,
-                cancel_requested: row.cancel_requested,
+                cancel_inbox_seq: row.cancel(),
                 consumed_seq: row.consumed_seq,
                 next_input_seq: row.next_input_seq,
                 attempts: row.attempts,
@@ -218,7 +225,7 @@ impl ActorLeaseStore for MemoryActors {
         row.consumed_seq = row.consumed_seq.max(consumed_seq);
         Ok(Some(ActorRenewal {
             inbox_seq: row.inbox_seq,
-            cancel_requested: row.cancel_requested,
+            cancel_inbox_seq: row.cancel(),
         }))
     }
 
