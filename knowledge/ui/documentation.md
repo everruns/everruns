@@ -75,8 +75,10 @@ grade sit in one "Experimental (dev grade)" group rather than beside the
 supported ones, because Everruns Cloud runs at production grade and never
 offers them.
 
-Custom `Header.astro` override renders topics as a fixed tab bar below the
-main header. Sidebar topic list is hidden on desktop (visible on mobile).
+Custom `Header.astro` override renders two rows inside Starlight's fixed
+header: the everruns.com site header, then a docs bar with the topic tabs,
+search and theme switch. Sidebar topic list is hidden on desktop (visible on
+mobile).
 
 The Reference tab must remain active for all `/api/` pages, including nested
 OpenAPI-generated routes such as `/api/operations/*` and `/api/operations/tags/*`.
@@ -138,6 +140,19 @@ compared them. Each now has a source of truth CI compares it against:
 ### Design Requirements
 
 Design follows the brand guidelines defined in [knowledge/ui/brand.md](brand.md) (colors, typography, visual principles).
+
+The docs share everruns.com with the landing site, so they wear its header and
+footer rather than a look of their own: a reader moving between `/` and
+`/docs/` should not notice a second site. Landing (everruns/landing) owns that
+chrome and publishes it under `/site-chrome/`; `apps/docs/scripts/sync-site-chrome.mjs`
+snapshots it into `apps/docs/src/site-chrome/`, committed so a docs build never
+depends on landing being up, and the daily `docs-deploy.yml` run fails when the
+snapshot drifts. Change the chrome in landing, then resync here.
+
+Search is one box for the whole domain: the docs Pagefind index merges the
+landing index at `everruns.com/pagefind/` (built by landing from its
+`llms-full.txt`), weighted up so a product's own page can surface among the
+many docs pages.
 
 ### Screenshots
 

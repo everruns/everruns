@@ -1,53 +1,99 @@
 ---
+// The docs header is two rows: the everruns.com site header, shared with the
+// landing site (src/site-chrome/, synced by scripts/sync-site-chrome.mjs), and
+// a docs bar with the section tabs, search and the theme switch. Both rows sit
+// inside Starlight's fixed header, so --sl-nav-height in custom.css is their
+// combined height.
+import ThemeSelect from "@astrojs/starlight/components/ThemeSelect.astro";
 import { docsPath } from "../lib/site";
-import DefaultHeader from "@astrojs/starlight/components/Header.astro";
+import siteHeader from "../site-chrome/header.html?raw";
+import "../site-chrome/chrome.css";
+import Search from "./Search.astro";
 
 const sidebarTopics = Astro.locals.starlightSidebarTopics;
 const topics = sidebarTopics?.topics ?? [];
-const hasTopics = topics.length > 0;
 const currentPath = Astro.url.pathname;
 const API = docsPath("/api/");
 const isTopicActive = (topic: any) =>
   topic.isCurrent || (topic.link === API && currentPath.startsWith(API));
 ---
 
-<DefaultHeader {...Astro.props} />
-
-{hasTopics && (
-  <div class="topic-tabs-wrapper">
-    <nav class="topic-tabs" aria-label="Documentation sections">
-      <ul>
-        {topics.map((topic: any) => (
-          <li>
-            <a
-              href={topic.link}
-              class:list={{ active: isTopicActive(topic) }}
-              aria-current={isTopicActive(topic) ? "true" : undefined}
-            >
-              {topic.label}
-            </a>
-          </li>
-        ))}
-      </ul>
-    </nav>
+<div class="docs-header">
+  <Fragment set:html={siteHeader} />
+  <div class="docs-bar">
+    <a class="docs-home" href={docsPath("/")}>Docs</a>
+    {topics.length > 0 && (
+      <nav class="topic-tabs" aria-label="Documentation sections">
+        <ul>
+          {topics.map((topic: any) => (
+            <li>
+              <a
+                href={topic.link}
+                class:list={{ active: isTopicActive(topic) }}
+                aria-current={isTopicActive(topic) ? "true" : undefined}
+              >
+                {topic.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+    )}
+    <div class="docs-tools print:hidden">
+      <Search />
+      <div class="sl-hidden md:sl-flex">
+        <ThemeSelect />
+      </div>
+    </div>
   </div>
-)}
+</div>
+
+<script>
+  import "../site-chrome/chrome.js";
+</script>
 
 <style>
-  .topic-tabs-wrapper {
-    position: fixed;
-    top: var(--sl-nav-height);
-    left: 0;
-    right: 0;
-    z-index: var(--sl-z-index-navbar);
-    background: var(--sl-color-bg-nav);
+  .docs-header {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  /* Starlight's header is already fixed; the site row scrolls with it. */
+  .docs-header :global(.er-header) {
+    position: static;
+    flex: none;
     border-bottom: 1px solid var(--sl-color-hairline-light);
+  }
+
+  .docs-bar {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    min-width: 0;
+    padding: 0 var(--sl-nav-pad-x);
+  }
+
+  .docs-home {
+    flex: none;
+    font-size: var(--sl-text-base);
+    font-weight: 600;
+    color: var(--sl-color-white);
+    text-decoration: none;
+  }
+
+  .topic-tabs {
+    flex: 1;
+    min-width: 0;
+    align-self: stretch;
   }
 
   .topic-tabs ul {
     display: flex;
+    height: 100%;
     list-style: none;
-    padding: 0 var(--sl-nav-pad-x);
+    padding: 0;
     margin: 0;
     overflow-x: auto;
     scrollbar-width: none;
@@ -58,15 +104,16 @@ const isTopicActive = (topic: any) =>
   }
 
   .topic-tabs a {
-    display: block;
-    padding: 0.5rem 1rem;
+    display: flex;
+    align-items: center;
+    height: 100%;
+    padding: 0 0.75rem;
     font-size: var(--sl-text-sm);
     font-weight: 500;
     color: var(--sl-color-gray-2);
     text-decoration: none;
     white-space: nowrap;
     border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
     transition: color 0.15s, border-color 0.15s;
   }
 
@@ -79,10 +126,24 @@ const isTopicActive = (topic: any) =>
     border-bottom-color: var(--sl-color-text-accent);
   }
 
-  /* Hide on mobile — sidebar topics used there instead */
+  .docs-tools {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-inline-start: auto;
+  }
+
+  /* On narrow screens the sidebar menu lists the sections instead, and the
+     docs bar leaves room for Starlight's menu button at its end. */
   @media (max-width: 49.99rem) {
-    .topic-tabs-wrapper {
+    .topic-tabs {
       display: none;
+    }
+
+    :global([data-has-sidebar]) .docs-bar {
+      padding-inline-end: calc(
+        var(--sl-nav-gap) + var(--sl-nav-pad-x) + var(--sl-menu-button-size)
+      );
     }
   }
 </style>

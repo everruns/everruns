@@ -18,7 +18,8 @@
     "release-card": "node scripts/generate-release-card.mjs",
     "release-card:test": "node --test scripts/generate-release-card.test.mjs",
     "notebooks:exec": "python3 scripts/execute-notebooks.py",
-    "check:changelog": "node scripts/check-changelog.mjs"
+    "check:changelog": "node scripts/check-changelog.mjs",
+    "sync-chrome": "node scripts/sync-site-chrome.mjs"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.10",

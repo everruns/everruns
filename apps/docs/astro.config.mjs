@@ -205,6 +205,17 @@ export default defineConfig({
       social: [
         { icon: "github", label: "GitHub", href: "https://github.com/everruns/everruns" },
       ],
+      // One search box for everruns.com: the landing site publishes its own
+      // Pagefind index at /pagefind/ (everruns/landing
+      // scripts/build-search-index.mjs), merged here with the docs index.
+      // Absolute, so PR previews on workers.dev search it too. The landing
+      // index has a few dozen product pages against ~1,000 docs pages, so it is
+      // weighted up to keep a product's own page above its changelog entries.
+      pagefind: {
+        mergeIndex: [
+          { bundlePath: `${SITE}/pagefind/`, baseUrl: `${SITE}/`, indexWeight: 2 },
+        ],
+      },
       components: {
         Header: "./src/components/Header.astro",
         Search: "./src/components/Search.astro",

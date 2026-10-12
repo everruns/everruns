@@ -268,27 +268,25 @@ h6 {
   line-height: 1.6;
 }
 
-/* Topic tabs: offset sidebar and content below the fixed tab bar */
+/* Header: the everruns.com site row (64px, from the shared chrome) above the
+   docs bar (see components/Header.astro). Starlight lays the sidebar, content
+   and menu button out from --sl-nav-height, so it is the sum of both rows. */
+:root {
+  --er-site-bar-height: 64px;
+  --er-docs-bar-height: 3rem;
+  --sl-nav-height: calc(var(--er-site-bar-height) + var(--er-docs-bar-height));
+}
+
+.page > .header {
+  padding: 0;
+}
+
+/* The sidebar menu button belongs to the docs bar, not the middle of both rows. */
+.sl-menu-button {
+  top: calc(var(--er-site-bar-height) + (var(--er-docs-bar-height) - var(--sl-menu-button-size)) / 2);
+}
+
 @media (min-width: 50rem) {
-  :root {
-    --topic-tabs-height: 2.25rem;
-  }
-
-  /* Push sidebar below the tab bar */
-  .sidebar-pane {
-    top: calc(var(--sl-nav-height) + var(--topic-tabs-height)) !important;
-  }
-
-  /* Push main content below the tab bar */
-  .main-frame {
-    padding-top: calc(var(--sl-nav-height) + var(--topic-tabs-height)) !important;
-  }
-
-  /* Push right sidebar (TOC) below the tab bar */
-  .right-sidebar {
-    padding-top: calc(var(--sl-nav-height) + var(--topic-tabs-height)) !important;
-  }
-
   /* Hide sidebar topic list on desktop — shown as header tabs instead */
   .starlight-sidebar-topics {
     display: none !important;

@@ -129,3 +129,5 @@ jobs:
           node-version: '22'
       - name: Check everruns.com/docs and the docs.everruns.com redirects
         run: node apps/docs/scripts/check-live.mjs --site https://everruns.com/docs --old https://docs.everruns.com
+      - name: Check the docs header and footer match everruns.com
+        run: node apps/docs/scripts/sync-site-chrome.mjs --check
