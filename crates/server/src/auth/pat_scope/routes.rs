@@ -549,6 +549,9 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ),
     ("GET", "/v1/sandbox-templates/{sandbox_template_id}", Read),
     ("PUT", "/v1/sandbox-templates/{sandbox_template_id}", Write),
+    ("GET", "/v1/search-providers", Read),
+    // Preview can run a live test query that spends an org search key.
+    ("POST", "/v1/search-providers/preview", Write),
     ("GET", "/v1/sessions", Read),
     ("POST", "/v1/sessions", Write),
     ("GET", "/v1/sessions/facets", Read),
