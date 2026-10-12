@@ -52,6 +52,13 @@ immutable. Sources: [`avatar.rs`](../../crates/server/src/domains/agents/avatar.
   [`avatar_presets.rs`](../../crates/server/src/domains/agents/avatar_presets.rs). Selection accepts
   only an exact catalog ID, retains that identity with the stored avatar, and persists the same
   square/circle variants and Slack updates as upload. No client-supplied source URL is fetched.
+- **Agents set avatars through the command catalog.** An agent building another agent works over
+  the CLI or MCP, which carry JSON arguments only. `set_agent_avatar` (`everruns agents avatar
+  set`) takes a catalog preset id or the image inline as base64, capped at 1 MB decoded so the
+  request stays under the 2 MB default body limit the command transports share;
+  `list_avatar_presets` (`everruns agents avatar presets`) lists the catalog. Larger images keep
+  the multipart route. All three sources share one write path and agent rule (not deleted, not
+  built-in) in [`avatar_commands`](../../crates/server/src/domains/agents/avatar_commands/mod.rs).
 - **Search is presentation only.** Each whitespace-separated term can match any metadata field,
   case-insensitively. Tiles and selected previews show artwork only; metadata remains available to
   search and assistive technology. Roles never change the agent's behavior or configuration. Current

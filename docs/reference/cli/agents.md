@@ -28,6 +28,8 @@ Agent definitions and their configuration.
 | [`agents list`](#agents-list) | List all active agents. |
 | [`agents preview`](#agents-preview) | Preview the final agent shape with capabilities applied. |
 | [`agents upsert`](#agents-upsert) | Upsert agent — create (201) or update (200) by ID. |
+| [`agents avatar presets`](#agents-avatar-presets) | List the curated agent avatars: stable id, name, family, suggested role, description and search keywords. |
+| [`agents avatar set`](#agents-avatar-set) | Set an agent's avatar from a curated preset (preset_id, see list_avatar_presets) or an image (image_base64: PNG, JPEG, GIF or WebP, at least 64x64, at most 1 MB). |
 | [`agents channels create`](#agents-channels-create) | Create an ingress channel for an agent. |
 | [`agents channels delete`](#agents-channels-delete) | Delete an agent ingress channel. |
 | [`agents channels get`](#agents-channels-get) | Get an agent ingress channel. |
@@ -394,6 +396,46 @@ Example:
 ```bash
 # Create or replace an agent at a known id, for a scripted deploy
 everruns agents upsert agent_01h9 --name triage --system-prompt 'Triage incoming issues' --reason 'Deploy release 42'
+```
+
+## agents avatar presets
+
+List the curated agent avatars: stable id, name, family, suggested role, description and search keywords. Pass an id to set_agent_avatar as preset_id. Preview one at /v1/avatar-presets/{id}/square-256.png.
+
+```bash
+everruns agents avatar presets [OPTIONS]
+```
+
+Example:
+
+```bash
+# Find a curated avatar to give an agent
+everruns agents avatar presets
+```
+
+## agents avatar set
+
+Set an agent's avatar from a curated preset (preset_id, see list_avatar_presets) or an image (image_base64: PNG, JPEG, GIF or WebP, at least 64x64, at most 1 MB). Replaces the previous avatar and updates the icon of the agent's one-click Slack apps.
+
+```bash
+everruns agents avatar set [OPTIONS] [AGENT]
+```
+
+| Flag | Description |
+|---|---|
+| `--agent <AGENT_ID>` | Agent's prefixed public identifier. |
+| `--content-type <CONTENT_TYPE>` | MIME type of `image_base64`. |
+| `--image-base64 <IMAGE_BASE64>` | Image bytes as base64 (a `data:image/...;base64,` URI also works): PNG, JPEG, GIF or WebP, at... |
+| `--preset <PRESET_ID>` | Curated preset ID from `list_avatar_presets`. |
+
+Example:
+
+```bash
+# Give an agent a curated avatar
+everruns agents avatar set agent_01h9 --preset familiars-patch --reason 'Brand the triage agent'
+
+# Use your own image, base64-encoded into a file first (base64 logo.png > logo.b64)
+everruns agents avatar set agent_01h9 --image-base64 @logo.b64 --reason 'Use the team logo'
 ```
 
 ## agents channels create

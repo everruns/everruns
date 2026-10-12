@@ -12819,6 +12819,21 @@
     "read_only": true
   },
   {
+    "category": "agents",
+    "cli": "agents avatar presets",
+    "description": "List the curated agent avatars: stable id, name, family, suggested role, description and search keywords. Pass an id to set_agent_avatar as preset_id. Preview one at /v1/avatar-presets/{id}/square-256.png.",
+    "input_schema": {
+      "description": "List the curated agent avatar presets.",
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_avatar_presets",
+    "output_shape": "array",
+    "path": "/v1/avatar-presets",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "budgets",
     "cli": "budgets ledger list",
     "description": "List ledger entries for a budget.",
@@ -16935,6 +16950,68 @@
     "path": "/v1/sessions/{session_id}/fs/_/search",
     "positional_arg": null,
     "read_only": true
+  },
+  {
+    "category": "agents",
+    "cli": "agents avatar set",
+    "description": "Set an agent's avatar from a curated preset (preset_id, see list_avatar_presets) or an image (image_base64: PNG, JPEG, GIF or WebP, at least 64x64, at most 1 MB). Replaces the previous avatar and updates the icon of the agent's one-click Slack apps.",
+    "input_schema": {
+      "$defs": {
+        "SetAgentAvatarRequest": {
+          "description": "The avatar source: exactly one of `preset_id` or `image_base64`.",
+          "properties": {
+            "content_type": {
+              "description": "MIME type of `image_base64`. Detected from the bytes when omitted.",
+              "example": "image/png",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "image_base64": {
+              "description": "Image bytes as base64 (a `data:image/...;base64,` URI also works): PNG, JPEG, GIF or\nWebP, at least 64x64, at most 1 MB decoded. Center-cropped to a square.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "preset_id": {
+              "description": "Curated preset ID from `list_avatar_presets`. Pass this or `image_base64`, not both.",
+              "example": "familiars-patch",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/SetAgentAvatarRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "description": "Agent's prefixed public identifier.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Set an agent's avatar from a curated preset or inline image bytes."
+    },
+    "method": "POST",
+    "name": "set_agent_avatar",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/avatar/set",
+    "positional_arg": "agent_id",
+    "read_only": false
   },
   {
     "category": "models",

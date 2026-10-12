@@ -1109,6 +1109,54 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/avatar/set": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Set an agent's avatar from a curated preset (preset_id, see list_avatar_presets) or an image (image_base64: PNG, JPEG, GIF or WebP, at least 64x64, at most 1 MB). Replaces the previous avatar and updates the icon of the agent's one-click Slack apps.",
+        "operationId": "set_agent_avatar",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetAgentAvatarRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAvatar"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid preset or image"
+          },
+          "404": {
+            "description": "Agent not found"
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/channels": {
       "get": {
         "tags": [
@@ -56746,6 +56794,35 @@
           "title": {
             "type": "string",
             "description": "New session title."
+          }
+        }
+      },
+      "SetAgentAvatarRequest": {
+        "type": "object",
+        "description": "The avatar source: exactly one of `preset_id` or `image_base64`.",
+        "properties": {
+          "content_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "MIME type of `image_base64`. Detected from the bytes when omitted.",
+            "example": "image/png"
+          },
+          "image_base64": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Image bytes as base64 (a `data:image/...;base64,` URI also works): PNG, JPEG, GIF or\nWebP, at least 64x64, at most 1 MB decoded. Center-cropped to a square."
+          },
+          "preset_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Curated preset ID from `list_avatar_presets`. Pass this or `image_base64`, not both.",
+            "example": "familiars-patch"
           }
         }
       },

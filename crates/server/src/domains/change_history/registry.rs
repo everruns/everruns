@@ -410,6 +410,7 @@ pub fn declared(name: &str) -> Change {
         "delete_agent" | "destroy_agent" => on(K::Agent, Deleted, Param("id")),
         "suspend_agent_exposures" => on(K::Agent, Suspended, ID),
         "resume_agent_exposures" => on(K::Agent, Resumed, ID),
+        "set_agent_avatar" => on(K::Agent, Updated, Param("agent_id")),
         "create_agent_credential_binding" => on(K::Agent, Attached, Param("agent_id")),
         "disconnect_agent_github" => on(K::Agent, Detached, Param("agent_id")),
         "connect_agent_github" => {
@@ -700,6 +701,8 @@ pub fn transactional(read_only: bool, name: &str, change: Change) -> bool {
         | "disconnect_agent_github"
         // Composes channel and trigger creation from a package.
         | "import_agent"
+        // Decodes and resizes an image (CPU) before the write.
+        | "set_agent_avatar"
     )
 }
 

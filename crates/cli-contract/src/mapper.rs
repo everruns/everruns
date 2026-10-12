@@ -23,6 +23,10 @@ use crate::{ContractCommand, commands, params_from};
 pub const NODE_ABOUT: &[(&str, &str)] = &[
     ("agents", "Agent definitions and their configuration."),
     (
+        "agents avatar",
+        "An agent's picture: a curated preset or your own image.",
+    ),
+    (
         "agents channels",
         "Ways traffic reaches an agent: chat, API, webhooks, schedules.",
     ),
