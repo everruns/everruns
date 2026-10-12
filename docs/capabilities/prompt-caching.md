@@ -52,7 +52,8 @@ Tool definitions sit at the front of the cached prompt, so a tool list that
 changes mid-session (a tool revealed by [Tool Search](/capabilities/tool-search/),
 for example) used to throw the whole cache away. Sessions now record their tool
 list on the first model call and each later change in the conversation. On
-Claude Opus 5.5 and Sonnet 5.5 through the Claude API, the request keeps the
+Claude Opus 5.5, Opus 5, Opus 4.8, Sonnet 5.5, Haiku 5.5 and Fable 5.1 through
+the Claude API, the request keeps the
 first tool list and sends each change as a message, so the cache survives it.
 Other models and endpoints receive the current tool list, which costs one cache
 write per change, as before.

@@ -273,7 +273,7 @@ mod tests {
         assert!(eligible(&config(baseline()), "claude-opus-5-5", true));
         assert!(!eligible(&config(baseline()), MODEL, false), "a gateway");
         assert!(
-            !eligible(&config(baseline()), "claude-haiku-5-5", true),
+            !eligible(&config(baseline()), "claude-sonnet-5", true),
             "unverified"
         );
         assert!(

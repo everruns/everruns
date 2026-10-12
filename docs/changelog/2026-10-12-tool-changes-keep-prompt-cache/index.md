@@ -1,6 +1,6 @@
 ---
-title: "Tool reveals keep the prompt cache on Claude Opus 5.5 and Sonnet 5.5"
-description: "Tools found through tool search no longer rewrite the cached tool list on Claude Opus 5.5 and Sonnet 5.5, and Session Trace shows each tool change."
+title: "Tool reveals keep the prompt cache on current Claude models"
+description: "Tool search reveals keep the cached tool list on Claude Opus 5.5, Opus 5, Opus 4.8, Sonnet 5.5, Haiku 5.5 and Fable 5.1; Session Trace shows each change."
 date: 2026-10-12
 kind: improvement
 significance: notable
@@ -11,11 +11,12 @@ links:
 ---
 
 **For agents:** sessions record their tool list on the first model call and
-every later change as an entry in the conversation. On Claude Opus 5.5 and
-Sonnet 5.5 through the Claude API, the request keeps that first tool list and
+every later change as an entry in the conversation. On Claude Opus 5.5, Opus
+5, Opus 4.8, Sonnet 5.5, Haiku 5.5 and Fable 5.1 through the Claude API, the
+request keeps that first tool list and
 sends each change (a tool revealed by tool search, for example) as a message,
-so the next call still reads the cached prompt instead of paying to write it
-again. Other models and endpoints receive the current tool list, as before.
+so the next call still reads the cached prompt. Other models and endpoints
+receive the current tool list, as before.
 
 **In the UI:** a model call in Session Trace lists the tools it added, updated
 or removed, and the call that fixed the session's tool list. A cache reset is

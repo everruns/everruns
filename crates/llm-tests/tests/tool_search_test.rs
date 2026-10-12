@@ -29,8 +29,8 @@ use llm_test_matrix::*;
 use everruns_capabilities::capabilities::SessionCapability;
 use everruns_core::builtins::{
     AutoToolSearchCapability, ClaudeToolSearchCapability, CurrentTimeCapability,
-    OpenAiToolSearchCapability, StatelessTodoListCapability, TOOL_SEARCH_TOOL_NAME,
-    ToolSearchCapability,
+    OpenAiToolSearchCapability, PromptCachingCapability, StatelessTodoListCapability,
+    TOOL_SEARCH_TOOL_NAME, ToolSearchCapability,
 };
 use everruns_core::events::{EventData, LLM_GENERATION};
 use everruns_integrations::bashkit::BashkitShellCapability;
@@ -742,5 +742,124 @@ async fn test_gpt54_tool_search_below_threshold_fallback() {
     assert!(
         result.tool_calls_count > 0,
         "Should still work with standard tool format (below threshold)"
+    );
+}
+
+// ============================================================================
+// Scenario: a tool revealed mid-session keeps the prompt cache
+// (knowledge/execution/cache-stable-tool-changes.md)
+// ============================================================================
+
+/// A system prompt well above every Claude model's minimum cacheable prefix
+/// (4096 tokens on Opus and Haiku), so a cache hit on the call after a reveal
+/// is unmistakable.
+fn long_cacheable_system_prompt() -> String {
+    let mut prompt = String::from(
+        "You are a helpful assistant. When asked to add numbers, find the add \
+         tool with tool_search and call it. The reference notes below are \
+         background only; never quote them.\n\n",
+    );
+    for i in 0..70 {
+        prompt.push_str(&format!(
+            "Reference note {i:04}: shelf {i} in warehouse W-{:03} holds crate \
+             K-{i:04}, inspected on day {} of the audit cycle.\n",
+            i % 37,
+            i % 29 + 1
+        ));
+    }
+    prompt
+}
+
+/// The call right after `tool_search` revealed a tool sends that change inline
+/// on models with `inline_tool_changes`, so it still reads the cached prefix
+/// (system prompt and tool list) instead of writing it again. Before inline
+/// changes, the rewritten `tools` array made this call's cache read zero.
+///
+/// Fable 5.1 and Opus 4.8 also passed on 2026-10-12; they stay out of the
+/// matrix for cost and because Opus 4.8 has no matrix row.
+#[rstest]
+#[case::anthropic_opus5_5(ANTHROPIC_OPUS55)]
+#[case::anthropic_sonnet5_5(ANTHROPIC_SONNET55)]
+#[case::anthropic_opus5(ANTHROPIC_OPUS5)]
+#[case::anthropic_haiku5_5(ANTHROPIC_HAIKU55)]
+#[tokio::test]
+async fn test_anthropic_tool_reveal_keeps_prompt_cache(#[case] config: ProviderModelConfig) {
+    let system_prompt = long_cacheable_system_prompt();
+    let Some((runner, result)) = live_turn(&config, "What is 21 + 21?", |model| {
+        let system_prompt = system_prompt.clone();
+        async move {
+            InMemoryAgenticLoop::builder()
+                .agent_name("Tool Reveal Cache Agent")
+                .system_prompt(system_prompt)
+                .model(model)
+                .driver_registry(all_providers_registry())
+                .capability(TestMathCapability)
+                .capability(CurrentTimeCapability)
+                .capability(ToolSearchCapability::with_threshold(3))
+                .capability(PromptCachingCapability::new())
+                .max_iterations(6)
+                .build()
+                .await
+                .unwrap()
+        }
+    })
+    .await
+    else {
+        return;
+    };
+    assert!(result.success, "Turn should succeed: {:?}", result.error);
+
+    let generations: Vec<_> = runner
+        .events_by_type(LLM_GENERATION)
+        .await
+        .into_iter()
+        .filter_map(|event| match event.data {
+            EventData::LlmGeneration(data) => Some(data),
+            _ => None,
+        })
+        .collect();
+    for (index, data) in generations.iter().enumerate() {
+        let usage = data.metadata.usage.as_ref();
+        eprintln!(
+            "{} call {index}: input={:?} cache_read={:?} cache_write={:?} tool_changes={:?}",
+            config.label(),
+            usage.map(|u| u.input_tokens),
+            usage.and_then(|u| u.cache_read_tokens),
+            usage.and_then(|u| u.cache_creation_tokens),
+            data.metadata.tool_changes.as_ref().map(|c| (
+                c.baseline.as_ref().map(Vec::len),
+                c.added.iter().map(|t| t.name()).collect::<Vec<_>>(),
+                c.redefined.iter().map(|t| t.name()).collect::<Vec<_>>(),
+            )),
+        );
+    }
+
+    // Skip the first call: it starts the baseline. Any later call that
+    // carries a reveal is the one whose cache the old layout lost.
+    let after_reveal = generations
+        .iter()
+        .skip(1)
+        .find(|data| {
+            data.metadata
+                .tool_changes
+                .as_ref()
+                .is_some_and(|c| !c.added.is_empty() || !c.redefined.is_empty())
+        })
+        .expect("a call after tool_search should carry the revealed tool");
+    let cache_read = after_reveal
+        .metadata
+        .usage
+        .as_ref()
+        .and_then(|usage| usage.cache_read_tokens)
+        .unwrap_or(0);
+    assert!(
+        cache_read >= 4096,
+        "{}: the call after the reveal should read the cached prefix, read {cache_read}",
+        config.label()
+    );
+    assert!(
+        generation_called_tool(&runner, "add").await,
+        "{}: the model should call the revealed add tool",
+        config.label()
     );
 }
