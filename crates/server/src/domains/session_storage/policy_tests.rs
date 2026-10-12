@@ -86,6 +86,7 @@ async fn seed() -> (Arc<StorageBackend>, SessionId) {
         session_id: session.id,
         name: SECRET_NAME.to_string(),
         value_encrypted: b"ciphertext".to_vec(),
+        binding: None,
     })
     .await
     .expect("seed user secret");
@@ -93,6 +94,7 @@ async fn seed() -> (Arc<StorageBackend>, SessionId) {
         session_id: session.id,
         name: INTERNAL_SECRET.to_string(),
         value_encrypted: b"sandbox".to_vec(),
+        binding: None,
     })
     .await
     .expect("seed internal secret");
@@ -209,6 +211,7 @@ async fn denied_caller_cannot_mutate_storage() {
         secrets: [("EXTRA_TOKEN".to_string(), "value".to_string())]
             .into_iter()
             .collect(),
+        bindings: Default::default(),
     }
     .run(&denied)
     .await

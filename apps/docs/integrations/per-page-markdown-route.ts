@@ -30,7 +30,8 @@ const pagePath = (id: string) => (id === "" || id === "index" ? "" : id.replace(
 const astroContainer = await experimental_AstroContainer.create();
 
 export const getStaticPaths = (async () => {
-  const docs = await getCollection("docs", (doc) => !doc.data.draft);
+  // The 404 page (docs/404.mdx) is site chrome with no HTML route of its own.
+  const docs = await getCollection("docs", (doc) => !doc.data.draft && doc.id !== "404");
   const docsPaths = docs.map((doc) => {
     const path = pagePath(doc.id);
     return {

@@ -14,6 +14,13 @@
   [Execution Backends](framework/execution-backends.md),
   [Durable Execution Engine](operations/durable-execution-engine.md) and
   [Agent Reliability Tests](runtime-resources/agent-reliability-tests.md).
+* **PAT scopes step 5: CLI.** `everruns whoami` asks `GET /v1/auth/me` and
+  shows a token's access (`full` or `read-only`) from `token_scope`;
+  `login --token` accepts a read token. Every failed CLI request keeps its
+  status and body as a typed error, and `main` turns a `403
+  insufficient_scope` into one line saying the token is read-only.
+  `login --read-only` is not built. Only optional step 6 remains. See
+  [Personal Access Token Scopes](security/pat-scopes.md).
 * **PAT scopes step 4: read-only tokens can be created.** Creation accepts
   `[]`, `["*"]` or `["read"]` and nothing else; the token page has a Full
   access / Read-only picker and shows each token's scope; `GET /v1/auth/me`

@@ -19,7 +19,11 @@ Malformed tool calls no longer reach tool implementations. Before a tool runs, i
   "code": "invalid_tool_arguments",
   "tool": "read_file",
   "issues": [
-    {"instance_path": "/path", "message": "42 is not of type \"string\"", "schema_path": "/properties/path/type"}
+    {
+      "instance_path": "/path",
+      "message": "42 is not of type \"string\"",
+      "schema_path": "/properties/path/type"
+    }
   ]
 }
 ```

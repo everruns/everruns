@@ -17,7 +17,12 @@ suits agents that pause between turns longer than the five minute default.
 One hour writes cost twice the input rate, and cost estimates now include that.
 
 ```json
-{ "ref": "prompt_caching", "config": { "retention": "1h" } }
+{
+  "ref": "prompt_caching",
+  "config": {
+    "retention": "1h"
+  }
+}
 ```
 
 The `explicit` strategy now works on Claude too: it caches the tool definitions

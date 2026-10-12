@@ -8,6 +8,7 @@ use crate::domains::common::Command;
 pub use crate::domains::session_storage::types::{
     BatchSetSecretsRequest, BatchSetSecretsResponse, KeyValueInfo, SecretInfo,
 };
+pub use crate::domains::session_storage::types::{SecretAuth, SecretBinding};
 use crate::domains::session_storage::{
     BatchSetSessionSecrets, DeleteSessionSecret, ListSessionSecrets, ListSessionStorage,
 };
@@ -155,6 +156,7 @@ pub async fn batch_set_secrets(
         BatchSetSessionSecrets {
             session_id: session_id.to_string(),
             secrets: body.secrets,
+            bindings: body.bindings,
         }
         .run(&state.ctx(&org))
         .await?,

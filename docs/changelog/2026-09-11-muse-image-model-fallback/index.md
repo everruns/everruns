@@ -19,7 +19,11 @@ exist: `auto` (the default) uses Muse, `off` keeps GPT strictly on OpenAI or
 Azure OpenAI.
 
 ```json
-{ "config": { "fallback": "auto" } }
+{
+  "config": {
+    "fallback": "auto"
+  }
+}
 ```
 
 Credentials now come only from configured providers. The capability no longer

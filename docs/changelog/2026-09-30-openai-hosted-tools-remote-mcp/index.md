@@ -17,9 +17,19 @@ inside the response. The `openai_server_tools` capability accepts
 `web_search`, `code_interpreter`, `shell`, `file_search` and `mcp`:
 
 ```json
-{ "ref": "openai_server_tools",
-  "config": { "tools": ["code_interpreter", "shell", "file_search"],
-              "file_search_vector_store_ids": ["vs_abc123"] } }
+{
+  "ref": "openai_server_tools",
+  "config": {
+    "tools": [
+      "code_interpreter",
+      "shell",
+      "file_search"
+    ],
+    "file_search_vector_store_ids": [
+      "vs_abc123"
+    ]
+  }
+}
 ```
 
 Hosted calls show in the work log and are priced in usage. Each remote MCP

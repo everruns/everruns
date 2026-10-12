@@ -261,6 +261,7 @@ impl SessionService {
                         session_id: child_session_id,
                         name: row.name,
                         value_encrypted: row.value_encrypted,
+                        binding: row.binding.map(|binding| binding.0),
                     })
                     .await?;
             }

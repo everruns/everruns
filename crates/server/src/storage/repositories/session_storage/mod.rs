@@ -129,16 +129,18 @@ impl Database {
     ) -> Result<SessionSecretRow> {
         let row = sqlx::query_as::<_, SessionSecretRow>(
             r#"
-            INSERT INTO session_secrets (session_id, name, value_encrypted)
-            VALUES ($1, $2, $3)
+            INSERT INTO session_secrets (session_id, name, value_encrypted, binding)
+            VALUES ($1, $2, $3, $4)
             ON CONFLICT (session_id, name) DO UPDATE
-            SET value_encrypted = EXCLUDED.value_encrypted, updated_at = NOW()
-            RETURNING id, session_id, name, value_encrypted, created_at, updated_at
+            SET value_encrypted = EXCLUDED.value_encrypted, binding = EXCLUDED.binding,
+                updated_at = NOW()
+            RETURNING id, session_id, name, value_encrypted, binding, created_at, updated_at
             "#,
         )
         .bind(input.session_id)
         .bind(&input.name)
         .bind(&input.value_encrypted)
+        .bind(input.binding.map(sqlx::types::Json))
         .fetch_one(&self.pool)
         .await?;
 
@@ -153,7 +155,7 @@ impl Database {
     ) -> Result<Option<SessionSecretRow>> {
         let row = sqlx::query_as::<_, SessionSecretRow>(
             r#"
-            SELECT id, session_id, name, value_encrypted, created_at, updated_at
+            SELECT id, session_id, name, value_encrypted, binding, created_at, updated_at
             FROM session_secrets
             WHERE session_id = $1 AND name = $2
             "#,
@@ -267,6 +269,35 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
+        Ok(rows)
+    }
+
+    /// Bound secrets a session can use: its own plus its agent's configured
+    /// HTTP credentials, a session secret shadowing an agent credential of the
+    /// same name. Still encrypted.
+    pub async fn list_bound_secrets(&self, session_id: Uuid) -> Result<Vec<BoundSecretRow>> {
+        let rows = sqlx::query_as::<_, BoundSecretRow>(
+            r#"
+            SELECT name, binding, value_encrypted, 'session' AS scope
+            FROM session_secrets
+            WHERE session_id = $1 AND binding IS NOT NULL
+            UNION ALL
+            SELECT a.env_name AS name, a.binding, a.value_encrypted, 'agent' AS scope
+            FROM agent_mcp_secret_bindings a
+            JOIN sessions s ON s.agent_id = a.agent_id AND s.org_id = a.org_id
+            WHERE s.id = $1
+              AND a.kind = 'http'
+              AND a.value_encrypted IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM session_secrets ss
+                  WHERE ss.session_id = $1 AND ss.name = a.env_name
+              )
+            ORDER BY name
+            "#,
+        )
+        .bind(session_id)
+        .fetch_all(&self.pool)
+        .await?;
         Ok(rows)
     }
 

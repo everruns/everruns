@@ -833,7 +833,8 @@ export default defineConfig({
           //   via <NotebookDoc> (whose route lookup also can't resolve under
           //   the /llms-*.txt routes); the .ipynb source is linked in its
           //   `github` frontmatter for anyone who wants the runnable version.
-          exclude: ["api/**", "tutorials/run-an-agent"],
+          // The 404 page is site chrome, not documentation.
+          exclude: ["api/**", "tutorials/run-an-agent", "404"],
           // The abridged set drops vendor- and operator-specific long tails
           // that a reader asking how to build or run an agent does not need.
           // They stay in llms-full.txt and in the sets above, so nothing is

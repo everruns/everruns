@@ -27,7 +27,9 @@ summarization model:
   "ref": "compaction",
   "config": {
     "strategy": "summarization",
-    "summarization": { "model": "claude-haiku-5-5" }
+    "summarization": {
+      "model": "claude-haiku-5-5"
+    }
   }
 }
 ```
