@@ -14,10 +14,11 @@
 // `2026-07-28`. They are additive and 2025-era clients would ignore them, but
 // gating keeps each era's responses exactly what that era specifies.
 //
-// Decision: `resources/read` is `private`. Its payloads are org-scoped
+// Decision: live catalog `resources/read` is `private`. Its payloads are org-scoped
 // (capabilities, harnesses, models, agents), so a shared cache keyed only by
 // URI would leak one org's data to another. `tools/list` and `resources/list`
-// are `public` because both are static per protocol version — see the
+// are `public` because both are static per protocol version. Embedded public
+// skill entries and file reads are also public — see the
 // per-constant notes below.
 
 use serde_json::{Value, json};

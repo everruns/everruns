@@ -35,6 +35,7 @@ pub mod elicitation;
 mod events;
 mod form_elicitation;
 mod resources;
+mod skills;
 mod tasks;
 mod tool_registry;
 
@@ -655,8 +656,8 @@ async fn handle_mcp(
     }
 
     // Result metadata (`resultType` and, where cacheable, `ttlMs` / `cacheScope`)
-    // is attached here, not in each handler: the policy is per-method and
-    // per-era, and handlers have many success paths. See `caching`.
+    // follows method/protocol boundaries; resource reads select scope in
+    // their wrapper across all success paths. See `caching`.
     let negotiated_version = protocol_version.unwrap_or(MCP_PROTOCOL_VERSION_FALLBACK);
     let root = state.elicitation_base_url.as_deref();
     let response = match req.method.as_str() {
@@ -724,19 +725,17 @@ async fn handle_mcp(
             response
         }
         "resources/read" => {
-            let mut response =
-                resources::handle_resources_read(req.id, req.params, &org, &state).await;
-            if let Some(result) = response.result.as_mut() {
-                caching::mark_cacheable(
-                    result,
-                    negotiated_version,
-                    caching::RESOURCES_READ_TTL_MS,
-                    // Payloads are org-scoped; a shared cache keyed on the URI
-                    // alone would serve one org's data to another.
-                    caching::CacheScope::Private,
-                );
-            }
-            response
+            resources::handle_resources_read(req.id, req.params, &org, &state, negotiated_version)
+                .await
+        }
+        "skills/list" if negotiated_version == MCP_PROTOCOL_VERSION_LATEST => {
+            skills::handle_list(req.id, req.params)
+        }
+        "skills/get" if negotiated_version == MCP_PROTOCOL_VERSION_LATEST => {
+            skills::handle_get(req.id, req.params)
+        }
+        "resources/directory/read" if negotiated_version == MCP_PROTOCOL_VERSION_LATEST => {
+            skills::handle_directory_read(req.id, req.params)
         }
         // MCP 2026-07-28 Tasks extension (SEP-2663). Task handles map to
         // sessions; these methods delegate to the same session logic the

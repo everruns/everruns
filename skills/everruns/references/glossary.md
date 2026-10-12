@@ -1,6 +1,6 @@
 # Framework and host domain language
 
-The vocabulary used by the `everruns` Framework and advanced `everruns-host`
+The vocabulary used by the `everruns` Framework and advanced `everruns_core::host`
 composition. These concepts are shared with the worker- and server-backed
 runtime, so they transfer to the rest of Everruns.
 
@@ -30,9 +30,8 @@ runtime, so they transfer to the rest of Everruns.
   ones ship as integration crates. Active capabilities are resolved from the
   effective harness/agent/session overlay, **not** the full platform registry.
 
-- **Driver**: an LLM provider implementation, keyed by a `DriverId`
-  (`OpenAI`, `Anthropic`, `Gemini`, `OpenRouter`, `Mai`, `Bedrock`, `LlmSim`,
-  `OpenAICompletions`, …). Registered in a `DriverRegistry`.
+- **Driver**: an LLM provider implementation, keyed by a `DriverId` wire
+  identity and registered in a `DriverRegistry`. Identities are extensible.
 
 - **ResolvedModel**: a concrete model selection: `model` name, `provider_type`
   (`DriverId`), `api_key`, optional `base_url`, optional `provider_metadata`.
@@ -47,10 +46,10 @@ runtime, so they transfer to the rest of Everruns.
 - **Engine phases**: the shared execution units the immediate and durable drivers both run:
   `InputAtom` (records the input message, emits `input.message`), `ReasonAtom`
   (assembles context, calls the LLM), `ActAtom` (executes tool calls). Atom
-  algorithms live in `everruns-engine`; host composition injects their effect
+  algorithms live in `everruns_core::engine`; host composition injects their effect
   contracts so improvements flow to both embedded and durable hosts.
 
-- **TurnExecution**: the serializable `everruns-engine` state machine advanced
+- **TurnExecution**: the serializable `everruns_core::engine` state machine advanced
   by every execution driver.
 
 - **Assembled turn context**: the merged context the reason phase uses: harness
@@ -76,7 +75,7 @@ runtime, so they transfer to the rest of Everruns.
 
 ## Advanced host surface
 
-- **InProcessRuntimeBuilder**: the `everruns-host` low-level entrypoint. Set the
+- **InProcessRuntimeBuilder**: the `everruns_core::host` low-level entrypoint. Set the
   `HostComposition`, register extra capabilities/drivers, seed
   harnesses/agents/sessions, configure the default model, optionally register
   `llmsim`, and swap stores via `HostBackends`.
@@ -98,7 +97,7 @@ runtime, so they transfer to the rest of Everruns.
 
 ## Host execution (for durable / server-backed embedders)
 
-`everruns-host` owns a reusable contract so durable or server-backed hosts reuse
+`everruns_core::host` owns a reusable contract so durable or server-backed hosts reuse
 phase orchestration instead of duplicating atom wiring:
 
 - **RuntimeHostAdapter** / **RuntimeSessionLifecycle**: host boundaries.
