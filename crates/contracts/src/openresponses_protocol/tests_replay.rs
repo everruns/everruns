@@ -78,6 +78,7 @@ async fn stateless_gateway_request_replays_full_transcript_on_the_wire() {
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
             native_tool_calls: Vec::new(),
         },
         Message {
@@ -88,6 +89,7 @@ async fn stateless_gateway_request_replays_full_transcript_on_the_wire() {
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
             native_tool_calls: Vec::new(),
         },
     ];
@@ -201,6 +203,7 @@ async fn rejected_stateful_continuation_replays_repaired_transcript_once() {
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
             native_tool_calls: Vec::new(),
         },
         Message {
@@ -211,6 +214,7 @@ async fn rejected_stateful_continuation_replays_repaired_transcript_once() {
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
             native_tool_calls: Vec::new(),
         },
     ];
@@ -648,6 +652,7 @@ fn test_build_input_reasoning_items_always_carry_a_summary() {
         Message::text(MessageRole::User, "Think"),
         Message {
             configuration_update: None,
+            tool_changes: None,
             native_tool_calls: Vec::new(),
             role: MessageRole::Assistant,
             content: MessageContent::Text("No summary on this one.".to_string()),
@@ -662,6 +667,7 @@ fn test_build_input_reasoning_items_always_carry_a_summary() {
         },
         Message {
             configuration_update: None,
+            tool_changes: None,
             native_tool_calls: Vec::new(),
             role: MessageRole::Assistant,
             content: MessageContent::Text("This one was summarized.".to_string()),
@@ -715,6 +721,7 @@ fn test_build_input_replays_reasoning_before_its_message() {
         Message::text(MessageRole::User, "Think about this deeply"),
         Message {
             configuration_update: None,
+            tool_changes: None,
             native_tool_calls: Vec::new(),
             role: MessageRole::Assistant,
             content: MessageContent::Text("I have thought about this.".to_string()),
@@ -765,6 +772,7 @@ fn test_build_input_replays_reasoning_with_tool_calls() {
         Message::text(MessageRole::User, "What time is it? Think carefully."),
         Message {
             configuration_update: None,
+            tool_changes: None,
             native_tool_calls: Vec::new(),
             role: MessageRole::Assistant,
             content: MessageContent::Text("Let me check.".to_string()),
@@ -789,6 +797,7 @@ fn test_build_input_replays_reasoning_with_tool_calls() {
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
             native_tool_calls: Vec::new(),
         },
     ];
@@ -831,6 +840,7 @@ fn test_build_input_without_thinking_signature() {
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
             native_tool_calls: Vec::new(),
         },
     ];
@@ -1303,6 +1313,7 @@ fn test_build_input_assistant_without_thinking_or_tools() {
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
             native_tool_calls: Vec::new(),
         },
     ];
@@ -1327,6 +1338,7 @@ fn test_build_input_reasoning_items_keep_provider_ids() {
         Message::text(MessageRole::User, "First question"),
         Message {
             configuration_update: None,
+            tool_changes: None,
             native_tool_calls: Vec::new(),
             role: MessageRole::Assistant,
             content: MessageContent::Text("First answer.".to_string()),
@@ -1342,6 +1354,7 @@ fn test_build_input_reasoning_items_keep_provider_ids() {
         Message::text(MessageRole::User, "Second question"),
         Message {
             configuration_update: None,
+            tool_changes: None,
             native_tool_calls: Vec::new(),
             role: MessageRole::Assistant,
             content: MessageContent::Text("Second answer.".to_string()),
@@ -1391,6 +1404,7 @@ fn test_build_input_with_phases_enabled() {
             phase: Some(ExecutionPhase::Commentary),
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
             native_tool_calls: Vec::new(),
         },
         Message {
@@ -1401,6 +1415,7 @@ fn test_build_input_with_phases_enabled() {
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
             native_tool_calls: Vec::new(),
         },
     ];

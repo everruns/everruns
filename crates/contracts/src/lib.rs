@@ -203,6 +203,7 @@ pub fn install_default_crypto_provider() {
 }
 
 pub mod reasoning_updates;
+pub mod tool_changes;
 
 pub mod connector;
 pub mod knowledge_store;
