@@ -209,6 +209,19 @@ impl UserConnectionResolver for MapConnectionResolver {
         Ok(self.0.get(provider).cloned())
     }
 
+    async fn get_github_token(
+        &self,
+        _: SessionId,
+        _: &everruns_contracts::runtime::GitHubAccess,
+    ) -> Result<Option<everruns_contracts::runtime::McpResolvedCredential>> {
+        Ok(self.0.get("github").cloned().map(|token| {
+            everruns_contracts::runtime::McpResolvedCredential {
+                token,
+                acted_as: everruns_contracts::runtime::mcp_server::McpServerActsAs::Service,
+            }
+        }))
+    }
+
     async fn get_connection_token_for_user(
         &self,
         _: uuid::Uuid,

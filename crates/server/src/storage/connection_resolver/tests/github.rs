@@ -173,3 +173,53 @@ async fn a_token_cannot_span_owners() {
             .is_err()
     );
 }
+
+/// A source sync acts as the source's owner, with read access to the one
+/// repository it syncs, whichever App owns that owner's installation.
+#[tokio::test]
+async fn a_source_sync_gets_a_read_token_for_its_owner_and_repository() {
+    let (fixture, github) = github_setup(UNATTENDED).await;
+    for (installation, token) in [
+        (AGENT_INSTALLATION, "ghs_agent_sync"),
+        (PERSON_INSTALLATION, "ghs_person_sync"),
+    ] {
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/app/installations/{installation}/access_tokens"
+            )))
+            .and(body_json(serde_json::json!({
+                "repositories": ["app"],
+                "permissions": {"contents": "read"},
+            })))
+            .respond_with(
+                ResponseTemplate::new(201).set_body_json(serde_json::json!({ "token": token })),
+            )
+            .mount(&github)
+            .await;
+    }
+    let resolver = github_resolver(&fixture, &github);
+    let read = crate::domains::git_sources::github_read_access("acme/app");
+    assert_eq!(
+        resolver
+            .get_github_token_for_owner(DEFAULT_ORG_ID, fixture.identity_id.uuid(), &read)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("ghs_agent_sync")
+    );
+    assert_eq!(
+        resolver
+            .get_github_token_for_owner(DEFAULT_ORG_ID, fixture.user_id, &read)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("ghs_person_sync")
+    );
+    assert_eq!(
+        resolver
+            .get_github_token_for_owner(DEFAULT_ORG_ID, Uuid::now_v7(), &read)
+            .await
+            .unwrap(),
+        None
+    );
+}

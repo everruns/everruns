@@ -44,6 +44,16 @@ pub fn github_clone_url(repository: &str) -> Result<(String, String), &'static s
     Ok((format!("https://github.com/{repository}.git"), repository))
 }
 
+/// What a source sync asks GitHub for: read access to one repository's
+/// contents, acting as the source's owner (TM-GITHUB-006).
+pub fn github_read_access(repository: &str) -> everruns_contracts::runtime::GitHubAccess {
+    everruns_contracts::runtime::GitHubAccess::new(
+        everruns_core::McpServerActsAs::User,
+        &[("contents", "read")],
+    )
+    .for_repository(repository)
+}
+
 /// Convert fetch failures into credential-safe guidance stored for users.
 ///
 /// The classification deliberately never carries the remote's own message:

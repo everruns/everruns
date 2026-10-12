@@ -288,9 +288,14 @@ Each step is one PR unless noted, and leaves everything working.
    cut-down token out; `kind` on the connection (migration via
    `just new-migration`). Move the `github` capability, connection-backed MCP,
    Daytona clone, Modal injection and memory and knowledge sync onto it.
-   Started: `get_github_token` with `GitHubAccess` mints narrowed installation
-   tokens (`storage/connection_resolver/github.rs`), and the `github`
-   capability uses it with an `acts_as` setting (default `agent`).
+   Done: `get_github_token` with `GitHubAccess` mints narrowed installation
+   tokens (`storage/connection_resolver/github.rs`); the `github` capability
+   uses it with an `acts_as` setting (default `agent`). Memory and knowledge
+   syncs use `get_github_token_for_owner` (contents read, one repository),
+   Daytona git uses contents write (one repository on clone), and Modal
+   injection uses `user_or_service` unnarrowed until step 6. Connection-backed
+   MCP already resolves through `actsAs` and the same App credentials. Left:
+   `kind` on the connection.
 2. **GitHub section on the agent page** (D7), name rules and avatar step (D2).
    Coordinate with the Yolop PR Reviewer thread's org picker, which lands first.
 3. **Shared App at org level** (D3): org opt-in, deployment webhook route by
