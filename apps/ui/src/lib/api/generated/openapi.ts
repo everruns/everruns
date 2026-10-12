@@ -18694,6 +18694,11 @@ export interface components {
       last_updated?: string | null;
       limits?: components["schemas"]["ModelLimits"] | null;
       modalities?: components["schemas"]["ModelModalities"] | null;
+      /**
+       * @description The vendor's model card or system card for this model: capabilities,
+       *     evaluations, safety testing and known limits, in the vendor's words.
+       */
+      model_card_url?: string | null;
       /** @description Display name of the model */
       name: string;
       /** @description Whether the model has open weights */
