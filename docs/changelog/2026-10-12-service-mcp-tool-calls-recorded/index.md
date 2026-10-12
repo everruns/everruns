@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui, api]
 links:
   docs: [/integrations/mcp-credentials/]
-  prs: [everruns/everruns#4523, everruns/everruns#PRNUM]
+  prs: [everruns/everruns#4523, everruns/everruns#4620]
 ---
 
 Before this fix, a tool call through an MCP server set to `actsAs: service` could
