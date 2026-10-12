@@ -755,7 +755,7 @@
     "input_schema": {
       "$defs": {
         "SecretAuth": {
-          "description": "How a bound secret is put on an outbound request.\n\nHeader-only by design (see `knowledge/security/bound-secrets.md`): a value\nis never placed in a URL or a body.",
+          "description": "How a bound secret is put on an outbound request.\n\nHeader-only by design: a value\nis never placed in a URL or a body.",
           "oneOf": [
             {
               "description": "`Authorization: Bearer <value>`.",
