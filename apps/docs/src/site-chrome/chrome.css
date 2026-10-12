@@ -44,7 +44,10 @@
   box-sizing: border-box;
 }
 
+/* Landing's global.css colors links navy; the chrome sets it itself so the
+   docs, which have their own link color, render it the same. */
 .er-chrome a {
+  color: var(--color-navy);
   text-decoration: none;
 }
 
