@@ -17,6 +17,7 @@ target/
 # Documentation
 *.md
 !README.md
+!skills/**
 
 # Node.js (UI)
 apps/ui/node_modules/

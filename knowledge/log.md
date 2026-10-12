@@ -2,6 +2,12 @@
 
 ## 2026-10-12
 
+* **GitHub connection model design (awaiting approval).** One `github`
+  connection per virtual user with a kind (agent App, shared Everruns app,
+  person); every use declares how it acts, its repositories and permissions,
+  and gets a token cut down to that; the shared app becomes an org-level
+  opt-in; mentions become a GitHub channel beside triggers. See
+  [GitHub Connection Model](integrations/github-model.md).
 * **Cache-stable tool changes design (awaiting approval).** The tool list
   sent to the provider is fixed per session; reveals, MCP attaches and
   refreshes, capability switches and client tools become recorded tool
@@ -17,6 +23,12 @@
 
 ## 2026-10-11
 
+* **PAT scopes step 1: classification, no enforcement.** Stored scopes parse
+  fail-closed onto `AuthUser`, and a layer tags every `/v1` route `Read`,
+  `Write`, `Never` or `PerCommand` from the command inventory or one table.
+  The MCP `query` toolset and PAT classification share one read-only
+  predicate. Nothing is refused yet. See
+  [Personal Access Token Scopes](security/pat-scopes.md).
 * **Personal access token scopes design (awaiting approval).** Two scopes,
   `*` and `read`; routes classified `Read`, `Write` or `Never` (command-backed
   routes from `Command::read_only()`, hand-written ones in one table); checked

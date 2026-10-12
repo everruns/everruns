@@ -286,3 +286,27 @@ fn test_claude_sonnet_5_1m_variant() {
     assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
     assert_eq!(m1.cost.unwrap().input, base.cost.unwrap().input);
 }
+
+#[test]
+fn one_hour_cache_writes_are_surcharged_up_to_twice_the_input_rate() {
+    let cost = get_model_profile("anthropic", "claude-sonnet-5-5")
+        .unwrap()
+        .cost
+        .unwrap();
+    let charged = cost.cache_write.unwrap_or(cost.input);
+    let surcharge =
+        cache_write_1h_surcharge_usd("anthropic", "claude-sonnet-5-5", 60_000, 50_000).unwrap();
+    assert!((surcharge - 0.05 * (2.0 * cost.input - charged)).abs() < 1e-12);
+    // Together with the cache-write charge the long writes cost 2x input.
+    let base = estimate_cost_usd("anthropic", "claude-sonnet-5-5", 0, 0, 0, 50_000).unwrap();
+    assert!((base + surcharge - 0.05 * 2.0 * cost.input).abs() < 1e-12);
+
+    assert_eq!(
+        cache_write_1h_surcharge_usd("anthropic", "claude-sonnet-5-5", 60_000, 0),
+        None
+    );
+    assert_eq!(
+        cache_write_1h_surcharge_usd("anthropic", "no-such-model", 1, 1),
+        None
+    );
+}

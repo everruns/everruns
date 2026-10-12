@@ -130,12 +130,11 @@ fn oauth_identity_rejection_reason(
     }
 }
 
-/// Returns the audit reason when an existing same-email account must not be
-/// auto-linked to an OAuth identity. Verified OAuth proves the callback caller
-/// owns the mailbox now, but an unverified password account may have been
-/// pre-created by an attacker who never controlled that mailbox. Likewise,
-/// provider verification alone is insufficient to link two OAuth identities:
-/// stale or reassigned email claims could otherwise grant cross-provider access.
+/// Returns the audit reason when an existing same-email account must not be auto-linked to an OAuth
+/// identity. Verified OAuth proves the callback caller owns the mailbox now, but an unverified
+/// password account may have been pre-created by an attacker who never controlled that mailbox.
+/// Likewise, provider verification alone is insufficient to link two OAuth identities: stale or
+/// reassigned email claims could otherwise grant cross-provider access.
 fn existing_oauth_link_rejection_reason(
     existing: &UserRow,
     provider: &str,
@@ -176,11 +175,10 @@ pub struct RegisterRequest {
     pub captcha_token: Option<String>,
 }
 
-/// Derive a friendly display name from an email address when the client does
-/// not supply one (minimal signup flow). Uses the local-part (before `@`),
-/// splits on `.`/`_`/`-`, capitalizes each word, and joins with spaces:
-/// `eli@acme.com` → "Eli", `eli.wong@x.com` → "Eli Wong". Falls back to the
-/// raw email if the local-part yields nothing usable.
+/// Derive a friendly display name from an email address when the client does not supply one
+/// (minimal signup flow). Uses the local-part (before `@`), splits on `.`/`_`/`-`, capitalizes each
+/// word, and joins with spaces: `eli@acme.com` → "Eli", `eli.wong@x.com` → "Eli Wong". Falls back
+/// to the raw email if the local-part yields nothing usable.
 fn display_name_from_email(email: &str) -> String {
     let local = email.split('@').next().unwrap_or(email);
     let derived = local
@@ -287,10 +285,9 @@ impl OkResponse {
 /// Cookie name for OAuth CSRF state (TM-AUTH-007)
 const OAUTH_STATE_COOKIE: &str = "oauth_state";
 
-/// OAuth callback query parameters. `code`/`state` are optional so a
-/// provider error callback (e.g. `?error=access_denied` when the user
-/// cancels the consent screen) is handled by the branded redirect flow
-/// instead of failing axum's extractor with a bare 400.
+/// OAuth callback query parameters. `code`/`state` are optional so a provider error callback (e.g.
+/// `?error=access_denied` when the user cancels the consent screen) is handled by the branded
+/// redirect flow instead of failing axum's extractor with a bare 400.
 #[derive(Debug, Deserialize)]
 pub struct OAuthCallbackQuery {
     pub code: Option<String>,
@@ -656,6 +653,7 @@ pub async fn login(
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
         organizations,
+        pat_scope: None,
     };
 
     audit::emit(
@@ -853,14 +851,12 @@ pub async fn register(
             });
 
         // Harness-seed safety net: the async seed task (500 ms delay, see
-        // `seed::spawn_seed_task_with_host_composition`) may not have
-        // provisioned DEFAULT_ORG_ID's built-in harnesses yet when a user
-        // registers immediately after server startup. Re-run the provisioner
-        // using the *platform definition*'s harness set (NOT the OSS default)
-        // so a custom `HostComposition` is never overridden — that was the
-        // security concern addressed by PR #1462. The call is idempotent: if
-        // seeding has already completed, every harness is "unchanged". See
-        // EVE-390 and `knowledge/security/authentication.md`.
+        // `seed::spawn_seed_task_with_host_composition`) may not have provisioned DEFAULT_ORG_ID's
+        // built-in harnesses yet when a user registers immediately after server startup. Re-run the
+        // provisioner using the *platform definition*'s harness set (NOT the OSS default) so a
+        // custom `HostComposition` is never overridden — that was the security concern addressed by
+        // PR #1462. The call is idempotent: if seeding has already completed, every harness is
+        // "unchanged". See EVE-390 and `knowledge/security/authentication.md`.
         if let Err(e) = crate::setup::org_init::initialize_org_harnesses_with_definitions(
             &state.db,
             DEFAULT_ORG_ID,
@@ -905,6 +901,7 @@ pub async fn register(
         is_platform_user: false,
         auth_method: AuthMethod::Jwt,
         organizations,
+        pat_scope: None,
     };
 
     audit::emit(
@@ -997,6 +994,7 @@ pub async fn refresh_token(
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
         organizations,
+        pat_scope: None,
     };
 
     audit::emit(
@@ -1497,6 +1495,7 @@ async fn oauth_callback_inner(
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
         organizations,
+        pat_scope: None,
     };
 
     audit::emit(
@@ -2058,6 +2057,7 @@ async fn get_or_create_admin_user(
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
         organizations,
+        pat_scope: None,
     })
 }
 

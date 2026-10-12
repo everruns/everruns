@@ -13,11 +13,42 @@ Everruns speaks the [Model Context Protocol](https://spec.modelcontextprotocol.i
 Every Everruns deployment exposes an authenticated MCP endpoint at `/mcp` so external clients, Claude Desktop, Cursor, VS Code, or another agent, can discover and call your agents and tools over JSON-RPC. It is a standard product surface, with no deployment variable or organization feature toggle.
 
 - **Transport**: JSON-RPC 2.0 over Streamable HTTP (`POST /mcp`). Protocol versions `2026-07-28`, `2025-06-18` and `2025-03-26` are supported.
-- **Methods**: `initialize`, `server/discover`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`, and, for organizations that turn on MCP Events, `events/list`, `events/subscribe` and `events/unsubscribe`.
+- **Methods**: `initialize`, `server/discover`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`; under `2026-07-28`, `skills/list`, `skills/get`, and `resources/directory/read`; and, for organizations that turn on MCP Events, `events/list`, `events/subscribe` and `events/unsubscribe`.
 - **Auth**: MCP requests authenticate and resolve an organization before dispatch. OAuth 2.1 uses mandatory PKCE, and MCP access tokens are bound to the exact `/mcp` resource so they cannot be reused against the REST API. Unauthenticated requests fail with `401` and protected-resource discovery metadata is served at `/.well-known/oauth-protected-resource/mcp`.
 - **Entity cards**: under protocol `2025-06-18`, tools like `agent_get_card` return a sandboxed `text/html` MCP App resource at the `ui://` scheme alongside a text summary, so MCP-Apps-aware hosts render rich cards while others fall back to text.
 
 Routing is intentionally split: REST under `/api/*`, MCP OAuth under `/oauth/*`, and MCP JSON-RPC at `/mcp`.
+
+### Skills for MCP clients
+
+The endpoint serves public workflow guidance through the official
+[MCP Skills extension](https://modelcontextprotocol.io/extensions/skills/overview).
+With protocol `2026-07-28`, `server/discover` advertises
+`io.modelcontextprotocol/skills` with directory reading enabled. Use `skills/list`
+to discover complete entries or `skills/get` to look up a known `SKILL.md` URI
+directly, then read instructions and supporting files with `resources/read`.
+
+| Skill | Use it for |
+|---|---|
+| `skill://everruns-mcp/SKILL.md` | Finding agents, running sessions, inspecting results, and managing resources through MCP |
+| `skill://everruns-agent-authoring/SKILL.md` | Creating or revising agent definitions, selecting capabilities and harnesses, and verifying behavior |
+
+Each entry preserves all authored frontmatter and includes every file's URI,
+SHA-256 digest, and byte size. Supporting references resolve relative to the
+skill directory. `resources/directory/read` lists direct children of a directory,
+for example `skill://everruns-mcp`, without a trailing slash. Unknown
+skills, files, directories, and cursors return JSON-RPC `-32602`.
+
+These files ship with the server and are identical for every organization.
+They use public cache hints, while organization data resources remain private.
+Requests still require MCP authentication. Organization-managed Skills registry
+entries, the Rust Framework skill, and repository contributor workflows are not
+published in this catalog or accessible through its skill resource reads.
+
+Reading a resource does not itself activate a skill. A host supporting the
+extension loads it through its skill loader, checks the manifest and frontmatter,
+and applies its approval policy. Older clients can read a known skill URI as an
+ordinary resource but receive no Skills extension capability.
 
 ### In ChatGPT and Codex
 

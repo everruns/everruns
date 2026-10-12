@@ -1326,6 +1326,25 @@ async fn shared_agent_memory_is_visible_across_sessions() {
     assert_eq!(listing.len(), 1);
     assert_eq!(listing[0].path, "/memory/shared/notes.md");
 
+    // `/memory` itself has no row, yet it is a directory that shows the
+    // mounts below it; an agent listing it used to conclude it had no memory.
+    let memory = files
+        .stat(second.id.uuid(), "/memory")
+        .await
+        .unwrap()
+        .expect("/memory is a directory");
+    assert!(memory.is_directory);
+    let listing = files
+        .list_directory(second.id.uuid(), "/memory")
+        .await
+        .unwrap();
+    assert!(
+        listing
+            .iter()
+            .any(|entry| entry.path == "/memory/shared" && entry.is_directory),
+        "{listing:?}"
+    );
+
     let hits = files
         .grep(
             second.id.uuid(),

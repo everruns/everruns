@@ -5,7 +5,9 @@
 // it only configures the outbound LLM request.
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
-use crate::builtins::driver_registry::{PromptCacheConfig, PromptCacheStrategy};
+use crate::builtins::driver_registry::{
+    PromptCacheConfig, PromptCacheRetention, PromptCacheStrategy,
+};
 use async_trait::async_trait;
 
 /// Capability ID for provider prompt caching.
@@ -17,6 +19,7 @@ pub const PROMPT_CACHING_CAPABILITY_ID: &str = "prompt_caching";
 /// controls when possible. Unsupported providers or models ignore it.
 pub struct PromptCachingCapability {
     strategy: PromptCacheStrategy,
+    retention: PromptCacheRetention,
     gemini_cached_content: Option<String>,
 }
 
@@ -24,6 +27,7 @@ impl PromptCachingCapability {
     pub fn new() -> Self {
         Self {
             strategy: PromptCacheStrategy::Auto,
+            retention: PromptCacheRetention::Default,
             gemini_cached_content: None,
         }
     }
@@ -31,8 +35,15 @@ impl PromptCachingCapability {
     pub fn with_strategy(strategy: PromptCacheStrategy) -> Self {
         Self {
             strategy,
+            retention: PromptCacheRetention::Default,
             gemini_cached_content: None,
         }
+    }
+
+    /// Request a cache retention; drivers snap it to what the provider supports.
+    pub fn with_retention(mut self, retention: PromptCacheRetention) -> Self {
+        self.retention = retention;
+        self
     }
 
     pub fn with_gemini_cached_content(
@@ -41,6 +52,7 @@ impl PromptCachingCapability {
     ) -> Self {
         Self {
             strategy,
+            retention: PromptCacheRetention::Default,
             gemini_cached_content: Some(gemini_cached_content.into()),
         }
     }
@@ -48,6 +60,7 @@ impl PromptCachingCapability {
     /// Returns the PromptCacheConfig for this capability.
     pub fn prompt_cache_config(&self) -> PromptCacheConfig {
         PromptCacheConfig {
+            retention: self.retention,
             enabled: true,
             strategy: self.strategy,
             gemini_cached_content: self.gemini_cached_content.clone(),
@@ -98,12 +111,18 @@ impl Capability for PromptCachingCapability {
             .and_then(serde_json::Value::as_str)
             .map(str::to_string)
             .or_else(|| self.gemini_cached_content.clone());
-        Some(PromptCacheConfig {
-            enabled: true,
-            strategy: config
-                .get("strategy")
+        fn parse<T: serde::de::DeserializeOwned>(
+            config: &serde_json::Value,
+            key: &str,
+        ) -> Option<T> {
+            config
+                .get(key)
                 .and_then(|value| serde_json::from_value(value.clone()).ok())
-                .unwrap_or(self.strategy),
+        }
+        Some(PromptCacheConfig {
+            retention: parse(config, "retention").unwrap_or(self.retention),
+            enabled: true,
+            strategy: parse(config, "strategy").unwrap_or(self.strategy),
             gemini_cached_content,
         })
     }
@@ -141,6 +160,7 @@ mod tests {
                 assert_eq!(
                     Capability::prompt_cache_config(&cap, &config),
                     Some(PromptCacheConfig {
+                        retention: Default::default(),
                         enabled: true,
                         strategy: PromptCacheStrategy::Auto,
                         gemini_cached_content: expected.map(str::to_owned)
@@ -160,5 +180,29 @@ mod tests {
         )
         .unwrap();
         assert_eq!(config.strategy, PromptCacheStrategy::Explicit);
+    }
+
+    #[test]
+    fn retention_is_read_from_config_and_unknown_values_keep_the_constructor_value() {
+        let capability =
+            PromptCachingCapability::new().with_retention(PromptCacheRetention::FiveMinutes);
+        let retention = |config: serde_json::Value| {
+            Capability::prompt_cache_config(&capability, &config)
+                .unwrap()
+                .retention
+        };
+        assert_eq!(
+            retention(json!({"retention":"1h"})),
+            PromptCacheRetention::OneHour
+        );
+        assert_eq!(
+            retention(json!({"retention":"30m"})),
+            PromptCacheRetention::ThirtyMinutes
+        );
+        assert_eq!(
+            retention(json!({"retention":"2h"})),
+            PromptCacheRetention::FiveMinutes
+        );
+        assert_eq!(retention(json!({})), PromptCacheRetention::FiveMinutes);
     }
 }

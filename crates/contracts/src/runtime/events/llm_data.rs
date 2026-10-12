@@ -81,6 +81,11 @@ pub struct LlmPromptCacheInfo {
     /// Provider-specific prompt-cache mode used by the driver.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_mode: Option<String>,
+    /// Cache retention the driver requested after snapping to what the
+    /// provider supports (`5m`, `30m`, `1h`). Absent when the provider's
+    /// retention is not configurable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retention: Option<String>,
 }
 
 /// Request-side tool_search settings for an LLM generation.

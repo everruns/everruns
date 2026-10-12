@@ -77,6 +77,7 @@ mod org_creation_test;
 mod org_invitations_test;
 mod org_isolation_test;
 mod org_lifecycle_test;
+mod pat_scope_coverage_test;
 mod payment_policy_app_subject_test;
 mod platform_command_line_test;
 mod poppy_agent_test;

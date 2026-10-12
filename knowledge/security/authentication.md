@@ -57,8 +57,9 @@ Authorization: Bearer <personal_access_token>
   not honored, token creation only accepts the full-access wildcard (`scopes`
   omitted or `["*"]`); any narrower scope is rejected with `unsupported_pat_scopes`
   until per-request scope enforcement exists. See EVE-701, and
-  [Personal Access Token Scopes](pat-scopes.md) for the proposed enforcement
-  design (`*` and `read`). Under that design a `read` token can never download
+  [Personal Access Token Scopes](pat-scopes.md) for the approved enforcement
+  design (`*` and `read`); its first step parses scopes and classifies routes
+  without enforcing either. Under that design a `read` token can never download
   the full personal data export (`GET /v1/users/me/export`), and legacy tokens
   stored with any scope other than `["*"]` are deleted when enforcement ships.
 - Used for programmatic access

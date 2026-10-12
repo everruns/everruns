@@ -15,7 +15,8 @@ impl ChatDriver for AnthropicChatDriver {
         // Note: OTel instrumentation is handled via event listeners.
         // ReasonAtom emits llm.generation events, and OtelEventListener
         // creates gen-ai spans from those events.
-        let prompt_cache_enabled = config.prompt_cache.as_ref().is_some_and(|cfg| cfg.enabled);
+        let prompt_cache = config.prompt_cache.as_ref().filter(|cfg| cfg.enabled);
+        let prompt_cache_enabled = prompt_cache.is_some();
         let (wire_model, wants_million_context) = split_million_context(&config.model);
         crate::anthropic::prefill::reject_trailing_assistant(wire_model, &messages)?;
         let profile = everruns_contracts::get_model_profile(
@@ -44,7 +45,11 @@ impl ChatDriver for AnthropicChatDriver {
             }
             _ => Vec::new(),
         };
-        let message_cache_enabled = prompt_cache_enabled && !wants_server_compaction;
+        // The explicit strategy caches only the stable prefix (tools, system):
+        // no breakpoints on the conversation, so it is never written to cache.
+        let message_cache_enabled = prompt_cache.is_some_and(|cfg| {
+            cfg.strategy != everruns_contracts::driver_registry::PromptCacheStrategy::Explicit
+        }) && !wants_server_compaction;
         let prepared = layout::keep_later_system_messages_in_place(&messages, &config.model);
         let (system_prompt, converted_messages) = Self::convert_messages_with_options(
             &prepared.messages,
@@ -310,7 +315,7 @@ impl ChatDriver for AnthropicChatDriver {
         });
         let wants_cache_diagnostics = diagnostics.is_some();
 
-        let request = AnthropicRequest {
+        let mut request = AnthropicRequest {
             model: wire_model.to_string(),
             messages: anthropic_messages,
             max_tokens,
@@ -326,6 +331,10 @@ impl ChatDriver for AnthropicChatDriver {
             cache_control: (wants_server_compaction && prompt_cache_enabled)
                 .then(AnthropicCacheControl::ephemeral),
         };
+        super::cache::apply_ttl(
+            &mut request,
+            prompt_cache.and_then(|cfg| cfg.retention.anthropic_ttl()),
+        );
         let request_messages = Arc::new(request.messages.clone());
 
         // Share the (possibly fallback-mutated) request across reconnect
@@ -373,6 +382,7 @@ impl ChatDriver for AnthropicChatDriver {
         let output_tokens = Arc::new(Mutex::new(0u32));
         let cache_read_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         let cache_creation_tokens = Arc::new(Mutex::new(Option::<u32>::None));
+        let cache_creation_1h_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         let current_tool_call = Arc::new(Mutex::new(Option::<ToolCall>::None));
         // Toolset of the tool call being streamed, when it is a member call.
         let current_is_member = Arc::new(Mutex::new(Option::<Toolset>::None));
@@ -399,6 +409,7 @@ impl ChatDriver for AnthropicChatDriver {
             let output_tokens = Arc::clone(&output_tokens);
             let cache_read_tokens = Arc::clone(&cache_read_tokens);
             let cache_creation_tokens = Arc::clone(&cache_creation_tokens);
+            let cache_creation_1h_tokens = Arc::clone(&cache_creation_1h_tokens);
             let current_tool_call = Arc::clone(&current_tool_call);
             let current_is_member = Arc::clone(&current_is_member);
             let current_thinking = Arc::clone(&current_thinking);
@@ -447,6 +458,10 @@ impl ChatDriver for AnthropicChatDriver {
                                         {
                                             *cache_creation_tokens.lock().unwrap() =
                                                 Some(cache_creation);
+                                        }
+                                        if let Some(split) = usage.cache_creation {
+                                            *cache_creation_1h_tokens.lock().unwrap() =
+                                                split.ephemeral_1h_input_tokens;
                                         }
                                     }
                                 }
@@ -727,6 +742,10 @@ impl ChatDriver for AnthropicChatDriver {
                                             *cache_creation_tokens.lock().unwrap() =
                                                 usage.cache_creation_input_tokens;
                                         }
+                                        if let Some(split) = usage.cache_creation {
+                                            *cache_creation_1h_tokens.lock().unwrap() =
+                                                split.ephemeral_1h_input_tokens;
+                                        }
                                     }
 
                                     if let Some(stop_reason) = data.delta.stop_reason {
@@ -793,6 +812,8 @@ impl ChatDriver for AnthropicChatDriver {
                                     metadata.completion_tokens = Some(out_tokens);
                                     metadata.cache_read_tokens = cache_read;
                                     metadata.cache_creation_tokens = cache_creation;
+                                    metadata.cache_creation_1h_tokens =
+                                        *cache_creation_1h_tokens.lock().unwrap();
                                     metadata.model = Some(model);
                                     metadata.response_model = response_model.lock().unwrap().clone();
                                     // `None` when no `stop_reason` arrived: kept

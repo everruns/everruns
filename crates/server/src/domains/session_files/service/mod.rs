@@ -115,50 +115,6 @@ pub struct WorkspaceFileService {
 }
 
 impl WorkspaceFileService {
-    fn memory_session_path(mount: &MemoryMount, inner: &str) -> String {
-        if inner == "/" {
-            mount.mount_path.clone()
-        } else {
-            format!("{}{}", mount.mount_path, inner)
-        }
-    }
-
-    fn memory_info_to_file_info(
-        session_id: Uuid,
-        mount: &MemoryMount,
-        row: crate::storage::MemoryFileInfoRow,
-    ) -> FileInfo {
-        let path = Self::memory_session_path(mount, &row.path);
-        FileInfo {
-            id: row.id,
-            session_id,
-            path: path.clone(),
-            name: FileInfo::name_from_path(&path),
-            is_directory: row.is_directory,
-            is_readonly: mount.readonly,
-            size_bytes: row.size_bytes,
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-        }
-    }
-
-    /// A directory entry standing for a mount root on the way down to it, so a
-    /// listing of `/` shows `/memory` even though no session file exists there.
-    fn synthetic_directory(session_id: Uuid, path: &str) -> FileInfo {
-        let now = chrono::Utc::now();
-        FileInfo {
-            id: Uuid::nil(),
-            session_id,
-            path: path.to_string(),
-            name: FileInfo::name_from_path(path),
-            is_directory: true,
-            is_readonly: false,
-            size_bytes: 0,
-            created_at: now,
-            updated_at: now,
-        }
-    }
-
     pub fn with_quota_limits(mut self, quota: QuotaLimits) -> Self {
         self.quota = quota;
         self
@@ -536,6 +492,10 @@ impl WorkspaceFileService {
             }));
         }
 
+        if let Some(stat) = self.mount_ancestor_stat(session_id, &path).await {
+            return Ok(Some(stat));
+        }
+
         // Check virtual mounts first
         if let Some(registry) = &self.virtual_registry
             && let Some(vf) = registry.read_file(&session_id, &path)
@@ -588,8 +548,10 @@ impl WorkspaceFileService {
                 .is_some_and(|f| f.is_directory)
         });
 
+        let mount_ancestor = self.is_mount_ancestor(session_id, &path).await;
+
         // Verify directory exists (root always exists)
-        if path != "/" && !virtual_dir_exists {
+        if path != "/" && !virtual_dir_exists && !mount_ancestor {
             let dir = self.db.get_session_file(session_id, &path).await?;
             match dir {
                 Some(d) if !d.is_directory => {

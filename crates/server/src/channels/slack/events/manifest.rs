@@ -228,7 +228,25 @@ pub(crate) fn build_short_description(app_name: &str, app_description: Option<&s
         .filter(|d| !d.trim().is_empty())
         .map(str::to_owned)
         .unwrap_or_else(|| format!("{app_name} (Powered by Everruns)"));
-    truncate_chars(&description, 140)
+    // Slack counts this limit in bytes, not characters: a 129-character
+    // Ukrainian description (236 bytes) came back as `invalid_manifest`.
+    truncate_bytes(&description, SLACK_SHORT_DESC_MAX_BYTES)
+}
+
+/// Slack's `display_information.description` limit.
+pub(crate) const SLACK_SHORT_DESC_MAX_BYTES: usize = 140;
+
+/// The longest prefix of `s` that fits in `max` bytes without splitting a
+/// character.
+pub(crate) fn truncate_bytes(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        return s.to_string();
+    }
+    let mut end = max;
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    s[..end].to_string()
 }
 
 /// The `suggested_prompts` list, or empty when nothing was authored.
@@ -320,6 +338,10 @@ pub(crate) fn build_manifest_yaml(
          \x20 bot_user:\n\
          \x20   display_name: \"{display_name}\"\n\
          \x20   always_online: true\n\
+         \x20 app_home:\n\
+         \x20   home_tab_enabled: false\n\
+         \x20   messages_tab_enabled: true\n\
+         \x20   messages_tab_read_only_enabled: false\n\
          {agent_view}\
          oauth_config:\n\
          \x20 redirect_urls:\n\

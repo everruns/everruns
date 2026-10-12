@@ -154,8 +154,8 @@ const monthSummary = (items: typeof entries) => {
                         {(d.supersededBy || d.removedIn) && (
                           <span class="changelog-superseded-tag">{d.removedIn ? "Removed" : "Superseded"}</span>
                         )}
-                        {d.kind !== "release" && (
-                          <span class="changelog-avail">{d.release ? `In ${d.release}` : "On main"}</span>
+                        {d.kind !== "release" && d.release && (
+                          <span class="changelog-avail">In {d.release}</span>
                         )}
                       </p>
                     </li>

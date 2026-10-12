@@ -36,6 +36,7 @@
 * [Slack Agent Actions](slack-agent-actions.md) - Why Slack approvals, task progress, and the second-identity problem are one missing capability.
 * [Slack One-Click Install](slack-one-click-install.md) - What a live PoC established about creating per-agent Slack apps programmatically.
 * [Per-agent GitHub Apps](github-apps.md) - One-click GitHub App per agent identity: one installation for GitHub tools, MCP and events.
+* [GitHub Connection Model](github-model.md) - Design (awaiting approval): three GitHub identities (agent App, shared Everruns app, person), per-use cut-down tokens, triggers for listening and a GitHub channel for talking.
 * [GitHub review and security agent templates](github-agent-templates.md) - PR Reviewer and Security Scanner: guided agent examples, deterministic repeat suppression, settings the tools enforce.
 * [Modal Sandboxes](modal.md) - Modal VM and gVisor sandboxes as the first module of the everruns-integrations crate: gRPC transport, credentials, state and leases, testing.
 * [Plugins](plugins.md) - Plugin host: marketplaces and cross-host plugin packages installed as capabilities.

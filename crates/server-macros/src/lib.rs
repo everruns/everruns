@@ -479,7 +479,7 @@ fn expand_http(spec: HttpSpec<'_>) -> syn::Result<TokenStream2> {
         fn #doc_fn() {}
 
         ::inventory::submit! {
-            crate::api::command_http::CommandOpenApi::of::<#doc_path>()
+            crate::api::command_http::CommandOpenApi::of::<#doc_path>(#name)
         }
     })
 }
