@@ -1369,7 +1369,9 @@
         "edit_file",
         "glob",
         "grep",
+        "list_directory",
         "read_file",
+        "read_many_files",
         "write_file"
       ]
     },

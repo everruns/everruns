@@ -815,12 +815,7 @@ mod tests {
             _instance: &SessionSandboxInstance,
             path: &str,
         ) -> Result<SessionSandboxReadFileResponse, ToolExecutionResult> {
-            let content = test_provider_files::read(&_instance.external_id, path);
-            Ok(SessionSandboxReadFileResponse {
-                path: path.to_string(),
-                content,
-                encoding: "text".to_string(),
-            })
+            test_provider_files::read_file(&_instance.external_id, path)
         }
 
         async fn write_file(
