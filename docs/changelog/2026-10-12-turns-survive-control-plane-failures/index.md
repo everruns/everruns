@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [api]
 links:
   docs: [/event-reference/]
-  prs: [everruns/everruns#4642]
+  prs: [everruns/everruns#4663]
 ---
 
 Sending a message could answer `503` while the message had in fact been
