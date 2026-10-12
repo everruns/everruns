@@ -1,13 +1,13 @@
 ---
 import { docsPath } from "../lib/site";
-import DefaultFooter from "@astrojs/starlight/components/Footer.astro";
+import Pagination from "./Pagination.astro";
 import { isChangelogEntry, productLabel } from "../lib/changelog";
-import siteFooter from "../site-chrome/footer.html?raw";
 
-// Every page ends with the everruns.com site footer, shared with the landing
-// site (see Header.astro). A changelog entry also links the products it is
-// about: where each one lives, so a reader can go from "what changed" to the
-// product itself.
+// The end of the article: previous and next pages. The edit link and last
+// updated date sit in the meta row under the title (PageTitle.astro), and the
+// everruns.com site footer spans the page below the column (PageFrame.astro).
+// A changelog entry also links the products it is about: where each one
+// lives, so a reader can go from "what changed" to the product itself.
 const PRODUCT_HOME: Record<string, string> = {
   cloud: "/getting-started/cloud/",
   platform: "/getting-started/docker-compose/",
@@ -42,23 +42,11 @@ const links = isChangelogEntry(entry)
 </div>
 )}
 
-<DefaultFooter {...Astro.props} />
-
-<div class="site-footer">
-  <Fragment set:html={siteFooter} />
-</div>
+<Pagination />
 
 <style>
-  .site-footer {
-    margin-block-start: 3rem;
-  }
-
-  .site-footer :global(.er-footer) {
-    border-top: 1px solid var(--sl-color-hairline-light);
-  }
-
   .site-footer-links {
-    margin-block-end: 1rem;
+    margin-block-start: 3rem;
     padding-block-end: 1rem;
     border-bottom: 1px solid var(--sl-color-hairline-light);
   }

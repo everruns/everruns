@@ -1,0 +1,8 @@
+---
+// The right-hand column holds only the desktop TOC; the mobile dropdown is
+// rendered by TwoColumnContent.astro inside the article column, where it can
+// stick under the docs bar.
+import TableOfContents from "./TableOfContents.astro";
+---
+
+{Astro.locals.starlightRoute.toc && <TableOfContents />}

@@ -1,0 +1,560 @@
+---
+// The docs home (/docs), per the docs design handoff: a light, dense page
+// rather than the dark marketing hero, so a reader can tell they are in the
+// docs. A masthead with the intro and a large search field, then the three
+// ways to run Everruns and the four kinds of documentation.
+//
+// docs/index.mdx renders this; the per-page Markdown and llms.txt outputs are
+// built from the same rendered HTML, so every link here is a real page.
+import { docsPath } from "../lib/site";
+
+const ICONS = {
+  package:
+    '<path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7"/><path d="m7.5 4.27 9 5.15"/>',
+  server:
+    '<rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>',
+  cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
+  chevron: '<path d="m9 18 6-6-6-6"/>',
+  copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+};
+
+const popular = [
+  { label: "Framework quickstart", href: "/framework/quickstart/" },
+  { label: "Docker Compose", href: "/getting-started/docker-compose/" },
+  { label: "Tools", href: "/how-to/equip-agents-with-tools/" },
+  { label: "Sessions API", href: "/api/operations/tags/sessions/" },
+];
+
+// Same order and names as the Start here chooser: Framework, self-hosted, Cloud.
+const runCards = [
+  {
+    icon: ICONS.package,
+    title: "Framework",
+    href: "/framework/quickstart/",
+    description:
+      "Build and run agents inside a Rust process with the everruns crate. Nothing else to deploy.",
+    pages: [
+      { label: "Quickstart", href: "/framework/quickstart/" },
+      { label: "Agents and tools", href: "/framework/agents/" },
+      { label: "Sessions", href: "/framework/sessions/" },
+      { label: "Models and providers", href: "/framework/models-and-providers/" },
+    ],
+    prompt: "$ ",
+    command: "cargo add everruns",
+  },
+  {
+    icon: ICONS.server,
+    title: "Self-hosted",
+    href: "/getting-started/docker-compose/",
+    description:
+      "Run the Platform (API, workers, PostgreSQL, UI) on infrastructure you control, starting with Docker Compose.",
+    pages: [
+      { label: "Docker Compose quickstart", href: "/getting-started/docker-compose/" },
+      { label: "Configure a model provider", href: "/getting-started/docker-compose/#configure-llm-provider" },
+      { label: "Environment variables", href: "/sre/environment-variables/" },
+      { label: "Architecture", href: "/explanation/architecture/" },
+    ],
+    prompt: "$ ",
+    command: "docker compose up -d",
+  },
+  {
+    icon: ICONS.cloud,
+    title: "Everruns Cloud",
+    href: "/getting-started/cloud/",
+    description:
+      "Use the Platform at app.everruns.com without running it. A built-in model provider and $5 of starter credit; your own provider keys are optional.",
+    pages: [
+      { label: "Get started with Cloud", href: "/getting-started/cloud/" },
+      { label: "Personal access tokens", href: "/getting-started/cloud/#3-create-a-personal-access-token" },
+      { label: "Credit and the spend cap", href: "/getting-started/cloud/#credit-and-the-spend-cap" },
+      { label: "Bring your own keys", href: "/getting-started/cloud/#bring-your-own-keys-optional" },
+    ],
+    prompt: "",
+    command: "https://app.everruns.com",
+  },
+];
+
+const help = [
+  {
+    kind: "Learn",
+    title: "Tutorials",
+    description: "Step-by-step lessons that end with a running agent. Start here if you're new.",
+    href: "/tutorials/run-an-agent/",
+  },
+  {
+    kind: "Do",
+    title: "How-to guides",
+    description: "Task-oriented recipes for common problems, when you know what you want to build.",
+    href: "/how-to/",
+  },
+  {
+    kind: "Understand",
+    title: "Explanation",
+    description: "Background and design rationale: durable execution, sessions, and harnesses.",
+    href: "/explanation/",
+  },
+  {
+    kind: "Look up",
+    title: "Reference",
+    description: "API endpoints, event types, the capability catalog, CLI flags, and environment variables.",
+    href: "/api/",
+  },
+];
+
+const svg = (paths: string, size: number) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+---
+
+<div class="er-home not-content">
+  <section class="er-home-mast">
+    <div class="er-home-column er-home-mast-grid">
+      <div>
+        <h1>Documentation</h1>
+        <p>
+          Everruns is a <strong>durable agentic harness engine</strong> built on Rust. It provides APIs
+          for managing agents, sessions, and long-running tasks, with real-time SSE event streaming and
+          PostgreSQL-backed durability.
+        </p>
+      </div>
+      <div class="er-home-search">
+        <button type="button" data-er-home-search data-llms-ignore>
+          <Fragment set:html={svg(ICONS.search, 16)} />
+          <span>Search guides, APIs, and examples</span>
+          <kbd data-er-home-kbd>⌘K</kbd>
+        </button>
+        <p class="er-home-popular">
+          <span>Popular</span>
+          {popular.map((link) => <a href={docsPath(link.href)}>{link.label}</a>)}
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="er-home-body">
+    <div class="er-home-column er-home-sections">
+      <div class="er-home-section">
+        <div class="er-home-section-head">
+          <h2>Choose how you run Everruns</h2>
+          <a href={docsPath("/getting-started/introduction/")}>Start here compares the three →</a>
+        </div>
+        <div class="er-home-cards">
+          {
+            runCards.map((card) => (
+              <div class="er-home-card">
+                <div class="er-home-card-head">
+                  <div class="er-home-card-title">
+                    <Fragment set:html={svg(card.icon, 20)} />
+                    <a href={docsPath(card.href)}>{card.title}</a>
+                  </div>
+                  <p>{card.description}</p>
+                </div>
+                <ul class="er-home-card-pages">
+                  {card.pages.map((page) => (
+                    <li>
+                      <a href={docsPath(page.href)}>
+                        <span>{page.label}</span>
+                        <Fragment set:html={svg(ICONS.chevron, 14)} />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+                <div class="er-home-card-command">
+                  <code>
+                    {card.prompt && <span class="er-home-prompt">{card.prompt}</span>}
+                    {card.command}
+                  </code>
+                  <button type="button" data-er-copy={card.command} data-llms-ignore aria-label={`Copy ${card.command}`} title="Copy">
+                    <span class="er-copy-icon" set:html={svg(ICONS.copy, 13)} />
+                    <span class="er-copied-icon" set:html={svg(ICONS.check, 13)} />
+                  </button>
+                </div>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+
+      <div class="er-home-section">
+        <h2>What kind of help do you need?</h2>
+        <div class="er-home-help">
+          {
+            help.map((cell) => (
+              <a href={docsPath(cell.href)}>
+                <span class="er-home-eyebrow">{cell.kind}</span>
+                <span class="er-home-help-title">{cell.title}</span>
+                <span class="er-home-help-desc">{cell.description}</span>
+              </a>
+            ))
+          }
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+  // The masthead field opens the same search dialog as the docs bar. The
+  // dialog closes on any click outside it, so this click must not reach the
+  // window once the dialog is open.
+  document.querySelector("[data-er-home-search]")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    document.querySelector<HTMLButtonElement>("site-search button[data-open-modal]")?.click();
+  });
+
+  // Show the same shortcut as the docs bar (Ctrl K, or ⌘K on Apple devices).
+  const kbd = document.querySelector("[data-er-home-kbd]");
+  if (kbd && !/(Mac|iPhone|iPod|iPad)/i.test(navigator.platform)) kbd.textContent = "Ctrl K";
+
+  document.querySelectorAll<HTMLButtonElement>("[data-er-copy]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(button.dataset.erCopy ?? "");
+        button.dataset.copied = "";
+        setTimeout(() => delete button.dataset.copied, 1500);
+      } catch {
+        /* clipboard unavailable: the command stays selectable */
+      }
+    });
+  });
+</script>
+
+<style>
+  .er-home {
+    --er-home-text-soft: hsl(var(--foreground) / 0.75);
+  }
+
+  .er-home-column {
+    max-width: var(--er-column);
+    margin: 0 auto;
+    padding: 0 var(--er-gutter);
+  }
+
+  .er-home a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .er-home a:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  /* Masthead */
+  .er-home-mast {
+    background: hsl(var(--card));
+    border-bottom: 1px solid hsl(var(--border));
+  }
+
+  .er-home-mast-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+    align-items: end;
+    padding-top: 56px;
+    padding-bottom: 48px;
+  }
+
+  @media (min-width: 60em) {
+    .er-home-mast-grid {
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+      gap: 48px;
+    }
+  }
+
+  .er-home h1 {
+    margin: 0;
+    font-size: 36px;
+    line-height: 1.15;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    color: hsl(var(--foreground));
+  }
+
+  .er-home-mast p {
+    max-width: 600px;
+    margin: 16px 0 0;
+    font-size: 16px;
+    line-height: 1.65;
+    color: var(--er-home-text-soft);
+    text-wrap: pretty;
+  }
+
+  .er-home-mast strong {
+    color: hsl(var(--foreground));
+    font-weight: 600;
+  }
+
+  .er-home-search {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .er-home-search button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    height: 44px;
+    padding: 0 10px 0 14px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0;
+    background: hsl(var(--background));
+    box-shadow: var(--shadow-xs);
+    color: hsl(var(--muted-foreground));
+    font: inherit;
+    font-size: 14px;
+    cursor: pointer;
+  }
+
+  .er-home-search button:hover {
+    border-color: hsl(var(--muted-foreground) / 0.4);
+  }
+
+  .er-home-search button :global(svg) {
+    flex: none;
+  }
+
+  .er-home-search button span {
+    flex: 1;
+    text-align: left;
+  }
+
+  .er-home kbd {
+    padding: 2px 6px;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--card));
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+
+  .er-home .er-home-popular {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    margin: 0;
+    font-size: 13px;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .er-home-popular a {
+    color: hsl(var(--foreground));
+  }
+
+  /* Body */
+  .er-home-body {
+    background-color: hsl(var(--background));
+    background-image: radial-gradient(var(--dot) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  .er-home-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 56px;
+    padding-top: 48px;
+    padding-bottom: 96px;
+  }
+
+  .er-home-section {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .er-home h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    color: hsl(var(--foreground));
+  }
+
+  .er-home-section-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .er-home-section-head a {
+    font-size: 13px;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .er-home-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+    gap: 16px;
+  }
+
+  .er-home-card {
+    display: flex;
+    flex-direction: column;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+  }
+
+  .er-home-card-head {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 20px 20px 16px;
+  }
+
+  .er-home-card-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: hsl(var(--foreground));
+  }
+
+  .er-home-card-title :global(svg) {
+    flex: none;
+  }
+
+  .er-home-card-title a {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
+
+  .er-home-card-head p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--er-home-text-soft);
+  }
+
+  .er-home-card-pages {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0 8px 12px;
+    list-style: none;
+  }
+
+  .er-home-card-pages a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px 12px;
+    font-size: 14px;
+    color: hsl(var(--foreground));
+  }
+
+  .er-home-card-pages a:hover {
+    background: hsl(var(--muted));
+    text-decoration: none;
+  }
+
+  .er-home-card-pages :global(svg) {
+    flex: none;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .er-home-card-command {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 16px;
+    border-top: 1px solid hsl(var(--border) / 0.6);
+    background: hsl(var(--muted) / 0.5);
+  }
+
+  .er-home-card-command code {
+    overflow: hidden;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: hsl(var(--foreground));
+    font-family: var(--font-mono);
+    font-size: 12px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .er-home-prompt {
+    color: hsl(var(--muted-foreground));
+  }
+
+  .er-home-card-command button {
+    display: flex;
+    flex: none;
+    padding: 2px;
+    border: 0;
+    background: none;
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+  }
+
+  .er-home-card-command button:hover {
+    color: hsl(var(--foreground));
+  }
+
+  .er-copied-icon,
+  [data-copied] .er-copy-icon {
+    display: none;
+  }
+
+  [data-copied] .er-copied-icon {
+    display: flex;
+    color: hsl(var(--success));
+  }
+
+  .er-copy-icon {
+    display: flex;
+  }
+
+  /* What kind of help: one bordered grid with internal 1px dividers. */
+  .er-home-help {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+    overflow: hidden;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--card));
+  }
+
+  .er-home-help a {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0 -1px -1px 0;
+    padding: 20px;
+    border-right: 1px solid hsl(var(--border));
+    border-bottom: 1px solid hsl(var(--border));
+  }
+
+  .er-home-help a:hover {
+    background: hsl(var(--muted));
+    text-decoration: none;
+  }
+
+  .er-home-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .er-home-help-title {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: hsl(var(--foreground));
+  }
+
+  .er-home-help-desc {
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--er-home-text-soft);
+  }
+</style>
