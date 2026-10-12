@@ -187,6 +187,8 @@ export interface ModelProfile {
   tool_search?: boolean;
   /** Whether the model supports native execution phases */
   supports_phases?: boolean;
+  /** The vendor's model card or system card for this model */
+  model_card_url?: string;
 }
 
 export interface CreateModelRequest {

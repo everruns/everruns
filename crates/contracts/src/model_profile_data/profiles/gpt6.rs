@@ -180,6 +180,7 @@ fn profile(
         supported_parameters: vec![INLINE_TOOL_CHANGES_PARAMETER.to_string()],
         supports_phases: true,
         supports_server_compaction: false,
+        model_card_url: None,
         decisions: None,
     }
 }

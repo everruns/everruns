@@ -1429,3 +1429,33 @@ fn test_estimate_cost_usd_anthropic_cache_is_additive() {
         "with_cache={with_cache}"
     );
 }
+
+#[test]
+fn test_model_card_links_reach_every_route() {
+    let card = "https://www.anthropic.com/claude-opus-5-5-system-card";
+    for (provider, model) in [
+        ("anthropic", "claude-opus-5-5"),
+        ("anthropic", "claude-opus-5-5[1m]"),
+    ] {
+        let profile = get_model_profile(provider, model).unwrap();
+        assert_eq!(
+            profile.model_card_url.as_deref(),
+            Some(card),
+            "{provider}/{model}"
+        );
+    }
+    assert_eq!(
+        get_model_profile_by_key("meta/muse-wonder-1.0")
+            .unwrap()
+            .model_card_url
+            .as_deref(),
+        Some("https://research.meta.ai/static/muse-wonder-model-card")
+    );
+    // Models without a published card carry no link rather than a guess.
+    assert!(
+        get_model_profile("meta", "muse-spark-1.3")
+            .unwrap()
+            .model_card_url
+            .is_none()
+    );
+}

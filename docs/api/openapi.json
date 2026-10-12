@@ -47699,6 +47699,13 @@
               }
             ]
           },
+          "model_card_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The vendor's model card or system card for this model: capabilities,\nevaluations, safety testing and known limits, in the vendor's words."
+          },
           "name": {
             "type": "string",
             "description": "Display name of the model"
