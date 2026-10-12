@@ -8,7 +8,7 @@ products: [platform, cloud, framework]
 surfaces: [ui, api, code]
 links:
   docs: [/providers/]
-  prs: [everruns/everruns#PR_NUMBER]
+  prs: [everruns/everruns#4645]
 ---
 
 Each model on the **Models** page now shows a **Model card** link next to its release date when
@@ -27,3 +27,5 @@ The same link is in the model profile the API returns:
 ```
 
 Models without a published card carry no link.
+
+See [Providers](/providers/). [#4645](https://github.com/everruns/everruns/pull/4645)
