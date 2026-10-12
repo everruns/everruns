@@ -17,6 +17,15 @@ Every session now gets its own workspace. Creating a session with
 org-wide workspace permission, so a new session on any agent could be pointed
 at another session's files.
 
+```http
+POST /v1/sessions
+{"agent_id": "agt_...", "workspace_id": "wsp_..."}
+
+400 Bad Request
+workspace_id is no longer supported: every session gets its own workspace.
+Copy files between sessions through the Files API instead.
+```
+
 Sessions that were attached to a shared workspace before this change keep it
 and its files. Listing, reading, renaming and archiving workspaces, and the
 `/v1/workspaces/{id}/fs` file routes, are unchanged. To move files between
