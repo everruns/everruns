@@ -7,6 +7,7 @@ import {
   githubTriggerSetupHref,
 } from "@/components/agents/new/create-from-draft";
 import { githubFormFromParams } from "@/components/agents/github-trigger-form";
+import { conditionValues } from "@/lib/github-ci-filter";
 import { EMPTY_DRAFT, type AgentDraft } from "@/lib/api/agent-draft";
 import type { Capability } from "@/lib/api/types";
 import {
@@ -140,6 +141,8 @@ describe("new agent page", () => {
     expect(form.session_mode).toBe("session_per_invocation");
     expect(form.message).toBe("Main CI is {{github.ci.outcome}}");
     expect(form.filter?.changes_only?.path).toBe("github.ci.outcome");
+    expect(conditionValues(form.filter, "github.ci.branch")).toEqual(["main"]);
+    expect(conditionValues(form.filter, "github.ci.workflow")).toEqual(["CI"]);
   });
 
   it("keeps pull request triggers per thread and ignores unknown events in the URL", () => {
