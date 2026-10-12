@@ -1,0 +1,157 @@
+# Chaos harness (scripts/chaos/, `just chaos`) at a PR-sized scale.
+#
+# Two API servers and three gRPC workers from release binaries, one
+# PostgreSQL, NATS and Valkey, 60 llmsim sessions of mixed turn shapes, and
+# the default kill schedule (SIGKILL a worker, then a server, and restart
+# them). The run fails on any turn-level assertion: a message without exactly
+# one completed (or cancelled) turn, a turn with two terminal events, events
+# after a terminal, duplicate output, an unread steered message, a session
+# left busy, or a session running on two workers at once. See
+# knowledge/operations/load-testing.md ("Chaos Harness").
+#
+# Why its own workflow: it needs a release build of the server and worker
+# plus five processes for a minute or two, which would reshape the ci.yml
+# shards and their cache keys (knowledge/project/ci-build-time.md). The
+# release build uses the low-memory settings the harness is run with locally
+# (no LTO, 16 codegen units, no debug info) under its own rust-cache key, so
+# it neither competes with nor poisons another job's target/. No secrets:
+# the harness strips provider keys and only llmsim answers.
+#
+# Latency numbers on shared runners are noisy, so they are reported in the
+# job summary, never gated on.
+name: Chaos Harness
+
+on:
+  pull_request:
+    paths:
+      - 'crates/server/**'
+      - 'crates/worker/**'
+      - 'crates/core/**'
+      - 'crates/internal-protocol/**'
+      - 'scripts/chaos/**'
+      - '.github/workflows/chaos.yml'
+  workflow_dispatch:
+    inputs:
+      sessions:
+        description: 'Sessions to drive'
+        required: false
+        default: '60'
+        type: string
+      chaos:
+        description: 'Run the kill schedule (false = same load, no kills)'
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  chaos:
+    name: Chaos Harness (2 servers, 3 workers, kills)
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    services:
+      nats:
+        image: mirror.gcr.io/library/nats:2-alpine
+        ports:
+          - 43322:4222
+      valkey:
+        image: mirror.gcr.io/valkey/valkey:8-alpine
+        ports:
+          - 43379:6379
+    env:
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
+      CARGO_PROFILE_RELEASE_LTO: "off"
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+      DATABASE_URL: postgres://everruns:everruns@localhost:43332/everruns_chaos
+      SESSIONS: ${{ inputs.sessions || '60' }}
+      CHAOS_FLAG: ${{ (github.event_name == 'workflow_dispatch' && !inputs.chaos) && '--no-chaos' || '' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # Not a service container: those cannot pass server flags, and the
+      # harness reports statements per turn from pg_stat_statements, which
+      # must be preloaded.
+      - name: Start PostgreSQL with pg_stat_statements
+        run: |
+          docker run -d --name chaos-postgres -p 43332:5432 \
+            -e POSTGRES_USER=everruns -e POSTGRES_PASSWORD=everruns -e POSTGRES_DB=everruns_chaos \
+            mirror.gcr.io/library/postgres:17-alpine \
+            -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all \
+            -c max_connections=400
+          for _ in $(seq 60); do
+            docker exec chaos-postgres pg_isready -U everruns -d everruns_chaos && break
+            sleep 1
+          done
+          docker exec chaos-postgres psql -U everruns -d everruns_chaos \
+            -c 'CREATE EXTENSION IF NOT EXISTS pg_stat_statements'
+
+      - name: Install fast linker and psql
+        timeout-minutes: 5
+        run: |
+          missing=()
+          command -v ld.lld >/dev/null 2>&1 || missing+=(lld)
+          command -v psql >/dev/null 2>&1 || missing+=(postgresql-client)
+          if [ ${#missing[@]} -gt 0 ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq "${missing[@]}"
+          fi
+          ld.lld --version
+          psql --version
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "chaos-release"
+
+      - name: Build release server and worker
+        run: cargo build --release -p everruns-server -p everruns-worker --bin everruns-server --bin everruns-worker
+
+      - name: Run chaos harness
+        run: |
+          python3 scripts/chaos/run.py \
+            --server-bin target/release/everruns-server \
+            --worker-bin target/release/everruns-worker \
+            --database-url "$DATABASE_URL" \
+            --sessions "$SESSIONS" \
+            --run-dir "$RUNNER_TEMP/chaos-run" \
+            $CHAOS_FLAG
+
+      - name: Summarize
+        if: always()
+        run: |
+          result="$RUNNER_TEMP/chaos-run/result.json"
+          [ -f "$result" ] || exit 0
+          {
+            echo "### Chaos harness: $(jq -r .verdict "$result")"
+            echo
+            echo '```json'
+            jq '{chaos, metrics: (.metrics | {sessions, turns_completed, turns_per_second, latency_ms, recovery, pg_statements_per_turn, per_worker}), failures: (.failures | map_values(length))}' "$result"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload run directory
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: chaos-run
+          path: ${{ runner.temp }}/chaos-run
+          if-no-files-found: warn
+          retention-days: 7
