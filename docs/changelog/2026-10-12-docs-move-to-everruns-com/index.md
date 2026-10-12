@@ -20,3 +20,7 @@ address, so existing links and bookmarks keep working.
 Agents get the same treatment across everruns.com: a request for a docs page
 with `Accept: text/markdown` returns the page as Markdown, as the rest of the
 site already does.
+
+The docs also share the everruns.com header and footer now, and the docs
+search finds pages from the rest of everruns.com, such as product and
+comparison pages, alongside the documentation.
