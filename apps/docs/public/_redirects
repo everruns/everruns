@@ -1,13 +1,15 @@
+# BEGIN pages-only
+# docs.everruns.com is still the old Cloudflare Pages project, built from this
+# repo's dist/. It answers every old URL with one 301 to the same path under
+# everruns.com/docs (Pages keeps the query and redirects even when a file
+# exists at the path). check-live.mjs --old guards this. stage-worker-assets.mjs
+# drops this block: in the Worker it would loop everruns.com/docs onto itself.
+# Delete it only once a docs.everruns.com zone redirect rule replaces the
+# Pages project (knowledge/ui/documentation.md).
+/* https://everruns.com/docs/:splat 301
+# END pages-only
+
 # Redirect removed pages to closest relevant page. Paths are public URLs: the
 # docs Worker serves dist/ under /docs (scripts/stage-worker-assets.mjs).
 /docs/sre/runbooks/production-migrations/ /docs/sre/admin-container/ 301
 /docs/sre/runbooks/production-migrations /docs/sre/admin-container/ 301
-
-# BEGIN pages-only
-# The old docs.everruns.com Pages build serves dist/ at its root, but pages
-# link and load assets under /docs. Until docs.everruns.com redirects to
-# everruns.com/docs, this maps /docs/* back to the root so it keeps working.
-# stage-worker-assets.mjs drops this block: in the Worker, dist/ really lives
-# under /docs. Delete it once the Pages project is retired.
-/docs/* /:splat 200
-# END pages-only
