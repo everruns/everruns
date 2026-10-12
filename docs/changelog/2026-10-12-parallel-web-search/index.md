@@ -8,7 +8,7 @@ products: [framework, platform, cloud]
 surfaces: [ui, api, code]
 links:
   docs: [/capabilities/web-search/, /integrations/parallel/]
-  prs: [everruns/everruns#4634]
+  prs: [everruns/everruns#4635]
 ---
 
 Parallel is now a Web Search provider next to Brave Search. Connect a Parallel API key as an
