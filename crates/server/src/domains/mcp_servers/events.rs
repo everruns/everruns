@@ -277,7 +277,8 @@ impl McpEventsService {
             EventsError::internal("MCP Events need secrets encryption configured")
         })?;
         let id = subscription_id(subscriber, target);
-        self.verify_callback(&target.url, &id, &key).await?;
+        self.verify_callback(subscriber.org_id, &target.url, &id, &key)
+            .await?;
 
         let ttl = ttl_ms
             .map(Duration::from_millis)
@@ -327,21 +328,27 @@ impl McpEventsService {
     /// Challenge the callback before any event goes to it: the receiver has to
     /// echo the challenge in a signed round trip, so a subscription cannot aim
     /// Everruns at a URL whose owner did not ask for it.
-    async fn verify_callback(&self, url: &str, id: &str, key: &[u8]) -> Result<(), EventsError> {
+    async fn verify_callback(
+        &self,
+        org_id: i64,
+        url: &str,
+        id: &str,
+        key: &[u8],
+    ) -> Result<(), EventsError> {
         let challenge = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
         let body = serde_json::to_vec(&json!({ "type": "verification", "challenge": challenge }))
             .map_err(|e| EventsError::internal(e.to_string()))?;
         let message_id = format!("msg_verify_{}", Uuid::now_v7().simple());
-        let response =
-            self.post(url, id, &message_id, key, body)
-                .await
-                .map_err(|error| match error {
-                    PostError::Blocked(reason) => EventsError::invalid(reason),
-                    PostError::Transport(detail) if detail.to_lowercase().contains("timed out") => {
-                        EventsError::verification("timeout")
-                    }
-                    PostError::Transport(_) => EventsError::verification("challenge_failed"),
-                })?;
+        let response = self
+            .post(org_id, url, id, &message_id, key, body)
+            .await
+            .map_err(|error| match error {
+                PostError::Blocked(reason) => EventsError::invalid(reason),
+                PostError::Transport(detail) if detail.to_lowercase().contains("timed out") => {
+                    EventsError::verification("timeout")
+                }
+                PostError::Transport(_) => EventsError::verification("challenge_failed"),
+            })?;
         let echoed = serde_json::from_slice::<Value>(&response.body)
             .ok()
             .and_then(|value| value.get("challenge")?.as_str().map(str::to_string));
@@ -496,6 +503,7 @@ impl McpEventsService {
             // replay window never rejects a legitimate retry.
             let outcome = self
                 .post(
+                    subscription.org_id,
                     &subscription.callback_url,
                     &subscription.subscription_key,
                     &message_id,
@@ -544,6 +552,7 @@ impl McpEventsService {
 
     async fn post(
         &self,
+        org_id: i64,
         url: &str,
         subscription_id: &str,
         message_id: &str,
@@ -571,7 +580,10 @@ impl McpEventsService {
             .header("webhook-signature", signature)
             .header("x-mcp-subscription-id", subscription_id)
             .body(body)
-            .timeout_ms(REQUEST_TIMEOUT_MS);
+            .timeout_ms(REQUEST_TIMEOUT_MS)
+            // The subscriber's org: the tenant egress proxy meters it and
+            // refuses delivery while its egress is suspended.
+            .scope(super::presentation::org_scope(org_id));
         request = if pinned.is_empty() {
             request.require_dns_pinning()
         } else {

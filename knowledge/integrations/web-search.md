@@ -214,7 +214,12 @@ that reaches tool time (the model's driver has no native search for it, or
 could not apply the agent's filters) records that the model did not search and
 the next provider answers. The preview lists native only for provider types
 whose driver runs it (`NATIVE_WEB_SEARCH_PROVIDER_TYPES`) and models that have
-it (`native_web_search_supported_model`).
+it (`native_web_search_supported_model`). A driver registered outside the
+built-in set (an external driver id, such as a hosted model service that calls
+OpenRouter itself) declares its support with an `inventory`-submitted
+`NativeWebSearchDriver`, and can reuse OpenRouter's swap through
+`OpenRouterNativeWebSearchExtension` without the rest of the OpenRouter
+request extension.
 
 Resolution happens live: each turn decides whether native applies to the model
 running it (that is what makes Automatic follow a mid-session model switch), and

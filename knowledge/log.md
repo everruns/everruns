@@ -6,6 +6,11 @@
   connection (account id, token, index, gateway, optional key alias) is a
   search account on Ceramic, Exa or Linkup; non-secret settings travel as the
   search account's `options`. See [Web Search](integrations/web-search.md).
+* **Native web search for external drivers.** `NativeWebSearchDriver`
+  (inventory) lets a driver outside the built-in provider types declare which
+  models search natively, so the search provider catalog and plan preview list
+  it; `OpenRouterNativeWebSearchExtension` exposes only OpenRouter's native
+  search swap. See [Web Search](integrations/web-search.md).
 * **Web search step 7: Parallel Search API driver.** Parallel is a search
   account provider and a `parallel` provider setting (session, user or
   application key, else the organization's first Parallel account); the
