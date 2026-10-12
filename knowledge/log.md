@@ -8,12 +8,14 @@
   and gets a token cut down to that; the shared app becomes an org-level
   opt-in; mentions become a GitHub channel beside triggers. See
   [GitHub Connection Model](integrations/github-model.md).
-* **Cache-stable tool changes design (awaiting approval).** The tool list
+* **Cache-stable tool changes design.** The tool list
   sent to the provider is fixed per session; reveals, MCP attaches and
   refreshes, capability switches and client tools become recorded tool
   changes in the conversation, sent as Anthropic `tool_addition` blocks or
   OpenAI `additional_tools` items, with today's behavior as the fallback. See
   [Cache-Stable Tool Changes](execution/cache-stable-tool-changes.md).
+  Accepted; step 1 (sticky deferral, sorted MCP tools, order-stable AG-UI
+  frontend tools) implemented.
 * **PAT scopes step 2: enforced on REST and `/v1/commands`.** The auth
   extractor refuses a narrow token on any route outside its scope, including
   unclassified ones, with `403 insufficient_scope`; `POST /v1/commands/{name}`

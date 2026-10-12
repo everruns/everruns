@@ -76,6 +76,26 @@ pub(crate) fn definitions(tools: &[AgUiTool]) -> Result<Vec<ToolDefinition>, Str
     crate::api::sessions::filter_or_reject_client_side_tools(definitions).map_err(str::to_string)
 }
 
+/// Whether a run's frontend tools differ from the session's stored set.
+///
+/// Compared as a set by name: a consumer that sends the same tools in another
+/// order keeps the stored order, because a reordered tool list rewrites the
+/// head of the cached prompt (knowledge/execution/cache-stable-tool-changes.md).
+pub(crate) fn changed(stored: &[ToolDefinition], incoming: &[ToolDefinition]) -> bool {
+    fn by_name(tools: &[ToolDefinition]) -> Option<Vec<(String, Value)>> {
+        let mut entries = tools
+            .iter()
+            .map(|tool| Some((tool.name().to_string(), serde_json::to_value(tool).ok()?)))
+            .collect::<Option<Vec<_>>>()?;
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        Some(entries)
+    }
+    match (by_name(stored), by_name(incoming)) {
+        (Some(stored), Some(incoming)) => stored != incoming,
+        _ => true,
+    }
+}
+
 fn is_valid_tool_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 64
@@ -257,6 +277,20 @@ mod tests {
         let definitions = definitions(&[tool("confirm"), tool("open-page")]).unwrap();
         assert_eq!(definitions.len(), 2);
         assert!(matches!(&definitions[0], ToolDefinition::ClientSide(t) if t.name == "confirm"));
+    }
+
+    #[test]
+    fn reordered_tools_are_not_a_change() {
+        let stored = definitions(&[tool("confirm"), tool("open-page")]).unwrap();
+        let reordered = definitions(&[tool("open-page"), tool("confirm")]).unwrap();
+        assert!(!changed(&stored, &reordered));
+        assert!(changed(&stored, &definitions(&[tool("confirm")]).unwrap()));
+        let mut edited = tool("confirm");
+        edited.description = "other".into();
+        assert!(changed(
+            &stored,
+            &definitions(&[edited, tool("open-page")]).unwrap()
+        ));
     }
 
     #[test]
