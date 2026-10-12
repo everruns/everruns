@@ -66,7 +66,7 @@ fn reason(
     if previous.model != current.model {
         return "model_changed";
     }
-    if previous.data.get("tools") != current.data.get("tools") {
+    if sent_tools(previous.data, current.data) {
         return "tools_changed";
     }
     let before = messages(previous.data);
@@ -84,6 +84,19 @@ fn reason(
         return "expired";
     }
     "unknown"
+}
+
+/// Whether the tools sent differ. The provider body is the truth when both
+/// calls recorded one: a driver that takes tool changes inline keeps its tool
+/// list fixed while the runtime's stored list moves.
+fn sent_tools(previous: &Value, current: &Value) -> bool {
+    match (
+        previous.pointer("/request_body/tools"),
+        current.pointer("/request_body/tools"),
+    ) {
+        (Some(before), Some(after)) => before != after,
+        _ => previous.get("tools") != current.get("tools"),
+    }
 }
 
 fn messages(data: &Value) -> &[Value] {
@@ -231,6 +244,19 @@ mod tests {
         let same = data(json!([{"name": "a"}]), next_messages());
         assert_eq!(reason(("m", &same), 301), "expired");
         assert_eq!(reason(("m", &same), 60), "unknown");
+    }
+
+    #[test]
+    fn a_tool_change_sent_inline_is_not_a_tools_change() {
+        // The runtime's list gained `b`, but the provider body kept its tools
+        // and carried `b` inline, so the cause lies elsewhere.
+        let sent = json!({"tools": [{"name": "a"}]});
+        let mut before = data(json!([{"name": "a"}]), base_messages());
+        before["request_body"] = sent.clone();
+        let mut after = data(json!([{"name": "a"}, {"name": "b"}]), next_messages());
+        after["request_body"] = sent;
+        let reset = classify(("m", &before), ("m", &after), 1, 0).unwrap();
+        assert_eq!(reset.reason, "unknown");
     }
 
     #[test]

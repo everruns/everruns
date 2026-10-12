@@ -31,7 +31,8 @@
   frontend tools) and step 2 (changes recorded on assistant messages and
   replayed before each request; requests unchanged) implemented. Step 3:
   Opus 5.5 and Sonnet 5.5 on the Claude API send the baseline as `tools` and
-  each change inline (`inline_tool_changes` profile parameter).
+  each change inline (`inline_tool_changes` profile parameter);
+  Session Trace lists each call's tool change.
 * **PAT scopes step 2: enforced on REST and `/v1/commands`.** The auth
   extractor refuses a narrow token on any route outside its scope, including
   unclassified ones, with `403 insufficient_scope`; `POST /v1/commands/{name}`

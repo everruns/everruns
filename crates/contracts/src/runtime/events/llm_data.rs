@@ -198,6 +198,13 @@ pub struct LlmGenerationMetadata {
     #[cfg_attr(feature = "openapi", schema(example = "retried"))]
     pub truncation_gate: Option<String>,
 
+    /// Tool change recorded for this generation: the baseline tool list when
+    /// it started an epoch, or what was added, redefined or removed since
+    /// (see [`crate::tool_changes`]). Omitted when the tools did not change.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub tool_changes: Option<Box<crate::tool_changes::ToolChanges>>,
+
     /// Unique response identifier from the LLM provider
     /// Required for gen-ai semantic conventions
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -484,6 +491,7 @@ impl LlmGenerationData {
                 tool_calls_dropped: 0,
                 tool_calls_truncated_executed: 0,
                 truncation_gate: None,
+                tool_changes: None,
                 response_id: None,
                 retry: None,
                 compaction: None,
@@ -528,6 +536,7 @@ impl LlmGenerationData {
                 tool_calls_dropped: 0,
                 tool_calls_truncated_executed: 0,
                 truncation_gate: None,
+                tool_changes: None,
                 response_id,
                 retry: None,
                 compaction: None,
@@ -573,6 +582,7 @@ impl LlmGenerationData {
                 tool_calls_dropped: 0,
                 tool_calls_truncated_executed: 0,
                 truncation_gate: None,
+                tool_changes: None,
                 response_id,
                 retry,
                 compaction: None,
@@ -615,6 +625,7 @@ impl LlmGenerationData {
                 tool_calls_dropped: 0,
                 tool_calls_truncated_executed: 0,
                 truncation_gate: None,
+                tool_changes: None,
                 response_id: None,
                 retry: None,
                 compaction: None,
@@ -686,6 +697,12 @@ impl LlmGenerationData {
     /// Record what the output-truncation gate did with this generation.
     pub fn with_truncation_gate(mut self, action: Option<&str>) -> Self {
         self.metadata.truncation_gate = action.map(str::to_owned);
+        self
+    }
+
+    /// Record the tool change this generation's request carried.
+    pub fn with_tool_changes(mut self, changes: Option<crate::tool_changes::ToolChanges>) -> Self {
+        self.metadata.tool_changes = changes.map(Box::new);
         self
     }
 

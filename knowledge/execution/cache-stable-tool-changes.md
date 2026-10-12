@@ -11,7 +11,7 @@ tags:
 
 # Cache-Stable Tool Changes
 
-> Status: **Accepted 2026-10-12. Steps 1, 2 and the Anthropic request side of 3 implemented.**
+> Status: **Accepted 2026-10-12. Steps 1 to 3 implemented.**
 > Builds on the earlier analysis of Pi's approach (project notes,
 > `pi-1-0/cache-stable-tool-reveals.md`) and the caching comparison with
 > Pydantic AI (`caching/pydantic-unified-caching.md`), where this is ranked as
@@ -330,9 +330,11 @@ Each step is one PR and leaves `main` working.
    a request.
 3. **Anthropic driver** renders changes inline and Session Trace shows them;
    profile flag for verified families; live tests once the key has credit.
-   Done: the request side, with the profile flag on Opus 5.5 and Sonnet 5.5.
-   Left: Session Trace display, and the live cache test before widening the
-   flag to Fable, Opus 5 and 4.8 and Haiku 5.5.
+   Done: the request side, with the profile flag on Opus 5.5 and Sonnet 5.5,
+   and Session Trace listing each call's change (`llm.generation` carries it as
+   `metadata.tool_changes`; a cache reset is blamed on tools only when the
+   provider body's tools changed). Left: the live cache test before widening
+   the flag to Fable, Opus 5 and 4.8 and Haiku 5.5.
 4. **OpenAI Responses driver** renders `additional_tools`; profile flag
    (`add_and_redefine` for GPT-6, `add_only` for 5.x) with live tests.
 5. **Sources move onto the comparison**: generic `tool_search` (drop the

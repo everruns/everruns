@@ -321,6 +321,25 @@ pub struct TraceRequestSummary {
     pub new_messages: Vec<TraceRequestMessage>,
     /// Token usage of the call, split by prompt cache.
     pub usage: Option<TraceRequestUsage>,
+    /// How the call's tool list changed; absent when it did not.
+    pub tool_changes: Option<TraceToolChanges>,
+}
+
+/// A tool change recorded for one model call. Models that take changes
+/// inline keep the request's tool list fixed and receive these as messages;
+/// others get the new tool list.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
+pub struct TraceToolChanges {
+    /// Tools fixed when this call started a new tool epoch (the first call, or
+    /// the first after a model switch or compaction).
+    #[schema(example = 9)]
+    pub baseline_tools: Option<i32>,
+    /// Tools that became callable.
+    pub added: Vec<String>,
+    /// Tools whose definition changed, such as a searched tool's full schema.
+    pub redefined: Vec<String>,
+    /// Tools no longer callable.
+    pub removed: Vec<String>,
 }
 
 /// Prompt and completion tokens of one model call, with the prompt split the
