@@ -1,6 +1,6 @@
 ---
 title: "Bashkit 0.18.0 release"
-description: "Bashkit 0.18.0 was released on 2026-09-10 with 2 highlights and 1 changelog entry. The release notes and any upgrade notes are linked here."
+description: "Python, Node and C ABI callers can mount host directories read-only, with security hardening and C ABI improvements across the bindings."
 date: 2026-09-10
 kind: release
 significance: notable

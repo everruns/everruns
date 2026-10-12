@@ -1,6 +1,6 @@
 ---
 title: "Bashkit 0.18.1 release"
-description: "Bashkit 0.18.1 was released on 2026-09-17 with 2 highlights and 1 changelog entry. The release notes and any upgrade notes are linked here."
+description: "ScriptedTool accepts clap-based builtins, and closed schemas reject unknown flags instead of passing them through to the script."
 date: 2026-09-17
 kind: release
 significance: minor

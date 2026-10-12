@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.34.1 release"
-description: "Everruns 0.34.1 was released on 2026-10-02 with 2 changelog entries. The release notes and any upgrade notes are linked here."
+description: "The everruns-durable workflow engine is published on crates.io, and Everruns serve apps can be hosted on Amazon Bedrock AgentCore Runtime."
 date: 2026-10-02
 kind: release
 significance: minor

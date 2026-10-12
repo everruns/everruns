@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.45.0: Tools in Shell"
-description: "Everruns 0.45.0 was released on 2026-10-09 with 3 highlights and 2 changelog entries. The release notes and any upgrade notes are linked here."
+description: "Agents get a browser tool on Browserless, coordinator threads arrive in Platform Chat and the Framework, and agents can run tools from the shell."
 date: 2026-10-09
 kind: release
 significance: notable

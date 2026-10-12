@@ -12,6 +12,8 @@ links:
   prs: [everruns/yolop#567]
 ---
 
+![Yolop and OpenRouter logos side by side, announcing the OpenRouter browser sign-in](./integration@2x.png)
+
 OpenRouter can now be connected from the browser. In `/setup`, pick OpenRouter
 and then **Sign in with browser**: Yolop opens `openrouter.ai/auth`, waits on a
 loopback callback, exchanges the code for an API key and stores it the same way

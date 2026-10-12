@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.26.0: PDF input with file attachments"
-description: "Everruns 0.26.0 was released on 2026-09-13 with 6 highlights and 6 changelog entries. The release notes and any upgrade notes are linked here."
+description: "Servers publish an MCP server card and auth.md for agent discovery, and an LLM provider connects with one pasted key that is checked before saving."
 date: 2026-09-13
 kind: release
 significance: notable

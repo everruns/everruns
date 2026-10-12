@@ -1,6 +1,6 @@
 ---
 title: "SDK 0.2.1 release"
-description: "SDK 0.2.1 was released on 2026-08-19 with 4 highlights and 1 changelog entry. The release notes and any upgrade notes are linked here."
+description: "The Rust SDK can use native TLS for smaller binaries and moves to reqwest 0.13, with dependency and security updates across all three SDKs."
 date: 2026-08-19
 kind: release
 significance: minor

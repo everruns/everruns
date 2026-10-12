@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.47.0: Codex session reliability"
-description: "Everruns 0.47.0 was released on 2026-10-09 with 1 highlight and 5 changelog entries. The release notes and any upgrade notes are linked here."
+description: "An Agents home and a New agent page with an agent builder, a fix for ChatGPT plan sessions failing with HTTP 400, and a list of connected AI clients."
 date: 2026-10-09
 kind: release
 significance: notable

@@ -155,7 +155,8 @@ Rules for the body:
 - A visual is welcome when it shows something words cannot: a cropped
   screenshot for a `ui` change, a short video when the change is an
   interaction, a navy-and-grey diagram per [diagrams.md](diagrams.md) when a
-  flow changed, a release card for a release. No decorative images.
+  flow changed, a release card for a release, an integration card (host mark
+  plus partner logo) for a new integration. No decorative images.
 - Visuals must be sharp. Screenshots are PNG captured at device scale factor
   2 (`name@2x.png`), cropped to the part of the screen that changed rather
   than shrunk from a full page, in the light theme, with realistic data and no
@@ -170,7 +171,8 @@ Rules for the body:
 Search engines see the same fields: `title` (30 to 70 characters) is the page
 title and states the change with the product noun people search for;
 `description` (120 to 160 characters) is the meta description, the RSS
-summary and the social card text. Entries are `BlogPosting` articles with a
+summary and the social card text. A release entry's description names its
+highlights in one sentence, never a count of them. Entries are `BlogPosting` articles with a
 publication date, a canonical URL and their own Open Graph card.
 `apps/docs/scripts/check-changelog.mjs` enforces every rule in this section
 before the docs build.

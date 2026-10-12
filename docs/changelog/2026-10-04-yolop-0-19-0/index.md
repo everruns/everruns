@@ -1,6 +1,6 @@
 ---
 title: "Yolop 0.19.0 release"
-description: "Yolop 0.19.0 was released on 2026-10-04 with 4 highlights and 2 changelog entries. The release notes and any upgrade notes are linked here."
+description: "GPT-6.1 Sol, the GPT-6 family and Claude 5.5 models are available, and ChatGPT sign-in goes through the open-source route."
 date: 2026-10-04
 kind: release
 significance: notable

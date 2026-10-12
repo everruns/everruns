@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.18.0: The 0.18 neutral-kernel boundary"
-description: "Everruns 0.18.0 was released on 2026-08-16 with 5 highlights and 5 changelog entries. The release notes and any upgrade notes are linked here."
+description: "Chats is on for every organization with pinned chats, session recordings split into Transcript, Timeline and Events, and everruns-core becomes a neutral kernel."
 date: 2026-08-16
 kind: release
 significance: notable

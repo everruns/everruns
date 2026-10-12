@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.29.0: Platform Chat v2 on a unified command line"
-description: "Everruns 0.29.0 was released on 2026-09-18 with 4 highlights and 4 changelog entries. The release notes and any upgrade notes are linked here."
+description: "Framework code calls models directly with Model::complete, one everruns command line serves the CLI, MCP and agent shells, and MCP catalogs can be scoped."
 date: 2026-09-18
 kind: release
 significance: notable

@@ -1,6 +1,6 @@
 ---
 title: "Yolop 0.17.0 release"
-description: "Yolop 0.17.0 was released on 2026-08-21 with 6 highlights and 3 changelog entries. The release notes and any upgrade notes are linked here."
+description: "Config and data directories can be relocated, model switching uses a curated list you manage, and compiled extensions install from prebuilt binaries."
 date: 2026-08-21
 kind: release
 significance: notable

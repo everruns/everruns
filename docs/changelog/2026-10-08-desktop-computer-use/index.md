@@ -11,6 +11,8 @@ links:
   prs: [everruns/everruns#4244, everruns/everruns#4365, everruns/everruns#4367]
 ---
 
+![Everruns, E2B and Daytona side by side, announcing desktop computer use on both sandboxes](./integration@2x.png)
+
 Agents can now operate a full Linux desktop instead of only a browser page. The
 experimental `computer_use_desktop` capability runs the provider-neutral
 `computer` tool on an E2B desktop sandbox, and `computer_use_daytona` runs it on

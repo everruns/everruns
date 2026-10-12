@@ -13,6 +13,8 @@ links:
   prs: [everruns/everruns#4136]
 ---
 
+![Everruns and OpenAI logos side by side, announcing ChatGPT plan connections](./integration@2x.png)
+
 ChatGPT now appears in the provider grid. Open **Models > Providers > Connect
 provider > ChatGPT > Sign in with ChatGPT**, approve plan use in ChatGPT, and
 return to Everruns. The connection belongs to you, not the organization: its

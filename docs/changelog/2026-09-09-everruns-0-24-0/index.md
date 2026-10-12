@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.24.0: ~3.5x faster agent startup"
-description: "Everruns 0.24.0 was released on 2026-09-09 with 5 highlights and 9 changelog entries. The release notes and any upgrade notes are linked here."
+description: "The first message of a new chat no longer drops or shows out of order, and the CLI plugins, skills and knowledge-bases commands work again."
 date: 2026-09-09
 kind: release
 significance: notable

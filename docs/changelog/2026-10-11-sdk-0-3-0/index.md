@@ -1,6 +1,6 @@
 ---
 title: "SDK 0.3.0 release"
-description: "SDK 0.3.0 was released on 2026-10-11 with 5 highlights and 3 changelog entries. The release notes and any upgrade notes are linked here."
+description: "SDKs default to the Everruns Cloud API URL, record why a change was made, and add an AgentClient for calling one agent through the Agent API."
 date: 2026-10-11
 kind: release
 significance: notable

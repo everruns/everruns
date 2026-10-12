@@ -728,3 +728,19 @@ h6 {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Changelog sidebar: entry counts per product, as quiet numbers, not pills. */
+.sidebar-content .sl-badge.changelog-count {
+  margin-inline-start: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--sl-color-gray-3);
+  font-family: var(--sl-font-mono);
+  font-size: var(--sl-text-xs);
+}
+.sidebar-content a:has(> .sl-badge.changelog-count) {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}

@@ -50,6 +50,24 @@ Embed with `![What the screenshot shows](./<name>@2x.png)` and
 `<video src="./<name>@2x.mp4" poster="./<name>-poster@2x.png" controls muted playsinline loop></video>`.
 Every file sits in the entry folder and is referenced from `index.md`.
 
+## Integration announcements
+
+An entry that adds a new integration (a vendor, protocol host or platform Everruns or Yolop now
+works with) opens with an integration card: the host product's mark, a plus, and the partner's
+logo, over the entry title.
+
+```bash
+cd apps/docs
+node scripts/generate-integration-card.mjs --host everruns --partner slack --name Slack \
+  --title "<entry title>" --date <YYYY-MM-DD> \
+  --output ../../docs/changelog/<folder>/integration@2x.png
+```
+
+`--host` is where the integration lands (`everruns`, `yolop`, `bashkit`, `mira`). `--partner` is
+a logo slug in `apps/docs/src/assets/changelog/logos/` and repeats for up to three partners; a slug
+without a logo file renders as its `--name` in a wordmark tile. Embed it first, with alt text that
+names both sides. A UI screenshot can follow it.
+
 ## Check
 
 ```bash

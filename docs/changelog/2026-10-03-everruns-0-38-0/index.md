@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.38.0: Personal ChatGPT plan connections"
-description: "Everruns 0.38.0 was released on 2026-10-03 with 2 highlights and 4 changelog entries. The release notes and any upgrade notes are linked here."
+description: "Connect a personal ChatGPT plan as a model provider, Conversation becomes the default harness with Generic deprecated, and custom hosts get stock subagents."
 date: 2026-10-03
 kind: release
 significance: notable

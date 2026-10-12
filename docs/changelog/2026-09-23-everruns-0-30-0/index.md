@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.30.0: Ask User"
-description: "Everruns 0.30.0 was released on 2026-09-23 with 5 highlights and 7 changelog entries. The release notes and any upgrade notes are linked here."
+description: "Agent endpoints and triggers replace Apps, Slack agents ask for approval with buttons and show task progress, and agents can ask the user questions."
 date: 2026-09-23
 kind: release
 significance: notable

@@ -12,6 +12,8 @@ links:
   prs: [everruns/everruns#3804, everruns/everruns#3806]
 ---
 
+![Everruns and OpenTelemetry logos side by side, announcing OpenTelemetry export](./integration@2x.png)
+
 An Engine now delivers every event from every session it owns, including
 resumed and spawned ones, to the listeners registered on it. You no longer poll
 `Session::events()` per session. Each listener drains a bounded ordered queue,

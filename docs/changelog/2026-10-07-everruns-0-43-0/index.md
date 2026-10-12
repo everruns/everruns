@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.43.0 release"
-description: "Everruns 0.43.0 was released on 2026-10-07 as a maintenance release with fixes and internal changes. The full release notes are linked here."
+description: "The 18 deprecated integration shim crates are removed after their forwarding release; integrations stay available from everruns-integrations."
 date: 2026-10-07
 kind: release
 significance: minor

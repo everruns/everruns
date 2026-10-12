@@ -12,6 +12,8 @@ links:
   prs: [everruns/everruns#4375, everruns/everruns#4376]
 ---
 
+![Everruns and Browserless side by side, announcing the browser tool on Browserless](./integration@2x.png)
+
 The `browser_use` capability gives an agent a `browser` tool on a Browserless
 browser. Pages are read as an accessibility tree with element refs, and the
 agent acts by ref or viewport coordinate, fills forms, finds text and works

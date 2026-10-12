@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.21.0 release"
-description: "Everruns 0.21.0 was released on 2026-08-22 with 3 highlights and 5 changelog entries. The release notes and any upgrade notes are linked here."
+description: "Binaries are about 20% smaller, chats start with any harness, provider connections carry custom headers, and finished chats can be archived."
 date: 2026-08-22
 kind: release
 significance: notable
