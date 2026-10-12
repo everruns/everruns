@@ -13,22 +13,22 @@ pub fn definition(preset: BuiltInHarnessPreset) -> BuiltInHarnessDefinition {
         BuiltInHarnessPreset::Base => (
             "Base",
             "square-dashed",
-            "System essentials every agent needs: context compaction, error disclosure, tool-call repair, loop detection and approval guidance.",
+            "System essentials: compaction, error disclosure, tool-call repair, loop detection and approval guidance. Best for custom harnesses that pick their own tools.",
         ),
         BuiltInHarnessPreset::Conversation => (
             "Conversation",
             "message-circle",
-            "Simple chat: structured questions and message timestamps on Base. No workspace and no shell.",
+            "Chat with structured questions and message timestamps. No workspace and no shell. Best for assistants, support bots and Q&A.",
         ),
         BuiltInHarnessPreset::Worker => (
             "Worker",
             "box",
-            "Worker without compute: files, AGENTS.md, skills, long context, budgeting, subagents and tasks. Works through tools and MCP.",
+            "Files, AGENTS.md, skills, subagents and tasks, with no shell. Best for agents that act through tools and MCP servers, such as triage and research.",
         ),
         BuiltInHarnessPreset::BashkitWorker => (
             "Bashkit Worker",
             "terminal",
-            "Worker with the Bashkit virtual shell, fixed to the recoverable Bashkit Virtual Workspace. Needs no sandbox provider.",
+            "Worker plus the Bashkit virtual shell. No sandbox provider needed, but no native packages, processes or ports. Best for light automation and scripting.",
         ),
     };
     let mut definition = BuiltInHarnessDefinition::new(

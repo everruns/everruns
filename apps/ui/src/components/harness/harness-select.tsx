@@ -13,6 +13,10 @@ import type { Harness } from "@/lib/api/types";
 import { isHarnessDeprecated } from "@/lib/harness-deprecation";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 
+// The decision guide lives in the public docs so the picker and the docs never
+// disagree about when each harness fits.
+export const HARNESS_GUIDE_URL = "https://everruns.com/docs/features/harnesses/#choosing-a-harness";
+
 interface HarnessSelectProps {
   /** Optional ID for the select trigger */
   id?: string;
@@ -131,6 +135,14 @@ export function HarnessSelect({
           {purpose}
         </p>
       ) : null}
+      <a
+        href={HARNESS_GUIDE_URL}
+        target="_blank"
+        rel="noreferrer"
+        className="w-fit text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+      >
+        Which harness should I use?
+      </a>
     </div>
   );
 }
