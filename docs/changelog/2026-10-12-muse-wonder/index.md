@@ -17,6 +17,15 @@ context window and pricing ($4.00 input, $0.20 cached input, $20.00 output per m
 so usage and cost tracking work from the first run.
 
 Every Muse model now has a reasoning effort picker: Minimal through Extra High, plus Max on
-Muse Wonder and Muse Spark 1.3. Before this, Muse ran only at the level Meta picks by default.
+Muse Wonder and Muse Spark 1.3. Before this, Muse ran only at the level Meta picks by default. Set it per
+message:
+
+```bash
+curl -X POST http://localhost:9300/api/v1/sessions/{session_id}/messages \
+  -H "Authorization: Bearer $EVERRUNS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"message": {"role": "user", "content": [{"type": "text", "text": "Hello!"}]},
+       "controls": {"reasoning": {"effort": "max"}}}'
+```
 
 See [Meta](/providers/meta/). [#4637](https://github.com/everruns/everruns/pull/4637)
