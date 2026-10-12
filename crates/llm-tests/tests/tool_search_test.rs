@@ -784,6 +784,20 @@ fn long_cacheable_system_prompt() -> String {
 #[case::anthropic_haiku5_5(ANTHROPIC_HAIKU55)]
 #[tokio::test]
 async fn test_anthropic_tool_reveal_keeps_prompt_cache(#[case] config: ProviderModelConfig) {
+    assert_tool_reveal_keeps_prompt_cache(config).await;
+}
+
+/// The OpenAI counterpart: the reveal rides in an `additional_tools` item, so
+/// the request after it still reads the cached prefix.
+#[rstest]
+#[case::openai_gpt6_1_sol(OPENAI_GPT61_SOL)]
+#[case::openai_gpt6_luna(OPENAI_GPT6_LUNA)]
+#[tokio::test]
+async fn test_openai_tool_reveal_keeps_prompt_cache(#[case] config: ProviderModelConfig) {
+    assert_tool_reveal_keeps_prompt_cache(config).await;
+}
+
+async fn assert_tool_reveal_keeps_prompt_cache(config: ProviderModelConfig) {
     let system_prompt = long_cacheable_system_prompt();
     let Some((runner, result)) = live_turn(&config, "What is 21 + 21?", |model| {
         let system_prompt = system_prompt.clone();

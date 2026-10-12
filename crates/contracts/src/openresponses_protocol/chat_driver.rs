@@ -64,10 +64,42 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         let supports_phases = self.native_phases;
         let supports_tool_search = self.hosted_tool_search;
 
-        let (instructions, transcript_input_items) = Self::build_input(&messages, supports_phases);
         // Native computer tool (EVE-1133): which transcript calls replay as
         // computer items, decided on the full transcript before delta trimming.
         let native_computer = self.native_computer_for(config);
+        // The native computer tool stands in for the `computer` function tool,
+        // and native web search for the `web_search` one.
+        let native_search = self.native_web_search_for(config).is_some();
+        let mut replaced = Vec::new();
+        if native_computer.is_some() {
+            replaced.push(crate::native_computer::COMPUTER_TOOL_NAME);
+        }
+        if native_search {
+            replaced.push(crate::native_web_search::WEB_SEARCH_FUNCTION_TOOL);
+        }
+        // Hosted search defers tools only at or above its threshold, counted on
+        // the baseline that inline mode sends.
+        let hosted_search = supports_tool_search
+            && config.tool_search.as_ref().is_some_and(|ts| {
+                ts.enabled
+                    && config.tool_baseline.as_ref().is_some_and(|baseline| {
+                        baseline
+                            .iter()
+                            .filter(|tool| !replaced.contains(&tool.name()))
+                            .count()
+                            >= ts.threshold
+                    })
+            });
+        let inline_tool_changes = super::tool_changes::eligible(
+            self.inline_tool_changes,
+            endpoint.base_url(),
+            config,
+            &messages,
+            &replaced,
+        )
+        .then_some(super::tool_changes::InlineToolChanges { hosted_search });
+        let (instructions, transcript_input_items) =
+            Self::build_input_with_changes(&messages, supports_phases, inline_tool_changes);
         let computer_call_ids = if native_computer.is_some() {
             super::computer::computer_call_ids(&transcript_input_items)
         } else {
@@ -149,18 +181,15 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
 
         let input_items = super::computer::replay_computer_calls(input_items, &computer_call_ids);
 
-        // The native computer tool stands in for the `computer` function tool,
-        // and native web search for the `web_search` one.
-        let native_search = self.native_web_search_for(config).is_some();
-        let function_tools: Vec<ToolDefinition> = config
-            .tools
+        // Inline changes keep the epoch's baseline as `tools`; the changes
+        // since ride in `input`.
+        let sent_tools = match (inline_tool_changes, config.tool_baseline.as_deref()) {
+            (Some(_), Some(baseline)) => baseline,
+            _ => config.tools.as_slice(),
+        };
+        let function_tools: Vec<ToolDefinition> = sent_tools
             .iter()
-            .filter(|tool| {
-                (native_computer.is_none()
-                    || tool.name() != crate::native_computer::COMPUTER_TOOL_NAME)
-                    && (!native_search
-                        || tool.name() != crate::native_web_search::WEB_SEARCH_FUNCTION_TOOL)
-            })
+            .filter(|tool| !replaced.contains(&tool.name()))
             .cloned()
             .collect();
         let mut tools = if function_tools.is_empty() {
