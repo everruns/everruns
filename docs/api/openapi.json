@@ -2864,6 +2864,57 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/github/everruns-app": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first.",
+        "operationId": "use_agent_everruns_app",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UseEverrunsAppRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentGitHubStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent or linked installation not found"
+          },
+          "409": {
+            "description": "The agent has a GitHub App of its own"
+          },
+          "503": {
+            "description": "The shared Everruns App is not configured"
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/health-checks": {
       "get": {
         "tags": [
@@ -15960,6 +16011,112 @@
         ]
       }
     },
+    "/v1/orgs/{org}/github/everruns-app": {
+      "get": {
+        "tags": [
+          "organizations"
+        ],
+        "summary": "List the organization's links to the shared Everruns GitHub App.",
+        "operationId": "list_links",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EverrunsAppLinks"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin access required"
+          }
+        }
+      }
+    },
+    "/v1/orgs/{org}/github/everruns-app/authorize": {
+      "get": {
+        "tags": [
+          "organizations"
+        ],
+        "summary": "Start linking a shared Everruns GitHub App installation to the organization.",
+        "operationId": "authorize_link",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "return_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "Redirect to GitHub"
+          },
+          "403": {
+            "description": "Admin access required"
+          }
+        }
+      }
+    },
+    "/v1/orgs/{org}/github/everruns-app/{connection_id}": {
+      "delete": {
+        "tags": [
+          "organizations"
+        ],
+        "summary": "Unlink a shared Everruns GitHub App installation and remove every agent's choice of it.",
+        "operationId": "unlink",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Unlinked"
+          },
+          "403": {
+            "description": "Admin access required"
+          },
+          "404": {
+            "description": "Link not found"
+          }
+        }
+      }
+    },
     "/v1/orgs/{org}/onboarding/complete": {
       "post": {
         "tags": [
@@ -27574,7 +27731,8 @@
           "connected",
           "app_created",
           "missing_permissions",
-          "suggested_owners"
+          "suggested_owners",
+          "everruns_app_installations"
         ],
         "properties": {
           "account": {
@@ -27612,11 +27770,18 @@
               "string",
               "null"
             ],
-            "description": "The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`.\nKnown for an agent's own App; `None` otherwise."
+            "description": "The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`, or the\nshared App's (`everruns[bot]`) when the agent chose it and the\ndeployment names its slug; `None` otherwise."
           },
           "connected": {
             "type": "boolean",
-            "description": "An installation is bound, so tools and triggers work."
+            "description": "An installation is bound, so tools and triggers work: the agent's own\nApp's, or a shared Everruns App installation the agent chose."
+          },
+          "everruns_app_installations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EverrunsAppInstallation"
+            },
+            "description": "Shared Everruns App installations an org admin linked, which this agent\ncan choose instead of an App of its own (D3). Empty when none is linked\nor the deployment has no shared App."
           },
           "identity_id": {
             "type": [
@@ -36813,6 +36978,118 @@
             "type": "integer",
             "format": "int64",
             "description": "Convenience: count of `turn.started` events."
+          }
+        }
+      },
+      "EverrunsAppInstallation": {
+        "type": "object",
+        "description": "A shared Everruns App installation the org links, as an agent can choose it.",
+        "required": [
+          "connection_id",
+          "account"
+        ],
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "GitHub account the installation is on."
+          },
+          "account_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "GitHub's account type: `User` or `Organization`, when known."
+          },
+          "connection_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The org link's connection id; pass it to choose this installation."
+          },
+          "repository_selection": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`all` or `selected`, when known."
+          }
+        }
+      },
+      "EverrunsAppLink": {
+        "type": "object",
+        "description": "One shared App installation linked to the org.",
+        "required": [
+          "id",
+          "installation_id",
+          "account",
+          "agent_count",
+          "linked_at"
+        ],
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "GitHub account the installation is on.",
+            "example": "acme"
+          },
+          "account_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "GitHub's account type: `User` or `Organization`."
+          },
+          "agent_count": {
+            "type": "integer",
+            "description": "Agents in the org acting through this link.",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Connection id agents choose the link by."
+          },
+          "installation_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "GitHub installation id.",
+            "example": 4242
+          },
+          "linked_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "repository_selection": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`all` or `selected`."
+          }
+        }
+      },
+      "EverrunsAppLinks": {
+        "type": "object",
+        "description": "The org's links to the shared Everruns GitHub App.",
+        "required": [
+          "configured",
+          "installations"
+        ],
+        "properties": {
+          "app_slug": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The shared App's slug; agents that choose it show up as `<slug>[bot]`."
+          },
+          "configured": {
+            "type": "boolean",
+            "description": "The deployment has a shared App; without one nothing can be linked."
+          },
+          "installations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EverrunsAppLink"
+            }
           }
         }
       },
@@ -62954,6 +63231,20 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "UseEverrunsAppRequest": {
+        "type": "object",
+        "description": "Which org link to act through.",
+        "required": [
+          "connection_id"
+        ],
+        "properties": {
+          "connection_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Connection id of one of the org's linked installations, from the\nagent's GitHub status (`everruns_app_installations`)."
           }
         }
       },

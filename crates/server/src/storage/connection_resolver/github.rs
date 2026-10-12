@@ -10,16 +10,20 @@
 //! when its identity created one, otherwise the deployment's shared App.
 
 use super::*;
-use crate::github_apps::{AppCredentials, GITHUB_APP_CONNECTION_TYPE, TokenScope};
+use crate::github_apps::{
+    AppCredentials, EVERRUNS_APP_CONNECTION_TYPE, GITHUB_APP_CONNECTION_TYPE, TokenScope,
+};
 use everruns_contracts::runtime::{GitHubAccess, McpResolvedCredential};
 use everruns_core::McpServerActsAs;
 
 const PROVIDER: &str = "github";
 
 /// Which of the three GitHub identities (D1) a connection is. Derived from the
-/// row rather than stored in its own column: `connection_type` already marks an
-/// agent App's installation, any other installation belongs to the shared
-/// Everruns App, and a row without one holds a person's own token.
+/// row rather than stored in its own column: `connection_type` marks an agent
+/// App's installation (`github_app`) and a shared App installation an org
+/// admin linked (`everruns_app`, D3). Rows stored before D3 (`oauth` with an
+/// installation) are still the shared App's until 3b migrates them, and a row
+/// without an installation holds a person's own token.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GitHubIdentityKind {
     AgentApp,
@@ -31,7 +35,9 @@ impl GitHubIdentityKind {
     pub(crate) fn of(row: &VirtualUserConnectionRow) -> Self {
         if row.connection_type == GITHUB_APP_CONNECTION_TYPE {
             Self::AgentApp
-        } else if row.installation_id.is_some() {
+        } else if row.connection_type == EVERRUNS_APP_CONNECTION_TYPE
+            || row.installation_id.is_some()
+        {
             Self::EverrunsApp
         } else {
             Self::Person
@@ -298,6 +304,10 @@ mod tests {
         );
         assert_eq!(
             GitHubIdentityKind::of(&row("oauth", Some(1))),
+            GitHubIdentityKind::EverrunsApp
+        );
+        assert_eq!(
+            GitHubIdentityKind::of(&row(EVERRUNS_APP_CONNECTION_TYPE, Some(1))),
             GitHubIdentityKind::EverrunsApp
         );
         assert_eq!(

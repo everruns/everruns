@@ -1384,6 +1384,39 @@
     ]
   },
   {
+    "wire_name": "use_agent_everruns_app",
+    "path": [
+      "agents",
+      "github"
+    ],
+    "verb": "use-everruns-app",
+    "description": "Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/github/everruns-app",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      },
+      {
+        "field": "connection_id",
+        "long": "connection-id",
+        "kind": "string",
+        "required": true,
+        "help": "Connection id of one of the org's linked installations, from the agent's GitHub status (`ever..."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Let an agent act as the Everruns app through the org's acme installation",
+        "command": "everruns agents github use-everruns-app --agent-id agent_01h9 --connection-id 0190f5a2-7c1e-7a3b-9d2e-4f5a6b7c8d9e --reason 'Use the shared app for the reviewer'"
+      }
+    ]
+  },
+  {
     "wire_name": "get_agent_health_check_run",
     "path": [
       "agents",

@@ -66,7 +66,9 @@ The tools act on GitHub as the identity `acts_as` names; only
 
 - `agent` (default) uses the agent's own GitHub connection: its GitHub App when
   you connected one, so comments are posted as the agent's bot and the tools
-  reach only the repositories the App is installed on. Use it for bots, and for
+  reach only the repositories the App is installed on. An agent that chose
+  **Use the Everruns app** acts as the shared Everruns App's bot on the account
+  an org admin linked. Use it for bots, and for
   anything triggered without a person.
 - `person` uses the GitHub connection of the person talking to the agent. Use it
   for a personal agent. A triggered run has no person, so it gets nothing.

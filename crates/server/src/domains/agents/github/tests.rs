@@ -25,7 +25,7 @@ fn caller(role: OrgRole) -> Caller {
     }
 }
 
-fn ctx_for(db: &Arc<StorageBackend>, github: &MockServer, role: OrgRole) -> Ctx {
+pub(super) fn ctx_for(db: &Arc<StorageBackend>, github: &MockServer, role: OrgRole) -> Ctx {
     let encryption =
         EncryptionService::new(&generate_encryption_key("agent-github-commands"), &[]).unwrap();
     Ctx::minimal_for_test(caller(role), db.clone(), Some(Arc::new(encryption))).with_github_apps(
@@ -36,11 +36,12 @@ fn ctx_for(db: &Arc<StorageBackend>, github: &MockServer, role: OrgRole) -> Ctx 
             }),
             api_base_url: "https://api.example/api".to_string(),
             frontend_url: "https://app.example".to_string(),
+            shared_app_slug: Some("everruns".to_string()),
         },
     )
 }
 
-async fn seed_agent(db: &Arc<StorageBackend>) -> String {
+pub(super) async fn seed_agent(db: &Arc<StorageBackend>) -> String {
     // Unique names: one test seeds two agents.
     let suffix = Uuid::now_v7().simple().to_string();
     let harness = db
@@ -100,7 +101,7 @@ async fn seed_agent(db: &Arc<StorageBackend>) -> String {
 
 /// Connect the agent (which gives it an identity), then store an App for that
 /// identity as the manifest callback would.
-async fn agent_with_app(ctx: &Ctx) -> (String, VirtualUserId) {
+pub(super) async fn agent_with_app(ctx: &Ctx) -> (String, VirtualUserId) {
     let agent_id = seed_agent(&ctx.db).await;
     connect(ctx, &agent_id).await;
     let identity_id: VirtualUserId = status(ctx, &agent_id)
@@ -155,7 +156,7 @@ async fn install(ctx: &Ctx, identity_id: VirtualUserId, installation_id: i64) {
         .unwrap();
 }
 
-async fn status(ctx: &Ctx, agent_id: &str) -> AgentGitHubStatus {
+pub(super) async fn status(ctx: &Ctx, agent_id: &str) -> AgentGitHubStatus {
     GetAgentGitHub {
         agent_id: agent_id.to_string(),
     }
@@ -174,7 +175,10 @@ async fn connect(ctx: &Ctx, agent_id: &str) -> BeginConnectResponse {
     .unwrap()
 }
 
-async fn disconnect(ctx: &Ctx, agent_id: &str) -> Result<AgentGitHubDisconnect, CommandError> {
+pub(super) async fn disconnect(
+    ctx: &Ctx,
+    agent_id: &str,
+) -> Result<AgentGitHubDisconnect, CommandError> {
     DisconnectAgentGitHub {
         agent_id: agent_id.to_string(),
     }

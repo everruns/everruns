@@ -140,6 +140,9 @@ pub struct GitHubConnectionConfig {
     pub client_id: Option<String>,
     /// OAuth client secret of the same GitHub App.
     pub client_secret: Option<String>,
+    /// Webhook secret of the same GitHub App (`GITHUB_APP_WEBHOOK_SECRET`).
+    /// The shared App's webhook route refuses every delivery without it.
+    pub webhook_secret: Option<String>,
     /// GitHub endpoints. Always github.com outside tests.
     pub endpoints: crate::github_apps::GitHubEndpoints,
 }
@@ -432,6 +435,7 @@ impl AuthConfig {
                     setup_url,
                     client_id: non_empty("GITHUB_APP_CLIENT_ID"),
                     client_secret: non_empty("GITHUB_APP_CLIENT_SECRET"),
+                    webhook_secret: non_empty("GITHUB_APP_WEBHOOK_SECRET"),
                     endpoints: crate::github_apps::GitHubEndpoints::default(),
                 })
             }
@@ -1080,6 +1084,7 @@ mod tests {
                 setup_url: "https://example.com/setup".to_string(),
                 client_id: None,
                 client_secret: None,
+                webhook_secret: None,
                 endpoints: Default::default(),
             }),
             ..Default::default()

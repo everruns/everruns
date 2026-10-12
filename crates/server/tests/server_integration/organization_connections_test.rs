@@ -31,9 +31,10 @@ async fn organization_connections_are_named_exact_and_tenant_scoped() {
             org_id: first_org,
             name: "Daytona production".to_string(),
             provider: "daytona".to_string(),
-            access_token_encrypted: vec![1, 2, 3],
+            access_token_encrypted: Some(vec![1, 2, 3]),
             provider_username: None,
             provider_metadata: None,
+            ..Default::default()
         })
         .await
         .expect("create first account");
@@ -42,9 +43,10 @@ async fn organization_connections_are_named_exact_and_tenant_scoped() {
             org_id: second_org,
             name: "Daytona other tenant".to_string(),
             provider: "daytona".to_string(),
-            access_token_encrypted: vec![4, 5, 6],
+            access_token_encrypted: Some(vec![4, 5, 6]),
             provider_username: None,
             provider_metadata: None,
+            ..Default::default()
         })
         .await
         .expect("create second account");
