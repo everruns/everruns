@@ -50,17 +50,45 @@ impl ChatDriver for AnthropicChatDriver {
         let message_cache_enabled = prompt_cache.is_some_and(|cfg| {
             cfg.strategy != everruns_contracts::driver_registry::PromptCacheStrategy::Explicit
         }) && !wants_server_compaction;
-        let prepared = layout::keep_later_system_messages_in_place(&messages, &config.model);
-        let (system_prompt, converted_messages) = Self::convert_messages_with_options(
-            &prepared.messages,
-            Some(&prepared),
-            message_cache_enabled,
-            config.volatile_suffix_len,
-            !prefix_messages.is_empty(),
+        // Inline tool changes need every change on a system message; when one
+        // cannot be placed, the request goes out as before (see `tool_changes`).
+        let allow_unmatched_tool_results = !prefix_messages.is_empty();
+        let convert = |inline: bool| {
+            let prepared =
+                layout::keep_later_system_messages_in_place(&messages, &config.model, inline);
+            let (system, converted) = Self::convert_messages_with_options(
+                &prepared.messages,
+                Some(&prepared),
+                message_cache_enabled,
+                config.volatile_suffix_len,
+                allow_unmatched_tool_results,
+            );
+            let placed = tool_changes::all_placed(&converted, prepared.tool_definition_count());
+            (system, converted, placed)
+        };
+        let mut inline_tool_changes = tool_changes::eligible(
+            config,
+            wire_model,
+            endpoint.base_url() == Some(DEFAULT_BASE_URL),
         );
-        let wants_clear_at = converted_messages
+        let (mut system_prompt, mut converted_messages, placed) = convert(inline_tool_changes);
+        if inline_tool_changes && !placed {
+            tracing::debug!(
+                "AnthropicDriver: a tool change has no place; sending the current tools"
+            );
+            inline_tool_changes = false;
+            (system_prompt, converted_messages, _) = convert(false);
+        }
+        let mut conversation_betas = Vec::new();
+        if converted_messages
             .iter()
-            .any(|message| message.clear_at.is_some());
+            .any(|message| message.clear_at.is_some())
+        {
+            conversation_betas.push("mid-conversation-system-clear-at-2026-08-21");
+        }
+        if inline_tool_changes {
+            conversation_betas.push(tool_changes::INLINE_TOOLS_BETA);
+        }
         for message in converted_messages {
             prefix_messages.push(serde_json::to_value(message).map_err(|error| {
                 AgentLoopError::llm(format!("failed to serialize Anthropic message: {error}"))
@@ -102,7 +130,9 @@ impl ChatDriver for AnthropicChatDriver {
         // `claude_tool_search` / `auto_tool_search` capability — and reaches here
         // on `config.tool_search`.
         let supports_tool_search = profile.as_ref().is_some_and(|p| p.tool_search);
-        let mut tools = if config.tools.is_empty() {
+        let mut tools = if inline_tool_changes {
+            Some(tool_changes::tools(config, prompt_cache_enabled))
+        } else if config.tools.is_empty() {
             None
         } else if let Some(ref ts_config) = config.tool_search {
             if ts_config.enabled && supports_tool_search {
@@ -385,7 +415,7 @@ impl ChatDriver for AnthropicChatDriver {
                         needs_interleaved_thinking,
                         wants_million_context,
                         wants_cache_diagnostics,
-                        wants_clear_at,
+                        conversation_betas: &conversation_betas,
                         wants_server_compaction,
                         max_tokens_from_profile,
                         model: &config.model,

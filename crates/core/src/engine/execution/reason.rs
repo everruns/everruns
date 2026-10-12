@@ -954,7 +954,6 @@ impl ReasonAtom {
             llm_config_builder = llm_config_builder.with_metadata(k, v.clone());
         }
 
-        // Add metadata for API tracking and debugging
         // These IDs help correlate API requests with Everruns entities
         // TypedId::to_string() produces prefixed format (e.g., "session_abc123")
         llm_config_builder = llm_config_builder
@@ -977,6 +976,7 @@ impl ReasonAtom {
             .capture_request(true) // stored on llm.generation (TM-LLM-039)
             .build();
         llm_config.background_call = self.background_call.clone();
+        llm_config.tool_baseline = tool_changes.baseline_for(&llm_messages);
         if let Some(replay) = &reasoning_replay {
             llm_config.reasoning_effort = replay.state.baseline;
             llm_config.reasoning_state = Some(replay.state.clone());

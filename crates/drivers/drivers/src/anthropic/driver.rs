@@ -218,7 +218,8 @@ struct SendMessagesOptions<'a> {
     needs_interleaved_thinking: bool,
     wants_million_context: bool,
     wants_cache_diagnostics: bool,
-    wants_clear_at: bool,
+    /// Betas the conversation's own blocks need (`clear_at`, inline tools).
+    conversation_betas: &'a [&'static str],
     wants_server_compaction: bool,
     max_tokens_from_profile: bool,
     model: &'a str,
@@ -275,7 +276,7 @@ impl AnthropicChatDriver {
             needs_interleaved_thinking,
             wants_million_context,
             wants_cache_diagnostics,
-            wants_clear_at,
+            conversation_betas,
             wants_server_compaction,
             max_tokens_from_profile,
             model,
@@ -329,9 +330,7 @@ impl AnthropicChatDriver {
                     if binds_thinking {
                         beta_features.push(layout::THINKING_BINDING_BETA);
                     }
-                    if wants_clear_at {
-                        beta_features.push("mid-conversation-system-clear-at-2026-08-21");
-                    }
+                    beta_features.extend(conversation_betas);
                     if wants_server_compaction {
                         beta_features.push(SERVER_COMPACTION_BETA);
                     }
@@ -666,7 +665,8 @@ impl AnthropicChatDriver {
         for (message_index, msg) in messages.iter().enumerate() {
             if let Some(clear_at) = prepared.and_then(|p| p.in_place_system(message_index)) {
                 in_place_systems.push((converted.len(), clear_at));
-                converted.push(layout::in_place_system(Self::convert_content(&msg.content)));
+                let content = Self::convert_content(&msg.content);
+                converted.push(layout::carrier(prepared, message_index, content));
                 continue;
             }
             match msg.role {
@@ -877,8 +877,7 @@ impl AnthropicChatDriver {
     /// tool entry. The model sees names + descriptions for deferred tools and
     /// loads their full schemas on demand via a natural-language search query.
     ///
-    /// Mirrors the
-    /// OpenAI Responses `convert_tools_with_search`, minus namespaces (Anthropic
+    /// Mirrors the OpenAI Responses `convert_tools_with_search`, minus namespaces (Anthropic
     /// defers each tool individually).
     ///
     /// `DeferrablePolicy::Never` tools keep full schemas (hot-path tools the model
@@ -1374,6 +1373,9 @@ enum AnthropicContentBlock {
         #[serde(skip_serializing_if = "Option::is_none")]
         is_error: Option<bool>,
     },
+    /// A beta block sent as built (`tool_addition`, see `tool_changes`).
+    #[serde(untagged)]
+    Raw(Value),
 }
 
 /// Content of a tool_result block - either a simple string or array of content blocks.
@@ -1951,14 +1953,12 @@ impl AnthropicModelInfo {
     }
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
-
 #[path = "driver_cache.rs"]
 mod cache;
 #[path = "driver_layout.rs"]
 mod layout;
+#[path = "driver_tool_changes.rs"]
+mod tool_changes;
 use cache::{AnthropicCacheControl, record_cache_diagnostics};
 
 #[cfg(test)]

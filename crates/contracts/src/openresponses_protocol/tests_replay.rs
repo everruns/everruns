@@ -289,6 +289,7 @@ async fn openrouter_provider_does_not_send_hosted_tool_search() {
         .collect();
 
     let config = LlmCallConfig {
+        tool_baseline: None,
         speed: None,
         verbosity: None,
         model: "gpt-5.4".to_string(),
@@ -365,6 +366,7 @@ async fn openai_provider_omits_openrouter_routing_controls() {
     let mut metadata = std::collections::HashMap::new();
     metadata.insert("session_id".to_string(), "session_abc123".to_string());
     let config = LlmCallConfig {
+        tool_baseline: None,
         speed: None,
         verbosity: None,
         model: "gpt-5-mini".to_string(),
@@ -515,6 +517,7 @@ async fn tool_call_contract_covers_request_wire_and_stream_parser() {
     .auth(crate::runtime_provider::BearerAuth::new("test-key"));
     let driver = OpenResponsesProtocolChatDriver::new();
     let config = LlmCallConfig {
+        tool_baseline: None,
         speed: None,
         verbosity: None,
         model: "openai/gpt-5.6-luna".to_string(),

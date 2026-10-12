@@ -11,7 +11,7 @@ tags:
 
 # Cache-Stable Tool Changes
 
-> Status: **Accepted 2026-10-12. Steps 1 and 2 implemented.**
+> Status: **Accepted 2026-10-12. Steps 1, 2 and the Anthropic request side of 3 implemented.**
 > Builds on the earlier analysis of Pi's approach (project notes,
 > `pi-1-0/cache-stable-tool-reveals.md`) and the caching comparison with
 > Pydantic AI (`caching/pydantic-unified-caching.md`), where this is ranked as
@@ -209,31 +209,47 @@ wanted:
 
 ### 4. Drivers
 
-Each driver decides per model, from a new model profile field
-`tool_changes` (`none`, `add_only`, `add_and_redefine`), set only after a live
-round trip in `llm-tests`, matching our rule for `tool_search`.
+Each driver decides per model, from model profile parameters set only after a
+live round trip, matching our rule for `tool_search`. Anthropic uses
+`inline_tool_changes` (`crates/contracts/src/model_profile_data/types.rs`);
+OpenAI adds its own in step 4, since it can add but not always redefine.
+
+The reason step hands drivers the epoch's baseline (`LlmCallConfig::tool_baseline`)
+only when every change since it rides on a message of the request. If a model
+view or trimming dropped one, the request carries no baseline and every driver
+sends the tools wanted now, as before.
 
 #### Anthropic
 
-On models with mid-conversation system messages (Fable 5 and 5.1, Opus 4.8, 5
-and 5.5, Sonnet 5.5, Haiku 5.5):
+Implemented in `crates/drivers/drivers/src/anthropic/driver_tool_changes.rs`,
+on Opus 5.5 and Sonnet 5.5 (the families our 2026-10-06 probe verified), against
+the first-party endpoint only:
 
-- Each `tool_changes` entry becomes `tool_addition` blocks carrying the full
-  definition (beta `inline-tools-2026-09-15`) and `tool_removal` blocks by
-  reference, inside the same mid-conversation system message the layout code
-  already places (`driver_layout.rs`: after the tool result, before the next
-  assistant turn). `note` goes in that message as text.
-- The baseline always holds at least one non-deferred tool, which the API
-  needs to keep the cache on the first by-value addition; if a baseline is
-  empty we add a deferred placeholder, as Pi does.
-- Hosted Claude search: tools that arrive after the baseline are added by value
-  with `defer_loading: true` so the hosted search finds them. *Unverified:* the
-  docs say any `tools` entry may be added inline, but this needs the live round
-  trip once the key has credit.
+- `tools` is the baseline followed by a deferred placeholder tool, as Pi does.
+  Pi measured a full miss on the first change without it; our probe saw no
+  difference, and it costs nothing.
+- Each `tool_changes` entry becomes a mid-conversation system message before
+  the input it took effect at: `tool_addition` blocks carrying the full
+  definition (beta `inline-tools-2026-09-15`) for added and redefined tools,
+  and one text line for `note` and removals. The layout code places it after
+  that input and before the next assistant turn (`driver_layout.rs`).
+- Removal is soft: announced in that text line, not `tool_removal`.
+- Only one system message fits a position, so when the same turn also has
+  turn-scoped reminders (`<facts>`), they join the change's message and lose
+  `clear_at` for that turn. A change has no other place to go, and the replay
+  lays it out the same way every time.
+- Fallback to the wanted tools, per request: hosted Claude search, the native
+  computer and browser toolsets, an empty baseline, a gateway endpoint, or a
+  change with no user turn before it (it would land in top-level `system`,
+  which cannot hold a definition).
+- Hosted Claude search with tools added inline (`defer_loading: true` on the
+  addition) stays unverified until the Anthropic key has credit; until then
+  hosted search keeps today's behavior.
 - Bedrock and Google Cloud have only the by-reference form; a reference must
   name a tool already in `tools`, so on those hosts only removals and
-  re-offers of baseline tools are cache-safe. The driver folds additions back
-  (the fallback below) until by-value support reaches them.
+  re-offers of baseline tools are cache-safe. Requests there fall back until
+  by-value support reaches them. OpenRouter's Anthropic endpoint likewise
+  accepts only the by-reference form (checked 2026-10-12).
 
 #### OpenAI Responses
 
@@ -314,6 +330,9 @@ Each step is one PR and leaves `main` working.
    a request.
 3. **Anthropic driver** renders changes inline and Session Trace shows them;
    profile flag for verified families; live tests once the key has credit.
+   Done: the request side, with the profile flag on Opus 5.5 and Sonnet 5.5.
+   Left: Session Trace display, and the live cache test before widening the
+   flag to Fable, Opus 5 and 4.8 and Haiku 5.5.
 4. **OpenAI Responses driver** renders `additional_tools`; profile flag
    (`add_and_redefine` for GPT-6, `add_only` for 5.x) with live tests.
 5. **Sources move onto the comparison**: generic `tool_search` (drop the
@@ -335,9 +354,6 @@ Each step is one PR and leaves `main` working.
   it is also cache-safe; OpenAI has no equivalent.
 - **Inline tools on Bedrock and Google Cloud.** Today only by-reference changes
   work there, so additions fall back. Revisit when Anthropic extends the beta.
-- **Pi's deferred placeholder.** Our earlier probe saw no difference with it,
-  while Anthropic's docs and Pi say an empty baseline costs one miss. We only
-  add it when the baseline would otherwise have no non-deferred tool.
 - **Anthropic hosted search with tools added inline** needs a live check.
 
 ## References

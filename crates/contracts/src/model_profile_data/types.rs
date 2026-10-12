@@ -11,6 +11,11 @@ pub const MID_CONVERSATION_SYSTEM_PARAMETER: &str = "mid_conversation_system";
 /// Model-profile parameter for message expiry.
 pub const CLEAR_AT_PARAMETER: &str = "clear_at";
 
+/// Model-profile parameter for tool changes sent inside the conversation
+/// (`tool_addition` by full definition), so the request's `tools` stay fixed.
+/// Set only after a live round trip showed the cache surviving a change.
+pub const INLINE_TOOL_CHANGES_PARAMETER: &str = "inline_tool_changes";
+
 /// A typed service a provider driver can offer.
 ///
 /// Drivers declare supported services in code; catalog models persist their

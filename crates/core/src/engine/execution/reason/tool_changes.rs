@@ -11,13 +11,16 @@
 //! messages are gone, so no baseline is found), or a session from before this
 //! existed. The next request then records a new baseline.
 //!
-//! Drivers that render changes in a cache-safe form read the transitions; the
-//! others ignore them, since `tools` still carries the wanted set.
+//! Drivers that render changes in a cache-safe form send the epoch's baseline
+//! as their tool list and the transitions inline; the others ignore both, since
+//! `tools` still carries the wanted set. The baseline is offered only when every
+//! change of the epoch reaches the request (see [`ToolChangeReplay::baseline_for`]).
 
 // Design of record: knowledge/execution/cache-stable-tool-changes.md.
 use crate::engine::message::{RuntimeMessage, RuntimeMessageRole};
 use crate::engine::tool_types::ToolDefinition;
 use crate::engine::typed_id::MessageId;
+use everruns_contracts::driver_registry::Message;
 use everruns_contracts::tool_changes::{DeclaredTools, ToolChanges};
 use std::collections::HashMap;
 
@@ -29,6 +32,10 @@ pub(super) struct ToolChangeReplay {
     pub transitions: HashMap<MessageId, ToolChanges>,
     /// Entry to store on this generation's assistant message, if any.
     pub record: Option<ToolChanges>,
+    /// Tools fixed at the start of the epoch.
+    baseline: Option<Vec<ToolDefinition>>,
+    /// This request's change has no message to ride on.
+    unanchored: bool,
 }
 
 impl ToolChangeReplay {
@@ -37,6 +44,17 @@ impl ToolChangeReplay {
         if let Some(record) = &self.record {
             metadata.insert(KEY.to_string(), serde_json::json!(record));
         }
+    }
+
+    /// The epoch's baseline, when every change since it is on a message of
+    /// `sent`. A change dropped from the request (a model view or trimming cut
+    /// its message) would leave the model unaware of a tool, so drivers then
+    /// get no baseline and send the wanted set as before.
+    pub(super) fn baseline_for(&self, sent: &[Message]) -> Option<Vec<ToolDefinition>> {
+        let carried = sent.iter().filter(|m| m.tool_changes.is_some()).count();
+        (!self.unanchored && carried == self.transitions.len())
+            .then(|| self.baseline.clone())
+            .flatten()
     }
 }
 
@@ -77,6 +95,7 @@ pub(super) fn prepare(
         .filter(|message| !super::is_error_placeholder_message(message))
         .collect();
     let mut declared: Option<DeclaredTools> = None;
+    let mut baseline = None;
     let mut transitions = HashMap::new();
     let mut input_start = 0;
     for (index, message) in messages.iter().enumerate() {
@@ -89,6 +108,7 @@ pub(super) fn prepare(
         } else if let Some(changes) = entry(message) {
             if changes.baseline.is_some() {
                 declared = Some(DeclaredTools::default());
+                baseline.clone_from(&changes.baseline);
                 transitions.clear();
             }
             if let Some(declared) = declared.as_mut() {
@@ -105,25 +125,30 @@ pub(super) fn prepare(
 
     let Some(declared) = declared else {
         return ToolChangeReplay {
-            transitions: HashMap::new(),
             record: Some(ToolChanges::baseline(wanted.to_vec())),
+            baseline: Some(wanted.to_vec()),
+            ..ToolChangeReplay::default()
         };
     };
     let changes = declared.diff(wanted);
     if changes.is_empty() {
         return ToolChangeReplay {
             transitions,
-            record: None,
+            baseline,
+            ..ToolChangeReplay::default()
         };
     }
     // With no new input since the last answer, the change precedes the output
     // being generated now; its replay anchors it there next time.
-    if let Some(at) = anchor(&messages, input_start, messages.len().saturating_sub(1)) {
+    let at = anchor(&messages, input_start, messages.len().saturating_sub(1));
+    if let Some(at) = at {
         transitions.insert(at, changes.clone());
     }
     ToolChangeReplay {
         transitions,
         record: Some(changes),
+        baseline,
+        unanchored: at.is_none(),
     }
 }
 
@@ -223,6 +248,29 @@ mod tests {
         let record = replay.record.expect("new baseline");
         assert_eq!(record.baseline.as_ref().map(Vec::len), Some(2));
         assert!(replay.transitions.is_empty());
+    }
+
+    #[test]
+    fn the_baseline_is_offered_only_when_every_change_is_sent() {
+        use everruns_contracts::driver_registry::MessageRole;
+        let mut messages = Vec::new();
+        step(&mut messages, "hi", &[tool("a", "A")]);
+        let wanted = [tool("a", "A"), tool("b", "B")];
+        let replay = step(&mut messages, "reveal b", &wanted);
+        let sent = |with_change: bool| {
+            let mut input = Message::text(MessageRole::User, "reveal b");
+            input.tool_changes = with_change.then(|| replay.transitions[&messages[2].id].clone());
+            vec![Message::text(MessageRole::User, "hi"), input]
+        };
+        let baseline = replay.baseline_for(&sent(true)).expect("all changes sent");
+        assert_eq!(baseline.len(), 1, "the epoch's first tool list");
+        assert!(replay.baseline_for(&sent(false)).is_none());
+
+        // A change with no message to ride on (no input since the last
+        // answer) cannot be sent inline either.
+        let replay = prepare(&messages, PROVIDER, MODEL, &[tool("a", "A")]);
+        assert!(replay.record.is_some());
+        assert!(replay.baseline_for(&sent(true)).is_none());
     }
 
     #[test]

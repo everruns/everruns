@@ -23,7 +23,9 @@
   [Cache-Stable Tool Changes](execution/cache-stable-tool-changes.md).
   Accepted; step 1 (sticky deferral, sorted MCP tools, order-stable AG-UI
   frontend tools) and step 2 (changes recorded on assistant messages and
-  replayed before each request; requests unchanged) implemented.
+  replayed before each request; requests unchanged) implemented. Step 3:
+  Opus 5.5 and Sonnet 5.5 on the Claude API send the baseline as `tools` and
+  each change inline (`inline_tool_changes` profile parameter).
 * **PAT scopes step 2: enforced on REST and `/v1/commands`.** The auth
   extractor refuses a narrow token on any route outside its scope, including
   unclassified ones, with `403 insufficient_scope`; `POST /v1/commands/{name}`

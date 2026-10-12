@@ -1,5 +1,6 @@
 use crate::model_profile_data::types::{
-    CLEAR_AT_PARAMETER, MID_CONVERSATION_SYSTEM_PARAMETER, ModelProfile,
+    CLEAR_AT_PARAMETER, INLINE_TOOL_CHANGES_PARAMETER, MID_CONVERSATION_SYSTEM_PARAMETER,
+    ModelProfile,
 };
 
 pub(super) fn apply(profile: &mut ModelProfile) {
@@ -26,7 +27,16 @@ pub(super) fn apply(profile: &mut ModelProfile) {
     ) {
         return;
     }
-    for parameter in [MID_CONVERSATION_SYSTEM_PARAMETER, CLEAR_AT_PARAMETER] {
+    let mut parameters = vec![MID_CONVERSATION_SYSTEM_PARAMETER, CLEAR_AT_PARAMETER];
+    // Inline tool changes: only the families a live round trip verified
+    // (cache kept across a `tool_addition`, 2026-10-06). Add others the same way.
+    if matches!(
+        profile.family.as_str(),
+        "claude-opus-5-5" | "claude-sonnet-5-5"
+    ) {
+        parameters.push(INLINE_TOOL_CHANGES_PARAMETER);
+    }
+    for parameter in parameters {
         if !profile.supports_parameter(parameter) {
             profile.supported_parameters.push(parameter.to_string());
         }
