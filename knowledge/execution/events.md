@@ -29,7 +29,7 @@ payload structs, type registry, HTTP query fields, or SQL schema.
 - [`crates/server/src/api/events.rs`](../../crates/server/src/api/events.rs) owns
   the JSON and SSE endpoints, query validation, filtering, pagination, and
   summary response.
-- [`crates/server/src/services/event.rs`](../../crates/server/src/services/event.rs)
+- [`crates/server/src/services/event/mod.rs`](../../crates/server/src/services/event/mod.rs)
   owns emission and listener notification.
 - [`crates/server/migrations/legacy/001_base_schema.sql`](../../crates/server/migrations/legacy/001_base_schema.sql)
   and later migrations own storage columns, constraints, indexes, sequence

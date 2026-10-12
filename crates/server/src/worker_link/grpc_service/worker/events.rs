@@ -4,6 +4,7 @@
 //! `super::super::worker_service_impl` is a delegation layer only: a trait impl
 //! cannot span modules, so the work lives here and the trait forwards to it.
 
+use super::support::{internal_status, session_not_found_status};
 use crate::worker_link::grpc_service::*;
 use everruns_internal_protocol::proto::ActorFence;
 
@@ -16,6 +17,7 @@ fn append_fence(fence: &ActorFence) -> crate::services::ActorAppendFence<'_> {
 
 /// A refused fence is `FAILED_PRECONDITION` with the lease-lost marker the
 /// worker stops on (`everruns_worker::ACTOR_LEASE_LOST`); nothing was stored.
+/// Any other failure maps as an unfenced append's does.
 fn fenced_append_status(error: anyhow::Error) -> Status {
     if let Some(rejected) = error.downcast_ref::<crate::storage::ActorLeaseFenceRejected>() {
         return Status::failed_precondition(format!(
@@ -23,8 +25,7 @@ fn fenced_append_status(error: anyhow::Error) -> Status {
             everruns_worker::ACTOR_LEASE_LOST
         ));
     }
-    tracing::error!(error = %error, "Failed to emit fenced events");
-    Status::internal("Failed to store events")
+    emit_error_status(error, "Failed to store events")
 }
 
 impl WorkerServiceImpl {
@@ -80,10 +81,7 @@ impl WorkerServiceImpl {
                 .event_service
                 .emit_batch_returning_last(event_requests)
                 .await
-                .map_err(|e| {
-                    tracing::error!("Failed to emit event batch: {}", e);
-                    Status::internal("Failed to store events")
-                })?,
+                .map_err(|e| emit_error_status(e, "Failed to store events"))?,
         };
 
         Ok(Response::new(EmitEventStreamResponse {
@@ -118,10 +116,7 @@ impl WorkerServiceImpl {
                 .event_service
                 .emit(core_event_request)
                 .await
-                .map_err(|e| {
-                    tracing::error!("Failed to emit event: {}", e);
-                    Status::internal("Failed to store event")
-                })?,
+                .map_err(|e| emit_error_status(e, "Failed to store event"))?,
         };
 
         // Return the full stored event with id and sequence
@@ -137,4 +132,17 @@ impl WorkerServiceImpl {
         // No-op for now - exec_id tracking for idempotency can be added later
         Ok(Response::new(CommitExecResponse { committed: true }))
     }
+}
+
+/// An emit failure as a gRPC status. A session deleted while the worker was
+/// still emitting for it is `NotFound` (EVE-1235), which the worker reads as
+/// `SessionNotFound` and stops the turn on, as the in-process adapter does
+/// (`EventService::worker_emit_error`). Anything else stays an opaque internal
+/// error.
+fn emit_error_status(error: anyhow::Error, message: &'static str) -> Status {
+    if let Some(session_id) = EventService::deleted_session(&error) {
+        tracing::debug!(%session_id, "event not stored: session was deleted");
+        return session_not_found_status(session_id);
+    }
+    internal_status(message, error)
 }

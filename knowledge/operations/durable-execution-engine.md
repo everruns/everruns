@@ -268,6 +268,16 @@ That owner records `workflow.failed`, emits the canonical `turn.failed` and
 can then claim the terminal workflow for a new turn instead of remaining queued
 behind dead work.
 
+A turn whose session was deleted (before it was claimed or mid-step) is the
+exception: there is nothing left to report to. The control plane answers its
+reads and event writes with "session not found" naming the session (a session
+FK violation on event insert included), on both the gRPC and in-process worker
+transports, and the turn driver dead-letters the step without retry, skips the
+`turn.failed` lifecycle, and logs at info rather than as a task failure. See
+`fail_step` in `crates/durable-engine/src/turn_driver.rs`; session actors
+handle the same case on their lease
+([Session actors](#session-actors-turn-execution)).
+
 ### Stale-task reaping
 
 Reclaim and the settling of dead and sealed tasks are engine logic in
@@ -389,6 +399,15 @@ production and DEV_MODE alike; the worker side is
   PostgreSQL under NATS are not log appends and go unfenced. Writes the server
   makes for a session (intake, resolutions, a withdrawn cancel) are not
   leased and carry no fence.
+- **A deleted session stops its turn quietly.** The actor row goes with the
+  session (FK cascade), so the holder's next renew finds no row at all, which
+  the control plane answers as "session not found" naming the session rather
+  than a lost lease (`NotFound` over gRPC, `SessionNotFound` in process). An
+  append that gets there first fails the session FK and is answered the same
+  way, fenced or not. A turn that instead fails on a read (its input message
+  or conversation already gone) asks the renew before it counts the failure
+  as its own. The holder stops the turn as on a lost lease, at info level: no
+  `turn.failed` (there is nowhere to store it) and nothing to release.
 - **Release never loses input.** Release clears the runnable marker only when
   the holder consumed input up to `inbox_seq`. A message that lands as a turn
   finishes moves `inbox_seq` past it, so the actor stays runnable and the next

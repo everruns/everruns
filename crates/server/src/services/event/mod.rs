@@ -25,6 +25,7 @@ use crate::storage::{
     CreateEventRow, EventRow, EventsSummary as EventsSummaryRow, ListEventsParams, StorageBackend,
 };
 use anyhow::{Context, Result, bail};
+use everruns_contracts::error::AgentLoopError;
 use everruns_contracts::typed_id::{AgentId, EventId, PrincipalId, SessionId};
 use everruns_core::events::{EventData, INPUT_MESSAGE, OUTPUT_MESSAGE_COMPLETED};
 use everruns_core::{
@@ -41,6 +42,9 @@ use uuid::Uuid;
 /// evicted. 10k entries covers active fleets; the 30-minute TTL drops stale
 /// sessions and keeps memory predictable. Mirrors the PAT auth cache
 /// (`auth::builtin`) and reuses the same moka version.
+mod deleted_session;
+use deleted_session::{session_gone, single_session};
+
 const AGENT_METADATA_CACHE_MAX_CAPACITY: u64 = 10_000;
 const AGENT_METADATA_CACHE_TTL: Duration = Duration::from_secs(30 * 60); // 30 minutes
 
@@ -240,10 +244,12 @@ impl EventService {
             metadata: request.metadata,
             tags: request.tags,
         };
+        let session_id = create_row.session_id;
         let (row, inserted) = self
             .db
             .create_waiting_turn_resolution_event(create_row, resolution_id, event_index)
-            .await?;
+            .await
+            .map_err(|error| session_gone(error, Some(session_id)))?;
         let event = Self::row_to_event(row);
         if inserted {
             // Once committed, as in `emit_durable`.
@@ -279,7 +285,7 @@ impl EventService {
             .get_session_unscoped(request.session_id)
             .await
             .context("failed to load session for MCP event provenance")?
-            .context("session missing for MCP event provenance")?;
+            .ok_or_else(|| AgentLoopError::session_not_found(request.session_id))?;
 
         let mut effective = ScopedMcpServers::new();
         let mut agent_identity = None;
@@ -517,7 +523,12 @@ impl EventService {
 
     /// Emit a durable event (store in PG + publish to EventDelivery).
     async fn emit_durable(&self, request: EventRequest) -> Result<Event> {
-        let row = self.db.create_event(Self::create_row(request)?).await?;
+        let session_id = request.session_id;
+        let row = self
+            .db
+            .create_event(Self::create_row(request)?)
+            .await
+            .map_err(|error| session_gone(error, Some(session_id)))?;
         let event = Self::row_to_event(row);
         self.publish_after_commit(vec![event.clone()]).await;
         Ok(event)
@@ -546,14 +557,16 @@ impl EventService {
             .into_iter()
             .map(Self::create_row)
             .collect::<Result<Vec<_>>>()?;
+        let session_id = single_session(&rows);
         let stored = match fence {
             Some(fence) => {
                 self.db
                     .create_events_fenced(rows, fence.holder, fence.fence)
-                    .await?
+                    .await
             }
-            None => self.db.create_events(rows).await?,
-        };
+            None => self.db.create_events(rows).await,
+        }
+        .map_err(|error| session_gone(error, session_id))?;
         let events: Vec<Event> = stored.into_iter().map(Self::row_to_event).collect();
         let last = events.last().cloned();
         self.publish_after_commit(events).await;
@@ -805,7 +818,10 @@ impl everruns_core::event_emitter::EventEmitter for EventService {
     ) -> everruns_contracts::error::Result<everruns_core::Event> {
         EventService::emit(self, request)
             .await
-            .map_err(|e| everruns_contracts::error::AgentLoopError::event(e.to_string()))
+            .map_err(|e| match Self::deleted_session(&e) {
+                Some(session_id) => AgentLoopError::session_not_found(session_id),
+                None => AgentLoopError::event(e.to_string()),
+            })
     }
 }
 

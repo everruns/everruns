@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use everruns_contracts::error::Result;
+use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::SessionId;
 
 use crate::actor_lease_store::{
@@ -145,6 +145,11 @@ impl MemoryActors {
         }
     }
 
+    /// The session is deleted: its actor row goes with it (FK cascade).
+    pub(super) fn delete(&self, session_id: SessionId) {
+        self.rows.lock().unwrap().remove(&session_id);
+    }
+
     /// The holder's lease runs out now (its worker died).
     pub(super) fn expire(&self, session_id: SessionId) {
         if let Some(row) = self.rows.lock().unwrap().get_mut(&session_id) {
@@ -201,12 +206,13 @@ impl ActorLeaseStore for MemoryActors {
     ) -> Result<Option<ActorRenewal>> {
         self.renews.fetch_add(1, Ordering::SeqCst);
         let mut rows = self.rows.lock().unwrap();
-        let Some(row) = rows
-            .get_mut(&session_id)
-            .filter(|row| row.holder.as_deref() == Some(holder) && row.fence == fence)
-        else {
-            return Ok(None);
+        // No row at all: the session was deleted (EVE-1235).
+        let Some(row) = rows.get_mut(&session_id) else {
+            return Err(AgentLoopError::session_not_found(session_id));
         };
+        if row.holder.as_deref() != Some(holder) || row.fence != fence {
+            return Ok(None);
+        }
         row.expires = Some(Instant::now() + ttl);
         row.cancel_reported = row.cancel_requested;
         row.consumed_seq = row.consumed_seq.max(consumed_seq);

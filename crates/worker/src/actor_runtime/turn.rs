@@ -19,6 +19,9 @@
 //!   expire, after storing what the turn emitted: the next lease resumes from
 //!   the log, and the TTL is the backoff. A non-retryable one fails the turn
 //!   (user-facing message, `turn.failed`, idle) and releases.
+//! - A deleted session (EVE-1235) stops the turn like a lost lease, but
+//!   quietly: its actor row went with it, so there is nothing to fail, record
+//!   or release, and a renew or append that finds it gone is not a fault.
 //! - Poison guard: a lease that finds more attempts than the threshold (each
 //!   lease counts one; any release resets the count) seals the turn instead of
 //!   running it, so a turn that kills its worker cannot loop forever.
@@ -96,13 +99,21 @@ impl<H: ActorHosts> ActorRuntime<H> {
                     tracing::debug!(session_id = %actor.session_id, still_runnable, "Actor released");
                 }
                 Ok(ActorRelease::LeaseLost) => {
-                    tracing::warn!(session_id = %actor.session_id, "Actor lease lost before release");
+                    if matches!(lease.renew().await, Err(AgentLoopError::SessionNotFound(_))) {
+                        // Deleted as the turn ended (EVE-1235).
+                        tracing::info!(session_id = %actor.session_id, "Session deleted, stopping turn");
+                    } else {
+                        tracing::warn!(session_id = %actor.session_id, "Actor lease lost before release");
+                    }
                 }
                 Err(error) => {
                     tracing::warn!(session_id = %actor.session_id, error = %error, "Actor release failed; the lease will expire");
                 }
             },
             Ok(_) => {}
+            Err(error) if session_deleted(&lease, &error).await => {
+                tracing::info!(session_id = %actor.session_id, "Session deleted, stopping turn");
+            }
             Err(error) => {
                 tracing::warn!(session_id = %actor.session_id, error = %error, "Actor turn failed; the lease will expire and the turn resumes from the log");
             }
@@ -277,6 +288,7 @@ impl<H: ActorHosts> ActorRuntime<H> {
         enum Stopped {
             Lost,
             Cancel,
+            Deleted,
             Done(Result<crate::host::TurnResult>),
         }
         let mut stopped = tokio::select! {
@@ -290,6 +302,10 @@ impl<H: ActorHosts> ActorRuntime<H> {
         // error in the same poll: the lease is gone either way.
         if lease.is_lost() {
             stopped = Stopped::Lost;
+        } else if let Stopped::Done(Err(error)) = &stopped
+            && session_deleted(lease, error).await
+        {
+            stopped = Stopped::Deleted;
         }
         let finish = match stopped {
             Stopped::Lost => {
@@ -307,6 +323,15 @@ impl<H: ActorHosts> ActorRuntime<H> {
                 lease.turn_stored();
                 lease.skip_to_next_input().await?;
                 Finish::Release
+            }
+            Stopped::Deleted => {
+                tracing::info!(
+                    session_id = %drive.session_id,
+                    turn_id = %drive.turn_id,
+                    "Session deleted, stopping turn"
+                );
+                self.hosts.abandon(host);
+                Finish::Expire
             }
             Stopped::Done(Err(error)) if error.is_non_retryable() => {
                 self.hosts.flush(host).await;
@@ -525,6 +550,17 @@ async fn settle_pause_for_input<A: RuntimeHostAdapter>(
             .await?;
     }
     Ok(true)
+}
+
+/// Whether `error` ended the turn because its session was deleted (EVE-1235):
+/// the error says so, or the session is gone when asked. A turn whose session
+/// was deleted under it fails on whatever it reads next (its input message,
+/// the conversation), and those errors do not name the session; the renew
+/// answers for the actor row, which goes only with the session. It runs only
+/// on a failure path, where one more renew is harmless.
+pub(super) async fn session_deleted(lease: &Lease, error: &AgentLoopError) -> bool {
+    matches!(error, AgentLoopError::SessionNotFound(_))
+        || matches!(lease.renew().await, Err(AgentLoopError::SessionNotFound(_)))
 }
 
 /// An assistant message that shows `user_error` in the conversation.
