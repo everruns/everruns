@@ -115,14 +115,23 @@ pub fn build_toolset(ctx: CatalogContext, mode: ToolsetMode) -> ScriptedTool {
     builder.build()
 }
 
+/// The one read-only predicate: a command a read-only caller may run.
+///
+/// THREAT[TM-MCP-002]: it builds the MCP `query` toolset, and personal access
+/// token scopes classify command-backed routes with it
+/// (`auth::pat_scope`, knowledge/security/pat-scopes.md), so the two cannot
+/// drift apart. Non-GET read-only commands are reviewed in
+/// `command_policy_enforcement_test.rs`.
+pub fn is_read_only_command(desc: &crate::domains::common::CommandDescriptor) -> bool {
+    (desc.read_only)() && !excluded_from_read_only_query((desc.meta)().name)
+}
+
 /// THREAT[TM-MCP-002]: MCP `query` must not expose mutating server tools.
 /// Read-only classification is backed by inventory tests. One rule for flat
 /// builtins and the `everruns` builtin alike.
 fn allowed_in(desc: &crate::domains::common::CommandDescriptor, mode: ToolsetMode) -> bool {
-    let meta = (desc.meta)();
-    exposed_to_scripting(&meta)
-        && (mode == ToolsetMode::Full
-            || ((desc.read_only)() && !excluded_from_read_only_query(meta.name)))
+    exposed_to_scripting(&(desc.meta)())
+        && (mode == ToolsetMode::Full || is_read_only_command(desc))
 }
 
 /// The command a scripted toolset in `mode` may run under `name`.

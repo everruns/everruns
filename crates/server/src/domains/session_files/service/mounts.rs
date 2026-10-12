@@ -4,6 +4,81 @@ use super::*;
 use crate::domains::session_files::{memory_mounts, virtual_mount_registry};
 
 impl WorkspaceFileService {
+    pub(super) fn memory_session_path(mount: &MemoryMount, inner: &str) -> String {
+        if inner == "/" {
+            mount.mount_path.clone()
+        } else {
+            format!("{}{}", mount.mount_path, inner)
+        }
+    }
+
+    pub(super) fn memory_info_to_file_info(
+        session_id: Uuid,
+        mount: &MemoryMount,
+        row: crate::storage::MemoryFileInfoRow,
+    ) -> FileInfo {
+        let path = Self::memory_session_path(mount, &row.path);
+        FileInfo {
+            id: row.id,
+            session_id,
+            path: path.clone(),
+            name: FileInfo::name_from_path(&path),
+            is_directory: row.is_directory,
+            is_readonly: mount.readonly,
+            size_bytes: row.size_bytes,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        }
+    }
+
+    /// A directory entry standing for a mount root on the way down to it, so a
+    /// listing of `/` shows `/memory` even though no session file exists there.
+    pub(super) fn synthetic_directory(session_id: Uuid, path: &str) -> FileInfo {
+        let now = chrono::Utc::now();
+        FileInfo {
+            id: Uuid::nil(),
+            session_id,
+            path: path.to_string(),
+            name: FileInfo::name_from_path(path),
+            is_directory: true,
+            is_readonly: false,
+            size_bytes: 0,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    /// Whether a mount lives below `path` (`/memory` above `/memory/agent`).
+    pub(super) async fn is_mount_ancestor(&self, session_id: Uuid, path: &str) -> bool {
+        !self
+            .memory_mounts
+            .mounts_below(session_id, path)
+            .await
+            .is_empty()
+    }
+
+    /// A directory on the way down to a mount has no row of its own; without
+    /// this `stat("/memory")` and `list_directory("/memory")` found nothing.
+    pub(super) async fn mount_ancestor_stat(
+        &self,
+        session_id: Uuid,
+        path: &str,
+    ) -> Option<FileStat> {
+        if !self.is_mount_ancestor(session_id, path).await {
+            return None;
+        }
+        let now = chrono::Utc::now();
+        Some(FileStat {
+            path: path.to_string(),
+            name: FileInfo::name_from_path(path),
+            is_directory: true,
+            is_readonly: true,
+            size_bytes: 0,
+            created_at: now,
+            updated_at: now,
+        })
+    }
+
     pub fn new(db: Arc<StorageBackend>) -> Self {
         Self {
             memory_mounts: Arc::new(MemoryMountRouter::new(db.clone())),

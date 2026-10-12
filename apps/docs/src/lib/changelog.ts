@@ -101,8 +101,6 @@ export function availability(doc: Entry): { label: string; href?: string }[] {
       label: `In ${name}${release}`,
       href: `https://github.com/${repo}/releases/tag/v${release}`,
     });
-  } else if (products.some((p: string) => p !== "cloud")) {
-    out.push({ label: "On main, not yet released" });
   }
   if (cloud) {
     out.push({ label: `Live on Cloud since ${formatDate(cloud)}`, href: "https://app.everruns.com" });

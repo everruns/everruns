@@ -2404,7 +2404,7 @@
         "long": "starters",
         "kind": "json",
         "required": false,
-        "help": "Conversation starters; omit to leave unchanged, send empty to clear. `icon` reuses the harnes..."
+        "help": "Conversation starters as `[{\"text\": \"...\"}]`; omit to keep, `[]` to clear. An optional `icon`..."
       },
       {
         "field": "status",

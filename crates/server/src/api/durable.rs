@@ -492,9 +492,8 @@ pub struct WorkersListResponse {
     pub summary: WorkersSummaryResponse,
 }
 
-/// Compute the aggregate counts/capacity for a page of workers. Shared by the
-/// `list_workers` handler and its tests so the summary rules are exercised for
-/// real, not re-derived in the test.
+/// Compute the aggregate counts/capacity for a page of workers. Shared by the `list_workers`
+/// handler and its tests so the summary rules are exercised for real, not re-derived in the test.
 fn workers_summary(workers: &[WorkerResponse]) -> WorkersSummaryResponse {
     WorkersSummaryResponse {
         active: workers.iter().filter(|w| w.status == "active").count(),
@@ -3253,6 +3252,7 @@ mod tests {
                         name: "Test Org".to_string(),
                         role: OrgRole::Owner,
                     }],
+                    pat_scope: None,
                 })
             }
 

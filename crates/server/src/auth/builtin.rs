@@ -69,7 +69,9 @@ pub struct BuiltinAuthBackend {
     /// in `register` / `oauth_callback` so a pre-seed signup still lands in
     /// an org with the correct (operator-chosen) harnesses.
     pub built_in_harnesses: Arc<Vec<crate::domains::harnesses::record::BuiltInHarnessDefinition>>,
-    /// In-process cache: token_hash -> AuthUser. Avoids 4 sequential DB queries per token request.
+    /// In-process cache: token_hash -> AuthUser (including its parsed
+    /// `pat_scope`; scopes are immutable after creation, so nothing to
+    /// invalidate). Avoids 4 sequential DB queries per token request.
     personal_access_token_cache: Cache<String, AuthUser>,
     /// Rejects MCP tokens whose grant was revoked (connected AI clients).
     mcp_grant_guard: McpGrantGuard,
@@ -266,6 +268,9 @@ impl BuiltinAuthBackend {
             roles,
             auth_method: AuthMethod::PersonalAccessToken,
             organizations,
+            // Parsed from the raw column, fail-closed: a value that is not
+            // exactly `["*"]` or only `read` is in scope for no route.
+            pat_scope: Some(super::pat_scope::PatScope::parse_stored(&token_row.scopes)),
         })
     }
 }
@@ -320,6 +325,7 @@ impl BuiltinAuthBackend {
             is_platform_user,
             auth_method,
             organizations,
+            pat_scope: None,
         })
     }
 }
@@ -572,6 +578,11 @@ mod tests {
                 .validate_personal_access_token(&plaintext_key)
                 .await
                 .expect("first validation");
+            assert_eq!(
+                first.pat_scope,
+                Some(crate::auth::pat_scope::PatScope::Full),
+                "a `[\"*\"]` token carries the full scope onto AuthUser"
+            );
             assert_eq!(first.name, "Original Name");
 
             // Rename the user in the DB. With read-through caching this change

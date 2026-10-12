@@ -14,6 +14,7 @@ use serde_json::Value;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
+use super::cache_reset;
 use super::plan::{PlannedRow, plan_turn};
 use super::types::*;
 use crate::domains::common::*;
@@ -627,11 +628,16 @@ impl Command for GetSessionTraceStep {
                 .collect();
         } else {
             if let Some((_, data)) = db.trace_event_data(session, row.start_sequence).await? {
-                let new_from = db
-                    .trace_previous_message_count(session, row.turn_no, row.step_no)
-                    .await?
+                let previous = previous_call(ctx, session, &row).await?;
+                let new_from = previous
+                    .as_ref()
+                    .and_then(|(prev, _)| prev.message_count)
                     .unwrap_or(0);
-                request = Some(request_summary(&data, new_from));
+                let mut summary = request_summary(&data, new_from);
+                if let Some(usage) = summary.usage.as_mut() {
+                    attach_cache_reset(usage, &row, &data, previous.as_ref());
+                }
+                request = Some(summary);
                 output = data.get("output").cloned().map(|v| payload(v, full));
             }
             events = db
@@ -866,8 +872,64 @@ fn request_usage(data: &Value) -> Option<TraceRequestUsage> {
         cache_creation_tokens,
         output_tokens: as_count(usage.get("output_tokens")),
         cached_through,
+        caching_would_help: false,
         prompt_cache,
+        cache_reset: None,
     })
+    .map(|mut usage| {
+        usage.caching_would_help = cache_reset::caching_would_help(&usage);
+        usage
+    })
+}
+
+/// The model call before `row` and its stored `llm.generation` payload.
+async fn previous_call(
+    ctx: &Ctx,
+    session: Uuid,
+    row: &TraceStepRow,
+) -> Result<Option<(TraceStepRow, Value)>, CommandError> {
+    let db = ctx.db.database();
+    let Some(previous) = db
+        .trace_previous_model_step(session, row.turn_no, row.step_no)
+        .await?
+    else {
+        return Ok(None);
+    };
+    let data = db
+        .trace_event_data(session, previous.start_sequence)
+        .await?
+        .map(|(_, data)| data);
+    Ok(data.map(|data| (previous, data)))
+}
+
+fn snapshot<'a>(row: &'a TraceStepRow, data: &'a Value) -> cache_reset::CallSnapshot<'a> {
+    cache_reset::CallSnapshot {
+        model: row.model.as_deref(),
+        started_at: row.started_at,
+        ended_at: row.started_at + chrono::Duration::milliseconds(row.duration_ms.unwrap_or(0)),
+        data,
+    }
+}
+
+/// Flag a prompt-cache reset against the previous model call, when there was one.
+fn attach_cache_reset(
+    usage: &mut TraceRequestUsage,
+    row: &TraceStepRow,
+    data: &Value,
+    previous: Option<&(TraceStepRow, Value)>,
+) {
+    let Some((prev_row, prev_data)) = previous else {
+        return;
+    };
+    let Some(prev_usage) = request_usage(prev_data) else {
+        return;
+    };
+    usage.cache_reset = cache_reset::detect(
+        &snapshot(prev_row, prev_data),
+        &prev_usage,
+        &snapshot(row, data),
+        usage,
+    );
 }
 
 fn request_summary(data: &Value, new_from: i32) -> TraceRequestSummary {
@@ -983,10 +1045,15 @@ impl Command for ListSessionTraceRequest {
             .ok_or_else(|| CommandError::not_found("Model call event"))?;
         let all = messages(&data);
         let names = tool_names(all);
-        let new_from = db
-            .trace_previous_message_count(session, row.turn_no, row.step_no)
-            .await?
+        let previous = previous_call(ctx, session, &row).await?;
+        let new_from = previous
+            .as_ref()
+            .and_then(|(prev, _)| prev.message_count)
             .unwrap_or(0);
+        let mut usage = request_usage(&data);
+        if let Some(usage) = usage.as_mut() {
+            attach_cache_reset(usage, &row, &data, previous.as_ref());
+        }
         let offset = usize::try_from(self.offset.unwrap_or(0).max(0)).unwrap_or(0);
         let limit = usize::try_from(self.limit.unwrap_or(100).clamp(1, 200)).unwrap_or(100);
         let role = self.role.filter(|r| !r.is_empty());
@@ -1026,7 +1093,7 @@ impl Command for ListSessionTraceRequest {
                 .and_then(|m| m.get("request_options"))
                 .filter(|_| first_page)
                 .cloned(),
-            usage: request_usage(&data),
+            usage,
             has_native_request: data.get("request_body").is_some_and(|b| !b.is_null()),
             native_request: data
                 .get("request_body")

@@ -365,23 +365,27 @@ impl Database {
 
     /// The message count of the model call before this one in the session, to
     /// tell which request messages are new.
-    pub async fn trace_previous_message_count(
+    /// The model call before `(turn_no, step_no)` in the session, for
+    /// comparing what the provider cache held against what this call sent.
+    pub async fn trace_previous_model_step(
         &self,
         session_id: Uuid,
         turn_no: i32,
         step_no: i32,
-    ) -> Result<Option<i32>> {
-        let row = sqlx::query_scalar::<_, Option<i32>>(
-            "SELECT message_count FROM session_trace_steps \
-             WHERE session_id = $1 AND (turn_no, step_no) < ($2, $3) \
-                AND kind IN ('model', 'answer') \
-             ORDER BY turn_no DESC, step_no DESC LIMIT 1",
-        )
+    ) -> Result<Option<TraceStepRow>> {
+        let row = sqlx::query_as::<_, TraceStepRow>(concat!(
+            "SELECT ",
+            step_select!(),
+            " FROM session_trace_steps s \
+             WHERE s.session_id = $1 AND (s.turn_no, s.step_no) < ($2, $3) \
+                AND s.kind IN ('model', 'answer') \
+             ORDER BY s.turn_no DESC, s.step_no DESC LIMIT 1"
+        ))
         .bind(session_id)
         .bind(turn_no)
         .bind(step_no)
         .fetch_optional(&self.pool)
         .await?;
-        Ok(row.flatten())
+        Ok(row)
     }
 }

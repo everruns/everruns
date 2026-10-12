@@ -24769,6 +24769,37 @@ export interface components {
        */
       to_turn: number;
     };
+    /**
+     * @description A prompt-cache reset: the cache read fell to under half of what the
+     *     previous model call left cached.
+     */
+    TraceCacheReset: {
+      /**
+       * Format: int64
+       * @description Seconds between the end of the previous call and the start of this one.
+       * @example 42
+       */
+      idle_seconds: number;
+      /**
+       * Format: int64
+       * @description How many of those this call did not read back.
+       * @example 18420
+       */
+      lost_tokens: number;
+      /**
+       * Format: int64
+       * @description Prompt tokens the previous call left in the cache (read plus written).
+       * @example 18420
+       */
+      previous_cached_tokens: number;
+      /**
+       * @description Likely cause, the first difference found: `model_changed`,
+       *     `tools_changed`, `system_changed`, `history_changed`, `expired` (idle
+       *     longer than the cache retention), or `unknown`.
+       * @example tools_changed
+       */
+      reason: string;
+    };
     /** @description An event in the session log. */
     TraceEventRef: {
       /** @description Payload, when small enough to inline. */
@@ -25052,6 +25083,7 @@ export interface components {
        * @example 12529
        */
       cache_read_tokens: number;
+      cache_reset?: components["schemas"]["TraceCacheReset"] | null;
       /**
        * Format: int32
        * @description Estimated index of the last message inside the cached prefix: the
@@ -25060,6 +25092,12 @@ export interface components {
        * @example 11
        */
       cached_through?: number | null;
+      /**
+       * @description A long prompt sent with caching off that neither read nor wrote the
+       *     cache: turning on prompt caching would likely make calls like it
+       *     cheaper.
+       */
+      caching_would_help?: boolean;
       /**
        * Format: int64
        * @description Prompt tokens neither read from nor written to the cache.
@@ -25739,8 +25777,13 @@ export interface components {
        */
       short_description?: string | null;
       /**
-       * @description Conversation starters; omit to leave unchanged, send empty to clear.
-       *     `icon` reuses the harness icon name set.
+       * @description Conversation starters as `[{"text": "..."}]`; omit to keep, `[]` to clear.
+       *     An optional `icon` reuses the harness icon name set.
+       * @example [
+       *       {
+       *         "text": "Who does the dishes today?"
+       *       }
+       *     ]
        */
       starters?: components["schemas"]["ConversationStarter"][] | null;
       status?: components["schemas"]["AgentStatus"] | null;

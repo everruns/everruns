@@ -85,6 +85,13 @@ after rounding. The modes are `cache_control`
 `implicit` or `cached_content` (Gemini). Cache read and write token counts, when
 the provider reports them, appear in the event's token usage.
 
+In a session's Trace view, each model call shows its prompt split into cache
+read, cache write and uncached tokens. When a call reuses less than half of
+what the previous call left cached, the trace marks a cache reset and names the
+likely cause: the model, the tool definitions, the system prompt or earlier
+messages changed, or the session sat idle longer than the cache retention. A
+long prompt sent with caching off is marked as one that caching would help.
+
 ## See also
 
 - [Platform Chat harness](/built-ins/harnesses/platform-chat/)

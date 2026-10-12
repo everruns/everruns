@@ -157,9 +157,10 @@ pub struct UpdateAgentRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = "Answers account questions in seconds.")]
     pub short_description: Option<Option<String>>,
-    /// Conversation starters; omit to leave unchanged, send empty to clear.
-    /// `icon` reuses the harness icon name set.
+    /// Conversation starters as `[{"text": "..."}]`; omit to keep, `[]` to clear.
+    /// An optional `icon` reuses the harness icon name set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!([{"text": "Who does the dishes today?"}]))]
     pub starters: Option<Vec<crate::domains::harnesses::record::ConversationStarter>>,
     /// The system prompt that defines the agent's behavior and capabilities.
     #[serde(skip_serializing_if = "Option::is_none")]
