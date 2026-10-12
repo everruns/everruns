@@ -252,6 +252,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn an_in_process_worker_is_woken_once_the_mark_committed() {
+        let db = StorageBackend::test_database();
+        let session_id = session(&db).await;
+        let (message_id, _) = message(&db, session_id).await;
+        let wakeups = everruns_worker::actor_runtime::ActorWakeups::new();
+        let backend = backend(&db).with_local_wakeups(wakeups.clone());
+        let woken = wakeups.lease_wake();
+        let request = stored_message(
+            session_id,
+            scope(ORG, HarnessId::new(), None),
+            message_id,
+            None,
+        );
+
+        crate::storage::transaction::scope(
+            &db,
+            async {
+                drop(backend.start_turn(request).await.expect("marks"));
+                // A lease now would not see the mark yet: no wake-up.
+                let early =
+                    tokio::time::timeout(std::time::Duration::from_millis(50), woken.notified())
+                        .await;
+                assert!(early.is_err(), "woken before the mark committed");
+                Ok::<_, anyhow::Error>(())
+            },
+            |error| error,
+        )
+        .await
+        .unwrap();
+
+        tokio::time::timeout(std::time::Duration::from_secs(5), woken.notified())
+            .await
+            .expect("the in-process worker is woken after the commit");
+    }
+
+    #[tokio::test]
     async fn a_stored_message_needs_its_scope_and_its_event() {
         let db = StorageBackend::test_database();
         let session_id = session(&db).await;

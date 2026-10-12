@@ -310,6 +310,15 @@ where
         }
     }
 
+    /// Wake the session actor loop from `wakeups`, for a worker whose store
+    /// has no push channel but shares a process with the control plane
+    /// (DEV_MODE). Remote workers hear the same wake-ups through
+    /// `subscribe_task_wakeups`.
+    pub fn with_actor_wakeups(mut self, wakeups: &crate::actor_runtime::ActorWakeups) -> Self {
+        self.actors = self.actors.with_wakeups(wakeups);
+        self
+    }
+
     /// Run the worker (blocking until shutdown)
     pub async fn run(&mut self) -> Result<()> {
         info!(
@@ -446,7 +455,11 @@ where
             model_waits: self.model_waits.clone(),
             draining: self.draining.clone(),
             poll_interval: self.config.poll_interval,
-            poll_backoff_max: self.config.poll_backoff_max,
+            // An expired lease sends no wake-up; see `ACTOR_POLL_BACKOFF_MAX`.
+            poll_backoff_max: self
+                .config
+                .poll_backoff_max
+                .min(crate::actor_runtime::ACTOR_POLL_BACKOFF_MAX),
             shutdown_grace: self.config.shutdown_grace,
         };
         let actors = self.actors.clone();

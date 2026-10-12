@@ -24,6 +24,8 @@ pub(crate) struct StorageInit {
     pub(crate) database_unpooled_url: Option<String>,
     pub(crate) task_broadcaster:
         Option<Arc<crate::live_updates::task_notifications::TaskBroadcaster>>,
+    /// Wake-ups the turn backend sends the in-process DEV_MODE worker.
+    pub(crate) actor_wakeups: Option<everruns_worker::actor_runtime::ActorWakeups>,
 }
 
 pub(crate) async fn init_storage(
@@ -54,7 +56,10 @@ pub(crate) async fn init_storage(
         let pool = backend.pool().clone();
         let shared_store = Arc::new(PostgresWorkflowEventStore::new(pool));
         let db = Arc::new(backend);
-        let runner: Arc<dyn TurnBackend> = Arc::new(ActorTurnBackend::new(db.clone(), None));
+        // The in-process worker has no push channel: the backend wakes it.
+        let wakeups = everruns_worker::actor_runtime::ActorWakeups::new();
+        let runner: Arc<dyn TurnBackend> =
+            Arc::new(ActorTurnBackend::new(db.clone(), None).with_local_wakeups(wakeups.clone()));
         return Ok(StorageInit {
             db,
             background_runner: runner.clone(),
@@ -63,6 +68,7 @@ pub(crate) async fn init_storage(
             database_url: None,
             database_unpooled_url,
             task_broadcaster: None,
+            actor_wakeups: Some(wakeups),
         });
     }
 
@@ -128,6 +134,7 @@ pub(crate) async fn init_storage(
         database_url: Some(database_url),
         database_unpooled_url,
         task_broadcaster,
+        actor_wakeups: None,
     })
 }
 

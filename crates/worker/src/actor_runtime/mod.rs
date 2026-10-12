@@ -15,6 +15,12 @@
 //!   shutdown grace. The loop has its own wake-up (`session_actor`
 //!   notifications and finished actors), and cancel notifications poke every
 //!   running lease to renew now, which is how a holder learns of a cancel.
+//!   A worker without a push channel (the in-process DEV_MODE worker) gets
+//!   both from the control plane in the same process ([`ActorWakeups`]).
+//! - Polling is the fallback, never the pickup path, and the worker bounds
+//!   its backoff by [`ACTOR_POLL_BACKOFF_MAX`]: a lease that expires (its
+//!   holder died) sends no wake-up, so the poll bounds how long past its TTL
+//!   the turn waits for another worker.
 //! - The worker's host stays the one queued phases used: `WorkerRuntimeHost`
 //!   with its phase setup reads, turn read cache and write-behind events,
 //!   built once per turn and re-armed at each phase boundary (`ActorHosts`).
@@ -54,6 +60,40 @@ pub use turn::NO_PROGRESS_SEAL_REASON;
 pub const SESSION_ACTOR_NOTIFICATION: &str = "session_actor";
 /// Wake-up payload for a cancel on a leased actor.
 pub const SESSION_ACTOR_CANCEL_NOTIFICATION: &str = "session_actor_cancel";
+
+/// Longest the lease loop sleeps with no wake-up. See the module notes:
+/// an expired lease is found only by polling.
+pub const ACTOR_POLL_BACKOFF_MAX: Duration = Duration::from_secs(1);
+
+/// In-process wake-ups for a worker that shares a process with its control
+/// plane and has no push channel (DEV_MODE): the turn backend fires them once
+/// the transaction that marked an actor (or requested a cancel) committed.
+#[derive(Clone, Default)]
+pub struct ActorWakeups {
+    lease: Arc<Notify>,
+    renew: Arc<Notify>,
+}
+
+impl ActorWakeups {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// An actor became runnable: wake the lease loop.
+    pub fn runnable(&self) {
+        self.lease.notify_one();
+    }
+
+    /// A cancel landed on a leased actor: every running lease renews now.
+    pub fn cancel_requested(&self) {
+        self.renew.notify_waiters();
+    }
+
+    /// What [`runnable`](Self::runnable) notifies (with `notify_one`).
+    pub fn lease_wake(&self) -> Arc<Notify> {
+        self.lease.clone()
+    }
+}
 
 /// The turn a host is built for.
 #[derive(Debug, Clone, Copy)]
@@ -119,7 +159,8 @@ pub struct ActorRuntimeConfig {
     pub poison_attempts: u32,
     /// Journal page size; 0 = the control plane's default.
     pub journal_page: u32,
-    /// Cap on leases one org holds at once (`None` = the control plane's).
+    /// Held leases past which an org's actors are leased after every other
+    /// org's (`None` = the control plane's).
     pub max_leased_per_org: Option<u32>,
 }
 
@@ -181,6 +222,13 @@ impl<H: ActorHosts> ActorRuntime<H> {
             renew_poke: Arc::new(Notify::new()),
             wake: Arc::new(Notify::new()),
         }
+    }
+
+    /// Take wake-ups from `wakeups` (in place of a push channel).
+    pub fn with_wakeups(mut self, wakeups: &ActorWakeups) -> Self {
+        self.wake = wakeups.lease.clone();
+        self.renew_poke = wakeups.renew.clone();
+        self
     }
 
     /// Notify to wake the lease loop.
@@ -292,10 +340,12 @@ impl<H: ActorHosts> ActorRuntime<H> {
             let guard = InFlight::enter(slots.in_flight.clone());
             let model_waits = slots.model_waits.clone();
             running.spawn(async move {
-                let _guard = guard;
                 model_wait::scope(model_waits, runtime.run_actor(actor)).await;
                 // The release may have left the actor runnable (input arrived
-                // as its turn ended), and a slot just opened.
+                // as its turn ended), and a slot just opened. Free the slot
+                // before the wake-up, or the woken loop can still count it
+                // taken, lease nothing and sleep.
+                drop(guard);
                 runtime.wake.notify_one();
             });
         }

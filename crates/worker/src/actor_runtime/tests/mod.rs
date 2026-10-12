@@ -8,6 +8,7 @@
 mod resolutions;
 mod store;
 mod turns;
+mod wakeups;
 
 use std::collections::HashSet;
 use std::future::Future;

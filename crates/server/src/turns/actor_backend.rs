@@ -26,6 +26,9 @@
 //! - Workers hear about new work on the `task_available` channel: a database
 //!   trigger notifies on commit under PostgreSQL LISTEN, and under NATS this
 //!   backend publishes the same payload once the caller's transaction commits.
+//!   The in-process DEV_MODE worker has no channel; this backend wakes it
+//!   directly ([`ActorWakeups`]), also after the commit, so a lease never
+//!   races the transaction that made the actor runnable.
 //! - Every server caller drops the ticket. It still resolves sensibly: once
 //!   the actor has nothing left to run, it maps the session's latest terminal
 //!   turn event.
@@ -38,6 +41,8 @@ use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::{SessionId, TurnId};
 use everruns_core::host::{TurnBackend, TurnInput, TurnRequest, TurnResult, TurnTicket};
 use everruns_core::turn::TurnStopReason;
+
+use everruns_worker::actor_runtime::ActorWakeups;
 
 use crate::live_updates::task_notifications::TaskBroadcaster;
 use crate::storage::{ActorCancel, StorageBackend};
@@ -66,6 +71,8 @@ const TERMINAL_TURN_EVENTS: [&str; 4] = [
 pub struct ActorTurnBackend {
     db: Arc<StorageBackend>,
     broadcaster: Option<Arc<TaskBroadcaster>>,
+    /// The in-process worker's wake-ups (DEV_MODE).
+    local: Option<ActorWakeups>,
     cancel_wait: Duration,
 }
 
@@ -74,8 +81,15 @@ impl ActorTurnBackend {
         Self {
             db,
             broadcaster,
+            local: None,
             cancel_wait: CANCEL_WAIT,
         }
+    }
+
+    /// Also wake an in-process worker through `wakeups`.
+    pub fn with_local_wakeups(mut self, wakeups: ActorWakeups) -> Self {
+        self.local = Some(wakeups);
+        self
     }
 
     /// Bound how long a cancel waits for the holder (default [`CANCEL_WAIT`]).
@@ -87,11 +101,22 @@ impl ActorTurnBackend {
     /// Publish `payload` to workers once the current transaction commits.
     /// PostgreSQL LISTEN needs nothing: the actor table's trigger notifies.
     fn notify(&self, payload: &'static str) {
-        if let Some(broadcaster) = self.broadcaster.clone() {
-            crate::storage::transaction::spawn_after_commit(async move {
-                broadcaster.notify_task_available(payload).await;
-            });
+        if self.broadcaster.is_none() && self.local.is_none() {
+            return;
         }
+        let broadcaster = self.broadcaster.clone();
+        let local = self.local.clone();
+        crate::storage::transaction::spawn_after_commit(async move {
+            if let Some(local) = local {
+                match payload {
+                    SESSION_ACTOR_CANCEL_NOTIFICATION => local.cancel_requested(),
+                    _ => local.runnable(),
+                }
+            }
+            if let Some(broadcaster) = broadcaster {
+                broadcaster.notify_task_available(payload).await;
+            }
+        });
     }
 
     fn cancel_waiter(&self) -> CancelWaiter {

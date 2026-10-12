@@ -122,6 +122,8 @@ pub(super) struct DevWorkerExtras {
     pub durable_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     pub connection_resolver:
         Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>>,
+    /// The turn backend's wake-ups for this worker's session actor loop.
+    pub actor_wakeups: Option<everruns_worker::actor_runtime::ActorWakeups>,
 }
 
 /// DEV MODE: run the task worker in-process over `DirectWorkerAdapters`.
@@ -201,6 +203,7 @@ pub(super) fn spawn_dev_task_worker(
         .with_dev_mode_in_memory_compaction_checkpoints();
 
     let worker_config = TaskWorkerConfig::dev_mode();
+    let actor_wakeups = extras.actor_wakeups;
     supervisor.spawn(
         "dev_task_worker",
         RestartPolicy::always_after(Duration::from_secs(5)),
@@ -208,8 +211,12 @@ pub(super) fn spawn_dev_task_worker(
             let worker_config = worker_config.clone();
             let shared_store = shared_store.clone();
             let adapters = adapters.clone();
+            let actor_wakeups = actor_wakeups.clone();
             async move {
                 let mut worker = TaskWorker::new(worker_config, shared_store, adapters);
+                if let Some(wakeups) = &actor_wakeups {
+                    worker = worker.with_actor_wakeups(wakeups);
+                }
                 if let Err(e) = worker.run().await {
                     tracing::error!(error = %e, "Task worker error");
                 }

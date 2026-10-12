@@ -383,6 +383,7 @@ impl ServerAppBuilder {
             database_url,
             database_unpooled_url,
             task_broadcaster,
+            actor_wakeups,
         } = crate::setup::storage_init::init_storage(&self.config, migrations).await?;
 
         // Background loops draw from a pool of their own (EVE-1081). Prod had
@@ -1415,6 +1416,7 @@ impl ServerAppBuilder {
                         &auth_config,
                         host_composition.egress_service(),
                     ),
+                    actor_wakeups,
                 },
             );
         } else {
