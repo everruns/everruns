@@ -835,7 +835,7 @@ body:has(#starlight__sidebar:popover-open) .er-menu-button {
    the last letter. Fixed rem sizes resolve the same on the heading's padding
    and on the icon, and the muted color keeps it secondary to the title. */
 .sl-markdown-content .sl-heading-wrapper {
-  --sl-anchor-icon-size: 0.875rem;
+  --sl-anchor-icon-size: 1.125rem;
   --sl-anchor-icon-gap: 0.5rem;
 }
 
