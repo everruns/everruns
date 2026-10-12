@@ -85,6 +85,7 @@ fn servers<'a>(state: &'a AppState, org: &ResolvedOrg, person: Uuid) -> UserMcpS
         encryption: state.encryption.as_deref(),
         org_id: org.org_id,
         owner: person,
+        egress: None,
     }
 }
 

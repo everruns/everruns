@@ -242,6 +242,57 @@ pub fn protocol_version_from_initialize(body: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+/// `serverInfo` from an `initialize` result, or from
+/// `_meta["io.modelcontextprotocol/serverInfo"]` on a 2026 result.
+///
+/// The meta key contains a slash, so it is one object key, not a JSON pointer.
+pub fn server_info_from_message(body: &str) -> Option<Value> {
+    let value: Value = serde_json::from_str(body).ok()?;
+    let result = value.get("result")?;
+    if let Some(info) = result.get("serverInfo").filter(|info| info.is_object()) {
+        return Some(info.clone());
+    }
+    result
+        .get("_meta")
+        .and_then(|meta| meta.get("io.modelcontextprotocol/serverInfo"))
+        .filter(|info| info.is_object())
+        .cloned()
+}
+
+/// Handshake `serverInfo` overlaid by a later result's `serverInfo`.
+///
+/// An empty string, null, or empty array in the overlay does not erase a
+/// value the handshake already carried.
+pub fn combine_server_info(handshake: Option<&str>, body: &str) -> Option<Value> {
+    let from_handshake = handshake.and_then(|raw| serde_json::from_str::<Value>(raw).ok());
+    let from_body = server_info_from_message(body);
+    match (from_handshake, from_body) {
+        (Some(base), Some(overlay)) => Some(overlay_server_info(base, overlay)),
+        (Some(base), None) => Some(base),
+        (None, Some(overlay)) => Some(overlay),
+        (None, None) => None,
+    }
+}
+
+fn overlay_server_info(base: Value, overlay: Value) -> Value {
+    let Some(base_map) = base.as_object().cloned() else {
+        return overlay;
+    };
+    let Some(overlay_map) = overlay.as_object() else {
+        return Value::Object(base_map);
+    };
+    let mut merged = base_map;
+    for (key, value) in overlay_map {
+        let blank = value.is_null()
+            || value.as_str().is_some_and(|text| text.is_empty())
+            || value.as_array().is_some_and(|items| items.is_empty());
+        if !blank {
+            merged.insert(key.clone(), value.clone());
+        }
+    }
+    Value::Object(merged)
+}
+
 /// One entry of an MRTR `inputRequests` map: the server-assigned key plus the
 /// request it holds.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -452,6 +503,11 @@ pub struct Negotiated {
     pub stateful: bool,
     /// Session id captured from the `initialize` response, if any.
     pub session_id: Option<String>,
+    /// `serverInfo` from the handshake, when the server sent one.
+    ///
+    /// Kept as JSON text so this stays `Eq`. The control plane sanitizes it
+    /// before anything is stored or shown.
+    pub server_info_json: Option<String>,
 }
 
 impl Negotiated {
@@ -461,6 +517,7 @@ impl Negotiated {
             version: version.into(),
             stateful: false,
             session_id: None,
+            server_info_json: None,
         }
     }
 
@@ -475,11 +532,13 @@ impl Negotiated {
                 version: MCP_PROTOCOL_VERSION_2025_06.to_string(),
                 stateful: true,
                 session_id: None,
+                server_info_json: None,
             },
             McpProtocolMode::V2025March => Self {
                 version: MCP_PROTOCOL_VERSION_2025_03.to_string(),
                 stateful: true,
                 session_id: None,
+                server_info_json: None,
             },
         }
     }
@@ -785,5 +844,25 @@ mod tests {
         assert!(cache_hints_from_result(r#"{"result":{"ttlMs":0}}"#).is_none());
         assert!(cache_hints_from_result(r#"{"result":{"ttlMs":-5}}"#).is_none());
         assert!(cache_hints_from_result(r#"{"result":{"tools":[]}}"#).is_none());
+    }
+
+    #[test]
+    fn server_info_comes_from_initialize_or_the_2026_meta_key() {
+        let initialize = r#"{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18","serverInfo":{"name":"github","title":"GitHub","icons":[{"src":"https://api.githubcopilot.com/icon.png"}]}}}"#;
+        let info = server_info_from_message(initialize).expect("serverInfo");
+        assert_eq!(info["title"], "GitHub");
+
+        let listed = r#"{"jsonrpc":"2.0","id":1,"result":{"tools":[],"_meta":{"io.modelcontextprotocol/serverInfo":{"title":"Linear"}}}}"#;
+        assert_eq!(
+            server_info_from_message(listed).expect("meta")["title"],
+            "Linear"
+        );
+
+        let combined = combine_server_info(Some(info.to_string().as_str()), listed).expect("both");
+        assert_eq!(combined["title"], "Linear");
+        assert_eq!(
+            combined["icons"][0]["src"],
+            "https://api.githubcopilot.com/icon.png"
+        );
     }
 }

@@ -18,6 +18,8 @@ pub struct McpServerRow {
     pub api_key_set: bool,
     pub headers: sqlx::types::JsonValue,
     pub settings: sqlx::types::JsonValue,
+    /// Display metadata discovered from the remote server. `{}` means not yet fetched.
+    pub presentation: sqlx::types::JsonValue,
     /// Cached tool definitions from MCP server
     pub cached_tools: sqlx::types::JsonValue,
     /// When tools were last fetched from MCP server

@@ -20,6 +20,24 @@ export type McpServerStatus = "active" | "disabled" | "archived" | "deleted";
  */
 export type McpProtocolMode = "auto" | "2025-03-26" | "2025-06-18" | "2026-07-28";
 
+/** Icon published by a remote MCP server. */
+export interface McpServerIcon {
+  src: string;
+  mime_type?: string | null;
+  sizes?: string[];
+  theme?: "light" | "dark" | null;
+}
+
+/** Title, icon, and links the remote server published. */
+export interface McpServerPresentation {
+  title?: string | null;
+  description?: string | null;
+  website_url?: string | null;
+  documentation_url?: string | null;
+  version?: string | null;
+  icons?: McpServerIcon[];
+}
+
 /** Outcome of an OAuth preset's connection check (discovery + client registration). */
 export type McpConnectionCheckStatus =
   | "ready"
@@ -58,6 +76,8 @@ export interface McpServer {
   connection_check?: McpConnectionCheck;
   api_key_set: boolean;
   headers: Record<string, string>;
+  /** Present when the remote server published a title, icon, or link. */
+  presentation?: McpServerPresentation | null;
   created_at: string;
   updated_at: string;
   archived_at: string | null;

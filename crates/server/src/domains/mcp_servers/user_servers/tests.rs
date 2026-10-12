@@ -52,6 +52,7 @@ fn servers<'a>(
         encryption: Some(encryption),
         org_id: DEFAULT_ORG_ID,
         owner,
+        egress: None,
     }
 }
 

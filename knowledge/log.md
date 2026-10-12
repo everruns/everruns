@@ -47,6 +47,13 @@
 
 ## 2026-10-10
 
+* **MCP servers show the title and icon they publish.** The catalog, connections
+  list, and a person's own servers keep the operator slug and description, and
+  fill a separate presentation from the server card, protected-resource
+  `resource_name`, and a later handshake `serverInfo`. Icons stay on the
+  server's origin. See [MCP Servers](integrations/mcp-servers.md#ui-integration)
+  and TM-TOOL-062.
+
 * **Web search design proposed.** One `web_search` capability and tool; search
   providers (free, model provider native, Brave, Parallel) chosen per agent with
   organization defaults and an Automatic order that follows the turn's model.
