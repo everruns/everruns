@@ -291,6 +291,11 @@ path = "tests/parallel_live_api_test.rs"
 required-features = ["parallel"]
 
 [[test]]
+name = "web_search_parallel_live"
+path = "tests/web_search_parallel_live.rs"
+required-features = ["web-search", "parallel-integration"]
+
+[[test]]
 name = "parallel_plugin_registration"
 path = "tests/parallel_plugin_registration.rs"
 required-features = ["parallel"]

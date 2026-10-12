@@ -723,7 +723,7 @@ fn extract_text_content(message: &RuntimeMessage) -> String {
         .filter_map(|part| match part {
             ContentPart::Text(text) => Some(text.text.clone()),
             ContentPart::ToolResult(result) => result.result.as_ref().map(ToString::to_string),
-            _ => None,
+            other => crate::attachment_labels::runtime_attachment_label(other),
         })
         .collect::<Vec<_>>()
         .join(" ")

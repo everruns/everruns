@@ -160,6 +160,21 @@ impl OpenResponsesRequestExtension for OpenRouterRequestExtension {
     }
 }
 
+/// Only the native web search swap of [`OpenRouterRequestExtension`], for a
+/// driver that sends its own Responses body to OpenRouter and wants the model
+/// vendor's search without the rest (routing, attribution, cache control).
+#[derive(Debug, Default, Clone)]
+pub struct OpenRouterNativeWebSearchExtension;
+
+impl OpenResponsesRequestExtension for OpenRouterNativeWebSearchExtension {
+    fn decorate(&self, body: &mut Value, config: &LlmCallConfig) -> Result<()> {
+        if let Some(obj) = body.as_object_mut() {
+            apply_native_web_search(obj, config, None);
+        }
+        Ok(())
+    }
+}
+
 /// Native web search (`everruns/web_search`): swap the `web_search` function
 /// tool for `openrouter:web_search` on its native engine when OpenRouter runs
 /// the model vendor's own search for this model and can apply the agent's
@@ -739,5 +754,52 @@ mod tests {
             assert_eq!(info.tokens_remaining, None);
             assert_eq!(info.tokens_reset, None);
         }
+    }
+
+    #[test]
+    fn native_search_extension_swaps_only_the_search_tool() {
+        use everruns_contracts::native_web_search::NativeWebSearch;
+        let search_tool = everruns_contracts::ToolDefinition::function(
+            "web_search",
+            "Search the web",
+            json!({"type": "object"}),
+        );
+        let mut config = base_config("anthropic/claude-opus-5-5");
+        config.tools = vec![search_tool.clone()];
+        config.metadata.insert("session_id".into(), "s_1".into());
+        let (key, value) = NativeWebSearch {
+            provider: "auto".into(),
+            ..Default::default()
+        }
+        .to_driver_option();
+        config.driver_options.insert(key, value);
+        let mut body = json!({
+            "model": "anthropic/claude-opus-5-5",
+            "tools": [
+                {"type": "function", "name": "web_search", "parameters": {}},
+                {"type": "function", "name": "lookup", "parameters": {}}
+            ]
+        });
+        OpenRouterNativeWebSearchExtension
+            .decorate(&mut body, &config)
+            .unwrap();
+        assert_eq!(body["tools"][0]["name"], "lookup");
+        assert_eq!(body["tools"][1]["type"], "openrouter:web_search");
+        assert_eq!(body["tools"][1]["parameters"]["engine"], "native");
+        // Nothing else of the full extension: no session id, no routing.
+        assert!(body.get("session_id").is_none());
+        assert_eq!(body.as_object().unwrap().len(), 2);
+
+        // A model OpenRouter has no vendor search for keeps the function tool.
+        let mut config = base_config("mistralai/mistral-large-4");
+        config.tools = vec![search_tool];
+        config
+            .driver_options
+            .extend([NativeWebSearch::default().to_driver_option()]);
+        let mut body = json!({"tools": [{"type": "function", "name": "web_search"}]});
+        OpenRouterNativeWebSearchExtension
+            .decorate(&mut body, &config)
+            .unwrap();
+        assert_eq!(body["tools"][0]["type"], "function");
     }
 }

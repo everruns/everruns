@@ -14,6 +14,15 @@
   [Execution Backends](framework/execution-backends.md),
   [Durable Execution Engine](operations/durable-execution-engine.md) and
   [Agent Reliability Tests](runtime-resources/agent-reliability-tests.md).
+* **Native web search for external drivers.** `NativeWebSearchDriver`
+  (inventory) lets a driver outside the built-in provider types declare which
+  models search natively, so the search provider catalog and plan preview list
+  it; `OpenRouterNativeWebSearchExtension` exposes only OpenRouter's native
+  search swap. See [Web Search](integrations/web-search.md).
+* **Web search step 7: Parallel Search API driver.** Parallel is a search
+  account provider and a `parallel` provider setting (session, user or
+  application key, else the organization's first Parallel account); the
+  driver uses `fast` mode. See [Web Search](integrations/web-search.md).
 * **PAT scopes step 5: CLI.** `everruns whoami` asks `GET /v1/auth/me` and
   shows a token's access (`full` or `read-only`) from `token_scope`;
   `login --token` accepts a read token. Every failed CLI request keeps its
@@ -21,6 +30,14 @@
   insufficient_scope` into one line saying the token is read-only.
   `login --read-only` is not built. Only optional step 6 remains. See
   [Personal Access Token Scopes](security/pat-scopes.md).
+* **Session attachments.** Stored history keeps attachments, but compaction
+  drops them from the request with no trace, most surfaces (Slack files, AG-UI
+  inline parts, A2A file parts, the execution API) never deliver them, and
+  file resolution fails all PDFs past 8 files or 11 MiB. Accepted design: one
+  intake path storing bytes in session file storage under `/attachments`, a
+  label with that path on every attachment, a deterministic attachment list
+  after compaction, one-at-a-time resolution. See
+  [Session Attachments](runtime-resources/session-attachments.md).
 * **PAT scopes step 4: read-only tokens can be created.** Creation accepts
   `[]`, `["*"]` or `["read"]` and nothing else; the token page has a Full
   access / Read-only picker and shows each token's scope; `GET /v1/auth/me`

@@ -25,7 +25,7 @@ pub const WEB_SEARCH_CONNECTOR_CAPABILITY: &str = "web_search";
 /// Connection providers whose organization accounts have a search driver.
 /// Their connectors declare [`WEB_SEARCH_CONNECTOR_CAPABILITY`]; a test in
 /// `everruns-integrations` keeps the two in step.
-pub const WEB_SEARCH_ACCOUNT_PROVIDERS: &[&str] = &["brave_search"];
+pub const WEB_SEARCH_ACCOUNT_PROVIDERS: &[&str] = &["brave_search", "parallel"];
 
 /// Model provider types whose drivers run the model's own search (native
 /// search, billed by the model provider). Bedrock is not here: Anthropic does
@@ -47,9 +47,34 @@ pub const NATIVE_WEB_SEARCH_PRICE_NOTE: &str =
 pub const AUTOMATIC_NATIVE: &str = "native";
 pub const AUTOMATIC_FREE: &str = "free";
 
+/// A driver registered outside this crate (an external driver id) whose
+/// provider runs native search, declared with `inventory::submit!` so the
+/// search provider catalog and plan preview see it like the built-in types.
+///
+/// ```ignore
+/// inventory::submit! {
+///     NativeWebSearchDriver { provider_type: "acme", supports_model: |model| model.starts_with("acme-") }
+/// }
+/// ```
+pub struct NativeWebSearchDriver {
+    /// Provider type as stored on the provider row (the driver id).
+    pub provider_type: &'static str,
+    /// Whether this model searches natively through the driver.
+    pub supports_model: fn(&str) -> bool,
+}
+
+inventory::collect!(NativeWebSearchDriver);
+
+fn registered_native_driver(provider_type: &str) -> Option<&'static NativeWebSearchDriver> {
+    inventory::iter::<NativeWebSearchDriver>
+        .into_iter()
+        .find(|driver| driver.provider_type == provider_type)
+}
+
 /// Whether models of this provider type offer native search.
 pub fn native_web_search_supported(provider_type: &str) -> bool {
     NATIVE_WEB_SEARCH_PROVIDER_TYPES.contains(&provider_type)
+        || registered_native_driver(provider_type).is_some()
 }
 
 /// Whether this model searches natively through its provider's driver: the
@@ -62,7 +87,9 @@ pub fn native_web_search_supported_model(provider_type: &str, model: &str) -> bo
         "openrouter" => crate::native_web_search::openrouter_native_vendor(model).is_some(),
         "anthropic" => crate::native_web_search::anthropic_has_native_web_search(model),
         "gemini" => crate::native_web_search::gemini_has_native_web_search(model),
-        _ => false,
+        other => {
+            registered_native_driver(other).is_some_and(|driver| (driver.supports_model)(model))
+        }
     }
 }
 
@@ -104,6 +131,7 @@ pub fn native_search_first(
                     })
         }
         SearchProviderSetting::Brave
+        | SearchProviderSetting::Parallel
         | SearchProviderSetting::Account
         | SearchProviderSetting::Free => false,
     }
@@ -156,6 +184,9 @@ pub enum SearchProviderSetting {
     /// Brave Search with a key from the session, the user, the application, or
     /// else the organization's first Brave account.
     Brave,
+    /// Parallel with a key from the session, the user, the application, or
+    /// else the organization's first Parallel account.
+    Parallel,
     /// One named organization search account (`account_id`).
     Account,
     /// Keyless best-effort search.
@@ -169,6 +200,7 @@ impl SearchProviderSetting {
             Self::Auto => "auto",
             Self::Native => "native",
             Self::Brave => "brave",
+            Self::Parallel => "parallel",
             Self::Account => "account",
             Self::Free => "free",
         }
@@ -257,7 +289,7 @@ impl WebSearchDefaults {
             SearchProviderSetting::OrgDefault => {
                 return Err(
                     "web_search_defaults.provider cannot be org_default; choose auto, native, \
-                     brave, account or free"
+                     brave, parallel, account or free"
                         .into(),
                 );
             }
@@ -554,6 +586,15 @@ mod tests {
         assert!(native_web_search_supported("gemini"));
         assert!(!native_web_search_supported("bedrock"));
         assert!(!native_web_search_supported("mistral"));
+        assert!(native_web_search_supported("test_native_driver"));
+        assert!(native_web_search_supported_model(
+            "test_native_driver",
+            "searcher-1"
+        ));
+        assert!(!native_web_search_supported_model(
+            "test_native_driver",
+            "plain-1"
+        ));
         assert!(native_web_search_supported_model("openai", "gpt-6.1-sol"));
         assert!(!native_web_search_supported_model(
             "openai",
@@ -634,6 +675,7 @@ mod tests {
             (Native, None, true),
             (Free, None, false),
             (Brave, None, false),
+            (Parallel, None, false),
             (OrgDefault, Some(&fresh), true),
             (Auto, Some(&fresh), true),
             (Auto, Some(&off), false),
@@ -703,5 +745,12 @@ mod tests {
         let mut options = HashMap::new();
         resolve_native_web_search(&mut options, Some(&blocking));
         assert!(options.is_empty());
+    }
+
+    inventory::submit! {
+        NativeWebSearchDriver {
+            provider_type: "test_native_driver",
+            supports_model: |model| model.starts_with("searcher-"),
+        }
     }
 }

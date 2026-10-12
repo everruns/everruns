@@ -1,5 +1,6 @@
 // PostgreSQL repository: Events (source of truth for messages)
 
+mod input_lookups;
 pub(super) mod rows;
 use rows::*;
 
@@ -7,7 +8,7 @@ use super::super::repository::MESSAGE_SAFETY_LIMIT;
 use super::Database;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use everruns_contracts::typed_id::{EventId, MessageId, SessionId};
+use everruns_contracts::typed_id::{EventId, SessionId};
 use everruns_core::host::EventLogError;
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_server_macros::sql;
@@ -633,88 +634,6 @@ impl Database {
         .await?;
         tx.commit().await?;
         Ok(true)
-    }
-
-    /// Find the input event a client sent with `client_message_id`, so a retried
-    /// send returns the stored message instead of starting a second turn.
-    ///
-    /// Decision: no dedicated table. The key rides in reserved message metadata
-    /// (the Slack `slack_ts` dedup uses the same `data @>` shape), and the scan
-    /// walks the session's input-message index newest first, bounded to the
-    /// recent messages a retry can plausibly target.
-    pub async fn find_input_message_by_client_id(
-        &self,
-        session_id: SessionId,
-        client_message_id: &str,
-    ) -> Result<Option<EventRow>> {
-        let key = everruns_core::message::CLIENT_MESSAGE_ID_METADATA_KEY;
-        let pattern = serde_json::json!({
-            "message": { "metadata": { (key): client_message_id } }
-        });
-        Ok(sqlx::query_as::<_, EventRow>(sql!(
-            r#"
-            SELECT * FROM (
-                SELECT {EventRow}
-                FROM events
-                WHERE session_id = $1
-                  AND event_type = 'input.message'
-                ORDER BY sequence DESC
-                LIMIT 200
-            ) recent
-            WHERE data @> $2
-            LIMIT 1
-            "#
-        ))
-        .bind(session_id.uuid())
-        .bind(&pattern)
-        .fetch_optional(&self.pool)
-        .await?)
-    }
-
-    /// Find the input event that contains an exact, session-scoped message ID.
-    pub async fn find_input_message_event(
-        &self,
-        session_id: SessionId,
-        message_id: MessageId,
-    ) -> Result<Option<EventRow>> {
-        Ok(sqlx::query_as::<_, EventRow>(sql!(
-            r#"
-            SELECT {EventRow}
-            FROM events
-            WHERE session_id = $1
-              AND event_type = 'input.message'
-              AND data->'message'->>'id' = $2
-            LIMIT 1
-            "#
-        ))
-        .bind(session_id.uuid())
-        .bind(message_id.to_string())
-        .fetch_optional(&self.pool)
-        .await?)
-    }
-
-    /// Newest input message at or after `sequence`: the last message that
-    /// steered the turn which started at `sequence`, or that input itself.
-    pub async fn latest_input_message_event_since(
-        &self,
-        session_id: SessionId,
-        sequence: i32,
-    ) -> Result<Option<EventRow>> {
-        Ok(sqlx::query_as::<_, EventRow>(sql!(
-            r#"
-            SELECT {EventRow}
-            FROM events
-            WHERE session_id = $1
-              AND event_type = 'input.message'
-              AND sequence >= $2
-            ORDER BY sequence DESC
-            LIMIT 1
-            "#
-        ))
-        .bind(session_id.uuid())
-        .bind(sequence)
-        .fetch_optional(&self.pool)
-        .await?)
     }
 
     /// Last event sequence a fork "up to this message" keeps: the end of the

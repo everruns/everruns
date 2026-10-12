@@ -214,6 +214,7 @@ pub mod guardrail_gallery;
 pub use everruns_contracts::runtime::llm_error_hook;
 // Adapters from core domain types to provider driver types. Lives on the core
 // side to keep the crate dependency one-directional (core -> everruns-contracts).
+pub(crate) mod attachment_labels;
 pub mod llm_conversions;
 pub use everruns_contracts::runtime::message;
 pub use everruns_contracts::runtime::message_filter;
