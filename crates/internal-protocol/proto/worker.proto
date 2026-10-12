@@ -61,19 +61,8 @@ service WorkerService {
 
     // === Durable execution operations ===
     // These operations allow workers to interact with the durable task queue
-    // without direct database access
-
-    // Create a new durable workflow instance
-    rpc CreateDurableWorkflow(CreateDurableWorkflowRequest) returns (CreateDurableWorkflowResponse);
-
-    // Get workflow status
-    rpc GetDurableWorkflowStatus(GetDurableWorkflowStatusRequest) returns (GetDurableWorkflowStatusResponse);
-
-    // Update workflow status
-    rpc UpdateDurableWorkflowStatus(UpdateDurableWorkflowStatusRequest) returns (UpdateDurableWorkflowStatusResponse);
-
-    // Enqueue a task to the durable task queue
-    rpc EnqueueDurableTask(EnqueueDurableTaskRequest) returns (EnqueueDurableTaskResponse);
+    // without direct database access. The queue carries the activities that
+    // are not turns; turns run on session actor leases (below).
 
     // Claim tasks from the queue (for worker polling)
     rpc ClaimDurableTasks(ClaimDurableTasksRequest) returns (ClaimDurableTasksResponse);
@@ -87,15 +76,6 @@ service WorkerService {
     // Send heartbeat for a claimed task
     rpc HeartbeatDurableTask(HeartbeatDurableTaskRequest) returns (HeartbeatDurableTaskResponse);
 
-    // Count active (non-terminal) workflows
-    rpc CountActiveDurableWorkflows(CountActiveDurableWorkflowsRequest) returns (CountActiveDurableWorkflowsResponse);
-
-    // Send a signal to a running workflow (e.g. user_message steering)
-    rpc SendDurableWorkflowSignal(SendDurableWorkflowSignalRequest) returns (SendDurableWorkflowSignalResponse);
-
-    // Get and consume pending signals for a workflow
-    rpc GetAndConsumeDurableWorkflowSignals(GetAndConsumeDurableWorkflowSignalsRequest) returns (GetAndConsumeDurableWorkflowSignalsResponse);
-
     // Register a durable worker
     rpc RegisterDurableWorker(RegisterDurableWorkerRequest) returns (RegisterDurableWorkerResponse);
 
@@ -103,7 +83,7 @@ service WorkerService {
     // whether the worker is draining
     rpc HeartbeatDurableWorker(HeartbeatDurableWorkerRequest) returns (HeartbeatDurableWorkerResponse);
 
-    // A shutting-down worker drains itself: no new tasks, no chained steps
+    // A shutting-down worker drains itself: no new tasks
     rpc DrainDurableWorker(DrainDurableWorkerRequest) returns (DrainDurableWorkerResponse);
 
     // Deregister a durable worker
@@ -800,31 +780,6 @@ enum DurableWorkflowStatus {
     DURABLE_WORKFLOW_STATUS_CONTINUED_AS_NEW = 6;
 }
 
-// Task status enum
-enum DurableTaskStatus {
-    DURABLE_TASK_STATUS_UNSPECIFIED = 0;
-    DURABLE_TASK_STATUS_PENDING = 1;
-    DURABLE_TASK_STATUS_CLAIMED = 2;
-    DURABLE_TASK_STATUS_COMPLETED = 3;
-    DURABLE_TASK_STATUS_FAILED = 4;
-}
-
-// Activity options for task scheduling
-message DurableActivityOptions {
-    optional int32 max_retries = 1;
-    optional int64 retry_delay_ms = 2;
-    optional int64 timeout_ms = 3;
-}
-
-// Task definition for enqueueing
-message DurableTaskDefinition {
-    Uuid workflow_id = 1;
-    string activity_id = 2;
-    string activity_type = 3;
-    google.protobuf.Struct input = 4;
-    optional DurableActivityOptions options = 5;
-}
-
 // Claimed task returned from claim operation
 message DurableClaimedTask {
     Uuid id = 1;
@@ -838,62 +793,6 @@ message DurableClaimedTask {
     // before running the task (a cancelled workflow's task is skipped), and
     // reading it here saves that check a round trip.
     optional DurableWorkflowStatus workflow_status = 8;
-}
-
-// === Create workflow ===
-
-message CreateDurableWorkflowRequest {
-    string workflow_type = 1;
-    google.protobuf.Struct input = 2;
-    optional Uuid workflow_id = 3;  // Optional, will generate if not provided
-}
-
-message CreateDurableWorkflowResponse {
-    Uuid workflow_id = 1;
-}
-
-// === Get workflow status ===
-
-message GetDurableWorkflowStatusRequest {
-    Uuid workflow_id = 1;
-}
-
-message GetDurableWorkflowStatusResponse {
-    DurableWorkflowStatus status = 1;
-    optional google.protobuf.Struct output = 2;
-    optional string error = 3;
-}
-
-// === Update workflow status ===
-
-message UpdateDurableWorkflowStatusRequest {
-    Uuid workflow_id = 1;
-    DurableWorkflowStatus status = 2;
-    optional google.protobuf.Struct output = 3;
-    optional string error = 4;
-}
-
-message UpdateDurableWorkflowStatusResponse {
-    bool updated = 1;
-}
-
-// === Enqueue task ===
-
-message EnqueueDurableTaskRequest {
-    DurableTaskDefinition task = 1;
-    // Enqueue the task already claimed by this worker, so the worker that
-    // finished a turn's step runs the next one without a wakeup and a claim.
-    // The control plane falls back to the queue when the worker is not
-    // registered or is draining; `claimed` is then unset.
-    optional string claim_for_worker_id = 2;
-}
-
-message EnqueueDurableTaskResponse {
-    Uuid task_id = 1;
-    // Set when the task was enqueued claimed by `claim_for_worker_id`. A
-    // control plane that predates the field leaves it unset, and the task
-    // waits in the queue as before.
-    optional DurableClaimedTask claimed = 2;
 }
 
 // === Claim tasks ===
@@ -914,56 +813,15 @@ message CompleteDurableTaskRequest {
     Uuid task_id = 1;
     string worker_id = 2;  // Required: prevents duplicate completion when task is reclaimed
     google.protobuf.Struct output = 3;
-    // When set, consume the workflow's pending signals of this type once the
-    // task completes. Sent by workers that predate `hand_off`.
-    optional string drain_signal_type = 4;
-    // Hand the task's workflow to its next step in the same atomic write as
-    // the completion: no process exit or lost reply can leave the workflow
-    // running with no task.
-    optional DurableHandOff hand_off = 5;
+    // 4 and 5 carried the per-step turn hand-off, retired with that path.
+    reserved 4, 5;
 }
 
 message CompleteDurableTaskResponse {
     // Whether the task was successfully completed
     // False if task was reclaimed by another worker or already completed
     bool success = 1;
-    // How many signals were consumed for `drain_signal_type`. Absent when no
-    // drain was asked for or it failed; the worker then drains on its own.
-    optional uint32 drained_signal_count = 2;
-    // True when `hand_off` committed with the completion. A control plane
-    // that predates hand-offs only completes the task and leaves it false;
-    // the worker then makes the hand-off's writes itself.
-    bool handed_off = 3;
-    // The next step, when the hand-off enqueued it claimed by the worker.
-    optional DurableClaimedTask claimed = 4;
-}
-
-// What follows a completed turn step.
-message DurableHandOff {
-    // Consume the oldest `drain_limit` pending signals of this type: the ones
-    // the worker counted when it planned the next step.
-    optional string drain_signal_type = 1;
-    uint32 drain_limit = 2;
-    oneof next {
-        DurableHandOffStep step = 3;
-        DurableHandOffComplete complete = 4;
-    }
-}
-
-// Enqueue the next step, claimed by `claim_for_worker_id` when it may claim.
-message DurableHandOffStep {
-    string activity_id = 1;
-    string activity_type = 2;
-    google.protobuf.Struct input = 3;
-    optional string claim_for_worker_id = 4;
-}
-
-// Complete the workflow: record `event_output` as its completion event and
-// store `stored_output` (the turn checkpoint) as its result.
-message DurableHandOffComplete {
-    google.protobuf.Struct event_output = 1;
-    optional google.protobuf.Struct stored_output = 2;
-    optional string error = 3;
+    reserved 2, 3, 4;
 }
 
 // === Fail task ===
@@ -978,8 +836,7 @@ message FailDurableTaskRequest {
 message FailDurableTaskResponse {
     bool failed = 1;
     bool will_retry = 2;
-    // True only for the worker elected to run terminal turn/session effects.
-    bool terminal_failure_owner = 3;
+    reserved 3;
 }
 
 // === Heartbeat task ===
@@ -987,47 +844,13 @@ message FailDurableTaskResponse {
 message HeartbeatDurableTaskRequest {
     Uuid task_id = 1;
     string worker_id = 2;
-    optional google.protobuf.Struct details = 3;  // Optional progress/status details
+    // 3 carried a reason step's stream progress, retired with that path.
+    reserved 3;
 }
 
 message HeartbeatDurableTaskResponse {
     bool acknowledged = 1;
     bool should_cancel = 2;
-}
-
-// === Count active workflows ===
-
-message CountActiveDurableWorkflowsRequest {}
-
-message CountActiveDurableWorkflowsResponse {
-    int64 count = 1;
-}
-
-// === Workflow signals ===
-
-message DurableWorkflowSignal {
-    string signal_type = 1;
-    google.protobuf.Value payload = 2;
-    string sent_at = 3;  // ISO 8601 timestamp
-}
-
-message SendDurableWorkflowSignalRequest {
-    string workflow_id = 1;
-    DurableWorkflowSignal signal = 2;
-}
-
-message SendDurableWorkflowSignalResponse {}
-
-message GetAndConsumeDurableWorkflowSignalsRequest {
-    string workflow_id = 1;
-    string signal_type = 2;
-    // Return the pending signals without consuming them. A control plane
-    // that predates the field consumes them.
-    optional bool peek = 3;
-}
-
-message GetAndConsumeDurableWorkflowSignalsResponse {
-    repeated DurableWorkflowSignal signals = 1;
 }
 
 // === Register worker ===

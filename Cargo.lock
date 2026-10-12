@@ -2714,26 +2714,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-durable-engine"
-version = "0.47.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "everruns-contracts",
- "everruns-core",
- "everruns-durable",
- "everruns-llmsim",
- "serde",
- "serde_json",
- "sqlx",
- "tokio",
- "tokio-util",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "everruns-example-demo"
 version = "0.1.0"
 dependencies = [
@@ -3267,7 +3247,7 @@ dependencies = [
  "everruns-contracts",
  "everruns-core",
  "everruns-drivers",
- "everruns-durable-engine",
+ "everruns-durable",
  "everruns-integrations",
  "everruns-integrations-experimental",
  "everruns-internal-protocol",

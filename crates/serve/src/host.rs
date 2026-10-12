@@ -723,14 +723,17 @@ impl Host {
     /// Cancel the active turn. `Ok(false)` when no turn was running.
     pub(crate) async fn cancel(&self, id: &str) -> crate::Result<bool> {
         let live = self.live(id).await?;
+        let active = lock(&live.active).clone();
+        // Stop the turn before dropping what it waits on: a dropped approval
+        // reads as a rejection, and the turn could finish on it first.
+        let cancelled = match active {
+            Some(turn) => turn.cancel().await.is_ok(),
+            None => false,
+        };
         // A cancelled turn will never collect its pending approvals or answers.
         lock(&self.approvals).retain(|_, pending| pending.view.session_id != id);
         lock(&self.questions).retain(|_, pending| pending.session_id != id);
-        let active = lock(&live.active).clone();
-        match active {
-            Some(turn) => Ok(turn.cancel().await.is_ok()),
-            None => Ok(false),
-        }
+        Ok(cancelled)
     }
 
     // --- Approvals and questions ---------------------------------------------

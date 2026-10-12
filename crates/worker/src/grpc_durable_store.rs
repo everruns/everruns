@@ -7,12 +7,10 @@ use std::time::Duration;
 
 use anyhow::Result;
 use everruns_internal_protocol::proto::{
-    self, ClaimDurableTasksRequest, CompleteDurableTaskRequest, CountActiveDurableWorkflowsRequest,
-    CreateDurableWorkflowRequest, DeregisterDurableWorkerRequest, DrainDurableWorkerRequest,
-    DurableActivityOptions, DurableTaskDefinition, EnqueueDurableTaskRequest,
-    FailDurableTaskRequest, GetDurableWorkflowStatusRequest, HeartbeatDurableTaskRequest,
+    self, ClaimDurableTasksRequest, CompleteDurableTaskRequest, DeregisterDurableWorkerRequest,
+    DrainDurableWorkerRequest, FailDurableTaskRequest, HeartbeatDurableTaskRequest,
     HeartbeatDurableWorkerRequest, RegisterDurableWorkerRequest, SubscribeTaskNotificationsRequest,
-    TaskNotification, TaskNotificationType, UpdateDurableWorkflowStatusRequest,
+    TaskNotification, TaskNotificationType,
 };
 use everruns_internal_protocol::{WorkerServiceClient, json_to_proto_struct, uuid_to_proto_uuid};
 use tonic::service::interceptor::InterceptedService;
@@ -187,104 +185,6 @@ impl GrpcDurableStore {
         }
     }
 
-    /// Create a new durable workflow
-    pub async fn create_workflow(
-        &mut self,
-        workflow_id: Uuid,
-        workflow_type: &str,
-        input: serde_json::Value,
-    ) -> Result<Uuid> {
-        let request = CreateDurableWorkflowRequest {
-            workflow_type: workflow_type.to_string(),
-            input: Some(json_to_proto_struct(&input)),
-            workflow_id: Some(uuid_to_proto_uuid(workflow_id)),
-        };
-
-        let response = self.client.create_durable_workflow(request).await?;
-        let workflow_id = response
-            .into_inner()
-            .workflow_id
-            .ok_or_else(|| anyhow::anyhow!("Missing workflow_id in response"))?;
-
-        parse_proto_uuid(&workflow_id)
-    }
-
-    /// Get workflow status
-    pub async fn get_workflow_status(
-        &mut self,
-        workflow_id: Uuid,
-    ) -> Result<(WorkflowStatus, Option<serde_json::Value>, Option<String>)> {
-        let request = GetDurableWorkflowStatusRequest {
-            workflow_id: Some(uuid_to_proto_uuid(workflow_id)),
-        };
-
-        let response = self.client.get_durable_workflow_status(request).await?;
-        let inner = response.into_inner();
-
-        let status = proto_status_to_workflow(inner.status());
-        let output = inner
-            .output
-            .map(|s| everruns_internal_protocol::proto_struct_to_json(&s));
-        let error = inner.error;
-
-        Ok((status, output, error))
-    }
-
-    /// Update workflow status
-    pub async fn update_workflow_status(
-        &mut self,
-        workflow_id: Uuid,
-        status: WorkflowStatus,
-        output: Option<serde_json::Value>,
-        error: Option<String>,
-    ) -> Result<()> {
-        let request = UpdateDurableWorkflowStatusRequest {
-            workflow_id: Some(uuid_to_proto_uuid(workflow_id)),
-            status: workflow_status_to_proto(status).into(),
-            output: output.map(|o| json_to_proto_struct(&o)),
-            error,
-        };
-
-        self.client.update_durable_workflow_status(request).await?;
-        Ok(())
-    }
-
-    /// Enqueue a task, claimed for `claim_for` when set. Returns the task's id
-    /// and, when the control plane enqueued it claimed, the claimed task.
-    pub async fn enqueue_task(
-        &mut self,
-        workflow_id: Uuid,
-        activity_id: String,
-        activity_type: String,
-        input: serde_json::Value,
-        claim_for: Option<&str>,
-    ) -> Result<(Uuid, Option<crate::durable::ClaimedTask>)> {
-        let task = DurableTaskDefinition {
-            workflow_id: Some(uuid_to_proto_uuid(workflow_id)),
-            activity_id,
-            activity_type,
-            input: Some(json_to_proto_struct(&input)),
-            options: Some(DurableActivityOptions::default()),
-        };
-
-        let request = EnqueueDurableTaskRequest {
-            task: Some(task),
-            claim_for_worker_id: claim_for.map(str::to_string),
-        };
-
-        let response = self
-            .client
-            .enqueue_durable_task(request)
-            .await?
-            .into_inner();
-        let task_id = response
-            .task_id
-            .ok_or_else(|| anyhow::anyhow!("Missing task_id in response"))?;
-        let claimed = response.claimed.map(claimed_task_from_proto).transpose()?;
-
-        Ok((parse_proto_uuid(&task_id)?, claimed))
-    }
-
     /// Claim tasks for execution
     pub async fn claim_tasks(
         &mut self,
@@ -307,45 +207,29 @@ impl GrpcDurableStore {
             .collect()
     }
 
-    /// Complete a task, handing its workflow off to `hand_off` in the same
-    /// write when set.
-    ///
-    /// The worker_id must match the worker that claimed the task. Returns an
-    /// error if the task was reclaimed by another worker; otherwise whether
-    /// the control plane committed the hand-off (one that predates hand-offs
-    /// does not) and the next step it enqueued claimed by this worker.
+    /// Complete a task. The worker_id must match the worker that claimed
+    /// it; an error means the task was reclaimed or already completed.
     pub async fn complete_task(
         &mut self,
         task_id: Uuid,
         worker_id: &str,
         output: serde_json::Value,
-        hand_off: Option<proto::DurableHandOff>,
-    ) -> Result<(bool, Option<crate::durable::ClaimedTask>)> {
+    ) -> Result<()> {
         let request = CompleteDurableTaskRequest {
             task_id: Some(uuid_to_proto_uuid(task_id)),
             worker_id: worker_id.to_string(),
             output: Some(json_to_proto_struct(&output)),
-            drain_signal_type: None,
-            hand_off,
         };
 
         let response = self.client.complete_durable_task(request).await?;
-        let inner = response.into_inner();
-
-        if !inner.success {
+        if !response.into_inner().success {
             anyhow::bail!("Task not owned by worker (was reclaimed or already completed)")
         }
-        let claimed = inner.claimed.map(claimed_task_from_proto).transpose()?;
-        Ok((inner.handed_off, claimed))
+        Ok(())
     }
 
-    /// Fail a task
-    pub async fn fail_task(
-        &mut self,
-        task_id: Uuid,
-        error: &str,
-        retryable: bool,
-    ) -> Result<(bool, bool)> {
+    /// Fail a task. Returns whether it will be retried.
+    pub async fn fail_task(&mut self, task_id: Uuid, error: &str, retryable: bool) -> Result<bool> {
         let request = FailDurableTaskRequest {
             task_id: Some(uuid_to_proto_uuid(task_id)),
             error: error.to_string(),
@@ -354,7 +238,7 @@ impl GrpcDurableStore {
 
         let response = self.client.fail_durable_task(request).await?;
         let response = response.into_inner();
-        Ok((response.will_retry, response.terminal_failure_owner))
+        Ok(response.will_retry)
     }
 
     /// Send heartbeat for a task
@@ -362,12 +246,10 @@ impl GrpcDurableStore {
         &mut self,
         task_id: Uuid,
         worker_id: &str,
-        details: Option<serde_json::Value>,
     ) -> Result<HeartbeatResponse> {
         let request = HeartbeatDurableTaskRequest {
             task_id: Some(uuid_to_proto_uuid(task_id)),
             worker_id: worker_id.to_string(),
-            details: details.map(|d| json_to_proto_struct(&d)),
         };
 
         let response = self.client.heartbeat_durable_task(request).await?;
@@ -377,152 +259,6 @@ impl GrpcDurableStore {
             acknowledged: inner.acknowledged,
             should_cancel: inner.should_cancel,
         })
-    }
-
-    /// Count active (non-terminal) workflows
-    pub async fn count_active_workflows(&mut self) -> Result<usize> {
-        let request = CountActiveDurableWorkflowsRequest {};
-        let response = self.client.count_active_durable_workflows(request).await?;
-        Ok(response.into_inner().count as usize)
-    }
-
-    /// Send a signal to a running workflow
-    pub async fn send_signal(
-        &mut self,
-        workflow_id: Uuid,
-        signal: crate::durable::WorkflowSignal,
-    ) -> Result<()> {
-        use everruns_internal_protocol::proto::{
-            DurableWorkflowSignal, SendDurableWorkflowSignalRequest,
-        };
-        let proto_signal = DurableWorkflowSignal {
-            signal_type: signal.signal_type,
-            payload: Some(everruns_internal_protocol::json_to_proto_value(
-                &signal.payload,
-            )),
-            sent_at: signal.sent_at.to_rfc3339(),
-        };
-        let request = SendDurableWorkflowSignalRequest {
-            workflow_id: workflow_id.to_string(),
-            signal: Some(proto_signal),
-        };
-        self.client.send_durable_workflow_signal(request).await?;
-        Ok(())
-    }
-
-    /// Get and consume pending signals for a workflow
-    pub async fn get_and_consume_signals(
-        &mut self,
-        workflow_id: Uuid,
-    ) -> Result<Vec<crate::durable::WorkflowSignal>> {
-        use everruns_internal_protocol::proto::GetAndConsumeDurableWorkflowSignalsRequest;
-        let request = GetAndConsumeDurableWorkflowSignalsRequest {
-            workflow_id: workflow_id.to_string(),
-            signal_type: String::new(),
-            peek: None,
-        };
-        let response = self
-            .client
-            .get_and_consume_durable_workflow_signals(request)
-            .await?;
-        let signals = response
-            .into_inner()
-            .signals
-            .into_iter()
-            .filter_map(|s| {
-                let payload = s
-                    .payload
-                    .as_ref()
-                    .map(everruns_internal_protocol::proto_value_to_json)
-                    .unwrap_or(serde_json::json!({}));
-                match chrono::DateTime::parse_from_rfc3339(&s.sent_at) {
-                    Ok(dt) => Some(crate::durable::WorkflowSignal {
-                        signal_type: s.signal_type,
-                        payload,
-                        sent_at: dt.with_timezone(&chrono::Utc),
-                    }),
-                    Err(err) => {
-                        tracing::warn!(
-                            sent_at = %s.sent_at,
-                            signal_type = %s.signal_type,
-                            error = %err,
-                            "Skipping workflow signal with malformed sent_at"
-                        );
-                        None
-                    }
-                }
-            })
-            .collect();
-        Ok(signals)
-    }
-
-    /// How many signals of `signal_type` are pending, without consuming them.
-    ///
-    /// A control plane that predates `peek` consumes them; the count is then
-    /// what a destructive drain would have returned, as before.
-    pub async fn count_pending_signals(
-        &mut self,
-        workflow_id: Uuid,
-        signal_type: &str,
-    ) -> Result<usize> {
-        use everruns_internal_protocol::proto::GetAndConsumeDurableWorkflowSignalsRequest;
-        let request = GetAndConsumeDurableWorkflowSignalsRequest {
-            workflow_id: workflow_id.to_string(),
-            signal_type: signal_type.to_string(),
-            peek: Some(true),
-        };
-        let response = self
-            .client
-            .get_and_consume_durable_workflow_signals(request)
-            .await?;
-        Ok(response.into_inner().signals.len())
-    }
-
-    /// Get and consume pending signals of a specific type for a workflow
-    pub async fn get_and_consume_signals_by_type(
-        &mut self,
-        workflow_id: Uuid,
-        signal_type: &str,
-    ) -> Result<Vec<crate::durable::WorkflowSignal>> {
-        use everruns_internal_protocol::proto::GetAndConsumeDurableWorkflowSignalsRequest;
-        let request = GetAndConsumeDurableWorkflowSignalsRequest {
-            workflow_id: workflow_id.to_string(),
-            signal_type: signal_type.to_string(),
-            peek: None,
-        };
-        let response = self
-            .client
-            .get_and_consume_durable_workflow_signals(request)
-            .await?;
-        let signals = response
-            .into_inner()
-            .signals
-            .into_iter()
-            .filter_map(|s| {
-                let payload = s
-                    .payload
-                    .as_ref()
-                    .map(everruns_internal_protocol::proto_value_to_json)
-                    .unwrap_or(serde_json::json!({}));
-                match chrono::DateTime::parse_from_rfc3339(&s.sent_at) {
-                    Ok(dt) => Some(crate::durable::WorkflowSignal {
-                        signal_type: s.signal_type,
-                        payload,
-                        sent_at: dt.with_timezone(&chrono::Utc),
-                    }),
-                    Err(err) => {
-                        tracing::warn!(
-                            sent_at = %s.sent_at,
-                            signal_type = %s.signal_type,
-                            error = %err,
-                            "Skipping workflow signal with malformed sent_at"
-                        );
-                        None
-                    }
-                }
-            })
-            .collect();
-        Ok(signals)
     }
 
     /// Register this worker with the control-plane
@@ -672,27 +408,6 @@ pub struct HeartbeatResponse {
     pub should_cancel: bool,
 }
 
-/// Workflow status (mirrors crate::durable::WorkflowStatus)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WorkflowStatus {
-    Pending,
-    Running,
-    Completed,
-    Failed,
-    Cancelled,
-    ContinuedAsNew,
-}
-
-impl WorkflowStatus {
-    /// Check if this status is terminal
-    pub fn is_terminal(&self) -> bool {
-        matches!(
-            self,
-            Self::Completed | Self::Failed | Self::Cancelled | Self::ContinuedAsNew
-        )
-    }
-}
-
 // ============================================================================
 // Helper functions
 // ============================================================================
@@ -727,22 +442,14 @@ fn claimed_task_from_proto(t: proto::DurableClaimedTask) -> Result<crate::durabl
         options: crate::durable::ActivityOptions::default(),
         attempt: t.attempt as u32,
         max_attempts: t.max_attempts as u32,
-        workflow_status: status.map(crate::grpc_task_store::grpc_status_to_workflow_status),
+        workflow_status: status,
     })
 }
 
-fn workflow_status_to_proto(status: WorkflowStatus) -> proto::DurableWorkflowStatus {
-    match status {
-        WorkflowStatus::Pending => proto::DurableWorkflowStatus::Pending,
-        WorkflowStatus::Running => proto::DurableWorkflowStatus::Running,
-        WorkflowStatus::Completed => proto::DurableWorkflowStatus::Completed,
-        WorkflowStatus::Failed => proto::DurableWorkflowStatus::Failed,
-        WorkflowStatus::Cancelled => proto::DurableWorkflowStatus::Cancelled,
-        WorkflowStatus::ContinuedAsNew => proto::DurableWorkflowStatus::ContinuedAsNew,
-    }
-}
-
-fn proto_status_to_workflow(status: proto::DurableWorkflowStatus) -> WorkflowStatus {
+fn proto_status_to_workflow(
+    status: proto::DurableWorkflowStatus,
+) -> crate::durable::WorkflowStatus {
+    use crate::durable::WorkflowStatus;
     match status {
         proto::DurableWorkflowStatus::Pending => WorkflowStatus::Pending,
         proto::DurableWorkflowStatus::Running => WorkflowStatus::Running,
@@ -768,8 +475,8 @@ mod tests {
         let task = claimed_task_from_proto(proto::DurableClaimedTask {
             id: Some(uuid_to_proto_uuid(Uuid::now_v7())),
             workflow_id: Some(uuid_to_proto_uuid(workflow_id)),
-            activity_id: "reason_1".into(),
-            activity_type: "reason".into(),
+            activity_id: "cleanup_1".into(),
+            activity_type: "leased_resource_cleanup".into(),
             input: None,
             attempt: 1,
             max_attempts: 3,
@@ -836,15 +543,6 @@ mod tests {
                 std::env::remove_var(key);
             }
         }
-    }
-
-    #[test]
-    fn test_workflow_status_is_terminal() {
-        assert!(!WorkflowStatus::Pending.is_terminal());
-        assert!(!WorkflowStatus::Running.is_terminal());
-        assert!(WorkflowStatus::Completed.is_terminal());
-        assert!(WorkflowStatus::Failed.is_terminal());
-        assert!(WorkflowStatus::Cancelled.is_terminal());
     }
 
     #[tokio::test]

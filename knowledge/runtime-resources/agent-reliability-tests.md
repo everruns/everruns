@@ -16,8 +16,8 @@ Status: runs in required CI (the durable PostgreSQL shard's failpoint step).
 `agent_reliability_test` drives the PostgreSQL store directly. Its
 executor-driven cases went with the replayed workflow engine
 ([Durable Execution Engine](../operations/durable-execution-engine.md#no-replayed-workflow-engine)),
-which turns never used; turn-level recovery is covered by durable-engine's
-`worker_crash_tests.rs` and `turn_recovery_matrix_tests.rs`.
+which turns never used; turn-level recovery is covered by the worker's
+session actor tests (below).
 
 ## Goals
 
@@ -57,36 +57,35 @@ all writes, the poison seal, and one worker per session, over an in-memory
 actor index with the repository's semantics (the repository's own tests pin
 those against PostgreSQL).
 
-**Turn level, retired step path.** [`worker_crash_tests.rs`](../../crates/durable-engine/src/worker_crash_tests.rs)
-crashes a real turn on the per-step path (dead on the platform, removed in
-step 7): a worker drives a tool turn through `TurnTaskDriver`
-until its `reason` step blocks in the model call, is killed by dropping the
-task mid-await, and `reap_stale_tasks` returns the step to the queue only
-after the heartbeat goes stale. A second worker runs it as attempt 2 and the
-turn completes. It runs on the in-memory store and on PostgreSQL (the
-durable shard), with a 50 ms heartbeat and a 400 ms threshold.
+**Crash points ported from the retired step path.** Step 7 deleted the
+per-step turn path with its `worker_crash_tests` and turn recovery matrix;
+the cases those pinned that the actor tests did not already cover were ported
+onto actors, behind a model gate in the fixture that can block a chosen model
+call:
 
-What it pins: messages, step starts and completions and the turn's own
-events are recorded exactly once, and every `output.message.started` has its
-completion. The dead attempt stored `reason.started` and
-`output.message.started` before it blocked; the retry finds that open stream
-through the host's partial-stream store (EVE-532,
-[`partial_recovery.rs`](../../crates/core/src/engine/execution/reason/partial_recovery.rs)),
-announces neither again, and completes the message under the dead attempt's
-id, leaving `reason.recovered` as the only trace of the lost attempt. The
-in-process runtime answers that store from its own event log; the platform
-worker asks the control plane (`GetPartialStream`, answered by
-`PgPartialStreamStore` over the `events` table), and the server's in-process
-worker reads that table directly. The worker stores a phase's leading events
-write-behind, so the lookup sees only what the dead worker flushed: an
-attempt that died before its `output.message.started` landed is announced
-again, as are the steps of a worker on a control plane without the RPC.
+- A crash inside a model stream: the dead worker flushed `reason.started`
+  and `output.message.started`; the resuming worker finds that open stream
+  through the partial-stream store (EVE-532,
+  [`partial_recovery.rs`](../../crates/core/src/engine/execution/reason/partial_recovery.rs)),
+  records `reason.recovered`, and completes the message under the dead
+  attempt's id, so every started message has exactly one completion and the
+  turn gives one answer.
+- Steering sent before a crash is answered by the resumed turn.
+- A crash after a tool's result is flushed and before the next reason does
+  not rerun the tool.
+- A session deleted under its leased actor (EVE-1235) ends the turn quietly:
+  no retry, no `turn.failed`, no seal, nothing left to lease. The retired
+  turn driver dead-lettered the step for the same case.
+
+The worker stores a phase's leading events write-behind, so the recovery sees
+only what the dead worker flushed: an attempt that died before its
+`output.message.started` landed is announced again.
 
 ### Scenario 2: Control Plane Restart
 
 **What happens in production:** Server process restarts. Workers lose gRPC connections and retry. Queued tasks and turn checkpoints live in PostgreSQL, so work resumes where it stopped.
 
-**Test approach:** Enqueue a task, reconnect with a fresh store over the same database, and verify the task is still claimable. Crashes at each turn step boundary, and the recovery sweeps that follow, are covered by [`turn_recovery_matrix_tests.rs`](../../crates/durable-engine/src/turn_recovery_matrix_tests.rs).
+**Test approach:** Enqueue a task, reconnect with a fresh store over the same database, and verify the task is still claimable. Turns hold no queue state: a session actor's lease runs out and another worker resumes the turn from the event log, covered by the actor tests in Scenario 1.
 
 ### Scenario 3: Network Between Control Plane and Worker
 

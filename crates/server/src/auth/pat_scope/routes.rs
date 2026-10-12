@@ -318,7 +318,6 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("GET", "/v1/durable/workflows/{workflow_id}", Read),
     ("POST", "/v1/durable/workflows/{workflow_id}/cancel", Write),
     ("GET", "/v1/durable/workflows/{workflow_id}/events", Read),
-    ("POST", "/v1/durable/workflows/{workflow_id}/signal", Write),
     ("GET", "/v1/durable/workflows/{workflow_id}/sse", Read),
     ("POST", "/v1/e/{channel_id}/a2a", Write),
     (

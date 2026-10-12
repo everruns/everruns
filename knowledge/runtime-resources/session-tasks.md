@@ -394,8 +394,8 @@ cancellation, seal, and max-iterations leave undrained wakes in the queue for
 the next turn (between-turn fallback); a completion landing mid-loop is visible
 to the very next iteration. Within a process the queue gives exactly-once;
 durable exactly-once across a worker restart is a property of the *persistent*
-transition source (the durable signal store), fenced by task `attempt`
-(`expected_attempt`), not of the in-memory queue.
+transition source (the session log a platform worker's turn reads), fenced by
+task `attempt` (`expected_attempt`), not of the in-memory queue.
 
 ## Durability and recovery
 
@@ -624,10 +624,9 @@ No backward compatibility is required; data migrates forward once:
   message before the LLM call and continuing a would-idle turn while wakes are
   pending. `wake_text_for` renders the same terminal/awaiting_input/message text
   the between-turn waker uses, so both paths agree on *when* a wake fires. The
-  server durable-worker path (draining the queue at
-  `unified_worker::schedule_next_activity`'s signal-consume boundary, persisted
-  through the durable signal store, with exactly-once across worker restart) is
-  **not** wired in part A, it needs live Postgres/NATS/gRPC to validate and is
+  platform worker path (draining wakes at a session actor's turn inbox,
+  persisted through the session log, with exactly-once across worker restart)
+  is **not** wired in part A, it needs live Postgres/NATS/gRPC to validate and is
   deferred to a reviewed follow-up. The cross-session Work view (part B, EVE-756)
   builds on EVE-680's `root_session_id` and is now implemented in `apps/ui`
   (grouped delegation tree over `GET /v1/tasks`, reusing the per-session chips

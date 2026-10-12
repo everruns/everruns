@@ -46,7 +46,6 @@ use crate::worker_adapters::{TurnContext, WorkerAdapters};
 pub struct GrpcWorkerAdapters {
     client: GrpcClient,
     host_composition: HostComposition,
-    stream_heartbeater: Option<Arc<dyn crate::core::durability::StreamHeartbeater>>,
 }
 
 impl GrpcWorkerAdapters {
@@ -68,7 +67,6 @@ impl GrpcWorkerAdapters {
         Ok(Self {
             client,
             host_composition,
-            stream_heartbeater: None,
         })
     }
 
@@ -85,17 +83,7 @@ impl GrpcWorkerAdapters {
         Self {
             client,
             host_composition,
-            stream_heartbeater: None,
         }
-    }
-
-    /// Set the stream heartbeater for liveness signalling (EVE-531).
-    pub fn with_stream_heartbeater(
-        mut self,
-        heartbeater: Arc<dyn crate::core::durability::StreamHeartbeater>,
-    ) -> Self {
-        self.stream_heartbeater = Some(heartbeater);
-        self
     }
 
     /// Get the underlying GrpcClient (for MCP executor)
@@ -803,10 +791,6 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         Some(Arc::new(GrpcOutboundToolRateLimiter::new(
             self.client.clone(),
         )))
-    }
-
-    fn stream_heartbeater(&self) -> Option<Arc<dyn crate::core::durability::StreamHeartbeater>> {
-        self.stream_heartbeater.clone()
     }
 
     fn partial_stream_store(&self) -> Option<Arc<dyn crate::core::durability::PartialStreamStore>> {

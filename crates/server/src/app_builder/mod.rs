@@ -639,10 +639,6 @@ impl ServerAppBuilder {
         }
         sessions_state.session_service = Arc::new(session_service);
         sessions_state.org_rate_limiter = org_rate_limiter.clone();
-        // Captured for the stale-task reclaim loop so it can surface sealed turns
-        // (forward-progress guard, EVE-534). `sessions_state` is moved into the
-        // router later, so grab a clone of the service now.
-        let reclaim_session_service = sessions_state.session_service.clone();
         let sandbox_templates_state = api::sandbox_templates::AppState::new(
             db.clone(),
             sessions_state.session_service.clone(),
@@ -1389,19 +1385,9 @@ impl ServerAppBuilder {
             crate::background::durable_reaper::spawn_stale_task_reaper(
                 &mut supervisor,
                 db.pool().clone(),
-                Arc::new(crate::background::durable_reaper::TurnReapHandler::new(
-                    event_service.clone(),
-                    reclaim_session_service.clone(),
+                Arc::new(crate::background::durable_reaper::ReapErrorReporter::new(
                     error_reporter.clone(),
                 )),
-            );
-
-            // TEMPORARY (step 7 deletes it): old-path turn tasks a previous
-            // release still creates during a rolling deploy become actors.
-            crate::background::legacy_turn_sweep::spawn_legacy_turn_sweep(
-                &mut supervisor,
-                db.clone(),
-                task_broadcaster.clone(),
             );
 
             background::spawn_model_sync(

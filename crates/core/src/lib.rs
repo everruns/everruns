@@ -276,8 +276,7 @@ pub use config_layer::{
 pub use connection_services::UserConnectionResolver;
 pub use delegation_services::{SpawnClaimResult, SubagentNestingPolicy, SubagentSpawnStore};
 pub use durability::{
-    DurableToolResultStore, PartialStreamState, PartialStreamStore, StreamHeartbeater,
-    StreamProgress, ToolCallClaimResult,
+    DurableToolResultStore, PartialStreamState, PartialStreamStore, ToolCallClaimResult,
 };
 #[cfg(test)]
 pub(crate) use error::Result;

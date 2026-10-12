@@ -1,22 +1,11 @@
 //! Implementation of [`crate::TaskQueue`].
 
 use super::*;
-use crate::persistence::{HandOff, HandedOff, NextStep, RequeuedWorkflow};
 
 #[async_trait]
 impl TaskQueue for InMemoryWorkflowEventStore {
     async fn enqueue_task(&self, task: TaskDefinition) -> Result<Uuid, StoreError> {
         let mut tasks = self.tasks.write();
-        if task.options.dedupe_by_activity_id
-            && let Some(workflow_id) = task.workflow_id
-            && let Some(task_id) = tasks.ids_for_workflow(workflow_id).into_iter().find(|id| {
-                tasks
-                    .get(id)
-                    .is_some_and(|t| t.definition.activity_id == task.activity_id)
-            })
-        {
-            return Ok(task_id);
-        }
         // Check pending task limits
         let pending_count = tasks.pending_count(task.workflow_id);
         if let Some(wf_id) = task.workflow_id {
@@ -37,58 +26,6 @@ impl TaskQueue for InMemoryWorkflowEventStore {
         let task_id = Uuid::now_v7();
         tasks.insert(task_id, TaskState::scheduled(task));
         Ok(task_id)
-    }
-
-    async fn enqueue_claimed_task(
-        &self,
-        task: TaskDefinition,
-        worker_id: &str,
-    ) -> Result<Enqueued, StoreError> {
-        let may_claim = self
-            .workers
-            .read()
-            .get(worker_id)
-            .is_some_and(|w| w.status != "draining");
-        if !may_claim || task.options.start_delay.is_some() || task.options.dedupe_by_activity_id {
-            return self.enqueue_task(task).await.map(Enqueued::Queued);
-        }
-
-        let now = Utc::now();
-        let task_id = Uuid::now_v7();
-        let mut claimed = ClaimedTask {
-            id: task_id,
-            workflow_id: task.workflow_id,
-            activity_id: task.activity_id.clone(),
-            activity_type: task.activity_type.clone(),
-            input: task.input.clone(),
-            options: task.options.clone(),
-            attempt: 1,
-            max_attempts: task.options.retry_policy.max_attempts,
-            workflow_status: None,
-        };
-        let mut state = TaskState::pending(task);
-        state.status = TaskStatus::Claimed;
-        state.claimed_by = Some(worker_id.to_string());
-        state.claimed_at = Some(now);
-        state.heartbeat_at = Some(now);
-        state.attempt = 1;
-        self.tasks.write().insert(task_id, state);
-
-        // As a claim does: the workflow status rides along, and the first
-        // attempt records ActivityStarted.
-        if let Some(wf) = claimed.workflow_id.and_then(|id| {
-            self.workflows.write().get_mut(&id).map(|wf| {
-                wf.events.push(WorkflowEvent::ActivityStarted {
-                    activity_id: claimed.activity_id.clone(),
-                    attempt: 1,
-                    worker_id: worker_id.to_string(),
-                });
-                wf.status
-            })
-        }) {
-            claimed.workflow_status = Some(wf);
-        }
-        Ok(Enqueued::Claimed(Box::new(claimed)))
     }
 
     async fn claim_queue_tasks(
@@ -209,139 +146,6 @@ impl TaskQueue for InMemoryWorkflowEventStore {
             t.heartbeat_at = Some(Utc::now());
         });
         Ok(())
-    }
-
-    async fn complete_task_and_hand_off(
-        &self,
-        task_id: Uuid,
-        worker_id: &str,
-        _result: serde_json::Value,
-        hand_off: HandOff,
-    ) -> Result<HandedOff, StoreError> {
-        let HandOff {
-            workflow_id,
-            drain,
-            next,
-        } = hand_off;
-        // Read before the other locks: nothing nests the workers lock.
-        let claim_for = match &next {
-            NextStep::Enqueue {
-                task,
-                claim_for: Some(worker),
-            } if task.options.start_delay.is_none() && !task.options.dedupe_by_activity_id => self
-                .workers
-                .read()
-                .get(worker)
-                .is_some_and(|w| w.status != "draining")
-                .then(|| worker.clone()),
-            _ => None,
-        };
-        // Lock order: workflows, then tasks, as `start_run_with_task`. Holding
-        // both is what makes the hand-off atomic.
-        let mut workflows = self.workflows.write();
-        let mut tasks = self.tasks.write();
-        let task = tasks
-            .get(&task_id)
-            .ok_or(StoreError::TaskNotFound(task_id))?;
-        if task.status != TaskStatus::Claimed || task.claimed_by.as_deref() != Some(worker_id) {
-            return Err(StoreError::TaskNotOwned(task_id));
-        }
-        let workflow = workflows
-            .get_mut(&workflow_id)
-            .ok_or(StoreError::WorkflowNotFound(workflow_id))?;
-        let now = Utc::now();
-        tasks.update(task_id, |t| {
-            t.status = TaskStatus::Completed;
-            t.heartbeat_at = Some(now);
-        });
-
-        let mut drained = 0;
-        if let Some(drain) = drain {
-            workflow.signals.retain(|signal| {
-                let take = drained < drain.limit && signal.signal_type == drain.signal_type;
-                drained += usize::from(take);
-                !take
-            });
-        }
-
-        let next = match next {
-            NextStep::Enqueue { task, .. } => {
-                let mut task = *task;
-                task.workflow_id = Some(workflow_id);
-                let next_id = Uuid::now_v7();
-                let mut state = TaskState::scheduled(task.clone());
-                let enqueued = match claim_for {
-                    Some(worker) => {
-                        state.status = TaskStatus::Claimed;
-                        state.claimed_by = Some(worker.clone());
-                        state.claimed_at = Some(now);
-                        state.heartbeat_at = Some(now);
-                        state.attempt = 1;
-                        workflow.events.push(WorkflowEvent::ActivityStarted {
-                            activity_id: task.activity_id.clone(),
-                            attempt: 1,
-                            worker_id: worker,
-                        });
-                        Enqueued::Claimed(Box::new(ClaimedTask {
-                            id: next_id,
-                            workflow_id: Some(workflow_id),
-                            max_attempts: task.options.retry_policy.max_attempts,
-                            activity_id: task.activity_id,
-                            activity_type: task.activity_type,
-                            input: task.input,
-                            options: task.options,
-                            attempt: 1,
-                            workflow_status: Some(workflow.status),
-                        }))
-                    }
-                    None => Enqueued::Queued(next_id),
-                };
-                tasks.insert(next_id, state);
-                Some(enqueued)
-            }
-            NextStep::Complete { result, error } => {
-                workflow.status = WorkflowStatus::Completed;
-                workflow.result = result;
-                workflow.error = error;
-                workflow.completed_at.get_or_insert(now);
-                None
-            }
-        };
-        drop(tasks);
-        drop(workflows);
-        if next.is_none() {
-            self.notify_workflow_ended(workflow_id);
-        }
-        Ok(HandedOff { drained, next })
-    }
-
-    async fn requeue_stranded_workflows(
-        &self,
-        workflow_type: &str,
-        completed_before: Duration,
-        limit: usize,
-    ) -> Result<Vec<RequeuedWorkflow>, StoreError> {
-        let cutoff = Utc::now() - chrono::Duration::from_std(completed_before).unwrap_or_default();
-        let workflows = self.workflows.read();
-        let mut tasks = self.tasks.write();
-        let mut requeued = Vec::new();
-        for (workflow_id, workflow) in workflows.iter() {
-            if requeued.len() >= limit {
-                break;
-            }
-            if workflow.status != WorkflowStatus::Running || workflow.workflow_type != workflow_type
-            {
-                continue;
-            }
-            if let Some((task_id, activity_type)) = tasks.requeue_stranded(*workflow_id, cutoff) {
-                requeued.push(RequeuedWorkflow {
-                    workflow_id: *workflow_id,
-                    task_id,
-                    activity_type,
-                });
-            }
-        }
-        Ok(requeued)
     }
 
     async fn fail_task_with_retry(

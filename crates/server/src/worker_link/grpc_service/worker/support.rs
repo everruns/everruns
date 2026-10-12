@@ -275,18 +275,6 @@ pub(crate) fn workflow_status_to_proto(status: WorkflowStatus) -> DurableWorkflo
     }
 }
 
-pub(crate) fn proto_to_workflow_status(status: DurableWorkflowStatus) -> WorkflowStatus {
-    match status {
-        DurableWorkflowStatus::Pending => WorkflowStatus::Pending,
-        DurableWorkflowStatus::Running => WorkflowStatus::Running,
-        DurableWorkflowStatus::Completed => WorkflowStatus::Completed,
-        DurableWorkflowStatus::Failed => WorkflowStatus::Failed,
-        DurableWorkflowStatus::Cancelled => WorkflowStatus::Cancelled,
-        DurableWorkflowStatus::ContinuedAsNew => WorkflowStatus::ContinuedAsNew,
-        DurableWorkflowStatus::Unspecified => WorkflowStatus::Pending,
-    }
-}
-
 #[cfg(test)]
 mod tests {
 

@@ -8558,62 +8558,6 @@
         }
       }
     },
-    "/v1/durable/workflows/{workflow_id}/signal": {
-      "post": {
-        "tags": [
-          "durable"
-        ],
-        "summary": "POST /v1/durable/workflows/:workflow_id/signal - Send signal to workflow",
-        "operationId": "send_signal",
-        "parameters": [
-          {
-            "name": "workflow_id",
-            "in": "path",
-            "description": "Workflow ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SendSignalRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Signal sent"
-          },
-          "404": {
-            "description": "Workflow not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v1/durable/workflows/{workflow_id}/sse": {
       "get": {
         "tags": [
@@ -55615,23 +55559,6 @@
           }
         },
         "additionalProperties": false
-      },
-      "SendSignalRequest": {
-        "type": "object",
-        "description": "Request to send a signal to a workflow",
-        "required": [
-          "signal_type"
-        ],
-        "properties": {
-          "payload": {
-            "description": "Signal payload (workflow-specific JSON, any shape; defaults to `null` when omitted).\nExample: `{\"approved\": true, \"approver\": \"user_01933b5a00007000800000000000001\"}`."
-          },
-          "signal_type": {
-            "type": "string",
-            "description": "Signal name. Must match a signal the running workflow listens for.",
-            "example": "user_response_received"
-          }
-        }
       },
       "ServiceKind": {
         "type": "string",

@@ -352,7 +352,6 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::durable::list_workflows,
         api::durable::stream_workflow_sse,
         api::durable::stream_durable_sse,
-        api::durable::send_signal,
         api::durable::enqueue_task,
         api::durable::list_tasks,
         api::durable::list_workers,

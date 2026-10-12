@@ -6,6 +6,7 @@ use std::sync::atomic::Ordering;
 use super::store::Cancel;
 use super::*;
 use crate::actor_lease_store::ActorLeaseStore;
+use crate::core::events::Event;
 
 #[tokio::test]
 async fn a_message_runs_one_turn_and_leaves_the_session_idle() {
@@ -492,6 +493,161 @@ async fn two_workers_never_run_one_session_at_once() {
     assert_eq!(turn_ids(&events, "turn.completed").len(), 3);
 }
 
+/// The `message_id` of every `event_type` event (`output.message.*`), in order.
+fn message_ids(events: &[Event], event_type: &str) -> Vec<String> {
+    events
+        .iter()
+        .filter(|event| event.event_type == event_type)
+        .map(|event| {
+            let data = serde_json::to_value(&event.data).unwrap();
+            data.get("message_id")
+                .or_else(|| data.pointer("/message/id"))
+                .and_then(Value::as_str)
+                .expect("an output message event names its message")
+                .to_owned()
+        })
+        .collect()
+}
+
+/// A worker dies while the model streams the turn's second reason. The
+/// survivor resumes the open turn from the log and finds the dead attempt's
+/// open stream through the host's partial-stream store (EVE-532): it
+/// announces neither `reason.started`'s message nor `output.message.started`
+/// again, completes the message under the dead attempt's id, and leaves
+/// `reason.recovered` as the only trace of the lost attempt. Ported from the
+/// per-step path's worker crash test.
+#[tokio::test]
+async fn a_crash_mid_reason_completes_the_open_stream_once() {
+    let fixture = Fixture::new(model(
+        "Survived the crash.",
+        vec![vec![call("c1", "read_inbox")]],
+    ))
+    .await;
+    // Call 0 asks for the tool; call 1, the reason after the act, hangs.
+    fixture.model.block(1);
+    let (crashing, _) = fixture.worker("w1");
+    fixture.send("Read my inbox.").await;
+
+    crash_at(&fixture, &crashing, &fixture.model.entered).await;
+    assert_eq!(fixture.count("tool.completed").await, 1);
+    assert_eq!(fixture.count("reason.started").await, 2);
+    assert!(fixture.answers().await.is_empty());
+
+    let (survivor, _) = fixture.worker("w2");
+    assert_eq!(run_until_idle(&survivor).await, 1);
+
+    let events = fixture.events().await;
+    let types = fixture.types().await;
+    for (event_type, expected) in [
+        ("turn.started", 1),
+        ("turn.completed", 1),
+        ("turn.failed", 0),
+        ("reason.started", 2),
+        ("reason.recovered", 1),
+        ("reason.completed", 2),
+        ("output.message.completed", 2),
+        ("tool.completed", 1),
+    ] {
+        assert_eq!(
+            fixture.count(event_type).await,
+            expected,
+            "{event_type}: {types:?}"
+        );
+    }
+    assert_eq!(
+        fixture.tool_calls(),
+        vec!["read_inbox"],
+        "the tool ran once"
+    );
+    let started = message_ids(&events, "output.message.started");
+    let completed = message_ids(&events, "output.message.completed");
+    assert_eq!(started.len(), 2, "{types:?}");
+    assert_eq!(
+        started, completed,
+        "every started message completes, in order"
+    );
+    assert_eq!(fixture.answers().await, vec!["Survived the crash."]);
+    fixture.assert_idle();
+}
+
+/// Steering that reached the log while the turn ran, and that the dead
+/// worker never handed to the model, is answered by the survivor.
+#[tokio::test]
+async fn steering_sent_before_a_crash_is_answered_after_the_resume() {
+    let fixture = Fixture::new(model("Both done.", vec![vec![call("c1", "read_inbox")]])).await;
+    fixture.gate.hold_first.store(true, Ordering::SeqCst);
+    let (crashing, _) = fixture.worker("w1");
+    fixture.send("Read my inbox.").await;
+
+    let running = {
+        let crashing = crashing.clone();
+        tokio::spawn(async move { run_once(&crashing).await })
+    };
+    tokio::time::timeout(WAIT, fixture.gate.held.notified())
+        .await
+        .expect("the tool call starts");
+    fixture.send("Also check the calendar.").await;
+    running.abort();
+    let _ = running.await;
+    fixture.store.expire(fixture.session_id);
+    let asked_before = fixture.model.seen().len();
+    assert!(
+        fixture
+            .model
+            .seen()
+            .iter()
+            .all(|call| !call.contains("Also check the calendar.")),
+        "the dead worker never handed the steering to the model"
+    );
+
+    let (survivor, _) = fixture.worker("w2");
+    run_until_idle(&survivor).await;
+    let seen = fixture.model.seen();
+    assert!(
+        seen[asked_before..]
+            .iter()
+            .any(|call| call.contains("Also check the calendar.")),
+        "the resumed work hands the steering to the model"
+    );
+    let types = fixture.types().await;
+    assert_eq!(
+        fixture.count("turn.started").await,
+        fixture.count("turn.completed").await,
+        "every turn ends: {types:?}"
+    );
+    assert_eq!(fixture.count("turn.failed").await, 0, "{types:?}");
+    assert_eq!(
+        fixture.answers().await.last().map(String::as_str),
+        Some("Both done.")
+    );
+    fixture.assert_idle();
+}
+
+/// A worker dies after a tool call completed and before the next reason:
+/// the survivor resumes at the reason and never runs the tool again.
+#[tokio::test]
+async fn a_crash_between_act_and_reason_does_not_rerun_the_tool() {
+    let fixture = Fixture::new(model("Sent.", vec![vec![call("c1", "send_email")]])).await;
+    let (crashing, probe) = fixture.worker("w1");
+    // Flush 1 precedes the first reason; flush 2 follows the act.
+    probe.hang_at_flush.store(2, Ordering::SeqCst);
+    fixture.send("Email the team.").await;
+
+    crash_at(&fixture, &crashing, &probe.hung).await;
+    assert_eq!(fixture.count("act.completed").await, 1);
+    assert_eq!(fixture.count("reason.started").await, 1);
+
+    let (survivor, _) = fixture.worker("w2");
+    assert_eq!(run_until_idle(&survivor).await, 1);
+    assert_eq!(fixture.tool_calls(), vec!["send_email"], "never run twice");
+    let types = fixture.types().await;
+    assert_eq!(fixture.count("tool.completed").await, 1, "{types:?}");
+    assert_eq!(fixture.count("turn.started").await, 1, "{types:?}");
+    assert_eq!(fixture.count("turn.completed").await, 1, "{types:?}");
+    assert_eq!(fixture.answers().await, vec!["Sent."]);
+    fixture.assert_idle();
+}
+
 /// EVE-1235: the session is deleted while its turn runs. The holder's next
 /// renew finds it gone and the turn stops at once, quietly: no `turn.failed`
 /// (there is nowhere to store it), no answer, and no lease to release.
@@ -550,4 +706,30 @@ async fn a_failure_after_the_session_was_deleted_reads_as_the_delete() {
     );
     fixture.store.delete(fixture.session_id);
     assert!(super::super::turn::session_deleted(&lease, &unrelated).await);
+}
+
+/// EVE-1235, ported from the retired turn driver: the session is deleted
+/// after its actor was leased and before the turn's first step. The turn ends
+/// without error and without retry: no `turn.failed`, no answer, no seal, and
+/// nothing left to lease.
+#[tokio::test]
+async fn a_turn_whose_session_is_deleted_before_it_runs_stops_without_error() {
+    let fixture = Fixture::new(model("Never shown.", vec![])).await;
+    let (worker, _) = fixture.worker("w1");
+    fixture.send("Hello.").await;
+    let actor = worker.lease(1).await.unwrap().pop().expect("leased");
+
+    // Gone under the leased actor: its row goes with it (FK cascade), and the
+    // turn's first step finds the session missing.
+    fixture.store.delete(fixture.session_id);
+    *fixture.model.deleted_session.lock().unwrap() = Some(fixture.session_id);
+    tokio::time::timeout(WAIT, worker.run_actor(actor))
+        .await
+        .expect("the turn stops");
+
+    assert_eq!(fixture.count("turn.failed").await, 0);
+    assert_eq!(fixture.count("turn.sealed").await, 0);
+    assert_eq!(fixture.count("turn.completed").await, 0);
+    assert!(fixture.answers().await.is_empty());
+    assert!(!run_once(&worker).await, "nothing left to lease");
 }

@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::{ActivityOptions, WorkflowError, WorkflowSignal};
+use super::{ActivityOptions, WorkflowError};
 use crate::activity::ActivityError;
 
 /// Types of timeouts that can occur
@@ -58,7 +58,7 @@ pub enum WorkflowEvent {
         error: WorkflowError,
     },
 
-    /// Workflow was cancelled (via signal or admin action)
+    /// Workflow was cancelled (by an admin action)
     WorkflowCancelled {
         /// Reason for cancellation
         reason: String,
@@ -155,15 +155,6 @@ pub enum WorkflowEvent {
     TimerCancelled {
         /// Timer identifier
         timer_id: String,
-    },
-
-    // =========================================================================
-    // Signal Events
-    // =========================================================================
-    /// External signal was received
-    SignalReceived {
-        /// The signal that was received
-        signal: WorkflowSignal,
     },
 
     // =========================================================================

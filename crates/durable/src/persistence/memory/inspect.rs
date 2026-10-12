@@ -47,7 +47,5 @@ impl InMemoryWorkflowEventStore {
         self.tasks.write().clear();
         self.workers.write().clear();
         self.dlq.write().clear();
-        // Waiters wake and find their workflow gone.
-        self.end_watchers.clear();
     }
 }

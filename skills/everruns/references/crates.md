@@ -11,7 +11,6 @@ installed version's Cargo features and documentation as the authority.
 | `everruns-contracts` | Neutral service, provider, capability, and execution contracts |
 | `everruns-drivers` | Direct vendor-driver composition for an advanced host |
 | `everruns-integrations` | Direct integration composition for an advanced host |
-| `everruns-durable-engine` and `everruns-durable` | Explicitly selected checkpointed deployment orchestration |
 
 Do not add retired `everruns-host`, `everruns-engine`, or `everruns-mcp` crates.
 Their current boundaries are modules/features of `everruns-core`.

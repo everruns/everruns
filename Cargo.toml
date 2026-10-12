@@ -22,7 +22,6 @@ members = [
     "crates/cli",
     "crates/cli-contract",
     "crates/durable",
-    "crates/durable-engine",
     "crates/ard",
     # Integrations, one feature module per vendor (everruns-integrations).
     "crates/integrations",
@@ -237,7 +236,6 @@ futures-util = "0.3"
 everruns-sdk = "0.2.0"
 everruns-core = { path = "crates/core", version = "0.47.0", default-features = false }
 everruns-durable = { path = "crates/durable", version = "0.47.0" }
-everruns-durable-engine = { path = "crates/durable-engine", version = "0.47.0" }
 everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.47.0", default-features = false }
 everruns-test-support = { path = "crates/test-support", version = "0.47.0", default-features = false }
 everruns-capabilities = { path = "crates/capabilities", version = "0.47.0", default-features = false }
