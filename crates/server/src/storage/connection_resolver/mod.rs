@@ -670,7 +670,7 @@ impl DbConnectionResolver {
 
 impl DbConnectionResolver {
     /// Token held by one selected connection row: GitHub installations mint a
-    /// fresh installation token (the agent's own App first), MCP OAuth grants
+    /// fresh installation token with the App their kind names, MCP OAuth grants
     /// refresh near expiry, everything else decrypts the stored token.
     async fn token_for_connection_row(
         &self,
@@ -678,21 +678,13 @@ impl DbConnectionResolver {
         provider: &str,
         row: VirtualUserConnectionRow,
     ) -> Result<Option<String>> {
-        // Per-agent GitHub App: an agent identity that created its own App
-        // (manifest flow) mints with that App's key, so the trigger, the tools
-        // and the GitHub MCP all act as the same installation.
-        if provider == "github"
-            && let Some(installation_id) = row.installation_id
-            && let Some(credentials) = self.agent_app_credentials(scope, &row).await?
-        {
-            let token = self
-                .github_apps
-                .mint_installation_token(&credentials, installation_id)
-                .await
-                .map_err(|e| {
-                    AgentLoopError::store(format!("Failed to mint GitHub installation token: {e}"))
-                })?;
-            return Ok(Some(token));
+        // GitHub mints with the App the connection's kind names, so the
+        // trigger, the tools and the GitHub MCP all act as the same
+        // installation.
+        if provider == "github" {
+            return self
+                .scoped_github_token(scope, row, &crate::github_apps::TokenScope::default())
+                .await;
         }
         if let Some(server) = Self::parse_mcp_oauth_provider(provider) {
             return self.resolve_identity_oauth_token(scope, server, row).await;

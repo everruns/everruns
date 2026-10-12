@@ -18,7 +18,8 @@ fn test_key() -> String {
     .unwrap()
 }
 
-/// The agent has its own App installed; the person connected the shared App.
+/// The agent has its own App installed; the person connected the shared App
+/// (`oauth`, as the setup callback stores it).
 async fn github_setup(owner_kind: &str) -> (McpFixture, MockServer) {
     let fixture = mcp_setup(owner_kind, false, false).await;
     let github = MockServer::start().await;
@@ -60,10 +61,11 @@ async fn github_setup(owner_kind: &str) -> (McpFixture, MockServer) {
         })
         .await
         .unwrap();
-    for (owner, installation) in [
-        (fixture.identity_id, AGENT_INSTALLATION),
+    for (owner, connection_type, installation) in [
+        (fixture.identity_id, "github_app", AGENT_INSTALLATION),
         (
             VirtualUserId::from_uuid(fixture.user_id),
+            "oauth",
             PERSON_INSTALLATION,
         ),
     ] {
@@ -72,7 +74,7 @@ async fn github_setup(owner_kind: &str) -> (McpFixture, MockServer) {
             .upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
                 virtual_user_id: owner,
                 provider: "github".to_string(),
-                connection_type: "github_app".to_string(),
+                connection_type: connection_type.to_string(),
                 provider_user_id: None,
                 provider_username: Some("acme".to_string()),
                 access_token_encrypted: None,
@@ -221,5 +223,38 @@ async fn a_source_sync_gets_a_read_token_for_its_owner_and_repository() {
             .await
             .unwrap(),
         None
+    );
+}
+
+/// An installation stored as an agent App's mints only with that App's key: a
+/// person connection marked `github_app` has no App behind it, so it gets no
+/// token rather than one minted by the shared App.
+#[tokio::test]
+async fn an_agent_app_installation_never_mints_with_the_shared_app() {
+    let (fixture, github) = github_setup(ATTENDED).await;
+    fixture
+        .db
+        .upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
+            virtual_user_id: VirtualUserId::from_uuid(fixture.user_id),
+            provider: "github".to_string(),
+            connection_type: "github_app".to_string(),
+            provider_user_id: None,
+            provider_username: Some("acme".to_string()),
+            access_token_encrypted: None,
+            refresh_token_encrypted: None,
+            scopes: None,
+            expires_at: None,
+            installation_id: Some(PERSON_INSTALLATION),
+            provider_metadata: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        resolve(&fixture, &github, McpServerActsAs::User).await,
+        None
+    );
+    assert_eq!(
+        resolve(&fixture, &github, McpServerActsAs::Service).await,
+        Some(("ghs_agent".to_string(), McpServerActsAs::Service))
     );
 }
