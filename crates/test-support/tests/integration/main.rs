@@ -20,4 +20,5 @@ mod prompt_budget_fixtures;
 mod reason_atom_test;
 mod reason_generation_outcome_test;
 mod seed_events_test;
+mod tool_changes_test;
 mod truncation_gate_test;

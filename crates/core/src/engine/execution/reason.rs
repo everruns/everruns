@@ -11,7 +11,7 @@ use web_time::Instant;
 use super::ExecutionContext;
 use crate::engine::annotation_hook::{collect_annotations, verify_annotations};
 use crate::engine::capabilities::CapabilityRegistry;
-use crate::engine::driver_registry::{LlmStreamEvent, Message, MessageContent, MessageRole};
+use crate::engine::driver_registry::{LlmStreamEvent, Message, MessageRole};
 use crate::engine::error::{AgentLoopError, Result};
 use crate::engine::events::{
     EventContext, EventRequest, LlmCompactionInfo, LlmGenerationData, OutputMessageCompletedData,
@@ -59,6 +59,7 @@ mod provider_managed_compaction;
 mod reasoning_updates;
 mod request_controls;
 mod stream_state;
+mod tool_changes;
 mod transcript;
 mod truncation_gate;
 mod types;
@@ -766,6 +767,12 @@ impl ReasonAtom {
             checkpoint_reasoning,
         )
         .filter(|_| native_reasoning_compaction);
+        let tool_changes = tool_changes::prepare(
+            &messages,
+            model_with_provider.provider_type.as_str(),
+            &model_with_provider.model,
+            &runtime_agent.tools,
+        );
 
         // 9. Recover a stream a lost attempt left open (EVE-532): finalize it
         // from persisted text, or restart the call under its message id.
@@ -869,19 +876,12 @@ impl ReasonAtom {
         // 11. Build LLM messages
         let mut llm_messages = Vec::new();
 
-        // Add system prompt
         let has_system_prompt = !runtime_agent.system_prompt.is_empty();
         if has_system_prompt {
-            llm_messages.push(Message {
-                native_tool_calls: Vec::new(),
-                role: MessageRole::System,
-                content: MessageContent::Text(runtime_agent.system_prompt.clone()),
-                tool_calls: None,
-                tool_call_id: None,
-                phase: None,
-                reasoning: Vec::new(),
-                configuration_update: None,
-            });
+            llm_messages.push(Message::text(
+                MessageRole::System,
+                runtime_agent.system_prompt.clone(),
+            ));
         }
 
         // Build messages for llm.generation event (includes system message)
@@ -913,6 +913,7 @@ impl ReasonAtom {
             llm_msg.configuration_update = reasoning_replay
                 .as_ref()
                 .and_then(|replay| replay.transitions.get(&msg.id).copied());
+            llm_msg.tool_changes = tool_changes.transitions.get(&msg.id).cloned();
             transcript::label_speaker(&mut llm_msg, msg);
             facts::mark_turn_scoped(&mut llm_msg, msg, supports_clear_at);
             llm_messages.push(llm_msg);
@@ -1091,7 +1092,6 @@ impl ReasonAtom {
             );
         }
 
-        // Also emit reason.thinking.started if extended thinking is enabled
         let thinking_enabled = reasoning_effort.is_some();
         if thinking_enabled {
             tracing::info!(
@@ -1124,7 +1124,6 @@ impl ReasonAtom {
             }
         }
 
-        // Track LLM call timing
         let llm_start = Instant::now();
 
         // Try LLM call with automatic compaction on RequestTooLarge.
@@ -2238,6 +2237,7 @@ impl ReasonAtom {
             response_id.as_deref(),
         );
         truncation.stamp(&mut metadata);
+        tool_changes.stamp(&mut metadata);
 
         // 18. Store and emit output.message.completed event with metadata and usage.
         // Apply capability-owned response filters before persisting/returning

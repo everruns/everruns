@@ -484,6 +484,7 @@ fn test_build_input_with_tool_calls() {
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
             native_tool_calls: Vec::new(),
         },
         Message {
@@ -494,6 +495,7 @@ fn test_build_input_with_tool_calls() {
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
             native_tool_calls: Vec::new(),
         },
     ];
@@ -538,6 +540,7 @@ fn test_build_input_with_tool_calls_and_text() {
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
             native_tool_calls: Vec::new(),
         },
     ];
@@ -597,6 +600,7 @@ fn openresponses_requests_should_not_mix_previous_response_id_with_full_transcri
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
             native_tool_calls: Vec::new(),
         },
         Message {
@@ -607,6 +611,7 @@ fn openresponses_requests_should_not_mix_previous_response_id_with_full_transcri
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
             native_tool_calls: Vec::new(),
         },
     ];

@@ -1616,6 +1616,7 @@ fn apply_observation_masking_with_protected(
                 phase: msg.phase,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                tool_changes: None,
             });
             masked_count += 1;
         } else {
@@ -1807,6 +1808,7 @@ pub fn build_summary_message(summary_text: &str) -> Message {
         phase: None,
         reasoning: Vec::new(),
         configuration_update: None,
+        tool_changes: None,
     }
 }
 
@@ -1876,29 +1878,11 @@ mod tests {
     }
 
     fn make_user_msg(text: &str) -> Message {
-        Message {
-            native_tool_calls: Vec::new(),
-            role: MessageRole::User,
-            content: MessageContent::Text(text.to_string()),
-            tool_calls: None,
-            tool_call_id: None,
-            phase: None,
-            reasoning: Vec::new(),
-            configuration_update: None,
-        }
+        Message::text(MessageRole::User, text)
     }
 
     fn make_assistant_msg(text: &str) -> Message {
-        Message {
-            native_tool_calls: Vec::new(),
-            role: MessageRole::Assistant,
-            content: MessageContent::Text(text.to_string()),
-            tool_calls: None,
-            tool_call_id: None,
-            phase: None,
-            reasoning: Vec::new(),
-            configuration_update: None,
-        }
+        Message::text(MessageRole::Assistant, text)
     }
 
     fn make_assistant_with_tool_call(call_id: &str, tool_name: &str) -> Message {
@@ -1915,6 +1899,7 @@ mod tests {
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
         }
     }
 
@@ -1937,6 +1922,7 @@ mod tests {
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
         }
     }
 
@@ -1950,6 +1936,7 @@ mod tests {
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
         }
     }
 
