@@ -48,7 +48,9 @@ function accountProvider(provider?: string, label?: string | null): string | und
   if (provider === "parallel") return "parallel";
   if (provider === "brave") return "brave_search";
   if (provider?.startsWith("account:")) {
-    return label?.startsWith("Parallel") ? "parallel" : "brave_search";
+    if (label?.startsWith("Parallel")) return "parallel";
+    if (label?.startsWith("Cloudflare")) return "cloudflare_web_search";
+    return "brave_search";
   }
   return undefined;
 }

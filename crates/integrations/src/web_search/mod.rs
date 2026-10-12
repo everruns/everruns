@@ -22,6 +22,8 @@
 
 mod account;
 mod brave;
+mod cloudflare;
+mod cloudflare_connector;
 mod config;
 mod framework;
 mod free;
@@ -33,6 +35,8 @@ mod tool;
 
 pub use account::{ORG_SETTINGS_TTL, account_search_driver};
 pub use brave::BraveSearchDriver;
+pub use cloudflare::{CloudflareSearchDriver, CloudflareSearchIndex, CloudflareSearchOptions};
+pub use cloudflare_connector::CloudflareWebSearchConnector;
 pub use config::{FallbackMode, ProviderSetting, WebSearchConfig};
 pub use framework::WebSearch;
 pub use free::{FreeSearchDriver, FreeSearchEndpoints};
@@ -57,6 +61,17 @@ pub const BRAVE_SEARCH_CONNECTION_PROVIDER: &str = "brave_search";
 pub const PARALLEL_API_KEY: &str = "PARALLEL_API_KEY";
 /// Connection provider id of a Parallel connection.
 pub const PARALLEL_CONNECTION_PROVIDER: &str = "parallel";
+/// Connection provider id of a Cloudflare Web Search account.
+pub const CLOUDFLARE_WEB_SEARCH_CONNECTION_PROVIDER: &str = "cloudflare_web_search";
+
+/// Connector plugins web search contributes to a hosted catalog: Cloudflare
+/// Web Search accounts, which exist only as search accounts. Brave and
+/// Parallel accounts come from their own integrations' connectors.
+pub const CONNECTOR_PLUGINS: &[everruns_contracts::connector::ConnectorPlugin] =
+    &[everruns_contracts::connector::ConnectorPlugin {
+        feature_flag: None,
+        factory: || Box::new(CloudflareWebSearchConnector),
+    }];
 
 /// The provider-neutral web search capability.
 ///
@@ -121,8 +136,8 @@ impl Capability for WebSearchCapability {
     fn description(&self) -> &str {
         "Search the web with one web_search tool. Choose the search provider per agent \
          (organization default, Automatic, model provider search, a search account such as \
-         Brave Search or Parallel, or free search); free search answers when the chosen \
-         provider cannot. \
+         Brave Search, Parallel or Cloudflare Web Search, or free search); free search \
+         answers when the chosen provider cannot. \
          Results carry titles, links, sites, dates and snippets so the agent can cite them."
     }
 
@@ -306,6 +321,13 @@ mod tests {
             Box::new(FreeSearchDriver::default()),
             Box::new(BraveSearchDriver::new("key")),
             Box::new(ParallelSearchDriver::new("key")),
+            Box::new(CloudflareSearchDriver::new(
+                "token",
+                CloudflareSearchOptions::new(
+                    "0123456789abcdef0123456789abcdef",
+                    CloudflareSearchIndex::Ceramic,
+                ),
+            )),
         ];
         for driver in drivers {
             for host in driver.egress_hosts() {

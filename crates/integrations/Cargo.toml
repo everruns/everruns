@@ -296,6 +296,11 @@ path = "tests/web_search_parallel_live.rs"
 required-features = ["web-search", "parallel-integration"]
 
 [[test]]
+name = "web_search_cloudflare_live"
+path = "tests/web_search_cloudflare_live.rs"
+required-features = ["web-search"]
+
+[[test]]
 name = "parallel_plugin_registration"
 path = "tests/parallel_plugin_registration.rs"
 required-features = ["parallel"]
