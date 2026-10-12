@@ -18,11 +18,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
+use everruns_contracts::driver_registry::{ChatDriver, LlmCallConfig, LlmResponseStream, Message};
+use everruns_contracts::runtime_provider::{Provider, ProviderEndpoint};
 use everruns_contracts::tool_types::{
     ClientSideTool, SideEffectClass, ToolCall, ToolDefinition, ToolHints,
 };
 use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
-use everruns_llmsim::{LlmSimConfig, LlmSimRuntimeExt};
+use everruns_llmsim::{LLMSIM_MODEL_ID, LlmSimConfig, LlmSimDriver};
 use serde_json::{Value, json};
 use tokio::sync::Notify;
 
@@ -113,6 +115,66 @@ impl Capability for GatedTools {
     }
 }
 
+/// What the model was asked, and a gate that holds one model call open.
+struct ModelGate {
+    calls: AtomicUsize,
+    /// The model call (0-based) that never answers; `usize::MAX` = none.
+    block_call: AtomicUsize,
+    entered: Notify,
+    /// Every model call's messages, rendered for `contains` checks.
+    seen: Mutex<Vec<String>>,
+}
+
+impl Default for ModelGate {
+    fn default() -> Self {
+        Self {
+            calls: AtomicUsize::new(0),
+            block_call: AtomicUsize::new(usize::MAX),
+            entered: Notify::new(),
+            seen: Mutex::default(),
+        }
+    }
+}
+
+impl ModelGate {
+    /// Hold model call `call` (0-based) open until its worker is killed. The
+    /// held call never reaches llmsim, so llmsim's script sees only the calls
+    /// that answer.
+    fn block(&self, call: usize) {
+        self.block_call.store(call, Ordering::SeqCst);
+    }
+
+    fn seen(&self) -> Vec<String> {
+        self.seen.lock().unwrap().clone()
+    }
+}
+
+/// llmsim behind a [`ModelGate`].
+struct GatedModel {
+    gate: Arc<ModelGate>,
+    inner: LlmSimDriver,
+}
+
+#[async_trait]
+impl ChatDriver for GatedModel {
+    async fn chat_completion_stream(
+        &self,
+        endpoint: &ProviderEndpoint,
+        messages: Vec<Message>,
+        config: &LlmCallConfig,
+    ) -> everruns_contracts::error::Result<LlmResponseStream> {
+        self.gate.seen.lock().unwrap().push(format!("{messages:?}"));
+        let call = self.gate.calls.fetch_add(1, Ordering::SeqCst);
+        if call == self.gate.block_call.load(Ordering::SeqCst) {
+            self.gate.entered.notify_one();
+            std::future::pending::<()>().await;
+        }
+        self.inner
+            .chat_completion_stream(endpoint, messages, config)
+            .await
+    }
+}
+
 type Hook = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 /// What the hosts saw, and a flush that can be made to never return.
@@ -181,6 +243,7 @@ struct Fixture {
     session_id: SessionId,
     store: Arc<MemoryActors>,
     gate: Arc<ToolGate>,
+    model: Arc<ModelGate>,
     poison_attempts: u32,
 }
 
@@ -205,6 +268,7 @@ impl Fixture {
         let agent_id = AgentId::new();
         let session_id = SessionId::new();
         let gate = Arc::new(ToolGate::default());
+        let model_gate = Arc::new(ModelGate::default());
         let client_tool = |name: &str| {
             ToolDefinition::ClientSide(ClientSideTool::new(
                 name,
@@ -237,7 +301,16 @@ impl Fixture {
                     .build(),
             )
             .session(session)
-            .llm_sim_as_default(model)
+            .provider_with_default_model(
+                Provider::new(
+                    "llmsim",
+                    GatedModel {
+                        gate: model_gate.clone(),
+                        inner: LlmSimDriver::new(model),
+                    },
+                ),
+                LLMSIM_MODEL_ID,
+            )
             .build()
             .await
             .expect("runtime builds");
@@ -246,6 +319,7 @@ impl Fixture {
             runtime,
             session_id,
             gate,
+            model: model_gate,
             poison_attempts: 3,
         }
     }
