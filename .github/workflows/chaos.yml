@@ -1,7 +1,7 @@
 # Chaos harness (scripts/chaos/, `just chaos`) at a PR-sized scale.
 #
 # Two API servers and three gRPC workers from release binaries, one
-# PostgreSQL, NATS and Valkey, 60 llmsim sessions of mixed turn shapes, and
+# PostgreSQL, NATS (JetStream) and Valkey, 60 llmsim sessions of mixed turn shapes, and
 # the default kill schedule (SIGKILL a worker, then a server, and restart
 # them). The run fails on any turn-level assertion: a message without exactly
 # one completed (or cancelled) turn, a turn with two terminal events, events
@@ -64,10 +64,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     services:
-      nats:
-        image: mirror.gcr.io/library/nats:2-alpine
-        ports:
-          - 43322:4222
       valkey:
         image: mirror.gcr.io/valkey/valkey:8-alpine
         ports:
@@ -102,6 +98,21 @@ jobs:
           done
           docker exec chaos-postgres psql -h 127.0.0.1 -U everruns -d everruns_chaos \
             -c 'CREATE EXTENSION IF NOT EXISTS pg_stat_statements'
+
+      # Not a service container either: those run the image's default
+      # command, which has no JetStream. Without it each server falls back to
+      # in-process event delivery, an SSE stream misses every event the other
+      # server persists, and the approval driver never sees the request it
+      # must answer. The harness refuses that topology at startup.
+      - name: Start NATS with JetStream
+        run: |
+          docker run -d --name chaos-nats -p 43322:4222 \
+            mirror.gcr.io/library/nats:2-alpine --jetstream
+          for _ in $(seq 30); do
+            docker logs chaos-nats 2>&1 | grep -q 'Server is ready' && break
+            sleep 1
+          done
+          docker logs chaos-nats 2>&1 | grep 'Starting JetStream'
 
       - name: Install fast linker and psql
         timeout-minutes: 5

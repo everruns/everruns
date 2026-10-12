@@ -10,6 +10,8 @@ incarnation appended in order, with a marker line on every (re)start.
 
 from __future__ import annotations
 
+import http.client
+import json
 import os
 import signal
 import subprocess
@@ -85,6 +87,38 @@ class Proc:
                 pass
             time.sleep(0.5)
         return False
+
+
+# Live events reach an SSE stream only through the server's EventDelivery.
+# Without NATS JetStream a server falls back to in-process delivery, so a
+# stream on one server never sees the events another server persists for the
+# worker it fronts. The approval driver acts on what its stream shows, so the
+# turn stays parked and the run fails as a lost turn that is really a harness
+# setup fault (CI's `nats` service container once ran without `-js`). Refuse
+# to run on that topology instead of reporting it as a platform failure.
+SHARED_EVENT_DELIVERY = "nats"
+
+
+def event_delivery_backend(port: int, timeout: float = 5.0) -> str | None:
+    """The event delivery backend a server picked at startup, from its
+    durable health endpoint (admin only; the harness runs AUTH_MODE=none)."""
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
+    try:
+        conn.request("GET", "/api/v1/durable/health", headers={"Accept": "application/json"})
+        resp = conn.getresponse()
+        raw = resp.read().decode("utf-8", "replace")
+        if resp.status != 200:
+            return None
+        return (json.loads(raw) or {}).get("event_delivery")
+    except (OSError, http.client.HTTPException, ValueError):
+        return None
+    finally:
+        conn.close()
+
+
+def unshared_event_delivery(backends: dict[str, str | None]) -> list[str]:
+    """Servers whose live events would not reach another server's streams."""
+    return [f"{name}={b or 'unknown'}" for name, b in backends.items() if b != SHARED_EVENT_DELIVERY]
 
 
 class Topology:
@@ -192,6 +226,18 @@ class Topology:
         dead = [w.name for w in self.workers if not w.alive()]
         if dead:
             raise RuntimeError(f"workers exited at startup: {dead}")
+
+    def event_delivery(self) -> dict[str, str | None]:
+        return {s.name: event_delivery_backend(s.http_port) for s in self.servers}  # type: ignore[attr-defined]
+
+    def require_shared_event_delivery(self) -> None:
+        bad = unshared_event_delivery(self.event_delivery())
+        if bad:
+            raise RuntimeError(
+                f"servers without shared event delivery ({', '.join(bad)}): SSE streams would miss "
+                f"events persisted by the other server. Run NATS with JetStream (`nats-server -js`) "
+                f"at {self.args.nats_url}; see the server log's event_delivery warning"
+            )
 
     def find(self, name: str) -> Proc:
         for p in self.servers + self.workers:
