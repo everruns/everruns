@@ -7357,6 +7357,11 @@ export interface components {
       channels?: string[];
       description?: string;
       display_name?: string;
+      github_trigger?: components["schemas"]["DraftGitHubTrigger"] | null;
+      /** @description Org catalog MCP servers to attach. */
+      mcp_servers?: components["schemas"]["DraftMcpServer"][];
+      /** @description Model to pin, set only when the org default has no working key. */
+      model_id?: string | null;
       /** @description Addressable name (lowercase slug). */
       name?: string;
       schedule?: components["schemas"]["DraftSchedule"] | null;
@@ -11537,6 +11542,30 @@ export interface components {
       data: components["schemas"]["DlqEntryResponse"][];
       /** @description Total number of items matching the query, across all pages. */
       total: number;
+    };
+    /** @description A GitHub trigger to create once GitHub is connected on the agent. */
+    DraftGitHubTrigger: {
+      /**
+       * @description Run only when a CI outcome differs from the previous one for the same
+       *     repository and branch.
+       */
+      changes_only?: boolean;
+      /** @description Events from the builder's fixed list, e.g. `workflow_run.completed`. */
+      events?: string[];
+      /** @description Message the agent receives for each event. */
+      message?: string;
+      /** @description `owner/name` repositories; empty means every repository the App sees. */
+      repositories?: string[];
+    };
+    /** @description A catalog MCP server to attach. */
+    DraftMcpServer: {
+      /**
+       * @description Whose grant the attachment uses, set from the preset's auth.
+       * @example service
+       */
+      acts_as: string;
+      /** @description Catalog preset name. */
+      name: string;
     };
     /** @description When the agent wakes itself. */
     DraftSchedule: {

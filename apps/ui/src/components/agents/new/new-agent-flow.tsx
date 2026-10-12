@@ -66,13 +66,14 @@ export function NewAgentFlow() {
   const createFromDraft = async () => {
     setCreateError(null);
     try {
-      const { agentId, failedChannels } = await create(draft);
+      const { agentId, failedChannels, githubSetupHref } = await create(draft);
       // A way in that failed is not lost work: the agent's integrations tab is
-      // where it gets added by hand, so land there instead of hiding it.
+      // where it gets added by hand, so land there instead of hiding it. A
+      // GitHub trigger waits on Connect, on its own prefilled form.
       router.push(
         failedChannels.length > 0
           ? `/agents/${agentId}?tab=integrations`
-          : newAgentLanding(agentId, draft),
+          : (githubSetupHref ?? newAgentLanding(agentId, draft, { testRun: tab === "describe" })),
       );
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "The agent could not be created.");

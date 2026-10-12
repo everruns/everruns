@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { describeCronExpression } from "@/components/apps/cron-label";
 import { useAgentNameAvailability } from "@/hooks/use-name-availability";
+import { useModels } from "@/hooks/use-providers";
 import type { AgentDraft } from "@/lib/api/agent-draft";
 import type { Capability } from "@/lib/api/types";
 import { DRAFT_CHANNEL_LABELS, draftBlocker } from "@/lib/new-agent";
@@ -49,6 +50,11 @@ export function DraftCard({
       : null);
   const title = draft.display_name.trim() || "Untitled agent";
   const capabilityName = (id: string) => capabilities?.find((c) => c.id === id)?.name ?? id;
+  const { data: models } = useModels();
+  const pinnedModel = draft.model_id
+    ? (models?.find((m) => m.id === draft.model_id)?.display_name ?? draft.model_id)
+    : null;
+  const github = draft.github_trigger;
 
   return (
     <aside className="rounded-md border bg-card" aria-label="Agent draft">
@@ -80,6 +86,18 @@ export function DraftCard({
           <NotSet />
         )}
       </Field>
+      {github && (
+        <Field label="Starts on GitHub">
+          <span>
+            {github.events.join(", ")}
+            {github.repositories.length > 0 && ` in ${github.repositories.join(", ")}`}
+            {github.changes_only && " when the outcome changes"}
+            <span className="block text-xs text-muted-foreground">
+              You connect GitHub to the agent after it is created.
+            </span>
+          </span>
+        </Field>
+      )}
       <Field label="Uses">
         {draft.capabilities.length > 0 ? (
           draft.capabilities.map(capabilityName).join(", ")
@@ -99,8 +117,15 @@ export function DraftCard({
           <NotSet />
         )}
       </Field>
+      {(draft.mcp_servers?.length ?? 0) > 0 && (
+        <Field label="Connects to">
+          {draft.mcp_servers?.map((server) => server.name).join(", ")}
+        </Field>
+      )}
       <Field label="Model and harness">
-        <span className="text-muted-foreground">{orgName} defaults</span>
+        <span className="text-muted-foreground">
+          {pinnedModel ? `${pinnedModel}, ${orgName} default harness` : `${orgName} defaults`}
+        </span>
       </Field>
       {blocker && draft.display_name.trim() && (
         <p className="border-t border-border/60 px-4 py-3 text-xs text-muted-foreground">

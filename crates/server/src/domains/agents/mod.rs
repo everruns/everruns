@@ -15,6 +15,7 @@ mod command_validation;
 pub mod commands;
 pub mod credentials;
 pub mod draft;
+pub mod draft_resources;
 pub mod health_check;
 mod lifecycle;
 mod managed;

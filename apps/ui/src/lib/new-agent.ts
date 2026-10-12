@@ -55,10 +55,19 @@ export function draftNeedsSlackSetup(draft: AgentDraft): boolean {
   return draft.channels.includes("slack");
 }
 
-export function newAgentLanding(agentId: string, draft: AgentDraft): string {
-  return draftNeedsSlackSetup(draft)
-    ? `/agents/${agentId}/channels/new?kind=slack`
-    : `/agents/${agentId}`;
+/**
+ * Where a created agent lands. Slack goes to its form; a described agent goes
+ * to a dry Test run (proactive agents D6), so the first thing a person sees is
+ * the agent working without its actions taking effect.
+ */
+export function newAgentLanding(
+  agentId: string,
+  draft: AgentDraft,
+  { testRun = false }: { testRun?: boolean } = {},
+): string {
+  if (draftNeedsSlackSetup(draft)) return `/agents/${agentId}/channels/new?kind=slack`;
+  if (testRun) return `/playground/new?agent=${encodeURIComponent(agentId)}&dry_run=1`;
+  return `/agents/${agentId}`;
 }
 
 /** Message a webhook-started run receives when the draft does not say. */

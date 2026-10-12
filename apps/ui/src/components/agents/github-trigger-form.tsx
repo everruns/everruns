@@ -74,6 +74,31 @@ export const EMPTY_GITHUB_FORM: GitHubTriggerFormState = {
   filter: null,
 };
 
+/**
+ * A new trigger prefilled from the page URL (`events`, `repos`, `changes_only`,
+ * `message`), as the agent builder links it after creating the agent.
+ */
+export function githubFormFromParams(params: URLSearchParams | null): GitHubTriggerFormState {
+  if (!params?.get("events")) return EMPTY_GITHUB_FORM;
+  const known = GITHUB_EVENT_OPTIONS.map((option) => option.value);
+  const list = (key: string) =>
+    (params.get(key) ?? "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  const events = list("events").filter((event) => known.includes(event));
+  const form: GitHubTriggerFormState = {
+    ...EMPTY_GITHUB_FORM,
+    events: events.length > 0 ? events : EMPTY_GITHUB_FORM.events,
+    repositories: list("repos"),
+    session_mode: events.every((event) => CI_EVENTS.includes(event))
+      ? "session_per_invocation"
+      : "per_thread",
+    message: params.get("message")?.trim() || EMPTY_GITHUB_FORM.message,
+  };
+  return withOutcomeChanges(form, params.get("changes_only") === "1");
+}
+
 export function isGitHubFormValid(form: GitHubTriggerFormState): boolean {
   return form.events.length > 0 && form.message.trim().length > 0;
 }
@@ -88,14 +113,17 @@ export function GitHubTriggerForm({
   value,
   onChange,
   idPrefix = "github-trigger",
+  returnTo,
 }: {
   agentId: string;
   value: GitHubTriggerFormState;
   onChange: (next: GitHubTriggerFormState) => void;
   idPrefix?: string;
+  /** Where GitHub sends the browser back after Connect; defaults to the agent page. */
+  returnTo?: string;
 }) {
   const { data: status, isLoading } = useAgentGitHub(agentId);
-  const connect = useConnectAgentGitHub(agentId);
+  const connect = useConnectAgentGitHub(agentId, returnTo);
   const { data: repos = [] } = useGitHubRepositories(status?.identity_id, !!status?.connected);
 
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading GitHub status…</p>;

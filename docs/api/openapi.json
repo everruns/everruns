@@ -27111,6 +27111,31 @@
           "display_name": {
             "type": "string"
           },
+          "github_trigger": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DraftGitHubTrigger",
+                "description": "GitHub events that start the agent."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mcp_servers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DraftMcpServer"
+            },
+            "description": "Org catalog MCP servers to attach."
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model to pin, set only when the org default has no working key."
+          },
           "name": {
             "type": "string",
             "description": "Addressable name (lowercase slug)."
@@ -34650,6 +34675,53 @@
             "type": "integer",
             "description": "Total number of items matching the query, across all pages.",
             "minimum": 0
+          }
+        }
+      },
+      "DraftGitHubTrigger": {
+        "type": "object",
+        "description": "A GitHub trigger to create once GitHub is connected on the agent.",
+        "properties": {
+          "changes_only": {
+            "type": "boolean",
+            "description": "Run only when a CI outcome differs from the previous one for the same\nrepository and branch."
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Events from the builder's fixed list, e.g. `workflow_run.completed`."
+          },
+          "message": {
+            "type": "string",
+            "description": "Message the agent receives for each event."
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "`owner/name` repositories; empty means every repository the App sees."
+          }
+        }
+      },
+      "DraftMcpServer": {
+        "type": "object",
+        "description": "A catalog MCP server to attach.",
+        "required": [
+          "name",
+          "acts_as"
+        ],
+        "properties": {
+          "acts_as": {
+            "type": "string",
+            "description": "Whose grant the attachment uses, set from the preset's auth.",
+            "example": "service"
+          },
+          "name": {
+            "type": "string",
+            "description": "Catalog preset name."
           }
         }
       },
