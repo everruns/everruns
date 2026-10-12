@@ -109,6 +109,40 @@ async fn neutral_tool_posts_to_its_input_thread_and_returns_an_editable_receipt(
 }
 
 #[tokio::test]
+async fn answer_goes_to_the_thread_of_the_message_that_steered_the_turn() {
+    let (fixture, session, app, endpoint) = setup().await;
+    let slack = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat.postMessage"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"ts":"9.8"})))
+        .mount(&slack)
+        .await;
+    let invoker = fixture.invoker(1, session).with_api_base(slack.uri());
+    let turn_input = input(&fixture, session, &app, &endpoint, "D1", "3.4", true).await;
+    let post = || {
+        invoker.invoke(SlackAction::PostMessage {
+            input_message_id: turn_input.to_string(),
+            tool_call_id: "call-1".into(),
+            text: "hello".into(),
+        })
+    };
+    // A second question steers the running turn; the answer belongs under it.
+    input(&fixture, session, &app, &endpoint, "D1", "7.8", true).await;
+    post().await.unwrap();
+    // An input without signed Slack provenance cannot redirect the post.
+    input(&fixture, session, &app, &endpoint, "D1", "9.9", false).await;
+    post().await.unwrap();
+    let threads: Vec<Value> = slack
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .map(|r| serde_json::from_slice::<Value>(&r.body).unwrap()["thread_ts"].clone())
+        .collect();
+    assert_eq!(threads, vec![json!("7.8"), json!("3.4")]);
+}
+
+#[tokio::test]
 async fn untrusted_missing_and_sibling_endpoint_inputs_cannot_authorize_posts() {
     let (fixture, session, app, endpoint) = setup().await;
     let slack = MockServer::start().await;

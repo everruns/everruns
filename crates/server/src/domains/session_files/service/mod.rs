@@ -536,6 +536,26 @@ impl WorkspaceFileService {
             }));
         }
 
+        // A directory on the way down to a mount (`/memory`) has no row of its
+        // own; without this `list_directory("/memory")` reported nothing.
+        if !self
+            .memory_mounts
+            .mounts_below(session_id, &path)
+            .await
+            .is_empty()
+        {
+            let now = chrono::Utc::now();
+            return Ok(Some(FileStat {
+                path: path.clone(),
+                name: FileInfo::name_from_path(&path),
+                is_directory: true,
+                is_readonly: true,
+                size_bytes: 0,
+                created_at: now,
+                updated_at: now,
+            }));
+        }
+
         // Check virtual mounts first
         if let Some(registry) = &self.virtual_registry
             && let Some(vf) = registry.read_file(&session_id, &path)
@@ -588,8 +608,14 @@ impl WorkspaceFileService {
                 .is_some_and(|f| f.is_directory)
         });
 
+        let mount_ancestor = !self
+            .memory_mounts
+            .mounts_below(session_id, &path)
+            .await
+            .is_empty();
+
         // Verify directory exists (root always exists)
-        if path != "/" && !virtual_dir_exists {
+        if path != "/" && !virtual_dir_exists && !mount_ancestor {
             let dir = self.db.get_session_file(session_id, &path).await?;
             match dir {
                 Some(d) if !d.is_directory => {
