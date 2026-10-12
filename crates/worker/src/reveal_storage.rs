@@ -17,6 +17,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
 use everruns_contracts::runtime::mcp_deferred::DEFERRED_MCP_REVEAL_KV_PREFIX;
+use everruns_contracts::runtime::{BoundSecret, BoundSecretInfo};
 use everruns_contracts::typed_id::SessionId;
 
 use crate::core::session_services::{KeyInfo, SecretInfo, SessionStorageStore};
@@ -70,6 +71,17 @@ impl SessionStorageStore for RevealAwareStorage {
     async fn list_secrets(&self, session_id: SessionId) -> Result<Vec<SecretInfo>> {
         self.inner.list_secrets(session_id).await
     }
+
+    // Decision: forward explicitly. These methods default to "none", so a
+    // wrapper that skips them silently hides every bound secret from the
+    // shell (the key then never reaches the bound API).
+    async fn list_bound_secrets(&self, session_id: SessionId) -> Result<Vec<BoundSecretInfo>> {
+        self.inner.list_bound_secrets(session_id).await
+    }
+
+    async fn resolve_bound_secrets(&self, session_id: SessionId) -> Result<Vec<BoundSecret>> {
+        self.inner.resolve_bound_secrets(session_id).await
+    }
 }
 
 #[cfg(test)]
@@ -112,5 +124,73 @@ mod tests {
                 .as_deref(),
             Some("1")
         );
+    }
+
+    /// The shell resolves bound secrets through this wrapper; dropping them
+    /// sent `Authorization: Bearer ` with no key to the bound API.
+    #[tokio::test]
+    async fn bound_secrets_pass_through_to_the_inner_store() {
+        use everruns_contracts::runtime::{SecretAuth, SecretBinding, SecretScope};
+
+        struct Bound(BoundSecret);
+
+        #[async_trait]
+        impl SessionStorageStore for Bound {
+            async fn set_value(&self, _: SessionId, _: &str, _: &str) -> Result<()> {
+                Ok(())
+            }
+            async fn get_value(&self, _: SessionId, _: &str) -> Result<Option<String>> {
+                Ok(None)
+            }
+            async fn delete_value(&self, _: SessionId, _: &str) -> Result<bool> {
+                Ok(false)
+            }
+            async fn list_keys(&self, _: SessionId) -> Result<Vec<KeyInfo>> {
+                Ok(Vec::new())
+            }
+            async fn set_secret(&self, _: SessionId, _: &str, _: &str) -> Result<()> {
+                Ok(())
+            }
+            async fn get_secret(&self, _: SessionId, _: &str) -> Result<Option<String>> {
+                Ok(None)
+            }
+            async fn delete_secret(&self, _: SessionId, _: &str) -> Result<bool> {
+                Ok(false)
+            }
+            async fn list_secrets(&self, _: SessionId) -> Result<Vec<SecretInfo>> {
+                Ok(Vec::new())
+            }
+            async fn list_bound_secrets(&self, _: SessionId) -> Result<Vec<BoundSecretInfo>> {
+                Ok(vec![self.0.info.clone()])
+            }
+            async fn resolve_bound_secrets(&self, _: SessionId) -> Result<Vec<BoundSecret>> {
+                Ok(vec![self.0.clone()])
+            }
+        }
+
+        let secret = BoundSecret {
+            info: BoundSecretInfo {
+                name: "JEV_API_KEY".to_string(),
+                binding: SecretBinding {
+                    url: "https://api.typesafe.ai".to_string(),
+                    auth: SecretAuth::Bearer,
+                },
+                scope: SecretScope::Agent,
+            },
+            value: "sk-live-value".to_string(),
+        };
+        let storage = RevealAwareStorage {
+            inner: Arc::new(Bound(secret)),
+            reads: PhaseReads::new(),
+            org_id: 7,
+        };
+        let session = SessionId::new();
+
+        let listed = storage.list_bound_secrets(session).await.unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].name, "JEV_API_KEY");
+        let resolved = storage.resolve_bound_secrets(session).await.unwrap();
+        assert_eq!(resolved.len(), 1);
+        assert_eq!(resolved[0].value, "sk-live-value");
     }
 }
