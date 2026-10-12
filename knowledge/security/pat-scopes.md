@@ -11,8 +11,8 @@ tags:
 # Personal Access Token Scopes
 
 > Status: **Approved; rollout steps 1 (classification), 2 (enforcement on
-> REST and `/v1/commands`), 3 (enforcement on `/mcp` and the execution API)
-> and 4 (creation) landed.** A user can mint a `read` token
+> REST and `/v1/commands`), 3 (enforcement on `/mcp` and the execution API),
+> 4 (creation) and 5 (CLI) landed.** A user can mint a `read` token
 > (`normalize_pat_scopes` in
 > [`personal_access_token_routes.rs`](../../crates/server/src/auth/personal_access_token_routes.rs)
 > accepts `[]`, `["*"]` or `["read"]`), and the token UI offers Full access or
@@ -22,9 +22,10 @@ tags:
 > calls only the read-only tools on `/mcp`
 > ([`mcp_endpoint/scope.rs`](../../crates/server/src/api/mcp_endpoint/scope.rs)),
 > and is not an org member on an API channel. `GET /v1/auth/me` reports
-> `token_scope`, and the creation audit event records `scopes`. Remaining:
-> step 5 (CLI `whoami` scope and `insufficient_scope` message) and the
-> optional step 6; step 2 deleted the legacy narrow rows (see
+> `token_scope`, and the creation audit event records `scopes`. The CLI shows
+> the scope in `everruns whoami` and explains a refusal in one line
+> ([`commands/api.rs`](../../crates/cli/src/commands/api.rs)). Remaining: only
+> the optional step 6; step 2 deleted the legacy narrow rows (see
 > [Legacy narrow tokens](#legacy-narrow-tokens)).
 
 ## Abstract
@@ -441,6 +442,26 @@ Settled while building step 4:
 - **The UI picker defaults to Full access** and describes Read-only as "read
   access to all your organizations", listing what it cannot do; the token
   list shows each token's scope. The page's warning now covers both scopes.
+
+Settled while building step 5:
+
+- **`whoami` is a new command, not `status`.** `status` stays the offline view
+  of the stored profile; `whoami` asks the server, so it also covers
+  `--api-key` and `EVERRUNS_API_KEY` and reports what the server enforces. A
+  cookie or JWT has no `token_scope`, so it prints no access line.
+- **The refusal is explained once, in `main`.** Request paths fail with a
+  typed `ApiError` (status and body) somewhere in the error chain, and `main`
+  passes every failure through `explain`, which replaces a `403` whose problem
+  `code` is `insufficient_scope` with one fixed line. A 403 with another code
+  is reported unchanged.
+- **Test 7 runs against a stub server.** The CLI end-to-end job runs the
+  server with `AUTH_MODE=none`, where no PAT exists, so
+  [`pat_scope_integration_test.rs`](../../crates/cli/tests/pat_scope_integration_test.rs)
+  drives the built binary against a stub that answers with the server's
+  problem document.
+- **No `login --read-only`.** It would need `/v1/auth/cli/exchange` to accept
+  `scopes`; a read token is created in the UI or API and pasted with
+  `login --token`.
 
 ## Rejected options
 

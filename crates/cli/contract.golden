@@ -339,6 +339,7 @@ virtual-users destroy	--context-revision --id --reason <id>
 virtual-users get	--context-revision --id --reason <id>
 virtual-users list	--context-revision --include-archived --limit --offset --reason --search --usage
 virtual-users update	--avatar-url --context-revision --description --id --locale --name --reason --status --timezone <id>
+whoami
 workspaces create	--context-revision --description --name! --reason
 workspaces delete	--context-revision --reason --workspace-id <workspace_id>
 workspaces get	--context-revision --reason --workspace-id <workspace_id>

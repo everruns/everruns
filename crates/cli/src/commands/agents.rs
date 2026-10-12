@@ -434,8 +434,9 @@ async fn import_from_file(
 
     let status = resp.status();
     if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Import failed ({}): {}", status, body);
+        return Err(super::api::ApiError::from_response("Import failed", resp)
+            .await
+            .into());
     }
 
     let was_created = status == reqwest::StatusCode::CREATED;
