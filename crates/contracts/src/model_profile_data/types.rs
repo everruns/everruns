@@ -16,6 +16,12 @@ pub const CLEAR_AT_PARAMETER: &str = "clear_at";
 /// Set only after a live round trip showed the cache surviving a change.
 pub const INLINE_TOOL_CHANGES_PARAMETER: &str = "inline_tool_changes";
 
+/// Model-profile parameter for models that keep the cache when tools are
+/// added inside the conversation but not when a definition is replaced (a
+/// deferred stub becoming its schema). Requests with a replacement fall back
+/// to sending the tools wanted now. Set only after a live round trip.
+pub const INLINE_TOOL_ADDITIONS_PARAMETER: &str = "inline_tool_additions";
+
 /// A typed service a provider driver can offer.
 ///
 /// Drivers declare supported services in code; catalog models persist their

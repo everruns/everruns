@@ -792,6 +792,7 @@ async fn test_anthropic_tool_reveal_keeps_prompt_cache(#[case] config: ProviderM
 #[rstest]
 #[case::openai_gpt6_1_sol(OPENAI_GPT61_SOL)]
 #[case::openai_gpt6_luna(OPENAI_GPT6_LUNA)]
+#[case::gpt56_terra(OPENAI_GPT56_TERRA)]
 #[tokio::test]
 async fn test_openai_tool_reveal_keeps_prompt_cache(#[case] config: ProviderModelConfig) {
     assert_tool_reveal_keeps_prompt_cache(config).await;
