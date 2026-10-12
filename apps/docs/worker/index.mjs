@@ -12,6 +12,13 @@
 // behavior across everruns.com.
 const BASE = "/docs";
 
+// The former docs host. This Worker also takes the route `docs.everruns.com/*`
+// and sends every URL to the same path under everruns.com/docs, query kept. A
+// zone redirect rule would do the same, but the deploy token can manage Worker
+// routes, not rulesets, and this way the redirect is tested and versioned.
+const OLD_HOST = "docs.everruns.com";
+const SITE = "https://everruns.com";
+
 // Same lists as the landing site's src/middleware.ts: crawlers always get HTML,
 // AI clients get Markdown when they ask for it or identify themselves.
 const AI_USER_AGENT_PATTERNS = [
@@ -75,6 +82,10 @@ function withHeaders(response, extra) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.hostname === OLD_HOST) {
+      return Response.redirect(`${SITE}${BASE}${url.pathname}${url.search}`, 301);
+    }
 
     // Preview deployments on workers.dev have nothing at the root.
     if (url.pathname === "/" || url.pathname === BASE) {
