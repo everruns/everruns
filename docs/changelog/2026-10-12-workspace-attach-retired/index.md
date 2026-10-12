@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [api, cli]
 links:
   docs: [/reference/cli/workspaces/]
-  prs: [everruns/everruns#PR_NUMBER]
+  prs: [everruns/everruns#4673]
 ---
 
 Every session now gets its own workspace. Creating a session with
@@ -23,4 +23,4 @@ and its files. Listing, reading, renaming and archiving workspaces, and the
 sessions, read them from one session and write them to the other through the
 Files API.
 
-See [`everruns workspaces`](/reference/cli/workspaces/) and [#PR_NUMBER](https://github.com/everruns/everruns/pull/PR_NUMBER).
+See [`everruns workspaces`](/reference/cli/workspaces/) and [#4673](https://github.com/everruns/everruns/pull/4673).
