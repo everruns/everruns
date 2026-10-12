@@ -20,7 +20,7 @@ together: a failed send stores nothing, and retrying it with the same
 sure its turn runs.
 
 A session whose worker failed right after its turn ended could stay `active`
-with nothing running, since `session.idled` was never written. The next worker
+with nothing running, since [`session.idled`](/event-reference/) was never written. The next worker
 now idles it, and never answers that turn's message a second time.
 
 A brief database failure while a turn prepared its model call, such as a
