@@ -327,6 +327,7 @@ fn automatic_ids(settings: &WebSearchOrgSettings) -> Vec<String> {
         org: Some(settings),
         model_has_native: true,
         brave_key: false,
+        parallel_key: false,
     })
     .ids()
 }
