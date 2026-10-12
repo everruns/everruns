@@ -195,11 +195,13 @@ const INGRESS: &str = "channel ingress, own credential";
 const CALLBACK: &str = "flow callback, bound to flow state";
 const NOT_ROUTED: &str = "not routed without a voice alias or sandbox provider";
 
-fn not_denied_by_the_extractor(method: &str, path: &str) -> bool {
+/// The reason a Write/Never route is exempt from the read-token denial, if it is.
+fn not_denied_by_the_extractor(method: &str, path: &str) -> Option<&'static str> {
     let path = normalize_template(path);
     NOT_DENIED_BY_THE_EXTRACTOR
         .iter()
-        .any(|(m, p, _)| *m == method && *p == path)
+        .find(|(m, p, _)| *m == method && *p == path)
+        .map(|(_, _, reason)| *reason)
 }
 
 /// `(method, path)` of every route the sweep covers.
@@ -338,9 +340,13 @@ async fn sweep(port: u16, context: ServerContext) {
         .await;
         match class {
             Some(RouteAccess::Write | RouteAccess::Never)
-                if not_denied_by_the_extractor(&method, &path) =>
+                if not_denied_by_the_extractor(&method, &path).is_some() =>
             {
-                if answer.as_ref().is_some_and(Answer::is_insufficient_scope) {
+                // A NOT_ROUTED row is mounted only in some configurations (CI has
+                // a sandbox provider), so a denial there is correct, not stale.
+                let routed_elsewhere =
+                    not_denied_by_the_extractor(&method, &path) == Some(NOT_ROUTED);
+                if !routed_elsewhere && answer.as_ref().is_some_and(Answer::is_insufficient_scope) {
                     wrong.push(format!(
                         "{method} {path}: now denied; remove its NOT_DENIED_BY_THE_EXTRACTOR row"
                     ));
