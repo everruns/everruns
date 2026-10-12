@@ -1,6 +1,6 @@
 ---
 title: Cloudflare Web Search
-description: Connect a Cloudflare account as a Web search account and search Ceramic, Exa or Linkup through the Cloudflare Web Search API, billed to AI Gateway credits or your own provider key.
+description: Search Ceramic, Exa or Linkup through the Cloudflare Web Search API, billed to AI Gateway credits or your own provider key.
 appliesTo: [platform]
 ---
 
