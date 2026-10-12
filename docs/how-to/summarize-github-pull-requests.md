@@ -29,9 +29,10 @@ create or paste.
 ## Connect GitHub
 
 1. Open the Agent and select **Integrations**.
-2. On the **GitHub** card, select **Connect GitHub**. For repositories owned by a
-   GitHub organization, first enter it under **GitHub organization**: the App is
-   private, so it can only be installed on the account that owns it.
+2. On the **GitHub** card, open **Connect GitHub** and choose where to create
+   the App: **Personal account**, an organization your Everruns organization
+   already connected to GitHub, or **Another organization…** to type one. The
+   App is private, so it can only be installed on the account that owns it.
 3. GitHub shows the App it is about to create for this Agent. Select **Create
    GitHub App**.
 4. Choose where to install it and which repositories it can reach, then select

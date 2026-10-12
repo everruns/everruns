@@ -7546,6 +7546,13 @@ export interface components {
       missing_permissions: string[];
       /** @description `all` or `selected`. */
       repository_selection?: string | null;
+      /**
+       * @description GitHub accounts this organization already reached, as candidates for
+       *     `owner_org` when creating the App: installation accounts of its GitHub
+       *     connections and owners of its other agents' Apps. Organizations first,
+       *     then users, then accounts of unknown kind; by login within each.
+       */
+      suggested_owners: components["schemas"]["GitHubOwnerSuggestion"][];
     };
     /** @enum {string} */
     AgentHarnessSource: "explicit" | "organization_default";
@@ -13210,6 +13217,11 @@ export interface components {
       insertions: number;
     };
     /**
+     * @description What kind of GitHub account a login is.
+     * @enum {string}
+     */
+    GitHubAccountKind: "organization" | "user" | "unknown";
+    /**
      * @description What a disconnect did.
      * @enum {string}
      */
@@ -13248,6 +13260,11 @@ export interface components {
        * @description Automatic resync interval in seconds. Omit or set 0 for manual-only; scheduled sync accepts 300 through 604800.
        */
       sync_interval_secs?: number | null;
+    };
+    /** @description A GitHub account a new App could be created in. */
+    GitHubOwnerSuggestion: {
+      kind: components["schemas"]["GitHubAccountKind"];
+      login: string;
     };
     /** @description Request body for git memory source. */
     GitMemorySourceRequest: {

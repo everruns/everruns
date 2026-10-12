@@ -66,6 +66,41 @@ impl Database {
         )
     }
 
+    /// GitHub accounts this org already knows, for suggesting where a new App
+    /// should live: installation accounts of the org's `github` connections
+    /// (per-agent Apps and the shared deployment App alike) and the owners of
+    /// its Apps. Stored data only, scoped to `org_id` through the connection's
+    /// virtual user. Not deduplicated; callers fold case.
+    pub async fn list_known_github_accounts(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<KnownGitHubAccountRow>> {
+        Ok(sqlx::query_as::<_, KnownGitHubAccountRow>(
+            "SELECT login, account_type FROM (
+                 SELECT c.provider_username AS login,
+                        c.provider_metadata->>'account_type' AS account_type
+                   FROM virtual_user_connections c
+                   JOIN virtual_users v ON v.id = c.virtual_user_id
+                  WHERE v.org_id = $1
+                    AND v.status <> 'deleted'
+                    AND c.provider = 'github'
+                    AND c.installation_id IS NOT NULL
+                    AND c.provider_username IS NOT NULL
+                    AND btrim(c.provider_username) <> ''
+                 UNION ALL
+                 SELECT owner_login AS login, NULL AS account_type
+                   FROM github_apps
+                  WHERE org_id = $1
+                    AND owner_login IS NOT NULL
+                    AND btrim(owner_login) <> ''
+             ) known
+             LIMIT 500",
+        )
+        .bind(org_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
     pub async fn delete_github_app(&self, id: Uuid) -> Result<bool> {
         let result = sqlx::query("DELETE FROM github_apps WHERE id = $1")
             .bind(id)

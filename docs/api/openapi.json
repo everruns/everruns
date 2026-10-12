@@ -27471,7 +27471,8 @@
         "required": [
           "connected",
           "app_created",
-          "missing_permissions"
+          "missing_permissions",
+          "suggested_owners"
         ],
         "properties": {
           "account": {
@@ -27521,6 +27522,13 @@
               "null"
             ],
             "description": "`all` or `selected`."
+          },
+          "suggested_owners": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GitHubOwnerSuggestion"
+            },
+            "description": "GitHub accounts this organization already reached, as candidates for\n`owner_org` when creating the App: installation accounts of its GitHub\nconnections and owners of its other agents' Apps. Organizations first,\nthen users, then accounts of unknown kind; by login within each."
           }
         }
       },
@@ -37664,6 +37672,15 @@
           }
         }
       },
+      "GitHubAccountKind": {
+        "type": "string",
+        "description": "What kind of GitHub account a login is.",
+        "enum": [
+          "organization",
+          "user",
+          "unknown"
+        ]
+      },
       "GitHubDisconnectOutcome": {
         "type": "string",
         "description": "What a disconnect did.",
@@ -37742,6 +37759,22 @@
             "description": "Automatic resync interval in seconds. Omit or set 0 for manual-only; scheduled sync accepts 300 through 604800.",
             "maximum": 604800,
             "minimum": 0
+          }
+        }
+      },
+      "GitHubOwnerSuggestion": {
+        "type": "object",
+        "description": "A GitHub account a new App could be created in.",
+        "required": [
+          "login",
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/GitHubAccountKind"
+          },
+          "login": {
+            "type": "string"
           }
         }
       },

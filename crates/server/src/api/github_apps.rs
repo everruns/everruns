@@ -490,6 +490,7 @@ async fn finish_setup(
                 "app_slug": app.slug,
                 "app_url": app.html_url,
                 "repository_selection": installation.repository_selection,
+                "account_type": installation.account.account_type,
             })),
         })
         .await
@@ -731,7 +732,7 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "id": 4242,
                 "app_id": 555,
-                "account": { "id": 7, "login": "acme" },
+                "account": { "id": 7, "login": "acme", "type": "Organization" },
                 "permissions": { "pull_requests": "write", "contents": "read" },
                 "repository_selection": "selected",
             })))
@@ -778,6 +779,11 @@ mod tests {
         assert_eq!(connection.installation_id, Some(4242));
         assert_eq!(connection.connection_type, GITHUB_APP_CONNECTION_TYPE);
         assert_eq!(connection.provider_username.as_deref(), Some("acme"));
+        // Recorded so the agent page can suggest `acme` as an organization.
+        assert_eq!(
+            connection.provider_metadata.as_ref().unwrap()["account_type"],
+            "Organization"
+        );
         assert_eq!(
             connection.scopes.as_deref(),
             Some("contents:read,pull_requests:write")

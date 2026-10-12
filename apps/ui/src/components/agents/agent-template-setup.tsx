@@ -7,11 +7,8 @@ import { Check, ExternalLink } from "lucide-react";
 import { useAgent, useUpdateAgent } from "@/hooks/use-agents";
 import { useAgentExamples } from "@/hooks/use-agent-examples";
 import { useCreateAgentTrigger } from "@/hooks/use-agent-triggers";
-import {
-  useAgentGitHub,
-  useConnectAgentGitHub,
-  useGitHubRepositories,
-} from "@/hooks/use-agent-github";
+import { useAgentGitHub, useGitHubRepositories } from "@/hooks/use-agent-github";
+import { ConnectGitHubButton } from "@/components/agents/connect-github-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -73,7 +70,6 @@ export function AgentTemplateSetup({
 
   const returnTo = `/agents/${agentId}/setup?template=${encodeURIComponent(templateName)}`;
   const { data: github } = useAgentGitHub(agentId);
-  const connect = useConnectAgentGitHub(agentId, returnTo);
   const connected = !!github?.connected;
   const { data: repos = [] } = useGitHubRepositories(github?.identity_id, connected);
   const updateAgent = useUpdateAgent();
@@ -137,11 +133,15 @@ export function AgentTemplateSetup({
             <>
               <p className="text-sm text-muted-foreground">
                 The agent gets its own GitHub App, installed on the repositories you choose. It
-                reads code and posts as its own bot.
+                reads code and posts as its own bot. The App can only be installed where it is
+                created.
               </p>
-              <Button size="sm" onClick={() => connect.mutate()} disabled={connect.isPending}>
-                {github?.app_created ? "Finish installing" : "Connect GitHub"}
-              </Button>
+              <ConnectGitHubButton
+                agentId={agentId}
+                status={github}
+                returnTo={returnTo}
+                variant="default"
+              />
             </>
           )}
         </Step>

@@ -316,6 +316,111 @@ async fn disconnect_needs_a_connection_and_identity_management() {
     assert!(status(&ctx, &agent_id).await.app_created, "nothing changed");
 }
 
+/// A service identity in `org_id` holding a `github` installation on `login`,
+/// the way either setup flow stores it.
+async fn connected_account(
+    db: &StorageBackend,
+    org_id: i64,
+    login: &str,
+    account_type: Option<&str>,
+    installation_id: i64,
+) {
+    let identity_id = VirtualUserId::new();
+    db.create_virtual_user(crate::storage::CreateVirtualUserRow {
+        usage: "service".to_string(),
+        org_id,
+        id: identity_id,
+        name: format!("gh-{installation_id}"),
+        description: None,
+        avatar_url: None,
+        locale: None,
+        timezone: None,
+    })
+    .await
+    .unwrap();
+    db.upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
+        virtual_user_id: identity_id,
+        provider: GITHUB_PROVIDER.to_string(),
+        connection_type: "oauth".to_string(),
+        provider_user_id: Some(installation_id.to_string()),
+        provider_username: Some(login.to_string()),
+        access_token_encrypted: None,
+        refresh_token_encrypted: None,
+        scopes: None,
+        expires_at: None,
+        installation_id: Some(installation_id),
+        provider_metadata: account_type.map(|t| serde_json::json!({ "account_type": t })),
+    })
+    .await
+    .unwrap();
+}
+
+fn owner(login: &str, kind: GitHubAccountKind) -> GitHubOwnerSuggestion {
+    GitHubOwnerSuggestion {
+        login: login.to_string(),
+        kind,
+    }
+}
+
+#[tokio::test]
+async fn get_suggests_github_accounts_the_org_already_knows() {
+    let github = MockServer::start().await;
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_for(&db, &github, OrgRole::Owner);
+    // Another agent's App, owned by `acme` (stored without a type) and
+    // installed there with the type recorded under a different case.
+    let (_, other_identity) = agent_with_app(&ctx).await;
+    install(&ctx, other_identity, 4242).await;
+    connected_account(&db, DEFAULT_ORG_ID, "ACME", Some("Organization"), 4243).await;
+    // A shared-App connection on a personal account, and one made before the
+    // type was recorded.
+    connected_account(&db, DEFAULT_ORG_ID, "octocat", Some("User"), 4244).await;
+    connected_account(&db, DEFAULT_ORG_ID, "beta-labs", None, 4245).await;
+
+    // A fresh agent, not yet connected, sees them all, each login once.
+    let agent_id = seed_agent(&db).await;
+    let status = status(&ctx, &agent_id).await;
+    assert!(status.identity_id.is_none());
+    assert_eq!(
+        status.suggested_owners,
+        vec![
+            owner("ACME", GitHubAccountKind::Organization),
+            owner("octocat", GitHubAccountKind::User),
+            owner("beta-labs", GitHubAccountKind::Unknown),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn get_never_suggests_accounts_from_another_org() {
+    let github = MockServer::start().await;
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_for(&db, &github, OrgRole::Owner);
+    let other_org = db
+        .create_organization(crate::storage::CreateOrganizationRow {
+            public_id: "org_000000000000000000000000000000b7".to_string(),
+            name: "Other Org".to_string(),
+            created_by: None,
+        })
+        .await
+        .unwrap();
+    connected_account(
+        &db,
+        other_org.org_id,
+        "rival-corp",
+        Some("Organization"),
+        5001,
+    )
+    .await;
+    connected_account(&db, DEFAULT_ORG_ID, "acme", Some("Organization"), 5002).await;
+
+    let agent_id = seed_agent(&db).await;
+    assert_eq!(
+        status(&ctx, &agent_id).await.suggested_owners,
+        vec![owner("acme", GitHubAccountKind::Organization)]
+    );
+}
+
 /// Can see agents but not manage their identities.
 struct WithoutIdentityManagement;
 
