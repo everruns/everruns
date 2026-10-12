@@ -16,7 +16,11 @@
   },
   // More specific than the landing Worker's everruns.com Custom Domain, so
   // Cloudflare sends /docs and everything under it here.
-  "routes": [{ "pattern": "everruns.com/docs*", "zone_name": "everruns.com" }],
+  // docs.everruns.com/* answers with 301s to the same path here.
+  "routes": [
+    { "pattern": "everruns.com/docs*", "zone_name": "everruns.com" },
+    { "pattern": "docs.everruns.com/*", "zone_name": "everruns.com" },
+  ],
   // Manual previews: `wrangler versions upload --preview-alias <name>`.
   "workers_dev": true,
   "preview_urls": true,

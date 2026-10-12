@@ -6,7 +6,7 @@ compatibility: A connected Everruns MCP server with OAuth or a personal access t
 metadata:
   category: platform
   version: "1.0"
-  docs: https://docs.everruns.com/features/mcp/
+  docs: https://everruns.com/docs/features/mcp/
 ---
 
 # Work through Everruns MCP
