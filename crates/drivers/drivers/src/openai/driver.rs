@@ -113,7 +113,8 @@ impl OpenAIChatDriver {
                 .with_hosted_tools(true)
                 .with_prompt_cache_options(true)
                 .with_background_mode(true)
-                .with_websocket_support(true),
+                .with_websocket_support(true)
+                .with_inline_tool_changes(true),
         }
     }
 
