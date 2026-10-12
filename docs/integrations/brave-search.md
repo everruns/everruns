@@ -90,7 +90,7 @@ Both capabilities can be enabled simultaneously, the agent will choose the right
 
 ## Status
 
-Experimental, behind the `brave_search` feature flag at the `adoption` rollout grade: an organisation owner or admin enables it in Settings → Features. `FEATURE_BRAVE_SEARCH` can override the grade. This capability may change in future releases.
+Experimental, available without a feature flag. This capability may change in future releases. For provider-neutral search, use [Web Search](/capabilities/web-search/), which can also use an organization Brave Search account.
 
 ## Links
 

@@ -20,6 +20,7 @@
 //! assert_eq!(capability.tools()[0].name(), "web_search");
 //! ```
 
+mod account;
 mod brave;
 mod config;
 mod framework;
@@ -29,11 +30,15 @@ mod http;
 mod plan;
 mod tool;
 
+pub use account::ORG_SETTINGS_TTL;
 pub use brave::BraveSearchDriver;
 pub use config::{FallbackMode, ProviderSetting, WebSearchConfig};
 pub use framework::WebSearch;
 pub use free::{FreeSearchDriver, FreeSearchEndpoints};
-pub use plan::{Attempt, PlanDrivers, PlanStep, SearchOutcome, resolve_plan, run_plan};
+pub use plan::{
+    Attempt, PlanDrivers, PlanEntry, PlanInputs, PlanStep, ResolvedPlan, SearchOutcome, plan_steps,
+    resolve_plan, run_plan,
+};
 
 use everruns_contracts::runtime::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
