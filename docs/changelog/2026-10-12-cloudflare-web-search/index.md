@@ -20,4 +20,13 @@ bill to its credits or to an Exa or Linkup key you stored there.
 Agents keep their one `web_search` tool. Pick the account in an agent's Web search settings or
 place it in the Automatic order, and a failed search falls through to the next provider as usual.
 
+Connecting through the API takes the same fields as the form:
+
+```bash
+curl -X POST "$EVERRUNS_URL/v1/orgs/$ORG/organization-connections/providers/cloudflare_web_search" \
+  -H "Authorization: Bearer $EVERRUNS_TOKEN" -H "Content-Type: application/json" \
+  -d '{"name": "Team", "api_key": "'"$CLOUDFLARE_API_TOKEN"'",
+       "account_id": "'"$CLOUDFLARE_ACCOUNT_ID"'", "index": "ceramic"}'
+```
+
 See [Web Search](/capabilities/web-search/).
