@@ -31,6 +31,28 @@ Free search is the last fallback of every setting: when the chosen provider has 
 it, is rate limited or is unavailable, free search answers and the run records why. Set
 `fallback` to `none` to use only the chosen provider.
 
+## In the UI
+
+**Registers > Web search** has two tabs, like Models:
+
+- **Providers**: a card per way the organization can search. **Model provider search** lists which
+  connected model providers offer it and its price; each search account shows whether its key is
+  set and its place in Automatic; **Free search** is always there. Admins connect an account with
+  **Connect search provider**, and test, rotate or disconnect it from its card.
+- **Defaults**: the default provider, the Automatic order (move entries up or down; free search
+  stays last), **Allow model provider search** with its cost, what happens when a provider fails,
+  results per search, and blocked domains.
+
+In the agent editor, expand **Web search** under Capabilities to pick the provider (Organization
+default, Automatic, Model provider search, a search account or Free search). **How this agent will
+search** says, for the agent's default model, which provider answers first, what it costs and what
+comes next. Results per search, freshness, fallback and domain filters follow.
+
+In chat, each search is one **Searched "…"** row with the result count, the provider that
+answered, the duration, and a note when an earlier provider failed. Expand it to see the top
+results, then open **Details and raw response** for every attempt and each provider's verbatim
+response. In Session Trace, a `web_search` step lists its attempts, with a failed one in red.
+
 ## Organization search accounts and defaults
 
 An organization admin connects search accounts as organization connections

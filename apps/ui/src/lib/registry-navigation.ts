@@ -4,6 +4,7 @@ import {
   PluginsIcon,
   SkillsIcon,
 } from "@/components/icons/facet-icons";
+import { Globe } from "lucide-react";
 import { capabilityIconMap, type IconComponent } from "@/lib/capability-icons";
 
 export interface RegistryNavigationItem {
@@ -15,6 +16,7 @@ export interface RegistryNavigationItem {
 
 export const registryDomainIcons = {
   models: ModelsIcon,
+  webSearch: Globe,
   mcpServers: capabilityIconMap.mcp,
   skills: SkillsIcon,
   capabilities: CapabilitiesIcon,
@@ -36,6 +38,20 @@ export const registryNavigationByHref = {
       "providers",
       "credentials",
       "api key",
+    ],
+  },
+  "/web-search": {
+    name: "Web search",
+    href: "/web-search",
+    icon: registryDomainIcons.webSearch,
+    keywords: [
+      "search",
+      "brave",
+      "duckduckgo",
+      "free search",
+      "search provider",
+      "native search",
+      "search account",
     ],
   },
   "/skills": {

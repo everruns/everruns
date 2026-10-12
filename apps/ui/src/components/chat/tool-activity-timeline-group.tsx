@@ -10,6 +10,8 @@ import { formatResultDetails, getResultPreview } from "./tool-activity-utils";
 import { extractMcpAppResources, getFullText } from "./tool-call-utils";
 import { useLocale } from "@/providers/locale-provider";
 import type { TimelineToolRow } from "./tool-activity-groups";
+import { WebSearchRow } from "./web-search-details";
+import { parseWebSearchDetails } from "@/lib/web-search";
 export type { TimelineToolRow } from "./tool-activity-groups";
 
 interface ToolActivityTimelineGroupProps {
@@ -29,6 +31,15 @@ function resultPreview(result?: ToolCompletedData): string | null {
 }
 
 function TimelineRow({ row }: { row: TimelineToolRow }) {
+  // A finished web search gets its own row (query, count, provider, fallback).
+  const search = parseWebSearchDetails(row.result?.details);
+  if (search && row.result) {
+    return <WebSearchRow details={search} durationMs={row.result.duration_ms} event={row.result} />;
+  }
+  return <GenericTimelineRow row={row} />;
+}
+
+function GenericTimelineRow({ row }: { row: TimelineToolRow }) {
   const { t } = useLocale();
   const [expanded, setExpanded] = useState(false);
   const detailsId = useId();

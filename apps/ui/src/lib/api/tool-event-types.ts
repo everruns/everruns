@@ -11,5 +11,10 @@ declare module "./legacy-api-types" {
     executed_arguments?: OpenApiToolCompletedData["executed_arguments"];
     /** True when `executed_arguments` is a truncated preview. */
     executed_arguments_truncated?: OpenApiToolCompletedData["executed_arguments_truncated"];
+    /**
+     * Details for people (chat details view, Session Trace) that the model never saw. Web
+     * search puts the provider that answered, every attempt and the raw responses here.
+     */
+    details?: OpenApiToolCompletedData["details"];
   }
 }
