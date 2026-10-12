@@ -10,7 +10,7 @@ links:
   docs: [/capabilities/prompt-caching/]
 ---
 
-The Prompt Caching capability now covers three more providers. Before, these
+The [Prompt Caching](/capabilities/prompt-caching/) capability now covers three more providers. Before, these
 requests went out without caching and paid the full input rate on every call.
 
 - **Bedrock**: Claude and Nova models get `cachePoint` blocks after the system
@@ -20,3 +20,16 @@ requests went out without caching and paid the full input rate on every call.
   `retention` setting honored.
 - **Mistral**: requests carry a session-scoped `prompt_cache_key`, so calls that
   share a prefix reach the same cache.
+
+The same capability config applies on all three; `retention` is honored on
+Bedrock and OpenRouter Claude models:
+
+```json
+{
+  "ref": "prompt_caching",
+  "config": {
+    "strategy": "auto",
+    "retention": "1h"
+  }
+}
+```

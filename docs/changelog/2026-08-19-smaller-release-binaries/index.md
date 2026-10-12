@@ -14,6 +14,11 @@ links:
 
 Shipped release artifacts are smaller. Symbols are stripped from release builds, and each `everruns` CLI subcommand runs behind a boxed future so command code is no longer duplicated into the entry point.
 
-The CLI binary went from 18.1 MB to 14.0 MB (22.4%). The server and worker binaries are 18.3% and 19.0% smaller from stripping alone. Behavior is unchanged.
+The CLI binary went from 18.1 MB to 14.0 MB (22.4%). The server and worker binaries are 18.3% and 19.0% smaller from stripping alone. Behavior is unchanged. Builds from source get the same result from the workspace release profile:
+
+```toml
+[profile.release]
+strip = true
+```
 
 See [CLI](/features/cli/) and [#3227](https://github.com/everruns/everruns/pull/3227).

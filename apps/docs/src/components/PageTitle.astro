@@ -1,6 +1,10 @@
 ---
 import { docsPath } from "../lib/site";
-// Page title plus the "Applies to" row.
+// Article head: breadcrumb, title, the description as a lede, a meta row
+// (reading time, last updated, edit link), then the "Applies to" row.
+//
+// The docs home renders its own masthead (DocsHome.astro), so it gets no
+// title here.
 //
 // Decision: the row reads the `appliesTo` frontmatter field (see
 // src/content.config.ts) and lists all three ways of running Everruns, marking
@@ -13,8 +17,23 @@ import { isChangelogEntry } from "../lib/changelog";
 
 const entry = Astro.locals.starlightRoute.entry;
 
-const appliesTo: string[] | undefined =
-  Astro.locals.starlightRoute.entry.data.appliesTo;
+const route = Astro.locals.starlightRoute;
+const appliesTo: string[] | undefined = entry.data.appliesTo;
+// The home and 404 pages draw their own heading (DocsHome, NotFound).
+const isHome = entry.id === "index" || entry.id === "" || entry.id === "404";
+
+const topic = Astro.locals.starlightSidebarTopics?.topics?.find((t: any) => t.isCurrent);
+const title = entry.data.title;
+// The section's own landing page is its breadcrumb's last item already.
+const crumbs = [
+  { label: "Docs", href: docsPath("/") },
+  ...(topic && topic.label !== title ? [{ label: topic.label, href: topic.link }] : []),
+];
+const description = isChangelogEntry(entry) ? undefined : entry.data.description;
+// About 200 words a minute; code counts as words, which suits docs.
+const words = typeof entry.body === "string" ? entry.body.split(/\s+/).filter(Boolean).length : 0;
+const minutes = words > 0 ? Math.max(1, Math.round(words / 200)) : 0;
+const { lastUpdated, editUrl, lang } = route;
 
 // Same order and names as the Start here chooser.
 const targets = [
@@ -24,9 +43,46 @@ const targets = [
 ];
 ---
 
-<Default />
+{
+  !isHome && (
+    <nav class="er-breadcrumb" aria-label="Breadcrumb">
+      {crumbs.map((crumb) => (
+        <>
+          <a href={crumb.href}>{crumb.label}</a>
+          <span aria-hidden="true">/</span>
+        </>
+      ))}
+      <span aria-current="page">{title}</span>
+    </nav>
+  )
+}
+
+{!isHome && <Default />}
+
+{!isHome && description && <p class="er-lede">{description}</p>}
 
 {isChangelogEntry(entry) && <ChangelogMeta entry={entry} />}
+
+{
+  !isHome && (minutes > 0 || lastUpdated || editUrl) && (
+    <p class="er-page-meta">
+      {minutes > 0 && <span>{minutes} min read</span>}
+      {lastUpdated && (
+        <span>
+          Updated{" "}
+          <time datetime={lastUpdated.toISOString()}>
+            {lastUpdated.toLocaleDateString(lang, { dateStyle: "medium", timeZone: "UTC" })}
+          </time>
+        </span>
+      )}
+      {editUrl && (
+        <a class="print:hidden" href={editUrl}>
+          Edit on GitHub
+        </a>
+      )}
+    </p>
+  )
+}
 
 {
   appliesTo && appliesTo.length > 0 && (

@@ -23,7 +23,7 @@ changes until someone picks a choice or clicks **Use suggestion**.
 
 **In code:** `PUT /v1/mcp-servers/{id}/tools/{tool_name}/label` with
 `{"label": "read_only"}`, or `everruns mcp-servers label-tool` and
-`suggest-labels` on the CLI. Label changes are in the server's history.
+`suggest-labels` in the [mcp-servers CLI](/reference/cli/mcp-servers/). Label changes are in the server's history.
 
 See [Which tools ask before they run](/features/mcp/#which-tools-ask-before-they-run)
 and [#4475](https://github.com/everruns/everruns/pull/4475), [#4498](https://github.com/everruns/everruns/pull/4498).

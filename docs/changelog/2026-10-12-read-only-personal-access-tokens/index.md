@@ -4,10 +4,10 @@ description: "A personal access token can now be read-only: it reads every organ
 date: 2026-10-12
 kind: feature
 significance: notable
-products: [platform, cloud]
-surfaces: [ui, api]
+products: [platform, cloud, cli]
+surfaces: [ui, api, cli]
 links:
-  docs: [/features/ui/#token-access]
+  docs: [/features/ui/#token-access, /features/cli/#configure]
   prs: [everruns/everruns#4623, everruns/everruns#4613, everruns/everruns#4598, everruns/everruns#4583]
 visual: "Create personal access token dialog with the Full access and Read-only choices (/settings/personal-access-tokens), cropped to the dialog"
 ---
@@ -22,5 +22,9 @@ It cannot create, change, run or delete anything, manage tokens, or download
 the full account export; those requests fail with `403` and
 `"code": "insufficient_scope"`. `GET /v1/auth/me` reports the token's
 `token_scope`.
+
+**In the CLI:** [`everruns login --token`](/features/cli/#configure) accepts a read-only token,
+`everruns whoami` shows its access, and a refused command says the token is
+read-only.
 
 See [Token access](/features/ui/#token-access).

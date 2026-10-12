@@ -1,0 +1,74 @@
+---
+// Three-segment theme switch for the docs bar: Light, Dark, Match system.
+//
+// It keeps Starlight's theme contract, so it agrees with the theme select in
+// the mobile menu and with the no-flash script in ThemeProvider: the choice is
+// stored in localStorage "starlight-theme" ("light", "dark", or "" for the
+// system setting) and applied as data-theme on <html>.
+import { Icon } from "@astrojs/starlight/components";
+
+const options = [
+  { value: "light", icon: "sun", label: "Light" },
+  { value: "dark", icon: "moon", label: "Dark" },
+  { value: "auto", icon: "laptop", label: "Match system" },
+] as const;
+---
+
+<er-theme-switch class="er-theme-switch" role="group" aria-label="Theme">
+  {
+    options.map((o) => (
+      <button type="button" data-theme-value={o.value} aria-label={o.label} title={o.label} aria-pressed="false">
+        <Icon name={o.icon} size="14px" />
+      </button>
+    ))
+  }
+</er-theme-switch>
+
+<script>
+  type Theme = "auto" | "dark" | "light";
+  const KEY = "starlight-theme";
+
+  const stored = (): Theme => {
+    try {
+      const value = localStorage.getItem(KEY);
+      return value === "light" || value === "dark" ? value : "auto";
+    } catch {
+      return "auto";
+    }
+  };
+  const system = () => (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+
+  function apply(theme: Theme) {
+    try {
+      localStorage.setItem(KEY, theme === "auto" ? "" : theme);
+    } catch {
+      /* storage unavailable: the choice lasts for this page only */
+    }
+    document.documentElement.dataset.theme = theme === "auto" ? system() : theme;
+    (window as any).StarlightThemeProvider?.updatePickers(theme);
+    render();
+  }
+
+  function render() {
+    const theme = stored();
+    document.querySelectorAll("er-theme-switch button").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.getAttribute("data-theme-value") === theme));
+    });
+  }
+
+  class ThemeSwitch extends HTMLElement {
+    connectedCallback() {
+      this.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
+        button.addEventListener("click", () => apply(button.dataset.themeValue as Theme));
+      });
+      render();
+    }
+  }
+  customElements.define("er-theme-switch", ThemeSwitch);
+
+  // The mobile menu's select changes the theme too; follow it.
+  new MutationObserver(render).observe(document.documentElement, { attributeFilter: ["data-theme"] });
+  matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
+    if (stored() === "auto") apply("auto");
+  });
+</script>

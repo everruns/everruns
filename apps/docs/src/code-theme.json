@@ -1,0 +1,75 @@
+{
+  "name": "everruns-slate-dark",
+  "type": "dark",
+  "colors": {
+    "editor.background": "#0a0a0a",
+    "editor.foreground": "#e0e0e0",
+    "editorGroupHeader.tabsBackground": "#0a0a0a",
+    "tab.activeBackground": "#0a0a0a",
+    "tab.inactiveBackground": "#0a0a0a",
+    "tab.activeForeground": "#9e9e9e",
+    "terminal.background": "#0a0a0a",
+    "terminal.foreground": "#e0e0e0"
+  },
+  "tokenColors": [
+    {
+      "settings": { "foreground": "#e0e0e0" }
+    },
+    {
+      "scope": ["comment", "punctuation.definition.comment", "string.comment"],
+      "settings": { "foreground": "#808080" }
+    },
+    {
+      "scope": [
+        "keyword",
+        "storage",
+        "storage.type",
+        "storage.modifier",
+        "keyword.control",
+        "keyword.operator.new",
+        "constant.language",
+        "support.type.primitive",
+        "entity.name.tag",
+        "markup.heading"
+      ],
+      "settings": { "foreground": "#3abff8" }
+    },
+    {
+      "scope": [
+        "string",
+        "string.quoted",
+        "string.template",
+        "punctuation.definition.string",
+        "markup.inline.raw",
+        "constant.character.escape"
+      ],
+      "settings": { "foreground": "#36d399" }
+    },
+    {
+      "scope": [
+        "entity.name.function.macro",
+        "support.function.macro",
+        "meta.attribute",
+        "punctuation.definition.attribute",
+        "meta.annotation",
+        "entity.name.function.decorator",
+        "variable.parameter.function.language.special",
+        "punctuation.separator.prompt",
+        "entity.other.attribute-name"
+      ],
+      "settings": { "foreground": "#cfa63f" }
+    },
+    {
+      "scope": ["constant.numeric"],
+      "settings": { "foreground": "#e0e0e0" }
+    },
+    {
+      "scope": ["markup.deleted"],
+      "settings": { "foreground": "#f87171" }
+    },
+    {
+      "scope": ["markup.inserted"],
+      "settings": { "foreground": "#36d399" }
+    }
+  ]
+}

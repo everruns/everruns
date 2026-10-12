@@ -15,6 +15,19 @@ Add **Web Citations** (`citation_web`) to an agent that has Web Search, and each
 model backs with a search result links to that page. Chat shows the numbered source chips,
 hover preview and **Sources** strip that retrieval citations already use.
 
+```json
+{
+  "capabilities": [
+    {
+      "ref": "web_search"
+    },
+    {
+      "ref": "citation_web"
+    }
+  ]
+}
+```
+
 It reads the URLs and result ids the model cites from `web_search` results, and the citations
 OpenAI, Anthropic, Gemini and OpenRouter return when the model searches on its own. Matching is
 exact, and a citation that cannot be placed on the answer's text is dropped. The annotations are

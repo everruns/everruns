@@ -11,13 +11,18 @@ links:
   prs: [everruns/everruns#4593]
 ---
 
-The Prompt Caching capability takes a `retention` setting: `default`, `5m`,
+The [Prompt Caching](/capabilities/prompt-caching/) capability takes a `retention` setting: `default`, `5m`,
 `30m` or `1h`. On Claude models, `1h` keeps cache entries for an hour, which
 suits agents that pause between turns longer than the five minute default.
 One hour writes cost twice the input rate, and cost estimates now include that.
 
 ```json
-{ "ref": "prompt_caching", "config": { "retention": "1h" } }
+{
+  "ref": "prompt_caching",
+  "config": {
+    "retention": "1h"
+  }
+}
 ```
 
 The `explicit` strategy now works on Claude too: it caches the tool definitions

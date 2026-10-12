@@ -25,14 +25,50 @@ pub(super) async fn get(
     url: &str,
     headers: &[(&str, &str)],
 ) -> (SearchExchange, Result<EgressResponse, SearchFailure>) {
-    let mut request = EgressRequest::new("GET", url, EgressRequestKind::Integration)
+    send(context, "GET", url, headers, Vec::new()).await
+}
+
+/// POST a JSON body to `url` and record the exchange (the response only:
+/// the request body is rebuilt from the plan, and headers carry credentials).
+pub(super) async fn post_json(
+    context: &SearchContext,
+    url: &str,
+    headers: &[(&str, &str)],
+    body: &serde_json::Value,
+) -> (SearchExchange, Result<EgressResponse, SearchFailure>) {
+    let mut headers = headers.to_vec();
+    headers.push(("Content-Type", "application/json"));
+    send(
+        context,
+        "POST",
+        url,
+        &headers,
+        body.to_string().into_bytes(),
+    )
+    .await
+}
+
+async fn send(
+    context: &SearchContext,
+    method: &str,
+    url: &str,
+    headers: &[(&str, &str)],
+    body: Vec<u8>,
+) -> (SearchExchange, Result<EgressResponse, SearchFailure>) {
+    let mut request = EgressRequest::new(method, url, EgressRequestKind::Integration)
         .network_access(context.network_access.clone())
         .timeout_ms(TIMEOUT.as_millis() as u64)
         .require_dns_pinning();
     for (name, value) in headers {
         request = request.header(*name, *value);
     }
-    let exchange = SearchExchange::get(url);
+    if !body.is_empty() {
+        request = request.body(body);
+    }
+    let exchange = SearchExchange {
+        method: method.to_string(),
+        ..SearchExchange::get(url)
+    };
     match context.egress.send(request).await {
         Ok(response) => (
             exchange.with_body(response.status, &response.body),
@@ -57,6 +93,10 @@ pub(super) fn status_failure(label: &str, status: u16) -> Option<SearchFailure> 
     let (kind, what) = match status {
         200..=299 => return None,
         401 | 403 => (SearchFailureKind::Unauthorized, "rejected the key"),
+        402 => (
+            SearchFailureKind::Unavailable,
+            "has no credit left on the key",
+        ),
         429 => (SearchFailureKind::RateLimited, "was rate limited"),
         _ => (SearchFailureKind::Unavailable, "returned an error"),
     };
@@ -194,6 +234,10 @@ mod tests {
         assert_eq!(
             status_failure("Brave", 401).unwrap().kind,
             SearchFailureKind::Unauthorized
+        );
+        assert_eq!(
+            status_failure("Parallel", 402).unwrap().message,
+            "Parallel has no credit left on the key (402)"
         );
     }
 }

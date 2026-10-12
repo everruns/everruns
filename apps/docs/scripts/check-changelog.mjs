@@ -125,6 +125,37 @@ async function checkEntry(folder) {
   if (NEEDS_DOCS.includes(fm.kind) && docs.length === 0 && !external) {
     fail(where, `a ${fm.kind} entry needs at least one links.docs page`);
   }
+  // Docs links are part of the story, not a list beside it: each links.docs
+  // page is linked from the sentence that needs it. links.docs stays as the
+  // machine-readable index (feeds, link checks).
+  for (const link of docs) {
+    const bare = link.replace(/\/$/, "");
+    if (!body.includes(`](${bare}`)) {
+      fail(where, `links.docs ${link} is not linked from the entry text; link it where the text mentions it`);
+    }
+  }
+  // Show, don't only tell: a reader should see what using the change looks like.
+  // JSON examples are valid and laid out the way a reader would write them
+  // (two-space indent), not squeezed onto one wrapping line.
+  // A block inside a list item is indented with the item; compare it dedented.
+  for (const [, indent, block] of body.matchAll(/^([ \t]*)```json\n([\s\S]*?)^[ \t]*```/gm)) {
+    const json = block.replace(new RegExp(`^${indent}`, "gm"), "");
+    let parsed;
+    try {
+      parsed = JSON.parse(json);
+    } catch (error) {
+      fail(where, `a json code block is not valid JSON (${error.message})`);
+      continue;
+    }
+    if (`${JSON.stringify(parsed, null, 2)}\n` !== json) {
+      fail(where, "format json code blocks with a two-space indent (JSON.stringify(value, null, 2))");
+    }
+  }
+  // A UI change whose screenshot is not captured yet names it in `visual:`
+  // and passes with a warning (below) until someone captures it.
+  if (NEEDS_DOCS.includes(fm.kind) && !/```|!\[|<video/.test(body) && !fm.visual) {
+    fail(where, `a ${fm.kind} entry needs an example: a code block (request, command, config or code) or a screenshot`);
+  }
 
   if (fm.supersededBy && !existsSync(path.join(changelogDir, fm.supersededBy, "index.md"))) {
     fail(where, `supersededBy ${fm.supersededBy} is not an entry folder`);

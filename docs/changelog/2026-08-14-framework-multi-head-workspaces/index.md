@@ -16,4 +16,11 @@ The `everruns` crate now has public workspace and environment types, so several 
 
 With the `local` feature, a local Git-worktree provider creates each head as a worktree from a revision. Heads are isolated by default; opt into a shared head explicitly. Fork, checkpoint, archive and destroy are explicit calls, and dropping a value never deletes a worktree. The provider interface is open for other backends.
 
+```rust
+let backend = Arc::new(LocalGitWorkspace::new(state)?);
+let workspace = Workspace::open(backend, repository.to_string_lossy()).await?;
+let head = workspace.head("feature").from_revision("main").create().await?;
+let session = engine.create(agent).workspace(head).start().await?;
+```
+
 See [Workspaces and environments](/framework/workspaces-and-environments/) and [#3166](https://github.com/everruns/everruns/pull/3166).

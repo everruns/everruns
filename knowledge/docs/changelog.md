@@ -146,7 +146,20 @@ See [Call your agent from code](/how-to/call-your-agent-from-code/).
 Rules for the body:
 
 - 40 to 150 words. First sentence: what changed, in the reader's terms. Then
-  how to use it (a UI path, a request, or a short code block). Then links.
+  how to use it, shown with an example. Then where to read more.
+- Every `feature`, `improvement`, `breaking` and `deprecation` entry shows an
+  example: the request, command, config or code a reader would write, or a
+  screenshot of the changed UI. Prefer the smallest real example over prose
+  describing it; a breaking change shows the before and after. The changelog
+  check fails an entry without one, unless a UI-only entry names the screenshot
+  still to capture in `visual:` (a build warning until it is captured).
+- Docs links sit in the text, with the page title or the feature name as
+  the link text in the sentence that needs it, never as a list beside the
+  entry. `links.docs` stays as the machine-readable index, and the check fails
+  when a page listed there is not linked from the body. Pull requests from
+  `links.prs` render at the end of the entry.
+- JSON examples are valid JSON with a two-space indent, never squeezed onto
+  one line; the check reformats nothing and fails a block that differs.
 - Code blocks are real: Rust snippets go through the same doc-snippet check as
   the rest of `docs/`, and Python through `check-python-snippets.py`.
 - At least one internal docs link for `feature`, `improvement`, `breaking` and

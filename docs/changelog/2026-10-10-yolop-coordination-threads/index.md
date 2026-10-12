@@ -24,4 +24,10 @@ quitting it returns to the coordinator. A thread's sandbox escalations are asked
 in the coordinator's approval prompt. `yolop sessions live` lists running
 sessions and threads.
 
+```bash
+yolop -C /path/to/repo --coordinator
+yolop sessions live
+yolop sessions send <session-id> "Rebase on main before you push."
+```
+
 See [Session coordination](https://github.com/everruns/yolop/blob/main/docs/session-coordination.md), [#835](https://github.com/everruns/yolop/pull/835) and [#837](https://github.com/everruns/yolop/pull/837).

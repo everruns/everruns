@@ -23,6 +23,13 @@ interpreter:
 - A `bash -i` child shell with `PS1`, `PS2` and `PS4` defaults, `~/.bashrc` or
   `--rcfile`, and `--norc`.
 
+
+```bash
+set -o history
+echo one
+history
+compgen -W "start stop status" st
+```
 The Oils spec pass rate went from 89.0% to 92.8%.
 
 See the [compatibility scorecard](https://github.com/everruns/bashkit/blob/main/crates/bashkit/docs/compatibility.md) and [#2648](https://github.com/everruns/bashkit/pull/2648).

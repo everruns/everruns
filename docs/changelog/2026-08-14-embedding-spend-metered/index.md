@@ -16,4 +16,10 @@ Embedding calls are now part of usage reporting. Each query embedding the `searc
 
 Knowledge index sync, which embeds every indexed chunk in the background, now writes its spend to the usage ledger against the organization. Sync spend is not debited from any user's budget, because no session triggered it.
 
+A session budget now covers its knowledge searches too:
+
+```bash
+everruns sessions create --agent support --budget-limit usd:10
+```
+
 See [Knowledge Index](/capabilities/knowledge-index/), [Budgets](/advanced/budgets/), [#3149](https://github.com/everruns/everruns/pull/3149) and [#3163](https://github.com/everruns/everruns/pull/3163).

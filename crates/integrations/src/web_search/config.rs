@@ -79,12 +79,13 @@ pub(super) fn schema() -> serde_json::Value {
             "provider": {
                 "type": "string",
                 "title": "Search provider",
-                "enum": ["org_default", "auto", "native", "brave", "account", "free"],
+                "enum": ["org_default", "auto", "native", "brave", "parallel", "account", "free"],
                 "enumNames": [
                     "Organization default",
                     "Automatic",
                     "Model provider search",
                     "Brave Search",
+                    "Parallel",
                     "A search account",
                     "Free search"
                 ],

@@ -1,0 +1,108 @@
+---
+// Page layout for everruns.com/docs, per the docs design handoff:
+//
+//   everruns.com site header   scrolls away (shared with the landing site)
+//   docs bar                   sticky; Header.astro fills it
+//   sidebar | article | TOC    one 1200px column (TwoColumnContent.astro)
+//   everruns.com site footer   full width (shared with the landing site)
+//
+// Decision: this replaces Starlight's PageFrame, whose header and sidebar are
+// fixed to the viewport. Here only the docs bar sticks, the sidebar is sticky
+// inside the column, and the site header and footer sit in the page flow. The
+// mobile menu keeps Starlight's popover contract (#starlight__sidebar,
+// <sl-sidebar-pane>) so the sidebar, its persisted state and focus trapping
+// work unchanged; it switches to a popover below 60em instead of 50em, where
+// the column has no room for the sidebar.
+import { Icon } from "@astrojs/starlight/components";
+import siteHeader from "../site-chrome/header.html?raw";
+import siteFooter from "../site-chrome/footer.html?raw";
+import "../site-chrome/chrome.css";
+
+const { hasSidebar } = Astro.locals.starlightRoute;
+
+// The shared header is the landing site's; mark Docs as the current section.
+const header = siteHeader.replace(
+  /<a href="https:\/\/everruns\.com\/docs\/"/,
+  '$& aria-current="page"',
+);
+---
+
+<div class="er-page">
+  <Fragment set:html={header} />
+  <header class="header er-docs-bar" data-er-docs-bar>
+    <div class="er-docs-bar-inner">
+      <slot name="header" />
+      {
+        hasSidebar && (
+          <button
+            popovertarget="starlight__sidebar"
+            class="er-menu-button print:hidden"
+          >
+            <Icon name="bars" class="open-menu" />
+            <Icon name="close" class="close-menu" />
+            <span class="sr-only">{Astro.locals.t("menuButton.accessibleLabel")}</span>
+          </button>
+        )
+      }
+    </div>
+  </header>
+  <div class:list={["er-docs-body", { "er-has-sidebar": hasSidebar }]}>
+    {
+      hasSidebar && (
+        <nav
+          class="sidebar print:hidden"
+          aria-label={Astro.locals.t("sidebarNav.accessibleLabel")}
+        >
+          <sl-sidebar-pane popover="" id="starlight__sidebar" class="sidebar-pane">
+            <div class="sidebar-content sl-flex">
+              <slot name="sidebar" />
+            </div>
+          </sl-sidebar-pane>
+        </nav>
+      )
+    }
+    <div class="main-frame"><slot /></div>
+  </div>
+  <Fragment set:html={siteFooter} />
+</div>
+
+<script>
+  import "../site-chrome/chrome.js";
+
+  // Mobile menu: a popover below 60em, a plain sticky column above it.
+  class StarlightSidebarPane extends HTMLElement {
+    constructor() {
+      super();
+      const desktop = matchMedia("(min-width: 60em)");
+      const reset = () => {
+        this.popover = desktop.matches ? null : "auto";
+      };
+      reset();
+      desktop.addEventListener("change", reset);
+      // The popover opens under the docs bar, wherever the bar sits now.
+      this.addEventListener("beforetoggle", () => {
+        const bar = document.querySelector("[data-er-docs-bar]");
+        const top = bar ? bar.getBoundingClientRect().bottom : 0;
+        this.style.setProperty("--er-pane-top", `${Math.max(0, top)}px`);
+      });
+      this.addEventListener("toggle", (event) => {
+        const open = (event as ToggleEvent).newState === "open";
+        document.querySelectorAll<HTMLElement>(".main-frame, .sl-skip-link").forEach((el) => {
+          el.toggleAttribute("inert", open);
+        });
+      });
+    }
+  }
+  if (!customElements.get("sl-sidebar-pane")) {
+    customElements.define("sl-sidebar-pane", StarlightSidebarPane);
+  }
+
+  // Collapse: once the site header has scrolled out of view, the docs bar
+  // shows the logo and Open Cloud itself (styles in docs-layout.css).
+  const bar = document.querySelector<HTMLElement>("[data-er-docs-bar]");
+  if (bar) {
+    const update = () => bar.toggleAttribute("data-compact", window.scrollY > 64);
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+  }
+</script>

@@ -15,6 +15,7 @@ import changelogMedia from "./integrations/changelog-media.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { readdirSync, readFileSync } from "node:fs";
+import { ExpressiveCodeTheme } from "@astrojs/starlight/expressive-code";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -139,7 +140,42 @@ export default defineConfig({
   integrations: [
     starlight({
       expressiveCode: {
-        themes: ["github-light", "github-dark"],
+        // Code blocks are dark in both themes (design handoff: #0A0A0A with
+        // Slate syntax colors), so one theme and no light/dark switch.
+        themes: [ExpressiveCodeTheme.fromJSONString(readFileSync(path.join(__dirname, "src/code-theme.json"), "utf8"))],
+        useStarlightDarkModeSwitch: false,
+        useStarlightUiThemeColors: false,
+        styleOverrides: {
+          borderRadius: "0px",
+          borderColor: "hsl(0 0% 100% / 0.1)",
+          codeBackground: "#0a0a0a",
+          codeFontFamily: "var(--font-mono)",
+          codeFontSize: "13px",
+          codeLineHeight: "20px",
+          codePaddingBlock: "16px",
+          codePaddingInline: "16px",
+          uiFontFamily: "var(--font-mono)",
+          frames: {
+            shadowColor: "transparent",
+            frameBoxShadowCssValue: "none",
+            editorBackground: "#0a0a0a",
+            editorTabBarBackground: "#0a0a0a",
+            editorActiveTabBackground: "#0a0a0a",
+            editorActiveTabForeground: "hsl(0 0% 62%)",
+            editorActiveTabBorderColor: "transparent",
+            editorActiveTabIndicatorTopColor: "transparent",
+            editorActiveTabIndicatorBottomColor: "transparent",
+            editorTabBarBorderBottomColor: "hsl(0 0% 100% / 0.1)",
+            terminalBackground: "#0a0a0a",
+            terminalTitlebarBackground: "#0a0a0a",
+            terminalTitlebarForeground: "hsl(0 0% 62%)",
+            terminalTitlebarDotsOpacity: "0",
+            terminalTitlebarBorderBottomColor: "hsl(0 0% 100% / 0.1)",
+            inlineButtonForeground: "hsl(0 0% 62%)",
+            inlineButtonBorder: "transparent",
+            tooltipSuccessBackground: "hsl(158 64% 32%)",
+          },
+        },
         // Wrap long lines instead of scrolling sideways; wrapped lines keep
         // their indentation. Plain-text blocks hold ASCII trees and tables,
         // which wrapping would break, so they keep horizontal scroll.
@@ -221,10 +257,14 @@ export default defineConfig({
         Search: "./src/components/Search.astro",
         Footer: "./src/components/Footer.astro",
         TableOfContents: "./src/components/TableOfContents.astro",
+        PageFrame: "./src/components/PageFrame.astro",
+        TwoColumnContent: "./src/components/TwoColumnContent.astro",
+        Pagination: "./src/components/Pagination.astro",
+        PageSidebar: "./src/components/PageSidebar.astro",
         MobileTableOfContents: "./src/components/MobileTableOfContents.astro",
         PageTitle: "./src/components/PageTitle.astro",
       },
-      customCss: ["./src/styles/custom.css"],
+      customCss: ["./src/styles/slate.css", "./src/styles/docs-layout.css", "./src/styles/custom.css"],
       plugins: [
         starlightOpenAPI([
           {
@@ -777,8 +817,10 @@ export default defineConfig({
           // Starlight renders a sibling anchor link after every heading, whose
           // screen-reader text converts to `[Section titled "..."](#...)` — was
           // 1,325 lines and 8% of llms-full.txt before this filter. Removing
-          // the <a> leaves the heading itself untouched.
-          customSelectors: { all: ["a.sl-anchor-link"] },
+          // the <a> leaves the heading itself untouched. Controls that only
+          // work in a browser (the docs home's search field and copy
+          // buttons) carry data-llms-ignore.
+          customSelectors: { all: ["a.sl-anchor-link", "[data-llms-ignore]"] },
           // Pages are otherwise separated by a blank line, which is
           // indistinguishable from a paragraph break; `# ` headings are no help
           // because shell comments inside code fences start the same way.
@@ -791,7 +833,8 @@ export default defineConfig({
           //   via <NotebookDoc> (whose route lookup also can't resolve under
           //   the /llms-*.txt routes); the .ipynb source is linked in its
           //   `github` frontmatter for anyone who wants the runnable version.
-          exclude: ["api/**", "tutorials/run-an-agent"],
+          // The 404 page is site chrome, not documentation.
+          exclude: ["api/**", "tutorials/run-an-agent", "404"],
           // The abridged set drops vendor- and operator-specific long tails
           // that a reader asking how to build or run an agent does not need.
           // They stay in llms-full.txt and in the sets above, so nothing is

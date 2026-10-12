@@ -16,4 +16,11 @@ A new organization no longer stores a concrete default model. When none is set, 
 
 To go back to the platform default after choosing a model, select the platform default option, or send `"default_model_id": null` in `PATCH /v1/orgs/{org}`. Omitting the field leaves the setting unchanged.
 
+```bash
+curl -X PATCH http://localhost:9300/api/v1/orgs/$ORG \
+  -H "Content-Type: application/json" \
+  -d '{"default_model_id": null}'
+everruns models default get
+```
+
 See [CLI: models](/reference/cli/models/), [#3114](https://github.com/everruns/everruns/pull/3114) and [#3321](https://github.com/everruns/everruns/pull/3321).

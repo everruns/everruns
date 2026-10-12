@@ -24,7 +24,8 @@ search with no key and no setup.
 | **Automatic** (`auto`) | The organization's Automatic order: the model's own search, then the organization's search accounts, then free search | Depends on the provider that answers |
 | **Model provider search** (`native`) | The model's own search, on OpenAI, Anthropic, Gemini and OpenRouter models that have it (see below). Other models use free search. | Billed by the model provider |
 | **Brave Search** (`brave`) | The Brave Search API with a user, session or application key, else the organization's first Brave account | Billed on the Brave key |
-| **A search account** (`account`, with `account_id`) | One organization search account, such as "Brave Search · Team" | Billed on that account's key |
+| **Parallel** (`parallel`) | The Parallel Search API (`fast` mode) with a user, session or application key, else the organization's first Parallel account | Billed on the Parallel key, about $1 per 1,000 searches |
+| **A search account** (`account`, with `account_id`) | One organization search account, such as "Brave Search · Team" or "Parallel · Research" | Billed on that account's key |
 | **Free search** (`free`) | DuckDuckGo, then DuckDuckGo Lite, then Mojeek, then Wikipedia | Free |
 
 Free search is the last fallback of every setting: when the chosen provider has no key, rejects
@@ -89,15 +90,15 @@ response. In Session Trace, a `web_search` step lists its attempts, with a faile
 ## Organization search accounts and defaults
 
 An organization admin connects search accounts as organization connections
-(`POST /v1/orgs/{org}/organization-connections/providers/brave_search`), the same way sandbox
-provider accounts are connected. Every agent of the organization can then search with them; the
+(`POST /v1/orgs/{org}/organization-connections/providers/brave_search`, or `.../parallel`), the
+same way sandbox provider accounts are connected. Every agent of the organization can then search with them; the
 key never reaches the agent.
 
 `PATCH /v1/orgs/{org}` with `web_search_defaults` sets the organization's defaults:
 
 | Field | Default | Description |
 |---|---|---|
-| `provider` | `auto` | What `org_default` agents use: `auto`, `native`, `brave`, `account` (with `account_id`) or `free` |
+| `provider` | `auto` | What `org_default` agents use: `auto`, `native`, `brave`, `parallel`, `account` (with `account_id`) or `free` |
 | `automatic_order` | `["native", "free"]` | Order of Automatic: `native` and search account ids. Free search is always last; entries left out keep their place (native first, other accounts after the listed ones) |
 | `allow_native` | `true` | Whether agents may use the model provider's own search (billed by the model provider) |
 | `fallback` | `next` | Fallback for agents that do not set their own |
@@ -110,7 +111,14 @@ Changes reach running sessions from their next search, within 30 seconds. `GET
 
 For `brave`, a key is read from the user's Brave Search connection, then the
 `BRAVE_SEARCH_API_KEY` session secret, then (Framework only) the `BRAVE_SEARCH_API_KEY`
-environment variable, then the organization's first Brave Search account.
+environment variable, then the organization's first Brave Search account. `parallel` reads keys
+the same way: the user's Parallel connection, then the `PARALLEL_API_KEY` session secret, then
+(Framework only) the `PARALLEL_API_KEY` environment variable, then the organization's first
+Parallel account.
+
+Parallel searches its own web index and returns longer excerpts than Brave, so results carry an
+`excerpt` the model can quote. It applies the agent's allowed or blocked sites and freshness
+itself.
 
 Free search is best effort. Search engines sometimes answer automated traffic with a bot check;
 free search treats that as a failure and moves to the next source instead of reporting no
@@ -179,6 +187,6 @@ let agent = Agent::builder()
     .build()?;
 ```
 
-`WebSearch::brave().no_fallback()`, `WebSearch::free()`, `.limit(5)` and
+`WebSearch::brave().no_fallback()`, `WebSearch::parallel()`, `WebSearch::free()`, `.limit(5)` and
 `.blocked_domains(["pinterest.com"])` set the other options. The builder writes only config;
-put a Brave key in `BRAVE_SEARCH_API_KEY`.
+put a Brave key in `BRAVE_SEARCH_API_KEY` and a Parallel key in `PARALLEL_API_KEY`.

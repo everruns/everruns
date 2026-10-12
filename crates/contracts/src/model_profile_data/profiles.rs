@@ -449,6 +449,11 @@ static REGISTRY: &[ModelDescriptor] = &[
         MICROSOFT_MAI,
     ),
     md(
+        &["muse-wonder-1.0", "meta/muse-wonder-1.0"],
+        ModelVendor::Meta,
+        META_MUSE,
+    ),
+    md(
         &["muse-spark-1.3", "meta/muse-spark-1.3"],
         ModelVendor::Meta,
         META_MUSE,

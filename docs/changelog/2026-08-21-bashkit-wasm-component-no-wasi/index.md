@@ -16,7 +16,13 @@ Bashkit can now run as a WebAssembly component that exposes shell execution
 over WIT, in a host with no JavaScript engine and no WASI implementation. That
 covers plain wasmtime and the `no_std` wasmtime that hyperlight-wasm compiles
 into a Hyperlight micro-VM guest. `examples/hyperlight/` builds such a guest
-and runs a script through it.
+and runs a script through it:
+
+```bash
+rustup target add wasm32-unknown-unknown
+cargo install wasm-tools
+./examples/hyperlight/build-and-run.sh
+```
 
 Dependencies that assumed a JavaScript host, such as the clock, timers and
 entropy source, moved behind a new `wasm_js` feature that the JS packages

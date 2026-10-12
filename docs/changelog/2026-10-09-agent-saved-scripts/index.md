@@ -22,7 +22,14 @@ and identity, and with `manage_scripts` on the agent can save new ones.
 A schedule or webhook trigger can run a script without asking the model:
 
 ```json
-{ "script": { "script": "triage-prs", "input": { "pr": "{{payload.pull_request}}" } } }
+{
+  "script": {
+    "script": "triage-prs",
+    "input": {
+      "pr": "{{payload.pull_request}}"
+    }
+  }
+}
 ```
 
 Input strings are templates over the event, so a webhook payload reaches the

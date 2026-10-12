@@ -1,6 +1,6 @@
 ---
 title: Meta
-description: Run Everruns agents on Muse Spark 1.3 through Meta Model API, including the discounted Contributor tier.
+description: Run Everruns agents on Muse Wonder and Muse Spark 1.3 through Meta Model API, including the discounted Contributor tier.
 sidebar:
   label: Meta
 ---
@@ -22,6 +22,20 @@ replay, message phases, hosted tool search, and server-managed response history.
 The hosted endpoint is used by default. An optional base URL can point the
 driver at a compatible proxy; model discovery is disabled for non-Meta hosts.
 
+## Muse Wonder
+
+Muse Wonder (`muse-wonder-1.0`, preview) is Meta's most capable Muse model, for
+complex software engineering, multi-hour agent runs and sub-agent orchestration.
+It has the same 1,048,576-token context window and inputs as Muse Spark 1.3, and
+takes the same requests, so switching is a model ID change.
+
+| Model | Data use | Input / cached input / output per million tokens |
+|---|---|---|
+| `muse-wonder-1.0` | Prompts and completions are not used to train Meta models | $4.00 / $0.20 / $20.00 |
+
+Muse Wonder has no Contributor tier on pay-as-you-go. Muse Wonder Full is only
+available inside Meta's Muse Code, not through the API.
+
 ## Muse Spark 1.3 tiers
 
 Muse Spark 1.3 is built for long-horizon coding and multi-step agentic work,
@@ -41,7 +55,16 @@ model selection rather than a hidden provider setting.
 The previous `muse-spark-1.2` and `muse-spark-1.2-contributor` IDs remain
 available with the same tiers and pricing.
 
+## Reasoning effort
+
+Every Muse model lets you pick a reasoning effort per agent or per message:
+Minimal, Low, Medium, High, Extra High and, on Muse Wonder and Muse Spark 1.3
+(both tiers), Max. Muse Spark 1.2 stops at Extra High. No Muse model accepts
+`none`. Leave effort unset and Meta picks a level for the model.
+
 ## Links
+
+- [Muse Wonder model card](https://research.meta.ai/static/muse-wonder-model-card)
 
 - [Meta Model API documentation](https://dev.meta.ai/docs/overview/)
 - [Muse Spark model page](https://developer.meta.com/ai/models/muse-spark/)
