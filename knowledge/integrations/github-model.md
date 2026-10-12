@@ -306,10 +306,10 @@ Each step is one PR unless noted, and leaves everything working.
 
 ## Open questions
 
-1. **Who may link a GitHub installation of the shared App to an Everruns
-   org?** The App itself is global, created once by the deployment. What each
-   org adds is an installation on its GitHub account, and the agreement that
-   its agents may act as `everruns[bot]` there. Proposed: org admins only.
+1. ~~Who may link a shared App installation?~~ Decided (user, 2026-10-12):
+   installations belong to the Everruns org, not to the person who clicked
+   Install, so every agent in the org can use them. Linking one needs org
+   admin rights (the recommended default; members can ask an admin).
 2. ~~Should a personal agent ever post as its bot?~~ Decided (user,
    2026-10-12): yes, it may. A personal agent can hold both the person's
    connection and a bot identity; each use still says which one it acts as,
