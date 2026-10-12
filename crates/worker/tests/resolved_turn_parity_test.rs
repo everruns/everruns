@@ -716,7 +716,8 @@ async fn a_queued_phase_start_failure_still_ends_setup_memoizing() {
         "queued emission cannot retain a setup cache"
     );
     host.flush_events().await;
-    assert_eq!(counts.events.load(Ordering::SeqCst), 1);
+    // A failing store is retried for a bounded window before the queue fails.
+    assert!(counts.events.load(Ordering::SeqCst) >= 1);
     store.get_agent(id).await.unwrap();
     assert_eq!(
         counts.agents.load(Ordering::SeqCst),

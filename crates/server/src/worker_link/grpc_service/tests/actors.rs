@@ -54,6 +54,11 @@ async fn actor_rpcs_lease_renew_read_and_release() {
     assert!(renewal.held);
     assert_eq!(renewal.inbox_seq, 5);
     assert!(renewal.cancel_requested);
+    assert_eq!(
+        renewal.cancel_inbox_seq,
+        Some(5),
+        "the inbox the cancel targets"
+    );
 
     let journal = svc
         .read_actor_journal(Request::new(proto::ReadActorJournalRequest {

@@ -1129,32 +1129,43 @@ impl<A: WorkerAdapters> crate::core::event_emitter::EventEmitter for SessionAdap
         }
         let mut pending = Vec::new();
         if let Some(queue) = &self.write_behind {
+            // A queued store that gave up stops every later emit, so nothing
+            // lands past its gap (see `crate::write_behind`).
+            if let Some(error) = queue.failure() {
+                return Err(error);
+            }
             if WriteBehind::queues(&request) {
                 let event = provisional_event(&request);
                 let adapters = self.adapters.clone();
                 let fence = self.fence.clone();
                 queue.enqueue_event(request, move |batch| {
+                    let adapters = adapters.clone();
+                    let fence = fence.clone();
                     Box::pin(async move {
-                        let count = batch.len();
-                        match Self::store_batch(&adapters, fence.as_ref(), batch).await {
-                            Ok(()) => {}
-                            // The session was deleted mid-turn (EVE-1235); the
-                            // turn's next blocking emit stops it.
-                            Err(everruns_contracts::error::AgentLoopError::SessionNotFound(
-                                session_id,
-                            )) => {
-                                tracing::debug!(count, %session_id, "queued events dropped: session deleted");
+                        let stored = Self::store_batch(&adapters, fence.as_ref(), batch).await;
+                        match (stored, &fence) {
+                            // The renewer gave the lease up while this store
+                            // failed: another holder may own the log by now.
+                            (Err(error), Some(fence))
+                                if fence.is_lost()
+                                    && !crate::actor_lease_store::is_actor_lease_lost(&error) =>
+                            {
+                                Err(crate::actor_lease_store::actor_lease_lost(
+                                    fence.session_id,
+                                    format!("lease lost while storing queued events: {error}"),
+                                ))
                             }
-                            Err(error) => {
-                                tracing::warn!(count, error = %error, "queued event store failed");
-                            }
+                            (stored, _) => stored,
                         }
                     })
-                });
+                })?;
                 return Ok(event);
             }
             pending = queue.take_pending();
             queue.flush().await;
+            if let Some(error) = queue.failure() {
+                return Err(error);
+            }
         }
         if let Some(fence) = &self.fence {
             let provisional = provisional_event(&request);

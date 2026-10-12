@@ -321,6 +321,12 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
         self.write_behind.flush().await;
     }
 
+    /// [`Self::flush_events`], failing when a queued store gave up: the log
+    /// has a gap, and the turn must not go on as if those events were stored.
+    pub async fn stored_events(&self) -> everruns_contracts::error::Result<()> {
+        self.write_behind.stored().await
+    }
+
     /// Share the phase's setup reads with the turn's other phases on this
     /// worker (see `turn_reads`). Call before `prefetching`.
     pub fn with_turn_reads(mut self, turn: crate::turn_reads::TurnSlot) -> Self {

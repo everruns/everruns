@@ -367,12 +367,17 @@ production and DEV_MODE alike; the worker side is
   records the cancel as before. Lease and renew report a pending cancel, and
   release clears it only once the holder was told, so a cancel that lands
   after the last renew reaches the next holder. Either way the turn ends with
-  exactly one terminal event. A cancel the holder records is answered only
-  once the holder ended the turn (bounded by two lease lives); inside a
-  command transaction that wait runs after the commit, when the holder can
-  first see the request, still before the command answers. Past the bound the
-  answer means "acknowledged": the request stays on the row for the holder,
-  or the next one, to record.
+  exactly one terminal event. A cancel targets the turn it was requested for:
+  the request records the inbox position at that moment, a holder applies it
+  only to a turn whose input is at or before it, and recording it consumes
+  input only up to it. A holder that recorded `turn.cancelled` and died before
+  releasing leaves the cancel on the row, and the next holder runs the
+  follow-up message's turn instead of cancelling it (chaos harness). A cancel
+  the holder records is answered only once the holder ended the turn (bounded
+  by two lease lives); inside a command transaction that wait runs after the
+  commit, when the holder can first see the request, still before the command
+  answers. Past the bound the answer means "acknowledged": the request stays
+  on the row for the holder, or the next one, to record.
 - **Poison guard.** `attempts` counts leases since the last release. A lease
   that finds more than `DURABLE_NO_PROGRESS_SEAL_THRESHOLD` (default 3) seals
   the turn instead of running it: a user-facing processing error,

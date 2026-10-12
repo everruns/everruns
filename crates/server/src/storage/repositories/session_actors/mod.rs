@@ -39,6 +39,16 @@
 //   the actor instead: its pending input counts as consumed and the caller
 //   records the cancel in the log itself. One statement decides which, under
 //   the row lock, so a lease cannot slip in between.
+// - A cancel targets the turn it was requested for. The request records the
+//   inbox position (`cancel_inbox_seq`): the cancel ends the turn whose input
+//   is at or before it, and its holder consumes input only up to it. Lease
+//   and renew report the position, and the holder ignores a cancel whose
+//   position is before its turn's input. Clearing on release alone was not
+//   enough: a holder that recorded the cancel and then died before releasing
+//   (a failed write, its lease expired) left it pending, and the next holder
+//   applied it to the follow-up message's turn (chaos harness). A position is
+//   sound where a clear is not, because nothing has to run after the
+//   `turn.cancelled` write for the cancel to stop applying.
 // - Release clears the runnable marker only when the holder consumed every
 //   input up to `inbox_seq` and no unreported cancel is pending. An input that
 //   lands while a turn finishes moves `inbox_seq` past what the holder
@@ -237,11 +247,13 @@ impl Database {
                 WHERE a.session_id = chosen.session_id
                 RETURNING a.session_id, a.org_id, a.lease_fence, a.inbox_seq,
                           a.consumed_seq, a.next_input_seq, a.attempts,
-                          a.cancel_requested_at, a.runnable_since
+                          a.cancel_requested_at, a.cancel_inbox_seq, a.runnable_since
             )
             SELECT session_id, org_id, lease_fence AS fence, inbox_seq,
                    consumed_seq, next_input_seq, attempts,
-                   (cancel_requested_at IS NOT NULL) AS cancel_requested
+                   CASE WHEN cancel_requested_at IS NOT NULL
+                        THEN COALESCE(cancel_inbox_seq, inbox_seq)
+                   END AS cancel_inbox_seq
             FROM leased
             ORDER BY runnable_since, session_id
             "#,
@@ -274,7 +286,10 @@ impl Database {
                 cancel_reported = (cancel_requested_at IS NOT NULL),
                 consumed_seq = GREATEST(consumed_seq, $5)
             WHERE session_id = $1 AND lease_holder = $2 AND lease_fence = $3
-            RETURNING inbox_seq, (cancel_requested_at IS NOT NULL) AS cancel_requested
+            RETURNING inbox_seq,
+                      CASE WHEN cancel_requested_at IS NOT NULL
+                           THEN COALESCE(cancel_inbox_seq, inbox_seq)
+                      END AS cancel_inbox_seq
             "#,
         )
         .bind(session_id)
@@ -314,6 +329,10 @@ impl Database {
                     WHEN cancel_reported THEN NULL
                     ELSE cancel_requested_at
                 END,
+                cancel_inbox_seq = CASE
+                    WHEN cancel_reported THEN NULL
+                    ELSE cancel_inbox_seq
+                END,
                 cancel_reported = FALSE
             WHERE session_id = $1 AND lease_holder = $2 AND lease_fence = $3
             RETURNING runnable_since IS NOT NULL
@@ -342,6 +361,7 @@ impl Database {
             )
             UPDATE session_actors a SET
                 cancel_requested_at = CASE WHEN c.leased THEN NOW() ELSE NULL END,
+                cancel_inbox_seq = CASE WHEN c.leased THEN a.inbox_seq ELSE NULL END,
                 cancel_reported = FALSE,
                 runnable_since = CASE WHEN c.leased THEN a.runnable_since ELSE NULL END,
                 consumed_seq = CASE
