@@ -2,6 +2,18 @@
 
 ## 2026-10-12
 
+* **Actor-based design step 7: the per-step turn path is gone.** Platform
+  turns run only as session actors. `everruns-durable-engine` (DurableRunner,
+  the turn task driver, the turn workflow) is deleted, along with the turn-only
+  worker RPCs, the legacy turn sweep, the reaper's stranded-workflow requeue,
+  durable signals (store, API route, UI button) and activity-id dedupe; a
+  migration drops `durable_signals` and the dedupe index. The durable queue
+  carries only cleanup, the session task reaper, schedules and triggers. The
+  crash cases the old recovery tests pinned that actors lacked were ported to
+  the worker's actor tests. See
+  [Execution Backends](framework/execution-backends.md),
+  [Durable Execution Engine](operations/durable-execution-engine.md) and
+  [Agent Reliability Tests](runtime-resources/agent-reliability-tests.md).
 * **GitHub connection model design (awaiting approval).** One `github`
   connection per virtual user with a kind (agent App, shared Everruns app,
   person); every use declares how it acts, its repositories and permissions,

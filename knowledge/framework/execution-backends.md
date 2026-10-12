@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "Execution Backends"
-description: "Why turns run through one experimental TurnBackend entry point, why framework sessions run as leased actors in process, and why the platform's durable backend keeps queue plus per-step checkpoint instead of Workflow replay."
+description: "Why turns run through one experimental TurnBackend entry point, why framework and platform sessions run as leased actors resumed from the session log, and why the retired per-step durable backend was removed."
 tags:
   - everruns
   - framework
@@ -17,11 +17,12 @@ platform server both run on it. Framework sessions run on the actor runner
 actors too since 2026-10-11 (actor-based design, step 6c): the server's
 `ActorTurnBackend` marks a session runnable and a worker leases it and runs
 the whole turn; see [The platform: sessions as actors on
-workers](#the-platform-sessions-as-actors-on-workers). `DurableRunner` in the
-published `everruns-durable-engine` crate, which ran platform turns as queued
-steps, no longer runs any. The facade's `durable` feature, which ran facade
-sessions on durable-engine's queue, was retired on 2026-10-10 (actor-based
-design, step 4); see [Retired: the facade's durable
+workers](#the-platform-sessions-as-actors-on-workers). The per-step durable
+backend (`DurableRunner` in `everruns-durable-engine`), which ran platform
+turns as queued steps, was deleted with its crate in step 7; see [Retired: the
+per-step durable backend](#retired-the-per-step-durable-backend). The facade's
+`durable` feature, which ran facade sessions on that queue, was retired on
+2026-10-10 (step 4); see [Retired: the facade's durable
 option](#retired-the-facades-durable-option). The public [Framework
 Architecture](../../docs/framework/architecture.md) page diagrams these
 components for users.
@@ -34,8 +35,8 @@ same input, reason and act activities over that adapter
 ([`host.rs`](../../crates/core/src/host/host.rs)), both planned by the sans-IO
 `Execution` state machine. What differs is only where the steps run and what
 survives a crash: in process the turn lives and dies with the caller's task; on
-the platform each step is a task on `everruns-durable`'s queue, checkpointed in
-PostgreSQL.
+the platform each step was then a task on `everruns-durable`'s queue,
+checkpointed in PostgreSQL.
 
 An application that outgrows in-process execution had no way across that line.
 The server's entry (a server-only runner trait) and the facade's session actor
@@ -166,21 +167,28 @@ in-memory queue (the server persists every input before it marks), and a
 crash costs a lease life, after which another worker resumes the turn from
 the log.
 
-### The durable backend
+### Retired: the per-step durable backend
 
-`everruns-durable-engine` is a published crate (see
-[Crate Layout](../project/crate-layout.md)), experimental like the trait, whose
-runner implements `TurnBackend` over `everruns-durable`'s memory or PostgreSQL
-store. Its turns run on the same runtime host adapter the framework uses. It
-ran platform turns until the actor cutover; the worker still uses its
-`TurnTaskDriver` for the queued activities that are not turns (cleanup, the
-session task reaper, scheduled invocations), and its turn-step paths on the
-platform are dead code removed in step 7.
+`everruns-durable-engine` ran a turn as queued steps (`process_input`,
+`reason`, `act`), each a task on `everruns-durable`'s queue with the turn's
+state checkpointed after it, behind `DurableRunner`. It ran platform turns
+until the actor cutover (step 6c) and was deleted in step 7 with everything
+that existed only for it: the turn workflow and its `USER_MESSAGE` signals,
+the step hand-off and stranded-run sweep, the deduplicated resolution enqueue,
+the core stream heartbeater, and the old crash and recovery-matrix suites
+(their scenarios run on the actor runtime now).
 
-The crate carries no transport: the worker owns the gRPC stores, the gRPC
-runner constructors, `tonic`, and `everruns-internal-protocol`, and plugs its
-store in through durable-engine's `TurnStore` trait. The durable isolation
-guard keeps it that way.
+- The actor runtime gives the same recovery from the log alone: a crashed
+  worker's lease expires and another worker folds the log and resumes the
+  turn, without a second copy of the turn's state per step.
+- Each step cost a queue round trip and a checkpoint write, and steering
+  needed signals delivered under the workflow lock; a lease and an inbox
+  cursor replace both.
+
+The worker keeps a small task loop of its own
+([`task_driver.rs`](../../crates/worker/src/task_driver.rs)) for the queued
+activities that are not turns (leased-resource cleanup, the session task
+reaper, scheduled channel and agent-trigger invocations).
 
 ### Retired: the facade's durable option
 
@@ -202,7 +210,7 @@ retired by the actor-based design (step 4), with no replacement flag:
 
 Which process runs a session is now the lease's job (above), and durability
 is the store choice. `DurableBackend` itself was deleted from durable-engine
-once nothing used it.
+once nothing used it, and the crate followed in step 7.
 
 ### Benchmark
 
@@ -244,10 +252,10 @@ the `turn-backends` job of
 throughput only against baseline rows with its own moniker
 (`github-ubuntu-latest`).
 
-### Queue plus per-step checkpoint, not Workflow replay
+### Historical: queue plus per-step checkpoint, not Workflow replay
 
-Historical: the platform now runs turns as actors resumed by a log fold. When
-the durable backend ran them, it kept this model: each turn step a queued
+The platform now runs turns as actors resumed by a log fold. When the retired
+durable backend ran them, it kept this model: each turn step a queued
 task, the turn's state checkpointed after every step. It does not express a turn
 as an `everruns-durable` `Workflow` that rebuilds its state by replaying
 history.
