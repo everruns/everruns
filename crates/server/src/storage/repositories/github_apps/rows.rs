@@ -42,3 +42,12 @@ pub struct CreateGitHubAppRow {
     pub webhook_secret_encrypted: Option<Vec<u8>>,
     pub created_by_user_id: Option<Uuid>,
 }
+
+/// A GitHub account an org already reached: the installation account of one
+/// of its `github` connections, or the owner of one of its Apps.
+#[derive(Debug, Clone, FromRow)]
+pub struct KnownGitHubAccountRow {
+    pub login: String,
+    /// GitHub's `account.type` (`User`, `Organization`) when it was recorded.
+    pub account_type: Option<String>,
+}

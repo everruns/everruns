@@ -25,6 +25,7 @@ import {
 } from "@/components/agents/trigger-form";
 import {
   GitHubTriggerForm,
+  githubEventsLabel,
   githubFormFromParams,
   isGitHubFormValid,
   type GitHubTriggerFormState,
@@ -208,7 +209,9 @@ export default function AgentTriggerPage({
         }
         description={
           isGithub ? (
-            <>Pull request events · {agentName}</>
+            <>
+              {githubEventsLabel(githubForm.events)} · {agentName}
+            </>
           ) : (
             // Read-only surfaces always render the cadence, never the raw cron.
             <>

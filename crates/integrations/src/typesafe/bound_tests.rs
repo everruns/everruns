@@ -282,3 +282,31 @@ async fn unmetered_decisions_need_only_egress() {
         Some(0.95)
     );
 }
+
+/// A provider that refuses the request, the way OpenRouter answered a
+/// half-described yes/no question with a 400.
+struct Refusing(u16);
+#[async_trait]
+impl EgressService for Refusing {
+    async fn send(&self, _: EgressRequest) -> EgressResult<EgressResponse> {
+        panic!("must stream")
+    }
+    async fn send_stream(&self, _: EgressRequest) -> EgressResult<EgressStreamResponse> {
+        Ok(EgressStreamResponse {
+            status: self.0,
+            headers: Default::default(),
+            body: Box::pin(futures::stream::iter(vec![Ok(
+                br#"{"error":{"message":"provider detail with private content"}}"#.to_vec(),
+            )])),
+        })
+    }
+}
+
+#[tokio::test]
+async fn a_refused_request_names_the_http_status_but_not_the_body() {
+    let request = DecisionRequest::new("s").ask("q", DecisionQuestion::noul("True?"));
+    let error = evaluate_unmetered(&binding(), request, &Refusing(400))
+        .await
+        .unwrap_err();
+    assert_eq!(error, "Decision provider request failed (HTTP 400)");
+}

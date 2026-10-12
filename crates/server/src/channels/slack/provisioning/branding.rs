@@ -141,13 +141,13 @@ mod tests {
                     .count(),
                 35
             );
+            // Slack counts the short description in bytes: 46 three-byte chars.
             assert_eq!(
                 manifest["display_information"]["description"]
                     .as_str()
                     .unwrap()
-                    .chars()
-                    .count(),
-                140
+                    .len(),
+                138
             );
             assert_eq!(
                 manifest["display_information"]["long_description"]

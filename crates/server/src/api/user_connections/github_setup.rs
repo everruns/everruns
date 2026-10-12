@@ -241,7 +241,10 @@ pub async fn github_callback(
             scopes: Some(result.permissions),
             expires_at: None,
             installation_id: Some(result.installation_id),
-            provider_metadata: None,
+            // Lets an agent's GitHub card suggest this account as an owner.
+            provider_metadata: result
+                .account_type
+                .map(|account_type| serde_json::json!({ "account_type": account_type })),
         })
         .await
         .map_err(|e| {

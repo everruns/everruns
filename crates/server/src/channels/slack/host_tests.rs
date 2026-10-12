@@ -580,3 +580,29 @@ async fn existing_slack_conversations_keep_their_session() {
     let reply = slack.send(message("C1", "2.0", Some("1.0"))).await.unwrap();
     assert_eq!(session_of(&reply), thread.to_string());
 }
+
+#[tokio::test]
+async fn a_top_level_dm_is_answered_in_the_dm_and_a_thread_keeps_its_thread() {
+    let slack = Slack::new(slack_config(SessionBinding::Requester)).await;
+    let inline = |body: Value| {
+        let slack = &slack;
+        async move {
+            let session = session_of(&slack.send(body).await.unwrap());
+            let input = slack
+                .db
+                .latest_input_message_event_since(session.parse().unwrap(), 0)
+                .await
+                .unwrap()
+                .expect("the message was recorded");
+            input.data["message"]["metadata"]["slack_reply_inline"] == true
+        }
+    };
+    assert!(inline(pane_message("1.0")).await, "top-level DM");
+    let mut threaded = pane_message("2.0");
+    threaded["event"]["thread_ts"] = json!("1.0");
+    assert!(!inline(threaded).await, "a reply inside a DM thread");
+    assert!(
+        !inline(message("C1", "3.0", None)).await,
+        "a channel message"
+    );
+}

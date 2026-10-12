@@ -214,4 +214,10 @@ impl Ctx {
         self.slack_provisioner = provisioner;
         self
     }
+
+    /// Point agent GitHub App commands at `github` (its client and public URLs).
+    pub fn with_github_apps(mut self, github: crate::github_apps::GitHubAppContext) -> Self {
+        self.github_apps = github;
+        self
+    }
 }

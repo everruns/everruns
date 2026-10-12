@@ -125,10 +125,11 @@ async fn baseline_matches_the_legacy_history_and_adoption_keeps_it() {
         applied_versions(&legacy.pool).await.len() as i64,
         LEGACY_LAST_VERSION
     );
+    run(&legacy.pool).await.expect("adopt a legacy database");
+    // Compared after adoption, so both sides also ran every migration that
+    // came after the baseline.
     let legacy_schema = schema_snapshot(&legacy.pool).await;
     let legacy_rows = row_counts(&legacy.pool).await;
-
-    run(&legacy.pool).await.expect("adopt a legacy database");
     assert_eq!(applied_versions(&legacy.pool).await, fresh_versions);
     run(&legacy.pool)
         .await

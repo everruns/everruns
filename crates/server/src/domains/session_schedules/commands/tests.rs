@@ -123,6 +123,29 @@ async fn the_worker_store_round_trips_through_dispatch() {
     );
 }
 
+/// The 5-field cron agents write, in the person's timezone, works through the
+/// worker store as well as in-process.
+#[tokio::test]
+async fn the_worker_store_accepts_a_five_field_cron_in_a_timezone() {
+    let db = Arc::new(StorageBackend::test_database());
+    let session_id = session(&db, DEFAULT_ORG_ID).await;
+    let ctx = worker_ctx(db);
+    let created = run(
+        &ctx,
+        "worker_create_session_schedule",
+        json!({
+            "session_id": session_id.to_string(),
+            "description": "Morning briefing",
+            "cron_expression": "0 7 * * *",
+            "timezone": "America/Chicago",
+        }),
+    )
+    .await
+    .expect("create");
+    assert_eq!(created["timezone"], "America/Chicago");
+    assert!(created["next_trigger_at"].is_string(), "{created}");
+}
+
 /// A limit rejection is the one failure the tool reports back to the model, so
 /// it must stay distinguishable from a store failure on the wire.
 #[tokio::test]

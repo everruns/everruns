@@ -168,10 +168,10 @@ pub(crate) fn build_evaluation(input: EvaluateInput) -> Result<Evaluation, Strin
         let built = match question.kind.as_str() {
             "noul" => Question::Noul {
                 instructions: question.instructions.into(),
-                criteria: Some(crate::typesafe::client::NoulCriteria {
-                    yes: question.yes,
-                    no: question.no,
-                }),
+                criteria: crate::typesafe::client::NoulCriteria::described(
+                    question.yes,
+                    question.no,
+                ),
             },
             "choice" => {
                 let options = question.options.ok_or_else(|| {

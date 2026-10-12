@@ -800,6 +800,10 @@ const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
     "upsert_agent_check_rule",
     "delete_agent_check_rule",
     "create_agent_credential_binding",
+    // The agent's GitHub App lives on its identity's connection and the
+    // github_apps table, never the agents row; same ground as a credential.
+    "connect_agent_github",
+    "disconnect_agent_github",
     // Operational probe. Runs the agent to report health; changes no definition.
     "trigger_agent_health_check",
     // Produces an analysis report. Non-read-only only because it spends utility

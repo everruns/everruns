@@ -179,10 +179,10 @@ before the docs build.
 
 The `release` and `cloud` fields are what make the changelog honest without
 waiting on releases: an entry goes up as soon as the feature is complete, and
-its header shows where it is available. Before a release it reads **On main**;
-after `/prepare-release` it reads **In 0.48.0** with a link to that release; on
-Cloud it reads **Live on Cloud** with the deploy date. Readers never have to
-guess whether a feature they read about is in the version they run.
+its header shows where it is available. After `/prepare-release` it reads
+**In 0.48.0** with a link to that release; on Cloud it reads **Live on Cloud**
+with the deploy date. Before a release it shows nothing: "on main" tells a
+reader nothing they can act on, so only a known version is shown.
 
 ## Rendering, search, Markdown and RSS
 

@@ -1461,8 +1461,8 @@ mod tests {
             config.prompt_cache = cache.map(|(enabled, handle)| {
                 everruns_contracts::driver_registry::PromptCacheConfig {
                     enabled,
-                    strategy: Default::default(),
                     gemini_cached_content: handle.map(str::to_string),
+                    ..Default::default()
                 }
             });
             config.parallel_tool_calls = parallel;

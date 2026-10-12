@@ -892,7 +892,7 @@ mod github_installation_ownership {
                 .and(path(format!("/app/installations/{id}")))
                 .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                     "id": id,
-                    "account": { "id": id * 10, "login": format!("account-{id}") },
+                    "account": { "id": id * 10, "login": format!("account-{id}"), "type": "Organization" },
                     "permissions": { "contents": "read" }
                 })))
                 .mount(github)
@@ -1128,6 +1128,17 @@ mod github_installation_ownership {
         assert_eq!(
             linked_owner(&state, VICTIM_INSTALLATION).await,
             Some(owner_target)
+        );
+        // The account type is kept so agent GitHub cards can suggest the org.
+        let connection = state
+            .db
+            .get_user_connection(owner_target, "github")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            connection.provider_metadata.as_ref().unwrap()["account_type"],
+            "Organization"
         );
 
         // "Request user authorization during installation": one redirect

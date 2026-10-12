@@ -36,6 +36,45 @@ fn test_manifest_includes_history_scopes_for_thread_context() {
     );
 }
 
+#[test]
+fn manifest_lets_people_message_the_app() {
+    // Without the messages tab Slack shows "Sending messages to this app has
+    // been turned off", so a one-click app could only be reached by @mention.
+    for agent_surface in [false, true] {
+        let yaml = build_manifest_yaml(
+            "Bot",
+            "Bot",
+            None,
+            "https://example.com/events",
+            "https://example.com/interactivity",
+            "https://example.com/callback",
+            agent_surface,
+            &[],
+        );
+        let manifest: serde_json::Value = serde_yaml::from_str(&yaml).unwrap();
+        let home = &manifest["features"]["app_home"];
+        assert_eq!(home["messages_tab_enabled"], true, "{yaml}");
+        assert_eq!(home["messages_tab_read_only_enabled"], false);
+        assert_eq!(home["home_tab_enabled"], false);
+    }
+}
+
+#[test]
+fn short_description_fits_slack_byte_limit() {
+    let ukrainian = "Тримає розпорядок дня дітей (скрін тайм, чергування з посуду), публікує його на stend.sh, надсилає картки у Visti, відповідає в Slack.";
+    let short = build_short_description("kids-duties", Some(ukrainian));
+    assert!(
+        short.len() <= SLACK_SHORT_DESC_MAX_BYTES,
+        "{} bytes",
+        short.len()
+    );
+    assert!(ukrainian.starts_with(&short));
+    let ascii = "x".repeat(200);
+    assert_eq!(build_short_description("a", Some(&ascii)).len(), 140);
+    assert_eq!(truncate_bytes("ab", 10), "ab");
+    assert_eq!(truncate_bytes("аб", 3), "а");
+}
+
 #[async_trait::async_trait]
 impl TurnBackend for NoopRunner {
     async fn start_turn(

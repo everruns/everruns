@@ -685,6 +685,41 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/github": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks. */
+    get: operations["get_agent_github"];
+    put?: never;
+    post?: never;
+    /** Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. When the App was never installed, forget it instead, so the next connect creates a new one (for example in a GitHub organization). */
+    delete: operations["disconnect_agent_github"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/github/connect": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Start connecting an agent to GitHub through its own GitHub App. Returns `install` with a URL to open in a browser when the App exists, or `create_app` when GitHub must first create it, which needs the web UI (Agent > Integrations > Connect GitHub). */
+    post: operations["connect_agent_github"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/health-checks": {
     parameters: {
       query?: never;
@@ -7500,6 +7535,41 @@ export interface components {
        */
       trigger: Record<string, unknown>;
     };
+    /** @description Result of disconnecting an agent from GitHub. */
+    AgentGitHubDisconnect: {
+      outcome: components["schemas"]["GitHubDisconnectOutcome"];
+    };
+    /** @description GitHub as seen from an agent's page. */
+    AgentGitHubStatus: {
+      /** @description GitHub account the App is installed on. */
+      account?: string | null;
+      /**
+       * @description The App exists. Without `connected` it was never installed, or its
+       *     installation was removed.
+       */
+      app_created: boolean;
+      app_slug?: string | null;
+      app_url?: string | null;
+      /** @description An installation is bound, so tools and triggers work. */
+      connected: boolean;
+      /** @description The agent's identity, once it has one; disconnect goes through it. */
+      identity_id?: string | null;
+      /**
+       * @description Permissions new Apps request that this installation lacks (`name:level`),
+       *     e.g. `actions:read` for CI triggers on an App created before them.
+       *     Empty when not connected.
+       */
+      missing_permissions: string[];
+      /** @description `all` or `selected`. */
+      repository_selection?: string | null;
+      /**
+       * @description GitHub accounts this organization already reached, as candidates for
+       *     `owner_org` when creating the App: installation accounts of its GitHub
+       *     connections and owners of its other agents' Apps. Organizations first,
+       *     then users, then accounts of unknown kind; by login within each.
+       */
+      suggested_owners: components["schemas"]["GitHubOwnerSuggestion"][];
+    };
     /** @enum {string} */
     AgentHarnessSource: "explicit" | "organization_default";
     /** @enum {string} */
@@ -8380,6 +8450,32 @@ export interface components {
       /** @description Number of secrets stored */
       count: number;
     };
+    /** @description Where a new App is created and where the browser lands afterwards. */
+    BeginConnectRequest: {
+      /**
+       * @description GitHub organization that should own a new App. Omit for the personal
+       *     account of whoever confirms it on GitHub. A private App can only be
+       *     installed on the account that owns it.
+       */
+      owner_org?: string | null;
+      /** @description UI path to return to when the flow ends. */
+      return_to?: string | null;
+    };
+    /** @description What happens next. */
+    BeginConnectResponse:
+      | {
+          action: string;
+          /** @enum {string} */
+          kind: "create_app";
+          manifest: string;
+          next_step: string;
+        }
+      | {
+          app_slug: string;
+          /** @enum {string} */
+          kind: "install";
+          url: string;
+        };
     /** @description Budget — a stored spending cap for a platform subject. */
     Budget: {
       /**
@@ -13170,6 +13266,16 @@ export interface components {
        */
       insertions: number;
     };
+    /**
+     * @description What kind of GitHub account a login is.
+     * @enum {string}
+     */
+    GitHubAccountKind: "organization" | "user" | "unknown";
+    /**
+     * @description What a disconnect did.
+     * @enum {string}
+     */
+    GitHubDisconnectOutcome: "disconnected" | "started_over";
     /** @description Request body for GitHub memory source. */
     GitHubMemorySourceRequest: {
       /**
@@ -13204,6 +13310,11 @@ export interface components {
        * @description Automatic resync interval in seconds. Omit or set 0 for manual-only; scheduled sync accepts 300 through 604800.
        */
       sync_interval_secs?: number | null;
+    };
+    /** @description A GitHub account a new App could be created in. */
+    GitHubOwnerSuggestion: {
+      kind: components["schemas"]["GitHubAccountKind"];
+      login: string;
     };
     /** @description Request body for git memory source. */
     GitMemorySourceRequest: {
@@ -17484,6 +17595,12 @@ export interface components {
       enabled: boolean;
       /** @description Provider-specific prompt-cache mode used by the driver. */
       provider_mode?: string | null;
+      /**
+       * @description Cache retention the driver requested after snapping to what the
+       *     provider supports (`5m`, `30m`, `1h`). Absent when the provider's
+       *     retention is not configurable.
+       */
+      retention?: string | null;
       /** @description Strategy used to enable prompt caching. */
       strategy: components["schemas"]["PromptCacheStrategy"];
     };
@@ -24753,6 +24870,37 @@ export interface components {
        */
       to_turn: number;
     };
+    /**
+     * @description A prompt-cache reset: the cache read fell to under half of what the
+     *     previous model call left cached.
+     */
+    TraceCacheReset: {
+      /**
+       * Format: int64
+       * @description Seconds between the end of the previous call and the start of this one.
+       * @example 42
+       */
+      idle_seconds: number;
+      /**
+       * Format: int64
+       * @description How many of those this call did not read back.
+       * @example 18420
+       */
+      lost_tokens: number;
+      /**
+       * Format: int64
+       * @description Prompt tokens the previous call left in the cache (read plus written).
+       * @example 18420
+       */
+      previous_cached_tokens: number;
+      /**
+       * @description Likely cause, the first difference found: `model_changed`,
+       *     `tools_changed`, `system_changed`, `history_changed`, `expired` (idle
+       *     longer than the cache retention), or `unknown`.
+       * @example tools_changed
+       */
+      reason: string;
+    };
     /** @description An event in the session log. */
     TraceEventRef: {
       /** @description Payload, when small enough to inline. */
@@ -25036,6 +25184,7 @@ export interface components {
        * @example 12529
        */
       cache_read_tokens: number;
+      cache_reset?: components["schemas"]["TraceCacheReset"] | null;
       /**
        * Format: int32
        * @description Estimated index of the last message inside the cached prefix: the
@@ -25044,6 +25193,12 @@ export interface components {
        * @example 11
        */
       cached_through?: number | null;
+      /**
+       * @description A long prompt sent with caching off that neither read nor wrote the
+       *     cache: turning on prompt caching would likely make calls like it
+       *     cheaper.
+       */
+      caching_would_help?: boolean;
       /**
        * Format: int64
        * @description Prompt tokens neither read from nor written to the cache.
@@ -25723,8 +25878,13 @@ export interface components {
        */
       short_description?: string | null;
       /**
-       * @description Conversation starters; omit to leave unchanged, send empty to clear.
-       *     `icon` reuses the harness icon name set.
+       * @description Conversation starters as `[{"text": "..."}]`; omit to keep, `[]` to clear.
+       *     An optional `icon` reuses the harness icon name set.
+       * @example [
+       *       {
+       *         "text": "Who does the dishes today?"
+       *       }
+       *     ]
        */
       starters?: components["schemas"]["ConversationStarter"][] | null;
       status?: components["schemas"]["AgentStatus"] | null;
@@ -30904,6 +31064,100 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  get_agent_github: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentGitHubStatus"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  disconnect_agent_github: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentGitHubDisconnect"];
+        };
+      };
+      /** @description Agent or GitHub connection not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  connect_agent_github: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["BeginConnectRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BeginConnectResponse"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

@@ -74,6 +74,22 @@ pub fn estimate_cost_usd_for_speed(
     )
 }
 
+/// Extra cost of 1 hour cache writes. See
+/// `crate::model_profile_data::cache_write_1h_surcharge_usd`.
+pub fn cache_write_1h_surcharge_usd(
+    provider_type: &DriverId,
+    model_id: &str,
+    prompt_tokens: u32,
+    one_hour_write_tokens: u32,
+) -> Option<f64> {
+    crate::model_profile_data::cache_write_1h_surcharge_usd(
+        provider_type.as_str(),
+        model_id,
+        prompt_tokens,
+        one_hour_write_tokens,
+    )
+}
+
 /// Get the vendor/brand for a model id, or None if it is not in the registry
 /// (or not offered under the given provider type).
 pub fn get_model_vendor(provider_type: &DriverId, model_id: &str) -> Option<ModelVendor> {

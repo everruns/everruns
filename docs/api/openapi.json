@@ -2703,6 +2703,119 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/github": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks.",
+        "operationId": "get_agent_github",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentGitHubStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. When the App was never installed, forget it instead, so the next connect creates a new one (for example in a GitHub organization).",
+        "operationId": "disconnect_agent_github",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentGitHubDisconnect"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent or GitHub connection not found"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/github/connect": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Start connecting an agent to GitHub through its own GitHub App. Returns `install` with a URL to open in a browser when the App exists, or `create_app` when GitHub must first create it, which needs the web UI (Agent > Integrations > Connect GitHub).",
+        "operationId": "connect_agent_github",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BeginConnectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeginConnectResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found"
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/health-checks": {
       "get": {
         "tags": [
@@ -27380,6 +27493,85 @@
           }
         }
       },
+      "AgentGitHubDisconnect": {
+        "type": "object",
+        "description": "Result of disconnecting an agent from GitHub.",
+        "required": [
+          "outcome"
+        ],
+        "properties": {
+          "outcome": {
+            "$ref": "#/components/schemas/GitHubDisconnectOutcome"
+          }
+        }
+      },
+      "AgentGitHubStatus": {
+        "type": "object",
+        "description": "GitHub as seen from an agent's page.",
+        "required": [
+          "connected",
+          "app_created",
+          "missing_permissions",
+          "suggested_owners"
+        ],
+        "properties": {
+          "account": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "GitHub account the App is installed on."
+          },
+          "app_created": {
+            "type": "boolean",
+            "description": "The App exists. Without `connected` it was never installed, or its\ninstallation was removed."
+          },
+          "app_slug": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "app_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "connected": {
+            "type": "boolean",
+            "description": "An installation is bound, so tools and triggers work."
+          },
+          "identity_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The agent's identity, once it has one; disconnect goes through it."
+          },
+          "missing_permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Permissions new Apps request that this installation lacks (`name:level`),\ne.g. `actions:read` for CI triggers on an App created before them.\nEmpty when not connected."
+          },
+          "repository_selection": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`all` or `selected`."
+          },
+          "suggested_owners": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GitHubOwnerSuggestion"
+            },
+            "description": "GitHub accounts this organization already reached, as candidates for\n`owner_org` when creating the App: installation accounts of its GitHub\nconnections and owners of its other agents' Apps. Organizations first,\nthen users, then accounts of unknown kind; by login within each."
+          }
+        }
+      },
       "AgentHarnessSource": {
         "type": "string",
         "enum": [
@@ -29112,6 +29304,81 @@
             "minimum": 0
           }
         }
+      },
+      "BeginConnectRequest": {
+        "type": "object",
+        "description": "Where a new App is created and where the browser lands afterwards.",
+        "properties": {
+          "owner_org": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "GitHub organization that should own a new App. Omit for the personal\naccount of whoever confirms it on GitHub. A private App can only be\ninstalled on the account that owns it."
+          },
+          "return_to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "UI path to return to when the flow ends."
+          }
+        }
+      },
+      "BeginConnectResponse": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "GitHub must create the App first. A browser posts `manifest` as the\n`manifest` form field to `action` (a top-level navigation, so GitHub's\nconfirmation page is shown). Outside a browser, follow `next_step`.",
+            "required": [
+              "action",
+              "manifest",
+              "next_step",
+              "kind"
+            ],
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "create_app"
+                ]
+              },
+              "manifest": {
+                "type": "string"
+              },
+              "next_step": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The App exists; open `url` in a browser to install it or change which\nrepositories it can reach.",
+            "required": [
+              "url",
+              "app_slug",
+              "kind"
+            ],
+            "properties": {
+              "app_slug": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "install"
+                ]
+              },
+              "url": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "description": "What happens next."
       },
       "Budget": {
         "type": "object",
@@ -37493,6 +37760,23 @@
           }
         }
       },
+      "GitHubAccountKind": {
+        "type": "string",
+        "description": "What kind of GitHub account a login is.",
+        "enum": [
+          "organization",
+          "user",
+          "unknown"
+        ]
+      },
+      "GitHubDisconnectOutcome": {
+        "type": "string",
+        "description": "What a disconnect did.",
+        "enum": [
+          "disconnected",
+          "started_over"
+        ]
+      },
       "GitHubMemorySourceRequest": {
         "type": "object",
         "description": "Request body for GitHub memory source.",
@@ -37563,6 +37847,22 @@
             "description": "Automatic resync interval in seconds. Omit or set 0 for manual-only; scheduled sync accepts 300 through 604800.",
             "maximum": 604800,
             "minimum": 0
+          }
+        }
+      },
+      "GitHubOwnerSuggestion": {
+        "type": "object",
+        "description": "A GitHub account a new App could be created in.",
+        "required": [
+          "login",
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/GitHubAccountKind"
+          },
+          "login": {
+            "type": "string"
           }
         }
       },
@@ -45221,6 +45521,13 @@
               "null"
             ],
             "description": "Provider-specific prompt-cache mode used by the driver."
+          },
+          "retention": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cache retention the driver requested after snapping to what the\nprovider supports (`5m`, `30m`, `1h`). Absent when the provider's\nretention is not configurable."
           },
           "strategy": {
             "$ref": "#/components/schemas/PromptCacheStrategy",
@@ -58303,6 +58610,41 @@
           }
         }
       },
+      "TraceCacheReset": {
+        "type": "object",
+        "description": "A prompt-cache reset: the cache read fell to under half of what the\nprevious model call left cached.",
+        "required": [
+          "previous_cached_tokens",
+          "lost_tokens",
+          "reason",
+          "idle_seconds"
+        ],
+        "properties": {
+          "idle_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds between the end of the previous call and the start of this one.",
+            "example": 42
+          },
+          "lost_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many of those this call did not read back.",
+            "example": 18420
+          },
+          "previous_cached_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Prompt tokens the previous call left in the cache (read plus written).",
+            "example": 18420
+          },
+          "reason": {
+            "type": "string",
+            "description": "Likely cause, the first difference found: `model_changed`,\n`tools_changed`, `system_changed`, `history_changed`, `expired` (idle\nlonger than the cache retention), or `unknown`.",
+            "example": "tools_changed"
+          }
+        }
+      },
       "TraceEventRef": {
         "type": "object",
         "description": "An event in the session log.",
@@ -58806,6 +59148,17 @@
             "description": "Prompt tokens read from the provider's cache.",
             "example": 12529
           },
+          "cache_reset": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TraceCacheReset",
+                "description": "Set when this call lost most of the prompt prefix the previous model\ncall had cached."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "cached_through": {
             "type": [
               "integer",
@@ -58814,6 +59167,10 @@
             "format": "int32",
             "description": "Estimated index of the last message inside the cached prefix: the\ncache-read share of the prompt laid over the messages by size. `-1`\nwhen only the tools fit; absent when nothing was read from cache.",
             "example": 11
+          },
+          "caching_would_help": {
+            "type": "boolean",
+            "description": "A long prompt sent with caching off that neither read nor wrote the\ncache: turning on prompt caching would likely make calls like it\ncheaper."
           },
           "input_tokens": {
             "type": "integer",
@@ -60069,7 +60426,12 @@
             "items": {
               "$ref": "#/components/schemas/ConversationStarter"
             },
-            "description": "Conversation starters; omit to leave unchanged, send empty to clear.\n`icon` reuses the harness icon name set."
+            "description": "Conversation starters as `[{\"text\": \"...\"}]`; omit to keep, `[]` to clear.\nAn optional `icon` reuses the harness icon name set.",
+            "example": [
+              {
+                "text": "Who does the dishes today?"
+              }
+            ]
           },
           "status": {
             "oneOf": [

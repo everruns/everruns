@@ -23,6 +23,48 @@ fn initiator_channel_id(provenance: &serde_json::Value) -> Option<&str> {
     }
 }
 
+/// The Slack conversation `(channel, thread_ts)` a persisted input came from,
+/// when its server-authored provenance binds it to this app and endpoint.
+/// `Ok(None)` is a bound input without a thread reference.
+fn slack_target(
+    input: &crate::storage::EventRow,
+    app_public_id: &str,
+    endpoint_public_id: &str,
+) -> Result<Option<(String, String)>, SlackActionError> {
+    let provenance = input
+        .metadata
+        .as_ref()
+        .ok_or(SlackActionError::NoSlackSession)?;
+    // MessageService records the external participant as runtime subject
+    // and nests the server-authored app provenance under `source`.
+    let provenance = if provenance["type"] == "virtual_user" {
+        &provenance["source"]
+    } else {
+        provenance
+    };
+    let metadata = &input.data["message"]["metadata"];
+    // THREAT[TM-SLACK-005]: bind posts to this invocation's signed ingress.
+    // Event provenance is server-authored; message metadata alone is
+    // caller-controlled on ordinary API inputs and cannot authorize a post.
+    if initiator_channel_id(provenance) != Some(app_public_id)
+        || metadata["_app_channel_id"].as_str() != Some(endpoint_public_id)
+    {
+        return Err(SlackActionError::NoSlackSession);
+    }
+    let channel = metadata["slack_channel"]
+        .as_str()
+        .filter(|v| !v.is_empty())
+        .ok_or(SlackActionError::NoSlackSession)?;
+    // A top-level DM message is answered in the DM itself (empty thread).
+    if metadata[crate::channels::slack::host::SLACK_REPLY_INLINE] == true {
+        return Ok(Some((channel.to_string(), String::new())));
+    }
+    Ok(metadata["slack_thread_ts"]
+        .as_str()
+        .filter(|v| !v.is_empty())
+        .map(|thread_ts| (channel.to_string(), thread_ts.to_string())))
+}
+
 impl DbSlackActionInvoker {
     pub(crate) async fn resolve_action_channel(
         &self,
@@ -101,38 +143,26 @@ impl DbSlackActionInvoker {
             .await
             .map_err(|e| SlackActionError::Transient(e.to_string()))?
             .ok_or(SlackActionError::NoSlackSession)?;
-        let provenance = input
-            .metadata
-            .as_ref()
-            .ok_or(SlackActionError::NoSlackSession)?;
-        // MessageService records the external participant as runtime subject
-        // and nests the server-authored app provenance under `source`.
-        let provenance = if provenance["type"] == "virtual_user" {
-            &provenance["source"]
-        } else {
-            provenance
-        };
-        let metadata = &input.data["message"]["metadata"];
-        // THREAT[TM-SLACK-005]: bind posts to this invocation's signed ingress.
-        // Event provenance is server-authored; message metadata alone is
-        // caller-controlled on ordinary API inputs and cannot authorize a post.
-        // Writes are channel-shaped (`execution_metadata::channel_message_metadata`).
-        // Reads also accept the frozen `app` shape, because this gate reads
-        // *persisted* provenance: a session mid-thread when this shipped still
-        // carries the old key, and rejecting it would silence a live Slack
-        // conversation until its next inbound message. Same posture as the
-        // permanent ingress aliases — nothing new is written in that shape.
-        if initiator_channel_id(provenance) != Some(app_public_id.to_string().as_str())
-            || metadata["_app_channel_id"].as_str() != Some(endpoint.public_id.to_string().as_str())
+        let app_id = app_public_id.to_string();
+        let endpoint_id = endpoint.public_id.to_string();
+        let (mut channel, mut thread_ts) =
+            slack_target(&input, &app_id, &endpoint_id)?.ok_or_else(|| {
+                SlackActionError::InvalidArgument("The input has no Slack thread reference; send a new Slack message before posting".into())
+            })?;
+        // A message that steered this turn mid-flight gets no delivery of its
+        // own, so the answer goes to the newest Slack input of the turn: the
+        // question it answers. Same signed-ingress checks; anything else keeps
+        // the turn's own input.
+        if let Some(latest) = self
+            .db
+            .latest_input_message_event_since(session_id, input.sequence)
+            .await
+            .map_err(|e| SlackActionError::Transient(e.to_string()))?
+            .filter(|latest| latest.sequence > input.sequence)
+            && let Ok(Some(target)) = slack_target(&latest, &app_id, &endpoint_id)
         {
-            return Err(SlackActionError::NoSlackSession);
+            (channel, thread_ts) = target;
         }
-        let channel = metadata["slack_channel"]
-            .as_str()
-            .filter(|v| !v.is_empty())
-            .ok_or(SlackActionError::NoSlackSession)?;
-        let thread_ts = metadata["slack_thread_ts"].as_str().filter(|v| !v.is_empty())
-                .ok_or_else(|| SlackActionError::InvalidArgument("The input has no Slack thread reference; send a new Slack message before posting".into()))?;
         if config.channel_id.as_deref().is_some_and(|id| id != channel) {
             return Err(SlackActionError::ChannelUnavailable);
         }
@@ -140,8 +170,8 @@ impl DbSlackActionInvoker {
             channel_id: endpoint.internal_id,
             channel_revision: endpoint.updated_at,
             bot_token: config.bot_token,
-            channel: channel.into(),
-            thread_ts: thread_ts.into(),
+            channel,
+            thread_ts,
         })
     }
 }

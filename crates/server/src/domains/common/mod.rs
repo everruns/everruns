@@ -470,6 +470,8 @@ pub struct Ctx {
         Option<Arc<dyn crate::domains::mcp_servers::connection_check::McpOAuthConnectionChecker>>,
     /// MCP event trigger subscriptions; `None` on surfaces that cannot subscribe.
     pub mcp_event_triggers: Option<Arc<crate::domains::agent_triggers::McpEventTriggers>>,
+    /// GitHub client and public URLs for agents' own GitHub Apps.
+    pub github_apps: crate::github_apps::GitHubAppContext,
     /// Per-org/per-user resource caps enforced in create paths (harnesses, agents, sessions).
     /// Resolved from env so SaaS plan overrides apply across every entry path (HTTP/MCP/gRPC).
     pub resource_limits: crate::server::ResourceLimitsConfig,
@@ -534,6 +536,7 @@ impl Ctx {
             health_check_service: None,
             mcp_event_triggers: None,
             mcp_oauth_checker: None,
+            github_apps: crate::github_apps::GitHubAppContext::from_env(),
             resource_limits: crate::server::ResourceLimitsConfig::from_env(),
         }
     }

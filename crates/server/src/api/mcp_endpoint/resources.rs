@@ -10,7 +10,10 @@
 // no `nextCursor` is returned. The capability stays `resources: {}`: no
 // subscriptions and no list-changed notifications, since the list is static.
 
-use super::{AppState, JsonRpcResponse, ResolvedOrg, apps, link_builder, mcp_ctx, resource_error};
+use super::{
+    AppState, JsonRpcResponse, ResolvedOrg, apps, caching, link_builder, mcp_ctx, resource_error,
+    skills,
+};
 use crate::domains::common::{Command, CommandError, CommandErrorKind};
 use serde_json::{Value, json};
 
@@ -103,6 +106,31 @@ pub(super) async fn handle_resources_read(
     params: Value,
     org: &ResolvedOrg,
     state: &AppState,
+    protocol_version: &str,
+) -> JsonRpcResponse {
+    // THREAT[TM-MCP-012]: Only deployment-static skills are public;
+    // live org resources retain private cache scope.
+    let is_public_skill = params
+        .get("uri")
+        .and_then(Value::as_str)
+        .is_some_and(|uri| uri.starts_with("skill://"));
+    let mut response = read_resource(id, params, org, state).await;
+    if let Some(result) = response.result.as_mut() {
+        let (ttl, scope) = if is_public_skill {
+            (caching::RESOURCES_LIST_TTL_MS, caching::CacheScope::Public)
+        } else {
+            (caching::RESOURCES_READ_TTL_MS, caching::CacheScope::Private)
+        };
+        caching::mark_cacheable(result, protocol_version, ttl, scope);
+    }
+    response
+}
+
+async fn read_resource(
+    id: Option<Value>,
+    params: Value,
+    org: &ResolvedOrg,
+    state: &AppState,
 ) -> JsonRpcResponse {
     let uri = match params.get("uri").and_then(|v| v.as_str()) {
         Some(uri) => uri,
@@ -111,6 +139,16 @@ pub(super) async fn handle_resources_read(
 
     if let Some(contents) = apps::read_resource(uri) {
         return JsonRpcResponse::success(id, contents);
+    }
+
+    if uri.starts_with("skill://") {
+        return match skills::read_resource(uri) {
+            Ok(Some(contents)) => JsonRpcResponse::success(id, contents),
+            Ok(None) => {
+                JsonRpcResponse::invalid_params(id, format!("Unknown skill resource URI: {uri}"))
+            }
+            Err(error) => JsonRpcResponse::error(id, -32603, error),
+        };
     }
 
     let result = match uri {

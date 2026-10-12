@@ -1,7 +1,7 @@
 # Security, auth, and governance
 
 * [Authentication Specification](authentication.md) - Authentication modes and OAuth.
-* [Personal Access Token Scopes](pat-scopes.md) - Design for enforcing PAT scopes (`*`, `read`).
+* [Personal Access Token Scopes](pat-scopes.md) - Design for enforcing PAT scopes (`*`, `read`); step 1 (classification) landed.
 * [Encryption Specification](encryption.md) - Envelope encryption for sensitive data.
 * [Bound Secrets](bound-secrets.md) - Write-only API keys the platform puts on requests to one URL; the agent sees a placeholder.
 * [Audit Logging](audit-logging.md) - Audit logging.

@@ -248,6 +248,7 @@ pub(crate) fn cache_config() -> LlmCallConfig {
         .metadata
         .insert("session_id".into(), "session-one".into());
     config.prompt_cache = Some(crate::driver_registry::PromptCacheConfig {
+        retention: Default::default(),
         enabled: true,
         strategy: crate::driver_registry::PromptCacheStrategy::Auto,
         gemini_cached_content: None,

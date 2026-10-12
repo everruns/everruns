@@ -28,6 +28,11 @@ use uuid::Uuid;
 
 use crate::storage::EncryptionService;
 
+/// Connection provider an agent App's installation is stored under.
+pub const GITHUB_PROVIDER: &str = "github";
+/// Connection type of an agent App's installation.
+pub const GITHUB_APP_CONNECTION_TYPE: &str = "github_app";
+
 /// How long a started connect flow stays valid.
 const SETUP_STATE_TTL_SECONDS: i64 = 60 * 60;
 
@@ -319,6 +324,10 @@ pub struct ManifestConversion {
 pub struct GitHubAccount {
     pub id: i64,
     pub login: String,
+    /// `User` or `Organization`. Recorded on connections so the agent page
+    /// can tell organizations apart when suggesting where an App lives.
+    #[serde(default, rename = "type")]
+    pub account_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -507,6 +516,53 @@ impl GitHubAppApi {
         }
         bail!("GitHub returned {} uninstalling the App", response.status())
     }
+}
+
+/// What connecting and disconnecting an agent App needs: the GitHub client and
+/// the public URLs GitHub sends the App's hooks and the browser to.
+///
+/// Every command context carries one. The defaults come from the environment;
+/// the REST and MCP states replace the URLs with their auth config's, so a
+/// manifest names the same URLs whichever surface built it.
+#[derive(Clone)]
+pub struct GitHubAppContext {
+    pub api: GitHubAppApi,
+    /// Public base URL of this API, as GitHub must call it.
+    pub api_base_url: String,
+    /// Public UI origin; where the browser returns when a flow ends.
+    pub frontend_url: String,
+}
+
+impl GitHubAppContext {
+    /// The process-wide default, so contexts share one HTTP client.
+    pub fn from_env() -> Self {
+        static DEFAULT: std::sync::LazyLock<GitHubAppContext> =
+            std::sync::LazyLock::new(|| GitHubAppContext {
+                api: GitHubAppApi::new(GitHubEndpoints::from_env()),
+                api_base_url: crate::auth::AuthConfig::api_base_url_from_env(),
+                frontend_url: crate::auth::AuthConfig::frontend_url_from_env(),
+            });
+        DEFAULT.clone()
+    }
+
+    /// The same client with the public URLs of one auth config.
+    pub fn with_public_urls(mut self, api_base_url: &str, frontend_url: &str) -> Self {
+        self.api_base_url = api_base_url.to_string();
+        self.frontend_url = frontend_url.to_string();
+        self
+    }
+}
+
+/// Decrypt an App's private key for one GitHub call.
+pub fn app_credentials(
+    encryption: Option<&EncryptionService>,
+    app: &crate::storage::GitHubAppRow,
+) -> Result<AppCredentials> {
+    let encryption = encryption.context("encryption not configured")?;
+    Ok(AppCredentials {
+        app_id: app.app_id,
+        private_key_pem: encryption.decrypt_to_string(&app.private_key_encrypted)?,
+    })
 }
 
 async fn read_json<T: serde::de::DeserializeOwned>(

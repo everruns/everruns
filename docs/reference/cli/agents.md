@@ -46,6 +46,9 @@ Agent definitions and their configuration.
 | [`agents credentials create`](#agents-credentials-create) | Create a write-only Agent credential setup requirement: one attached MCP tool parameter, or an HTTP API the agent's shell calls with $ENV_NAME (the value is injected only into requests to the bound URL). |
 | [`agents exposures resume`](#agents-exposures-resume) | Let an agent's live channels accept traffic again. |
 | [`agents exposures suspend`](#agents-exposures-suspend) | Stop every channel on an agent from accepting traffic. |
+| [`agents github connect`](#agents-github-connect) | Start connecting an agent to GitHub through its own GitHub App. |
+| [`agents github disconnect`](#agents-github-disconnect) | Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. |
+| [`agents github get`](#agents-github-get) | Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks. |
 | [`agents health-checks get`](#agents-health-checks-get) | Get a single agent health check run with its results. |
 | [`agents health-checks list`](#agents-health-checks-list) | List recent health check runs for an agent. |
 | [`agents health-checks trigger`](#agents-health-checks-trigger) | Run a behavioral health check (generated smoke tests) against an agent. |
@@ -770,6 +773,68 @@ Example:
 ```bash
 # Stop an agent answering on its exposed surfaces without deleting it
 everruns agents exposures suspend agent_01h9 --reason 'Pause while the prompt is fixed'
+```
+
+## agents github connect
+
+Start connecting an agent to GitHub through its own GitHub App. Returns `install` with a URL to open in a browser when the App exists, or `create_app` when GitHub must first create it, which needs the web UI (Agent > Integrations > Connect GitHub).
+
+```bash
+everruns agents github connect [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier. |
+| `--owner-org <OWNER_ORG>` | GitHub organization that should own a new App. |
+| `--return-to <RETURN_TO>` | UI path to return to when the flow ends. |
+
+Example:
+
+```bash
+# Get the link that installs an agent's GitHub App on more repositories
+everruns agents github connect --agent-id agent_01h9 --reason 'Let the reviewer reach the API repo'
+```
+
+## agents github disconnect
+
+Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. When the App was never installed, forget it instead, so the next connect creates a new one (for example in a GitHub organization).
+
+```bash
+everruns agents github disconnect [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier. |
+
+Example:
+
+```bash
+# Uninstall an agent's GitHub App and remove its connection
+everruns agents github disconnect --agent-id agent_01h9 --reason 'Reviewer retired'
+
+# Start over after creating the App on the wrong account, before installing it
+everruns agents github disconnect --agent-id agent_01h9 --reason 'Recreate the App in the acme organization'
+```
+
+## agents github get
+
+Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks.
+
+```bash
+everruns agents github get [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier. |
+
+Example:
+
+```bash
+# Check whether an agent's GitHub App is installed and on which account
+everruns agents github get --agent-id agent_01h9
 ```
 
 ## agents health-checks get

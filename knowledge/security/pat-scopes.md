@@ -10,8 +10,11 @@ tags:
 ---
 # Personal Access Token Scopes
 
-> Status: **Design, awaiting approval.** Nothing here is built. Today scopes are
-> stored but not enforced, and creation accepts only `*` (EVE-701).
+> Status: **Approved; rollout step 1 (classification, no enforcement) landed.**
+> Stored scopes are parsed onto `AuthUser` and every `/v1` route is classified
+> ([`auth/pat_scope`](../../crates/server/src/auth/pat_scope/mod.rs)), but
+> nothing reads the class yet: a narrow token is not refused anywhere, and
+> creation still accepts only `*` (EVE-701). Steps 2 onward are not built.
 
 ## Abstract
 
@@ -275,8 +278,8 @@ not by this design:
 Each test fails if the property it names breaks:
 
 1. **Scope parsing** (unit): `*`, `read`, empty, unknown, and legacy mixes
-   parse to full, read, read, none, none as Decision 1 says. Creation accepts
-   only the three allowed request shapes.
+   parse to full, read, none, none, none as Decision 1 says. Creation accepts
+   only the three allowed request shapes (from step 4; until then only `*`).
 2. **Route coverage** (`crates/server/tests/domain/pat_scope_coverage_test.rs`):
    the universe is the OpenAPI document (`ApiDoc` plus `add_command_paths`),
    which `openapi_coverage_test.rs` already keeps equal to the annotated
@@ -329,6 +332,35 @@ token while any surface still ignores it.
    optionally `login --read-only`. Test 7.
 6. **Optional defense in depth.** `Caller.read_only` checked in
    `Command::run`.
+
+## Implementation notes
+
+Settled while building step 1, where the decisions above left a detail open:
+
+- **Matching ignores parameter names.** The router and the OpenAPI document
+  spell some parameters differently (`{channel_id}` and `{endpoint_id}`,
+  `{*path}` and `{path}`), so routes are compared with every `{..}` erased.
+  `HEAD` takes the class of `GET`.
+- **Command-backed routes are found through their OpenAPI entry.** The
+  `#[command(http = ..)]` macro records the command's name with its generated
+  operation, so the set of command-backed routes is exactly what
+  `command_http` serves, not every command whose path happens to match a
+  hand-written route.
+- **`Never` overrides a command.** Decision 4 wins over source 1: a `Never`
+  row may name a command-backed route, and the command's class is `Never`
+  wherever it is invoked, including through `POST /v1/commands/{name}`. No
+  other table row may name a command-backed route.
+- **Routes outside the OpenAPI document.** The auth surface, Slack install,
+  provider and user-connection OAuth, invitations and member management,
+  file-system routes and a few config endpoints are served but not
+  documented. `/v1/auth/*` is `Never` by prefix (`GET /v1/auth/me` is the one
+  `Read` row). The others that must be readable or explicitly `Never` have
+  rows in a second, undocumented list; the coverage test checks each still
+  names a route literal in the server source and is not in the document. Any
+  other undocumented route stays unclassified, so a narrow token is denied it.
+- **Embedder hook deferred.** The `ServerAppBuilder` hook that lets an
+  embedder classify its own routes lands with enforcement (step 2); until
+  then embedder routes are unclassified, which changes nothing on the wire.
 
 ## Rejected options
 

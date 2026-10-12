@@ -1296,6 +1296,59 @@
   },
   {
     "category": "agents",
+    "cli": "agents github connect",
+    "description": "Start connecting an agent to GitHub through its own GitHub App. Returns `install` with a URL to open in a browser when the App exists, or `create_app` when GitHub must first create it, which needs the web UI (Agent > Integrations > Connect GitHub).",
+    "input_schema": {
+      "$defs": {
+        "BeginConnectRequest": {
+          "description": "Where a new App is created and where the browser lands afterwards.",
+          "properties": {
+            "owner_org": {
+              "description": "GitHub organization that should own a new App. Omit for the personal\naccount of whoever confirms it on GitHub. A private App can only be\ninstalled on the account that owns it.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "return_to": {
+              "description": "UI path to return to when the flow ends.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/BeginConnectRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "description": "Agent's prefixed public identifier.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Start connecting an agent to GitHub."
+    },
+    "method": "POST",
+    "name": "connect_agent_github",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/github/connect",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "agents",
     "cli": "agents copy",
     "description": "Copy an agent. Generates a unique name.",
     "input_schema": {
@@ -9418,6 +9471,30 @@
   },
   {
     "category": "agents",
+    "cli": "agents github disconnect",
+    "description": "Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. When the App was never installed, forget it instead, so the next connect creates a new one (for example in a GitHub organization).",
+    "input_schema": {
+      "description": "Disconnect an agent from GitHub, or start over with a new App.",
+      "properties": {
+        "agent_id": {
+          "description": "Agent's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "disconnect_agent_github",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/github",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "agents",
     "cli": "agents draft",
     "description": "Revise an agent draft from a conversation with the agent builder. Returns the draft only; nothing is created.",
     "input_schema": {
@@ -10320,6 +10397,30 @@
     "name": "get_agent_channel",
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/channels/{channel_id}",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "agents",
+    "cli": "agents github get",
+    "description": "Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks.",
+    "input_schema": {
+      "description": "Show an agent's GitHub connection.",
+      "properties": {
+        "agent_id": {
+          "description": "Agent's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_agent_github",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/github",
     "positional_arg": null,
     "read_only": true
   },
@@ -18869,7 +18970,12 @@
               ]
             },
             "starters": {
-              "description": "Conversation starters; omit to leave unchanged, send empty to clear.\n`icon` reuses the harness icon name set.",
+              "description": "Conversation starters as `[{\"text\": \"...\"}]`; omit to keep, `[]` to clear.\nAn optional `icon` reuses the harness icon name set.",
+              "example": [
+                {
+                  "text": "Who does the dishes today?"
+                }
+              ],
               "items": {
                 "$ref": "#/$defs/ConversationStarter"
               },

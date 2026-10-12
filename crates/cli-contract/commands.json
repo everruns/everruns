@@ -1218,6 +1218,102 @@
     ]
   },
   {
+    "wire_name": "connect_agent_github",
+    "path": [
+      "agents",
+      "github"
+    ],
+    "verb": "connect",
+    "description": "Start connecting an agent to GitHub through its own GitHub App. Returns `install` with a URL to open in a browser when the App exists, or `create_app` when GitHub must first create it, which needs the web UI (Agent > Integrations > Connect GitHub).",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/github/connect",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      },
+      {
+        "field": "owner_org",
+        "long": "owner-org",
+        "kind": "string",
+        "required": false,
+        "help": "GitHub organization that should own a new App."
+      },
+      {
+        "field": "return_to",
+        "long": "return-to",
+        "kind": "string",
+        "required": false,
+        "help": "UI path to return to when the flow ends."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Get the link that installs an agent's GitHub App on more repositories",
+        "command": "everruns agents github connect --agent-id agent_01h9 --reason 'Let the reviewer reach the API repo'"
+      }
+    ]
+  },
+  {
+    "wire_name": "disconnect_agent_github",
+    "path": [
+      "agents",
+      "github"
+    ],
+    "verb": "disconnect",
+    "description": "Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. When the App was never installed, forget it instead, so the next connect creates a new one (for example in a GitHub organization).",
+    "method": "DELETE",
+    "http_path": "/v1/agents/{agent_id}/github",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Uninstall an agent's GitHub App and remove its connection",
+        "command": "everruns agents github disconnect --agent-id agent_01h9 --reason 'Reviewer retired'"
+      },
+      {
+        "intent": "Start over after creating the App on the wrong account, before installing it",
+        "command": "everruns agents github disconnect --agent-id agent_01h9 --reason 'Recreate the App in the acme organization'"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_agent_github",
+    "path": [
+      "agents",
+      "github"
+    ],
+    "verb": "get",
+    "description": "Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/github",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check whether an agent's GitHub App is installed and on which account",
+        "command": "everruns agents github get --agent-id agent_01h9"
+      }
+    ]
+  },
+  {
     "wire_name": "get_agent_health_check_run",
     "path": [
       "agents",
@@ -2340,7 +2436,7 @@
         "long": "starters",
         "kind": "json",
         "required": false,
-        "help": "Conversation starters; omit to leave unchanged, send empty to clear. `icon` reuses the harnes..."
+        "help": "Conversation starters as `[{\"text\": \"...\"}]`; omit to keep, `[]` to clear. An optional `icon`..."
       },
       {
         "field": "status",

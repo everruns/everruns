@@ -128,6 +128,14 @@ reporting fact tables. They are org-scoped, filled asynchronously and have no se
   cache read, cache write and uncached tokens. Providers report counts only, so the
   "cached prefix ends here" line in the request sheet is the cache-read share laid over the
   tools and messages by serialized size, and is labelled as an estimate.
+- **Cache resets are named at read time**: a call whose cache read falls under half of what
+  the previous model call left cached (read plus written, at least 1,024 tokens) carries a
+  `cache_reset` with the likely cause, the first difference between the two stored
+  payloads in wire order: model, tools, system prompt, earlier history, then an idle gap
+  longer than the requested retention. A long prompt sent with caching off that neither
+  read nor wrote cache carries `caching_would_help`. Detection compares the two stored
+  payloads instead of running in the runtime because only the stored payloads can say
+  what changed; the rules live in `crates/server/src/domains/session_trace/cache_reset.rs`.
 - **Sub-agents** show their summary row only. Expanding one reads the child session's trace
   through the same endpoints, one level deep inline.
 - **Search** uses the existing full-text index on events and maps each hit to its turn

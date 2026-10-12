@@ -22,9 +22,46 @@ pub enum PromptCacheStrategy {
     /// Let each driver choose the safest provider-specific behavior.
     #[default]
     Auto,
-    /// Cache only the developer-instruction prefix on supporting models.
-    /// The changing conversation suffix is not written to cache.
+    /// Cache only the stable prefix (tool definitions and instructions) on
+    /// supporting providers. The changing conversation suffix is not written
+    /// to cache, which suits many short sessions sharing one long prompt.
     Explicit,
+}
+
+/// How long the provider should keep a cached prefix after its last use.
+///
+/// Each driver snaps the request to the nearest retention its provider
+/// supports (Anthropic: 5 minutes or 1 hour; OpenAI cache options: 30 minutes
+/// only) and ignores it where retention is not configurable. Longer retention
+/// costs more per cache write (Anthropic bills a 1 hour write at 2x input
+/// instead of 1.25x), so it pays off only when turns are often more than five
+/// minutes apart.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum PromptCacheRetention {
+    /// The provider's default retention.
+    #[default]
+    #[serde(rename = "default")]
+    Default,
+    #[serde(rename = "5m")]
+    FiveMinutes,
+    #[serde(rename = "30m")]
+    ThirtyMinutes,
+    #[serde(rename = "1h")]
+    OneHour,
+}
+
+impl PromptCacheRetention {
+    pub fn is_default(&self) -> bool {
+        *self == Self::Default
+    }
+
+    /// Anthropic `cache_control.ttl`. Anthropic offers 5 minutes (the default,
+    /// sent as no `ttl`) and 1 hour; 30 minutes snaps down to 5 minutes, the
+    /// nearer tier, so only `1h` changes the request.
+    pub fn anthropic_ttl(self) -> Option<&'static str> {
+        (self == Self::OneHour).then_some("1h")
+    }
 }
 
 /// Configuration for prompt caching.
@@ -39,6 +76,9 @@ pub struct PromptCacheConfig {
     /// Strategy the driver should use when enabling prompt caching.
     #[serde(default)]
     pub strategy: PromptCacheStrategy,
+    /// Requested cache retention; drivers snap it to what the provider supports.
+    #[serde(default, skip_serializing_if = "PromptCacheRetention::is_default")]
+    pub retention: PromptCacheRetention,
     /// Existing Gemini cached content resource name (`cachedContents/{id}`).
     ///
     /// When set, the Gemini driver uses explicit caching via the

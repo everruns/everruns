@@ -663,6 +663,38 @@ pub fn estimate_cost_usd(
     )
 }
 
+/// Extra cost of cache writes made with a 1 hour retention, on top of what
+/// [`estimate_cost_usd`] charged for them at the model's `cache_write` rate.
+///
+/// Anthropic bills a 1 hour write at 2x the base input rate and a 5 minute
+/// write at 1.25x; profiles carry the 5 minute rate as `cache_write`. Returns
+/// `None` without cost data or when nothing was written with the long TTL.
+/// `prompt_tokens` is the whole prompt (uncached + cache read + cache write),
+/// which picks the long-context tier the same way `estimate_cost_usd` does.
+pub fn cache_write_1h_surcharge_usd(
+    provider_type: &str,
+    model_id: &str,
+    prompt_tokens: u32,
+    one_hour_write_tokens: u32,
+) -> Option<f64> {
+    if one_hour_write_tokens == 0 {
+        return None;
+    }
+    let cost = get_model_profile(provider_type, model_id)?.cost?;
+    let active_tier = cost
+        .cost_tiers
+        .iter()
+        .filter(|tier| prompt_tokens > tier.above_tokens.max(0) as u32)
+        .max_by_key(|tier| tier.above_tokens);
+    let input_rate = active_tier.map_or(cost.input, |tier| tier.input);
+    let charged_rate = match active_tier {
+        Some(tier) => tier.cache_write.unwrap_or(input_rate),
+        None => cost.cache_write.unwrap_or(input_rate),
+    };
+    let surcharge_rate = (2.0 * input_rate - charged_rate).max(0.0);
+    Some(one_hour_write_tokens as f64 / 1_000_000.0 * surcharge_rate)
+}
+
 /// Get the vendor/brand for a model id, or None if it is not in the registry
 /// (or not offered under the given provider type).
 pub fn get_model_vendor(provider_type: &str, model_id: &str) -> Option<ModelVendor> {

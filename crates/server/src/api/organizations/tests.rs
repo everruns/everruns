@@ -34,6 +34,7 @@ impl AuthBackend for MockAuthBackend {
                 name: "Default Organization".to_string(),
                 role: OrgRole::Owner,
             }],
+            pat_scope: None,
         })
     }
 
