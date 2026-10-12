@@ -111,7 +111,12 @@ pub(crate) fn summary_with_attachment_list(summary_text: &str, summarized: &[Mes
 /// Label for a stored-message attachment part, or `None` for other parts.
 pub(crate) fn runtime_attachment_label(part: &ContentPart) -> Option<String> {
     match part {
-        ContentPart::Image(_) => Some("[Attached image]".to_string()),
+        ContentPart::Image(image) => Some(match image.media_type.as_deref() {
+            Some(media_type) if !media_type.starts_with("image/") => {
+                format!("[Attached file ({media_type})]")
+            }
+            _ => "[Attached image]".to_string(),
+        }),
         ContentPart::ImageFile(image) => Some(match &image.filename {
             Some(name) => format!("[Attached image: {name}]"),
             None => "[Attached image]".to_string(),

@@ -140,7 +140,14 @@ pub fn llm_message_from_message_with_attachments(
                     parts.push(LlmContentPart::Image { url: url.clone() });
                 } else if let (Some(base64), Some(media_type)) = (&img.base64, &img.media_type) {
                     let data_url = format!("data:{};base64,{}", media_type, base64);
-                    parts.push(LlmContentPart::Image { url: data_url });
+                    // Tool results carry PDFs through the same inline-media
+                    // part as images (`ToolResultImage`); drivers need them
+                    // as documents, so split them here.
+                    if media_type.starts_with("image/") {
+                        parts.push(LlmContentPart::Image { url: data_url });
+                    } else {
+                        parts.push(LlmContentPart::file(data_url, None));
+                    }
                 }
             }
             ContentPart::ImageFile(img_file) => {
@@ -545,6 +552,38 @@ mod tests {
             MessageContent::Text(text) => assert_eq!(text, "Hello"),
             _ => panic!("Expected text content"),
         }
+    }
+
+    #[test]
+    fn tool_result_pdf_becomes_a_file_part() {
+        let message = RuntimeMessage::tool_result_with_images(
+            "call_1",
+            Some(serde_json::json!({"path": "/attachments/a1/report.pdf"})),
+            vec![
+                everruns_contracts::tool_types::ToolResultImage {
+                    base64: "JVBERi0=".into(),
+                    media_type: "application/pdf".into(),
+                },
+                everruns_contracts::tool_types::ToolResultImage {
+                    base64: "iVBORw0KGgo=".into(),
+                    media_type: "image/png".into(),
+                },
+            ],
+        );
+
+        let llm_message = llm_message_from_message_with_images(&message, &HashMap::new());
+
+        let MessageContent::Parts(parts) = llm_message.content else {
+            panic!("expected parts");
+        };
+        assert!(parts.iter().any(|part| matches!(
+            part,
+            LlmContentPart::File { url, .. } if url == "data:application/pdf;base64,JVBERi0="
+        )));
+        assert!(parts.iter().any(|part| matches!(
+            part,
+            LlmContentPart::Image { url } if url == "data:image/png;base64,iVBORw0KGgo="
+        )));
     }
 
     #[test]

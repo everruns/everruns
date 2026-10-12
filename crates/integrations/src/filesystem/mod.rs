@@ -17,6 +17,7 @@
 //! assert_eq!(FileSystemCapability.id(), "session_file_system");
 //! ```
 
+mod inline_media;
 mod stable_tools;
 
 use stable_tools::{GlobTool, GrepTool, glob_parameters_schema, grep_parameters_schema};
@@ -24,6 +25,7 @@ use stable_tools::{GlobTool, GrepTool, glob_parameters_schema, grep_parameters_s
 use stable_tools::{filesystem_tool_schemas_with_presentation, schema_contains_workspace};
 
 use self::error::{FileSystemErrorClass, classify_fs_error};
+use self::inline_media::inline_media_type;
 use self::session_file::SessionFile;
 use self::tool_output_sanitizer::build_binary_read_file_result;
 use self::tool_types::{ToolDefinition, ToolHints};
@@ -46,42 +48,6 @@ use sha2::{Digest, Sha256};
 use similar::TextDiff;
 use std::result::Result;
 use std::sync::Arc;
-
-/// Detect the MIME type of an image format supported by model providers.
-fn image_media_type(content: &str) -> Option<&'static str> {
-    use base64::Engine as _;
-
-    // Decode only the prefix needed by supported formats. This avoids trusting an
-    // attacker-controlled extension and avoids decoding large image payloads twice.
-    let encoded = content.as_bytes();
-    let prefix_len = encoded.len().min(16);
-    let prefix_len = prefix_len - (prefix_len % 4);
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(&encoded[..prefix_len])
-        .ok()?;
-
-    match bytes.as_slice() {
-        [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, ..] => Some("image/png"),
-        [0xff, 0xd8, 0xff, ..] => Some("image/jpeg"),
-        [b'G', b'I', b'F', b'8', b'7' | b'9', b'a', ..] => Some("image/gif"),
-        [
-            b'R',
-            b'I',
-            b'F',
-            b'F',
-            _,
-            _,
-            _,
-            _,
-            b'W',
-            b'E',
-            b'B',
-            b'P',
-            ..,
-        ] => Some("image/webp"),
-        _ => None,
-    }
-}
 
 /// Workspace prefix used in file paths
 const WORKSPACE_PREFIX: &str = "/workspace";
@@ -541,7 +507,7 @@ fn content_type_from_extension(path: &str) -> ContentType {
         return ContentType::Csv;
     }
 
-    // Binary formats (images already handled separately via image_media_type)
+    // Binary formats (images and PDFs handled separately via inline_media_type)
     const BINARY_EXTENSIONS: &[&str] = &[
         ".wasm", ".zip", ".tar", ".gz", ".bz2", ".xz", ".zst", ".7z", ".rar", ".exe", ".dll",
         ".so", ".dylib", ".bin", ".dat", ".o", ".a", ".pyc", ".class", ".woff", ".woff2", ".ttf",
@@ -1075,11 +1041,11 @@ impl Tool for ReadFileTool {
                     ));
                 }
 
-                // Return supported image formats as native image content. Detect the format from
+                // Return supported images and PDFs as native content. Detect the format from
                 // bytes rather than the path so extensionless and mislabeled files work safely.
                 if file.encoding == "base64"
                     && let Some(ref content) = file.content
-                    && let Some(media_type) = image_media_type(content)
+                    && let Some(media_type) = inline_media_type(content)
                 {
                     let content_hash = match file_content_hash(content, &file.encoding) {
                         Ok(hash) => hash,
@@ -1399,7 +1365,7 @@ impl ReadManyFilesTool {
                         object.insert("image_omitted".to_string(), json!(true));
                         object.insert(
                             "hint".to_string(),
-                            json!("Read this image individually with `read_file` to view it"),
+                            json!("Read this file individually with `read_file` to view it"),
                         );
                     }
                     result
@@ -4021,6 +3987,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_read_file_returns_pdf_as_native_document() {
+        use base64::Engine as _;
+
+        let store = Arc::new(MockFileStore::default());
+        let encoded = base64::engine::general_purpose::STANDARD.encode(b"%PDF-1.7\n%body");
+        store.add_base64_file("/attachments/a1/report.pdf", &encoded);
+        let context = make_context(store);
+
+        let result = ReadFileTool
+            .execute_with_context(json!({"path": "/attachments/a1/report.pdf"}), &context)
+            .await;
+
+        match result {
+            ToolExecutionResult::SuccessWithImages { result, images } => {
+                assert_eq!(result["media_type"], "application/pdf");
+                assert_eq!(images.len(), 1);
+                assert!(images[0].is_document());
+                assert_eq!(images[0].base64, encoded);
+            }
+            other => panic!("Expected document success, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
     async fn test_read_file_non_image_binary_omits_base64_content() {
         let store = Arc::new(MockFileStore::default());
         store.add_base64_file("/archive.png", "UEsDBAoAAAAAAA==");
@@ -4223,42 +4213,6 @@ mod tests {
                 .unwrap()
                 .contains("diff truncated after")
         );
-    }
-
-    fn encoded_prefix(bytes: &[u8]) -> String {
-        use base64::Engine as _;
-        base64::engine::general_purpose::STANDARD.encode(bytes)
-    }
-
-    #[test]
-    fn test_image_media_type_supported_formats() {
-        assert_eq!(
-            image_media_type(&encoded_prefix(b"\x89PNG\r\n\x1a\nrest")),
-            Some("image/png")
-        );
-        assert_eq!(
-            image_media_type(&encoded_prefix(b"\xff\xd8\xff\xe0rest")),
-            Some("image/jpeg")
-        );
-        assert_eq!(
-            image_media_type(&encoded_prefix(b"GIF87arest")),
-            Some("image/gif")
-        );
-        assert_eq!(
-            image_media_type(&encoded_prefix(b"GIF89arest")),
-            Some("image/gif")
-        );
-        assert_eq!(
-            image_media_type(&encoded_prefix(b"RIFF\x04\x00\x00\x00WEBPrest")),
-            Some("image/webp")
-        );
-    }
-
-    #[test]
-    fn test_image_media_type_rejects_non_images_and_invalid_base64() {
-        assert_eq!(image_media_type(&encoded_prefix(b"not an image")), None);
-        assert_eq!(image_media_type("not base64!"), None);
-        assert_eq!(image_media_type(""), None);
     }
 
     // EVE-249: Content-type detection tests

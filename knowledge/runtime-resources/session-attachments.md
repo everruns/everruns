@@ -151,9 +151,15 @@ that names that path, the file name, the verified media type and the size.
   `/attachments` (after checking it belongs to the org), so uploads get a path
   like every other attachment.
 - **Reopening.** `read_file` already shows PNG, JPEG, GIF and WebP to the
-  model as images. Showing PDFs as files needs tool results that carry
-  documents through every driver, so it lands separately (step 2b); until
-  then `read_file` on a PDF returns its metadata. The shell sees
+  model as images, and PDFs (sniffed by their `%PDF-` header) as documents.
+  Tool results carry both in the same inline-media list; the one conversion
+  into LLM parts turns a non-image entry into a file part, and each driver
+  sends it natively inside or right after the tool result (Anthropic
+  `document` block, Bedrock document block, Gemini inline data after the
+  function response, a `user` carrier on chat completions, `input_file` on
+  Responses). The per-result 5 MiB inline-media cap applies, so a larger PDF
+  is reported as dropped. No model capability check gates this yet: a model
+  that cannot read PDFs gets the provider's error. The shell sees
   `/attachments` like any other path. Giving an agent without file tools a
   `read_file` limited to `/attachments` is left until a surface needs it.
 
@@ -249,6 +255,6 @@ durable on the server, copied on fork, and read-only to the model.
    today's uploads.
 2. **Attachments in session file storage.** `/attachments` as a host-written
    root, uploads copied there at message creation, labels with paths.
-   2b. `read_file` shows PDFs to models that accept them.
+   2b. `read_file` returns PDFs as native documents.
 3. **One intake path.** `AttachmentIntake` with policy and notes, then Slack,
    AG-UI and Public Chat, A2A and PACT, execution API and MCP.

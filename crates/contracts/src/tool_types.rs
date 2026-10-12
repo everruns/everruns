@@ -13,16 +13,24 @@ use utoipa::ToSchema;
 
 pub const HUMAN_INTENT_ARGUMENT: &str = "human_intent";
 
-/// An image returned by a tool execution.
+/// Inline media returned by a tool execution: an image or a PDF document.
 ///
-/// This allows tools (built-in or MCP) to return images that are sent
-/// to the LLM as native image content blocks, not stringified JSON.
+/// This allows tools (built-in or MCP) to return media that is sent to the
+/// LLM as native image or document content, not stringified JSON. The name
+/// predates documents; the wire shape is unchanged.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResultImage {
-    /// Base64-encoded image data
+    /// Base64-encoded data
     pub base64: String,
-    /// MIME type (e.g., "image/png", "image/jpeg")
+    /// MIME type (e.g., "image/png", "image/jpeg", "application/pdf")
     pub media_type: String,
+}
+
+impl ToolResultImage {
+    /// Whether this is a document (such as a PDF) rather than an image.
+    pub fn is_document(&self) -> bool {
+        !self.media_type.starts_with("image/")
+    }
 }
 
 const HUMAN_INTENT_DESCRIPTION: &str = "Short user-facing narration of what this tool call will do, written as an action phrase like \"Listing all harnesses\". Do not include hidden reasoning, private chain of thought, secrets, or credential values.";
@@ -860,7 +868,8 @@ pub struct ToolResult {
     pub tool_call_id: String,
     /// Result data (success)
     pub result: Option<serde_json::Value>,
-    /// Images returned by the tool (sent as native image content to LLM)
+    /// Images and PDF documents returned by the tool (sent as native
+    /// image or document content to the LLM)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub images: Option<Vec<ToolResultImage>>,
     /// Error message (failure)

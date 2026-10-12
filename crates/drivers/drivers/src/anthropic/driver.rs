@@ -686,46 +686,7 @@ impl AnthropicChatDriver {
                             continue;
                         }
 
-                        let has_images = match &msg.content {
-                            MessageContent::Parts(parts) => parts
-                                .iter()
-                                .any(|p| matches!(p, LlmContentPart::Image { .. })),
-                            _ => false,
-                        };
-
-                        let content = if has_images {
-                            // Build array of text + image content blocks
-                            let blocks = match &msg.content {
-                                MessageContent::Parts(parts) => parts
-                                    .iter()
-                                    .filter_map(|p| match p {
-                                        LlmContentPart::Text { text } => {
-                                            Some(AnthropicToolResultBlock::Text {
-                                                text: text.clone(),
-                                            })
-                                        }
-                                        LlmContentPart::Image { url } => {
-                                            let source = if let Some(parsed) = parse_data_url(url) {
-                                                AnthropicImageSource::Base64 {
-                                                    media_type: parsed.media_type,
-                                                    data: parsed.data,
-                                                }
-                                            } else {
-                                                AnthropicImageSource::Url { url: url.clone() }
-                                            };
-                                            Some(AnthropicToolResultBlock::Image { source })
-                                        }
-                                        _ => None,
-                                    })
-                                    .collect(),
-                                MessageContent::Text(text) => {
-                                    vec![AnthropicToolResultBlock::Text { text: text.clone() }]
-                                }
-                            };
-                            AnthropicToolResultContent::Blocks(blocks)
-                        } else {
-                            AnthropicToolResultContent::Text(msg.content.to_text())
-                        };
+                        let content = tool_result::tool_result_content(&msg.content);
 
                         converted.push(AnthropicMessage {
                             role: "user".to_string(),
@@ -1397,6 +1358,8 @@ enum AnthropicToolResultBlock {
     Text { text: String },
     #[serde(rename = "image")]
     Image { source: AnthropicImageSource },
+    #[serde(rename = "document")]
+    Document { source: AnthropicDocumentSource },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1959,6 +1922,8 @@ mod cache;
 mod layout;
 #[path = "driver_tool_changes.rs"]
 mod tool_changes;
+#[path = "driver_tool_result.rs"]
+mod tool_result;
 use cache::{AnthropicCacheControl, record_cache_diagnostics};
 
 #[cfg(test)]

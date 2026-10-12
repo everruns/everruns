@@ -646,12 +646,30 @@ fn build_tool_result_block(msg: &Message) -> Option<ContentBlock> {
     }
     let text = msg.content.to_text();
 
-    let result_content = ToolResultContentBlock::Text(text);
-    match ToolResultBlock::builder()
+    let mut builder = ToolResultBlock::builder()
         .tool_use_id(tool_call_id)
-        .content(result_content)
-        .build()
-    {
+        .content(ToolResultContentBlock::Text(text));
+    // Images and PDFs a tool returned (a screenshot, an attachment
+    // `read_file` reopened) go in as native blocks, not dropped.
+    if let MessageContent::Parts(parts) = &msg.content {
+        for part in parts {
+            let block = match part {
+                LlmContentPart::Image { url } => parse_image_url(url),
+                LlmContentPart::File { url, filename } => parse_file_url(url, filename.as_deref()),
+                _ => None,
+            };
+            match block {
+                Some(ContentBlock::Image(image)) => {
+                    builder = builder.content(ToolResultContentBlock::Image(image));
+                }
+                Some(ContentBlock::Document(document)) => {
+                    builder = builder.content(ToolResultContentBlock::Document(document));
+                }
+                _ => {}
+            }
+        }
+    }
+    match builder.build() {
         Ok(tr) => Some(ContentBlock::ToolResult(tr)),
         Err(e) => {
             warn!("Failed to build tool result block: {e}");
@@ -934,6 +952,30 @@ mod wire_tests;
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn tool_result_carries_images_and_pdfs() {
+        let mut msg = super::Message::text(super::MessageRole::Tool, "");
+        msg.tool_call_id = Some("call".into());
+        msg.content = super::MessageContent::Parts(vec![
+            super::LlmContentPart::text("read report.pdf"),
+            super::LlmContentPart::file("data:application/pdf;base64,JVBERi0=", None),
+            super::LlmContentPart::Image {
+                url: "data:image/png;base64,iVBORw0KGgo=".into(),
+            },
+        ]);
+
+        let Some(super::ContentBlock::ToolResult(result)) = super::build_tool_result_block(&msg)
+        else {
+            panic!("expected a tool result block");
+        };
+
+        let content = result.content();
+        assert_eq!(content.len(), 3);
+        assert!(content[0].is_text());
+        assert!(content[1].is_document());
+        assert!(content[2].is_image());
+    }
+
     fn partial(id: &str, input: &str) -> PartialToolCall {
         PartialToolCall {
             id: id.into(),
