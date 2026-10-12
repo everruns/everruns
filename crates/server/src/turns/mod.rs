@@ -63,6 +63,35 @@ pub async fn start(backend: &dyn TurnBackend, request: TurnRequest) -> anyhow::R
     backend.start_turn(request).await.map(drop).map_err(error)
 }
 
+/// Store a turn's input with `store`, then start the turn `request`
+/// describes from it, in one transaction (joining the caller's when it has
+/// one).
+///
+/// Decision: the input and the actor mark commit together or not at all.
+/// Message intake is not a transactional command (conversation traffic has no
+/// change-history entry), so the mark used to commit on its own after the
+/// input: a pool timeout on the read-back between them left the message in
+/// the log with no turn to answer it, while the send answered 503 (chaos
+/// harness). Now a failed start stores nothing, the error is true, and the
+/// client's retry stores the message once.
+pub async fn store_input_and_start<T>(
+    db: &crate::storage::StorageBackend,
+    backend: &dyn TurnBackend,
+    store: impl std::future::Future<Output = anyhow::Result<T>>,
+    request: TurnRequest,
+) -> anyhow::Result<T> {
+    crate::storage::transaction::scope(
+        db,
+        async {
+            let stored = store.await?;
+            start(backend, request).await?;
+            Ok(stored)
+        },
+        |error| error,
+    )
+    .await
+}
+
 /// A turn backend failure as the server reports it: a store failure keeps
 /// the store's own message, which is what the server always logged and
 /// returned.

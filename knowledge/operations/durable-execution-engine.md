@@ -296,7 +296,11 @@ production and DEV_MODE alike; the worker side is
 - **Intake marks the actor runnable in the input's transaction.** Starting a
   turn is an upsert the caller runs in the transaction that persists the
   input, so the input and the marker commit together and a rolled-back message
-  starts nothing. `inbox_seq` (the newest input's event sequence) only moves
+  starts nothing. Intake that is not a transactional command (a person's
+  message, a scheduled message, a wake) opens that transaction itself
+  ([`store_input_and_start`](../../crates/server/src/turns/mod.rs)): a send
+  that fails stored nothing, and a retry with the same `client_message_id`
+  that finds the message stored but not marked marks it. `inbox_seq` (the newest input's event sequence) only moves
   forward. A stored message also records `next_input_seq`, the input the next
   fresh turn starts from, when the previous one was consumed, so queued
   messages start turns in arrival order and history written without a mark (a

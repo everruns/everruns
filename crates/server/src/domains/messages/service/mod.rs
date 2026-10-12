@@ -211,6 +211,36 @@ impl MessageService {
                 %client_message_id,
                 "Duplicate send; returning the stored message"
             );
+            // The original send stored the message and marked its turn in one
+            // transaction, but a message stored before that (or by a path
+            // that lost the mark) has no turn: start it now, unless the
+            // session's actor already took input at or past it.
+            let sequence = i64::from(row.sequence);
+            let marked = self
+                .db
+                .get_session_actor(SessionId::from_uuid(ctx.session_id))
+                .await?
+                .is_some_and(|actor| actor.inbox_seq >= sequence);
+            if !marked {
+                let data: InputMessageData = serde_json::from_value(row.data.clone())?;
+                let scope = crate::turns::scope(
+                    ctx.org_id,
+                    HarnessId::from_uuid(ctx.harness_id),
+                    ctx.agent_id.map(AgentId::from_uuid),
+                );
+                let request = crate::turns::stored_message(
+                    SessionId::from_uuid(ctx.session_id),
+                    scope,
+                    data.message.id,
+                    ctx.request_id.clone(),
+                );
+                tracing::warn!(
+                    session_id = %ctx.session_id,
+                    %client_message_id,
+                    "Duplicate send of a message whose turn never started; starting it"
+                );
+                crate::turns::start(&*self.runner, request).await?;
+            }
             return stored_input_message(row);
         }
 
@@ -497,7 +527,6 @@ impl MessageService {
                 );
                 (runtime_message, sequence)
             } else {
-                let stored_event = self.event_service.emit(input_event).await?;
                 let harness_id = HarnessId::from_uuid(ctx.harness_id);
                 let agent_id = ctx.agent_id.map(AgentId::from_uuid);
                 let scope = crate::turns::scope(ctx.org_id, harness_id, agent_id);
@@ -507,10 +536,15 @@ impl MessageService {
                     message_id_typed,
                     ctx.request_id.clone(),
                 );
-                // Marking the session's actor runnable joins this command's
-                // transaction: the message and the turn it starts commit
-                // together, or neither does.
-                crate::turns::start(&*self.runner, request).await?;
+                // The message and the turn it starts commit together, or
+                // neither does (see `turns::store_input_and_start`).
+                let stored_event = crate::turns::store_input_and_start(
+                    &self.db,
+                    &*self.runner,
+                    self.event_service.emit(input_event),
+                    request,
+                )
+                .await?;
                 let runtime_message = match stored_event.data {
                     EventData::InputMessage(data) => data.message,
                     _ => return Err(anyhow::anyhow!("stored input event changed type")),
@@ -532,10 +566,21 @@ impl MessageService {
                 delivery: Some(delivery),
                 created_at: runtime_message.created_at,
             };
-            if let Some(user_id) = ctx.user_id {
-                self.notification_service
+            // The message and its turn are committed: a failure past this point
+            // must not answer the send as failed (the client would retry a
+            // message that is already running) or give back its turn slot.
+            if let Some(user_id) = ctx.user_id
+                && let Err(error) = self
+                    .notification_service
                     .create_turn_request(ctx.org_id, user_id, session_id, message.id)
-                    .await?;
+                    .await
+            {
+                tracing::warn!(
+                    session_id = %session_id,
+                    message_id = %message.id,
+                    error = %error,
+                    "Failed to record the turn request notification for a stored message"
+                );
             }
             Ok(message)
         }
