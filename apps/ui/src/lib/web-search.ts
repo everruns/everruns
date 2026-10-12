@@ -293,6 +293,7 @@ export function automaticOrder(entries: AutomaticEntry[]): string[] {
 const CONNECTOR_NAMES: Record<string, string> = {
   brave_search: "Brave Search",
   parallel: "Parallel",
+  cloudflare_web_search: "Cloudflare Web Search",
 };
 
 /** "Brave Search · Team". */

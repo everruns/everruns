@@ -1,7 +1,7 @@
 use super::*;
 use crate::web_search::free::FreeSearchEndpoints;
 use everruns_contracts::runtime::tools::ToolExecutionResult;
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{body_partial_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const DDG_HTML: &str = include_str!("fixtures/duckduckgo_html.html");
@@ -232,6 +232,7 @@ fn org_context(defaults: Value) -> (ToolContext, Arc<OrgResolver>) {
                 id: ACCOUNT,
                 provider: "brave_search".into(),
                 name: "Team".into(),
+                options: None,
             }],
         },
         key_requests: Default::default(),
@@ -314,6 +315,7 @@ async fn an_account_without_a_key_falls_back_to_free_search() {
                 id: other,
                 provider: "brave_search".into(),
                 name: "Gone".into(),
+                options: None,
             }],
         },
         key_requests: Default::default(),
@@ -360,6 +362,7 @@ async fn automatic_searches_with_an_org_parallel_account() {
                 id: ACCOUNT,
                 provider: "parallel".into(),
                 name: "Research".into(),
+                options: None,
             }],
         },
         key_requests: Default::default(),
@@ -382,6 +385,76 @@ async fn automatic_searches_with_an_org_parallel_account() {
         model["results"][0]["excerpt"],
         "Tokio is an async runtime for Rust."
     );
+}
+
+#[tokio::test]
+async fn automatic_searches_with_an_org_cloudflare_account() {
+    let server = server(200, DDG_HTML).await;
+    let cloudflare_account = "0123456789abcdef0123456789abcdef";
+    Mock::given(method("POST"))
+        .and(path(format!(
+            "/client/v4/accounts/{cloudflare_account}/ai/websearch/"
+        )))
+        .and(header("authorization", "Bearer org-brave-key"))
+        .and(body_partial_json(json!({
+            "provider": "linkup",
+            "options": {"gateway": {"id": "default"}}
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "items": [{
+                "url": "https://tokio.rs/",
+                "title": "Tokio",
+                "description": "Tokio is an async runtime for Rust."
+            }],
+            "metadata": {"query": "tokio", "requestId": "r1", "latencyMs": 400}
+        })))
+        .mount(&server)
+        .await;
+    let (mut context, _) = org_context(json!({}));
+    let resolver = Arc::new(OrgResolver {
+        settings: everruns_contracts::runtime::web_search::WebSearchOrgSettings {
+            defaults: Default::default(),
+            accounts: vec![
+                everruns_contracts::runtime::web_search::SearchAccount {
+                    id: uuid::Uuid::from_u128(0xbad),
+                    provider: "cloudflare_web_search".into(),
+                    name: "Broken".into(),
+                    options: None,
+                },
+                everruns_contracts::runtime::web_search::SearchAccount {
+                    id: ACCOUNT,
+                    provider: "cloudflare_web_search".into(),
+                    name: "Team".into(),
+                    options: Some(json!({
+                        "account_id": cloudflare_account,
+                        "gateway_id": "default",
+                        "index": "linkup"
+                    })),
+                },
+            ],
+        },
+        key_requests: Default::default(),
+    });
+    context.connection_resolver = Some(resolver);
+    let (model, details) = split(
+        tool(&server, json!({"provider": "auto"}))
+            .with_cloudflare_base(server.uri())
+            .execute_with_context(json!({"query": "tokio"}), &context)
+            .await,
+    );
+    // The account stored without options stays in the order but has no
+    // driver here, so the plan moves past it.
+    assert_eq!(
+        details["plan"],
+        json!([
+            format!("account:{}", uuid::Uuid::from_u128(0xbad)),
+            format!("account:{ACCOUNT}"),
+            "free"
+        ])
+    );
+    assert_eq!(details["provider"], format!("account:{ACCOUNT}"));
+    assert_eq!(details["provider_label"], "Cloudflare (Linkup) · Team");
+    assert_eq!(model["results"][0]["url"], "https://tokio.rs/");
 }
 
 #[tokio::test]

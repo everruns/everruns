@@ -28,7 +28,9 @@
 //! - Cancel: the holder records it (single writer; the server does not when
 //!   a live holder runs the actor). The drive is dropped first, and the
 //!   cancel is recorded only while the turn is still open in the log, so a
-//!   turn ends with exactly one terminal event.
+//!   turn ends with exactly one terminal event. A cancel ends only the turn
+//!   it targets (see `lease.rs`): one left pending by a holder that recorded
+//!   it and died before releasing does not end the next message's turn.
 //! - Input that reaches a turn parked on a person resolves the pause, as the
 //!   server's message intake does for a session it sees waiting: the pending
 //!   calls are settled as cancelled and the turn goes on to the input. Without
@@ -178,6 +180,7 @@ impl<H: ActorHosts> ActorRuntime<H> {
                 return Ok(Finish::Release);
             };
             lease.start_fresh(input.sequence);
+            lease.begin_turn(input.sequence);
             let resolved = setup
                 .load_resolved_turn_for_execution(org_id, session_id, input.message_id)
                 .await?;
@@ -196,6 +199,11 @@ impl<H: ActorHosts> ActorRuntime<H> {
             return self.drive(lease, &host, drive, execution, plan).await;
         };
 
+        lease.begin_turn(
+            lease
+                .open_turn_input(turn.input_message_id(), started_at)
+                .await?,
+        );
         if lease.cancel_requested() {
             let drive = self.open_drive(&setup, org_id, &turn).await?;
             self.record_cancel(lease, &setup, &drive).await?;
@@ -307,24 +315,21 @@ impl<H: ActorHosts> ActorRuntime<H> {
         {
             stopped = Stopped::Deleted;
         }
-        let finish = match stopped {
-            Stopped::Lost => {
+        // Every way the drive ended but a lost lease or a deleted session
+        // waits for the turn's queued events first. A queued store that gave
+        // up left a gap in the log (see `crate::write_behind`): the turn ends
+        // as on a retryable failure, without committing its input or writing
+        // anything more, and the next holder resumes from the log.
+        let flushed = match &stopped {
+            Stopped::Cancel | Stopped::Done(_) => self.hosts.flush(host).await,
+            Stopped::Lost | Stopped::Deleted => Ok(()),
+        };
+        let finish = match (stopped, flushed) {
+            (Stopped::Lost, _) => {
                 self.hosts.abandon(host);
                 Finish::Expire
             }
-            Stopped::Cancel => {
-                self.hosts.flush(host).await;
-                lease.turn_stored();
-                self.record_cancel(lease, host, &drive).await?;
-                Finish::Release
-            }
-            Stopped::Done(Ok(_)) => {
-                self.hosts.flush(host).await;
-                lease.turn_stored();
-                lease.skip_to_next_input().await?;
-                Finish::Release
-            }
-            Stopped::Deleted => {
+            (Stopped::Deleted, _) => {
                 tracing::info!(
                     session_id = %drive.session_id,
                     turn_id = %drive.turn_id,
@@ -333,15 +338,32 @@ impl<H: ActorHosts> ActorRuntime<H> {
                 self.hosts.abandon(host);
                 Finish::Expire
             }
-            Stopped::Done(Err(error)) if error.is_non_retryable() => {
-                self.hosts.flush(host).await;
+            (_, Err(error)) => {
+                tracing::warn!(
+                    session_id = %drive.session_id,
+                    turn_id = %drive.turn_id,
+                    error = %error,
+                    "Actor turn's queued events were not stored; the lease will expire and the turn resumes from the log"
+                );
+                Finish::Expire
+            }
+            (Stopped::Cancel, Ok(())) => {
+                lease.turn_stored();
+                self.record_cancel(lease, host, &drive).await?;
+                Finish::Release
+            }
+            (Stopped::Done(Ok(_)), Ok(())) => {
+                lease.turn_stored();
+                lease.skip_to_next_input().await?;
+                Finish::Release
+            }
+            (Stopped::Done(Err(error)), Ok(())) if error.is_non_retryable() => {
                 lease.turn_stored();
                 self.record_failure(host, &drive, &error).await?;
                 lease.skip_to_next_input().await?;
                 Finish::Release
             }
-            Stopped::Done(Err(error)) => {
-                self.hosts.flush(host).await;
+            (Stopped::Done(Err(error)), Ok(())) => {
                 tracing::warn!(
                     session_id = %drive.session_id,
                     turn_id = %drive.turn_id,
@@ -357,8 +379,9 @@ impl<H: ActorHosts> ActorRuntime<H> {
 
     /// Record the cancel of `drive`'s turn, if the log still has it open:
     /// `turn.cancelled`, the person's request as part of the turn, and the
-    /// session idled. Consumes every pending input, as the server's withdraw
-    /// does.
+    /// session idled. Consumes the input that was pending when the cancel was
+    /// requested, as the server's withdraw does; input sent after it starts
+    /// the next turn.
     async fn record_cancel(&self, lease: &Lease, host: &H::Host, drive: &TurnDrive) -> Result<()> {
         let still_open = TurnLogFold::from_events(lease.read_tail().await?)
             .is_some_and(|turn| turn.turn_id() == drive.turn_id);
@@ -389,7 +412,7 @@ impl<H: ActorHosts> ActorRuntime<H> {
                 .emit_session_idled(drive.turn_id, drive.input_message_id, None, None)
                 .await?;
         }
-        lease.advance(lease.inbox_seq());
+        lease.advance(lease.cancelled_inbox());
         Ok(())
     }
 

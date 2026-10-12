@@ -16,8 +16,8 @@ use std::collections::BTreeMap;
 use crate::driver_registry::{HostedToolCall, HostedToolCallStatus, LlmStreamEvent};
 use crate::native_web_search::{NativeWebSearch, openai_has_native_web_search};
 use crate::openai_hosted_tools::{
-    OPENAI_MCP_APPROVAL_TOOL, OpenAiHostedTools, WebSearchTool, count_hosted_tool_calls,
-    hosted_call_tool,
+    OPENAI_MCP_APPROVAL_TOOL, OPENROUTER_WEB_SEARCH_ITEM, OpenAiHostedTools, WebSearchTool,
+    count_hosted_tool_calls, hosted_call_tool,
 };
 
 use super::OpenResponsesProtocolChatDriver;
@@ -96,12 +96,18 @@ pub(crate) fn hosted_tool_calls(response: &Value) -> BTreeMap<String, u32> {
     counts
 }
 
-/// Fold a gateway's `usage.server_tool_use.web_search_requests` (OpenRouter
-/// server tools) into the counts. The same searches may also arrive as
-/// `web_search_call` items, so the larger count wins rather than the sum.
+/// Fold a gateway's server-tool search count into the counts: OpenRouter's
+/// Responses API reports `usage.server_tool_use_details.web_search_requests`,
+/// its Chat Completions shape `usage.server_tool_use.web_search_requests`.
+/// The same searches may also arrive as `web_search_call` items, so the
+/// larger count wins rather than the sum.
 pub(crate) fn add_server_tool_use(counts: &mut BTreeMap<String, u32>, usage: Option<&Value>) {
     let searches = usage
-        .and_then(|usage| usage.pointer("/server_tool_use/web_search_requests"))
+        .and_then(|usage| {
+            usage
+                .pointer("/server_tool_use_details/web_search_requests")
+                .or_else(|| usage.pointer("/server_tool_use/web_search_requests"))
+        })
         .and_then(Value::as_u64)
         .map_or(0, |n| n.min(u32::MAX as u64) as u32);
     if searches > 0 {
@@ -114,7 +120,9 @@ pub(crate) fn add_server_tool_use(counts: &mut BTreeMap<String, u32>, usage: Opt
 /// [`LlmStreamEvent::HostedToolCall`]. `None` for every other frame.
 pub(crate) fn hosted_call_event(event_data: &str) -> Option<LlmStreamEvent> {
     // Cheap pre-filter: text deltas dominate the stream.
-    if !event_data.contains("_call") || !event_data.contains("response.output_item.") {
+    if !(event_data.contains("_call") || event_data.contains(OPENROUTER_WEB_SEARCH_ITEM))
+        || !event_data.contains("response.output_item.")
+    {
         return None;
     }
     let frame: Value = serde_json::from_str(event_data).ok()?;
@@ -218,7 +226,9 @@ fn call_summary(item: &Value) -> Option<String> {
     };
     match item.get("type").and_then(Value::as_str)? {
         // `search` carries `query`, `open_page` a `url`, `find` a `pattern` in a `url`.
-        "web_search_call" => field("query").or_else(|| field("url")).map(str::to_string),
+        "web_search_call" | OPENROUTER_WEB_SEARCH_ITEM => {
+            field("query").or_else(|| field("url")).map(str::to_string)
+        }
         "code_interpreter_call" => item
             .get("code")
             .and_then(Value::as_str)
@@ -418,6 +428,39 @@ mod tests {
         let counts = hosted_tool_calls(&json!({ "output": [],
             "usage": { "server_tool_use": { "web_search_requests": 0 } } }));
         assert!(counts.is_empty());
+    }
+
+    #[test]
+    fn openrouter_responses_search_counts_as_a_web_search_call() {
+        // OpenRouter's Responses API, for a vendor without its own search
+        // item (Claude): an `openrouter:web_search` item and the count under
+        // `server_tool_use_details`. One search, never two.
+        let counts = hosted_tool_calls(&json!({
+            "output": [
+                { "type": "openrouter:web_search", "id": "st_1", "status": "completed" },
+                { "type": "message", "id": "m" },
+            ],
+            "usage": { "server_tool_use_details": { "web_search_requests": 1 } } }));
+        assert_eq!(counts.get("web_search_call"), Some(&1));
+        assert_eq!(counts.len(), 1);
+        let counts = hosted_tool_calls(&json!({ "output": [],
+            "usage": { "server_tool_use_details": { "web_search_requests": 3 } } }));
+        assert_eq!(counts.get("web_search_call"), Some(&3));
+    }
+
+    #[test]
+    fn openrouter_search_item_frames_become_hosted_call_events() {
+        let added = event(json!({ "type": "response.output_item.added",
+            "item": { "id": "st_1", "type": "openrouter:web_search", "status": "in_progress" } }))
+        .expect("added frame");
+        assert_eq!(added.tool, "web_search");
+        assert_eq!(added.status, HostedToolCallStatus::InProgress);
+        let done = event(json!({ "type": "response.output_item.done",
+            "item": { "id": "st_1", "type": "openrouter:web_search", "status": "completed",
+                      "action": { "type": "search", "query": "latest Rust release" } } }))
+        .expect("done frame");
+        assert_eq!(done.status, HostedToolCallStatus::Completed);
+        assert_eq!(done.summary.as_deref(), Some("latest Rust release"));
     }
 
     #[test]

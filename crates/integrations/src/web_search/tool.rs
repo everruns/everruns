@@ -85,6 +85,12 @@ impl WebSearchTool {
     }
 
     #[cfg(test)]
+    fn with_cloudflare_base(mut self, base: impl Into<String>) -> Self {
+        self.bases.cloudflare = base.into();
+        self
+    }
+
+    #[cfg(test)]
     fn with_free(mut self, free: FreeSearchDriver) -> Self {
         self.free = Arc::new(free);
         self
@@ -217,10 +223,12 @@ impl WebSearchTool {
         };
         let drivers = PlanDrivers {
             free: self.free.clone(),
-            brave: brave_key
-                .and_then(|key| self.bases.driver(BRAVE_SEARCH_CONNECTION_PROVIDER, key)),
+            brave: brave_key.and_then(|key| {
+                self.bases
+                    .driver(BRAVE_SEARCH_CONNECTION_PROVIDER, key, None)
+            }),
             parallel: parallel_key
-                .and_then(|key| self.bases.driver(PARALLEL_CONNECTION_PROVIDER, key)),
+                .and_then(|key| self.bases.driver(PARALLEL_CONNECTION_PROVIDER, key, None)),
             accounts,
         };
         let steps = plan_steps(&plan, &drivers);

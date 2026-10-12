@@ -49,6 +49,7 @@ mod background_call;
 mod compaction;
 mod error_policy;
 mod facts;
+mod file_resolution;
 mod finalized_calls;
 mod generation_outcome;
 mod hosted_tools;
@@ -2510,16 +2511,7 @@ impl ReasonAtom {
             return HashMap::new();
         }
 
-        match resolver.resolve_files(&file_ids).await {
-            Ok(map) => map,
-            Err(e) => {
-                tracing::warn!(
-                    target: "reason",
-                    "ReasonAtom: file resolution failed: {e}"
-                );
-                HashMap::new()
-            }
-        }
+        file_resolution::resolve_files_one_by_one(resolver.as_ref(), file_ids).await
     }
 }
 

@@ -36,4 +36,5 @@
 * [Infinity Context](infinity-context.md) - Unlimited conversation length via context management.
 * [Anthropic Infinity Context Compaction](anthropic-infinity-context-compaction.md) - Append-only Anthropic message history through server-side threshold compaction.
 * [Compaction](compaction.md) - Context compaction capability.
+* [Session Attachments](session-attachments.md) - Attachments stored in session file storage under `/attachments`, labels with paths, attachment list after compaction, one intake path for every surface.
 * [Client Hints](client-hints.md) - Generic client hints mechanism.

@@ -27,6 +27,14 @@
 //!   (`fence`), checked by the control plane in the insert's transaction, so
 //!   a write still in flight when the lease was lost cannot land after
 //!   another holder took the session.
+//! - A cancel targets the turn it was requested for: the control plane reports
+//!   the inbox position it was requested at, and the lease raises `cancel`
+//!   only for a turn whose input is at or before it. The cancel stays on the
+//!   row until a release, and a holder that recorded it can die before
+//!   releasing; a position needs nothing to run after `turn.cancelled` to stop
+//!   it reaching the follow-up message's turn, where clearing it would.
+//!   Any cancel requested while a turn runs targets it, since the turn's input
+//!   is in the inbox by then.
 
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -73,7 +81,19 @@ pub(crate) struct Lease {
     inbox_seq: AtomicI64,
     last_renewed: Mutex<Instant>,
     lost: Arc<watch::Sender<bool>>,
+    /// Raised once a pending cancel targets this lease's turn.
     cancel: watch::Sender<bool>,
+    target: Mutex<CancelTarget>,
+}
+
+/// What decides whether a pending cancel ends this lease's turn.
+#[derive(Debug, Default)]
+struct CancelTarget {
+    /// The inbox position of the latest reported cancel.
+    pending: Option<i64>,
+    /// The sequence of the running turn's input, once the turn is known; see
+    /// [`Lease::open_turn_input`] for an open turn's.
+    turn_input: Option<i64>,
 }
 
 impl Lease {
@@ -96,8 +116,47 @@ impl Lease {
             inbox_seq: AtomicI64::new(actor.inbox_seq),
             last_renewed: Mutex::new(Instant::now()),
             lost: Arc::new(watch::channel(false).0),
-            cancel: watch::channel(actor.cancel_requested).0,
+            cancel: watch::channel(false).0,
+            target: Mutex::new(CancelTarget {
+                pending: actor.cancel_inbox_seq,
+                turn_input: None,
+            }),
         }
+    }
+
+    fn update_target(&self, update: impl FnOnce(&mut CancelTarget)) {
+        let mut target = self
+            .target
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        update(&mut target);
+        if let (Some(position), Some(input)) = (target.pending, target.turn_input)
+            && input <= position
+        {
+            self.cancel.send_replace(true);
+        }
+    }
+
+    /// The lease runs the turn started from the input at `input_seq`: a
+    /// pending cancel at or past it ends the turn.
+    pub(crate) fn begin_turn(&self, input_seq: i64) {
+        self.update_target(|target| target.turn_input = Some(input_seq));
+    }
+
+    /// The inbox position of the latest reported cancel, if any.
+    pub(crate) fn pending_cancel(&self) -> Option<i64> {
+        self.target
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .pending
+    }
+
+    /// The input a recorded cancel consumes: what was in the inbox when it
+    /// was requested, as a withdraw consumes. Later input starts its own turn.
+    pub(crate) fn cancelled_inbox(&self) -> i64 {
+        let inbox = self.inbox_seq();
+        self.pending_cancel()
+            .map_or(inbox, |position| position.min(inbox))
     }
 
     pub(crate) fn cursor(&self) -> i64 {
@@ -184,8 +243,8 @@ impl Lease {
                     .unwrap_or_else(|poisoned| poisoned.into_inner()) = Instant::now();
                 self.inbox_seq
                     .fetch_max(renewal.inbox_seq, Ordering::SeqCst);
-                if renewal.cancel_requested {
-                    self.cancel.send_replace(true);
+                if let Some(position) = renewal.cancel_inbox_seq {
+                    self.update_target(|target| target.pending = Some(position));
                 }
                 Ok(())
             }
@@ -285,6 +344,43 @@ impl Lease {
     /// so a release leaves the actor runnable only for real input.
     pub(crate) async fn skip_to_next_input(&self) -> Result<()> {
         self.scan(true).await.map(drop)
+    }
+
+    /// The sequence of the open turn's input (`input_message_id`, the turn
+    /// started at `started_at`) as far as the pending cancel needs it: 0, which
+    /// any cancel targets, unless the input came after the cancel. The tail
+    /// starts at `turn.started`, so the input is looked for only when the turn
+    /// started after the cancel's position, between the two.
+    pub(crate) async fn open_turn_input(
+        &self,
+        input_message_id: MessageId,
+        started_at: Option<i64>,
+    ) -> Result<i64> {
+        let (Some(position), Some(started_at)) = (self.pending_cancel(), started_at) else {
+            return Ok(0);
+        };
+        if started_at <= position {
+            return Ok(0);
+        }
+        let mut after = i32::try_from(position).unwrap_or(i32::MAX);
+        loop {
+            let journal = self
+                .store
+                .read_actor_journal(self.session_id, Some(after), self.page)
+                .await?;
+            for event in &journal.events {
+                if sequence(event) >= started_at {
+                    return Ok(0);
+                }
+                if turn_input(event) == Some(input_message_id) {
+                    return Ok(sequence(event));
+                }
+            }
+            match journal.events.last().and_then(|event| event.sequence) {
+                Some(last) if journal.has_more => after = last,
+                _ => return Ok(0),
+            }
+        }
     }
 
     /// The input a fresh turn starts from: the first turn input at or after

@@ -170,6 +170,12 @@ pub const CATALOG: &[CatalogEntry] = &[
         connectors: everruns_integrations::typesafe::CONNECTOR_PLUGINS,
         feature_flags: &[],
     },
+    CatalogEntry {
+        crate_name: "everruns-integrations::web_search",
+        capabilities: &[],
+        connectors: everruns_integrations::web_search::CONNECTOR_PLUGINS,
+        feature_flags: &[],
+    },
 ];
 
 /// Every capability plugin in [`CATALOG`], ungated.

@@ -1,15 +1,16 @@
 // Icons for web search providers. Decision: Lucide marks, not new Facet
 // glyphs: a globe for Web search, a magnifier for free search, sparkles for
-// the model's own search and a shield for Brave (its mark is a lion in a
-// shield; the brand logo is not ours to redraw). Unknown connectors fall back
-// to the connector's own icon name.
+// the model's own search, a shield for Brave (its mark is a lion in a
+// shield; the brand logo is not ours to redraw) and a cloud for Cloudflare.
+// Unknown connectors fall back to the magnifier.
 
-import { Globe, Search, ShieldCheck, Sparkles, Waypoints } from "lucide-react";
+import { Cloud, Globe, Search, ShieldCheck, Sparkles, Waypoints } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ACCOUNT_ICONS: Record<string, typeof Globe> = {
   brave_search: ShieldCheck,
   parallel: Waypoints,
+  cloudflare_web_search: Cloud,
 };
 
 export function SearchProviderIcon({
