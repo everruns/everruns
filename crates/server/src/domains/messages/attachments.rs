@@ -12,10 +12,11 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use base64::Engine;
-use everruns_contracts::runtime::attachments::attachment_path;
+use everruns_contracts::runtime::attachments::{ZIP_MEDIA_TYPE, attachment_path, unpacked_dir};
 use everruns_core::ContentPart;
 use uuid::Uuid;
 
+use super::zip_attachments::unpack_zip;
 use crate::domains::session_files::service::{CreateFileInput, WorkspaceFileService};
 use crate::errors::BadRequestError;
 use crate::storage::StorageBackend;
@@ -73,11 +74,17 @@ pub(crate) async fn stage_message_attachments(
         if db.session_file_exists(session_id, &upload.path).await? {
             continue;
         }
-        let bytes = match upload.kind {
-            "image" => db.get_image(org_id, upload.id).await?.map(|row| row.data),
-            _ => db.get_file(org_id, upload.id).await?.map(|row| row.data),
+        let upload_row = match upload.kind {
+            "image" => db
+                .get_image(org_id, upload.id)
+                .await?
+                .map(|row| (row.data, false)),
+            _ => db
+                .get_file(org_id, upload.id)
+                .await?
+                .map(|row| (row.data, row.content_type == ZIP_MEDIA_TYPE)),
         };
-        let Some(bytes) = bytes else {
+        let Some((bytes, is_zip)) = upload_row else {
             return Err(BadRequestError::new(format!(
                 "Attached {} {} not found",
                 upload.kind, upload.public_id
@@ -101,9 +108,51 @@ pub(crate) async fn stage_message_attachments(
                 error = %error,
                 "attachment not copied to session file storage"
             );
+            continue;
+        }
+        if is_zip {
+            unpack_into_session(&files, session_id, &upload.path, &bytes).await;
         }
     }
     Ok(())
+}
+
+/// Unpack a zip attachment into the folder next to it, read-only.
+///
+/// The upload passed the same check when it was stored, so a failure here is
+/// storage (such as the Workspace quota): it is logged, and the files written
+/// so far stay.
+async fn unpack_into_session(
+    files: &WorkspaceFileService,
+    session_id: Uuid,
+    zip_path: &str,
+    bytes: &[u8],
+) {
+    let dir = unpacked_dir(zip_path);
+    let entries = match unpack_zip(bytes) {
+        Ok(entries) => entries,
+        Err(reason) => {
+            tracing::warn!(%session_id, path = %zip_path, %reason, "zip attachment not unpacked");
+            return;
+        }
+    };
+    for (relative, content) in entries {
+        let input = CreateFileInput {
+            path: format!("{dir}/{relative}"),
+            content: Some(base64::engine::general_purpose::STANDARD.encode(&content)),
+            encoding: Some("base64".to_string()),
+            is_readonly: Some(true),
+        };
+        if let Err(error) = files.create_file(session_id, input).await {
+            tracing::warn!(
+                %session_id,
+                path = %zip_path,
+                error = %error,
+                "zip attachment only partly unpacked"
+            );
+            return;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -218,6 +267,56 @@ mod tests {
         assert_eq!(row.content.as_deref(), Some(&b"%PDF-1.7"[..]));
         // The model cannot overwrite or delete it.
         assert!(files.delete(session_id, &path, false).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn zip_upload_is_unpacked_next_to_itself() {
+        use std::io::Write;
+
+        let db = Arc::new(StorageBackend::test_database());
+        let session_id = session(&db, 1).await;
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        writer
+            .start_file("data/report.csv", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(b"a,b\n1,2\n").unwrap();
+        let data = writer.finish().unwrap().into_inner();
+        let file_id = db
+            .create_file(
+                1,
+                crate::storage::CreateFileRow {
+                    org_id: 1,
+                    filename: Some("data.zip".to_string()),
+                    content_type: "application/zip".to_string(),
+                    size_bytes: data.len() as i64,
+                    data,
+                    metadata: serde_json::json!({}),
+                },
+            )
+            .await
+            .unwrap()
+            .id;
+        let content = vec![ContentPart::File(
+            everruns_contracts::runtime::message::FileContentPart {
+                file_id,
+                filename: Some("data.zip".to_string()),
+            },
+        )];
+
+        stage_message_attachments(&db, 1, session_id, &content)
+            .await
+            .unwrap();
+
+        let path = format!("/attachments/{file_id}/data/data/report.csv");
+        let files = WorkspaceFileService::new(db.clone());
+        let stored = files.read_file(session_id, &path).await.unwrap().unwrap();
+        assert!(stored.is_readonly);
+        let row = db
+            .get_session_file(session_id, &path)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.content.as_deref(), Some(&b"a,b\n1,2\n"[..]));
     }
 
     #[tokio::test]

@@ -1,5 +1,6 @@
 use crate::api::state::ApiState;
 use crate::auth::ResolvedOrg;
+use crate::domains::messages::zip_attachments;
 use crate::storage::CreateFileRow;
 use axum::body::Body;
 use axum::extract::DefaultBodyLimit;
@@ -26,7 +27,7 @@ pub const MAX_FILE_SIZE_BYTES: usize = 11 * 1024 * 1024;
 pub const MAX_FILES_PER_RESOLUTION: usize = 8;
 
 /// Allowed content types for model-input files.
-pub const ALLOWED_FILE_CONTENT_TYPES: &[&str] = &["application/pdf"];
+pub const ALLOWED_FILE_CONTENT_TYPES: &[&str] = &["application/pdf", "application/zip"];
 
 /// File metadata returned after a successful upload (no binary data).
 #[derive(Debug, Serialize, ToSchema)]
@@ -36,7 +37,7 @@ pub struct FileUploadResponse {
     /// Original filename supplied at upload, if known.
     #[schema(example = "report.pdf")]
     pub filename: Option<String>,
-    /// MIME type of the stored file (currently always application/pdf).
+    /// MIME type of the stored file: application/pdf or application/zip.
     #[schema(example = "application/pdf")]
     pub content_type: String,
     /// Size of the stored file in bytes.
@@ -55,7 +56,7 @@ pub struct FileInfo {
     /// Original filename supplied at upload, if known.
     #[schema(example = "report.pdf")]
     pub filename: Option<String>,
-    /// MIME type of the stored file (currently always application/pdf).
+    /// MIME type of the stored file: application/pdf or application/zip.
     #[schema(example = "application/pdf")]
     pub content_type: String,
     /// Size of the stored file in bytes.
@@ -93,7 +94,7 @@ pub struct ListFilesQuery {
     ),
     tag = "Files"
 )]
-/// Upload a PDF file for use as model input.
+/// Upload a PDF or zip file as a message attachment.
 pub async fn upload_file(
     org: ResolvedOrg,
     State(state): State<ApiState>,
@@ -141,6 +142,15 @@ pub async fn upload_file(
             .into_response());
     }
     let content_type = content_type.unwrap_or_else(|| "application/octet-stream".to_string());
+    // Windows browsers label zips with a legacy type, and some clients send
+    // no type at all; the zip check below still verifies the bytes.
+    let content_type = match content_type.as_str() {
+        "application/x-zip-compressed" | "application/x-zip" => "application/zip".to_string(),
+        "application/octet-stream" if zip_attachments::looks_like_zip(&data) => {
+            "application/zip".to_string()
+        }
+        _ => content_type,
+    };
     if !ALLOWED_FILE_CONTENT_TYPES.contains(&content_type.as_str()) {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -148,8 +158,23 @@ pub async fn upload_file(
         )
             .into_response());
     }
-    // Magic-byte check: PDFs start with %PDF-.
-    if !data.starts_with(b"%PDF-") {
+    if content_type == "application/zip" {
+        // A zip is unpacked into the session's files when a message sends it,
+        // so it must pass the unpack limits now: a stored zip always unpacks.
+        if !zip_attachments::looks_like_zip(&data) {
+            return Err(
+                (StatusCode::BAD_REQUEST, "Uploaded file is not a valid zip").into_response(),
+            );
+        }
+        if let Err(reason) = zip_attachments::unpack_zip(&data) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("Zip cannot be unpacked: {reason}"),
+            )
+                .into_response());
+        }
+    } else if !data.starts_with(b"%PDF-") {
+        // Magic-byte check: PDFs start with %PDF-.
         return Err((
             StatusCode::BAD_REQUEST,
             "Uploaded file is not a valid PDF (missing %PDF- header)",

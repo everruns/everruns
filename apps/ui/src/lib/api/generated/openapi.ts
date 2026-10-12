@@ -2742,7 +2742,7 @@ export interface paths {
     /** List uploaded files, newest first. */
     get: operations["list_files"];
     put?: never;
-    /** Upload a PDF file for use as model input. */
+    /** Upload a PDF or zip file as a message attachment. */
     post: operations["upload_file"];
     delete?: never;
     options?: never;
@@ -12979,7 +12979,7 @@ export interface components {
     /** @description Stored file metadata (no binary data). */
     FileInfo: {
       /**
-       * @description MIME type of the stored file (currently always application/pdf).
+       * @description MIME type of the stored file: application/pdf or application/zip.
        * @example application/pdf
        */
       content_type: string;
@@ -13043,7 +13043,7 @@ export interface components {
     /** @description File metadata returned after a successful upload (no binary data). */
     FileUploadResponse: {
       /**
-       * @description MIME type of the stored file (currently always application/pdf).
+       * @description MIME type of the stored file: application/pdf or application/zip.
        * @example application/pdf
        */
       content_type: string;

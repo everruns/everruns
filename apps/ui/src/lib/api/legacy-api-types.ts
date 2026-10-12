@@ -2436,13 +2436,13 @@ export interface FileUploadResponse {
   created_at: string;
 }
 
-/** Allowed model-input file content types (PDF only for now) */
-export const ALLOWED_FILE_TYPES = ["application/pdf"] as const;
+/** Allowed attachment content types: PDFs, and zips the server unpacks */
+export const ALLOWED_FILE_TYPES = ["application/pdf", "application/zip"] as const;
 
 export type AllowedFileType = (typeof ALLOWED_FILE_TYPES)[number];
 
 /** Allowed model-input file extensions */
-export const ALLOWED_FILE_EXTENSIONS = [".pdf"] as const;
+export const ALLOWED_FILE_EXTENSIONS = [".pdf", ".zip"] as const;
 
 /** Maximum model-input file size in bytes (32 MB, matches the server cap) */
 export const MAX_FILE_SIZE = 32 * 1024 * 1024;

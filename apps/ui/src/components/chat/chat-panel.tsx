@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import type { CommandDescriptor, Controls } from "@/lib/api/types";
 import type { ConversationStarter } from "@/lib/api/legacy-api-types";
 import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
+import { isAttachmentFile } from "@/hooks/use-file-attachments";
 import {
   useAgents,
   useFileAttachments,
@@ -250,13 +251,14 @@ export function ChatPanel({
     (files: File[]) => {
       const isPdf = (f: File) =>
         f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
-      const pdfs = files.filter(isPdf);
-      const imgs = files.filter((f) => !isPdf(f));
+      // Zips are unpacked into the session's files, so any model can use them.
+      const docs = files.filter((f) => isAttachmentFile(f) && (supportsPdf || !isPdf(f)));
+      const imgs = files.filter((f) => !isAttachmentFile(f));
       if (imgs.length > 0) {
         addImageFiles(imgs);
       }
-      if (pdfs.length > 0 && supportsPdf) {
-        addFileFiles(pdfs);
+      if (docs.length > 0) {
+        addFileFiles(docs);
       }
     },
     [addImageFiles, addFileFiles, supportsPdf],

@@ -163,6 +163,29 @@ that names that path, the file name, the verified media type and the size.
   `/attachments` like any other path. Giving an agent without file tools a
   `read_file` limited to `/attachments` is left until a surface needs it.
 
+### 1b. Zip attachments open as folders
+
+A zip attachment is unpacked next to itself inside `/attachments`, read-only:
+`/attachments/<id>/data.zip` gets `/attachments/<id>/data/`. Its label names
+the folder (`..., unpacked to /attachments/<id>/data/`) and the zip bytes are
+never sent to the model, so the agent browses the files with `read_file` or
+the shell.
+
+- **Bomb limits** in
+  [`zip_attachments.rs`](../../crates/server/src/domains/messages/zip_attachments.rs):
+  1,000 files, 100 MiB unpacked, 25 MiB per file, and a 100:1 compression
+  ratio, all measured while reading rather than trusted from the archive's
+  headers.
+- **Unsafe entries**: absolute paths, drive letters and `..` reject the zip;
+  symlinks, directories and macOS metadata are skipped; encrypted entries
+  reject it. Nested zips stay zips.
+- **Checked at upload.** The files API refuses a zip that breaks a limit, so
+  a stored zip always unpacks and its label is always true. Unpacking at
+  message creation runs the same check again; a storage failure there (the
+  Workspace quota, which unpacked files count toward) is logged like any copy.
+- `.tar.gz` and Bashkit's own `unzip` reading standard archives are later
+  work.
+
 ### 2. One intake path for every surface
 
 A core `AttachmentIntake` in the channel runtime turns whatever a surface
@@ -256,5 +279,6 @@ durable on the server, copied on fork, and read-only to the model.
 2. **Attachments in session file storage.** `/attachments` as a host-written
    root, uploads copied there at message creation, labels with paths.
    2b. `read_file` returns PDFs as native documents.
+   2c. Zip attachments unpack to a read-only folder next to the archive.
 3. **One intake path.** `AttachmentIntake` with policy and notes, then Slack,
    AG-UI and Public Chat, A2A and PACT, execution API and MCP.

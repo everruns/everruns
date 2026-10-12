@@ -48,6 +48,27 @@ pub fn is_attachment_label(text: &str) -> bool {
     })
 }
 
+/// Media type of a zip attachment, which the host unpacks next to itself.
+pub const ZIP_MEDIA_TYPE: &str = "application/zip";
+
+/// Folder a zip attachment unpacks to: its path without `.zip`
+/// (`/attachments/<id>/data.zip` → `/attachments/<id>/data`), or with
+/// `_unpacked` appended when it has no `.zip` extension.
+pub fn unpacked_dir(path: &str) -> String {
+    let lower = path.to_ascii_lowercase();
+    match lower.strip_suffix(".zip") {
+        Some(stem) if !stem.ends_with('/') => path[..stem.len()].to_string(),
+        _ => format!("{path}_unpacked"),
+    }
+}
+
+/// One file or folder name made safe for a session path and a shell
+/// command: letters, digits, `.`, `-` and `_`, no leading dot, at most 100
+/// characters.
+pub fn sanitize_file_name(name: &str) -> String {
+    sanitize(name, MAX_FILE_NAME_CHARS)
+}
+
 fn sanitize(value: &str, max_chars: usize) -> String {
     let cleaned: String = value
         .chars()
@@ -66,6 +87,22 @@ fn sanitize(value: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn zip_unpacks_next_to_itself() {
+        assert_eq!(
+            unpacked_dir("/attachments/file_01/data.zip"),
+            "/attachments/file_01/data"
+        );
+        assert_eq!(
+            unpacked_dir("/attachments/file_01/DATA.ZIP"),
+            "/attachments/file_01/DATA"
+        );
+        assert_eq!(
+            unpacked_dir("/attachments/file_01/file"),
+            "/attachments/file_01/file_unpacked"
+        );
+    }
 
     #[test]
     fn path_keeps_safe_file_names() {
