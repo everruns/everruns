@@ -1,6 +1,7 @@
 // A web search tool result's people-only details with a fallback (native skipped,
 // Brave rate limited, free search answered), shaped like
-// crates/integrations/src/web_search/tool.rs writes them. Shared by tests.
+// crates/integrations/src/web_search/tool.rs writes them. Shared by tests and
+// the dev Tool Outputs gallery.
 
 export const BRAVE_ACCOUNT_ID = "00000000-0000-0000-0000-000000000007";
 
