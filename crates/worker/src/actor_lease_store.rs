@@ -128,8 +128,9 @@ pub struct LeasedActor {
     pub fence: u64,
     /// Event sequence of the latest input the actor must see.
     pub inbox_seq: i64,
-    /// A cancel is pending for the turn this lease runs.
-    pub cancel_requested: bool,
+    /// A cancel is pending: the inbox position it targets. It ends the turn
+    /// whose input is at or before it, never one started from later input.
+    pub cancel_inbox_seq: Option<i64>,
     /// The inbox cursor the previous holder left: input up to this sequence
     /// reached a turn.
     pub consumed_seq: i64,
@@ -144,8 +145,9 @@ pub struct LeasedActor {
 pub struct ActorRenewal {
     /// Event sequence of the latest input the actor must see.
     pub inbox_seq: i64,
-    /// A cancel is pending for the running turn.
-    pub cancel_requested: bool,
+    /// A cancel is pending: the inbox position it targets (see
+    /// [`LeasedActor::cancel_inbox_seq`]).
+    pub cancel_inbox_seq: Option<i64>,
 }
 
 /// The outcome of releasing an actor.

@@ -116,7 +116,7 @@ async fn two_holders_cannot_lease_the_same_actor() {
     assert_eq!(first[0].org_id, ORG_A);
     assert_eq!(first[0].fence, 1);
     assert_eq!(first[0].inbox_seq, 1);
-    assert!(!first[0].cancel_requested);
+    assert!(!first[0].cancel_requested());
 
     let second = db
         .lease_session_actors("worker-b", 10, TTL, DEFAULT_ACTOR_LEASES_PER_ORG)
@@ -273,7 +273,11 @@ async fn renew_reports_a_cancel_and_release_consumes_it() {
         .await
         .unwrap()
         .unwrap();
-    assert!(renewal.cancel_requested);
+    assert_eq!(
+        renewal.cancel_inbox_seq,
+        Some(1),
+        "it targets the inbox it saw"
+    );
 
     assert_eq!(
         db.release_session_actor(id, "worker-a", lease.fence, 1)
@@ -319,13 +323,85 @@ async fn a_cancel_the_holder_never_saw_survives_release() {
         .await
         .unwrap()
         .remove(0);
-    assert!(next.cancel_requested, "the next holder hears the cancel");
+    assert!(next.cancel_requested(), "the next holder hears the cancel");
     assert_eq!(
         db.release_session_actor(id, "worker-b", next.fence, 1)
             .await
             .unwrap(),
         Some(false)
     );
+}
+
+// Chaos harness: the holder that recorded a cancel died before releasing,
+// and the next holder applied the cancel to the follow-up message's turn. The
+// cancel keeps the inbox position it was requested at, so the next holder can
+// tell that input past it is not what was cancelled; release clears both.
+#[tokio::test]
+async fn a_cancel_keeps_the_inbox_position_it_targets_across_holders() {
+    let db = StorageBackend::test_database();
+    let id = runnable(&db, ORG_A, 3).await;
+    let lease = db
+        .lease_session_actors("worker-a", 1, TTL, DEFAULT_ACTOR_LEASES_PER_ORG)
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(
+        db.request_session_actor_cancel(id).await.unwrap(),
+        ActorCancel::Requested
+    );
+    let renewal = db
+        .renew_session_actor_lease(id, "worker-a", lease.fence, TTL, 3)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(renewal.cancel_inbox_seq, Some(3));
+
+    // The holder dies without releasing; the follow-up message lands.
+    expire_lease(&db, id).await;
+    db.mark_session_actor_runnable(id, ORG_A, 7).await.unwrap();
+    let next = db
+        .lease_session_actors("worker-b", 1, TTL, DEFAULT_ACTOR_LEASES_PER_ORG)
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(next.inbox_seq, 7);
+    assert_eq!(
+        next.cancel_inbox_seq,
+        Some(3),
+        "the cancel targets the input it was requested for, not the follow-up"
+    );
+    assert_eq!(
+        db.release_session_actor(id, "worker-b", next.fence, 7)
+            .await
+            .unwrap(),
+        Some(false)
+    );
+    let row = db.get_session_actor(id).await.unwrap().unwrap();
+    assert!(row.cancel_requested_at.is_none() && row.cancel_inbox_seq.is_none());
+
+    // A cancel requested before the column existed targets the inbox at
+    // lease time, as every cancel did before.
+    db.mark_session_actor_runnable(id, ORG_A, 9).await.unwrap();
+    let lease = db
+        .lease_session_actors("worker-c", 1, TTL, DEFAULT_ACTOR_LEASES_PER_ORG)
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(
+        db.request_session_actor_cancel(id).await.unwrap(),
+        ActorCancel::Requested
+    );
+    sqlx::query("UPDATE session_actors SET cancel_inbox_seq = NULL WHERE session_id = $1")
+        .bind(id)
+        .execute(&db.database().pool)
+        .await
+        .unwrap();
+    let renewal = db
+        .renew_session_actor_lease(id, "worker-c", lease.fence, TTL, 0)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(renewal.cancel_inbox_seq, Some(9));
 }
 
 #[tokio::test]

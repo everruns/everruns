@@ -28,7 +28,9 @@
 //! - Cancel: the holder records it (single writer; the server does not when
 //!   a live holder runs the actor). The drive is dropped first, and the
 //!   cancel is recorded only while the turn is still open in the log, so a
-//!   turn ends with exactly one terminal event.
+//!   turn ends with exactly one terminal event. A cancel ends only the turn
+//!   it targets (see `lease.rs`): one left pending by a holder that recorded
+//!   it and died before releasing does not end the next message's turn.
 //! - Input that reaches a turn parked on a person resolves the pause, as the
 //!   server's message intake does for a session it sees waiting: the pending
 //!   calls are settled as cancelled and the turn goes on to the input. Without
@@ -178,6 +180,7 @@ impl<H: ActorHosts> ActorRuntime<H> {
                 return Ok(Finish::Release);
             };
             lease.start_fresh(input.sequence);
+            lease.begin_turn(input.sequence);
             let resolved = setup
                 .load_resolved_turn_for_execution(org_id, session_id, input.message_id)
                 .await?;
@@ -196,6 +199,11 @@ impl<H: ActorHosts> ActorRuntime<H> {
             return self.drive(lease, &host, drive, execution, plan).await;
         };
 
+        lease.begin_turn(
+            lease
+                .open_turn_input(turn.input_message_id(), started_at)
+                .await?,
+        );
         if lease.cancel_requested() {
             let drive = self.open_drive(&setup, org_id, &turn).await?;
             self.record_cancel(lease, &setup, &drive).await?;
@@ -357,8 +365,9 @@ impl<H: ActorHosts> ActorRuntime<H> {
 
     /// Record the cancel of `drive`'s turn, if the log still has it open:
     /// `turn.cancelled`, the person's request as part of the turn, and the
-    /// session idled. Consumes every pending input, as the server's withdraw
-    /// does.
+    /// session idled. Consumes the input that was pending when the cancel was
+    /// requested, as the server's withdraw does; input sent after it starts
+    /// the next turn.
     async fn record_cancel(&self, lease: &Lease, host: &H::Host, drive: &TurnDrive) -> Result<()> {
         let still_open = TurnLogFold::from_events(lease.read_tail().await?)
             .is_some_and(|turn| turn.turn_id() == drive.turn_id);
@@ -389,7 +398,7 @@ impl<H: ActorHosts> ActorRuntime<H> {
                 .emit_session_idled(drive.turn_id, drive.input_message_id, None, None)
                 .await?;
         }
-        lease.advance(lease.inbox_seq());
+        lease.advance(lease.cancelled_inbox());
         Ok(())
     }
 

@@ -5,6 +5,7 @@
 //! returns, or a host flush that never returns), followed by the lease
 //! running out. Another worker on the same index then resumes from the log.
 
+mod cancels;
 mod resolutions;
 mod store;
 mod turns;
