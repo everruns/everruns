@@ -12,7 +12,17 @@ links:
   prs: [everruns/everruns#3336]
 ---
 
-Malformed tool calls no longer reach tool implementations. Before a tool runs, its arguments are validated against the tool's registered JSON Schema. Missing, wrong-type or unknown arguments return a structured error the model sees, so it can correct the call on the next turn. Tool call repair still runs first.
+Malformed tool calls no longer reach tool implementations. Before a tool runs, its arguments are validated against the tool's registered JSON Schema. Missing, wrong-type or unknown arguments return a structured error the model sees, so it can correct the call on the next turn. Tool call repair still runs first. A `read_file` call with a numeric `path` gets:
+
+```json
+{
+  "code": "invalid_tool_arguments",
+  "tool": "read_file",
+  "issues": [
+    {"instance_path": "/path", "message": "42 is not of type \"string\"", "schema_path": "/properties/path/type"}
+  ]
+}
+```
 
 For OpenAI Chat Completions and Open Responses, compatible tools are now sent with strict schemas. A schema that cannot be converted safely is sent non-strict, as before.
 

@@ -12,7 +12,20 @@ links:
   prs: [everruns/everruns#3276, everruns/everruns#3279]
 ---
 
-Model reasoning is now stored as ordered parts of a message instead of two flat strings. `GET /v1/sessions/{id}/messages` returns reasoning as ordered `reasoning` content parts, with provider replay state removed, and adds `phase` (`commentary` or `final_answer`) and `phase_source` (`provider` or `derived`).
+Model reasoning is now stored as ordered parts of a message instead of two flat strings. `GET /v1/sessions/{session_id}/messages` returns reasoning as ordered `reasoning` content parts, with provider replay state removed, and adds `phase` (`commentary` or `final_answer`) and `phase_source` (`provider` or `derived`).
+
+```json
+{
+  "id": "message_...",
+  "role": "agent",
+  "phase": "final_answer",
+  "phase_source": "provider",
+  "content": [
+    {"type": "reasoning", "provider": "anthropic", "text": {"kind": "plain", "text": "Check the config first."}},
+    {"type": "text", "text": "The config is valid."}
+  ]
+}
+```
 
 Replay to providers is also more accurate: Anthropic thinking blocks keep their own signatures, including `redacted_thinking`; OpenAI reasoning items keep the ids the provider issued; and the Gemini driver now requests, parses and replays thoughts.
 

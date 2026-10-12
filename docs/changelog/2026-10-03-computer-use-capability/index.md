@@ -23,5 +23,11 @@ instead; set `native_tools` to `false` to always use the function tool.
 egress guard. No call waits for a person by default: add `soft_approval` to
 record confirmations, or `tool_approval` to approve every call.
 
+```toml
+capabilities = [
+  { ref = "computer_use", config = { native_tools = false, max_actions_per_session = 100 } },
+]
+```
+
 See [Computer use](/capabilities/computer-use/). PRs [#3922](https://github.com/everruns/everruns/pull/3922),
 [#3968](https://github.com/everruns/everruns/pull/3968), [#4064](https://github.com/everruns/everruns/pull/4064).

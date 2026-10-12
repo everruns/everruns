@@ -7,6 +7,7 @@ significance: notable
 products: [platform, cloud]
 surfaces: [ui]
 release: "0.34.0"
+visual: "Agents page examples with the PR Reviewer and Security Scanner templates showing the guided setup badge, and the setup page after Connect GitHub; crop to the template cards and the setup panel."
 links:
   docs: [/how-to/set-up-review-and-security-agents/]
   prs: [everruns/everruns#3980]

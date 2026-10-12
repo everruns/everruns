@@ -20,5 +20,13 @@ The [celld example](https://github.com/everruns/everruns/tree/main/examples/serv
 worker: a Durable Object per name that journals mutating requests, snapshots
 the data directory when idle, and restores and replays when its container is
 fresh. An end-to-end test kills serve mid-turn, and then the node itself.
+Run it locally:
+
+```bash
+cargo run -p serve-example-celld -- celld --dev --port 8080   # the container half
+cd examples/serve/celld/worker && npm install
+celld dev wrangler.external.jsonc                             # the cells, on :9876
+curl -s -XPOST localhost:9876/cells/demo/v1/sessions -H 'content-type: application/json' -d '{}'
+```
 
 See [Serve on celld](/framework/serve-celld/). PR [#4019](https://github.com/everruns/everruns/pull/4019).

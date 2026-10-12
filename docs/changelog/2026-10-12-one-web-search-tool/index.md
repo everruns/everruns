@@ -22,6 +22,10 @@ Automatic order, fallback, results per search and blocked domains. In the agent 
 search** picks a provider and says how the agent will search. Chat shows each search as one row,
 with every attempt and the raw response a click away. Two search tools on one agent get a warning.
 
-**In code:** `WebSearch::auto()` in the Framework.
+**In code:** `WebSearch::auto()` in the Framework, or the capability config on a Platform agent:
+
+```json
+{"ref": "web_search", "config": {"provider": "brave", "blocked_domains": ["pinterest.com"]}}
+```
 
 See [Web Search](/capabilities/web-search/).

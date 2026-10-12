@@ -17,6 +17,11 @@ guidance directly from the Everruns endpoint. Use `skills/list` under MCP
 `everruns-mcp` guides platform and session work; `everruns-agent-authoring`
 guides creating and revising agents.
 
+```json
+{ "jsonrpc": "2.0", "id": 1, "method": "skills/get",
+  "params": { "uri": "skill://everruns-mcp/SKILL.md" } }
+```
+
 Each entry includes a complete file manifest with SHA-256 digests. The endpoint
 serves only these two workflows; the Rust Framework skill remains separately
 installable. See [Skills for MCP clients](/features/mcp/#skills-for-mcp-clients)

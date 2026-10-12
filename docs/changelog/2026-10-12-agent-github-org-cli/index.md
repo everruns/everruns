@@ -30,4 +30,5 @@ everruns agents github disconnect --agent-id agent_01h9
 
 `connect` prints the install link once the App exists; creating the App still
 finishes in the browser. `disconnect` uninstalls an installed App, or starts over
-when it was never installed.
+when it was never installed. See [Summarize GitHub pull requests](/how-to/summarize-github-pull-requests/)
+for a full agent setup.

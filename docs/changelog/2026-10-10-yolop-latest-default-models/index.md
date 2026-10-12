@@ -20,4 +20,10 @@ Gemini 3.8 families.
 
 A model saved in your settings, or passed with `-m`, is unaffected.
 
+```bash
+yolop --provider anthropic -p "fix the failing test"   # claude-opus-5-5
+yolop config model set gpt-6.1-sol                     # saved choice wins
+yolop -m gpt-6.1-sol -p "fix the failing test"         # so does -m
+```
+
 See [Providers and models](https://github.com/everruns/yolop#providers-and-models) and [#834](https://github.com/everruns/yolop/pull/834).

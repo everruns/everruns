@@ -15,8 +15,14 @@ call reused less than half of what the previous call left cached, with how many
 tokens were lost and the likely cause: the model, tool definitions or system
 prompt changed, earlier messages were rewritten (for example by compaction), or
 the session sat idle past the cache retention. A long prompt sent with caching
-off gets a hint to turn on Prompt Caching.
+off gets a hint to turn on [Prompt Caching](/capabilities/prompt-caching/).
 
 **In code:** the trace request usage carries `cache_reset` (`reason`,
 `lost_tokens`, `previous_cached_tokens`, `idle_seconds`) and
-`caching_would_help`.
+`caching_would_help`:
+
+```json
+{ "usage": { "cache_reset": {
+  "reason": "tools_changed", "lost_tokens": 18420,
+  "previous_cached_tokens": 18420, "idle_seconds": 42 } } }
+```

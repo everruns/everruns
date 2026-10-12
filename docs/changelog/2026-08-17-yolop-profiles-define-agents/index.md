@@ -22,6 +22,19 @@ It can now also decide what the agent can do:
 - `instructions` or `instructions_file`: text appended to the system prompt.
 - `skills_dir`: an extra skills scope, by default `profiles/<name>/skills/`.
 
-Start a session with `yolop --profile <name>`. Credentials stay global.
+Start a session with `yolop --profile <name>`. Credentials stay global. A
+profile at `profiles/triage.toml` under the config directory:
+
+```toml
+instructions = "You are the triage agent."
+mcp_mode = "replace"
+
+[[capabilities]]
+ref = "ext:triage"
+
+[mcp.servers.linear]
+type = "http"
+url = "https://profile.example/mcp"
+```
 
 See [Session coordination](https://github.com/everruns/yolop/blob/main/docs/session-coordination.md) for a profile example and [#586](https://github.com/everruns/yolop/pull/586).

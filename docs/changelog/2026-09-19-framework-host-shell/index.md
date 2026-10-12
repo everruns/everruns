@@ -21,7 +21,12 @@ not enable.
 `HostCompute::contained(options)` builds the contained environment, and a
 `ShellApprovalGate` decides whether each command runs at all; with no gate the
 answer is no. A missing kernel primitive is a launch error, never a silent fall
-back to an uncontained shell.
+back to an uncontained shell. To try it, run the example from a checkout:
+
+```bash
+export OPENAI_API_KEY="your-key"
+cargo run -p everruns-host-shell-agent -- --interactive
+```
 
 See [Host Shell](/capabilities/host-shell/) and the
 [Host Shell Agent example](/framework/examples/host-shell-agent/). [#3715](https://github.com/everruns/everruns/pull/3715)
