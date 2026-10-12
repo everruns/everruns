@@ -33,7 +33,7 @@ internal notes.
    standalone.
 5. A short "What It Provides" / "Features" list.
 6. A "Documentation" section linking the relevant
-   [docs.everruns.com](https://docs.everruns.com) page(s), and, for published
+   [everruns.com/docs](https://everruns.com/docs) page(s), and, for published
    crates, the docs.rs API reference.
 7. A "License" section linking the repository
    [`LICENSE`](https://github.com/everruns/everruns/blob/main/LICENSE) (MIT).
@@ -47,7 +47,7 @@ compiled example, so docs.rs and crates.io tell the same story. Examples in
 - Publishing/release mechanics, CI wiring, or "keep this in sync" maintainer notes.
 - Links to internal `knowledge/` files (they do not resolve on crates.io or docs.rs);
   reference design intent in code comments instead, or link a published
-  docs.everruns.com page.
+  everruns.com/docs page.
 - Internal "Decision:" scratch notes as the lead content. Reframe durable design
   rationale as a brief, user-facing "Design notes" subsection or move it to
   inline code comments.

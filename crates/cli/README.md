@@ -32,9 +32,9 @@ variables.
 
 ## Documentation
 
-- [CLI feature overview](https://docs.everruns.com/features/cli/)
-- [Automate with the CLI](https://docs.everruns.com/how-to/automate-with-the-cli/)
-- [Everruns documentation](https://docs.everruns.com)
+- [CLI feature overview](https://everruns.com/docs/features/cli/)
+- [Automate with the CLI](https://everruns.com/docs/how-to/automate-with-the-cli/)
+- [Everruns documentation](https://everruns.com/docs)
 
 ## License
 

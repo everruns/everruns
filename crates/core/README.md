@@ -54,14 +54,14 @@ The deprecated `everruns-engine`, `everruns-host`, `everruns-builtins`,
 `everruns-mcp`, and `everruns-ag-ui` crates forward to these modules for one
 release. Migrate imports and features to `everruns-core` before their removal.
 
-The Framework exposes portable definitions through `everruns::AgentPackage`. See the [file-based agent guide](https://docs.everruns.com/how-to/define-agents-as-files/).
+The Framework exposes portable definitions through `everruns::AgentPackage`. See the [file-based agent guide](https://everruns.com/docs/how-to/define-agents-as-files/).
 
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-core)
-- [Core concepts and execution model](https://docs.everruns.com/getting-started/concepts/)
-- [The agentic loop](https://docs.everruns.com/explanation/agentic-loop/)
-- [Everruns documentation](https://docs.everruns.com)
+- [Core concepts and execution model](https://everruns.com/docs/getting-started/concepts/)
+- [The agentic loop](https://everruns.com/docs/explanation/agentic-loop/)
+- [Everruns documentation](https://everruns.com/docs)
 
 ## License
 

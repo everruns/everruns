@@ -52,9 +52,9 @@ application-owned HTTP client, not hosted egress or connection policies.
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-integrations)
-- [Brave Search integration](https://docs.everruns.com/integrations/brave-search/)
-- [Give an agent web access](https://docs.everruns.com/how-to/give-an-agent-web-access/)
-- [Everruns documentation](https://docs.everruns.com)
+- [Brave Search integration](https://everruns.com/docs/integrations/brave-search/)
+- [Give an agent web access](https://everruns.com/docs/how-to/give-an-agent-web-access/)
+- [Everruns documentation](https://everruns.com/docs)
 
 ## License
 

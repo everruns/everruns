@@ -30,7 +30,7 @@ pub struct StoredImageResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ImageInfo {
     #[schema(value_type = String, example = "img_01933b5a00007000800000000000001")]
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: ImageId,
     pub filename: String,
     pub content_type: String,

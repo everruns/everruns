@@ -117,7 +117,7 @@ Production event routing therefore prefers:
    - `integrations/` → feature modules in `crates/integrations` (`everruns-integrations`); experimental Deno and Sprites live in `crates/integrations-experimental`.
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
    - Exports providers, components, hooks, and lib modules via `package.json` `exports` field for SaaS wrapper consumption
-4. **Documentation Site**: Astro Starlight in `apps/docs/` deployed to https://docs.everruns.com/
+4. **Documentation Site**: Astro Starlight in `apps/docs/` deployed to https://everruns.com/docs/
    - See [knowledge/ui/documentation.md](../ui/documentation.md) for detailed specification
 
 ### Project Structure

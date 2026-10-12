@@ -346,7 +346,7 @@ impl Command for ListHarnesses {
 /// Get a single harness by ID or name.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetHarness {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -377,7 +377,7 @@ impl Command for GetHarness {
 /// Update a harness. Only provided fields are changed.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateHarnessCmd {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     #[serde(flatten)]
     pub req: UpdateHarnessRequest,
@@ -559,7 +559,7 @@ impl Command for UpdateHarnessCmd {
 /// Archive a harness (soft delete).
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteHarness {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -615,7 +615,7 @@ impl Command for DeleteHarness {
 /// Permanently delete an archived harness.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DestroyHarness {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -685,7 +685,7 @@ impl Command for DestroyHarness {
 /// Copy a harness. Generates a unique name ({name}-copy, -copy-2, etc.)
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CopyHarness {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 

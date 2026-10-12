@@ -45,7 +45,7 @@ platform-owned or environment-variable fallback. Tools fail with
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-integrations)
-- [Everruns documentation](https://docs.everruns.com)
+- [Everruns documentation](https://everruns.com/docs)
 
 ## License
 

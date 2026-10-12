@@ -7185,7 +7185,7 @@ export interface components {
        */
       circle_url: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example avatar_01933b5a000070008000000000000001
        */
       id: string;
@@ -8288,7 +8288,7 @@ export interface components {
        * @example auth.login
        */
       event_type: string;
-      /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+      /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
       id: string;
       /** @description Client IP address of the request, when known. */
       ip_address?: string | null;
@@ -8681,7 +8681,7 @@ export interface components {
        */
       description: string;
       /**
-       * @description Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.
+       * @description Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.
        * @example session_file_system
        */
       docs_slug?: string | null;
@@ -11885,7 +11885,7 @@ export interface components {
       title: string;
       /**
        * @description RFC 9457 problem type URI. Optional; identifies the problem class.
-       * @example https://docs.everruns.com/errors/session_not_found
+       * @example https://everruns.com/docs/errors/session_not_found
        */
       type?: string | null;
     };
@@ -12656,7 +12656,7 @@ export interface components {
        */
       org_id: number;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example org_01933b5a000070008000000000000001
        */
       public_id: string;
@@ -12681,7 +12681,7 @@ export interface components {
        */
       expires_at?: string | null;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example 019e8957539a7aa0bb92e0d2b49427b1
        */
       id: string;
@@ -12739,7 +12739,7 @@ export interface components {
        */
       email_verified: boolean;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example user_01933b5a000070008000000000000001
        */
       id: string;
@@ -13958,7 +13958,7 @@ export interface components {
       created_at: string;
       filename: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example img_01933b5a00007000800000000000001
        */
       id: string;
@@ -13977,7 +13977,7 @@ export interface components {
       created_at: string;
       filename: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example img_01933b5a00007000800000000000001
        */
       id: string;
@@ -14283,7 +14283,7 @@ export interface components {
       /** @description Optional embedding model for hybrid retrieval. `null` = keyword search only. */
       embedding_model_id?: string | null;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example kb_01933b5a000070008000000000000001
        */
       id: string;
@@ -14306,7 +14306,7 @@ export interface components {
        */
       created_at: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example kbe_01933b5a000070008000000000000001
        */
       id: string;
@@ -14347,7 +14347,7 @@ export interface components {
        */
       created_at: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example kidoc_01933b5a000070008000000000000001
        */
       id: string;
@@ -14402,7 +14402,7 @@ export interface components {
       /** @description Embedding model used to embed chunks. Required. */
       embedding_model_id: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example kidx_01933b5a000070008000000000000001
        */
       id: string;
@@ -14946,7 +14946,7 @@ export interface components {
          * @example auth.login
          */
         event_type: string;
-        /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+        /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
         id: string;
         /** @description Client IP address of the request, when known. */
         ip_address?: string | null;
@@ -14997,7 +14997,7 @@ export interface components {
          */
         description: string;
         /**
-         * @description Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.
+         * @description Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.
          * @example session_file_system
          */
         docs_slug?: string | null;
@@ -15724,7 +15724,7 @@ export interface components {
         /** @description Optional embedding model for hybrid retrieval. `null` = keyword search only. */
         embedding_model_id?: string | null;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example kb_01933b5a000070008000000000000001
          */
         id: string;
@@ -15753,7 +15753,7 @@ export interface components {
          */
         created_at: string;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example kbe_01933b5a000070008000000000000001
          */
         id: string;
@@ -15800,7 +15800,7 @@ export interface components {
          */
         created_at: string;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example kidoc_01933b5a000070008000000000000001
          */
         id: string;
@@ -15861,7 +15861,7 @@ export interface components {
         /** @description Embedding model used to embed chunks. Required. */
         embedding_model_id: string;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example kidx_01933b5a000070008000000000000001
          */
         id: string;
@@ -16003,7 +16003,7 @@ export interface components {
          */
         description?: string | null;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example mem_01933b5a000070008000000000000001
          */
         id: string;
@@ -16352,7 +16352,7 @@ export interface components {
         /** @description When `true`, the LLM is prevented from auto-invoking this skill; only the user can trigger it explicitly. */
         disable_model_invocation?: boolean;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example skill_01933b5a00007000800000000000001
          */
         id: string;
@@ -16491,7 +16491,7 @@ export interface components {
          */
         created_at: string;
         email: string;
-        /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+        /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
         id: string;
         /** @description Human-readable name. Safe to render in user-facing messages. */
         name: string;
@@ -16782,7 +16782,7 @@ export interface components {
         /** @description Whether this model is selectable. Controls UI visibility AND server-side resolution: `ProviderResolverService` requires `enabled = true`, and org default-model validation rejects disabled models. Disabled models stay visible in raw list endpoints (so admins can re-enable them) but cannot be used in active sessions or as a session/agent default. */
         enabled: boolean;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example model_01933b5a00007000800000000000001
          */
         id: string;
@@ -16863,7 +16863,7 @@ export interface components {
          */
         healthy: boolean;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example model_01933b5a00007000800000000000001
          */
         id: string;
@@ -16947,7 +16947,7 @@ export interface components {
          */
         created_at: string;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example provider_01933b5a00007000800000000000001
          */
         id: string;
@@ -17185,7 +17185,7 @@ export interface components {
         /** @description When `true`, the LLM is prevented from auto-invoking this skill; only the user can trigger it explicitly. */
         disable_model_invocation?: boolean;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example skill_01933b5a00007000800000000000001
          */
         id: string;
@@ -18118,7 +18118,7 @@ export interface components {
        */
       description?: string | null;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example mem_01933b5a000070008000000000000001
        */
       id: string;
@@ -18417,7 +18417,7 @@ export interface components {
       /** @description Whether this model is selectable. Controls UI visibility AND server-side resolution: `ProviderResolverService` requires `enabled = true`, and org default-model validation rejects disabled models. Disabled models stay visible in raw list endpoints (so admins can re-enable them) but cannot be used in active sessions or as a session/agent default. */
       enabled: boolean;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example model_01933b5a00007000800000000000001
        */
       id: string;
@@ -18651,7 +18651,7 @@ export interface components {
        */
       healthy: boolean;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example model_01933b5a00007000800000000000001
        */
       id: string;
@@ -18823,7 +18823,7 @@ export interface components {
        */
       href?: string | null;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example notification_01933b5a00007000800000000000001
        */
       id: string;
@@ -19746,7 +19746,7 @@ export interface components {
          */
         description: string;
         /**
-         * @description Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.
+         * @description Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.
          * @example session_file_system
          */
         docs_slug?: string | null;
@@ -20198,7 +20198,7 @@ export interface components {
        * @example 2026-04-01T10:00:00Z
        */
       created_at: string;
-      /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+      /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
       id: components["schemas"]["payacctId"];
       /**
        * @description Human-readable label for this account. Safe to render in user-facing messages.
@@ -20268,7 +20268,7 @@ export interface components {
        * @example rail.insufficient_funds: settled balance below minimum
        */
       error_message?: string | null;
-      /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+      /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
       id: components["schemas"]["payattId"];
       /**
        * @description Capability-specific operation name that originated this paid call.
@@ -20341,7 +20341,7 @@ export interface components {
        * @example 2026-04-01T10:00:00Z
        */
       created_at: string;
-      /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+      /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
       id: components["schemas"]["paypolId"];
       /**
        * Format: double
@@ -20557,7 +20557,7 @@ export interface components {
     ProfileResponse: {
       avatar_url?: string | null;
       email: string;
-      /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+      /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
       id: string;
       /** @description Human-readable name. Safe to render in user-facing messages. */
       name: string;
@@ -20616,7 +20616,7 @@ export interface components {
        */
       created_at: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example provider_01933b5a00007000800000000000001
        */
       id: string;
@@ -23687,7 +23687,7 @@ export interface components {
       /** @description When `true`, the LLM is prevented from auto-invoking this skill; only the user can trigger it explicitly. */
       disable_model_invocation?: boolean;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example skill_01933b5a00007000800000000000001
        */
       id: string;
@@ -26747,7 +26747,7 @@ export interface components {
        */
       created_at: string;
       email: string;
-      /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+      /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
       id: string;
       /** @description Human-readable name. Safe to render in user-facing messages. */
       name: string;
@@ -27590,7 +27590,7 @@ export interface components {
        */
       description: string;
       /**
-       * @description Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.
+       * @description Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.
        * @example session_file_system
        */
       docs_slug?: string | null;
@@ -28041,7 +28041,7 @@ export interface components {
       /** @description Whether this model is selectable. Controls UI visibility AND server-side resolution: `ProviderResolverService` requires `enabled = true`, and org default-model validation rejects disabled models. Disabled models stay visible in raw list endpoints (so admins can re-enable them) but cannot be used in active sessions or as a session/agent default. */
       enabled: boolean;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example model_01933b5a00007000800000000000001
        */
       id: string;
@@ -28124,7 +28124,7 @@ export interface components {
        */
       healthy: boolean;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example model_01933b5a00007000800000000000001
        */
       id: string;
@@ -28210,7 +28210,7 @@ export interface components {
        */
       created_at: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example provider_01933b5a00007000800000000000001
        */
       id: string;
@@ -28747,7 +28747,7 @@ export interface components {
       /** @description When `true`, the LLM is prevented from auto-invoking this skill; only the user can trigger it explicitly. */
       disable_model_invocation?: boolean;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example skill_01933b5a00007000800000000000001
        */
       id: string;
@@ -43664,7 +43664,7 @@ export interface operations {
            *       "detail": "Harness 'generic' not found in org org_00000000000000000000000000000001.",
            *       "status": 404,
            *       "title": "Not Found",
-           *       "type": "https://docs.everruns.com/errors/harness_not_found"
+           *       "type": "https://everruns.com/docs/errors/harness_not_found"
            *     }
            */
           "application/json": components["schemas"]["ErrorResponse"];
@@ -44087,7 +44087,7 @@ export interface operations {
            *       "detail": "Session session_01933b5a000070008000000000000001 not found in org org_00000000000000000000000000000001.",
            *       "status": 404,
            *       "title": "Not Found",
-           *       "type": "https://docs.everruns.com/errors/session_not_found"
+           *       "type": "https://everruns.com/docs/errors/session_not_found"
            *     }
            */
           "application/json": components["schemas"]["ErrorResponse"];

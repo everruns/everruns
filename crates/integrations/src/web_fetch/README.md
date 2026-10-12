@@ -30,7 +30,7 @@ assert_eq!(WebFetchCapability::new(None).id(), "web_fetch");
 
 ## Documentation
 
-- [Give an agent web access](https://docs.everruns.com/how-to/give-an-agent-web-access/)
+- [Give an agent web access](https://everruns.com/docs/how-to/give-an-agent-web-access/)
 - [API reference](https://docs.rs/everruns-integrations)
 
 ## License

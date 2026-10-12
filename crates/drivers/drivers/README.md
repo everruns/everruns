@@ -254,9 +254,9 @@ and `everruns_openai::X` with `everruns_drivers::openai::X`. Bedrock's
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-drivers)
-- [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
-- [Migrate between LLM providers](https://docs.everruns.com/how-to/migrate-providers/)
-- [Everruns documentation](https://docs.everruns.com)
+- [Models and providers](https://everruns.com/docs/framework/models-and-providers/)
+- [Migrate between LLM providers](https://everruns.com/docs/how-to/migrate-providers/)
+- [Everruns documentation](https://everruns.com/docs)
 
 ## License
 
@@ -273,4 +273,4 @@ with writers outside that lease must implement atomic `compare_and_save`.
 registration; credentials and registration are host-owned.
 
 The `chatgpt-login` example provides a private-file handoff for remote self-hosted
-installations. See [ChatGPT plan](https://docs.everruns.com/features/chatgpt/).
+installations. See [ChatGPT plan](https://everruns.com/docs/features/chatgpt/).

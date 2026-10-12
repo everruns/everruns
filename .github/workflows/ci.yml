@@ -2819,6 +2819,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Test the docs Worker
+        run: pnpm run worker:test
+
       - name: Prepare notebook docs content
         run: pnpm run prepare-content
 

@@ -1,7 +1,7 @@
 # Hook bundles
 
 Ready-to-paste configurations for the
-[`user_hooks`](https://docs.everruns.com/capabilities/user-hooks/)
+[`user_hooks`](https://everruns.com/docs/capabilities/user-hooks/)
 capability.
 
 | File | Shape | What it does |

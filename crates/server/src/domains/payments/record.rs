@@ -112,7 +112,7 @@ impl From<&str> for PaymentStatus {
 /// to one settlement rail and tracks its provisioning lifecycle.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PaymentAccount {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: PaymentAccountId,
     /// Owning organization's prefixed public identifier.
     #[schema(example = "org_01933b5a000070008000000000000001")]
@@ -148,7 +148,7 @@ pub struct PaymentAccount {
 /// authorized and at what spend caps.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PaymentPolicy {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: PaymentPolicyId,
     /// Owning organization's prefixed public identifier.
     #[schema(example = "org_01933b5a000070008000000000000001")]
@@ -199,7 +199,7 @@ pub struct PaymentPolicy {
 /// Persisted regardless of outcome so failed attempts remain auditable.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PaymentAttempt {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: PaymentAttemptId,
     /// Owning organization's prefixed public identifier.
     #[schema(example = "org_01933b5a000070008000000000000001")]

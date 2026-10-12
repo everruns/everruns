@@ -539,7 +539,7 @@ mod tests {
             ("https://dev-123.us.auth0.com/oauth/token", true),
             ("https://api.workos.com/user_management", true),
             ("https://api.novaposhta.ua/v2.0/json/", true),
-            ("https://docs.everruns.com/", true),
+            ("https://everruns.com/docs/", true),
             ("https://bashkit.sh/", true),
             // Approved exceptions (approved_exceptions group).
             ("https://evil.web.app/", true),

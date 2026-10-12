@@ -36,7 +36,7 @@ use crate::storage::{EncryptionService, StorageBackend};
 
 /// Where a caller of a retired `api_endpoint` route or wire shape is sent.
 pub(crate) const AGENT_API_DOCS_URL: &str =
-    "https://docs.everruns.com/features/channels/#agent-api";
+    "https://everruns.com/docs/features/channels/#agent-api";
 
 #[derive(Clone)]
 pub struct ChannelApiState {

@@ -31,7 +31,7 @@ Then call `serve::assets!();` once in `main.rs`.
 
 ## Documentation
 
-- [Serve overview](https://docs.everruns.com/framework/serve/)
+- [Serve overview](https://everruns.com/docs/framework/serve/)
 - [API reference](https://docs.rs/everruns-serve-build)
 
 ## License

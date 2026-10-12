@@ -43,7 +43,7 @@ Anonymous-read registries need no token.
 
 ## Documentation
 
-- [ARD integration guide](https://docs.everruns.com/integrations/ard/)
+- [ARD integration guide](https://everruns.com/docs/integrations/ard/)
 - [API reference](https://docs.rs/everruns-ard)
 
 ## Status

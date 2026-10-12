@@ -9,6 +9,7 @@
 // dialog, and the Pagefind mount — we only delegate to it and then inject an
 // extra panel into its dialog at runtime, so Starlight upgrades keep working.
 import Default from "@astrojs/starlight/components/Search.astro";
+import { docsPath } from "../lib/site";
 
 // Curated entry points. Keep these in sync with the "Popular destinations"
 // section on docs/index.mdx — they answer the most common "where do I start?"
@@ -83,7 +84,7 @@ const suggested = [
         {
           suggested.map((s) => (
             <li>
-              <a class="er-search-item" href={s.href}>
+              <a class="er-search-item" href={docsPath(s.href)}>
                 <span class="er-search-ico" aria-hidden="true" set:html={ICONS[s.icon]} />
                 <span class="er-search-text">
                   <span class="er-search-title">{s.title}</span>
@@ -119,7 +120,7 @@ const suggested = [
   function recordCurrentPage() {
     const path = location.pathname;
     // Skip the splash home — it is already the most obvious destination.
-    if (path === "/") return;
+    if (path.replace(/\/+$/, "") === import.meta.env.BASE_URL.replace(/\/+$/, "")) return;
     const h1 = document.querySelector("main h1, article h1, h1");
     const title = (h1?.textContent || document.title.split("|")[0] || "").trim();
     if (!title) return;

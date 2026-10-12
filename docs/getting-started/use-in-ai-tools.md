@@ -86,25 +86,25 @@ serves both on port 9300.
 The documentation site publishes itself as plain Markdown for agents and other
 tools that would rather read text than HTML.
 
-- [`/llms.txt`](https://docs.everruns.com/llms.txt): the index: the three ways
+- [`/llms.txt`](https://everruns.com/docs/llms.txt): the index: the three ways
   to run Everruns, every documentation set, and the machine-readable surfaces.
   Start here.
-- [`/llms-full.txt`](https://docs.everruns.com/llms-full.txt): every prose page
+- [`/llms-full.txt`](https://everruns.com/docs/llms-full.txt): every prose page
   in one file (roughly 250k tokens).
-- [`/llms-small.txt`](https://docs.everruns.com/llms-small.txt): the same
+- [`/llms-small.txt`](https://everruns.com/docs/llms-small.txt): the same
   corpus without the vendor- and operator-specific long tails.
 - `/_llms-txt/<set>.txt`: one topic at a time, mirroring the sidebar:
-  [start-here](https://docs.everruns.com/_llms-txt/start-here.txt),
-  [framework](https://docs.everruns.com/_llms-txt/framework.txt),
-  [platform](https://docs.everruns.com/_llms-txt/platform.txt),
-  [built-ins](https://docs.everruns.com/_llms-txt/built-ins.txt),
-  [guides](https://docs.everruns.com/_llms-txt/guides.txt),
-  [integrations](https://docs.everruns.com/_llms-txt/integrations.txt),
-  [explanation](https://docs.everruns.com/_llms-txt/explanation.txt),
-  [reference](https://docs.everruns.com/_llms-txt/reference.txt),
-  [operations](https://docs.everruns.com/_llms-txt/operations.txt).
+  [start-here](https://everruns.com/docs/_llms-txt/start-here.txt),
+  [framework](https://everruns.com/docs/_llms-txt/framework.txt),
+  [platform](https://everruns.com/docs/_llms-txt/platform.txt),
+  [built-ins](https://everruns.com/docs/_llms-txt/built-ins.txt),
+  [guides](https://everruns.com/docs/_llms-txt/guides.txt),
+  [integrations](https://everruns.com/docs/_llms-txt/integrations.txt),
+  [explanation](https://everruns.com/docs/_llms-txt/explanation.txt),
+  [reference](https://everruns.com/docs/_llms-txt/reference.txt),
+  [operations](https://everruns.com/docs/_llms-txt/operations.txt).
   Prefer a set over the complete text.
-- [`/api/openapi.json`](https://docs.everruns.com/api/openapi.json): the REST
+- [`/api/openapi.json`](https://everruns.com/docs/api/openapi.json): the REST
   API as OpenAPI 3.0. The text sets carry prose only, so take endpoint shapes
   from here.
 
