@@ -373,6 +373,8 @@ The same client code works against an agent hosted on Everruns: point
 - Hold a tool call for a person's approval with
   `#[tool(needs_approval)]`, and answer it with `submit_tool_approvals`. See
   [The pieces](/framework/serve/#the-pieces).
-- Check the agent's behavior with `#[eval]` and `cargo run -- eval`.
+- Check the agent's behavior with `#[eval]` and `cargo run -- eval`. To run
+  the evals against the protected app, set `SERVE_CREDENTIAL=$AGENT_KEY` and
+  pass `--against http://localhost:3000`.
 - Run the app on [Amazon Bedrock AgentCore](/framework/serve-agentcore/), or
   keep its data in a bucket with [`start --store`](/framework/serve/#keep-the-data-in-a-bucket).

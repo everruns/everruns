@@ -147,8 +147,10 @@ runtime.
   `ServerBuilder::auth`, `[auth]` in `serve.toml` or `SERVE_API_KEYS` puts a
   bearer check in front of every agent route, using
   `everruns_core::channel_auth`, the verifier the server's channels use. The
-  card, the A2A card, the voice page and messaging-channel webhooks (which
-  carry platform signatures, not a serve credential) stay public. It
+  card, the A2A card (which then lists the methods as A2A security schemes,
+  named as the server's card names them), the voice page and messaging-channel
+  webhooks (which carry platform signatures, not a serve credential) stay
+  public. `eval --against` sends a bearer credential from `SERVE_CREDENTIAL`. It
   authenticates only: callers are not isolated from each other's sessions.
   See `crates/serve/src/auth.rs`.
 

@@ -248,6 +248,7 @@ Declare the evals module from `main.rs`
 ```sh
 cargo run -- eval                              # in-process, simulator fallback
 cargo run -- eval --against https://preview…   # over the wire API
+SERVE_CREDENTIAL=$KEY cargo run -- eval --against https://preview…   # a protected app
 cargo run -- eval net_of_refunds               # filter by name
 ```
 

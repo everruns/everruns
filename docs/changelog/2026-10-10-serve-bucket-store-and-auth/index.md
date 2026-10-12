@@ -23,7 +23,9 @@ lease, restores the data and carries on.
 
 serve apps can also require a credential on agent routes: static API keys from
 code, `serve.toml` or `SERVE_API_KEYS`, OIDC, or OAuth 2.0 introspection. The
-agent card stays public. At boot, serve resumes sessions active in the last
+agent card stays public, and the A2A Agent Card lists the accepted methods as
+security schemes. `eval --against` reaches a protected app with the credential
+in `SERVE_CREDENTIAL`. At boot, serve resumes sessions active in the last
 seven days and re-runs an unfinished tool call only when that is safe.
 
 See [Keep the data in a bucket](/framework/serve/#keep-the-data-in-a-bucket),

@@ -204,7 +204,7 @@ what it registered.
 | `dev` (default) | Runs the wire API with SQLite under `.serve/` and a live console of turns, tool calls and approvals. Models fall back to the simulator. Markdown prompts and skills hot-reload; for Rust changes use `cargo watch -x run`. `POST /dev/schedules/{name}` fires a schedule on demand. |
 | `start` | Production mode. Every model must route through a gateway, and every declared secret must be set. |
 | `manifest [--out f]` | Prints the host contract as JSON. |
-| `eval [--against URL] [filter]` | Runs the evals. With `--against`, it runs them against a running deploy (a CI gate before promotion). |
+| `eval [--against URL] [filter]` | Runs the evals. With `--against`, it runs them against a running deploy (a CI gate before promotion); `SERVE_CREDENTIAL` or `--credential` supplies the bearer credential a protected deploy needs. |
 | `deploy` | Prints what a host would provision from the manifest. This PoC has no cloud target. |
 
 ## Documentation
