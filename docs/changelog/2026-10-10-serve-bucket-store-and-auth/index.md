@@ -8,7 +8,7 @@ products: [framework]
 surfaces: [code, cli, operations]
 links:
   docs: [/framework/serve/#keep-the-data-in-a-bucket, /framework/serve/#authentication]
-  prs: [everruns/everruns#4515, everruns/everruns#4518, everruns/everruns#4485]
+  prs: [everruns/everruns#4515, everruns/everruns#4518, everruns/everruns#4485, everruns/everruns#4648]
 ---
 
 A serve daemon can now keep its data directory in an S3 bucket or any
@@ -29,4 +29,4 @@ in `SERVE_CREDENTIAL`. At boot, serve resumes sessions active in the last
 seven days and re-runs an unfinished tool call only when that is safe.
 
 See [Keep the data in a bucket](/framework/serve/#keep-the-data-in-a-bucket),
-[Authentication](/framework/serve/#authentication) and [#4515](https://github.com/everruns/everruns/pull/4515), [#4518](https://github.com/everruns/everruns/pull/4518), [#4485](https://github.com/everruns/everruns/pull/4485).
+[Authentication](/framework/serve/#authentication) and [#4515](https://github.com/everruns/everruns/pull/4515), [#4518](https://github.com/everruns/everruns/pull/4518), [#4485](https://github.com/everruns/everruns/pull/4485), [#4648](https://github.com/everruns/everruns/pull/4648).
