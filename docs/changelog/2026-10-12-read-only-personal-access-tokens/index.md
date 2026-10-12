@@ -8,15 +8,23 @@ products: [platform, cloud, cli]
 surfaces: [ui, api, cli]
 links:
   docs: [/features/ui/#token-access, /features/cli/#configure]
-  prs: [everruns/everruns#4623, everruns/everruns#4613, everruns/everruns#4598, everruns/everruns#4583]
-visual: "Create personal access token dialog with the Full access and Read-only choices (/settings/personal-access-tokens), cropped to the dialog"
+  prs: [everruns/everruns#4659, everruns/everruns#4626, everruns/everruns#4623, everruns/everruns#4613, everruns/everruns#4598, everruns/everruns#4583]
 ---
 
 **In the UI:** open **Settings** > **Personal access tokens**, create a token,
 and pick **Read-only** instead of **Full access**. The token list shows each
 token's access.
 
-**In the API:** pass `"scopes": ["read"]` when creating a token. A read-only
+**In the API:** pass `"scopes": ["read"]` when creating a token:
+
+```bash
+curl -X POST "$EVERRUNS_URL/api/v1/auth/personal-access-tokens" \
+  -H "Authorization: Bearer $SESSION_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "ci-reader", "scopes": ["read"], "expires_in_days": 90}'
+```
+
+A read-only
 token has read access to all your organizations, so treat it like a password.
 It cannot create, change, run or delete anything, manage tokens, or download
 the full account export; those requests fail with `403` and
