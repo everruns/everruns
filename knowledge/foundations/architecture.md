@@ -619,7 +619,7 @@ Observability is decoupled from business logic through the `EventListener` trait
 **Key components**:
 - `EventListener` trait, Interface for observability backends
 - `OtelEventListener` (`crates/core/src/host/observability/otel.rs`), generates OTel spans from events
-- `EventService` (`server/src/services/event.rs`), Notifies listeners after event persistence
+- `EventService` (`server/src/services/event/mod.rs`), Notifies listeners after event persistence
 
 **Event-to-span mapping** (following gen-ai semantic conventions):
 - `llm.generation` → `chat {model}` span with tokens, finish_reasons, response_id
