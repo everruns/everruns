@@ -1021,8 +1021,7 @@ impl ReasonAtom {
             "ReasonAtom: calling LLM"
         );
 
-        // 13. Emit output.message.started event BEFORE starting LLM call
-        // This allows UI to show a thinking indicator immediately
+        // 13. Emit output.message.started before the call: the UI shows thinking at once.
         let streaming_event_context = EventContext::from_execution_context(context);
         // An agent that talks explicitly writes working notes, never replies:
         // its assistant text is commentary from the first streamed byte, and
@@ -2186,7 +2185,8 @@ impl ReasonAtom {
             ))
             .with_response_model(served)
             .with_provider_id(Some(model_with_provider.provider.to_string()))
-            .with_truncation_gate(truncation.label());
+            .with_truncation_gate(truncation.label())
+            .with_tool_changes(tool_changes.record.clone());
         if let Some(info) = compaction_info {
             generation_data = generation_outcome::with_compaction(generation_data, info);
         }
