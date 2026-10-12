@@ -411,6 +411,10 @@ pub fn declared(name: &str) -> Change {
         "suspend_agent_exposures" => on(K::Agent, Suspended, ID),
         "resume_agent_exposures" => on(K::Agent, Resumed, ID),
         "create_agent_credential_binding" => on(K::Agent, Attached, Param("agent_id")),
+        "disconnect_agent_github" => on(K::Agent, Detached, Param("agent_id")),
+        "connect_agent_github" => {
+            Change::Exempt("starts GitHub's install flow; GitHub's callback records the connection")
+        }
         "upsert_agent_check_rule" => on(K::CheckRule, Updated, Param("rule_id")),
         "delete_agent_check_rule" => on(K::CheckRule, Deleted, Param("rule_id")),
         "analyze_agent"
@@ -692,6 +696,8 @@ pub fn transactional(read_only: bool, name: &str, change: Change) -> bool {
         | "create_agent_trigger" | "update_agent_trigger" | "delete_agent_trigger"
         // Session lifecycle: workflows, sandboxes and starter turns.
         | "create_session" | "fork_session" | "delete_session"
+        // Uninstalls the agent's GitHub App through GitHub's API.
+        | "disconnect_agent_github"
         // Composes channel and trigger creation from a package.
         | "import_agent"
     )

@@ -43,6 +43,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Pause or resume all of an agent's live channels at once.",
     ),
     (
+        "agents github",
+        "The agent's own GitHub App: status, install link, disconnect.",
+    ),
+    (
         "agents health-checks",
         "Generated smoke tests run against an agent.",
     ),

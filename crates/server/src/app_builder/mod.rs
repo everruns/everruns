@@ -1099,6 +1099,7 @@ impl ServerAppBuilder {
             .merge(api::agent_examples::routes(agent_examples_state))
             .merge(api::agents::routes(agents_state))
             .merge(api::agent_credentials::routes(api_state.clone()))
+            .merge(api::github_apps::agent_routes(api_state.clone()))
             .merge(api::runtime_auth::routes(api::runtime_auth::AppState {
                 db: db.clone(),
                 auth: auth_state.clone(),

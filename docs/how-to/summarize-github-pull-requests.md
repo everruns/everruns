@@ -75,3 +75,26 @@ Select **Disconnect** on the **GitHub** card. This uninstalls the App from
 GitHub and removes the Agent's GitHub connection. The App itself stays on your
 GitHub account, so connecting again reuses it; delete it from GitHub's
 **Developer settings** if you no longer want it.
+
+If the App was created but never installed, for example on your personal
+account when the repositories belong to an organization, select **Start over**
+in the card's actions menu instead. Everruns forgets that App, so the next **Connect GitHub** creates a new
+one.
+
+## From the CLI
+
+The same connection is available from the `everruns` CLI, and to agents through
+the Everruns MCP server:
+
+```bash
+# Is the App created, installed, and on which account?
+everruns agents github get --agent-id agent_01h9
+
+# The install link, once the App exists. Creating the App itself needs the
+# web UI, because GitHub confirms it in the browser.
+everruns agents github connect --agent-id agent_01h9 --reason 'Add the API repo'
+
+# Uninstall and remove the connection, or start over with an App that was
+# never installed.
+everruns agents github disconnect --agent-id agent_01h9 --reason 'Reviewer retired'
+```

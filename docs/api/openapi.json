@@ -2703,6 +2703,119 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/github": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks.",
+        "operationId": "get_agent_github",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentGitHubStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. When the App was never installed, forget it instead, so the next connect creates a new one (for example in a GitHub organization).",
+        "operationId": "disconnect_agent_github",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentGitHubDisconnect"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent or GitHub connection not found"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/github/connect": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Start connecting an agent to GitHub through its own GitHub App. Returns `install` with a URL to open in a browser when the App exists, or `create_app` when GitHub must first create it, which needs the web UI (Agent > Integrations > Connect GitHub).",
+        "operationId": "connect_agent_github",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BeginConnectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeginConnectResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found"
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/health-checks": {
       "get": {
         "tags": [
@@ -27340,6 +27453,77 @@
           }
         }
       },
+      "AgentGitHubDisconnect": {
+        "type": "object",
+        "description": "Result of disconnecting an agent from GitHub.",
+        "required": [
+          "outcome"
+        ],
+        "properties": {
+          "outcome": {
+            "$ref": "#/components/schemas/GitHubDisconnectOutcome"
+          }
+        }
+      },
+      "AgentGitHubStatus": {
+        "type": "object",
+        "description": "GitHub as seen from an agent's page.",
+        "required": [
+          "connected",
+          "app_created",
+          "missing_permissions"
+        ],
+        "properties": {
+          "account": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "GitHub account the App is installed on."
+          },
+          "app_created": {
+            "type": "boolean",
+            "description": "The App exists. Without `connected` it was never installed, or its\ninstallation was removed."
+          },
+          "app_slug": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "app_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "connected": {
+            "type": "boolean",
+            "description": "An installation is bound, so tools and triggers work."
+          },
+          "identity_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The agent's identity, once it has one; disconnect goes through it."
+          },
+          "missing_permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Permissions new Apps request that this installation lacks (`name:level`),\ne.g. `actions:read` for CI triggers on an App created before them.\nEmpty when not connected."
+          },
+          "repository_selection": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`all` or `selected`."
+          }
+        }
+      },
       "AgentHarnessSource": {
         "type": "string",
         "enum": [
@@ -29062,6 +29246,81 @@
             "minimum": 0
           }
         }
+      },
+      "BeginConnectRequest": {
+        "type": "object",
+        "description": "Where a new App is created and where the browser lands afterwards.",
+        "properties": {
+          "owner_org": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "GitHub organization that should own a new App. Omit for the personal\naccount of whoever confirms it on GitHub. A private App can only be\ninstalled on the account that owns it."
+          },
+          "return_to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "UI path to return to when the flow ends."
+          }
+        }
+      },
+      "BeginConnectResponse": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "GitHub must create the App first. A browser posts `manifest` as the\n`manifest` form field to `action` (a top-level navigation, so GitHub's\nconfirmation page is shown). Outside a browser, follow `next_step`.",
+            "required": [
+              "action",
+              "manifest",
+              "next_step",
+              "kind"
+            ],
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "create_app"
+                ]
+              },
+              "manifest": {
+                "type": "string"
+              },
+              "next_step": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The App exists; open `url` in a browser to install it or change which\nrepositories it can reach.",
+            "required": [
+              "url",
+              "app_slug",
+              "kind"
+            ],
+            "properties": {
+              "app_slug": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "install"
+                ]
+              },
+              "url": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "description": "What happens next."
       },
       "Budget": {
         "type": "object",
@@ -37404,6 +37663,14 @@
             "minimum": 0
           }
         }
+      },
+      "GitHubDisconnectOutcome": {
+        "type": "string",
+        "description": "What a disconnect did.",
+        "enum": [
+          "disconnected",
+          "started_over"
+        ]
       },
       "GitHubMemorySourceRequest": {
         "type": "object",

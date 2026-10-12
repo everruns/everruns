@@ -273,6 +273,18 @@ impl AuthConfig {
             })
     }
 
+    /// Public UI origin. `FRONTEND_URL` wins, then the public app URL, then the
+    /// API origin without `API_PREFIX`. Post-auth redirects land here.
+    pub fn frontend_url_from_env() -> String {
+        let api_prefix =
+            std::env::var("API_PREFIX").unwrap_or_else(|_| DEFAULT_API_PREFIX.to_string());
+        env_opt_string_any(&["FRONTEND_URL"])
+            .or_else(|| env_opt_string_any(&["PUBLIC_APP_URL", "APP_URL", "FRONTEND_URL"]))
+            .unwrap_or_else(|| {
+                frontend_url_from_auth_base_url(&Self::api_base_url_from_env(), &api_prefix)
+            })
+    }
+
     /// Load configuration from environment variables
     pub fn from_env() -> Self {
         // Fail closed: reject unknown AUTH_MODE values and forbid no-auth
@@ -288,16 +300,11 @@ impl AuthConfig {
             );
         }
 
-        let api_prefix =
-            std::env::var("API_PREFIX").unwrap_or_else(|_| DEFAULT_API_PREFIX.to_string());
-        let public_app_url = env_opt_string_any(&["PUBLIC_APP_URL", "APP_URL", "FRONTEND_URL"]);
         let base_url = Self::api_base_url_from_env();
 
         // Post-auth redirects land on the public app origin. In single-origin
         // deployments this is the same host as AUTH_BASE_URL, without API_PREFIX.
-        let frontend_url = env_opt_string_any(&["FRONTEND_URL"])
-            .or(public_app_url.clone())
-            .unwrap_or_else(|| frontend_url_from_auth_base_url(&base_url, &api_prefix));
+        let frontend_url = Self::frontend_url_from_env();
         let login_origin = env_opt_string_any(&["AUTH_LOGIN_ORIGIN"])
             .map(|value| normalize_login_origin(&value).unwrap_or_else(|err| panic!("{err}")));
 
