@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui, api]
 links:
   docs: [/features/ui/#token-access]
-  prs: [everruns/everruns#4583, everruns/everruns#4598, everruns/everruns#4613]
+  prs: [everruns/everruns#4623, everruns/everruns#4613, everruns/everruns#4598, everruns/everruns#4583]
 visual: "Create personal access token dialog with the Full access and Read-only choices (/settings/personal-access-tokens), cropped to the dialog"
 ---
 
