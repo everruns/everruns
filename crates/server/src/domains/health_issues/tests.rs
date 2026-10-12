@@ -114,6 +114,7 @@ async fn fixture() -> (Arc<StorageBackend>, Ctx, crate::storage::IngressChannelR
             role: OrgRole::Owner,
             is_platform_user: false,
             is_internal: false,
+            read_only: false,
         },
         db.clone(),
         None,

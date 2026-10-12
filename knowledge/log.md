@@ -18,6 +18,12 @@
   connection (account id, token, index, gateway, optional key alias) is a
   search account on Ceramic, Exa or Linkup; non-secret settings travel as the
   search account's `options`. See [Web Search](integrations/web-search.md).
+* **PAT scopes step 6: read-only callers.** `Caller` and `ResolvedOrg` carry
+  `read_only`, set from the token's scope, and `Command::run` refuses a
+  non-read command for such a caller with `insufficient_scope`, behind the
+  route, `/v1/commands` and `/mcp` checks. A refusal there counts as
+  `class="caller"` and marks a misclassified route. The rollout is complete.
+  See [Personal Access Token Scopes](security/pat-scopes.md).
 * **Native web search for external drivers.** `NativeWebSearchDriver`
   (inventory) lets a driver outside the built-in provider types declare which
   models search natively, so the search provider catalog and plan preview list

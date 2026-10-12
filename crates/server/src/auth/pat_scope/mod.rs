@@ -25,7 +25,7 @@ pub use enforce::{
     INSUFFICIENT_SCOPE, INSUFFICIENT_SCOPE_MESSAGE, enforce_command, enforce_operation,
     scope_permits,
 };
-pub(crate) use enforce::{add_challenge, enforce_route};
+pub(crate) use enforce::{add_challenge, enforce_caller, enforce_route};
 pub use layer::classify_api_routes;
 
 use axum::http::Method;
@@ -73,6 +73,13 @@ impl PatScope {
             Ok(scopes) => Self::parse(&scopes),
             Err(_) => Self::NoAccess,
         }
+    }
+
+    /// Whether a credential with this scope (`None`: not a PAT) may only run
+    /// read-only commands. Becomes `Caller.read_only`, which `Command::run`
+    /// checks behind the route-level decision (Decision 3, defense in depth).
+    pub fn restricts_writes(scope: Option<Self>) -> bool {
+        matches!(scope, Some(Self::Read | Self::NoAccess))
     }
 
     /// The scope as reported on `GET /v1/auth/me` (`token_scope`): `*` or

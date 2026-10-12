@@ -78,8 +78,9 @@ pub const ORG_ACTIVE_TURN_CAP_REJECTIONS_TOTAL: &str =
     "everruns_org_active_turn_cap_rejections_total";
 /// Requests and commands refused because a personal access token's scope does
 /// not cover them (`auth::pat_scope`). Label: class (read | write | never |
-/// per_command | unclassified). A steady rate points at a client using a
-/// read-only token for writes.
+/// per_command | unclassified | caller). A steady rate points at a client
+/// using a read-only token for writes; any `caller` (refused inside
+/// `Command::run`) points at a misclassified route.
 pub const PAT_SCOPE_DENIED_TOTAL: &str = "everruns_pat_scope_denied_total";
 
 /// Orphaned blob objects deleted by the object-storage GC sweep (objects

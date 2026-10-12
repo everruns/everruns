@@ -19,6 +19,11 @@
 //   with `enforce_operation`, which logs and counts the same way. Listings
 //   (`tools/list`, `GET /v1/commands`) filter with `scope_permits` silently:
 //   leaving out what a token cannot run is not a denial.
+// Decision: `Command::run` repeats the check for a `Caller` marked read-only
+//   (`enforce_caller`), behind every surface above. It covers a handler that
+//   dispatches a write command behind a route misclassified as `Read`, so a
+//   denial here means a classification gap: it logs at `warn!` with
+//   `class="caller"` and the same metric.
 
 use axum::extract::MatchedPath;
 use axum::http::{Extensions, HeaderValue, Method, StatusCode, header};
@@ -27,7 +32,7 @@ use axum::response::Response;
 use super::{PatScope, RouteAccess, classify_command};
 use crate::auth::middleware::{AuthError, AuthUser};
 use crate::auth::personal_access_token::PAT_PREFIX;
-use crate::domains::common::CommandDescriptor;
+use crate::domains::common::{CommandDescriptor, CommandError};
 
 /// RFC 6750 error code for a token that lacks the scope a request needs.
 pub const INSUFFICIENT_SCOPE: &str = "insufficient_scope";
@@ -169,6 +174,27 @@ fn deny(
     );
     count_denial(access);
     Err(AuthError::insufficient_scope())
+}
+
+/// Defense in depth inside `Command::run`: refuse a command that is not
+/// read-only for a caller whose credential is read-only (`Caller.read_only`).
+/// The route and per-command checks should have refused it first.
+pub(crate) fn enforce_caller(
+    caller: &everruns_core::Caller,
+    desc: &CommandDescriptor,
+) -> Result<(), CommandError> {
+    if !caller.read_only || classify_command(desc) == RouteAccess::Read {
+        return Ok(());
+    }
+    tracing::warn!(
+        user_id = ?caller.user_id,
+        org_id = caller.org_id,
+        command = (desc.meta)().name,
+        "read-only caller reached a write command past the route scope check"
+    );
+    metrics::counter!(crate::metrics_names::PAT_SCOPE_DENIED_TOTAL, "class" => "caller")
+        .increment(1);
+    Err(CommandError::forbidden(INSUFFICIENT_SCOPE_MESSAGE).with_code(INSUFFICIENT_SCOPE))
 }
 
 fn count_denial(access: Option<RouteAccess>) {

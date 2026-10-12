@@ -85,6 +85,7 @@ impl ScheduleAppState {
             role: OrgRole::Owner,
             is_platform_user: auth.0.is_platform_user,
             is_internal: false,
+            read_only: crate::auth::pat_scope::PatScope::restricts_writes(auth.0.pat_scope),
         };
         Ok(Ctx::minimal(
             caller,

@@ -29,6 +29,7 @@ async fn ctx_with_role_and_flags(
             role,
             is_platform_user: false,
             is_internal: false,
+            read_only: false,
         },
         db,
         capability_service,

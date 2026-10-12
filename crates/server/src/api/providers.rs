@@ -1199,6 +1199,7 @@ mod creation_tests {
             role: everruns_core::OrgRole::Owner,
             is_platform_user: false,
             feature_flags: Default::default(),
+            read_only: false,
         };
 
         let ctx = state.ctx(&org);
@@ -1228,6 +1229,7 @@ mod creation_tests {
             role: everruns_core::OrgRole::Owner,
             is_platform_user: false,
             feature_flags: Default::default(),
+            read_only: false,
         };
         for (provider_type, base_url) in [
             (DriverId::OpenAI, Some("https://127.0.0.1/v1")),

@@ -287,3 +287,76 @@ fn command_check_follows_the_command_class() {
         assert!(enforce_command(None, user, desc).is_ok(), "non-PAT caller");
     }
 }
+
+// --- Defense in depth: `Caller.read_only` in `Command::run` ----------------
+
+fn caller(read_only: bool) -> everruns_core::Caller {
+    everruns_core::Caller {
+        read_only,
+        is_internal: false,
+        ..everruns_core::Caller::internal(everruns_core::DEFAULT_ORG_ID)
+    }
+}
+
+#[test]
+fn read_only_caller_runs_only_read_commands() {
+    let read = command_of_class(RouteAccess::Read);
+    let write = command_of_class(RouteAccess::Write);
+
+    assert!(enforce_caller(&caller(true), read).is_ok());
+    let denied = enforce_caller(&caller(true), write).unwrap_err();
+    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+    assert_eq!(denied.code.as_deref(), Some(INSUFFICIENT_SCOPE));
+    for desc in [read, write] {
+        assert!(enforce_caller(&caller(false), desc).is_ok());
+    }
+}
+
+#[test]
+fn only_read_and_no_access_tokens_restrict_writes() {
+    assert!(PatScope::restricts_writes(Some(PatScope::Read)));
+    assert!(PatScope::restricts_writes(Some(PatScope::NoAccess)));
+    assert!(!PatScope::restricts_writes(Some(PatScope::Full)));
+    assert!(!PatScope::restricts_writes(None), "JWT, cookie, agent key");
+}
+
+/// Every exposed write command, dispatched for a read-only caller, is refused
+/// by `Command::run` before it executes: whatever parses reaches the check,
+/// and nothing runs. A read command still runs.
+#[tokio::test]
+async fn command_run_refuses_every_write_command_for_a_read_only_caller() {
+    use crate::domains::common::{Ctx, dispatch};
+    use crate::storage::StorageBackend;
+
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = Ctx::minimal_for_test(caller(true), db, None);
+
+    let mut refused = 0;
+    for desc in inventory::iter::<CommandDescriptor> {
+        let meta = (desc.meta)();
+        if !crate::services::command_catalog::catalog::is_exposed(&meta)
+            || classify_command(desc) == RouteAccess::Read
+        {
+            continue;
+        }
+        match dispatch(meta.name, serde_json::json!({}), &ctx).await {
+            // `{}` does not parse into this command's params: never ran.
+            Err(err) if err.code.is_none() && err.status() == StatusCode::BAD_REQUEST => {}
+            Err(err) => {
+                assert_eq!(
+                    err.code.as_deref(),
+                    Some(INSUFFICIENT_SCOPE),
+                    "{}",
+                    meta.name
+                );
+                refused += 1;
+            }
+            Ok(_) => panic!("{} ran for a read-only caller", meta.name),
+        }
+    }
+    assert!(refused > 0, "no write command reached the check");
+
+    dispatch("get_report_catalog", serde_json::json!({}), &ctx)
+        .await
+        .expect("a read command runs for a read-only caller");
+}

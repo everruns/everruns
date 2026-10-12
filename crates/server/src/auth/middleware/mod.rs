@@ -678,6 +678,9 @@ pub struct ResolvedOrg {
     pub is_platform_user: bool,
     /// Effective API-visible feature flags for this org (system gate + org opt-in).
     pub feature_flags: FeatureFlags,
+    /// The request authenticated with a read-only personal access token.
+    /// Carried into `Caller` so `Command::run` refuses writes for it too.
+    pub read_only: bool,
 }
 
 impl ResolvedOrg {
@@ -709,6 +712,7 @@ impl From<&ResolvedOrg> for Caller {
             role: org.role,
             is_platform_user: org.is_platform_user,
             is_internal: false,
+            read_only: org.read_only,
         }
     }
 }
@@ -739,6 +743,7 @@ pub(crate) async fn resolve_org_for_user(
     parts: &mut Parts,
     auth_state: &AuthState,
 ) -> Result<ResolvedOrg, AuthError> {
+    let read_only = crate::auth::pat_scope::PatScope::restricts_writes(user.pat_scope);
     {
         match user.auth_method {
             AuthMethod::PersonalAccessToken => {
@@ -771,6 +776,7 @@ pub(crate) async fn resolve_org_for_user(
                         role: org.role,
                         is_platform_user: user.is_platform_user,
                         feature_flags: FeatureFlags::default(),
+                        read_only,
                     }
                     .with_effective_feature_flags(auth_state)
                     .await);
@@ -787,6 +793,7 @@ pub(crate) async fn resolve_org_for_user(
                         role: org.role,
                         is_platform_user: user.is_platform_user,
                         feature_flags: FeatureFlags::default(),
+                        read_only,
                     }
                     .with_effective_feature_flags(auth_state)
                     .await);
@@ -820,6 +827,7 @@ pub(crate) async fn resolve_org_for_user(
                         role: OrgRole::Owner, // Anonymous user is owner of all orgs
                         is_platform_user: user.is_platform_user,
                         feature_flags: FeatureFlags::default(),
+                        read_only,
                     }
                     .with_effective_feature_flags(auth_state)
                     .await);
@@ -838,6 +846,7 @@ pub(crate) async fn resolve_org_for_user(
                     role: org.role,
                     is_platform_user: user.is_platform_user,
                     feature_flags: FeatureFlags::default(),
+                    read_only,
                 }
                 .with_effective_feature_flags(auth_state)
                 .await)
@@ -872,6 +881,7 @@ pub(crate) async fn resolve_org_for_user(
                         role: org.role,
                         is_platform_user: user.is_platform_user,
                         feature_flags: FeatureFlags::default(),
+                        read_only,
                     }
                     .with_effective_feature_flags(auth_state)
                     .await);
@@ -903,6 +913,7 @@ pub(crate) async fn resolve_org_for_user(
                             role,
                             is_platform_user: user.is_platform_user,
                             feature_flags: FeatureFlags::default(),
+                            read_only,
                         }
                         .with_effective_feature_flags(auth_state)
                         .await);
@@ -931,6 +942,7 @@ pub(crate) async fn resolve_org_for_user(
                     role: org.role,
                     is_platform_user: user.is_platform_user,
                     feature_flags: FeatureFlags::default(),
+                    read_only,
                 }
                 .with_effective_feature_flags(auth_state)
                 .await)

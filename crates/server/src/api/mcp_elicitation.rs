@@ -304,6 +304,7 @@ async fn resolve_org(
         role: org.role.parse::<OrgRole>().unwrap_or(OrgRole::Member),
         is_platform_user: auth_user.is_platform_user,
         feature_flags: crate::records::FeatureFlags::default(),
+        read_only: crate::auth::pat_scope::PatScope::restricts_writes(auth_user.pat_scope),
     })
 }
 

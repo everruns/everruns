@@ -239,6 +239,7 @@ fn role_ctxs(db: Arc<StorageBackend>) -> impl Fn(everruns_core::OrgRole) -> Ctx 
             role: everruns_core::OrgRole::Owner,
             is_platform_user: false,
             is_internal: false,
+            read_only: false,
         },
         db,
         Some(Arc::new(encryption)),

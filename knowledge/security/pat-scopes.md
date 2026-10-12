@@ -10,9 +10,10 @@ tags:
 ---
 # Personal Access Token Scopes
 
-> Status: **Approved; rollout steps 1 (classification), 2 (enforcement on
-> REST and `/v1/commands`), 3 (enforcement on `/mcp` and the execution API),
-> 4 (creation) and 5 (CLI) landed.** A user can mint a `read` token
+> Status: **Implemented; all rollout steps landed: 1 (classification), 2
+> (enforcement on REST and `/v1/commands`), 3 (enforcement on `/mcp` and the
+> execution API), 4 (creation), 5 (CLI) and 6 (`Caller.read_only` in
+> `Command::run`).** A user can mint a `read` token
 > (`normalize_pat_scopes` in
 > [`personal_access_token_routes.rs`](../../crates/server/src/auth/personal_access_token_routes.rs)
 > accepts `[]`, `["*"]` or `["read"]`), and the token UI offers Full access or
@@ -24,8 +25,11 @@ tags:
 > and is not an org member on an API channel. `GET /v1/auth/me` reports
 > `token_scope`, and the creation audit event records `scopes`. The CLI shows
 > the scope in `everruns whoami` and explains a refusal in one line
-> ([`commands/api.rs`](../../crates/cli/src/commands/api.rs)). Remaining: only
-> the optional step 6; step 2 deleted the legacy narrow rows (see
+> ([`commands/api.rs`](../../crates/cli/src/commands/api.rs)). Behind all of
+> that, `Command::run` refuses any write command for a caller resolved from a
+> read-only token (`enforce_caller` in
+> [`enforce.rs`](../../crates/server/src/auth/pat_scope/enforce.rs)). Step 2
+> deleted the legacy narrow rows (see
 > [Legacy narrow tokens](#legacy-narrow-tokens)).
 
 ## Abstract
@@ -343,7 +347,8 @@ token while any surface still ignores it.
 5. **CLI.** `whoami` scope display, the `insufficient_scope` message, and
    optionally `login --read-only`. Test 7.
 6. **Optional defense in depth.** `Caller.read_only` checked in
-   `Command::run`.
+   `Command::run`. `ResolvedOrg` carries it from the token's scope, and a
+   `NoAccess` token counts as read-only there too.
 
 ## Implementation notes
 
@@ -389,7 +394,9 @@ Settled while building step 2:
   characters of the token as stored in `personal_access_tokens.token_prefix`
   (and shown in the token list), never the secret. The counter is
   `everruns_pat_scope_denied_total{class}`, with `unclassified` and
-  `per_command` beside the three route classes.
+  `per_command` beside the three route classes, and `caller` for a refusal in
+  `Command::run`. That last one means a route or surface let a write through
+  its own check, so it is a classification gap to fix, not client noise.
 - **The runtime sweep is its own test binary.** It starts the production
   router through `ServerAppBuilder` in `AUTH_MODE=full`
   ([`pat_scope_sweep_test.rs`](../../crates/server/tests/pat_scope_sweep_test.rs)),

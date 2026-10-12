@@ -1117,8 +1117,6 @@ async fn resolve_org_by_id(
             format!("Organization not found or you are not a member: {org_public_id}")
         })?;
 
-    let role = org_row.role.parse::<OrgRole>().unwrap_or(OrgRole::Member);
-
     let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
         &state.db,
         org_row.org_id,
@@ -1132,9 +1130,10 @@ async fn resolve_org_by_id(
         public_id: org_row.public_id.clone(),
         name: org_row.name.clone(),
         user_id: Some(auth_user.id),
-        role,
+        role: org_row.role.parse::<OrgRole>().unwrap_or(OrgRole::Member),
         is_platform_user: auth_user.is_platform_user,
         feature_flags,
+        read_only: crate::auth::pat_scope::PatScope::restricts_writes(auth_user.pat_scope),
     })
 }
 
@@ -1563,6 +1562,7 @@ mod org_override_scope_tests {
             role: OrgRole::Member,
             is_platform_user: false,
             feature_flags: crate::records::FeatureFlags::default(),
+            read_only: false,
         }
     }
 
@@ -1742,13 +1742,12 @@ mod resources_read_policy_tests {
 
     fn test_caller() -> Caller {
         Caller {
-            org_id: 1,
-            org_public_id: "org_test".to_string(),
             user_id: None,
             // Member-level, so role rules don't accidentally pass in isolation.
             role: OrgRole::Member,
             is_platform_user: false,
             is_internal: false,
+            ..Caller::internal(1)
         }
     }
 

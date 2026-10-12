@@ -905,6 +905,7 @@ mod tests {
                 role: OrgRole::Owner,
                 is_platform_user: false,
                 is_internal: false,
+                read_only: false,
             },
             db,
             capability_service,
