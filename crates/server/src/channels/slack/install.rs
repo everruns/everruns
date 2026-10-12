@@ -930,12 +930,14 @@ fn provisioning_error_response(error: SlackProvisioningError) -> (StatusCode, Js
             tracing::warn!(slack_error = %code, "Slack app provisioning rejected");
             ErrorResponse::new(format!("Slack rejected the app creation: {code}"))
                 .with_code(code)
-                .into_response(StatusCode::BAD_GATEWAY)
+                .into_response(StatusCode::UNPROCESSABLE_ENTITY)
         }
+        // Not 502: the edge proxy replaces a 502 body with its own error page,
+        // so the person never saw which part of the setup Slack refused.
         SlackProvisioningError::Unreachable(detail) => {
             tracing::warn!(detail, "Slack app creation unreachable");
             ErrorResponse::new("Could not reach Slack to create the app")
-                .into_response(StatusCode::BAD_GATEWAY)
+                .into_response(StatusCode::FAILED_DEPENDENCY)
         }
     }
 }
@@ -1305,8 +1307,11 @@ mod tests {
         assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
         let (status, Json(problem)) =
             provisioning_error_response(SlackProvisioningError::Rejected("ratelimited".into()));
-        assert_eq!(status, StatusCode::BAD_GATEWAY);
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(problem.code.as_deref(), Some("ratelimited"));
+        let (status, _) =
+            provisioning_error_response(SlackProvisioningError::Unreachable("timeout".into()));
+        assert_eq!(status, StatusCode::FAILED_DEPENDENCY);
     }
 
     #[tokio::test]

@@ -587,6 +587,30 @@ impl Database {
         .await?)
     }
 
+    /// Newest input message at or after `sequence`: the last message that
+    /// steered the turn which started at `sequence`, or that input itself.
+    pub async fn latest_input_message_event_since(
+        &self,
+        session_id: SessionId,
+        sequence: i32,
+    ) -> Result<Option<EventRow>> {
+        Ok(sqlx::query_as::<_, EventRow>(sql!(
+            r#"
+            SELECT {EventRow}
+            FROM events
+            WHERE session_id = $1
+              AND event_type = 'input.message'
+              AND sequence >= $2
+            ORDER BY sequence DESC
+            LIMIT 1
+            "#
+        ))
+        .bind(session_id.uuid())
+        .bind(sequence)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
     /// Last event sequence a fork "up to this message" keeps: the end of the
     /// turn that holds the message (user or agent), or the message itself when
     /// no turn end follows it. `None` when the session has no such message.

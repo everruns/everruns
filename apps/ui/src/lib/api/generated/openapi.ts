@@ -25777,8 +25777,13 @@ export interface components {
        */
       short_description?: string | null;
       /**
-       * @description Conversation starters; omit to leave unchanged, send empty to clear.
-       *     `icon` reuses the harness icon name set.
+       * @description Conversation starters as `[{"text": "..."}]`; omit to keep, `[]` to clear.
+       *     An optional `icon` reuses the harness icon name set.
+       * @example [
+       *       {
+       *         "text": "Who does the dishes today?"
+       *       }
+       *     ]
        */
       starters?: components["schemas"]["ConversationStarter"][] | null;
       status?: components["schemas"]["AgentStatus"] | null;
