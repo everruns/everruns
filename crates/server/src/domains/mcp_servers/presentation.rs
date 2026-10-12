@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 use everruns_contracts::url_validation::validate_safe_url;
-use everruns_core::{EgressRequest, EgressRequestKind, EgressService};
+use everruns_core::{EgressRequest, EgressRequestKind, EgressScope, EgressService};
 use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -20,6 +20,7 @@ use url::Url;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use crate::kernel_imports::contracts::typed_id::OrgId;
 use crate::storage::{McpServerRow, StorageBackend};
 
 const DOCUMENT_BYTES: usize = 256 * 1024;
@@ -117,14 +118,20 @@ impl McpServerPresentation {
 ///
 /// A transport failure leaves `reached` false so the caller can try again
 /// later. A 404 is a reached server that published nothing.
-pub async fn discover(egress: &dyn EgressService, server_url: &str) -> McpServerPresentation {
+/// Requests carry `scope` so the egress boundary attributes them to the org:
+/// the tenant proxy meters and limits per org, and refuses a suspended one.
+pub async fn discover(
+    egress: &dyn EgressService,
+    scope: &EgressScope,
+    server_url: &str,
+) -> McpServerPresentation {
     let Ok(server) = validate_safe_url(server_url) else {
         return stamp(McpServerPresentation::default());
     };
     let mut reached = false;
     let mut presentation = McpServerPresentation::default();
 
-    if let Some(document) = get_json(egress, &protected_resource_url(&server)).await {
+    if let Some(document) = get_json(egress, scope, &protected_resource_url(&server)).await {
         reached = true;
         if let Some(title) = document
             .get("resource_name")
@@ -135,7 +142,7 @@ pub async fn discover(egress: &dyn EgressService, server_url: &str) -> McpServer
             push_source(&mut presentation, "resource_metadata");
         }
     }
-    if let Some(document) = get_json(egress, &server_card_url(&server)).await {
+    if let Some(document) = get_json(egress, scope, &server_card_url(&server)).await {
         reached = true;
         merge_into(
             &mut presentation,
@@ -209,6 +216,8 @@ pub async fn refresh_rows(
     if jobs.is_empty() {
         return;
     }
+    let scope = org_scope(org_id);
+    let scope = &scope;
     let mut found = Vec::with_capacity(jobs.len());
     for chunk in jobs.chunks(REFRESH_PARALLEL) {
         found.extend(
@@ -216,7 +225,7 @@ pub async fn refresh_rows(
                 let url = url.clone();
                 let id = *id;
                 async move {
-                    let presentation = discover(egress, &url).await;
+                    let presentation = discover(egress, scope, &url).await;
                     (id, presentation)
                 }
             }))
@@ -252,7 +261,7 @@ pub async fn discover_now(
     server_url: &str,
 ) -> Value {
     let _ = claim(org_id, id);
-    let presentation = discover(egress, server_url).await;
+    let presentation = discover(egress, &org_scope(org_id), server_url).await;
     let value = serde_json::to_value(&presentation).unwrap_or_else(|_| json!({}));
     if presentation.fetched_at.is_some() {
         let _ = db
@@ -513,14 +522,26 @@ fn origin_of(url: &Url) -> String {
     )
 }
 
-async fn get_json(egress: &dyn EgressService, url: &str) -> Option<Value> {
+/// The org a background MCP request is made for. No session: these run for
+/// a list page, a server add or an event delivery, not a turn.
+pub(super) fn org_scope(org_id: i64) -> EgressScope {
+    EgressScope {
+        org_id: everruns_core::org_public_id_from_internal(org_id)
+            .parse::<OrgId>()
+            .ok(),
+        session_id: None,
+    }
+}
+
+async fn get_json(egress: &dyn EgressService, scope: &EgressScope, url: &str) -> Option<Value> {
     if validate_safe_url(url).is_err() {
         return None;
     }
     let request = EgressRequest::new("GET", url, EgressRequestKind::Mcp)
         .header("accept", "application/json")
         .timeout_ms(REQUEST_TIMEOUT.as_millis() as u64)
-        .require_dns_pinning();
+        .require_dns_pinning()
+        .scope(scope.clone());
     let response = egress.send(request).await.ok()?;
     if response.status != 200 || response.body.len() > DOCUMENT_BYTES {
         return None;
@@ -637,7 +658,12 @@ mod tests {
                 ),
             ]),
         };
-        let presentation = discover(&egress, "https://mcp.linear.app/mcp").await;
+        let presentation = discover(
+            &egress,
+            &EgressScope::default(),
+            "https://mcp.linear.app/mcp",
+        )
+        .await;
         assert_eq!(presentation.title.as_deref(), Some("Linear"));
         assert_eq!(presentation.icons.len(), 1);
         assert!(presentation.fetched_at.is_some());
@@ -656,9 +682,45 @@ mod tests {
                 ),
             )]),
         };
-        let presentation = discover(&egress, "https://api.githubcopilot.com/mcp/").await;
+        let presentation = discover(
+            &egress,
+            &EgressScope::default(),
+            "https://api.githubcopilot.com/mcp/",
+        )
+        .await;
         assert_eq!(presentation.title.as_deref(), Some("GitHub MCP Server"));
         assert!(presentation.icons.is_empty());
         assert_eq!(presentation.sources, vec!["resource_metadata".to_string()]);
+    }
+
+    struct ScopeRecorder(std::sync::Mutex<Vec<Option<EgressScope>>>);
+
+    #[async_trait]
+    impl EgressService for ScopeRecorder {
+        async fn send(&self, request: EgressRequest) -> EgressResult<EgressResponse> {
+            self.0.lock().unwrap().push(request.scope);
+            Ok(EgressResponse {
+                status: 404,
+                headers: Default::default(),
+                body: Vec::new(),
+            })
+        }
+
+        async fn send_stream(&self, _request: EgressRequest) -> EgressResult<EgressStreamResponse> {
+            Err(EgressError::Transport("unused".into()))
+        }
+    }
+
+    // The tenant egress proxy meters, limits and suspends by the org on the
+    // request; an unscoped fetch would escape all three.
+    #[tokio::test]
+    async fn discover_attributes_every_fetch_to_the_org() {
+        let egress = ScopeRecorder(std::sync::Mutex::new(Vec::new()));
+        let scope = org_scope(7);
+        assert!(scope.org_id.is_some());
+        discover(&egress, &scope, "https://mcp.linear.app/mcp").await;
+        let seen = egress.0.lock().unwrap();
+        assert_eq!(seen.len(), 2);
+        assert!(seen.iter().all(|got| got.as_ref() == Some(&scope)));
     }
 }
