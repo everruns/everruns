@@ -323,6 +323,7 @@ mod tests {
             threshold: 17,
         });
         populated.prompt_cache = Some(crate::driver_registry::PromptCacheConfig {
+            retention: Default::default(),
             enabled: true,
             strategy: crate::driver_registry::PromptCacheStrategy::Auto,
             gemini_cached_content: Some("cachedContents/test".into()),

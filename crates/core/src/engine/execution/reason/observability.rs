@@ -49,6 +49,15 @@ pub(super) fn build_request_options(
                 ),
                 _ => None,
             },
+            retention: match provider {
+                "anthropic" => Some(cfg.retention.anthropic_ttl().unwrap_or("5m").to_string()),
+                "openai"
+                    if everruns_contracts::openai_compat::supports_cache_options(&config.model) =>
+                {
+                    Some("30m".to_string())
+                }
+                _ => None,
+            },
         });
 
     let tool_search = config

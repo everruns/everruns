@@ -17519,6 +17519,12 @@ export interface components {
       enabled: boolean;
       /** @description Provider-specific prompt-cache mode used by the driver. */
       provider_mode?: string | null;
+      /**
+       * @description Cache retention the driver requested after snapping to what the
+       *     provider supports (`5m`, `30m`, `1h`). Absent when the provider's
+       *     retention is not configurable.
+       */
+      retention?: string | null;
       /** @description Strategy used to enable prompt caching. */
       strategy: components["schemas"]["PromptCacheStrategy"];
     };

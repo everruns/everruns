@@ -1141,19 +1141,6 @@ impl AnthropicToolChoice {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct AnthropicCacheControl {
-    r#type: String,
-}
-
-impl AnthropicCacheControl {
-    fn ephemeral() -> Self {
-        Self {
-            r#type: "ephemeral".to_string(),
-        }
-    }
-}
-
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 enum AnthropicSystem {
@@ -1516,6 +1503,9 @@ struct AnthropicUsage {
     /// Tokens written to cache
     #[serde(default)]
     cache_creation_input_tokens: Option<u32>,
+    /// Cache writes split by TTL; prices the 1 hour share.
+    #[serde(default)]
+    cache_creation: Option<cache::AnthropicCacheCreation>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1971,8 +1961,11 @@ impl AnthropicModelInfo {
 // Tests
 // ============================================================================
 
+#[path = "driver_cache.rs"]
+mod cache;
 #[path = "driver_layout.rs"]
 mod layout;
+use cache::AnthropicCacheControl;
 
 #[cfg(test)]
 #[path = "driver_family_tests.rs"]
