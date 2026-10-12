@@ -36,9 +36,14 @@ impl ApiState {
     /// `services` supplies every service a command may use. Its caller,
     /// feature flags and acting session are ignored.
     pub fn new(services: Ctx, auth: AuthState) -> Self {
+        let github_apps = services
+            .github_apps
+            .clone()
+            .with_public_urls(&auth.config.base_url, &auth.config.frontend_url);
         let template = Ctx {
             caller: nobody(),
             acting_for_session: None,
+            github_apps,
             ..services
         };
         Self {

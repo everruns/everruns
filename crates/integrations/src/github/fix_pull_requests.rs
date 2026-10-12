@@ -20,6 +20,7 @@ use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 use everruns_contracts::tool_types::ToolHints;
 use serde_json::{Value, json};
 
+use crate::github::GitHubActsAs;
 use crate::github::client::GitHubClient;
 use crate::github::pull_requests::github_token;
 use crate::github::tools::{is_valid_owner_repo, required_str};
@@ -120,7 +121,10 @@ pub(crate) async fn open(client: &GitHubClient, pull: PullDraft) -> Result<Value
     }))
 }
 
-pub struct CreateGitHubPullRequestTool;
+#[derive(Default)]
+pub struct CreateGitHubPullRequestTool {
+    pub(crate) acts_as: GitHubActsAs,
+}
 
 #[async_trait]
 impl Tool for CreateGitHubPullRequestTool {
@@ -196,7 +200,14 @@ impl Tool for CreateGitHubPullRequestTool {
             Ok(pull) => pull,
             Err(e) => return ToolExecutionResult::tool_error(e),
         };
-        let client = match github_token(context).await {
+        let client = match github_token(
+            context,
+            self.acts_as,
+            &pull.repo,
+            &[("pull_requests", "write"), ("contents", "read")],
+        )
+        .await
+        {
             Ok(token) => crate::github::tools::github_client(token),
             Err(e) => return e,
         };

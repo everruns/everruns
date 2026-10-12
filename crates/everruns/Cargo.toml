@@ -44,23 +44,21 @@ name = "local"
 path = "tests/local/main.rs"
 required-features = ["local"]
 
-# The cross-backend conformance suite: every scenario runs on the in-process
-# and the durable memory backend and must observe the same outcome. Needs the
-# durable backend, and AG-UI to park and resume on client-side tool calls.
+# The backend conformance suite: the scenarios every turn backend must pass.
+# Needs AG-UI to park and resume on client-side tool calls.
 [[test]]
 name = "backend_conformance"
 path = "tests/backend_conformance/main.rs"
-required-features = ["durable", "ag-ui"]
+required-features = ["ag-ui"]
 
-# Per-turn latency and throughput of the in-process and the durable memory
-# backend (`benches/turn_backends.rs`). `test = true` lets the facade's single
+# Per-turn latency and throughput of an engine's sessions
+# (`benches/turn_backends.rs`). `test = true` lets the facade's single
 # `cargo test --all-features` CI invocation run it as a smoke, at the cost of
 # one more link and no extra cargo pass; `cargo bench` runs the full scale.
 [[bench]]
 name = "turn_backends"
 harness = false
 test = true
-required-features = ["durable"]
 
 [features]
 # Default features stay offline: the facade includes the contained session
@@ -102,6 +100,9 @@ bashkit = ["filesystem", "everruns-core/direct-egress", "everruns-integrations/b
 host-shell = ["host-compute", "filesystem", "everruns-core/host-shell"]
 web-fetch = ["everruns-core/direct-egress", "dep:everruns-integrations", "everruns-integrations/web-fetch"]
 duckduckgo = ["everruns-core/direct-egress", "dep:everruns-integrations", "everruns-integrations/duckduckgo"]
+# The provider-neutral `web_search` capability (free search, Brave from
+# `BRAVE_SEARCH_API_KEY`). Configure it with `everruns::WebSearch`.
+web-search = ["everruns-core/direct-egress", "dep:everruns-integrations", "everruns-integrations/web-search"]
 lua = ["everruns-core/direct-egress", "dep:everruns-integrations", "everruns-integrations/lua"]
 # Run commands on the machine this process is already running on, with nothing
 # between the command and the filesystem. Opt-in because it is the one target
@@ -134,6 +135,10 @@ local = [
 # local runtime, so hosts that delegate to remote A2A agents opt in explicitly.
 # Requires `local`, since the delegation capability ships in `everruns-capabilities`.
 a2a = ["local", "everruns-capabilities/a2a"]
+# The app as a Poppy personal agent (`everruns::poppy`). Requires `local`, since
+# the protocol client ships in `everruns-capabilities`; it signs with ES256 and
+# sends requests directly.
+poppy = ["local", "everruns-capabilities/poppy-client"]
 # Configure real OpenAI-backed models via `everruns::providers::openai`. Off by
 # default so the standard facade build pulls in no provider or Reqwest edge; the
 # `OpenAI` config type and its driver wiring compile only with this feature.
@@ -162,12 +167,24 @@ ag-ui = ["builtins", "everruns-core/ag-ui", "everruns-core/ag-ui-projection", "d
 # authorizer, thread resolution, SSE framing and keepalive. A separate opt-in
 # so `ag-ui` alone stays free of an HTTP server dependency.
 ag-ui-axum = ["ag-ui", "dep:axum"]
-# Run session turns on the durable backend (`everruns::durable::Backend`):
-# each turn step is a queued, checkpointed task on `everruns-durable`, driven
-# by in-process workers on the session's own runtime. Experimental and off by
-# default, so the default build never compiles the durable engine; native only
-# (it spawns Tokio workers), never part of a wasm build.
-durable = ["dep:everruns-durable-engine"]
+# Credential verification for agent endpoints (`everruns::channel_auth`):
+# OIDC/JWKS, OAuth 2.0 introspection and claim requirements, the verifier the
+# everruns server's channels use. It fetches identity-provider documents.
+channel-auth = ["everruns-core/channel-auth"]
+# Messaging channels (`everruns::channels`): put an agent on a platform with
+# the shared core channel host (session binding, duplicate check, reply
+# delivery, recovery). Brings the webhook and Slack drivers; no HTTP server.
+channels = [
+    "everruns-core/channels",
+    "dep:futures",
+    "dep:everruns-integrations",
+    "everruns-integrations/webhook-channel",
+    "everruns-integrations/slack-channel",
+]
+# Voice channels (`everruns::voice`): talk to a session through a
+# speech-to-speech provider and hear its answers, on the shared core voice
+# loop. Pair with `openai` for `OpenAI::realtime`.
+voice = ["everruns-core/voice", "dep:thiserror"]
 # Framework observability is opt-in. Each feature enables only its host
 # exporter and leaves default and no-default builds offline.
 otel = ["everruns-core/otel"]
@@ -213,8 +230,6 @@ serde = { workspace = true, optional = true }
 # SQLite for the `local` feature. `everruns::sqlite` owns connection opening
 # for the facade and serve hosts.
 rusqlite = { version = "0.39", features = ["bundled", "backup"], optional = true }
-# The durable turn backend behind the `durable` feature.
-everruns-durable-engine = { workspace = true, optional = true }
 anyhow = { workspace = true, optional = true }
 libc = { version = "0.2", optional = true }
 chrono = { workspace = true, optional = true }
@@ -250,17 +265,24 @@ tempfile = { workspace = true }
 wiremock = "0.6"
 
 [[example]]
+name = "mcp_resources"
+required-features = ["openai", "mcp-stdio"]
+
+[[example]]
 name = "ask_user"
+required-features = ["openai"]
 
 [[example]]
 name = "ag_ui_axum"
-required-features = ["ag-ui-axum"]
+required-features = ["ag-ui-axum", "openai"]
 
 [[example]]
 name = "workspace_policy"
+required-features = ["openai"]
 
 [[example]]
 name = "direct_llm"
+required-features = ["openai"]
 
 [[example]]
 name = "production_agent"
@@ -272,6 +294,10 @@ required-features = ["openai"]
 
 [[example]]
 name = "hello"
+required-features = ["openai"]
+
+[[example]]
+name = "explicit_communication"
 required-features = ["openai"]
 
 [[example]]
@@ -287,11 +313,11 @@ required-features = ["openai"]
 
 [[example]]
 name = "session_history"
-required-features = ["local"]
+required-features = ["local", "openai"]
 
 [[example]]
 name = "workspace_heads"
-required-features = ["local"]
+required-features = ["local", "openai"]
 
 [[example]]
 name = "subagents"
@@ -303,18 +329,41 @@ required-features = ["capabilities", "openai"]
 
 [[example]]
 name = "capability_configuration"
-required-features = ["capabilities"]
+required-features = ["capabilities", "openai"]
 
-# Uses the TypeSafe-backed decisions tool, which `typesafe` re-exports. Live
-# mode additionally needs `openai`, but the example compiles and runs offline
-# against the simulator without it.
+# Uses the TypeSafe-backed decisions tool, which `typesafe` re-exports, with an
+# OpenAI model driving the agent.
 [[example]]
 name = "agent_decisions"
-required-features = ["typesafe"]
+required-features = ["typesafe", "openai"]
 
 [[example]]
 name = "framework_observability"
-required-features = ["otel", "braintrust"]
+required-features = ["openai", "otel", "braintrust"]
+
+[[example]]
+name = "canonical_events"
+required-features = ["openai"]
+
+[[example]]
+name = "session_work"
+required-features = ["openai"]
+
+[[example]]
+name = "engine_sessions"
+required-features = ["openai"]
+
+[[example]]
+name = "live_session"
+required-features = ["openai"]
+
+[[example]]
+name = "direct_decisions"
+required-features = ["openai"]
+
+[[example]]
+name = "model_catalog"
+required-features = ["openai"]
 
 # Host orchestration tests run under the facade's explicit batteries.
 [[test]]
@@ -326,20 +375,22 @@ path = "tests/host/main.rs"
 [[example]]
 name = "real_disk_file_system_tools"
 path = "examples/advanced/real_disk_file_system_tools.rs"
-required-features = ["filesystem"]
+required-features = ["filesystem", "openai"]
 
 [[example]]
 name = "lua_code_mode_agent"
 path = "examples/advanced/lua_code_mode_agent.rs"
-required-features = ["lua"]
+required-features = ["lua", "openai"]
 
 [[example]]
 name = "in_process_runtime"
 path = "examples/advanced/in_process_runtime.rs"
+required-features = ["openai"]
 
 [[example]]
 name = "inspect_context"
 path = "examples/advanced/inspect_context.rs"
+required-features = ["openai"]
 
 [[example]]
 name = "mount_fs_workspace"
@@ -348,11 +399,13 @@ path = "examples/advanced/mount_fs_workspace.rs"
 [[example]]
 name = "plugin_from_dir"
 path = "examples/advanced/plugin_from_dir.rs"
+required-features = ["openai"]
 
 [[example]]
 name = "real_disk_agent_instructions"
 path = "examples/advanced/real_disk_agent_instructions.rs"
+required-features = ["openai"]
 
 [[example]]
 name = "file_agent"
-required-features = ["agent-package-fs"]
+required-features = ["agent-package-fs", "openai"]

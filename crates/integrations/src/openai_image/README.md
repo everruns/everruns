@@ -28,7 +28,7 @@ session secret store as `OPENAI_API_KEY` and optionally `OPENAI_BASE_URL`.
 
 ## Documentation
 
-- [OpenAI image generation](https://docs.everruns.com/capabilities/openai-image-generation/)
+- [OpenAI image generation](https://everruns.com/docs/capabilities/openai-image-generation/)
 - [API reference](https://docs.rs/everruns-integrations)
 
 ## License

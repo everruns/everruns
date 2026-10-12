@@ -43,6 +43,15 @@ impl Ctx {
         self
     }
 
+    /// See [`Ctx::connection_resolver`].
+    pub fn with_connection_resolver(
+        mut self,
+        resolver: Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>>,
+    ) -> Self {
+        self.connection_resolver = resolver;
+        self
+    }
+
     pub fn with_event_service(mut self, service: Arc<crate::services::EventService>) -> Self {
         self.event_service = Some(service);
         self
@@ -114,7 +123,7 @@ impl Ctx {
 
     pub fn with_model_sync_service(
         mut self,
-        service: Arc<crate::services::ModelSyncService>,
+        service: Arc<crate::domains::models::ModelSyncService>,
     ) -> Self {
         self.model_sync_service = Some(service);
         self
@@ -162,6 +171,11 @@ impl Ctx {
         self
     }
 
+    pub fn with_decisions(mut self, service: Arc<dyn everruns_core::DecisionsService>) -> Self {
+        self.decisions = Some(service);
+        self
+    }
+
     pub fn with_health_check_service(
         mut self,
         service: Arc<crate::domains::agents::AgentHealthCheckService>,
@@ -179,11 +193,31 @@ impl Ctx {
         self.egress_service = Some(service);
         self
     }
+    pub fn with_mcp_oauth_checker(
+        mut self,
+        checker: Option<
+            Arc<dyn crate::domains::mcp_servers::connection_check::McpOAuthConnectionChecker>,
+        >,
+    ) -> Self {
+        self.mcp_oauth_checker = checker;
+        self
+    }
+
     pub fn with_slack_provisioner(
         mut self,
-        provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
+        provisioner: Option<
+            Arc<
+                dyn crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner,
+            >,
+        >,
     ) -> Self {
         self.slack_provisioner = provisioner;
+        self
+    }
+
+    /// Point agent GitHub App commands at `github` (its client and public URLs).
+    pub fn with_github_apps(mut self, github: crate::github_apps::GitHubAppContext) -> Self {
+        self.github_apps = github;
         self
     }
 }

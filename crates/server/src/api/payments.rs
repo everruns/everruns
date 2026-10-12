@@ -3,6 +3,7 @@
 use crate::api::state::ApiState;
 use crate::auth::ResolvedOrg;
 use crate::domains::common::Command;
+use crate::domains::payments::record::{PaymentAccount, PaymentAttempt, PaymentPolicy};
 use crate::domains::payments::types::{
     CreatePaymentAccountRequest, CreatePaymentPolicyRequest, ListPaymentAccountsQuery,
     ListPaymentAttemptsQuery, ListPaymentPoliciesQuery, UpdatePaymentAccountRequest,
@@ -13,7 +14,6 @@ use crate::domains::payments::{
     GetPaymentAccount, GetPaymentPolicy, ListPaymentAccounts, ListPaymentAttempts,
     ListPaymentPolicies, UpdatePaymentAccountCmd, UpdatePaymentPolicyCmd,
 };
-use crate::records::payment::{PaymentAccount, PaymentAttempt, PaymentPolicy};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},

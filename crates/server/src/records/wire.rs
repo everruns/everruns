@@ -10,7 +10,7 @@ use everruns_internal_protocol::{
 /// directly into portable execution definitions.
 pub fn proto_agent_to_schema(
     value: proto::Agent,
-) -> Result<crate::records::Agent, ConversionError> {
+) -> Result<crate::domains::agents::record::Agent, ConversionError> {
     // Serialize proto to JSON, then deserialize to schema type
     // This is simpler and more maintainable than field-by-field conversion
     let tags: Vec<String> = vec![];
@@ -60,12 +60,13 @@ pub fn proto_agent_to_schema(
         "created_at": value.created_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
         "updated_at": value.updated_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
         "parallel_tool_calls": value.parallel_tool_calls,
+        "communication": value.communication.as_deref().unwrap_or("direct"),
     });
     serde_json::from_value(json).map_err(ConversionError::from)
 }
 
 /// Convert the server-owned Agent record to an internal transport DTO.
-pub fn schema_agent_to_proto(value: &crate::records::Agent) -> proto::Agent {
+pub fn schema_agent_to_proto(value: &crate::domains::agents::record::Agent) -> proto::Agent {
     proto::Agent {
         service_virtual_user_id: value
             .service_virtual_user_id
@@ -90,13 +91,19 @@ pub fn schema_agent_to_proto(value: &crate::records::Agent) -> proto::Agent {
             .collect(),
         display_name: value.display_name.clone(),
         parallel_tool_calls: value.parallel_tool_calls,
+        communication: value
+            .communication
+            .is_explicit()
+            .then(|| value.communication.as_str().to_owned()),
         harness_id: Some(uuid_to_proto_uuid(value.harness_id.uuid())),
         capabilities: encode_capability_configs(&value.capabilities),
     }
 }
 
 /// Convert the server-owned Harness record to an internal transport DTO.
-pub fn schema_harness_to_proto(value: &crate::records::Harness) -> proto::Harness {
+pub fn schema_harness_to_proto(
+    value: &crate::domains::harnesses::record::Harness,
+) -> proto::Harness {
     proto::Harness {
         id: Some(uuid_to_proto_uuid(value.id.uuid())),
         name: value.name.clone(),
@@ -127,7 +134,7 @@ pub fn schema_harness_to_proto(value: &crate::records::Harness) -> proto::Harnes
 /// Convert an internal Harness DTO to the server-owned record.
 pub fn proto_harness_to_schema(
     value: proto::Harness,
-) -> Result<crate::records::Harness, ConversionError> {
+) -> Result<crate::domains::harnesses::record::Harness, ConversionError> {
     // EVE-652: a missing harness id previously became "" (opaque downstream
     // failure); surface the precise MissingField instead.
     let id_str = value
@@ -179,7 +186,7 @@ pub fn proto_harness_to_schema(
 /// Convert an internal Session DTO to the server-owned record using JSON.
 pub fn proto_session_to_schema(
     value: proto::Session,
-) -> Result<crate::records::Session, ConversionError> {
+) -> Result<crate::domains::sessions::record::Session, ConversionError> {
     let tags = value.tags.clone();
     let started_at: Option<String> = None;
     let finished_at: Option<String> = None;
@@ -293,7 +300,9 @@ pub fn proto_session_to_schema(
 }
 
 /// Convert schemas Session to proto Session
-pub fn schema_session_to_proto(value: &crate::records::Session) -> proto::Session {
+pub fn schema_session_to_proto(
+    value: &crate::domains::sessions::record::Session,
+) -> proto::Session {
     proto::Session {
         id: Some(uuid_to_proto_uuid(value.id.uuid())),
         agent_id: value.agent_id.map(|id| uuid_to_proto_uuid(id.uuid())),

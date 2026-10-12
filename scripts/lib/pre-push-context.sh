@@ -42,7 +42,7 @@ pre_push_workflow_changed() {
 
 pre_push_rust_changed() {
   pre_push_workflow_changed ||
-    pre_push_changed_files_match '(^|/)Cargo\.(toml|lock)$|(^|/)[^/]+\.rs$|^rust-toolchain(\.toml)?$|^\.cargo/'
+    pre_push_changed_files_match '(^|/)Cargo\.(toml|lock)$|(^|/)[^/]+\.rs$|^rust-toolchain(\.toml)?$|^\.cargo/|^skills/'
 }
 
 pre_push_cargo_graph_changed() {

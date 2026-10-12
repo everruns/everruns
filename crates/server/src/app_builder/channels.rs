@@ -1,5 +1,7 @@
 // Inbound channel surfaces (webhooks, A2A, API endpoint keys, AG-UI, FCP,
-// Public Chat): their states and per-channel rate limiters.
+// Public Chat, Poppy): their states, per-channel rate limiters and routes.
+// Also the deployment's Poppy personal-agent identity (client metadata and
+// JWKS), which companies fetch the same way agents fetch a channel.
 //
 // Decision: each channel gets its own rate-limiter namespace so one channel's
 //   public traffic can never share or exhaust another channel's per-channel cap.
@@ -9,7 +11,7 @@ use crate::api;
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::sse::SseConnectionTracker;
 use crate::auth;
-use crate::event_delivery::EventDelivery;
+use crate::live_updates::event_delivery::EventDelivery;
 use crate::storage::{EncryptionService, StorageBackend};
 use crate::valkey::ValkeyClient;
 use std::sync::Arc;
@@ -18,7 +20,6 @@ pub(super) struct ChannelDeps {
     pub db: Arc<StorageBackend>,
     pub encryption: Option<Arc<EncryptionService>>,
     pub runner: Arc<dyn everruns_core::host::TurnBackend>,
-    pub notifications_enabled: bool,
     pub event_delivery: EventDelivery,
     pub sse_tracker: Arc<SseConnectionTracker>,
     pub valkey: Option<ValkeyClient>,
@@ -30,11 +31,12 @@ pub(super) struct ChannelDeps {
 
 pub(super) struct ChannelStates {
     pub webhooks: api::channel_webhooks::ChannelWebhookState,
-    pub a2a: api::channel_a2a::ChannelA2aState,
+    pub a2a: crate::channels::a2a::ChannelA2aState,
     pub api: api::channel_api::ChannelApiState,
-    pub ag_ui: api::ag_ui::AgUiState,
-    pub fcp: api::fcp::FcpState,
-    pub public_chat: api::ag_ui::AgUiState,
+    pub ag_ui: crate::channels::ag_ui::AgUiState,
+    pub fcp: crate::channels::fcp::FcpState,
+    pub public_chat: crate::channels::ag_ui::AgUiState,
+    pub poppy: crate::channels::poppy::PoppyState,
 }
 
 impl ChannelDeps {
@@ -52,60 +54,65 @@ impl ChannelStates {
             deps.db.clone(),
             deps.encryption.clone(),
             deps.runner.clone(),
-            deps.notifications_enabled,
             deps.event_delivery.clone(),
             deps.rate_limiter("webhook"),
         )
         .with_mcp_event_triggers(deps.mcp_event_triggers.clone());
         let a2a_replay_store = match deps.valkey.clone() {
-            Some(client) => api::a2a_signing::A2aReplayStore::with_valkey(client),
-            None => api::a2a_signing::A2aReplayStore::in_memory(),
+            Some(client) => crate::channels::a2a::signing::A2aReplayStore::with_valkey(client),
+            None => crate::channels::a2a::signing::A2aReplayStore::in_memory(),
         };
-        let a2a = api::channel_a2a::ChannelA2aState::new(
+        let a2a = crate::channels::a2a::ChannelA2aState::new(
             deps.db.clone(),
             deps.encryption.clone(),
             deps.runner.clone(),
-            deps.notifications_enabled,
             deps.event_delivery.clone(),
             deps.sse_tracker.clone(),
             deps.rate_limiter("a2a"),
-            a2a_replay_store,
+            a2a_replay_store.clone(),
             deps.frontend_url.clone(),
+        );
+        crate::domains::poppy_agent::configure_public_base_url(&deps.auth.config.base_url);
+        let poppy = crate::channels::poppy::PoppyState::new(
+            deps.db.clone(),
+            deps.encryption.clone(),
+            deps.runner.clone(),
+            deps.event_delivery.clone(),
+            deps.rate_limiter("poppy"),
+            a2a_replay_store,
         );
         // api_endpoint execution keys.
         let api = api::channel_api::ChannelApiState::new(
             deps.db.clone(),
             deps.encryption.clone(),
             deps.runner.clone(),
-            deps.notifications_enabled,
             deps.event_delivery.clone(),
+            deps.sse_tracker.clone(),
             deps.rate_limiter("apikey"),
-        );
-        let ag_ui = api::ag_ui::AgUiState::new(
+        )
+        .with_runtime_auth(deps.auth.clone());
+        let ag_ui = crate::channels::ag_ui::AgUiState::new(
             deps.db.clone(),
             deps.encryption.clone(),
             deps.runner.clone(),
-            deps.notifications_enabled,
             deps.event_delivery.clone(),
             deps.sse_tracker.clone(),
             deps.rate_limiter("agui"),
         )
         .with_runtime_auth(deps.auth.clone());
-        let fcp = api::fcp::FcpState::new(
+        let fcp = crate::channels::fcp::FcpState::new(
             deps.db.clone(),
             deps.encryption.clone(),
             deps.runner.clone(),
-            deps.notifications_enabled,
             deps.event_delivery.clone(),
             deps.rate_limiter("fcp"),
         );
         // Public Chat's traffic is anonymous, which is why it gets a namespace
         // separate from AG-UI even though it shares the AG-UI state.
-        let public_chat = api::ag_ui::AgUiState::new(
+        let public_chat = crate::channels::ag_ui::AgUiState::new(
             deps.db.clone(),
             deps.encryption.clone(),
             deps.runner.clone(),
-            deps.notifications_enabled,
             deps.event_delivery.clone(),
             deps.sse_tracker.clone(),
             deps.rate_limiter("public_chat"),
@@ -119,6 +126,22 @@ impl ChannelStates {
             ag_ui,
             fcp,
             public_chat,
+            poppy,
         }
+    }
+
+    /// The channels' routes: those under the API prefix, and those at the
+    /// server root (Poppy's RFC 8414 metadata).
+    pub(super) fn into_routes(self) -> (axum::Router, axum::Router) {
+        let api = axum::Router::new()
+            .merge(api::channel_webhooks::routes(self.webhooks))
+            .merge(crate::channels::a2a::routes(self.a2a))
+            .merge(api::channel_api::routes(self.api))
+            .merge(crate::channels::ag_ui::routes(self.ag_ui))
+            .merge(crate::channels::public_chat::routes(self.public_chat))
+            .merge(crate::channels::fcp::routes(self.fcp))
+            .merge(crate::channels::poppy::routes(self.poppy.clone()));
+        let root = crate::channels::poppy::well_known_routes(self.poppy);
+        (api, root)
     }
 }

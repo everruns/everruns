@@ -15,10 +15,14 @@ export const ASSIGNMENT_TASK_KIND = "assignment";
 export const THREAD_RESOLVED_DETAIL = "resolved";
 
 export function conversationGroup(session: Session): ThreadGroup {
+  // An explicit archive resolves a conversation whatever its last status: an
+  // archived session can be left `active` or `started` and must not read as work.
+  if (session.archived_at) return "Resolved";
   if (session.status === "waiting_for_tool_results") return "Needs you";
-  if (session.status === "active" || session.status === "started") return "Working";
-  // Turn completion is idle, not resolution. Only an explicit archive resolves a conversation.
-  return session.archived_at ? "Resolved" : "Open";
+  // `started` means no turn has run yet, so it is open, not working.
+  if (session.status === "active") return "Working";
+  // Turn completion is idle, not resolution.
+  return "Open";
 }
 
 export function workGroup(task: SessionTask): ThreadGroup {

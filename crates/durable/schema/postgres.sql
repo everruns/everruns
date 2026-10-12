@@ -170,6 +170,13 @@ CREATE INDEX IF NOT EXISTS idx_durable_task_queue_standalone
     WHERE workflow_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_durable_task_queue_workflow
     ON durable_task_queue (workflow_id);
+-- Task listings order by created_at; worker listings aggregate by claimed_by.
+-- Server migrations 208 and 209.
+CREATE INDEX IF NOT EXISTS idx_durable_task_queue_created_at
+    ON durable_task_queue (created_at);
+CREATE INDEX IF NOT EXISTS idx_durable_task_queue_claimed_by
+    ON durable_task_queue (claimed_by)
+    WHERE claimed_by IS NOT NULL;
 -- Backs `ActivityOptions::dedupe_by_activity_id` for the activity ids Everruns
 -- enqueues idempotently (server migration 143). The engine's dedupe SQL names no
 -- arbiter, so it uses whatever unique index covers a caller's ids; this one is

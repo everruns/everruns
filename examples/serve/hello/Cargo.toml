@@ -1,4 +1,4 @@
-# The smallest serve app: one agent, one tool, one eval. Runs offline.
+# The smallest serve app: one agent, one tool, one eval. Runs on a real model (`OPENAI_API_KEY`).
 [package]
 name = "serve-example-hello"
 version = "0.1.0"

@@ -144,6 +144,7 @@ pub use everruns_contracts::runtime::harness_definition;
 pub use everruns_contracts::runtime::leased_resource;
 pub use everruns_contracts::runtime::mcp_deferred;
 pub use everruns_contracts::runtime::mcp_proxy;
+pub use everruns_contracts::runtime::mcp_resources;
 pub use everruns_contracts::runtime::mcp_server;
 pub use everruns_contracts::runtime::mount_fs;
 pub use everruns_contracts::runtime::network_access;
@@ -175,9 +176,12 @@ pub mod workspace_roots;
 
 // Multi-platform channel abstractions (thread context, delivery, routing)
 pub use everruns_contracts::runtime::channel;
+// The shared channel host and reply delivery.
+#[cfg(feature = "channels")]
+pub mod channel_runtime;
 
 // Permissions model (policies, rules, caller context)
-pub use everruns_contracts::runtime::channel_messaging;
+pub use everruns_contracts::runtime::conversation;
 pub mod permissions;
 pub use everruns_contracts::runtime::resource_names;
 
@@ -316,10 +320,10 @@ pub use workspace_roots::{
 
 // Channel abstraction re-exports
 pub use channel::{
-    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelReplyMode, ChannelStreamDelivery,
-    ChannelViewContext, DeliveryContext as ChannelDeliveryContext,
-    DeliveryResult as ChannelDeliveryResult, InboundAttachment, InboundChannelEvent,
-    OutboundChannelMessage, Participant, SessionBinding, ThreadContext,
+    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelStreamDelivery, ChannelViewContext,
+    DeliveryContext as ChannelDeliveryContext, DeliveryResult as ChannelDeliveryResult,
+    InboundAttachment, InboundChannelEvent, OutboundChannelMessage, Participant, SessionBinding,
+    ThreadContext,
 };
 
 // Narrow subagent-session delegation contract (EVE-839). The full hosted
@@ -351,9 +355,14 @@ pub use database_failure::{DatabaseFailureKind, log_database_failure};
 // Outbound egress service re-exports
 pub use egress::{
     DisabledEgressService, EgressByteStream, EgressError, EgressRequest, EgressRequestKind,
-    EgressResponse, EgressResult, EgressService, EgressSigning, EgressStreamResponse,
+    EgressResponse, EgressResult, EgressScope, EgressService, EgressSigning, EgressStreamResponse,
+    ScopedEgressService,
 };
-pub use system_allowlist::{AllowGroup, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllowlist};
+pub use system_allowlist::{
+    AllowGroup, EGRESS_POLICY_ENV, EgressAccess, EgressPolicyDenial, EgressPolicyGrant,
+    EgressPolicyMode, OPEN_READ_MAX_URL_LEN, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllowlist,
+    SystemEgressPolicy,
+};
 
 // EVE-879: the system email contract and its concrete senders (Resend,
 // disabled/noop, `SystemEmailConfig`) moved to the `crates/server/src/records/` —
@@ -516,12 +525,18 @@ pub use mcp_proxy::{
     McpCallIdentity, McpProxyTool, McpServerTools, McpToolInvoker, ScopedMcpToolInvoker,
     build_mcp_proxy_tools,
 };
+pub use mcp_resources::{
+    LIST_MCP_RESOURCES_TOOL, McpResourceListing, McpResourceOutcome, READ_MCP_RESOURCE_TOOL,
+    add_mcp_resource_tool_definitions, is_mcp_resource_tool,
+};
 pub use mcp_server::{
-    MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2026_07,
-    McpConnectInChat, McpContent, McpElicitationPolicy, McpError, McpProtocolMode,
+    MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2025_11,
+    MCP_PROTOCOL_VERSION_2026_07, McpAnnotations, McpConnectInChat, McpContent,
+    McpElicitationPolicy, McpError, McpProtocolMode, McpReadResourceResult, McpResource,
+    McpResourceContents, McpResourceTemplate, McpResourceTemplatesPage, McpResourcesPage,
     McpSecretBindingMetadata, McpServerActsAs, McpServerAuthMode, McpServerPresetRef,
     McpServerTransportType, McpToolAnnotations, McpToolCallParams, McpToolCallRequest,
-    McpToolCallResponse, McpToolCallResult, McpToolDefinition, McpToolsListRequest,
+    McpToolCallResponse, McpToolCallResult, McpToolDefinition, McpToolLabel, McpToolsListRequest,
     McpToolsListResponse, McpToolsListResult, ScopedMcpServer, ScopedMcpServers,
     apply_mcp_secret_binding_schemas, is_mcp_tool, mcp_oauth_provider_id_for_uuid,
     mcp_oauth_session_secret_name, mcp_tool_name, merge_scoped_mcp_servers,
@@ -611,6 +626,9 @@ pub mod ag_ui;
 /// Portable first-party capability implementations.
 #[cfg(feature = "builtins")]
 pub mod builtins;
+/// Credential verification for agent endpoints (OIDC/JWKS, introspection).
+#[cfg(feature = "channel-auth")]
+pub mod channel_auth;
 /// Portable turn planning and Input/Reason/Act algorithms.
 #[cfg(feature = "engine")]
 pub mod engine;

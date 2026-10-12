@@ -154,6 +154,67 @@ impl fmt::Debug for OpenAI {
     }
 }
 
+#[cfg(feature = "voice")]
+impl OpenAI {
+    /// OpenAI's Realtime API as the speech provider of a
+    /// [`VoiceChannel`](crate::voice::VoiceChannel) (requires the `voice`
+    /// feature).
+    ///
+    /// ```no_run
+    /// use everruns::providers::openai::OpenAI;
+    /// use everruns::voice::VoiceChannel;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let voice = VoiceChannel::delegated(OpenAI::from_env()?.realtime()).voice("marin");
+    /// # let _ = voice;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn realtime(&self) -> crate::voice::Realtime {
+        let base_url = self
+            .base_url
+            .clone()
+            .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
+        crate::voice::Realtime::new(
+            everruns_drivers::openai::OpenAIRealtimeDriver::new(),
+            everruns_contracts::runtime_provider::ProviderEndpoint::from_parts(
+                base_url,
+                everruns_contracts::runtime_provider::BearerAuth::new(self.api_key.clone()),
+            ),
+        )
+    }
+
+    /// OpenAI speech-to-text and text-to-speech as the speech provider of a
+    /// cascaded [`VoiceChannel`](crate::voice::VoiceChannel) (requires the
+    /// `voice` feature).
+    ///
+    /// ```no_run
+    /// use everruns::providers::openai::OpenAI;
+    /// use everruns::voice::VoiceChannel;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let voice = VoiceChannel::cascaded(OpenAI::from_env()?.speech())
+    ///     .speech_model("gpt-4o-mini-tts")
+    ///     .voice("marin");
+    /// # let _ = voice;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn speech(&self) -> crate::voice::Speech {
+        let base_url = self
+            .base_url
+            .clone()
+            .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
+        crate::voice::Speech::new(
+            everruns_drivers::openai::OpenAISpeechDriver::new(),
+            everruns_contracts::runtime_provider::ProviderEndpoint::from_parts(
+                base_url,
+                everruns_contracts::runtime_provider::BearerAuth::new(self.api_key.clone()),
+            ),
+        )
+    }
+}
+
 impl From<OpenAI> for Provider {
     fn from(config: OpenAI) -> Self {
         let (api_key, base_url) = config.into_parts();

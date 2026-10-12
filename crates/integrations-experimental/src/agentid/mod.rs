@@ -41,27 +41,15 @@ pub const AGENTMAIL_PROVIDER: &str = "agentmail";
 /// AgentMail API base. Fixed: the tool never sends the key anywhere else.
 const AGENTMAIL_API_BASE: &str = "https://api.agentmail.to/v0";
 
-/// Feature flags this module's plugins name, with their default rollout grades;
-/// the hosted platform lists them in its feature flag settings, and
-/// `FEATURE_<NAME>` overrides the grade per deployment.
-pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
-    &[everruns_contracts::runtime::FeatureFlagDefinition {
-        name: "agentid",
-        label: "AgentID sign-in",
-        description: "Let agents sign in to apps that support AgentID, with an AgentMail inbox \
-                      connected to the agent's service account.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
-    }];
-
 /// Capability plugins this module contributes to a hosted catalog.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
-    feature_flag: Some("agentid"),
+    feature_flag: None,
     factory: || Box::new(AgentIdCapability),
 }];
 
 /// Connector plugins this module contributes to a hosted catalog.
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
-    feature_flag: Some("agentid"),
+    feature_flag: None,
     factory: || Box::new(AgentMailConnector),
 }];
 
@@ -125,9 +113,9 @@ mod tests {
     }
 
     #[test]
-    fn the_capability_and_connector_share_the_flag() {
-        assert_eq!(CAPABILITY_PLUGINS[0].feature_flag, Some("agentid"));
-        assert_eq!(CONNECTOR_PLUGINS[0].feature_flag, Some("agentid"));
-        assert_eq!(FEATURE_FLAGS[0].name, "agentid");
+    fn the_capability_and_connector_are_not_feature_flagged() {
+        // Opt-in is adding the capability and an AgentMail connection.
+        assert_eq!(CAPABILITY_PLUGINS[0].feature_flag, None);
+        assert_eq!(CONNECTOR_PLUGINS[0].feature_flag, None);
     }
 }

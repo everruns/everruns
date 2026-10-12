@@ -27,8 +27,8 @@ use std::time::Duration;
 
 use base64::Engine;
 use everruns_contracts::driver_helpers::SsrfGuardResolver;
-use everruns_contracts::runtime::SystemAllowlist;
 use everruns_contracts::runtime::network_access::NetworkAccessList;
+use everruns_contracts::runtime::{EgressAccess, SystemEgressPolicy};
 use everruns_contracts::url_validation::validate_safe_url;
 use reqwest::dns::Resolve;
 use serde_json::{Value, json};
@@ -118,9 +118,9 @@ impl PausedAnswer {
 pub struct BrowserEgress {
     client: reqwest::Client,
     network_access: Option<NetworkAccessList>,
-    /// Host-wide allowlist (`EVERRUNS_SYSTEM_ALLOWLIST_ENABLED`). Page traffic
-    /// now leaves from the Everruns host, so the host policy applies to it.
-    system_allowlist: Option<Arc<SystemAllowlist>>,
+    /// Host-wide egress policy (`EVERRUNS_EGRESS_POLICY`). Page traffic now
+    /// leaves from the Everruns host, so the host policy applies to it.
+    system_policy: Option<Arc<SystemEgressPolicy>>,
     in_flight: Semaphore,
     /// Test-only escape so unit tests can serve responses from a loopback
     /// mock server. Production code never sets it.
@@ -190,7 +190,7 @@ impl BrowserEgress {
         Arc::new(Self {
             client,
             network_access: network_access.filter(|access| !access.is_empty()),
-            system_allowlist: SystemAllowlist::from_env(),
+            system_policy: SystemEgressPolicy::from_env(),
             in_flight: Semaphore::new(MAX_IN_FLIGHT),
             #[cfg(test)]
             allow_loopback_for_tests: false,
@@ -230,7 +230,7 @@ impl BrowserEgress {
         Self {
             client,
             network_access,
-            system_allowlist: SystemAllowlist::from_env(),
+            system_policy: SystemEgressPolicy::from_env(),
             in_flight: Semaphore::new(MAX_IN_FLIGHT),
             allow_loopback_for_tests: true,
         }
@@ -238,7 +238,7 @@ impl BrowserEgress {
 
     /// Policy check that needs no network: scheme, static SSRF ranges, and the
     /// session access list. `Err` carries a short reason for logs.
-    fn check_url(&self, url: &str) -> Result<(), &'static str> {
+    fn check_url(&self, url: &str, access: EgressAccess) -> Result<(), &'static str> {
         #[cfg(test)]
         let skip_static = self.allow_loopback_for_tests
             && reqwest::Url::parse(url).is_ok_and(|parsed| parsed.host_str() == Some("127.0.0.1"));
@@ -252,10 +252,10 @@ impl BrowserEgress {
         {
             return Err("network access list");
         }
-        if let Some(allowlist) = &self.system_allowlist
-            && !allowlist.is_url_allowed(url)
+        if let Some(policy) = &self.system_policy
+            && let Err(denial) = policy.check(url, access, None)
         {
-            return Err("system allowlist");
+            return Err(denial.reason());
         }
         Ok(())
     }
@@ -276,7 +276,14 @@ impl BrowserEgress {
             return Some(PausedAnswer::continue_local(request_id));
         }
 
-        if let Err(reason) = self.check_url(url) {
+        let method = request
+            .get("method")
+            .and_then(Value::as_str)
+            .unwrap_or("GET");
+        let has_body = request.get("hasPostData").and_then(Value::as_bool) == Some(true)
+            || request.get("postData").is_some()
+            || request.get("postDataEntries").is_some();
+        if let Err(reason) = self.check_url(url, EgressAccess::classify(method, has_body)) {
             debug!(host = %host_for_log(url), reason, "browser request blocked");
             return Some(PausedAnswer::blocked(request_id));
         }
@@ -519,10 +526,30 @@ mod tests {
         assert_failed(&answer, "BlockedByClient");
     }
 
+    #[test]
+    fn curated_writes_blocks_page_posts_but_not_reads() {
+        let mut egress = BrowserEgress::allowing_loopback_for_tests(None);
+        egress.system_policy = Some(Arc::new(SystemEgressPolicy::embedded(
+            everruns_contracts::runtime::EgressPolicyMode::CuratedWrites,
+        )));
+        let url = "https://tenant-controlled.example/form";
+        assert_eq!(egress.check_url(url, EgressAccess::Read), Ok(()));
+        assert_eq!(
+            egress.check_url(url, EgressAccess::Write),
+            Err("not_allowlisted")
+        );
+        assert_eq!(
+            egress.check_url("https://webhook.site/x", EgressAccess::Read),
+            Err("denylisted")
+        );
+    }
+
     #[tokio::test]
     async fn host_system_allowlist_applies_to_page_requests() {
         let mut egress = BrowserEgress::allowing_loopback_for_tests(None);
-        egress.system_allowlist = Some(SystemAllowlist::embedded());
+        egress.system_policy = Some(Arc::new(SystemEgressPolicy::embedded(
+            everruns_contracts::runtime::EgressPolicyMode::CuratedAll,
+        )));
         let answer = egress
             .answer(&paused("https://tenant-controlled.example/"))
             .await

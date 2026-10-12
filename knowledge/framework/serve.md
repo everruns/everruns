@@ -53,12 +53,22 @@ runtime.
   reference for ergonomics only; its wire shape (`{input}` bodies,
   `Last-Event-ID` resume over a host-authored log) was removed without a
   compatibility layer.
+- **Each agent has the Agent Execution API.** `/v1/channels/{agent}` is the
+  agent base URL from [Agent Execution API](../integrations/agent-execution-api.md),
+  with the wire types shared through `everruns::execution_api`. Its routes
+  are the `/v1/sessions` handlers behind a check that the session runs that
+  agent, so another agent's URL sees a 404, never a session it does not own.
 - **A thin layer over `everruns::Engine`.** The durable log is the engine's
   (`Session::events_after` / `events_from`); serve authors no events. Tools
   are `FunctionTool::with_context`, approvals are the runtime's per-tool gate
   (`needs_approval` + `AgentBuilder::approver`), questions are the built-in
   `ask_user` capability. serve's own SQLite keeps only the session catalog
-  (agent, build, title, tags, metadata, delivery target) and channel threads.
+  (agent, build, title, tags, metadata) and the channel host's state
+  (thread bindings, seen message keys, pending replies).
+- **Channels are the shared channel host.** `#[channel]` drivers run on
+  `everruns::channels::ChannelHost`, the runtime the Framework and the server
+  use, so retries, thread binding, streamed replies and restart recovery
+  behave the same everywhere. See [Channels](../integrations/channels.md).
 
 ## Consequences and choices
 
@@ -88,29 +98,59 @@ runtime.
 - **Approvals and questions are the runtime's.** A predicate over the
   macro-generated argument struct becomes `FunctionTool::needs_approval`;
   serve's approver parks the call, keyed by session and tool call id, until
-  `POST …/approvals/{tool_call_id}` (serve-only; the server has no such route)
-  answers it. `ask_user` questions are parked the same way and answered
+  the server's batch `POST …/tool-approvals` answers it (or the serve-only
+  `POST …/approvals/{tool_call_id}`, one call at a time). `ask_user` questions are parked the same way and answered
   through the server's `/question-answers`. There is no canonical event for a
   pending request, so the session lists them (`pending_approvals`,
   `pending_questions`) and reports `waitingfortoolresults`. Parked requests
   live in memory; the event log is what survives a restart. When a session
   comes back, the host asks the engine (`Session::interrupted_turn`) for a
-  turn the old process cut off in its act, and resumes it
-  (`Session::resume_interrupted_turn`) only when every unfinished call waits
-  on a person, so those calls run again, park again under the same tool call
-  ids, and an answer finishes the turn; a call cut off mid-execution is never
-  re-run. The runtime passes the model no deny note.
+  turn the old process cut off, and resumes it
+  (`Session::resume_interrupted_turn`): calls that waited on a person run
+  again and park again under the same tool call ids, idempotent calls run
+  again, and every other call is recorded as interrupted, never re-run. Boot
+  resumes, in the background, every session active within the last 7 days,
+  so a cut-off turn carries on without a client reading it first; older
+  sessions resume when next read. The runtime passes the model no deny note.
+- **App schedules survive a restart.** `dev` and `start` record each
+  `#[schedule]` occurrence before running it. On boot, an occurrence that fell
+  due while the host was down runs once, right away; several missed
+  occurrences collapse into that one run. The first boot only records a
+  starting point. See `crates/serve/src/scheduler.rs`.
+- **A daemon can keep its data in a bucket.** `start --store s3://bucket/prefix`
+  (actor-based design step 5, storage option C) keeps the data directory as
+  a local working copy and the bucket as the truth: one lease per daemon,
+  taken with conditional writes; a manifest written only by conditional
+  update, so it fences out a daemon that was taken over; SQLite files copied
+  by changed pages, other files (the workspace) whole by content hash. A
+  change ships within the copy interval (200 ms) plus one upload, not before
+  it is acknowledged; resume covers the turn a crash cut off. One lease per
+  daemon, not per agent: several daemons on one bucket would need per-agent
+  leases and per-agent layout, which waits for a real need. The data
+  directory's absolute path must match across machines, because a session's
+  workspace binding records it. See `crates/serve/src/bucket.rs`.
 - **Subagents are tools.** `#[agent(sub)]` becomes `ask_<name>` on the other
   agents and runs a child session on the same engine. The child's tool
   activity is reported as `tool.progress` of the parent call, and its
   approvals and questions wait on the parent session.
 
-- **AG-UI is built in, not a `Channel`.** The `Channel` trait answers a
+- **AG-UI is built in, not a `#[channel]`.** A channel driver answers a
   webhook and delivers the reply later; AG-UI streams the reply in the
   response. So the `ag-ui` feature adds `POST /v1/channels/{agent}/ag-ui` beside the
   channel routes, a thin layer over the facade's `Session::ag_ui_with`. Its
   `InterruptSource` reads serve's parked approvals and questions, so one
   responder serves both APIs. See [AG-UI Channel](../integrations/ag-ui.md#serve).
+
+- **Auth is the server's verifier, opt-in.** With no method configured the
+  API stays open, as before. A method list (static keys, OIDC/JWKS, OAuth 2.0
+  introspection, in the server's channel auth config shape) from
+  `ServerBuilder::auth`, `[auth]` in `serve.toml` or `SERVE_API_KEYS` puts a
+  bearer check in front of every agent route, using
+  `everruns_core::channel_auth`, the verifier the server's channels use. The
+  card, the A2A card, the voice page and messaging-channel webhooks (which
+  carry platform signatures, not a serve credential) stay public. It
+  authenticates only: callers are not isolated from each other's sessions.
+  See `crates/serve/src/auth.rs`.
 
 - **Hosting targets are sibling crates.** A platform contract (AgentCore
   Runtime's `/ping`, `/invocations` and port 8080 first) lives in its own crate,
@@ -159,9 +199,12 @@ runtime.
   (`build_id`, `409` with `x-serve-build`) but does no routing.
 - "Always" approval decisions and subagent requests across restarts, and a
   deny note the model can read.
-- Which further server routes (auth, message listing, `tool-results`) a
+- Per-caller session isolation once auth is on, and which further server
+  routes (message listing, `tool-results`) a
   serve app should answer so every client works unchanged.
 - `#[memoize]` scoped to a turn, and Postgres or NATS adapters for `start`.
+- A copy to the bucket before each commit is acknowledged, instead of every
+  copy interval, and per-agent leases so several daemons share one bucket.
 - A `cargo serve` wrapper for `build` (binary, `manifest.json`, OCI image) and
   `deploy`.
 

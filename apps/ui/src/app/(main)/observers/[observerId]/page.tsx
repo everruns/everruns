@@ -181,10 +181,7 @@ function ScoreRow({ score }: { score: TraceScore }) {
         {new Date(score.created_at).toLocaleString()}
       </TableCell>
       <TableCell>
-        <Link
-          href={`/sessions/${score.session_id}/transcript`}
-          className="text-primary hover:underline"
-        >
+        <Link href={`/sessions/${score.session_id}/trace`} className="text-primary hover:underline">
           View
         </Link>
       </TableCell>

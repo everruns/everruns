@@ -1,5 +1,63 @@
 use super::*;
 
+pub(super) fn proto_agent_to_definition(proto_agent: proto::Agent) -> Result<AgentDefinition> {
+    let id = proto_uuid_to_uuid(proto_agent.id.as_ref())?;
+    let default_model_id = proto_agent
+        .default_model_id
+        .as_ref()
+        .map(|u| proto_uuid_to_uuid(Some(u)))
+        .transpose()?;
+    if matches!(
+        proto_agent.status.to_lowercase().as_str(),
+        "archived" | "deleted"
+    ) {
+        return Err(AgentLoopError::config(format!(
+            "agent {} is {} and cannot execute turns",
+            AgentId::from_uuid(id),
+            proto_agent.status
+        )));
+    }
+
+    let capabilities = if proto_agent.capabilities.is_empty() {
+        proto_agent
+            .capability_ids
+            .into_iter()
+            .map(everruns_contracts::CapabilityRef::new)
+            .collect()
+    } else {
+        proto_agent
+            .capabilities
+            .into_iter()
+            .map(|config| {
+                serde_json::from_str(&config).map_err(|error| {
+                    AgentLoopError::store(format!(
+                        "Invalid agent capability config in gRPC response: {error}"
+                    ))
+                })
+            })
+            .collect::<std::result::Result<Vec<_>, _>>()?
+    };
+
+    Ok(AgentDefinition {
+        id: AgentId::from_uuid(id),
+        name: proto_agent.name,
+        display_name: proto_agent.display_name,
+        description: non_empty_string(proto_agent.description),
+        system_prompt: proto_agent.system_prompt,
+        default_model_id: default_model_id.map(Into::into),
+        capabilities,
+        initial_files: vec![],
+        network_access: None,
+        max_iterations: None,
+        parallel_tool_calls: proto_agent.parallel_tool_calls,
+        communication: crate::core::conversation::Communication::from_wire(
+            proto_agent.communication.as_deref(),
+        ),
+        tools: vec![],
+        mcp_servers: Default::default(),
+    })
+}
+
 // These wire values are decoded only while resolving a source read. The phase
 // memo stores portable definitions and neutral blockers, never private DTOs.
 fn resolve_agent_record(

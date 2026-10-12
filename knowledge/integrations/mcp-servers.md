@@ -398,6 +398,35 @@ Update an MCP server. Only provided fields are updated.
 
 **Response:** `200 OK` with updated McpServer object
 
+#### OAuth connection check
+
+An OAuth preset is checked when it is created or switched to OAuth, and again
+on `POST /v1/mcp-servers/{server_id}/check-connection` (command
+`check_mcp_server_connection`, policy `mcp_server.manage`; the catalog's
+**Check again**). The check is the discovery and dynamic client registration
+the first sign-in would run, through the same egress, so a host the network
+policy blocks is reported when the preset is added rather than halfway through
+somebody's login. A successful registration is kept, so the first sign-in
+skips it; an already registered preset is checked by fetching its
+authorization-server metadata.
+
+- Best effort: saving never fails because of the check. Save waits for it a
+  few seconds, then answers; a slower check finishes in the background and
+  records its result itself. `create_mcp_server` and `update_mcp_server` are
+  therefore not transactional (the check writes on its own connection).
+- The result is the response's `connection_check` (OAuth presets only), kept in
+  the preset's `settings` JSON: `ready`, `blocked_by_network_policy`,
+  `unreachable`, `failed`, or `not_checked`, with `checked_at`, the `host`
+  whose request failed, and a short fixed `reason`. Provider bodies and
+  upstream messages never reach it; the server log keeps the detail. The
+  classification is the one browser sign-in errors use (`connect_error`).
+- The check runs where the API layer wires it (REST, MCP, `/v1/commands`);
+  other surfaces leave a new preset `not_checked`. Presets saved before checks
+  existed read `not_checked` until a check or a successful sign-in.
+
+Sources: `crates/server/src/domains/mcp_servers/connection_check.rs`,
+`crates/server/src/api/user_connections/connection_check.rs`.
+
 #### DELETE /v1/mcp-servers/{server_id}
 
 Delete an MCP server.
@@ -500,6 +529,50 @@ older than 24 hours are omitted from batch tool resolution. A refresh failure
 may use a stale entry only inside that maximum age. Concurrent first fetches for
 the same identity and authorization context are coalesced.
 
+### Tool risk labels
+
+A person can save a risk label on an organization server's tool: `read_only` or
+`changes`. Tool approval reads tool hints, and an MCP tool defaults to
+`open_world`, so without a label every MCP tool asks in the normal mode.
+
+- The person's label always wins over the tool's own annotations (user decision
+  2026-10-10). `read_only` also clears `open_world`, or it would still ask.
+- Labels are keyed by server and tool name, so they survive tool refreshes.
+- Suggestions (user decision 2026-10-10, "rating suggests"): on request a
+  decision model rates each tool without a label, with the same question Tools
+  in Shell ratings ask, and fills `suggested_label` only. It is shown, never
+  applied: prompts change once a person confirms it by setting the label. A
+  failed rating keeps the previous suggestion. Setting a label drops the
+  suggestion; clearing keeps it.
+- Who rates: an org with `system_decisions: organization` uses its own decision
+  default, session-less like the Slack relevance check (personal providers fail
+  closed, usage goes to the structured log). If that model cannot be resolved
+  the request is a 503 and never falls back to the deployment
+  (THREAT[TM-LLM-037]). Every other org uses the deployment's decisions
+  service; none configured is a 503.
+- The MCP catalog settings page has a Tools dialog per server: the tool list,
+  the server's own hints in plain words, a Default / Read only / Changes things
+  choice, "Use suggestion", and "Suggest labels".
+- Every path that builds session tool definitions applies labels from one batch
+  query: agent `mcp:{id}` capabilities on both worker paths, and catalog-preset
+  attachments.
+- Servers outside the catalog (user decision 2026-10-10, "do all 3"):
+  - Inline servers carry `tool_labels` in their own config. On a catalog
+    attachment they win over the preset's saved labels.
+  - Session-scoped servers drop `tool_labels` before merging: the agent can
+    write them itself mid-session, and a label only relaxes approval.
+  - A person's custom server keeps labels in the same table, keyed by its own
+    row; the turn's user layer loads them in one query. The owner lists the
+    tools live with their own credential (custom servers keep no tool list)
+    and sets labels through owner-scoped routes. A person's catalog entry uses
+    the preset's labels.
+
+Sources: [`tool_labels`](../../crates/server/src/domains/mcp_servers/tool_labels/mod.rs),
+[`suggestions`](../../crates/server/src/domains/mcp_servers/tool_labels/suggestions.rs),
+[Tools dialog](../../apps/ui/src/components/mcp/mcp-tool-labels-dialog.tsx),
+[`McpToolLabel`](../../crates/contracts/src/runtime/mcp_server.rs),
+[`McpCapability`](../../crates/core/src/mcp/capability.rs).
+
 ### Tool Execution
 
 MCP tools are executed via the `tools/call` JSON-RPC method:
@@ -580,6 +653,8 @@ In the capability selector UI, MCP capabilities are displayed with:
 - Server description as the capability description
 - List of available tools
 
+The catalog, the connections list, and a person's own MCP servers use the title and icon the remote server publishes as the heading and mark. The operator name stays the slug, and a plugin connection display name still wins over the discovered title. Discovery and the icon rules live in `crates/server/src/domains/mcp_servers/presentation.rs`.
+
 ### Agent-bound tool-parameter credentials
 
 Some MCP servers require a credential as a tool argument rather than an HTTP
@@ -636,9 +711,18 @@ A demo agent "Microsoft Learn Assistant" is also seeded, configured to use this 
 - MCP tools (prefixed with `mcp_`) → McpToolExecutor
 - Built-in tools → ToolRegistry
 
+**Server presentation** (`crates/server/src/domains/mcp_servers/presentation.rs`):
+- Reads the public server card and protected-resource `resource_name` when a server is created, when its URL changes, and when a list is stale
+- Folds `serverInfo` from a later handshake over that record
+- Drops icons that are not same-origin images or small raster data URIs (TM-TOOL-062)
+
 **gRPC Protocol** (`crates/internal-protocol/proto/worker.proto`):
 - `GetTurnContext` returns `mcp_tool_definitions` with prefixed tool names
 - `GetMcpServerByPrefix` resolves server info by name prefix
+- The attachment's OAuth grant is read or invalidated through the internal
+  `worker_get_mcp_connection_token` / `worker_invalidate_mcp_connection`
+  commands over `ExecuteCommand`, which re-resolve the attachment the same way
+  and refuse a provider or `actsAs` that does not match it (TM-TOOL-041)
 
 ### Error Handling
 

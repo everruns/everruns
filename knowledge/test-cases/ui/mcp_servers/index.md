@@ -13,3 +13,4 @@
 * [TC011: MCP Catalog Usage and Archive Impact](TC011_catalog_usage_and_archive_impact.md) - Verify active-agent usage counts and archive impact names.
 * [TC012: Personal MCP Connections](TC012_personal_mcp_connections.md) - Verify that users can inspect and revoke only their own MCP connections.
 * [TC013: MCP Catalog View Permission](TC013_mcp_catalog_view_permission.md) - Verify that catalog visibility follows the MCP server view and manage permissions.
+* [TC014: Published MCP title and icon](TC014_published_title_and_icon.md) - Verify that a catalog server shows the title and icon it publishes, and keeps the operator slug.

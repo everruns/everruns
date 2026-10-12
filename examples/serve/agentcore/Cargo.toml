@@ -1,4 +1,4 @@
-# A serve app packaged for Amazon Bedrock AgentCore Runtime. Runs offline.
+# A serve app packaged for Amazon Bedrock AgentCore Runtime. Runs on a real model.
 [package]
 name = "serve-example-agentcore"
 version = "0.1.0"

@@ -1177,7 +1177,7 @@ async fn the_sweep_leaves_a_recently_stranded_run_to_its_grace_period() {
 /// The matrix on `PostgresWorkflowEventStore`, in a scratch schema of the
 /// `DATABASE_URL` database so the zero-threshold reaper and the plain claims
 /// cannot touch another test's tasks. Skips without `DATABASE_URL` unless
-/// `EVERRUNS_REQUIRE_POSTGRES_TESTS` is set, as `durable_backend_postgres_tests`
+/// `EVERRUNS_REQUIRE_POSTGRES_TESTS` is set, as `worker_crash_tests`
 /// does.
 pub(crate) mod postgres {
     use std::sync::Arc;

@@ -28,16 +28,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useMcpServerCatalog, useDestroyMcpServer } from "@/hooks/use-mcp-servers";
+import {
+  useCheckMcpServerConnection,
+  useMcpServerCatalog,
+  useDestroyMcpServer,
+} from "@/hooks/use-mcp-servers";
+import { McpConnectionCheckLine } from "@/components/mcp/mcp-connection-check";
 import { usePolicies } from "@/hooks/use-policies";
 import { usePageTitle } from "@/hooks";
-import { Plus, Trash2, Key, Pencil } from "lucide-react";
+import { Plus, Trash2, Key, Pencil, Wrench } from "lucide-react";
 import type { McpServer, McpServerCatalogEntry, McpProtocolMode } from "@/lib/api/types";
 import { getEntityNameClassName, isArchivedStatus } from "@/lib/entity-lifecycle";
 import { SectionTabs, EmptyState, IconTile } from "@/components/layout";
 import { registryDomainIcons } from "@/lib/registry-navigation";
 import { pluralize } from "@/lib/formatting";
 import { EntityIdentity } from "@/components/ui/entity-identity";
+import { McpServerMark } from "@/components/connections/mcp-server-mark";
 import {
   AddMcpServerDialog,
   ArchiveConfirmDialog,
@@ -45,6 +51,7 @@ import {
   ManageHeadersDialog,
   SetApiKeyDialog,
 } from "@/components/mcp/mcp-catalog-dialogs";
+import { McpToolLabelsDialog } from "@/components/mcp/mcp-tool-labels-dialog";
 
 const McpIcon = registryDomainIcons.mcpServers;
 
@@ -69,6 +76,9 @@ function McpServerRow({
   onArchive,
   onSetApiKey,
   onManageHeaders,
+  onTools,
+  onCheckConnection,
+  checkingConnection,
 }: {
   server: McpServerCatalogEntry;
   canManage: boolean;
@@ -78,6 +88,9 @@ function McpServerRow({
   onArchive: (server: McpServer) => void;
   onSetApiKey: (server: McpServer) => void;
   onManageHeaders: (server: McpServer) => void;
+  onTools: (server: McpServer) => void;
+  onCheckConnection: (server: McpServer) => void;
+  checkingConnection: boolean;
 }) {
   const isArchived = server.status === "archived";
   const isDeleted = server.status === "deleted";
@@ -107,16 +120,28 @@ function McpServerRow({
     >
       <TableCell className="py-2.5">
         <div className="flex items-center gap-3">
-          <IconTile size="md" icon={<McpIcon />} />
+          <IconTile
+            size="md"
+            icon={
+              <McpServerMark
+                icons={server.presentation?.icons}
+                fallback={<McpIcon />}
+                className="size-5 object-contain"
+              />
+            }
+          />
           <div className="min-w-0">
             <div className="font-medium">
               <EntityIdentity
                 value={server.id}
                 labelClassName={getEntityNameClassName(server.status)}
               >
-                {server.name}
+                {server.presentation?.title || server.name}
               </EntityIdentity>
             </div>
+            {server.presentation?.title && server.presentation.title !== server.name && (
+              <div className="truncate font-mono text-xs text-muted-foreground">{server.name}</div>
+            )}
             <div className="max-w-[32ch] truncate text-xs text-foreground/75">
               {server.description || "Catalog preset"}
             </div>
@@ -135,7 +160,17 @@ function McpServerRow({
         </div>
       </TableCell>
       <TableCell>
-        <Badge variant="outline">{server.auth_mode.replace("_", " ")}</Badge>
+        <div className="flex flex-col items-start gap-1">
+          <Badge variant="outline">{server.auth_mode.replace("_", " ")}</Badge>
+          {server.auth_mode === "oauth" && (
+            <McpConnectionCheckLine
+              check={server.connection_check}
+              canCheck={canEdit}
+              checking={checkingConnection}
+              onCheck={() => onCheckConnection(server)}
+            />
+          )}
+        </div>
       </TableCell>
       <TableCell>
         <span
@@ -161,6 +196,19 @@ function McpServerRow({
             >
               <Key className="h-4 w-4 mr-1" />
               {server.api_key_set ? "Update Key" : "Set Key"}
+            </Button>
+          )}
+          {!isDeleted && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(event) => {
+                event.stopPropagation();
+                onTools(server);
+              }}
+            >
+              <Wrench className="h-4 w-4 mr-1" />
+              Tools
             </Button>
           )}
           {canEdit && (
@@ -258,6 +306,7 @@ export default function McpCatalogPage() {
   const canDestroy = policies.can("mcp_server.dangerous");
   const catalog = useMcpServerCatalog(!policyLoading && canViewCatalog);
   const destroyServer = useDestroyMcpServer();
+  const checkConnection = useCheckMcpServerConnection();
 
   const [search, setSearch] = useState("");
   const [statusTab, setStatusTab] = useState<StatusTab>("active");
@@ -265,6 +314,7 @@ export default function McpCatalogPage() {
   const [editServer, setEditServer] = useState<McpServer | null>(null);
   const [apiKeyServer, setApiKeyServer] = useState<McpServer | null>(null);
   const [headersServer, setHeadersServer] = useState<McpServer | null>(null);
+  const [toolsServer, setToolsServer] = useState<McpServer | null>(null);
   const [pendingDeleteServer, setPendingDeleteServer] = useState<McpServer | null>(null);
   const [pendingArchiveServer, setPendingArchiveServer] = useState<McpServer | null>(null);
 
@@ -420,6 +470,11 @@ export default function McpCatalogPage() {
                           onArchive={setPendingArchiveServer}
                           onSetApiKey={setApiKeyServer}
                           onManageHeaders={setHeadersServer}
+                          onTools={setToolsServer}
+                          onCheckConnection={(target) => checkConnection.mutate(target.id)}
+                          checkingConnection={
+                            checkConnection.isPending && checkConnection.variables === server.id
+                          }
                         />
                       ))}
                     </TableBody>
@@ -453,6 +508,14 @@ export default function McpCatalogPage() {
         open={headersServer !== null}
         onOpenChange={(open) => !open && setHeadersServer(null)}
       />
+      {toolsServer && (
+        <McpToolLabelsDialog
+          server={toolsServer}
+          canEdit={canManage && !isArchivedStatus(toolsServer.status)}
+          open
+          onOpenChange={(open) => !open && setToolsServer(null)}
+        />
+      )}
       <ArchiveConfirmDialog
         server={pendingArchiveServer}
         open={pendingArchiveServer !== null}

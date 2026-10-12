@@ -38,8 +38,10 @@ let _ = std::any::type_name::<FileSystemCapability>();
 | `openai-image` | `openai_image` | OpenAI image generation |
 | `openrouter` | `openrouter` | OpenRouter provider integration |
 | `parallel` | `parallel` | Parallel search |
+| `slack-channel` | `slack_channel` | Slack channel driver (Events API in, `chat.postMessage` out) |
 | `typesafe` | `typesafe` | TypeSafe decisions |
 | `web-fetch` | `web_fetch` | Authenticated web fetch |
+| `webhook-channel` | `webhook_channel` | Generic JSON webhook channel driver |
 | `modal` | `modal` | Modal sandboxes |
 
 Each module exports capability and connector types for direct registration, plus plugin descriptors for the hosted catalog. Fake/demo capabilities remain in `everruns-test-support`; they are not registered by this crate.
@@ -48,7 +50,7 @@ Use `everruns-integrations` for the maintained integrations. Deno and Sprites, w
 
 ## Documentation
 
-See the [integration guides](https://docs.everruns.com/integrations) and the [API reference](https://docs.rs/everruns-integrations). Each module README documents its vendor configuration.
+See the [integration guides](https://everruns.com/docs/integrations) and the [API reference](https://docs.rs/everruns-integrations). Each module README documents its vendor configuration.
 
 ## License
 

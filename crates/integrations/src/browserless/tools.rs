@@ -199,6 +199,7 @@ impl Tool for BrowserlessScreenshotTool {
 
     fn hints(&self) -> ToolHints {
         ToolHints::default()
+            .with_concurrency_class(crate::browserless::SESSION_BROWSER_CONCURRENCY_CLASS)
             // The model must see the screenshot, which shell output cannot carry.
             .with_stays_direct(true)
             .with_readonly(true)
@@ -239,6 +240,12 @@ impl Tool for BrowserlessScreenshotTool {
             Acquired::Browser(mut session) => {
                 let mode = session.mode();
                 debug!("Using CDP session for screenshot");
+                if let Err(e) = session.use_scratch_page().await {
+                    session.release(context).await;
+                    return ToolExecutionResult::tool_error(format!(
+                        "Could not open a tab to read the page: {e}"
+                    ));
+                }
                 if let Err(e) = begin_cdp_navigation(context, &mut session, url).await {
                     session.release(context).await;
                     return e;
@@ -370,6 +377,7 @@ impl Tool for BrowserlessContentTool {
 
     fn hints(&self) -> ToolHints {
         ToolHints::default()
+            .with_concurrency_class(crate::browserless::SESSION_BROWSER_CONCURRENCY_CLASS)
             .with_readonly(true)
             .with_open_world(true)
             .with_requires_secrets(true)
@@ -403,6 +411,12 @@ impl Tool for BrowserlessContentTool {
             Acquired::Browser(mut session) => {
                 let mode = session.mode();
                 debug!("Using CDP session for content");
+                if let Err(e) = session.use_scratch_page().await {
+                    session.release(context).await;
+                    return ToolExecutionResult::tool_error(format!(
+                        "Could not open a tab to read the page: {e}"
+                    ));
+                }
                 if let Err(e) = begin_cdp_navigation(context, &mut session, url).await {
                     session.release(context).await;
                     return e;
@@ -535,6 +549,7 @@ impl Tool for BrowserlessScrapeTool {
 
     fn hints(&self) -> ToolHints {
         ToolHints::default()
+            .with_concurrency_class(crate::browserless::SESSION_BROWSER_CONCURRENCY_CLASS)
             .with_readonly(true)
             .with_open_world(true)
             .with_requires_secrets(true)
@@ -574,6 +589,12 @@ impl Tool for BrowserlessScrapeTool {
             Err(e) => return e,
             Ok(Acquired::RestFallback(api_token)) => api_token,
             Ok(Acquired::Browser(mut session)) => {
+                if let Err(e) = session.use_scratch_page().await {
+                    session.release(context).await;
+                    return ToolExecutionResult::tool_error(format!(
+                        "Could not open a tab to read the page: {e}"
+                    ));
+                }
                 if let Err(e) = begin_cdp_navigation(context, &mut session, url).await {
                     session.release(context).await;
                     return e;
@@ -713,6 +734,7 @@ impl Tool for BrowserlessInteractTool {
 
     fn hints(&self) -> ToolHints {
         ToolHints::default()
+            .with_concurrency_class(crate::browserless::SESSION_BROWSER_CONCURRENCY_CLASS)
             .with_open_world(true)
             .with_requires_secrets(true)
             .with_long_running(true)
@@ -1137,6 +1159,7 @@ impl Tool for BrowserlessNavigateTool {
 
     fn hints(&self) -> ToolHints {
         ToolHints::default()
+            .with_concurrency_class(crate::browserless::SESSION_BROWSER_CONCURRENCY_CLASS)
             .with_open_world(true)
             .with_requires_secrets(true)
             .with_long_running(true)

@@ -34,7 +34,7 @@ let head = workspace
 let agent = Agent::builder()
     .instructions("Work in the selected project head.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-5.6-terra")
+    .model("gpt-6.1-sol")
     .workspace_policy(WorkspacePolicy::read_write())
     .build()?;
 let engine = Engine::new();
@@ -148,7 +148,7 @@ fn build(root: &std::path::Path) -> Result<Agent, Box<dyn std::error::Error>> {
     Ok(Agent::builder()
         .instructions("Work only inside the configured workspace.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-5.6-terra")
+        .model("gpt-6.1-sol")
         .workspace(root)
         .workspace_policy(policy)
         .build()?)

@@ -6,10 +6,11 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { docsUrl } from "../site.config.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const distRoot = path.resolve(scriptDir, "../dist");
-const site = "https://docs.everruns.com";
+const site = docsUrl("/").replace(/\/$/, "");
 
 /** Minimum share of docs pages expected in the complete text. */
 const MIN_PAGES = 150;

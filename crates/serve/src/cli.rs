@@ -3,6 +3,7 @@
 //! ```text
 //! cargo run -- dev                 # local server + live console (default)
 //! cargo run -- start               # production mode, same wire API
+//! cargo run -- start --store s3://bucket/prefix   # data kept in a bucket
 //! cargo run -- manifest [--out f]  # the host contract, as JSON
 //! cargo run -- eval [--against URL] [FILTER]
 //! cargo run -- deploy              # what a host would provision (stub)
@@ -43,6 +44,12 @@ enum Command {
     Start {
         #[arg(long, env = "PORT", default_value_t = 3000)]
         port: u16,
+        /// Keep the data in a bucket (`s3://bucket/prefix`): the daemon takes
+        /// the bucket's lease, rebuilds the data dir from it, and copies every
+        /// change back. A daemon started elsewhere on the same bucket takes
+        /// over once this one stops.
+        #[arg(long, env = "SERVE_STORE")]
+        store: Option<String>,
     },
     /// Print the manifest (the contract with the host).
     Manifest {
@@ -73,8 +80,8 @@ pub async fn start(app: App) -> crate::Result {
         bail!("{} problem(s) found during discovery", app.errors().len());
     }
     match cli.command.unwrap_or(Command::Dev { port: 3000 }) {
-        Command::Dev { port } => serve(app, Mode::Dev, port).await,
-        Command::Start { port } => serve(app, Mode::Start, port).await,
+        Command::Dev { port } => serve(app, Mode::Dev, port, None).await,
+        Command::Start { port, store } => serve(app, Mode::Start, port, store).await,
         Command::Manifest { out } => {
             let json = serde_json::to_string_pretty(&app.manifest())?;
             match out {
@@ -104,9 +111,17 @@ pub async fn start(app: App) -> crate::Result {
     }
 }
 
-async fn serve(app: App, mode: Mode, port: u16) -> crate::Result {
+async fn serve(app: App, mode: Mode, port: u16, store: Option<String>) -> crate::Result {
     let missing = crate::hosting::missing_secrets(&app);
     let data_dir = crate::hosting::data_dir()?;
+    // The bucket comes first: it rebuilds the data dir the server opens.
+    let attached = match &store {
+        Some(url) => {
+            println!("  attaching to {url}…");
+            Some(crate::Bucket::parse(url)?.attach(&data_dir).await?)
+        }
+        None => None,
+    };
     let server = crate::hosting::Server::new(app, mode, Some(data_dir.clone()))?;
     let host = server.host.clone();
     let missing: Vec<&str> = missing.iter().map(String::as_str).collect();
@@ -114,15 +129,48 @@ async fn serve(app: App, mode: Mode, port: u16) -> crate::Result {
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
     banner(&host, mode, port, &data_dir, &missing);
+    if let (Some(url), Some(attached)) = (&store, &attached) {
+        println!("  store    {url} (lease fence {})", attached.fence());
+    }
     if mode == Mode::Dev {
         tokio::spawn(console(host.clone(), port));
     }
     server.spawn_schedules();
+    server.resume_interrupted();
+    match server.recover_channels().await {
+        Ok(0) => {}
+        Ok(count) => println!(
+            "  recovered {count} channel repl{}",
+            if count == 1 { "y" } else { "ies" }
+        ),
+        Err(error) => eprintln!("  channel recovery failed: {error}"),
+    }
+    // A daemon that lost its bucket to another one stops serving at once.
+    let attached = attached.map(Arc::new);
+    let (lost_tx, lost_rx) = tokio::sync::oneshot::channel();
+    let watched = attached.clone();
     axum::serve(listener, server.router())
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
+        .with_graceful_shutdown(async move {
+            let lost_store = async {
+                match &watched {
+                    Some(attached) => attached.lost().await,
+                    None => std::future::pending().await,
+                }
+            };
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                reason = lost_store => {
+                    let _ = lost_tx.send(reason);
+                }
+            }
         })
         .await?;
+    if let Ok(reason) = lost_rx.await {
+        bail!("stopped: this daemon lost its store ({reason})");
+    }
+    if let Some(attached) = attached.and_then(Arc::into_inner) {
+        attached.detach().await?;
+    }
     Ok(())
 }
 
@@ -189,14 +237,29 @@ fn banner(host: &Arc<Host>, mode: Mode, port: u16, data_dir: &std::path::Path, m
     println!("  data     {}", data_dir.display());
     println!("  listen   http://localhost:{port}");
     println!();
-    println!(
-        "  try:  curl -s localhost:{port}/v1/sessions -H 'content-type: application/json' -d '{{}}'"
-    );
-    println!(
-        "        curl -s localhost:{port}/v1/sessions/<id>/messages -H 'content-type: application/json' \\\n          -d '{{\"message\":{{\"content\":[{{\"type\":\"text\",\"text\":\"hello\"}}]}}}}'"
-    );
-    println!("        curl -N 'localhost:{port}/v1/sessions/<id>/sse?after_sequence=0'");
+    for line in try_lines(port, host.auth().is_some()) {
+        println!("{line}");
+    }
     println!();
+}
+
+/// The banner's sample requests. With auth on, every agent route answers 401
+/// without a credential, so the samples carry the header a caller must send.
+fn try_lines(port: u16, auth: bool) -> Vec<String> {
+    let auth = if auth {
+        " -H 'authorization: Bearer <credential>'"
+    } else {
+        ""
+    };
+    vec![
+        format!(
+            "  try:  curl -s localhost:{port}/v1/sessions{auth} -H 'content-type: application/json' -d '{{}}'"
+        ),
+        format!(
+            "        curl -s localhost:{port}/v1/sessions/<id>/messages{auth} -H 'content-type: application/json' \\\n          -d '{{\"message\":{{\"content\":[{{\"type\":\"text\",\"text\":\"hello\"}}]}}}}'"
+        ),
+        format!("        curl -N 'localhost:{port}/v1/sessions/<id>/sse?after_sequence=0'{auth}"),
+    ]
 }
 
 /// The dev "terminal UI": one line per meaningful event, as it happens. It
@@ -305,6 +368,7 @@ fn event_line(event: &SessionEvent) -> Option<String> {
             }
             format!("◂ {}", clip(&reply))
         }
+        "conversation.message" => format!("✉ {}", clip(&text(&data["text"]))),
         "turn.failed" => format!("✗ turn failed: {}", text(&data["error"])),
         "turn.cancelled" => "✗ turn cancelled".to_string(),
         _ => return None,
@@ -436,6 +500,21 @@ mod tests {
     use super::*;
     use crate::host::PendingApprovalView;
     use serde_json::json;
+
+    #[test]
+    fn banner_samples_carry_the_credential_only_when_auth_is_on() {
+        let open = try_lines(3000, false).join("\n");
+        assert!(!open.contains("authorization"), "{open}");
+        let protected = try_lines(3000, true);
+        assert_eq!(protected.len(), 3);
+        for line in &protected {
+            assert!(
+                line.contains("-H 'authorization: Bearer <credential>'"),
+                "{line}"
+            );
+        }
+        assert!(protected[0].contains("localhost:3000/v1/sessions"));
+    }
 
     #[test]
     fn console_explains_approvals_with_a_ready_curl() {

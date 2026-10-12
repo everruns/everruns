@@ -49,9 +49,8 @@ use serde_json::{Value, json};
 use tokio::sync::{broadcast, oneshot};
 
 use crate::app::{AgentEntry, App, Mode};
-use crate::channel::{ChannelEvent, Inbound};
 use crate::config::SandboxKind;
-use crate::cx::{Cx, DeliveryTarget};
+use crate::cx::Cx;
 use crate::gateway;
 use crate::registry::{Approval, ToolRegistration};
 use crate::store::{SessionRow, Store};
@@ -116,8 +115,6 @@ pub(crate) struct NewSession {
     pub tags: Vec<String>,
     pub hints: Option<Value>,
     pub metadata: Option<Value>,
-    /// `channel:target` to deliver replies to.
-    pub deliver_to: Option<String>,
 }
 
 /// Host-side happenings that have no canonical event: the dev console and
@@ -183,6 +180,13 @@ type Key = (String, String);
 
 /// How long a resumed session waits for its interrupted turn to park again
 /// before it answers the request that woke it.
+/// How far back boot looks for sessions whose turn a restart cut off. Older
+/// ones resume when next read.
+const RESUME_WINDOW: chrono::TimeDelta = chrono::TimeDelta::days(7);
+
+/// Sessions boot resumes at once.
+const RESUME_CONCURRENCY: usize = 4;
+
 const REPARK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// How long it waits for the rest once one of several calls has parked.
@@ -190,7 +194,6 @@ const REPARK_GRACE: std::time::Duration = std::time::Duration::from_millis(200);
 
 struct Live {
     session: everruns::Session,
-    deliver_to: Option<String>,
     active: Mutex<Option<TurnHandle>>,
 }
 
@@ -199,7 +202,9 @@ pub(crate) struct Host {
     pub mode: Mode,
     pub build_id: String,
     pub notices: broadcast::Sender<Notice>,
-    store: Store,
+    pub(crate) store: Arc<Store>,
+    /// The shared channel runtime over this host's sessions.
+    channels: everruns::channels::ChannelHost,
     engine: everruns::Engine,
     /// `Some` persists sessions through everruns' local store.
     data_dir: Option<PathBuf>,
@@ -208,9 +213,11 @@ pub(crate) struct Host {
     questions: Mutex<HashMap<Key, PendingQuestion>>,
     /// Question sets already answered, for `409`.
     answered: Mutex<HashSet<Key>>,
-    gateway: gateway::Env,
+    pub(crate) gateway: gateway::Env,
     /// The hosting target's `[sandbox] kind = "microvm"` adapter, if any.
     microvm: std::sync::OnceLock<crate::hosting::MicroVm>,
+    /// Who may call the agent routes; unset leaves them open.
+    auth: std::sync::OnceLock<crate::auth::Auth>,
     /// Names the session a request just parked on, for AG-UI runs.
     #[cfg(feature = "ag-ui")]
     pub(crate) parked_on: broadcast::Sender<SessionId>,
@@ -230,16 +237,17 @@ fn now() -> String {
 impl Host {
     /// A host persisting under `data_dir` (dev, start), or in memory (eval).
     pub(crate) fn new(app: App, mode: Mode, data_dir: Option<PathBuf>) -> crate::Result<Arc<Self>> {
-        let store = match &data_dir {
+        let store = Arc::new(match &data_dir {
             Some(dir) => Store::open(&dir.join("serve.db"))?,
             None => Store::in_memory()?,
-        };
+        });
         let build_id = std::env::var("SERVE_BUILD_ID")
             .ok()
             .filter(|id| !id.is_empty())
             .unwrap_or_else(|| crate::manifest::build_id(&app));
         let (notices, _) = broadcast::channel(1024);
         let host = Arc::new_cyclic(|me| Host {
+            channels: crate::channels::build(me.clone(), &app, store.clone(), notices.clone()),
             app,
             mode,
             build_id,
@@ -253,6 +261,7 @@ impl Host {
             answered: Mutex::new(HashSet::new()),
             gateway: gateway::Env::from_process(),
             microvm: std::sync::OnceLock::new(),
+            auth: std::sync::OnceLock::new(),
             #[cfg(feature = "ag-ui")]
             parked_on: broadcast::channel(64).0,
             me: me.clone(),
@@ -264,6 +273,8 @@ impl Host {
                 host.build_agent(entry, None, false)?;
             }
         }
+        #[cfg(feature = "voice")]
+        crate::voice::check(&host)?;
         Ok(host)
     }
 
@@ -271,6 +282,15 @@ impl Host {
     /// agent is built.
     pub(crate) fn set_microvm(&self, microvm: crate::hosting::MicroVm) {
         let _ = self.microvm.set(microvm);
+    }
+
+    pub(crate) fn set_auth(&self, auth: crate::auth::Auth) {
+        let _ = self.auth.set(auth);
+    }
+
+    /// The enforced method list; `None` when the API is open.
+    pub(crate) fn auth(&self) -> Option<&crate::auth::Auth> {
+        self.auth.get()
     }
 
     fn arc(&self) -> crate::Result<Arc<Host>> {
@@ -291,6 +311,15 @@ impl Host {
         }
         #[cfg(not(feature = "ag-ui"))]
         let _ = session_id;
+    }
+
+    /// Ids of `agent`'s sessions, most recently active first.
+    pub(crate) fn session_ids_for_agent(
+        &self,
+        agent: &str,
+        limit: usize,
+    ) -> crate::Result<Vec<String>> {
+        self.store.session_ids_for_agent(agent, limit)
     }
 
     pub(crate) fn session_row(&self, id: &str) -> crate::Result<SessionRow> {
@@ -333,9 +362,8 @@ impl Host {
             metadata: new.metadata,
             created_at: at.clone(),
             updated_at: at,
-            deliver_to: new.deliver_to.clone(),
         })?;
-        self.go_live(&id, session, new.deliver_to);
+        self.go_live(&id, session);
         self.notify(Notice::Live {
             session_id: id.clone(),
             agent: entry.name.to_string(),
@@ -345,15 +373,9 @@ impl Host {
         Ok(id)
     }
 
-    fn go_live(
-        &self,
-        id: &str,
-        session: everruns::Session,
-        deliver_to: Option<String>,
-    ) -> Arc<Live> {
+    fn go_live(&self, id: &str, session: everruns::Session) -> Arc<Live> {
         let live = Arc::new(Live {
             session,
-            deliver_to,
             active: Mutex::new(None),
         });
         lock(&self.live).insert(id.to_string(), live.clone());
@@ -407,7 +429,6 @@ impl Host {
             }
             let live = Arc::new(Live {
                 session,
-                deliver_to: row.deliver_to,
                 active: Mutex::new(None),
             });
             map.insert(id.to_string(), live.clone());
@@ -423,10 +444,11 @@ impl Host {
         Ok(live)
     }
 
-    /// Pick up a turn the last process left waiting on a person: run its
-    /// waiting calls again, which parks them here, and return once they
-    /// have (or the turn ended), so the request that woke the session sees
-    /// them open.
+    /// Pick up a turn the last process cut off. Calls that are safe to run
+    /// again run again, the rest are recorded as interrupted, and the turn
+    /// carries on. When some of those calls wait on a person, return once
+    /// they have parked here again (or the turn ended), so the request that
+    /// woke the session sees them open.
     async fn resume_interrupted(
         &self,
         id: &str,
@@ -436,21 +458,20 @@ impl Host {
         let Some(interrupted) = live.session.interrupted_turn().await? else {
             return Ok(());
         };
-        // At most once for everything else: a call cut off while it ran is
-        // not run again.
-        if !interrupted
+        let expected = interrupted
             .tool_calls
             .iter()
-            .all(|call| self.waits_on_person(entry, call))
-        {
-            return Ok(());
-        }
+            .filter(|call| !interrupted.not_rerun.contains(call))
+            .filter(|call| self.waits_on_person(entry, call))
+            .count();
         let mut notices = self.notices.subscribe();
         let Some(turn) = live.session.resume_interrupted_turn().await? else {
             return Ok(());
         };
-        self.follow(id, live, turn.clone());
-        let expected = interrupted.tool_calls.len();
+        self.follow(live, turn.clone());
+        if expected == 0 {
+            return Ok(());
+        }
         let deadline = tokio::time::Instant::now() + REPARK_WAIT;
         loop {
             let parked = self.pending_approvals(id).len() + self.pending_questions(id).len();
@@ -494,8 +515,33 @@ impl Host {
             })
     }
 
-    /// Wake `id` after a restart, so a turn it left waiting on a person is
-    /// waiting again. Reading a session never depends on it: a session this
+    /// Resume every turn a restart cut off, in the background: wake each
+    /// session active within [`RESUME_WINDOW`], a few at a time. A session
+    /// outside the window still resumes when it is next read.
+    pub(crate) fn spawn_resume_interrupted(self: &Arc<Self>) {
+        let since = (chrono::Utc::now() - RESUME_WINDOW)
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let ids = match self.store.session_ids_active_since(&since) {
+            Ok(ids) => ids,
+            Err(error) => {
+                eprintln!("  resuming interrupted turns failed: {error}");
+                return;
+            }
+        };
+        let host = self.clone();
+        tokio::spawn(async move {
+            use futures::StreamExt as _;
+            futures::stream::iter(ids)
+                .for_each_concurrent(RESUME_CONCURRENCY, |id| {
+                    let host = host.clone();
+                    async move { host.wake(&id).await }
+                })
+                .await;
+        });
+    }
+
+    /// Wake `id` after a restart, so a turn it left running or waiting on a
+    /// person carries on. Reading a session never depends on it: a session this
     /// build cannot run is still shown.
     pub(crate) async fn wake(&self, id: &str) {
         let _ = self.live(id).await;
@@ -585,6 +631,31 @@ impl Host {
         })
     }
 
+    /// Send any input message, as a channel does; the turn is tracked like
+    /// any other.
+    pub(crate) async fn send_message(
+        &self,
+        id: &str,
+        message: everruns::InputMessage,
+    ) -> crate::Result<SentMessage> {
+        let live = self.live(id).await?;
+        let sent = live.session.send(message).await?;
+        self.track(id, &live, &sent);
+        Ok(sent)
+    }
+
+    /// The turn running on `id`'s session, if one is.
+    pub(crate) fn active_turn(&self, id: &str) -> Option<TurnHandle> {
+        let live = lock(&self.live).get(id).cloned()?;
+        lock(&live.active).clone()
+    }
+
+    /// The shared channel runtime: inbound requests, proactive posts,
+    /// recovery.
+    pub(crate) fn channels(&self) -> &everruns::channels::ChannelHost {
+        &self.channels
+    }
+
     /// Note a message accepted by `id`'s session: touch the catalog and, when
     /// it started a turn, follow that turn (status, cancel, delivery).
     fn track(&self, id: &str, live: &Arc<Live>, sent: &SentMessage) {
@@ -592,19 +663,23 @@ impl Host {
         if !matches!(sent.disposition, SendDisposition::Started) {
             return;
         }
-        self.follow(id, live, sent.turn());
+        self.follow(live, sent.turn());
     }
 
-    /// Follow a running turn: status, cancel, and delivery when it ends.
-    fn follow(&self, id: &str, live: &Arc<Live>, turn: TurnHandle) {
+    /// Follow a running turn for status and cancel. Channel replies are
+    /// delivered by the channel runtime while the turn runs.
+    fn follow(&self, live: &Arc<Live>, turn: TurnHandle) {
         *lock(&live.active) = Some(turn.clone());
-        let me = self.me.clone();
-        let id = id.to_string();
         let live = live.clone();
         tokio::spawn(async move {
-            let result = turn.wait().await;
-            if let Some(host) = me.upgrade() {
-                host.finish_turn(&id, &live, result).await;
+            let _ = turn.wait().await;
+            let mut active = lock(&live.active);
+            // A newer turn may already be the active one.
+            if active
+                .as_ref()
+                .is_some_and(|current| current.id() == turn.id())
+            {
+                *active = None;
             }
         });
     }
@@ -636,43 +711,13 @@ impl Host {
     }
 
     /// The session bound to a channel thread, if any.
-    #[cfg(any(feature = "ag-ui", feature = "a2a"))]
+    #[cfg(all(test, any(feature = "ag-ui", feature = "a2a")))]
     pub(crate) fn thread_session(
         &self,
         channel: &str,
         thread: &str,
     ) -> crate::Result<Option<String>> {
         self.store.thread_session(channel, thread)
-    }
-
-    /// Bind a channel thread to a session.
-    #[cfg(any(feature = "ag-ui", feature = "a2a"))]
-    pub(crate) fn bind_thread(&self, channel: &str, thread: &str, session: &str) -> crate::Result {
-        self.store.bind_thread(channel, thread, session)
-    }
-
-    /// Channel delivery uses the turn's final response; no event is authored.
-    async fn finish_turn(
-        &self,
-        id: &str,
-        live: &Live,
-        result: Result<everruns::Turn, everruns::RunError>,
-    ) {
-        *lock(&live.active) = None;
-        let Ok(turn) = result else { return };
-        let target = live.deliver_to.as_deref().and_then(DeliveryTarget::decode);
-        let (Some(target), true) = (target, turn.success && !turn.response.is_empty()) else {
-            return;
-        };
-        let outcome = match self.app.channel(&target.channel) {
-            Some(entry) => entry.channel.deliver(&target.target, &turn.response).await,
-            None => Err(anyhow!("no #[channel] named `{}`", target.channel)),
-        };
-        self.notify(Notice::Delivered {
-            session_id: id.to_string(),
-            to: target.encode(),
-            error: outcome.err().map(|err| format!("{err:#}")),
-        });
     }
 
     /// Cancel the active turn. `Ok(false)` when no turn was running.
@@ -780,49 +825,6 @@ impl Host {
             answers,
         });
         Ok(())
-    }
-
-    // --- Channels -------------------------------------------------------------
-
-    /// Handle a webhook. Returns the body to answer it with.
-    pub(crate) async fn inbound(&self, channel: &str, inbound: Inbound) -> crate::Result<Value> {
-        let entry = self
-            .app
-            .channel(channel)
-            .ok_or_else(|| ApiError::NotFound(format!("channel {channel}")))?
-            .clone();
-        let event = entry
-            .channel
-            .receive(inbound)
-            .await
-            .map_err(|err| ApiError::BadRequest(format!("channel {channel}: {err:#}")))?;
-        match event {
-            ChannelEvent::Respond(body) => Ok(body),
-            ChannelEvent::Ignore => Ok(json!({ "ok": true })),
-            ChannelEvent::Message {
-                thread,
-                reply_to,
-                text,
-            } => {
-                let session = match self.store.thread_session(channel, &thread)? {
-                    Some(session) => session,
-                    None => {
-                        let session = self
-                            .create_session(NewSession {
-                                metadata: Some(json!({ "channel": channel, "thread": thread })),
-                                deliver_to: Some(DeliveryTarget::new(channel, reply_to).encode()),
-                                ..NewSession::default()
-                            })
-                            .await?;
-                        self.store.bind_thread(channel, &thread, &session)?;
-                        session
-                    }
-                };
-                // Answer the webhook now; the reply is delivered after the turn.
-                self.send(&session, text).await?;
-                Ok(json!({ "ok": true, "session_id": session }))
-            }
-        }
     }
 
     // --- Agent assembly -------------------------------------------------------

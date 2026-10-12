@@ -1042,6 +1042,7 @@ impl SessionBackgroundSink {
         let failed = outcome.is_err();
         let mut result = match outcome {
             Ok(outcome) => ToolResult {
+                details: None,
                 tool_call_id: tool_call.id.clone(),
                 result: Some(json!({ "summary": outcome.summary, "result": outcome.result })),
                 images: None,
@@ -1052,6 +1053,7 @@ impl SessionBackgroundSink {
             Err(err) => {
                 let message = failure_message(err);
                 ToolResult {
+                    details: None,
                     tool_call_id: tool_call.id.clone(),
                     result: Some(json!({ "error": &message })),
                     images: None,

@@ -51,12 +51,18 @@ Authorization: Bearer <personal_access_token>
 - Personal access tokens are prefixed with `evr_pat_` for identification, the prefix distinguishes them from JWTs within the `Bearer` scheme
 - Auth scheme matching is case-insensitive per RFC 7235 (`bearer`, `BEARER`, `Bearer` all accepted)
 - Full token shown only at creation, stored hashed (SHA-256)
-- Expiration is supported and enforced. Scopes are **not yet enforced** on the
-  request path, a validated token authenticates with the owning user's full
-  authority regardless of stored scopes. To avoid advertising a control that is
-  not honored, token creation only accepts the full-access wildcard (`scopes`
-  omitted or `["*"]`); any narrower scope is rejected with `unsupported_pat_scopes`
-  until per-request scope enforcement exists. See EVE-701.
+- Expiration is supported and enforced. Stored scopes are enforced on REST and
+  `/v1/commands` only, not yet on `/mcp` or as an execution API org member. To
+  avoid advertising a control that is not fully honored, token creation only
+  accepts the full-access wildcard (`scopes` omitted or `["*"]`); any narrower
+  scope is rejected with `unsupported_pat_scopes` until every surface enforces
+  it. See EVE-701, and
+  [Personal Access Token Scopes](pat-scopes.md) for the approved enforcement
+  design (`*` and `read`). REST and `/v1/commands` enforce stored scopes
+  (`403 insufficient_scope`); legacy tokens stored with any scope other than
+  `["*"]` were deleted by migration when enforcement shipped. Under that design a `read`
+  token can never download the full personal data export
+  (`GET /v1/users/me/export`).
 - Used for programmatic access
 - Non-`Bearer` formats (`Authorization: evr_pat_...`, `Authorization: ApiKey evr_pat_...`) are also accepted for non-Bearer clients
 - `metadata` JSONB column stores creation context: `source` (cli_login, web_ui, api), `hostname`, `os`, `ip`
@@ -84,8 +90,8 @@ machine credential.
   full access (hence the "Full account access" warning in the UI). It is not a
   way to grant narrow, org-scoped, or non-human access. If org-scoped or
   service credentials are ever needed, they would be a new, separate concept,
-  not a variant of this one. The first such concept is the app-scoped,
-  execution-only **App API key**; see [`app-api-keys.md`](../integrations/app-api-keys.md).
+  not a variant of this one. That concept is the channel-scoped,
+  execution-only **agent key**; see [Agent Execution API](../integrations/agent-execution-api.md).
 
 The naming reinforces this: "personal access token" (and the `evr_pat_`
 prefix) signals user ownership, and disambiguates it from the unrelated
@@ -447,7 +453,7 @@ flowchart TD
 
 Backend transitions themselves (confirm-mode `ConfirmationSent` vs `Session`,
 single-use/expiry token semantics, enumeration parity) are additionally
-enforced by the Rust tests in `crates/server/src/auth/routes.rs`.
+enforced by the Rust tests in `crates/server/src/auth/routes/mod.rs`.
 
 **Enumeration-safety is not traded away to close dead ends.** Every recovery
 affordance is either generic copy shown to *everyone* (e.g. the login-failure
@@ -488,11 +494,11 @@ None reveals account existence to an unauthenticated party.
 
 ### Database Schema
 
-See `crates/server/migrations/001_base_schema.sql` for `users`, `personal_access_tokens` (originally `api_keys`; renamed in `047_personal_access_tokens.sql`), and `refresh_tokens` table DDL.
+See `crates/server/migrations/legacy/001_base_schema.sql` for `users`, `personal_access_tokens` (originally `api_keys`; renamed in `047_personal_access_tokens.sql`), and `refresh_tokens` table DDL.
 
 #### Anonymous User (seeded at startup)
 
-For `auth=none` mode, a well-known anonymous user is seeded via `crates/server/src/seed.rs`. Constants in `crates/server/src/records/organization.rs`: `ANONYMOUS_USER_ID`, `ANONYMOUS_USER_EMAIL`, `ANONYMOUS_USER_NAME`. The anonymous user has admin role and belongs to the default organization.
+For `auth=none` mode, a well-known anonymous user is seeded via `crates/server/src/setup/seed/mod.rs`. Constants in `crates/server/src/domains/organizations/record.rs`: `ANONYMOUS_USER_ID`, `ANONYMOUS_USER_EMAIL`, `ANONYMOUS_USER_NAME`. The anonymous user has admin role and belongs to the default organization.
 
 When the same database later starts in an authenticated mode (`admin` / `full` / `external`), startup preparation revokes every personal access token owned by that anonymous identity before serving traffic, and PAT validation rejects the anonymous user id even if a row remains. Local `none` mode still allows minting anonymous PATs for disposable development databases. See TM-AUTH-032 and EVE-1153.
 
@@ -502,7 +508,7 @@ When the same database later starts in an authenticated mode (`admin` / `full` /
 
 #### Default-Org Harness-Seed Guarantee
 
-[Startup seed preparation](../../crates/server/src/seed.rs) completes default-org identity, membership, operator-composed harness provisioning, and auth-mode credential cleanup before serving requests. Failure stops startup. Provider/model catalogs and all-org harness reconciliation remain background work; the signup safety net remains useful for repairing missing provisioning without overriding the operator's harness set.
+[Startup seed preparation](../../crates/server/src/setup/seed/mod.rs) completes default-org identity, membership, operator-composed harness provisioning, and auth-mode credential cleanup before serving requests. Failure stops startup. Provider/model catalogs and all-org harness reconciliation remain background work; the signup safety net remains useful for repairing missing provisioning without overriding the operator's harness set.
 
 When default-org auto-join is enabled (above), both handlers re-run `initialize_org_harnesses_with_definitions(db, DEFAULT_ORG_ID, state.built_in_harnesses)` as a safety net after adding the user to the default org (the re-run is gated together with the membership). Invariants:
 

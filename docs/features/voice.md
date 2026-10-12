@@ -62,8 +62,9 @@ curl -X POST "$EVERRUNS_API/v1/agents/$AGENT_ID/channels" \
 
 | Field | Default | What it does |
 |---|---|---|
-| `mode` | `delegated` | How listening, thinking and speaking are split. Only `delegated` today. |
+| `mode` | `delegated` | How listening, thinking and speaking are split. The server runs `delegated` channels; `cascaded` (separate speech-to-text and text-to-speech) is available in the [Framework and serve](/framework/voice/). |
 | `model` | `gpt-realtime-2` | Speech model that listens and speaks. |
+| `transcription_model` | `gpt-4o-transcribe` | Speech-to-text model for the caller. |
 | `voice` | `marin` | Provider voice. |
 | `language` | none | Language hint for transcribing the caller, such as `en`. |
 | `greeting` | none | Spoken when the call connects. Say that the caller is talking to an AI. |
@@ -125,3 +126,5 @@ talks over an answer. See the [event reference](/event-reference/).
 
 - [Channels](/features/channels/): the channel model, lifecycle and publishing.
 - [Stream events](/how-to/stream-events/): follow a session's transcript live.
+- [Build a voice agent](/framework/voice/): the same voice channel in your own
+  Rust host or a serve app.

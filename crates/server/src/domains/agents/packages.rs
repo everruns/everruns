@@ -4,8 +4,9 @@
 use super::{
     AGENT_MANAGE, AGENT_VIEW, CreateAgent, GetAgent, UpsertAgent, types::CreateAgentRequest,
 };
+use crate::domains::agent_channels::record::ChannelType;
+use crate::domains::agents::record::Agent;
 use crate::domains::common::*;
-use crate::records::{Agent, ChannelType};
 use everruns_contracts::{CapabilityRef, model_spec::ModelSpec, runtime_provider::ProviderKey};
 use everruns_core::agent_package::{
     AgentPackage, Channel, File, Format, Manifest, PackageError, sensitive_key,
@@ -280,6 +281,7 @@ pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
         "network_access",
         "max_iterations",
         "parallel_tool_calls",
+        "communication",
         "tools",
         "intro_markdown",
         "short_description",
@@ -287,6 +289,10 @@ pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
         "sandbox_policy",
     ];
     object.retain(|key, _| allowed.contains(&key.as_str()));
+    // `direct` is the default; a package states only a deliberate choice.
+    if object.get("communication").and_then(|v| v.as_str()) == Some("direct") {
+        object.remove("communication");
+    }
     object.insert("schema_version".into(), json!(1));
     let instructions = object.remove("system_prompt").unwrap_or(json!(""));
     object.insert("instructions".into(), instructions);
@@ -530,6 +536,7 @@ pub async fn request(
         network_access: m.network_access.clone(),
         max_iterations: m.max_iterations,
         parallel_tool_calls: m.parallel_tool_calls,
+        communication: m.communication.unwrap_or_default(),
     };
     crate::domains::validation::validate_create_agent_input(
         &req.name,
@@ -622,7 +629,7 @@ async fn destination(
         None
     };
     if let Some(agent) = &existing
-        && agent.status != crate::records::AgentStatus::Active
+        && agent.status != crate::domains::agents::record::AgentStatus::Active
     {
         return Err(CommandError::bad_request("target agent must be active"));
     }

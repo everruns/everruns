@@ -13,6 +13,7 @@ fn gated_context() -> (ToolContext, Arc<Policy>) {
 
 fn as_tool_result(output: &Value) -> ToolResult {
     ToolResult {
+        details: None,
         tool_call_id: "call_outer".into(),
         result: Some(output.clone()),
         images: None,
@@ -79,6 +80,10 @@ async fn no_call_runs_after_a_stop_even_where_the_exit_does_not_reach() {
         "the call after the stop was refused: {output}"
     );
     assert_eq!(output["tools"]["stopped"]["reason"], "needs_approval");
+    assert_eq!(
+        output["risk"], "destructive",
+        "an unrated tool keeps the gate's reason"
+    );
 }
 
 #[tokio::test]

@@ -302,6 +302,15 @@ static REGISTRY: &[ModelDescriptor] = &[
         &["openai"],
         ServiceKind::Decisions,
     ),
+    // Microsoft-Decision-1 on Microsoft Foundry, over System One. Foundry
+    // routes by deployment name, so `decision-1` covers the portal's short
+    // default name alongside the catalog id. Only the Foundry driver serves it.
+    md_service(
+        &["microsoft-decision-1", "decision-1"],
+        ModelVendor::Microsoft,
+        &["mai"],
+        ServiceKind::Decisions,
+    ),
     // OpenAI
     md_service(
         &["text-embedding-3-small"],
@@ -654,6 +663,38 @@ pub fn estimate_cost_usd(
     )
 }
 
+/// Extra cost of cache writes made with a 1 hour retention, on top of what
+/// [`estimate_cost_usd`] charged for them at the model's `cache_write` rate.
+///
+/// Anthropic bills a 1 hour write at 2x the base input rate and a 5 minute
+/// write at 1.25x; profiles carry the 5 minute rate as `cache_write`. Returns
+/// `None` without cost data or when nothing was written with the long TTL.
+/// `prompt_tokens` is the whole prompt (uncached + cache read + cache write),
+/// which picks the long-context tier the same way `estimate_cost_usd` does.
+pub fn cache_write_1h_surcharge_usd(
+    provider_type: &str,
+    model_id: &str,
+    prompt_tokens: u32,
+    one_hour_write_tokens: u32,
+) -> Option<f64> {
+    if one_hour_write_tokens == 0 {
+        return None;
+    }
+    let cost = get_model_profile(provider_type, model_id)?.cost?;
+    let active_tier = cost
+        .cost_tiers
+        .iter()
+        .filter(|tier| prompt_tokens > tier.above_tokens.max(0) as u32)
+        .max_by_key(|tier| tier.above_tokens);
+    let input_rate = active_tier.map_or(cost.input, |tier| tier.input);
+    let charged_rate = match active_tier {
+        Some(tier) => tier.cache_write.unwrap_or(input_rate),
+        None => cost.cache_write.unwrap_or(input_rate),
+    };
+    let surcharge_rate = (2.0 * input_rate - charged_rate).max(0.0);
+    Some(one_hour_write_tokens as f64 / 1_000_000.0 * surcharge_rate)
+}
+
 /// Get the vendor/brand for a model id, or None if it is not in the registry
 /// (or not offered under the given provider type).
 pub fn get_model_vendor(provider_type: &str, model_id: &str) -> Option<ModelVendor> {
@@ -803,6 +844,9 @@ fn jev_profile_data(canonical: &str) -> Option<ModelProfile> {
     if canonical == "gpt-6-luna-decisions" {
         return Some(openai_decisions_profile());
     }
+    if canonical == "microsoft-decision-1" {
+        return Some(microsoft_decision_profile());
+    }
     if !matches!(canonical, "jev-1.13.0" | "jev-latest") {
         return None;
     }
@@ -860,6 +904,22 @@ fn openai_decisions_profile() -> ModelProfile {
         decisions.max_choice_options = None;
         decisions.state_tokens = None;
         decisions.request_tokens = None;
+    }
+    profile
+}
+
+/// Microsoft-Decision-1 (Qwen3.5-9B post-trained by Microsoft): input billed
+/// at $0.042 per 1M tokens, output free. One 32,768-token window holds the
+/// whole request; 2-10 score levels and 2-255 choice options were confirmed
+/// live on 2026-10-09.
+fn microsoft_decision_profile() -> ModelProfile {
+    let mut profile = jev_profile("Microsoft Decision 1");
+    profile.family = "microsoft-decision".into();
+    profile.description = Some("Microsoft's calibrated typed decisions over text.".into());
+    profile.release_date = Some("2026-10-09".into());
+    if let Some(decisions) = profile.decisions.as_mut() {
+        decisions.state_tokens = None;
+        decisions.request_tokens = Some(32_768);
     }
     profile
 }

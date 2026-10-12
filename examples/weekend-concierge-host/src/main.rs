@@ -1,16 +1,17 @@
 use weekend_concierge_host::terminal::TerminalResponder;
-use weekend_concierge_host::{run_weekend_concierge, run_weekend_concierge_demo};
+use weekend_concierge_host::{ScriptedResponder, default_model, run_weekend_concierge};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // The agent asks before it plans. Answer at the prompt; piping input or
-    // passing --scripted uses the same answers the offline test uses, so this
-    // stays runnable in CI and in a pipeline.
+    // The agent runs on a real model (OPENAI_API_KEY) and asks before it
+    // plans. Answer at the prompt; piping input or passing --scripted answers
+    // without a person, so this stays runnable in a pipeline.
+    let model = default_model()?;
     let scripted = std::env::args().any(|arg| arg == "--scripted");
     let run = if scripted {
-        run_weekend_concierge_demo().await?
+        run_weekend_concierge(model, ScriptedResponder).await?
     } else {
-        run_weekend_concierge(TerminalResponder::new()).await?
+        run_weekend_concierge(model, TerminalResponder::new()).await?
     };
 
     println!("== Runtime Tools ==");

@@ -3,7 +3,6 @@ import React from "react";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { ApiError } from "@/lib/api/client";
 import type { Event, ModelWithProvider } from "@/lib/api/types";
-import { sendUserMessageWithImages } from "@/lib/api/messages";
 
 const mockUseSessionCommands = jest.fn();
 const mockExecuteSessionCommand = jest.fn();
@@ -67,7 +66,15 @@ const mockSessionContext = {
     mutateAsync: jest.fn(),
     isPending: false,
   },
-  cancelCurrentTurn: jest.fn(),
+  chatSends: {
+    pending: [] as unknown[],
+    busy: false,
+    submit: jest.fn(),
+    retry: jest.fn(),
+    discard: jest.fn(),
+    stop: jest.fn(() => false),
+  },
+  cancelCurrentTurn: { mutate: jest.fn(), isPending: false },
   hasMoreEvents: false,
   loadingOlderEvents: false,
   loadOlderEvents: jest.fn(),
@@ -529,7 +536,8 @@ describe("ChatPanel placeholder", () => {
     mockSessionContext.chatEvents = [];
     mockSessionContext.llmModel = availableDefaultModel;
     mockSessionContext.reasoningEffort = "";
-    mockSessionContext.sendMessage.mutateAsync.mockReset();
+    mockSessionContext.chatSends.submit.mockReset();
+    mockSessionContext.chatSends.submit.mockResolvedValue({ id: "message-1" });
     mockUseSessionCommands.mockReturnValue({ data: { commands: [] } });
   });
 
@@ -554,7 +562,7 @@ describe("ChatPanel placeholder", () => {
     fireEvent.change(textarea, { target: { value: "hello" } });
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
-    expect(mockSessionContext.sendMessage.mutateAsync).not.toHaveBeenCalled();
+    expect(mockSessionContext.chatSends.submit).not.toHaveBeenCalled();
     expect(screen.getByText(/Choose a model/)).toBeInTheDocument();
   });
 
@@ -602,7 +610,7 @@ describe("ChatPanel placeholder", () => {
         Choose explicit model
       </button>
     ));
-    mockSessionContext.sendMessage.mutateAsync.mockResolvedValueOnce(undefined);
+    mockSessionContext.chatSends.submit.mockResolvedValueOnce(undefined);
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByRole("button", { name: "Choose explicit model" }));
@@ -611,9 +619,10 @@ describe("ChatPanel placeholder", () => {
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
     await waitFor(() =>
-      expect(mockSessionContext.sendMessage.mutateAsync).toHaveBeenCalledWith({
-        sessionId: "session-1",
-        content: "hello",
+      expect(mockSessionContext.chatSends.submit).toHaveBeenCalledWith({
+        text: "hello",
+        images: [],
+        files: [],
         controls: {
           hints: { setup_connection: true, url_elicitation: true, ask_user: true },
           locale: "en-US",
@@ -638,13 +647,13 @@ describe("ChatPanel placeholder", () => {
     fireEvent.change(textarea, { target: { value: "hello" } });
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
-    expect(mockSessionContext.sendMessage.mutateAsync).not.toHaveBeenCalled();
+    expect(mockSessionContext.chatSends.submit).not.toHaveBeenCalled();
     expect(screen.getByText(/Choose a model/)).toBeInTheDocument();
   });
 
   it("advertises interactive cards on an existing thread with the default model", async () => {
     mockSessionContext.llmModel = availableDefaultModel;
-    mockSessionContext.sendMessage.mutateAsync.mockResolvedValueOnce(undefined);
+    mockSessionContext.chatSends.submit.mockResolvedValueOnce(undefined);
 
     render(<ChatPanel />);
     const textarea = screen.getByRole("combobox");
@@ -652,9 +661,10 @@ describe("ChatPanel placeholder", () => {
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
     await waitFor(() =>
-      expect(mockSessionContext.sendMessage.mutateAsync).toHaveBeenCalledWith({
-        sessionId: "session-1",
-        content: "hello",
+      expect(mockSessionContext.chatSends.submit).toHaveBeenCalledWith({
+        text: "hello",
+        images: [],
+        files: [],
         controls: {
           hints: { setup_connection: true, url_elicitation: true, ask_user: true },
           locale: "en-US",
@@ -667,7 +677,6 @@ describe("ChatPanel placeholder", () => {
   it.each(["image", "file"])("advertises interactive cards with a %s attachment", async (kind) => {
     mockHasImages = kind === "image";
     mockHasFiles = kind === "file";
-    jest.mocked(sendUserMessageWithImages).mockResolvedValueOnce({ id: "message-1" } as never);
 
     render(<ChatPanel />);
     const textarea = screen.getByRole("combobox");
@@ -675,17 +684,16 @@ describe("ChatPanel placeholder", () => {
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
     await waitFor(() =>
-      expect(sendUserMessageWithImages).toHaveBeenCalledWith(
-        "session-1",
-        "Ask me which guide to use",
-        mockHasImages ? [{ imageId: "image-1" }] : [],
-        {
+      expect(mockSessionContext.chatSends.submit).toHaveBeenCalledWith({
+        text: "Ask me which guide to use",
+        images: mockHasImages ? [{ imageId: "image-1" }] : [],
+        files: mockHasFiles ? [{ fileId: "file-1" }] : [],
+        controls: {
           locale: "en-US",
           hints: { setup_connection: true, url_elicitation: true, ask_user: true },
         },
-        null,
-        mockHasFiles ? [{ fileId: "file-1" }] : [],
-      ),
+        addressedParticipantId: null,
+      }),
     );
   });
 
@@ -732,7 +740,7 @@ describe("ChatPanel placeholder", () => {
         joined_at: "2026-01-01T00:00:00Z",
       },
     );
-    mockSessionContext.sendMessage.mutateAsync.mockResolvedValueOnce(undefined);
+    mockSessionContext.chatSends.submit.mockResolvedValueOnce(undefined);
 
     render(<ChatPanel />);
 
@@ -750,9 +758,10 @@ describe("ChatPanel placeholder", () => {
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
     await waitFor(() =>
-      expect(mockSessionContext.sendMessage.mutateAsync).toHaveBeenCalledWith({
-        sessionId: "session-1",
-        content: "Summarize the findings",
+      expect(mockSessionContext.chatSends.submit).toHaveBeenCalledWith({
+        text: "Summarize the findings",
+        images: [],
+        files: [],
         controls: {
           hints: { setup_connection: true, url_elicitation: true, ask_user: true },
           locale: "en-US",
@@ -934,7 +943,7 @@ describe("ChatPanel placeholder", () => {
       }),
     );
 
-    expect(mockSessionContext.sendMessage.mutateAsync).not.toHaveBeenCalled();
+    expect(mockSessionContext.chatSends.submit).not.toHaveBeenCalled();
     expect(await screen.findByText("Side answer")).toBeInTheDocument();
     expect(screen.getByText("/btw")).toBeInTheDocument();
   });
@@ -953,7 +962,7 @@ describe("ChatPanel placeholder", () => {
       },
     });
     mockExecuteSessionCommand.mockRejectedValue(new Error("private provider diagnostic"));
-    mockSessionContext.sendMessage.mutateAsync.mockResolvedValue({ id: "message-1" });
+    mockSessionContext.chatSends.submit.mockResolvedValue({ id: "message-1" });
 
     render(<ChatPanel />);
     const textarea = screen.getByRole("combobox");
@@ -966,7 +975,7 @@ describe("ChatPanel placeholder", () => {
 
     fireEvent.change(textarea, { target: { value: "ordinary message" } });
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
-    await waitFor(() => expect(mockSessionContext.sendMessage.mutateAsync).toHaveBeenCalled());
+    await waitFor(() => expect(mockSessionContext.chatSends.submit).toHaveBeenCalled());
   });
 
   it("fills a required system command from the menu and waits for arguments", async () => {
@@ -1009,7 +1018,7 @@ describe("ChatPanel placeholder", () => {
         ],
       },
     });
-    mockSessionContext.sendMessage.mutateAsync.mockResolvedValue({ id: "message-1" });
+    mockSessionContext.chatSends.submit.mockResolvedValue({ id: "message-1" });
 
     render(<ChatPanel />);
     const textarea = screen.getByRole("combobox");
@@ -1020,9 +1029,10 @@ describe("ChatPanel placeholder", () => {
     fireEvent.change(textarea, { target: { value: "/review inspect this" } });
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
     await waitFor(() =>
-      expect(mockSessionContext.sendMessage.mutateAsync).toHaveBeenCalledWith({
-        sessionId: "session-1",
-        content: "/review inspect this",
+      expect(mockSessionContext.chatSends.submit).toHaveBeenCalledWith({
+        text: "/review inspect this",
+        images: [],
+        files: [],
         controls: {
           hints: { setup_connection: true, url_elicitation: true, ask_user: true },
           locale: "en-US",
@@ -1038,14 +1048,14 @@ describe("ChatPanel placeholder", () => {
       data: undefined,
       error: new Error("command discovery unavailable"),
     });
-    mockSessionContext.sendMessage.mutateAsync.mockResolvedValue({ id: "message-1" });
+    mockSessionContext.chatSends.submit.mockResolvedValue({ id: "message-1" });
 
     render(<ChatPanel />);
     const textarea = screen.getByPlaceholderText("Type a message... (Enter to send)");
     fireEvent.change(textarea, { target: { value: "hello" } });
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
-    await waitFor(() => expect(mockSessionContext.sendMessage.mutateAsync).toHaveBeenCalled());
+    await waitFor(() => expect(mockSessionContext.chatSends.submit).toHaveBeenCalled());
   });
 
   it("clears composer state when the resolved session is replaced", async () => {
@@ -1153,10 +1163,8 @@ describe("ChatPanel placeholder", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders a chat error alert when sending a message fails", async () => {
-    mockSessionContext.sendMessage.mutateAsync.mockRejectedValueOnce(
-      new Error("backend temporarily unavailable"),
-    );
+  it("clears the composer on Enter, before the server answers", async () => {
+    mockSessionContext.chatSends.submit.mockReturnValueOnce(new Promise(() => undefined));
 
     render(<ChatPanel />);
 
@@ -1164,8 +1172,40 @@ describe("ChatPanel placeholder", () => {
     fireEvent.change(textarea, { target: { value: "hello" } });
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
-    expect(await screen.findByText("Something went wrong")).toBeInTheDocument();
-    expect(screen.getByText("backend temporarily unavailable")).toBeInTheDocument();
+    await waitFor(() => expect(textarea).toHaveValue(""));
+    expect(mockSessionContext.chatSends.submit).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a failed send on its row with Retry", () => {
+    mockSessionContext.chatSends.pending = [
+      { clientId: "c1", text: "hello", images: [], files: [], phase: "failed", sentAtMs: 0 },
+    ];
+    try {
+      render(<ChatPanel />);
+
+      expect(screen.getByText("Not delivered")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /Retry/ }));
+      expect(mockSessionContext.chatSends.retry).toHaveBeenCalledWith("c1");
+    } finally {
+      mockSessionContext.chatSends.pending = [];
+    }
+  });
+
+  it("gives the text back when Stop takes back a send before it is delivered", () => {
+    mockSessionContext.chatSends.busy = true;
+    mockSessionContext.chatSends.stop.mockReturnValueOnce({ text: "hello again" } as never);
+    try {
+      render(<ChatPanel />);
+
+      fireEvent.click(screen.getByTitle("Cancel current turn"));
+
+      expect(screen.getByPlaceholderText("Type a message... (Enter to send)")).toHaveValue(
+        "hello again",
+      );
+      expect(mockSessionContext.cancelCurrentTurn.mutate).not.toHaveBeenCalled();
+    } finally {
+      mockSessionContext.chatSends.busy = false;
+    }
   });
 
   it("shows an actionable microphone permission error without starting voice", async () => {

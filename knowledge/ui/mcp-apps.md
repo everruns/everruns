@@ -101,7 +101,7 @@ declared form elicitation.
 
 ## Code
 
-`crates/server/src/api/mcp_endpoint/apps.rs` (metadata, view state, actions),
+`crates/server/src/api/mcp_endpoint/apps/mod.rs` (metadata, view state, actions),
 `apps/app.html` (the template), `resources.rs` (`resources/list|read`),
 `tool_registry.rs` (tool descriptors). The embedded-resource
 [entity cards](mcp-cards.md) predate MCP Apps and stay as they are.

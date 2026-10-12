@@ -144,7 +144,7 @@ The agent loop runs in the worker; `bot_token` lives in the endpoint row the
 control plane owns. Handing the worker the token would put a long-lived
 workspace credential in the process that also evaluates model-chosen tool
 arguments, and would need a second Slack HTTP path beside the one
-`slack_delivery` maintains. So `SlackActionInvoker` is a seam: the capability
+`channels::slack::delivery` maintains. So `SlackActionInvoker` is a seam: the capability
 names an action, the control plane resolves the endpoint and performs the call,
 and only the outcome comes back. The token never leaves the control plane in
 either deployment — in-process it is read directly, remote it is used behind the
@@ -247,8 +247,8 @@ authorized is not drawn at all.
 
 - `crates/core/src/capabilities/` — capability registration
 - `crates/contracts/src/runtime/tool_context.rs` — `session_store`, `session_task_registry`, the services a Slack capability needs
-- `crates/server/src/api/slack_events.rs` — webhook, manifest, and the future interactivity endpoint
-- `crates/server/src/slack_delivery.rs` — delivery adapter and progress rendering
+- `crates/server/src/channels/slack/events/` — webhook, manifest, and the future interactivity endpoint
+- `crates/server/src/channels/slack/delivery/mod.rs` — delivery adapter and progress rendering
 - [Client Hints](../runtime-resources/client-hints.md) — the pause-and-consent mechanism this reuses
 - [Slack Integration Modernization](slack-modernization.md) — where these three limits were recorded
 

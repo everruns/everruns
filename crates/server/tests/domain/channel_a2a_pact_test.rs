@@ -1,4 +1,4 @@
-//! PACT Identity profile on an A2A channel (`/v1/a2a/{channel_id}`): personal
+//! PACT Identity profile on an A2A channel (`/v1/channels/{channel_id}/a2a/pact`): personal
 //! agents sign their own JWTs, every reply is a synchronous Message, a
 //! `contextId` continues only for the same user, and a repeated `messageId`
 //! returns the stored reply. A stand-in runner answers each turn, so the
@@ -82,6 +82,13 @@ pub(crate) struct ReplyingRunner {
     turns: AtomicUsize,
 }
 
+impl ReplyingRunner {
+    /// Turns started so far.
+    pub(crate) fn turns(&self) -> usize {
+        self.turns.load(Ordering::SeqCst)
+    }
+}
+
 #[async_trait]
 impl everruns_core::host::TurnBackend for ReplyingRunner {
     async fn start_turn(
@@ -138,6 +145,14 @@ pub(crate) async fn server() -> (TestServer, Arc<ReplyingRunner>) {
     let server = TestServer::in_memory_with_runner(runner.clone()).await;
     runner.events.set(server.event_service.clone()).ok();
     (server, runner)
+}
+
+/// [`server`] on a real socket, with its base URL.
+pub(crate) async fn serving() -> (TestServer, String, Arc<ReplyingRunner>) {
+    let runner = Arc::new(ReplyingRunner::default());
+    let (server, base_url) = TestServer::serving_in_memory_with_runner(runner.clone()).await;
+    runner.events.set(server.event_service.clone()).ok();
+    (server, base_url, runner)
 }
 
 pub(crate) fn pact_config(key: &PersonalAgentKey) -> Value {
@@ -211,7 +226,7 @@ pub(crate) async fn call(
     server
         .request_raw(
             method,
-            &format!("/v1/a2a/{channel}/{route}"),
+            &format!("/v1/channels/{channel}/a2a/pact/{route}"),
             headers,
             body.unwrap_or_default().as_bytes().to_vec(),
         )
@@ -297,7 +312,7 @@ async fn card_advertises_http_json_and_the_personal_agent_jwt() {
         interface["url"]
             .as_str()
             .unwrap()
-            .ends_with(&format!("/v1/a2a/{channel}")),
+            .ends_with(&format!("/v1/channels/{channel}/a2a/pact")),
         "{card}"
     );
     assert_eq!(interface["protocolBinding"], "HTTP+JSON");

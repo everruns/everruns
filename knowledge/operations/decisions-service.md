@@ -36,6 +36,16 @@ holds each model id once and `gpt-6-luna` is already the chat row; the driver se
 A [live smoke](../../crates/integrations/tests/openai_decisions_live.rs) runs on every main push
 that touches it and in the weekly live sweep.
 
+[Microsoft Foundry](../../crates/drivers/drivers/src/mai/decisions.rs) serves Microsoft-Decision-1
+over System One at the resource root (`/providers/microsoft/v1/systemone`), on the same MAI
+provider, key and base URL as chat. Foundry routes by deployment name, so the catalog row's model
+id is the deployment and is sent unchanged; `microsoft-decision-1` and the portal's short
+`decision-1` bind the curated profile. Tenant rows authenticate with the resource API key: the
+binding carries one key, so Entra-only providers fail closed. Its
+[live smoke](../../crates/integrations/tests/foundry_decisions_live.rs) runs the same way. A deployment can make it its own default with `UTILITY_DECISION_DRIVER=mai` and the
+`UTILITY_AZURE_AI_*` key and endpoint; the model is then a deployment name, `Microsoft-Decision-1`
+unless `UTILITY_DECISION_MODEL` says otherwise.
+
 ## Deployment authority
 
 [System configuration](../../crates/worker/src/system_decisions.rs) composes server and worker guardrails
@@ -46,7 +56,7 @@ below.
 
 ## Organization choice for deployment-owned checks
 
-An org's `system_decisions` setting ([migration](../../crates/server/migrations/185_org_system_decisions.sql))
+An org's `system_decisions` setting ([migration](../../crates/server/migrations/legacy/185_org_system_decisions.sql))
 picks who answers guardrail `jev` checks and the Slack relevance check. `deployment` (the default)
 keeps the deployment service above. `organization` sends them to the org's decision default on its own
 account. The [session decisions wrapper](../../crates/core/src/system_decisions.rs) resolves
@@ -55,7 +65,7 @@ the choice per check through the session's credential store and runs an org mode
 usage path. An org that opted in with no usable model gets an error: guardrails fail open and Slack
 stays silent. Nothing falls back to deployment keys.
 
-[Slack](../../crates/server/src/api/slack_events/org_decisions.rs) decides a message in a thread that
+[Slack](../../crates/server/src/channels/slack/events/org_decisions.rs) decides a message in a thread that
 has a session on that session's budget and ledger. A message that would start a session runs
 session-less: personal providers fail closed, the call uses host runtime egress with DNS pinning, no
 budget is checked, and usage goes to a structured log line instead of a session ledger.
@@ -68,16 +78,16 @@ its provider account, wire ID and stable profile binding. Missing, disabled, wro
 or foreign selections fail closed; they never fall through to another account or deployment keys.
 Legacy TypeSafe connections/session secrets remain available when no catalog selection exists.
 
-[Host resolution](../../crates/server/src/services/provider_resolver.rs) authorizes the session and
+[Host resolution](../../crates/server/src/services/provider_resolver/mod.rs) authorizes the session and
 account per call, identically through direct and worker adapters. [Bound execution](../../crates/integrations/src/typesafe/bound.rs)
 uses session egress policy and DNS pinning, checks budgets before transport, validates outcomes, and
 emits usage through the existing generation ledger. Provider-reported cost wins over profile estimates.
-No retries duplicate a billable call. TypeSafe and OpenRouter rows speak System One, OpenAI rows the
+No retries duplicate a billable call. TypeSafe, OpenRouter and Foundry rows speak System One, OpenAI rows the
 Decisions API; both share that one egress, budget and usage path. State and secrets are absent from usage metadata.
 
 ## Catalog and UI
 
-[Catalog assignment](../../crates/server/src/services/model_catalog.rs) persists service and profile
+[Catalog assignment](../../crates/server/src/domains/models/catalog.rs) persists service and profile
 identity at writes and discovery. Migration backfills existing rows once. Preference edits and sync
 preserve the binding. Curated profiles are read-only; discovered/custom profiles remain scoped to their
 catalog account. Provider capability masks still apply to chat profile reads.

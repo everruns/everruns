@@ -10,8 +10,8 @@ use serde_json::json;
 use test_harness::TestServer;
 
 use everruns_contracts::typed_id::{EvalResultId, EvalRunId};
-use everruns_server::records::eval::{Eval, EvalCase, EvalDatasetStatus};
-use everruns_server::storage::models::{
+use everruns_server::domains::evals::record::{Eval, EvalCase, EvalDatasetStatus};
+use everruns_server::storage::{
     CreateEvalCaseResultRow, CreateEvalRunRow, UpdateEvalCaseResultRow,
 };
 
@@ -506,7 +506,7 @@ use everruns_contracts::typed_id::{EvalDatasetId, SessionId};
 use everruns_core::Caller;
 use everruns_server::domains::evals::EvalService;
 use everruns_server::domains::evals::dataset::ExportEvalRunDatasetRequest;
-use everruns_server::storage::models::{CreateEventRow, CreatePrincipalRow, CreateSessionRow};
+use everruns_server::storage::{CreateEventRow, CreatePrincipalRow, CreateSessionRow};
 
 /// A secret embedded in the seeded assistant message; the export must scrub it.
 const SEEDED_SECRET: &str = "sk-abcdef0123456789ABCDEF";
@@ -688,7 +688,7 @@ async fn await_dataset(
     eval_id: &str,
     run_id: &str,
     dataset_id: &str,
-) -> everruns_server::records::eval::EvalRunDataset {
+) -> everruns_server::domains::evals::record::EvalRunDataset {
     for _ in 0..100 {
         let ds = service
             .get_dataset(caller, eval_id, run_id, dataset_id)
@@ -799,7 +799,7 @@ async fn test_dataset_export_cross_org_returns_not_found() {
     // resolve for their org (`get_run` returns a not-found error), or the query
     // resolves to `Ok(None)`. Both map to 404 at the command layer.
     fn assert_not_reachable(
-        result: anyhow::Result<Option<everruns_server::records::eval::EvalRunDataset>>,
+        result: anyhow::Result<Option<everruns_server::domains::evals::record::EvalRunDataset>>,
         what: &str,
     ) {
         match result {
@@ -917,7 +917,7 @@ async fn test_dataset_export_atif_format_produces_atif_trajectories() {
 }
 
 /// Seed a completed run whose case session has `n` tool-call/result iterations
-/// (each result a distinctive `BULKY_RESULT_{i}` string). Returns
+/// (each a distinctive `BULKY_RESULT_{i}`, space-padded past the 4 KiB masking floor). Returns
 /// `(eval_id, run_id, session_id)`.
 async fn seed_run_with_tool_iterations(
     server: &TestServer,
@@ -1006,7 +1006,7 @@ async fn seed_run_with_tool_iterations(
             serde_json::to_value(ToolCompletedData::success(
                 format!("call_{i}"),
                 "fetch".to_string(),
-                vec![ContentPart::text(format!("BULKY_RESULT_{i}"))],
+                vec![ContentPart::text(format!("BULKY_RESULT_{i}{:5000}", ""))],
                 Some(1),
             ))
             .unwrap(),

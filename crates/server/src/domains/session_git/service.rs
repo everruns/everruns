@@ -9,8 +9,7 @@
 // spawn_blocking to avoid holding non-Sync references across .await points.
 
 use crate::storage::{
-    StorageBackend,
-    models::{CreateSessionGitObject, CreateSessionGitRef, SessionGitObjectRow},
+    CreateSessionGitObject, CreateSessionGitRef, SessionGitObjectRow, StorageBackend,
 };
 use anyhow::{Result, anyhow, bail};
 use chrono::{DateTime, Utc};

@@ -78,6 +78,24 @@ pub struct NoulCriteria {
     pub no: Option<String>,
 }
 
+impl NoulCriteria {
+    /// Criteria for the wire, or `None` when neither side is described.
+    ///
+    /// Decision: OpenRouter's System One rejects a criteria object that lacks
+    /// either `true` or `false` (an empty one too), while TypeSafe accepts any
+    /// subset. Omitting empty criteria and completing a half-described pair
+    /// keeps one request valid on both endpoints.
+    pub fn described(yes: Option<String>, no: Option<String>) -> Option<Self> {
+        match (yes, no) {
+            (None, None) => None,
+            (yes, no) => Some(Self {
+                yes: Some(yes.unwrap_or_else(|| "Yes, it holds.".to_string())),
+                no: Some(no.unwrap_or_else(|| "No, it does not hold.".to_string())),
+            }),
+        }
+    }
+}
+
 impl Question {
     /// A yes/no question.
     ///

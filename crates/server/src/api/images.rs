@@ -8,7 +8,7 @@
 use crate::api::state::ApiState;
 use crate::auth::ResolvedOrg;
 pub use crate::domains::images::types::ImageInfo;
-use crate::storage::models::CreateImageRow;
+use crate::storage::CreateImageRow;
 use axum::{
     Json, Router,
     body::Body,
@@ -49,7 +49,7 @@ pub(crate) const ALLOWED_CONTENT_TYPES: &[&str] =
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ImageUploadResponse {
     #[schema(value_type = String, example = "img_01933b5a00007000800000000000001")]
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: ImageId,
     pub filename: String,
     pub content_type: String,

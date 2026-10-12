@@ -75,13 +75,13 @@ fn hook() -> Webhook {
     Webhook::new()
 }
 
-struct Server {
+pub(crate) struct Server {
     base: String,
     client: reqwest::Client,
     _task: tokio::task::JoinHandle<()>,
 }
 
-async fn serve(host: Arc<Host>) -> Server {
+pub(crate) async fn serve(host: Arc<Host>) -> Server {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let task = tokio::spawn(async move {
@@ -96,7 +96,7 @@ async fn serve(host: Arc<Host>) -> Server {
     }
 }
 
-fn app() -> App {
+pub(crate) fn app() -> App {
     let app = App::builder().discover().build();
     assert!(app.errors().is_empty(), "{:?}", app.errors());
     app
@@ -110,12 +110,12 @@ fn sdk(server: &Server) -> Everruns {
         .unwrap()
 }
 
-fn text_message(text: &str) -> Value {
+pub(crate) fn text_message(text: &str) -> Value {
     json!({ "message": { "role": "user", "content": [{ "type": "text", "text": text }] } })
 }
 
 impl Server {
-    async fn post(&self, path: &str, body: Value) -> reqwest::Response {
+    pub(crate) async fn post(&self, path: &str, body: Value) -> reqwest::Response {
         self.client
             .post(format!("{}{path}", self.base))
             .json(&body)
@@ -124,7 +124,7 @@ impl Server {
             .unwrap()
     }
 
-    async fn get(&self, path: &str) -> reqwest::Response {
+    pub(crate) async fn get(&self, path: &str) -> reqwest::Response {
         self.client
             .get(format!("{}{path}", self.base))
             .send()
@@ -132,7 +132,7 @@ impl Server {
             .unwrap()
     }
 
-    async fn session(&self, id: &str) -> Value {
+    pub(crate) async fn session(&self, id: &str) -> Value {
         self.get(&format!("/v1/sessions/{id}"))
             .await
             .json()
@@ -151,7 +151,7 @@ impl Server {
     }
 
     /// Poll the session until `check` holds.
-    async fn wait_until(&self, id: &str, check: impl Fn(&Value) -> bool) -> Value {
+    pub(crate) async fn wait_until(&self, id: &str, check: impl Fn(&Value) -> bool) -> Value {
         for _ in 0..400 {
             let session = self.session(id).await;
             if check(&session) {
@@ -163,7 +163,7 @@ impl Server {
     }
 
     /// Poll the log until `count` terminal turn events are in it.
-    async fn wait_turns(&self, id: &str, count: usize) -> Vec<Value> {
+    pub(crate) async fn wait_turns(&self, id: &str, count: usize) -> Vec<Value> {
         for _ in 0..400 {
             let events = self.events(id, "").await;
             if events.iter().filter(|e| terminal(e)).count() >= count {
@@ -706,12 +706,12 @@ async fn a_channel_thread_maps_to_one_session_and_gets_the_reply() {
             break (session_id, to);
         }
     };
-    assert_eq!(delivered, (id.clone(), "hook:log:t1".to_string()));
+    assert_eq!(delivered, (id.clone(), "hook:webhook/t1".to_string()));
 
     let again: Value = server
         .post(
             "/v1/channels/hook",
-            json!({ "thread": "t1", "text": "more" }),
+            json!({ "thread": "t1", "text": "more", "id": "m2" }),
         )
         .await
         .json()
@@ -722,10 +722,39 @@ async fn a_channel_thread_maps_to_one_session_and_gets_the_reply() {
         id.as_str(),
         "same thread, same session"
     );
+    // A platform retry of the same message is dropped, not sent again.
+    let retry: Value = server
+        .post(
+            "/v1/channels/hook",
+            json!({ "thread": "t1", "text": "more", "id": "m2" }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(retry["duplicate"], true, "{retry}");
     let bad = server
         .post("/v1/channels/hook", json!({ "thread": "t1" }))
         .await;
     assert_eq!(bad.status(), 400);
+}
+
+#[tokio::test]
+async fn a_session_started_from_code_posts_its_reply_to_a_channel() {
+    let host = Host::new(app(), Mode::Eval, None).unwrap();
+    let mut notices = host.notices.subscribe();
+    crate::cx::Cx::app(&host)
+        .start_session("weekly numbers")
+        .deliver_to(hook::channel("room"))
+        .await
+        .unwrap();
+    let to = loop {
+        if let Notice::Delivered { to, error, .. } = notices.recv().await.unwrap() {
+            assert!(error.is_none(), "{error:?}");
+            break to;
+        }
+    };
+    assert_eq!(to, "hook:room");
 }
 
 #[tokio::test]
@@ -755,6 +784,44 @@ async fn a_session_and_its_log_survive_a_restart_of_the_host() {
         "dense across restarts"
     );
     assert_eq!(tail[0]["type"], "input.message");
+}
+
+#[tokio::test]
+async fn boot_resumes_a_turn_a_restart_cut_off_while_it_waited() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = Host::new(app(), Mode::Dev, Some(dir.path().to_path_buf())).unwrap();
+    let id = first.create_session(NewSession::default()).await.unwrap();
+    let turn = first.send(&id, "first".into()).await.unwrap().wait().await;
+    assert!(turn.unwrap().success);
+    // The second turn calls `guarded`, which waits on a person.
+    let _waiting = first.send(&id, "second".into()).await.unwrap();
+    wait_for(|| !first.pending_approvals(&id).is_empty()).await;
+
+    // A new process: same data dir, nothing in memory, and nobody reads the
+    // session. Boot alone puts the approval back.
+    let host = Host::new(app(), Mode::Dev, Some(dir.path().to_path_buf())).unwrap();
+    host.spawn_resume_interrupted();
+    wait_for(|| !host.pending_approvals(&id).is_empty()).await;
+    let call = host.pending_approvals(&id)[0].tool_call_id.clone();
+    host.resolve_approval(&id, &call, true).unwrap();
+    let server = serve(host).await;
+    let events = server.wait_turns(&id, 2).await;
+    assert!(
+        events.iter().any(|e| e["type"] == "tool.completed"
+            && e["data"]["tool_name"] == "guarded"
+            && e["data"]["status"] == "success"),
+        "{events:?}"
+    );
+}
+
+async fn wait_for(check: impl Fn() -> bool) {
+    for _ in 0..400 {
+        if check() {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    panic!("never happened");
 }
 
 #[tokio::test]
@@ -1200,6 +1267,10 @@ mod ag_ui {
 #[cfg(feature = "a2a")]
 #[path = "a2a_tests.rs"]
 mod a2a;
+
+#[cfg(feature = "voice")]
+#[path = "voice_tests.rs"]
+mod voice;
 
 #[tokio::test]
 async fn a_file_package_serves_a_real_session_and_pins_assets() {

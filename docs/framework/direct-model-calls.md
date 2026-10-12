@@ -13,7 +13,7 @@ retries, error classification — but none of the agent loop around it.
 use everruns::{Model, OpenAI};
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let model = Model::new("gpt-5.6-terra", OpenAI::from_env()?);
+let model = Model::new("gpt-6.1-sol", OpenAI::from_env()?);
 let answer = model.complete("Name the three primary colors.").await?;
 println!("{answer}");
 # Ok(())
@@ -91,7 +91,7 @@ completion instead of the model:
 use everruns::{Model, OpenAI};
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let answer = Model::from("gpt-5.6-terra")
+let answer = Model::from("gpt-6.1-sol")
     .completion()
     .provider(OpenAI::from_env()?)
     .user("Summarize this in one line: ...")
@@ -168,7 +168,7 @@ use everruns::{LlmCallConfig, Provider};
 let response = provider
     .chat_completion(
         vec![Message::text(MessageRole::User, "What is 2 + 2?")],
-        &LlmCallConfig::new("gpt-5.6-terra"),
+        &LlmCallConfig::new("gpt-6.1-sol"),
     )
     .await?;
 # let _ = response;
@@ -491,7 +491,7 @@ let agent = Agent::builder()
         "You review copy. When asked how something reads, measure it with \
          jev_decision and report the numbers rather than judging by eye.",
     )
-    .model(Model::new("gpt-5.6-terra", OpenAI::from_env()?))
+    .model(Model::new("gpt-6.1-sol", OpenAI::from_env()?))
     .capability(Jev::from_env()?)
     .build()?;
 

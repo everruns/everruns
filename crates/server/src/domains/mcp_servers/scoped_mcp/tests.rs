@@ -1,7 +1,7 @@
 use super::*;
+use crate::domains::agents::record::{Agent, AgentStatus, generate_agent_public_id};
 use crate::kernel_imports::{HarnessId, ScopedMcpServer, SessionId};
-use crate::records::{Agent, AgentStatus, generate_agent_public_id};
-use crate::storage::models::{CreateMcpServerRow, UpdateMcpServer};
+use crate::storage::{CreateMcpServerRow, UpdateMcpServer};
 use chrono::Utc;
 use everruns_core::{CapabilityMcpServer, CapabilityMcpServers};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -182,6 +182,7 @@ pub(crate) async fn seed_catalog_server(
         oauth: oauth
             .then_some(crate::domains::mcp_servers::service::McpServerOAuthSettings::default()),
         service_connection_provider: None,
+        connection_check: None,
     };
     db.create_mcp_server(
         everruns_core::DEFAULT_ORG_ID,
@@ -192,6 +193,37 @@ pub(crate) async fn seed_catalog_server(
             transport_type: "http".to_string(),
             api_key_encrypted: None,
             headers: Some(serde_json::json!({"X-Catalog":"value"})),
+            settings: Some(serde_json::to_value(settings).unwrap()),
+        },
+    )
+    .await
+    .unwrap()
+    .id
+}
+
+/// An OAuth catalog preset nobody has authorized yet: `auth_mode` is OAuth but
+/// discovery and client registration have not run, so `settings.oauth` is None.
+pub(crate) async fn seed_unregistered_oauth_catalog_server(
+    db: &StorageBackend,
+    name: &str,
+) -> everruns_contracts::typed_id::McpServerId {
+    let settings = crate::domains::mcp_servers::service::McpServerSettings {
+        auth_mode: McpServerAuthMode::OAuth,
+        protocol_mode: McpProtocolMode::V2025June,
+        elicitation_policy: Default::default(),
+        oauth: None,
+        service_connection_provider: None,
+        connection_check: None,
+    };
+    db.create_mcp_server(
+        everruns_core::DEFAULT_ORG_ID,
+        CreateMcpServerRow {
+            name: name.to_string(),
+            description: None,
+            url: "http://8.8.8.8/mcp".to_string(),
+            transport_type: "http".to_string(),
+            api_key_encrypted: None,
+            headers: None,
             settings: Some(serde_json::to_value(settings).unwrap()),
         },
     )
@@ -330,7 +362,7 @@ pub(crate) fn test_harness() -> Harness {
         mcp_servers: Default::default(),
         embedder_metadata: Default::default(),
         is_built_in: false,
-        status: crate::records::HarnessStatus::Active,
+        status: crate::domains::harnesses::record::HarnessStatus::Active,
         created_at: Utc::now(),
         updated_at: Utc::now(),
         archived_at: None,
@@ -365,6 +397,7 @@ pub(crate) fn test_agent() -> Agent {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        communication: Default::default(),
         tools: vec![],
         mcp_servers: Default::default(),
         status: AgentStatus::Active,
@@ -416,7 +449,7 @@ pub(crate) fn test_session(
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
-        status: crate::records::SessionStatus::Started,
+        status: crate::domains::sessions::record::SessionStatus::Started,
         created_at: Utc::now(),
         updated_at: Utc::now(),
         started_at: None,
@@ -841,6 +874,7 @@ async fn user_attachment_discards_preset_api_key_and_authorization_header() {
         elicitation_policy: Default::default(),
         oauth: Some(crate::domains::mcp_servers::service::McpServerOAuthSettings::default()),
         service_connection_provider: None,
+        connection_check: None,
     };
     db.create_mcp_server(
         everruns_core::DEFAULT_ORG_ID,
@@ -1278,6 +1312,103 @@ async fn scoped_mcp_catalog_preset_rejections_classify_as_bad_request() {
         validate_scoped_mcp_servers_for_org(&db, org_id, &needs_oauth)
             .await
             .unwrap_err(),
-        "to have OAuth configuration",
+        "to use OAuth",
     );
+}
+
+#[tokio::test]
+async fn identity_attachment_accepts_oauth_preset_before_registration() {
+    let db = StorageBackend::test_database();
+    let org_id = everruns_core::DEFAULT_ORG_ID;
+    seed_unregistered_oauth_catalog_server(&db, "visti").await;
+
+    for acts_as in [
+        McpServerActsAs::Service,
+        McpServerActsAs::User,
+        McpServerActsAs::UserOrService,
+    ] {
+        let servers = ScopedMcpServers::from([("visti".into(), catalog_server("visti", acts_as))]);
+        validate_scoped_mcp_servers_for_org(&db, org_id, &servers)
+            .await
+            .unwrap_or_else(|error| panic!("{acts_as}: {error}"));
+    }
+
+    // A non-OAuth preset still cannot carry an identity.
+    seed_catalog_server(&db, "plain", false).await;
+    let plain = ScopedMcpServers::from([(
+        "docs".into(),
+        catalog_server("plain", McpServerActsAs::Service),
+    )]);
+    assert_bad_request(
+        validate_scoped_mcp_servers_for_org(&db, org_id, &plain)
+            .await
+            .unwrap_err(),
+        "to use OAuth",
+    );
+}
+
+fn labeled_server(url: &str, tool: &str, label: everruns_core::McpToolLabel) -> ScopedMcpServer {
+    ScopedMcpServer {
+        tool_labels: HashMap::from([(tool.to_string(), label)]),
+        ..scoped_server(url)
+    }
+}
+
+#[tokio::test]
+async fn inline_tool_labels_reach_the_session_tool_definitions() {
+    let servers = ScopedMcpServers::from([(
+        "notes".to_string(),
+        labeled_server(
+            "http://8.8.8.8/mcp",
+            "echo",
+            everruns_core::McpToolLabel::ReadOnly,
+        ),
+    )]);
+    let egress = CatalogPreviewEgress::default();
+    let definitions = build_scoped_mcp_tool_definitions(&servers, None, None, &egress)
+        .await
+        .unwrap();
+    let hints = definitions
+        .iter()
+        .find(|definition| definition.name() == "mcp_notes__echo")
+        .unwrap_or_else(|| {
+            let names: Vec<_> = definitions.iter().map(|d| d.name()).collect();
+            panic!("echo is not listed: {names:?}")
+        })
+        .hints();
+    assert_eq!(hints.readonly, Some(true));
+    assert_eq!(hints.open_world, Some(false), "read_only clears open_world");
+}
+
+#[test]
+fn session_servers_never_carry_tool_labels() {
+    let harness = test_harness();
+    let mut agent = test_agent();
+    agent.mcp_servers = ScopedMcpServers::from([(
+        "notes".to_string(),
+        labeled_server(
+            "https://notes.example.com/mcp",
+            "echo",
+            everruns_core::McpToolLabel::ReadOnly,
+        ),
+    )]);
+    let mut session = test_session(harness.id, agent.public_id);
+    // The agent itself can write session servers, so a label there would let
+    // it relax its own approvals.
+    session.mcp_servers = ScopedMcpServers::from([(
+        "extra".to_string(),
+        labeled_server(
+            "https://extra.example.com/mcp",
+            "delete_all",
+            everruns_core::McpToolLabel::ReadOnly,
+        ),
+    )]);
+
+    let merged = merge_effective_scoped_mcp_servers(&harness, Some(&agent), &session);
+    assert_eq!(
+        merged["notes"].tool_labels.len(),
+        1,
+        "agent labels are kept"
+    );
+    assert!(merged["extra"].tool_labels.is_empty());
 }

@@ -21,7 +21,7 @@ operation the unit of reuse and registration.
 
 ## Sources of truth
 
-- [`crates/server/src/domains/common.rs`](../../crates/server/src/domains/common.rs)
+- [`crates/server/src/domains/common/mod.rs`](../../crates/server/src/domains/common/mod.rs)
   owns command traits, metadata, context, errors, policy enforcement,
   instrumentation, schema helpers, and generic dispatch.
 - [`crates/server/src/domains/`](../../crates/server/src/domains) contains the
@@ -30,7 +30,7 @@ operation the unit of reuse and registration.
   owns the HTTP adapter chokepoint.
 - [`crates/server/src/services/command_catalog/catalog.rs`](../../crates/server/src/services/command_catalog/catalog.rs)
   owns scripted-tool schema adaptation and safe dispatch error formatting.
-- [`crates/server/src/services/platform_command_surface.rs`](../../crates/server/src/services/platform_command_surface.rs)
+- [`crates/server/src/worker_link/platform_command_surface.rs`](../../crates/server/src/worker_link/platform_command_surface.rs)
   owns transport-neutral catalog discovery and bounded `query`/`execute`
   behavior shared by MCP and the built-in `platform` capability.
 - [`crates/internal-protocol/proto/`](../../crates/internal-protocol/proto) owns
@@ -61,12 +61,21 @@ owns it and it is genuinely cross-cutting infrastructure, registry behavior, or
 an external integration boundary. A command reaching into an unrelated global
 service for feature logic is a design smell.
 
-Dependencies point down: `domains`, `storage`, `services`, and `records` never
-import the HTTP layer (`api`). A shape both sides need, such as a request DTO a
-domain service consumes, the error body, or pagination, is defined in the lower
-layer and re-exported from the `api` module, so OpenAPI schema names, wire
-shapes, and downstream `everruns_server::api::*` paths do not change.
+Event listeners follow the same rule: one a domain owns lives with it, and the
+crate-root `listeners` module holds only those reacting across domains.
+
+Dependencies point down: `domains`, `storage`, `services`, `records`, and
+`listeners` never import the HTTP layer (`api`). A shape both sides need, such
+as a request DTO a domain service consumes, the error body, or pagination, is
+defined in the lower layer and re-exported from the `api` module, so OpenAPI
+schema names, wire shapes, and downstream `everruns_server::api::*` paths do not
+change.
 `scripts/lib/check-server-api-layering.sh` enforces this in pre-push and CI.
+
+The server's module tree is its folder tree: a module with children is a folder
+with `mod.rs` (never `foo.rs` beside `foo/`), and no module uses a path attribute,
+so tests are a `tests.rs` child rather than a `foo_tests.rs` sibling.
+`scripts/lib/check-server-module-layout.sh` enforces this in pre-push and CI.
 
 ## Command contract
 
@@ -81,7 +90,7 @@ A command defines:
 - execution against shared caller context.
 
 The exact methods and defaults live on `Command` and `CommandSchema` in
-`domains/common.rs`.
+`domains/common/mod.rs`.
 
 ### One enforcement point
 
@@ -140,7 +149,7 @@ re-established from the active session by the server.
 
 Domain errors are protocol-independent and may include a stable code, allowed
 recovery actions, and retry guidance. The exact error variants and exhaustive
-lower-snake-case kind mapping live in `domains/common.rs`.
+lower-snake-case kind mapping live in `domains/common/mod.rs`.
 
 HTTP maps errors to RFC 9457 Problem Details and carries safe extensions. MCP
 currently emits a stable textual kind plus message for bashkit compatibility.
@@ -189,7 +198,7 @@ New and migrated commands are declared with `#[command(...)]`
 `impl Command` block. One declaration carries the metadata, policy, CLI route
 and inventory registration. With `http = <mode>` it also serves the command
 over REST: a generic handler
-([`api/command_http.rs`](../../crates/server/src/api/command_http.rs)) merges
+([`api/command_http/mod.rs`](../../crates/server/src/api/command_http/mod.rs)) merges
 path parameters, query string and JSON body into the command's params,
 coerces textual scalars against its param schema, and runs it through the HTTP
 dispatcher; the generated OpenAPI operation is added to the document at
@@ -222,6 +231,87 @@ non-backward-compatible command contract requires an explicit API-version
 decision; changing copied protobuf text in a Markdown file is never sufficient.
 
 Exact messages and size limits belong to the protocol source.
+
+### Internal worker commands
+
+Worker operations that are neither hot nor streaming are domain commands too,
+so the gRPC worker and the in-process worker share one implementation instead
+of a bespoke RPC handler plus a direct adapter each. A command whose path
+starts with `INTERNAL_COMMAND_PATH_PREFIX` (`/internal/`) is internal worker
+plumbing:
+
+- no REST route or OpenAPI entry, and no MCP discover, query, or execute,
+  `/v1/commands`, or command-tree spelling;
+- `Command::run` refuses it to any caller that is not `Caller::internal`, so a
+  worker request acting for a user cannot reach it;
+- it still declares a policy and its change-history entry like any command.
+
+The runtime-facing store over such commands lives once in
+`everruns_worker::internal_commands`, written against an
+`InternalCommandTransport`: `ExecuteCommand` for a gRPC worker, `dispatch` for
+the in-process one. Event emission, turn context, durable task claims and
+heartbeats, and other hot or streaming operations keep dedicated RPCs.
+
+Moved so far, each with its RPCs removed outright (as the session-database and
+file RPCs were before them), so a worker and control plane from either side of
+a move must be deployed together:
+
+- session schedules (`worker_*_session_schedule(s)`);
+- the session resource registry (`worker_*_session_resource(s)`). Its RPCs
+  carried no org; the worker now builds the registry for the turn's org, and
+  each command first checks that the session belongs to it;
+- the tool-side leased resource store (`worker_*_leased_resource(s)`: upsert,
+  release, list), likewise built per org and checked per session. The cleanup
+  sweeper's claim and settle RPCs stay: it works across every org by resource
+  id, outside any one org's turn, so there is no org to run a command as;
+- session key/value storage (`worker_*_session_storage_value`,
+  `worker_list_session_storage_keys`), the value half of `SessionStorageStore`,
+  checked per session like the rest. Unlike the public storage commands they
+  do not hide internal keys, which the runtime owns. With values on commands
+  there is no cross-org storage store any more: the leased-resource cleanup
+  sweeper and the session-task reaper read each item's org from their claim or
+  orphan scan and use that org's store;
+- session secrets (`worker_*_session_secret(s)`: set, get, delete, list), the
+  secret half of the same store, encrypted and decrypted on the control plane
+  with the deployment key. The value travels only in the request (set) or the
+  answer (get); `Command::run` logs neither, the set/delete entries are
+  history-`Exempt`, and the set command's `Debug` is redacted;
+- connection credentials (`worker_get_connection_token`, `worker_get_github_token`,
+  `worker_get_sandbox_connection_token`, `worker_get_service_api_key_connection`,
+  `worker_get_connection_user`, `worker_get_virtual_user_connection_token`,
+  `worker_get_connection_token_for_connection`) in `user_connections`, and
+  the MCP grant pair (`worker_get_mcp_connection_token`,
+  `worker_invalidate_mcp_connection`) in `mcp_servers`. They call the same
+  `UserConnectionResolver` the RPCs did, carried on `Ctx`, so GitHub App
+  minting and OAuth refresh behave as before. The RPCs found the org from the
+  session; the commands run as the worker's org, and a foreign session or
+  virtual user is `NotFound`. The MCP pair first re-resolves the attachment
+  the worker names (the resolution `GetMcpServerByPrefix` serves, shared in
+  `mcp_servers::worker_lookup`) and refuses a provider or `acts_as` that does
+  not match it. The worker builds its resolver per org; the cleanup sweeper,
+  which runs across orgs, builds one per claim from the claim's org;
+- the session task registry (`worker_*_session_task(s)`,
+  `worker_*_session_task_message(s)`: create, update, get, list, cancel,
+  record and list messages), built per org and checked per session; a task id
+  is only looked up within that session. Their registry is the worker's, not
+  the public API's: it emits `task.*` events, wakes the session per
+  `wake_policy`, and delivers task webhooks where the context has egress (the
+  in-process worker). Tasks cross as the core structs' JSON with `spec`
+  unredacted, which replaced the native-proto payloads of EVE-642. The
+  reaper's orphan scan and retention prune stay RPCs, since they run across
+  every org; the reaper reconciles each orphan through its own org's registry.
+
+Two credential reads stay RPCs: `GetDefaultProviderCredentials` runs on
+every reason step and returns deployment-level provider keys (and environment
+fallbacks), which are not org-owned command data; `GetMcpServerByPrefix` runs
+on every MCP tool call.
+
+Image and file byte transfer stays gRPC by design: `CreateImageArtifact`,
+`GetImageArtifact`, `ResolveImage(s)` and `ResolveFiles` carry bytes of up to
+100 MiB (inline, or base64 for model input), which outgrow an internal
+command's 1 MiB JSON. The metadata-only `GetImageArtifactInfo` had no caller in
+the runtime and was removed with `ImageArtifactStore::get_image_info`, rather
+than converted.
 
 ## Query helpers and command composition
 

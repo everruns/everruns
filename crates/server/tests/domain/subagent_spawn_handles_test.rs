@@ -28,7 +28,7 @@ impl Fixture {
         self.db
             .create_session(CreateSessionRow {
                 playground_user_id: None,
-                source: everruns_server::records::SessionSource::Api,
+                source: everruns_server::domains::sessions::record::SessionSource::Api,
                 workspace_id: None,
                 org_id: 1,
                 app_id: None,

@@ -1,7 +1,8 @@
 "use client";
 
 import { modelService } from "@/lib/model-capabilities";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -67,6 +68,8 @@ export function ModelRow({
   onUpdate,
   onToggleEnabled,
   isTogglingEnabled,
+  canManage = true,
+  badges,
 }: {
   model: ModelWithProvider;
   providers: Provider[];
@@ -74,6 +77,10 @@ export function ModelRow({
   onUpdate: (id: string, data: UpdateModelRequest) => Promise<boolean>;
   onToggleEnabled: (id: string, enabled: boolean) => void;
   isTogglingEnabled: boolean;
+  /** Caller may enable, edit and delete models; otherwise the row is read-only. */
+  canManage?: boolean;
+  /** Extra title badges from the page, such as "Org default". */
+  badges?: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -94,20 +101,33 @@ export function ModelRow({
               <EntityIdentity value={model.id} truncate={false}>
                 {model.display_name}
               </EntityIdentity>
-              <Badge variant="outline">{modelService(model)}</Badge>
-              {model.enabled && (
+              {modelService(model) !== "chat" && (
+                <Badge variant="outline" className="capitalize">
+                  {modelService(model)}
+                </Badge>
+              )}
+              {badges}
+              {model.is_new && <Badge variant="accent">New</Badge>}
+              {model.stale && (
                 <Badge
                   variant="outline"
-                  className="text-xs bg-success/10 text-success border-success/30"
+                  className="border-warning/40 text-warning"
+                  title="The provider stopped listing this model in its last sync. It is kept so settings that use it can be changed first."
                 >
-                  Enabled
+                  No longer listed
                 </Badge>
               )}
               {profile?.decisions && (
-                <span className="text-xs text-muted-foreground">
-                  {profile.decisions.calibrated ? "Calibrated" : "Uncalibrated"} ·{" "}
-                  {profile.decisions.primitives.join(", ")}
-                </span>
+                <Badge
+                  variant={profile.decisions.calibrated ? "success" : "outline"}
+                  title={
+                    profile.decisions.calibrated
+                      ? "Returns calibrated probabilities"
+                      : "Reports labels, not calibrated certainty. Hidden from decision pickers."
+                  }
+                >
+                  {profile.decisions.calibrated ? "Calibrated" : "Uncalibrated"}
+                </Badge>
               )}
               {profile && (
                 <Badge
@@ -119,9 +139,26 @@ export function ModelRow({
               )}
             </div>
             <div className="flex flex-wrap items-center text-sm text-muted-foreground">
-              <span className="break-all">
-                {model.model_id} - {model.provider_name}
+              <span className="break-all font-mono text-xs">{model.model_id}</span>
+              <span aria-hidden className="mx-1">
+                ·
               </span>
+              <Link
+                href={`/models?provider=${encodeURIComponent(model.provider_id)}`}
+                className="hover:text-foreground hover:underline"
+              >
+                {model.provider_name}
+              </Link>
+              {profile?.decisions && profile.decisions.primitives.length > 0 && (
+                <span className="ml-1 inline-flex flex-wrap items-center gap-1">
+                  <span aria-hidden>·</span>
+                  {profile.decisions.primitives.map((primitive) => (
+                    <span key={primitive} className="bg-muted/60 px-1 font-mono text-[11px]">
+                      {primitive}
+                    </span>
+                  ))}
+                </span>
+              )}
               {profile?.release_date && (
                 <span title={`Released ${profile.release_date}`}>
                   <span aria-hidden className="mx-1">
@@ -206,48 +243,57 @@ export function ModelRow({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          <Button
-            variant={model.enabled ? "outline" : "default"}
-            size="sm"
-            onClick={() => onToggleEnabled(model.id, !model.enabled)}
-            disabled={isTogglingEnabled}
-            title={
-              model.enabled
-                ? "Disable model (hide from UI pickers)"
-                : "Enable model (show in UI pickers)"
-            }
-          >
-            {model.enabled ? (
-              <>
-                <ToggleRight className="h-4 w-4 mr-1" />
-                Disable
-              </>
-            ) : (
-              <>
-                <ToggleLeft className="h-4 w-4 mr-1" />
-                Enable
-              </>
-            )}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setEditOpen(true)}
-            aria-label={`Edit ${model.display_name}`}
-            title="Edit model"
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-destructive"
-            onClick={() => onDelete(model.id)}
-            aria-label={`Delete ${model.display_name}`}
-            title="Delete model"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          {canManage && (
+            <>
+              <Button
+                variant={model.enabled ? "outline" : "default"}
+                size="sm"
+                onClick={() => onToggleEnabled(model.id, !model.enabled)}
+                disabled={isTogglingEnabled}
+                title={
+                  model.enabled
+                    ? "Disable model (hide from UI pickers)"
+                    : "Enable model (show in UI pickers)"
+                }
+              >
+                {model.enabled ? (
+                  <>
+                    <ToggleRight className="h-4 w-4 mr-1" />
+                    Disable
+                  </>
+                ) : (
+                  <>
+                    <ToggleLeft className="h-4 w-4 mr-1" />
+                    Enable
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setEditOpen(true)}
+                aria-label={`Edit ${model.display_name}`}
+                title="Edit model"
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive"
+                onClick={() => onDelete(model.id)}
+                aria-label={`Delete ${model.display_name}`}
+                title="Delete model"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </>
+          )}
+          {!canManage && (
+            <Badge variant={model.enabled ? "success" : "outline"}>
+              {model.enabled ? "Enabled" : "Available"}
+            </Badge>
+          )}
         </div>
       </div>
 

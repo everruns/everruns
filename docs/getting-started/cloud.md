@@ -124,7 +124,7 @@ you set on a session or an agent; credit is what pays for the built-in provider.
 
 ## Bring your own keys (optional)
 
-You can add your own provider API keys under **Settings** > **LLM Providers**,
+You can add your own provider API keys under **Models** > **Providers**,
 and point agents at those models. Calls through your own keys are billed by
 that provider, not against your Everruns credit, and keep working when the
 credit balance is zero.

@@ -60,6 +60,5 @@
 
 - `gh pr merge --squash`, manually, only after CI is green and the final sweep is clean. Do not use
   auto-merge — it bypasses the post-green sweep.
-- Re-run `bash scripts/lib/check-migration-ordering.sh` immediately before merging.
 - After merge, watch main CI for the merge commit. A failure there is an active regression: fix or
   revert promptly.

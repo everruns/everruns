@@ -12,17 +12,20 @@ use futures::StreamExt;
 use serde_json::{Value, json};
 
 /// The request and response shape a decision provider speaks.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Wire {
     SystemOne,
+    /// System One at Microsoft Foundry's resource-root route.
+    Foundry,
     OpenAi,
 }
 
 impl Wire {
-    fn path(self) -> &'static str {
+    fn url(self, endpoint: &everruns_contracts::ProviderEndpoint) -> Option<String> {
         match self {
-            Self::SystemOne => "systemone",
-            Self::OpenAi => "decisions",
+            Self::SystemOne => endpoint.url("systemone"),
+            Self::Foundry => everruns_drivers::mai::decisions_url(endpoint),
+            Self::OpenAi => endpoint.url("decisions"),
         }
     }
 }
@@ -105,7 +108,7 @@ pub(crate) async fn evaluate_request(
         event_context,
     )
     .await?;
-    attempt.outcome.map_err(Into::into)
+    attempt.outcome
 }
 
 /// A decision made before any session exists, such as whether Slack should
@@ -130,7 +133,7 @@ pub async fn evaluate_unmetered(
         decisions.cost_usd = usage.and_then(|u| u["cost"].as_f64()),
         "unmetered organization decision"
     );
-    attempt.outcome.map_err(Into::into)
+    attempt.outcome
 }
 
 /// One provider round trip. `value` is the provider's JSON when it returned
@@ -138,15 +141,15 @@ pub async fn evaluate_unmetered(
 struct Attempt {
     requested_model: String,
     value: Option<Value>,
-    outcome: Result<DecisionOutcome, &'static str>,
+    outcome: Result<DecisionOutcome, String>,
 }
 
 impl Attempt {
-    fn failed(requested_model: String, reason: &'static str) -> Self {
+    fn failed(requested_model: String, reason: impl Into<String>) -> Self {
         Self {
             requested_model,
             value: None,
-            outcome: Err(reason),
+            outcome: Err(reason.into()),
         }
     }
 }
@@ -157,8 +160,10 @@ async fn attempt(
     egress: &dyn EgressService,
     network_access: Option<everruns_contracts::runtime::network_access::NetworkAccessList>,
 ) -> Result<Attempt, String> {
-    // TypeSafe and OpenRouter speak System One; OpenAI has its own Decisions
-    // API. Both go through the same egress, budget, and usage path.
+    // TypeSafe, OpenRouter and Microsoft Foundry speak System One; OpenAI has
+    // its own Decisions API. All go through the same egress, budget, and usage
+    // path. Foundry rows authenticate with the resource API key; Entra OAuth
+    // providers have no key here and fail closed in the resolver.
     let (provider, wire) = match binding.provider_type.as_str() {
         "typesafe" => (
             everruns_drivers::typesafe::provider(
@@ -174,6 +179,14 @@ async fn attempt(
             ),
             Wire::SystemOne,
         ),
+        "mai" => (
+            everruns_drivers::mai::provider(
+                binding.provider_id.clone(),
+                binding.base_url.clone().unwrap_or_default(),
+                everruns_drivers::mai::MaiAuth::ApiKey(binding.api_key.clone()),
+            ),
+            Wire::Foundry,
+        ),
         "openai" => (
             everruns_drivers::openai::provider(
                 binding.provider_id.clone(),
@@ -183,10 +196,10 @@ async fn attempt(
         ),
         _ => return Err("Unsupported decision provider".into()),
     };
-    let mut provider = if let Some(url) = binding.base_url.clone() {
-        provider.base_url(url)
-    } else {
-        provider
+    // Foundry's base URL was normalized by its provider constructor above.
+    let mut provider = match binding.base_url.clone() {
+        Some(url) if wire != Wire::Foundry => provider.base_url(url),
+        _ => provider,
     };
     for (name, value) in &binding.headers {
         provider = provider.header(name, value);
@@ -197,7 +210,7 @@ async fn attempt(
             Some(everruns_drivers::systemone::openrouter_model(&requested_model).into());
     }
     let body = match wire {
-        Wire::SystemOne => everruns_drivers::systemone::encode(&request),
+        Wire::SystemOne | Wire::Foundry => everruns_drivers::systemone::encode(&request),
         Wire::OpenAi => everruns_drivers::openai::decisions::encode(&request),
     }
     .map_err(|e| e.to_string())?;
@@ -206,7 +219,7 @@ async fn attempt(
     let resolved = endpoint
         .resolve(
             "POST",
-            endpoint.url(wire.path()).ok_or("Missing endpoint")?,
+            wire.url(endpoint).ok_or("Missing endpoint")?,
             &bytes,
         )
         .await
@@ -241,10 +254,28 @@ async fn attempt(
             }
             body
         }
-        _ => {
+        // Say why without echoing the provider's body or the resolved URL: the
+        // status (400 = request shape, 401/402/403 = account, 429/5xx = retry)
+        // is what the agent and an operator need to tell the cases apart.
+        Ok(response) => {
             return Ok(Attempt::failed(
                 requested_model,
-                "Decision provider request failed",
+                format!(
+                    "Decision provider request failed (HTTP {})",
+                    response.status
+                ),
+            ));
+        }
+        Err(everruns_contracts::runtime::EgressError::NetworkAccessDenied { .. }) => {
+            return Ok(Attempt::failed(
+                requested_model,
+                "Decision provider request was blocked by network access policy",
+            ));
+        }
+        Err(_) => {
+            return Ok(Attempt::failed(
+                requested_model,
+                "Decision provider request failed (transport error)",
             ));
         }
     };
@@ -252,7 +283,9 @@ async fn attempt(
         return Ok(Attempt::failed(requested_model, "Invalid decision JSON"));
     };
     let outcome = match wire {
-        Wire::SystemOne => everruns_drivers::systemone::decode(&request, value.clone()),
+        Wire::SystemOne | Wire::Foundry => {
+            everruns_drivers::systemone::decode(&request, value.clone())
+        }
         Wire::OpenAi => everruns_drivers::openai::decisions::decode(&request, &value),
     };
     // Provider-reported usage is recorded even if answer validation rejects
@@ -260,7 +293,7 @@ async fn attempt(
     Ok(Attempt {
         requested_model,
         value: Some(value),
-        outcome: outcome.map_err(|_| "Invalid calibrated decision response"),
+        outcome: outcome.map_err(|_| "Invalid calibrated decision response".to_string()),
     })
 }
 

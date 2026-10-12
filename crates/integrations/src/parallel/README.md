@@ -41,9 +41,9 @@ assert_eq!(capability.id(), "parallel_search");
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-integrations)
-- [Parallel integration](https://docs.everruns.com/integrations/parallel/)
-- [Give an agent web access](https://docs.everruns.com/how-to/give-an-agent-web-access/)
-- [Everruns documentation](https://docs.everruns.com)
+- [Parallel integration](https://everruns.com/docs/integrations/parallel/)
+- [Give an agent web access](https://everruns.com/docs/how-to/give-an-agent-web-access/)
+- [Everruns documentation](https://everruns.com/docs)
 
 ## License
 

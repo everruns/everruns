@@ -502,7 +502,7 @@ describe("KnowledgeIndexesPage", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Configure provider" })).toHaveAttribute(
       "href",
-      "/settings/providers/provider_001",
+      "/models/providers/provider_001",
     );
   });
 

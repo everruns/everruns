@@ -49,11 +49,25 @@ impl DecisionDriver for SystemOneDecisionDriver {
         endpoint: &ProviderEndpoint,
         request: DecisionRequest,
     ) -> Result<DecisionOutcome> {
-        let body = encode(&request)?;
-        let bytes = serde_json::to_vec(&body).map_err(|_| invalid("Invalid decision request"))?;
         let url = endpoint
             .url("systemone")
             .ok_or_else(|| invalid("Decision provider endpoint is required"))?;
+        self.evaluate_at(endpoint, url, request).await
+    }
+}
+
+impl SystemOneDecisionDriver {
+    /// Answer `request` at an explicit System One URL. Hosts that serve the
+    /// protocol away from `{base}/systemone` (Microsoft Foundry serves it at
+    /// `{resource}/providers/microsoft/v1/systemone`) pick the URL themselves.
+    pub async fn evaluate_at(
+        &self,
+        endpoint: &ProviderEndpoint,
+        url: String,
+        request: DecisionRequest,
+    ) -> Result<DecisionOutcome> {
+        let body = encode(&request)?;
+        let bytes = serde_json::to_vec(&body).map_err(|_| invalid("Invalid decision request"))?;
         let resolved = endpoint.resolve("POST", url, &bytes).await?;
         let http = self
             .http
@@ -127,10 +141,7 @@ pub fn evaluation(request: &DecisionRequest) -> Result<client::Evaluation> {
                 no,
             } => client::Question::Noul {
                 instructions: instructions.clone().into(),
-                criteria: Some(client::NoulCriteria {
-                    yes: yes.clone(),
-                    no: no.clone(),
-                }),
+                criteria: client::NoulCriteria::described(yes.clone(), no.clone()),
             },
             DecisionQuestion::Choice {
                 instructions,

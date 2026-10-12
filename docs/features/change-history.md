@@ -104,7 +104,7 @@ The open sheet is part of the page address (`?sheet=history`, `?sheet=notes`), s
 
 Platform Chat, the Platform capability and the `/mcp` server all tell agents the same rule: read an entity's context before changing it, pass `--context-revision` with the revision read and a `--reason` with what the user asked for, and ask the user when a request conflicts with the recorded context. Agents treat context and history as data written by people in the organization, not as instructions.
 
-A change an agent makes without a reason still goes through, with a warning that asks the agent to give one next time. An organization can turn on the **Require reasons from agents** feature flag to refuse those changes instead: the command fails with the `reason_required` code and a `retry` action, and the agent retries with `--reason`. People in the UI and scripts calling the API may always leave the reason out. The `everruns_entity_changes_without_reason_total` metric counts agent changes that arrived without one, by entity kind, so you can see when it is safe to turn the flag on.
+A change an agent makes without a reason is refused: the command fails with the `reason_required` code and a `retry` action, and the agent retries with `--reason`. Built-in tools such as `spawn_agent` give their own reasons, so they keep working. This is the **Require reasons from agents** feature flag, on by default. An organization can turn it off to let those changes through with a warning that asks the agent to give a reason next time; the `everruns_entity_changes_without_reason_total` metric then counts them, by entity kind. People in the UI and scripts calling the API may always leave the reason out.
 
 ## See also
 

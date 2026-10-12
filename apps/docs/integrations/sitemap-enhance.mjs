@@ -3,6 +3,7 @@
 import { readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { docsUrl } from "../site.config.mjs";
 
 export default function sitemapEnhance() {
   return {
@@ -40,7 +41,7 @@ export default function sitemapEnhance() {
             '<?xml version="1.0" encoding="UTF-8"?>',
             '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
             "  <sitemap>",
-            "    <loc>https://docs.everruns.com/sitemap.xml</loc>",
+            `    <loc>${docsUrl("/sitemap.xml")}</loc>`,
             `    <lastmod>${lastmod}</lastmod>`,
             "  </sitemap>",
             "</sitemapindex>",

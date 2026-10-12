@@ -284,7 +284,7 @@ internally.
 
 ### Database Schema
 
-See `crates/server/migrations/056_workspaces.sql` for the schema.
+See `crates/server/migrations/legacy/056_workspaces.sql` for the schema.
 
 ### UI Integration
 
@@ -302,7 +302,7 @@ workspace-scoping is follow-up work.
 
 - `session_git_objects`, session-scoped content-addressable store
 - `session_git_refs`, session-scoped refdb
-- See `crates/server/migrations/008_v0.8.7.sql` for DDL
+- See `crates/server/migrations/legacy/008_v0.8.7.sql` for DDL
 
 ### API Endpoints
 

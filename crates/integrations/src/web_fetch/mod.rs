@@ -39,6 +39,8 @@ use std::sync::Arc;
 
 mod egress_transport;
 mod fetch_error;
+#[cfg(test)]
+mod policy_tests;
 mod request;
 
 pub const WEB_FETCH_CAPABILITY_ID: &str = "web_fetch";
@@ -442,12 +444,12 @@ pub struct WebFetchTool {
     enable_save_to_file: bool,
     /// Cached description from ToolBuilder (owned copy of fetchkit's &str for our Tool trait)
     description: String,
-    /// Host-wide system allowlist ("green list"), pre-checked on the initial
-    /// URL for a clear, distinct system-policy error. On the egress path the
-    /// boundary independently re-enforces it (final enforcement point, every
-    /// hop); on the direct path this pre-flight is the only enforcement.
-    /// `None` = no global enforcement.
-    system_allowlist: Option<Arc<self::system_allowlist::SystemAllowlist>>,
+    /// Host-wide system egress policy (allowlist, deny list, mode),
+    /// pre-checked on the initial URL for a clear, distinct system-policy
+    /// error. On the egress path the boundary independently re-enforces it
+    /// (final enforcement point, every hop); on the direct path this
+    /// pre-flight is the only enforcement. `None` = no global enforcement.
+    system_policy: Option<Arc<everruns_contracts::runtime::SystemEgressPolicy>>,
 }
 
 impl WebFetchTool {
@@ -472,30 +474,26 @@ impl WebFetchTool {
             fetchkit_tool,
             enable_save_to_file,
             description,
-            system_allowlist: self::system_allowlist::SystemAllowlist::from_env(),
+            system_policy: everruns_contracts::runtime::SystemEgressPolicy::from_env(),
         }
     }
 
-    /// Reject URLs not covered by the active system allowlist with an explicit
-    /// system-policy error. Returns `None` when the allowlist is disabled or the
-    /// URL is permitted.
+    /// Reject a fetch (a GET read) the active system policy denies, with an
+    /// explicit system-policy error. Returns `None` when no policy is active
+    /// or the URL is permitted.
     fn system_policy_block(&self, url: &str) -> Option<ToolExecutionResult> {
-        match &self.system_allowlist {
-            Some(allowlist) if !allowlist.is_url_allowed(url) => {
-                Some(ToolExecutionResult::tool_error(format!(
-                    "Endpoint blocked by system policy: {url} is not on the allowlist \
-                     of permitted public resources."
-                )))
-            }
-            _ => None,
-        }
+        let policy = self.system_policy.as_ref()?;
+        policy
+            .check(url, everruns_contracts::runtime::EgressAccess::Read, None)
+            .err()
+            .map(|denial| ToolExecutionResult::tool_error(denial.message(url)))
     }
 
     /// Crawling can issue requests beyond the seed URL. The direct FetchKit
     /// transport cannot apply Everruns URL policy to those discovered pages.
     fn crawl_requires_egress(&self, request: &FetchRequest, context: Option<&ToolContext>) -> bool {
         request.crawl == Some(true)
-            && (self.system_allowlist.is_some()
+            && (self.system_policy.is_some()
                 || context
                     .and_then(|context| context.network_access.as_ref())
                     .is_some_and(|acl| !acl.is_empty()))
@@ -608,7 +606,7 @@ impl Tool for WebFetchTool {
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {
         if request::is_raw(&arguments) {
-            return request::execute(&arguments, None, self.system_allowlist.as_deref()).await;
+            return request::execute(&arguments, None, self.system_policy.as_deref()).await;
         }
         // Without context, save_to_file is not supported — execute normally
         let request = match Self::parse_request(&arguments) {
@@ -646,8 +644,8 @@ impl Tool for WebFetchTool {
         context: &ToolContext,
     ) -> ToolExecutionResult {
         if request::is_raw(&arguments) {
-            let allowlist = self.system_allowlist.as_deref();
-            return request::execute(&arguments, Some(context), allowlist).await;
+            let policy = self.system_policy.as_deref();
+            return request::execute(&arguments, Some(context), policy).await;
         }
         let request = match Self::parse_request(&arguments) {
             Ok(req) => req,
@@ -697,12 +695,12 @@ impl Tool for WebFetchTool {
         let routed_tool;
         let tool = match &context.egress_service {
             Some(egress) => {
-                // The system allowlist is enforced again at the egress boundary,
+                // The system policy is enforced again at the egress boundary,
                 // but fetchkit resolves redirect targets before invoking the transport.
-                // When the allowlist is active, keep redirects on the already
+                // When a policy is active, keep redirects on the already
                 // preflighted host so disallowed cross-host redirect labels cannot
                 // leak via DNS before the boundary denies the request.
-                let same_host_redirects_only = self.system_allowlist.is_some();
+                let same_host_redirects_only = self.system_policy.is_some();
                 routed_tool = self
                     .builder
                     .clone()
@@ -777,20 +775,20 @@ mod tests {
             fetchkit_tool,
             enable_save_to_file: true,
             description,
-            system_allowlist: None,
+            system_policy: None,
         }
     }
 
     #[tokio::test]
     async fn system_allowlist_blocks_with_clear_system_policy_error() {
-        use self::system_allowlist::SystemAllowlist;
+        use everruns_contracts::runtime::{SystemAllowlist, SystemEgressPolicy};
 
         let mut tool = tool_for_wiremock();
-        tool.system_allowlist = Some(
+        tool.system_policy = Some(Arc::new(SystemEgressPolicy::allowlist_only(
             SystemAllowlist::from_toml("[groups.test]\nallowed = [\"allowed.example.com\"]\n")
                 .map(Arc::new)
                 .unwrap(),
-        );
+        )));
 
         let result = tool
             .execute(serde_json::json!({ "url": "https://blocked.example.com/path" }))
@@ -812,14 +810,14 @@ mod tests {
 
     #[tokio::test]
     async fn legacy_path_system_policy_error_wins_when_both_policies_deny() {
-        use self::system_allowlist::SystemAllowlist;
+        use everruns_contracts::runtime::{SystemAllowlist, SystemEgressPolicy};
 
         let mut tool = tool_for_wiremock();
-        tool.system_allowlist = Some(
+        tool.system_policy = Some(Arc::new(SystemEgressPolicy::allowlist_only(
             SystemAllowlist::from_toml("[groups.test]\nallowed = [\"allowed.example.com\"]\n")
                 .map(Arc::new)
                 .unwrap(),
-        );
+        )));
         // No egress service → legacy path; ACL denies the URL too.
         let mut context = ToolContext::new(SessionId::new());
         context.network_access = Some(self::network_access::NetworkAccessList::allow_only([
@@ -1264,14 +1262,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_egress_path_system_allowlist_blocks_cross_host_redirect_before_second_hop() {
-        use self::system_allowlist::SystemAllowlist;
+        use everruns_contracts::runtime::{SystemAllowlist, SystemEgressPolicy};
 
         let tool = WebFetchTool {
-            system_allowlist: Some(
+            system_policy: Some(Arc::new(SystemEgressPolicy::allowlist_only(
                 SystemAllowlist::from_toml("[groups.test]\nallowed = [\"93.184.216.34\"]\n")
                     .map(Arc::new)
                     .unwrap(),
-            ),
+            ))),
             ..Default::default()
         };
         let egress = Arc::new(RedirectingEgress {
@@ -1593,7 +1591,7 @@ mod tests {
                 builder,
                 description: String::new(),
                 enable_save_to_file: false,
-                system_allowlist: None,
+                system_policy: None,
             };
             for with_context in [false, true] {
                 let args = serde_json::json!({"url":url});

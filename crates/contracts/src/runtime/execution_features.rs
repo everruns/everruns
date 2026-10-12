@@ -5,8 +5,6 @@ use crate::runtime::{DeploymentGrade, FeatureFlagDefinition, FeatureFlagGrade};
 
 // Registration defaults are shared with the hosted catalog: promoting a default
 // must change API availability and actual registry composition together.
-/// Default rollout grade for agent delegation.
-pub const AGENT_DELEGATION_DEFAULT_GRADE: FeatureFlagGrade = FeatureFlagGrade::Adoption;
 /// Default rollout grade for Docker execution.
 pub const DOCKER_CAPABILITY_DEFAULT_GRADE: FeatureFlagGrade = FeatureFlagGrade::Off;
 /// Default rollout grade for container sandboxes.
@@ -64,8 +62,6 @@ impl InternalFeatureFlags {
 /// Deployment registration decisions before hosted organisation policy is applied.
 #[derive(Debug, Clone)]
 pub struct ExecutionFeatureDecisions {
-    /// Agent delegation is available for registration.
-    pub agent_delegation: bool,
     /// Optional infrastructure registration gates.
     pub internal: InternalFeatureFlags,
     deployment: DeploymentGrade,
@@ -75,11 +71,6 @@ impl ExecutionFeatureDecisions {
     /// Resolve feature availability for the requested deployment.
     pub fn from_env(deployment: DeploymentGrade) -> Self {
         Self {
-            agent_delegation: FeatureFlagGrade::from_env(
-                "FEATURE_AGENT_DELEGATION",
-                AGENT_DELEGATION_DEFAULT_GRADE,
-            )
-            .available(deployment),
             internal: InternalFeatureFlags::for_deployment(deployment),
             deployment,
         }
@@ -89,7 +80,6 @@ impl ExecutionFeatureDecisions {
     pub fn is_enabled(&self, flag: &str) -> bool {
         match flag {
             "docker_capability" | "container_sandbox" | "lua" => self.internal.is_enabled(flag),
-            "agent_delegation" => self.agent_delegation,
             _ => FeatureFlagGrade::from_env(
                 &format!("FEATURE_{}", flag.to_ascii_uppercase()),
                 if flag == "machine_payments" {
@@ -131,7 +121,6 @@ mod tests {
     fn grade_overrides_apply_to_capability_registration() {
         const CHILD: &str = "EVERRUNS_FEATURE_GRADE_TEST_CHILD";
         const KEYS: &[&str] = &[
-            "FEATURE_AGENT_DELEGATION",
             "FEATURE_DOCKER_CAPABILITY",
             "FEATURE_CONTAINER_SANDBOX",
             "FEATURE_LUA",
@@ -139,7 +128,7 @@ mod tests {
             "FEATURE_UNKNOWN",
         ];
         let cases = [
-            (None, [true; 4]),
+            (None, [false; 4]),
             (Some("dev"), [true, false, false, false]),
             (Some("internal"), [true; 4]),
             (Some("preview"), [false; 4]),
@@ -161,7 +150,6 @@ mod tests {
             .zip(expected)
             {
                 let decisions = ExecutionFeatureDecisions::from_env(deployment);
-                assert_eq!(decisions.agent_delegation, available);
                 for name in [
                     "docker_capability",
                     "container_sandbox",
@@ -169,7 +157,7 @@ mod tests {
                     "machine_payments",
                     "unknown",
                 ] {
-                    let expected = value.is_some() && available;
+                    let expected = available;
                     assert_eq!(
                         decisions.is_enabled(name),
                         expected,

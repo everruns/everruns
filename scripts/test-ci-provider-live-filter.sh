@@ -132,13 +132,13 @@ if uncovered:
 for probe in [
     "Cargo.lock", "Cargo.toml", "rust-toolchain.toml", ".github/workflows/ci.yml",
     "crates/drivers/drivers/Cargo.toml", "crates/provider/README.md",
-    "crates/server/src/api/sessions.rs", "apps/ui/src/app/page.tsx",
+    "crates/server/src/api/sessions/mod.rs", "apps/ui/src/app/page.tsx",
 ]:
     assert not any(matches(pattern, probe) for pattern in patterns), probe
 
 for probe in [
     "crates/contracts/src/model_profile_data/profiles/gpt6.rs",
-    "crates/server/src/seed/models.rs",
+    "crates/server/src/setup/seed/models.rs",
     "crates/server/src/platform.rs",
 ]:
     assert any(matches(pattern, probe) for pattern in patterns), probe

@@ -119,6 +119,21 @@ capabilities, MCP, integrations, and generic runtime HTTP to a curated set of
 public resources. Host-owned system transports stay outside that policy because
 they do not route through `EgressService`.
 
+## Audit Log
+
+`DirectEgressService` emits one `info` event per request on the
+`everruns::egress::audit` tracing target, whether the request was allowed,
+denied by policy, or failed in transport. It records kind, method, host, path,
+query length (never the query itself, which often carries tokens), request and
+response byte counts, status, duration, and the org and session the request was
+made for. It is the trail for abuse response on hosted deployments, where
+tenants are untrusted.
+
+Attribution comes from `EgressRequest.scope`, which only the host sets: the
+per-turn tool context wraps the egress service in `ScopedEgressService`, which
+overwrites any scope a caller supplied. Requests made outside a turn (host
+services, MCP discovery, plugin fetches) log without an org or session.
+
 ## Signing
 
 Requests can set:

@@ -10,10 +10,8 @@ use crate::capabilities::{
     Capability, CapabilityRegistry, CapabilityStatus, resolve_capability_configs,
 };
 use crate::config_layer::AgentConfigOverlay;
-use crate::engine::{
-    ActivityOutcome, Execution, HostFacts, TurnPlan, TurnState, reason_schedules_act,
-};
-use crate::engine::{InputAtomInput, ReasonInput};
+use crate::engine::ReasonInput;
+use crate::engine::{TurnPlan, TurnState};
 use crate::events::{
     Event, EventContext, EventRequest, InputMessageData, SessionStartedData, ToolCompletedData,
 };
@@ -27,10 +25,8 @@ use crate::host::events::{
 };
 use crate::host::in_memory::{InMemorySessionFileStore, InMemorySessionFileSystemFactory};
 use crate::host::runtime_host::{
-    ResolvedTurnInputs, RuntimeHostAdapter, execute_act_activity, execute_input_activity,
-    execute_reason_activity_with_prompt_messages, run_user_prompt_submit_for_message,
+    ResolvedTurnInputs, RuntimeHostAdapter, run_user_prompt_submit_for_message,
 };
-use crate::host::turn_strategy::resolve_pause_hints;
 use crate::host::{
     HostComposition, InProcessExecution, SessionFileSystemFactoryContext, SessionMutator,
 };
@@ -42,7 +38,7 @@ use crate::resolve_runtime_capabilities;
 use crate::runtime_context::AssembledTurnContext;
 use crate::session::{ExecutionSession, SessionExecutionState};
 use crate::session_file::{InitialFile, SessionFile};
-use crate::turn::TurnStopReason;
+use crate::tool_execution::BudgetChecker;
 use crate::{
     InputMessage, MessageRetriever, ResolvedExecutionSnapshot, session_files::SessionFileSystem,
 };
@@ -50,7 +46,7 @@ use crate::{
     connection_services::UserConnectionResolver, event_emitter::EventEmitter,
     execution_loading::AgentStore, execution_loading::HarnessStore,
     execution_loading::SessionStore, provider_resolution::ProviderStore,
-    session_services::SessionStorageStore,
+    session_services::SessionStorageStore, session_task::SessionTaskRegistry,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -66,8 +62,11 @@ mod parked;
 mod steering;
 mod turn_entry;
 
+pub use crate::host::turn_loop::TurnResult;
+use crate::host::turn_loop::{TurnDrive, drive_turn};
+use crate::host::turn_resume::WaitsOnPerson;
+pub use parked::ParkedToolCalls;
 use parked::ParkedTurns;
-pub use parked::{InterruptedToolCalls, ParkedToolCalls};
 pub use steering::{TurnSteering, TurnSteeringPushError};
 
 /// Cap on the input length hashed by [`hash_public_org_id`].
@@ -125,24 +124,6 @@ fn hash_public_org_id(public_org_id: &str) -> i64 {
     ((raw % ((i64::MAX - 1) as u64)) as i64) + 2
 }
 
-#[derive(Debug, Clone)]
-pub struct TurnResult {
-    /// Final text response produced by the turn.
-    pub response: String,
-    /// Number of reason iterations executed.
-    pub iterations: usize,
-    /// Total number of tool calls executed during the turn.
-    pub tool_calls_count: usize,
-    /// Whether the turn completed without an unrecoverable failure.
-    pub success: bool,
-    /// Failure message when `success` is false.
-    pub error: Option<String>,
-    /// Structured reason the turn stopped.
-    pub stop_reason: TurnStopReason,
-    /// Turn identifier used to correlate emitted events.
-    pub turn_id: everruns_contracts::typed_id::TurnId,
-}
-
 /// An application message accepted for a specific in-process turn.
 ///
 /// The caller creates this value before dispatch so it can acknowledge the
@@ -194,55 +175,6 @@ pub struct CapabilityDelta {
     pub surfaces_dirty: bool,
 }
 
-/// What the plan loop of one turn needs from its entry step.
-struct TurnDrive {
-    session_id: SessionId,
-    org_id: i64,
-    turn_id: TurnId,
-    input_message_id: MessageId,
-    harness_id: everruns_contracts::typed_id::HarnessId,
-    agent_id: Option<AgentId>,
-    workspace_id: everruns_contracts::typed_id::WorkspaceId,
-}
-
-/// Summarize a terminal engine plan into the public [`TurnResult`].
-///
-/// The engine reports the stop reason and the carried error; the host supplies
-/// the running summaries it accumulated while executing the planned steps. A
-/// carried error is the failure signal (it is exactly what the pre-engine state
-/// machine kept in `pending_error`), and a failed turn reports no response and
-/// no tool calls, matching the engine's terminal-failure mapping.
-fn finish_turn(
-    turn_id: everruns_contracts::typed_id::TurnId,
-    stop_reason: TurnStopReason,
-    error: Option<String>,
-    response: String,
-    iterations: usize,
-    tool_calls_count: usize,
-) -> TurnResult {
-    if error.is_some() {
-        return TurnResult {
-            response: String::new(),
-            iterations,
-            tool_calls_count: 0,
-            success: false,
-            error,
-            stop_reason,
-            turn_id,
-        };
-    }
-
-    TurnResult {
-        response,
-        iterations,
-        tool_calls_count,
-        success: true,
-        error: None,
-        stop_reason,
-        turn_id,
-    }
-}
-
 /// Builder for the public in-process runtime.
 ///
 /// The builder owns a standalone runtime bundle:
@@ -254,9 +186,8 @@ fn finish_turn(
 /// without the durable engine or the control-plane server.
 pub struct InProcessRuntimeBuilder {
     host_composition: HostComposition,
-    /// Provider registered at build time (replacing any same-name provider)
-    /// whose named model becomes the runtime default when nothing else set one.
-    /// See [`Self::provider_with_default_model`].
+    /// Provider registered at build time (replacing a same-name one) whose model
+    /// becomes the default when nothing else set one ([`Self::provider_with_default_model`]).
     default_provider: Option<(everruns_contracts::runtime_provider::Provider, String)>,
     /// Providers that intentionally replace a same-id registration without
     /// changing model selection. Used by deterministic simulator adapters.
@@ -275,14 +206,15 @@ pub struct InProcessRuntimeBuilder {
     mcp_auth_provider: Option<Arc<dyn crate::mcp::McpAuthProvider>>,
     provider_retry_config: Option<everruns_contracts::llm_retry::LlmRetryConfig>,
     provider_stall_timeout: Option<std::time::Duration>,
-    /// Hydrated capability configs for plugins loaded via [`Self::with_plugin_dir`].
-    ///
-    /// Keyed by `plugin:{name}`. Agents and harnesses reference these by the
-    /// same `plugin:{name}` capability ref; the hydrated config carries the
-    /// compiled `DeclarativeCapabilityDefinition` so no registry entry is needed.
+    budget_checker: Option<Arc<dyn BudgetChecker>>,
+    /// Hydrated capability configs for plugins loaded via [`Self::with_plugin_dir`],
+    /// keyed by `plugin:{name}`. Agents and harnesses reference them by that
+    /// capability ref; the hydrated config carries the compiled
+    /// `DeclarativeCapabilityDefinition`, so no registry entry is needed.
     plugin_capability_configs: Vec<everruns_contracts::CapabilityRef>,
     /// Non-fatal warnings collected during plugin compilation.
     plugin_warnings: Vec<String>,
+    waits_on_person: Option<WaitsOnPerson>,
 }
 
 impl Default for InProcessRuntimeBuilder {
@@ -325,8 +257,10 @@ impl InProcessRuntimeBuilder {
             mcp_auth_provider: None,
             provider_retry_config: None,
             provider_stall_timeout: None,
+            budget_checker: None,
             plugin_capability_configs: Vec::new(),
             plugin_warnings: Vec::new(),
+            waits_on_person: None,
         }
     }
 
@@ -425,10 +359,7 @@ impl InProcessRuntimeBuilder {
     /// Inject a session-task registry. Convenience over `backends(...)` that
     /// initializes an in-memory backend bundle on first use, so embedders can
     /// add the registry without assembling a full `HostBackends`.
-    pub fn with_session_task_registry(
-        mut self,
-        registry: Arc<dyn crate::session_task::SessionTaskRegistry>,
-    ) -> Self {
+    pub fn with_session_task_registry(mut self, registry: Arc<dyn SessionTaskRegistry>) -> Self {
         let backends = self.backends.take().unwrap_or_else(HostBackends::in_memory);
         self.backends = Some(backends.with_session_task_registry(registry));
         self
@@ -498,6 +429,12 @@ impl InProcessRuntimeBuilder {
         self
     }
 
+    /// Enforce budgets: asked before every provider call (and by `check_budget`) for all sessions.
+    pub fn budget_checker(mut self, checker: Arc<dyn BudgetChecker>) -> Self {
+        self.budget_checker = Some(checker);
+        self
+    }
+
     /// Seed a harness definition (under its embedder-chosen id) into the
     /// runtime store.
     pub fn harness(mut self, harness: crate::host::builders::SeededHarness) -> Self {
@@ -558,23 +495,11 @@ impl InProcessRuntimeBuilder {
     /// Load a plugin from a local directory and make it available as a
     /// `plugin:{name}` capability.
     ///
-    /// Reads the plugin directory via [`PluginFileSet::from_dir`] and compiles
-    /// it with [`compile_plugin`] at call time. A compilation failure is
-    /// surfaced immediately as a configuration error so the problem is visible
-    /// before the runtime is built. Non-fatal compilation warnings are logged
-    /// via `tracing::warn!` and also collected so they can be inspected on the
-    /// built runtime via [`InProcessRuntime::plugin_warnings`].
-    ///
-    /// After loading, agents and harnesses can reference the plugin by its
-    /// `plugin:{name}` capability ref. The hydrated config carries the compiled
-    /// `DeclarativeCapabilityDefinition`, which the core capability resolution
-    /// path recognises without a registry entry (same path as declarative
-    /// capabilities).
-    ///
-    /// When using [`Self::single_session`], call
-    /// [`SingleSessionBuilder::agent_plugin`] to add the capability ref to the
-    /// seeded agent, or use [`crate::host::AgentBuilder::capability`] / `with_capability`
-    /// directly.
+    /// Compiles [`PluginFileSet::from_dir`] with [`compile_plugin`] now, so a compile failure
+    /// is a configuration error before build; warnings are logged and kept on
+    /// [`InProcessRuntime::plugin_warnings`]. The compiled `DeclarativeCapabilityDefinition`
+    /// resolves without a registry entry. With [`Self::single_session`], add the ref via
+    /// [`SingleSessionBuilder::agent_plugin`] (or [`crate::host::AgentBuilder::capability`]).
     pub fn with_plugin_dir(mut self, path: &Path) -> Result<Self> {
         let file_set = PluginFileSet::from_dir(path)
             .map_err(|e| AgentLoopError::config(format!("plugin directory load failed: {e}")))?;
@@ -730,8 +655,7 @@ impl InProcessRuntimeBuilder {
                 let wake_queue = Arc::new(crate::SessionWakeQueue::new());
                 let observing =
                     crate::ObservingTaskRegistry::new(inner).with_observer(wake_queue.clone());
-                let wrapped: Arc<dyn crate::session_task::SessionTaskRegistry> =
-                    Arc::new(observing);
+                let wrapped: Arc<dyn SessionTaskRegistry> = Arc::new(observing);
                 (Some(wrapped), Some(wake_queue))
             }
             None => (None, None),
@@ -767,10 +691,12 @@ impl InProcessRuntimeBuilder {
                 .unwrap_or_else(|| Arc::new(crate::mcp::NoAuthProvider)),
             provider_retry_config: self.provider_retry_config,
             provider_stall_timeout: self.provider_stall_timeout,
+            budget_checker: self.budget_checker,
             #[cfg(feature = "mcp")]
             mcp_discovery_cache: Arc::new(crate::host::mcp_cache::McpDiscoveryCache::new()),
             plugin_warnings: self.plugin_warnings,
             parked_turns: ParkedTurns::default(),
+            waits_on_person: self.waits_on_person,
         };
         for session in &self.sessions {
             runtime.ensure_session_started(session).await?;
@@ -815,10 +741,9 @@ pub struct InProcessRuntime {
     file_store: Arc<dyn SessionFileSystem>,
     storage_store: Arc<dyn SessionStorageStore>,
     connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
-    session_task_registry: Option<Arc<dyn crate::session_task::SessionTaskRegistry>>,
-    /// Mid-turn wake queue fed by `session_task_registry` transitions and
-    /// drained at each reason iteration boundary (EVE-681, part A). Present iff
-    /// a task registry was configured.
+    session_task_registry: Option<Arc<dyn SessionTaskRegistry>>,
+    /// Mid-turn wakes from `session_task_registry`, drained at each reason
+    /// boundary (EVE-681, part A). Present iff a task registry is configured.
     session_wake_queue: Option<Arc<crate::SessionWakeQueue>>,
     schedule_store_factory: Option<crate::host::backends::ScheduleStoreFactory>,
     bash_hook_dispatcher_factory: Option<crate::host::BashHookDispatcherFactory>,
@@ -829,14 +754,15 @@ pub struct InProcessRuntime {
     mcp_auth_provider: Arc<dyn crate::mcp::McpAuthProvider>,
     provider_retry_config: Option<everruns_contracts::llm_retry::LlmRetryConfig>,
     provider_stall_timeout: Option<std::time::Duration>,
+    budget_checker: Option<Arc<dyn BudgetChecker>>,
     #[cfg(feature = "mcp")]
     mcp_discovery_cache: Arc<crate::host::mcp_cache::McpDiscoveryCache>,
-    /// Non-fatal warnings collected during plugin compilation (see
-    /// [`InProcessRuntimeBuilder::with_plugin_dir`]).
+    /// Plugin compilation warnings ([`InProcessRuntimeBuilder::with_plugin_dir`]).
     plugin_warnings: Vec<String>,
-    /// Turns parked on client-side tool calls, by session. In memory only:
-    /// a process restart drops them, and their calls stay unanswered.
+    /// Turns parked on client-side tool calls, by session; lost on restart.
     parked_turns: ParkedTurns,
+    /// See [`InProcessRuntimeBuilder::waits_on_person`].
+    waits_on_person: Option<WaitsOnPerson>,
 }
 
 impl InProcessRuntime {
@@ -942,16 +868,11 @@ impl InProcessRuntime {
     /// capability discovered after composition — an extension installed
     /// mid-conversation, say — resolvable without rebuilding the runtime.
     ///
-    /// Registration is not activation. Afterwards the id resolves and
-    /// [`InProcessRuntime::activate_capability`] behaves exactly as it does for
-    /// a capability present at startup, including per-session enablement and
-    /// the surface invalidation that follows it. Sessions that never activate
-    /// the id are unaffected.
+    /// Registration is not activation: afterwards [`InProcessRuntime::activate_capability`]
+    /// behaves as for a startup capability (per-session enablement, surface invalidation).
     ///
-    /// A duplicate canonical id or an alias that collides with a registered id
-    /// is rejected, and the existing capability is left untouched. Use
-    /// [`InProcessRuntime::is_capability_registered`] to skip registration for
-    /// something already present.
+    /// A duplicate id or colliding alias is rejected and the existing capability kept; use
+    /// [`InProcessRuntime::is_capability_registered`] to skip one already present.
     pub fn register_capability(&self, capability: Arc<dyn Capability>) -> Result<()> {
         self.host_composition
             .register_capability(capability)
@@ -1102,200 +1023,18 @@ impl InProcessRuntime {
     }
 
     /// The engine-planned loop of one turn, from the plan its entry step
-    /// (a new input, or a resume after tool results) produced.
+    /// (a new input, or a resume after tool results) produced: the generic
+    /// [`drive_turn`] over this runtime's steering, wake queue and parked
+    /// turns.
     async fn drive_turn_plan(
         &self,
         drive: TurnDrive,
-        mut execution: InProcessExecution,
-        mut plan: TurnPlan,
+        execution: InProcessExecution,
+        plan: TurnPlan,
         steering: TurnSteering,
     ) -> Result<TurnResult> {
-        let TurnDrive {
-            session_id,
-            org_id,
-            turn_id,
-            input_message_id,
-            harness_id,
-            agent_id,
-            workspace_id,
-        } = drive;
-        let base_context = |exec: bool| {
-            let context = ExecutionContext::new(session_id, turn_id, input_message_id)
-                .with_workspace_id(workspace_id);
-            if exec { context.next_exec() } else { context }
-        };
-
-        // Host-side bookkeeping for the returned `TurnResult`. These are
-        // summaries of what the host executed, not inputs to any decision.
-        let mut iterations: usize = 0;
-        let mut tool_calls_count: usize = 0;
-        let mut last_response = String::new();
-        let mut pending_prompt_message_ids = Vec::new();
-        // The client-side calls the last act left for the caller to run.
-        let mut client_tool_calls = Vec::new();
-
-        loop {
-            match plan {
-                TurnPlan::ScheduleReason(_) => {
-                    let state = execution.state().clone();
-                    let mut prompt_message_ids = std::mem::take(&mut pending_prompt_message_ids);
-                    prompt_message_ids.extend(
-                        self.inject_steering_inputs(session_id, steering.drain())
-                            .await?,
-                    );
-                    // Iteration boundary: drain queued task wakes and inject
-                    // them before the LLM call so this reason reacts to them
-                    // (EVE-681, part A). Draining here also delivers wakes that
-                    // arrived while the session was idle, on the next turn's
-                    // first iteration (between-turn fallback).
-                    prompt_message_ids.extend(self.drain_and_inject_wakes(session_id).await?);
-                    if state.iteration == 1 {
-                        prompt_message_ids.insert(0, input_message_id);
-                    }
-                    let reason_result = execute_reason_activity_with_prompt_messages(
-                        self,
-                        org_id,
-                        ReasonInput {
-                            context: base_context(true),
-                            harness_id,
-                            agent_id,
-                            org_id,
-                            mcp_tool_definitions: vec![],
-                            previous_response_id: state.previous_response_id.clone(),
-                            iteration: state.iteration,
-                        },
-                        prompt_message_ids,
-                    )
-                    .await?;
-
-                    iterations += 1;
-                    if !reason_result.text.is_empty() {
-                        last_response = reason_result.text.clone();
-                    }
-
-                    // Only a reason that would otherwise finish may close user
-                    // ingress. The queue check and close are atomic, so a send
-                    // is always classified as either steering this turn or
-                    // starting the next one.
-                    let pending_wake_count = usize::from(
-                        self.session_wake_queue
-                            .as_ref()
-                            .is_some_and(|q| q.has_pending(session_id)),
-                    );
-                    let can_continue = reason_result.success
-                        && state.iteration < reason_result.max_iterations as u32;
-                    let pending_steering = if !reason_schedules_act(&state, &reason_result)
-                        && can_continue
-                        && pending_wake_count == 0
-                    {
-                        steering.drain_or_close()
-                    } else {
-                        vec![]
-                    };
-                    let pending_steering_count = pending_steering.len();
-                    if !pending_steering.is_empty() {
-                        pending_prompt_message_ids.extend(
-                            self.inject_steering_inputs(session_id, pending_steering)
-                                .await?,
-                        );
-                    }
-                    if !can_continue {
-                        steering.close();
-                    }
-                    let pending_user_message_count = pending_wake_count + pending_steering_count;
-
-                    let act_scheduling = crate::host::turn_strategy::resolve_act_scheduling(
-                        self,
-                        &state,
-                        &reason_result,
-                    )
-                    .await?;
-                    let transition = execution.advance(
-                        ActivityOutcome::Reason(Box::new(reason_result)),
-                        pending_user_message_count,
-                        Utc::now(),
-                        HostFacts {
-                            act_scheduling,
-                            ..HostFacts::default()
-                        },
-                    );
-                    crate::host::turn_strategy::perform_effects(
-                        self,
-                        org_id,
-                        session_id,
-                        transition.effects,
-                    )
-                    .await?;
-                    plan = transition.plan;
-                }
-                TurnPlan::ScheduleAct(act_plan) => {
-                    tool_calls_count += act_plan.input.tool_calls.len();
-                    let act_result = execute_act_activity(self, act_plan.input).await?;
-                    client_tool_calls.clone_from(&act_result.client_tool_calls);
-                    let outcome = crate::host::turn_strategy::act_outcome(&act_result);
-                    let ask_user_calls =
-                        crate::host::turn_strategy::pending_ask_user_calls(&act_result);
-                    let hints =
-                        resolve_pause_hints(self, org_id, session_id, input_message_id, outcome)
-                            .await?;
-                    let transition = execution.advance(
-                        ActivityOutcome::Act(outcome),
-                        0,
-                        Utc::now(),
-                        HostFacts {
-                            setup_connection_hint_enabled: hints.setup_connection,
-                            url_elicitation_hint_enabled: hints.url_elicitation,
-                            ask_user_hint_enabled: hints.ask_user,
-                            ask_user_calls,
-                            ..HostFacts::default()
-                        },
-                    );
-                    crate::host::turn_strategy::perform_effects(
-                        self,
-                        org_id,
-                        session_id,
-                        transition.effects,
-                    )
-                    .await?;
-                    plan = transition.plan;
-                }
-                TurnPlan::Complete { stop_reason, error } => {
-                    steering.close();
-                    return Ok(finish_turn(
-                        turn_id,
-                        stop_reason,
-                        error,
-                        last_response,
-                        iterations,
-                        tool_calls_count,
-                    ));
-                }
-                // A pause returns the turn to the caller, who runs the parked
-                // client-side calls and continues it with
-                // `resume_steerable_turn`; the resume state waits here until
-                // then. The session has already been marked
-                // `waiting_for_tool_results` by the effect.
-                TurnPlan::WaitForToolResults { resume } => {
-                    steering.close();
-                    self.append_accepted_inputs(session_id, turn_id, steering.drain())
-                        .await?;
-                    self.park_turn(
-                        session_id,
-                        turn_id,
-                        std::mem::take(&mut client_tool_calls),
-                        resume,
-                    );
-                    return Ok(finish_turn(
-                        turn_id,
-                        TurnStopReason::EndTurn,
-                        None,
-                        last_response,
-                        iterations,
-                        tool_calls_count,
-                    ));
-                }
-            }
-        }
+        let inbox = steering::InProcessInbox::new(self, steering);
+        drive_turn(self, &inbox, drive, execution, plan).await
     }
 
     pub async fn run_text_turn(
@@ -1304,18 +1043,6 @@ impl InProcessRuntime {
         text: impl Into<String>,
     ) -> Result<TurnResult> {
         self.run_turn(session_id, InputMessage::user(text)).await
-    }
-
-    async fn inject_steering_inputs(
-        &self,
-        session_id: SessionId,
-        inputs: Vec<AcceptedTurnInput>,
-    ) -> Result<Vec<MessageId>> {
-        let mut message_ids = Vec::with_capacity(inputs.len());
-        for input in inputs {
-            message_ids.push(self.persist_accepted_input(session_id, input).await?);
-        }
-        Ok(message_ids)
     }
 
     /// Persist accepted steering that could not reach another reason boundary.
@@ -1389,41 +1116,6 @@ impl InProcessRuntime {
                 .await?;
         }
         Ok(())
-    }
-
-    /// Drain any queued task wakes for `session_id` and inject them into the
-    /// conversation as user messages so the next reason reacts to them
-    /// (EVE-681, part A). Returns the ids of the injected messages so prompt
-    /// hooks can inspect them before the next provider call.
-    ///
-    /// Called at the top of every reason iteration — before the LLM call — so a
-    /// task completion that landed during the previous act (or while idle) is
-    /// visible to the very next iteration. `SessionWakeQueue::drain` is the
-    /// exactly-once claim point: a drained wake is removed and never delivered
-    /// twice, so a wake is delivered mid-turn XOR on the next turn's first
-    /// drain, never both.
-    async fn drain_and_inject_wakes(&self, session_id: SessionId) -> Result<Vec<MessageId>> {
-        let Some(queue) = &self.session_wake_queue else {
-            return Ok(vec![]);
-        };
-        let wakes = queue.drain(session_id);
-        if wakes.is_empty() {
-            return Ok(vec![]);
-        }
-        let mut message_ids = Vec::with_capacity(wakes.len());
-        for wake in wakes {
-            // Append one canonical input event; history is reconstructed from it.
-            let message = message_from_input(InputMessage::user(wake.text));
-            message_ids.push(message.id);
-            self.event_emitter
-                .emit(EventRequest::new(
-                    session_id,
-                    EventContext::empty(),
-                    InputMessageData::new(message),
-                ))
-                .await?;
-        }
-        Ok(message_ids)
     }
 
     /// Load the current message history for a session.
@@ -1791,11 +1483,11 @@ impl RuntimeHostAdapter for InProcessRuntime {
         Some(self.storage_store.clone())
     }
 
-    fn connection_resolver(&self) -> Option<Arc<dyn UserConnectionResolver>> {
+    fn connection_resolver(&self, _org_id: i64) -> Option<Arc<dyn UserConnectionResolver>> {
         self.connection_resolver.clone()
     }
 
-    fn session_task_registry(&self) -> Option<Arc<dyn crate::session_task::SessionTaskRegistry>> {
+    fn session_task_registry(&self, _org_id: i64) -> Option<Arc<dyn SessionTaskRegistry>> {
         self.session_task_registry.clone()
     }
 
@@ -1850,6 +1542,10 @@ impl RuntimeHostAdapter for InProcessRuntime {
 
     fn provider_stall_timeout(&self) -> Option<std::time::Duration> {
         self.provider_stall_timeout
+    }
+
+    fn budget_checker(&self, _: i64, _: Option<AgentId>) -> Option<Arc<dyn BudgetChecker>> {
+        self.budget_checker.clone()
     }
 }
 
@@ -1946,7 +1642,7 @@ fn message_from_input_with_id(message_id: MessageId, input: InputMessage) -> Run
         phase_source: None,
         controls: input.controls,
         metadata: input.metadata,
-        external_actor: None,
+        external_actor: input.external_actor,
         created_at: Utc::now(),
     }
 }

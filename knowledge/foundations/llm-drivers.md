@@ -177,10 +177,15 @@ Prompt caching is modeled as request intent on `LlmCallConfig.prompt_cache`. Dri
 Current provider mappings:
 
 - **OpenAI Responses API**: derives a deterministic cache routing key from stable cache-family inputs. On GPT-5.6 and Astra, auto mode uses implicit caching; opt-in explicit strategy caches the developer-instruction prefix and leaves the conversation suffix unwritten. Explicit mode uses full transcript replay to avoid duplicating developer instructions through stateful continuation. Without developer instructions, explicit mode creates no breakpoint. Older models and non-native gateways retain their existing behavior. The [wire implementation](../../crates/contracts/src/openresponses_protocol/mod.rs) owns exact options and breakpoint placement; [OpenAI's cache contract](https://developers.openai.com/api/docs/guides/prompt-caching) owns API semantics.
-- **Anthropic**: adds bounded `cache_control: { type: "ephemeral" }` breakpoints to stable/high-value request sections instead of every text block: the tool array, the system prompt, and the **two** most recent stable messages. The pair on the transcript is what makes caching incremental, the newest marks where this turn's history is written, the one behind it sits where the previous turn already wrote, so each turn reads its predecessor's cache instead of re-paying for the transcript. Four total, Anthropic's per-request maximum. Trailing content the caller marks volatile (`volatile_suffix_len`) and mid-conversation system messages are skipped
+- **Anthropic**: adds bounded `cache_control: { type: "ephemeral" }` breakpoints to stable/high-value request sections instead of every text block: the tool array, the system prompt, and the **two** most recent stable messages. The pair on the transcript is what makes caching incremental, the newest marks where this turn's history is written, the one behind it sits where the previous turn already wrote, so each turn reads its predecessor's cache instead of re-paying for the transcript. Four total, Anthropic's per-request maximum. Trailing content the caller marks volatile (`volatile_suffix_len`) and mid-conversation system messages are skipped. The explicit strategy drops the two message breakpoints, so only the stable prefix (tools, system) is written. Retention `1h` adds `ttl: "1h"` to every breakpoint in one pass after the request is built (`driver_cache.rs`); a uniform TTL keeps Anthropic's longer-before-shorter ordering rule trivially satisfied. The 1 hour share of cache writes (`usage.cache_creation.ephemeral_1h_input_tokens`) is reported as `cache_creation_1h_tokens` and priced at 2x input instead of the profile's 5 minute `cache_write` rate
 - **Gemini**: uses `cachedContent` when the config includes an existing cached-content resource name; otherwise the request remains in implicit/default Gemini behavior
+- **Bedrock Converse**: caches nothing without `cachePoint` blocks and rejects them on models that cannot cache, so only Claude and Nova get them ([`bedrock/cache.rs`](../../crates/drivers/drivers/src/bedrock/cache.rs)). Placement mirrors Anthropic: system, tools (Claude only, Nova does not cache tools), and the two latest messages, dropped under explicit. Retention `1h` sets the point TTL on Claude only. Usage reports cache reads and writes, with the 1 hour share from `cacheDetails`
+- **OpenRouter**: Claude models get a top-level `cache_control` (Anthropic automatic caching, TTL from retention) under the auto strategy; explicit sends nothing because automatic caching cannot leave the conversation out. Other vendors keep their implicit caching
+- **Mistral**: the shared Chat Completions driver sends a `prompt_cache_key` hashed from the cache family and model when caching is on (`with_prompt_cache_key`); off for other OpenAI-compatible hosts, which may reject unknown fields
 
 `llm.generation.metadata.request_options.prompt_cache` records which provider-specific mode the driver actually attempted.
+
+Provider caches match an exact request prefix, so a driver that reorders tools or rewrites an earlier message turns every call into a silent miss. [`prompt_prefix_wire.rs`](../../crates/drivers/drivers/tests/prompt_prefix_wire.rs) pins, per driver, that two consecutive calls of one conversation differ only by entries appended to the conversation array (cache markers aside).
 
 ### Cache Accounting and OpenAI Compatibility
 
@@ -416,8 +421,12 @@ disjoint (drivers normalize inclusive providers at the boundary; see
 - `reasoning_tokens`: Reasoning tokens billed *inside* `completion_tokens`, not
   additive to them, when the provider reports the breakdown
 - `request_body`: The driver's serialized request body, only when the call set
-  `LlmCallConfig::capture_request`. See TM-LLM-039: it carries the whole prompt,
-  so it is off by default and never enabled on a caller's behalf
+  `LlmCallConfig::capture_request`. Off by default for library callers. The
+  runtime's reason step turns it on and stores the body on `llm.generation`, so
+  the session trace can show what the provider was sent; see TM-LLM-039.
+  Captured by the OpenAI Chat Completions, Open Responses (OpenAI, OpenRouter
+  and the other Responses drivers), Anthropic and Gemini drivers; others leave
+  it `None`
 
 ### Turn Collection and Per-Call Limits
 
@@ -1145,7 +1154,7 @@ sign tenant calls with the platform's own AWS identity.
 ### Path 1, Server-Side Tenant Path
 
 All API key resolution for tenant/org-scoped execution flows through
-`crates/server/src/services/provider_resolver.rs`. The contract is **fail-closed**:
+`crates/server/src/services/provider_resolver/mod.rs`. The contract is **fail-closed**:
 
 1. If the provider has an encrypted key in the database and the encryption service
    is available, decrypt and return it. If decryption fails the call returns `Err`
@@ -1314,7 +1323,7 @@ Rules:
 
 This invariant is verified by the unit tests `resolve_provider_api_key_env_key_set_does_not_leak`
 and `resolve_provider_credentials_env_key_set_does_not_leak` in
-`crates/server/src/services/provider_resolver.rs`. The complementary rule, that
+`crates/server/src/services/provider_resolver/mod.rs`. The complementary rule, that
 drivers never read env, is anchored by `EnvCredentialProvider` being the sole
 env reader, with unit tests in `crates/core/src/credential_provider.rs`.
 

@@ -3,12 +3,14 @@
 // This example demonstrates `InProcessRuntimeBuilder::with_plugin_dir`:
 //   - compiles the everruns-core testdata/plugins/microsoft-docs fixture
 //   - builds a runtime with a single session whose agent enables the plugin
-//   - calls `load_context` to inspect the result without executing a real turn
+//   - calls `load_context` to inspect the assembled context
+//   - runs one turn against OpenAI `gpt-6.1-sol` so the model reports what the
+//     plugin contributed (set `OPENAI_API_KEY`)
 //
 // Run with:
-//   cargo run -p everruns --example plugin_from_dir
+//   cargo run -p everruns --features openai --example plugin_from_dir
 
-use everruns_llmsim::LlmSimRuntimeExt;
+use everruns_contracts::model_spec::ModelSpec;
 use std::path::Path;
 
 #[tokio::main]
@@ -22,7 +24,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Load and compile the plugin. Compilation errors surface here.
     let builder = everruns::batteries::runtime_builder()
-        .llm_sim_as_default(everruns_llmsim::LlmSimConfig::fixed("ok"))
+        .provider(everruns::OpenAI::from_env()?.into())
+        .default_model(ModelSpec::on("openai", "gpt-6.1-sol"))
         .with_plugin_dir(plugin_dir)?;
 
     // Retrieve the hydrated capability config so we can attach it to the agent.
@@ -96,6 +99,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .join(", ")
         );
     }
+
+    // Run one real turn: the model sees the plugin's contributions in its
+    // context and can describe them.
+    let turn = runtime
+        .run_text_turn(
+            session_id,
+            "In one or two sentences, name the plugin-provided agents or skills you \
+             have available. Do not call any tools.",
+        )
+        .await?;
+    println!("Agent: {}", turn.response.trim());
+    assert!(turn.success, "turn should succeed");
 
     Ok(())
 }

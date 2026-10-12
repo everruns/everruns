@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
         .instructions("You are concise.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-5.6-terra")
+        .model("gpt-6.1-sol")
         .build()?;
 
     // --- Observe a turn's events -----------------------------------------

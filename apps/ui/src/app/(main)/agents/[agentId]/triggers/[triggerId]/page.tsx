@@ -24,8 +24,9 @@ import {
   type TriggerFormState,
 } from "@/components/agents/trigger-form";
 import {
-  EMPTY_GITHUB_FORM,
   GitHubTriggerForm,
+  githubEventsLabel,
+  githubFormFromParams,
   isGitHubFormValid,
   type GitHubTriggerFormState,
   type GitHubSessionMode,
@@ -61,9 +62,11 @@ export default function AgentTriggerPage({
   const runTrigger = useRunAgentTrigger(agentId);
 
   const [form, setForm] = useState<TriggerFormState>(EMPTY_TRIGGER_FORM);
-  const [githubForm, setGithubForm] = useState<GitHubTriggerFormState>(EMPTY_GITHUB_FORM);
-  const [error, setError] = useState<string | null>(null);
   const searchParams = useSearchParams();
+  const [githubForm, setGithubForm] = useState<GitHubTriggerFormState>(() =>
+    githubFormFromParams(isNew ? searchParams : null),
+  );
+  const [error, setError] = useState<string | null>(null);
 
   const trigger = isNew ? undefined : triggers.find((candidate) => candidate.id === triggerId);
   const returnHref = `/agents/${agentId}?tab=integrations`;
@@ -79,6 +82,7 @@ export default function AgentTriggerPage({
         repositories?: string[];
         session_mode?: GitHubSessionMode;
         message: string;
+        filter?: GitHubTriggerFormState["filter"];
       };
       setGithubForm({
         events: config.events ?? [],
@@ -86,6 +90,7 @@ export default function AgentTriggerPage({
         session_mode: config.session_mode ?? "per_thread",
         message: config.message,
         enabled: trigger.enabled,
+        filter: config.filter ?? null,
       });
       return;
     }
@@ -116,6 +121,7 @@ export default function AgentTriggerPage({
               session_mode: githubForm.session_mode,
               message: githubForm.message,
               enabled: githubForm.enabled,
+              filter: githubForm.filter ?? { conditions: [] },
             },
           });
         } else {
@@ -126,6 +132,7 @@ export default function AgentTriggerPage({
             session_mode: githubForm.session_mode,
             message: githubForm.message,
             enabled: githubForm.enabled,
+            filter: githubForm.filter ?? undefined,
           });
         }
         router.push(returnHref);
@@ -202,7 +209,9 @@ export default function AgentTriggerPage({
         }
         description={
           isGithub ? (
-            <>Pull request events · {agentName}</>
+            <>
+              {githubEventsLabel(githubForm.events)} · {agentName}
+            </>
           ) : (
             // Read-only surfaces always render the cadence, never the raw cron.
             <>
@@ -257,6 +266,12 @@ export default function AgentTriggerPage({
                     agentId={agentId}
                     value={githubForm}
                     onChange={setGithubForm}
+                    // A prefilled new trigger comes back to itself after Connect.
+                    returnTo={
+                      isNew
+                        ? `/agents/${agentId}/triggers/new?${searchParams.toString()}`
+                        : undefined
+                    }
                   />
                 ) : (
                   <TriggerFormFields value={form} onChange={setForm} />

@@ -8,8 +8,9 @@
 // displayed but never evaluated.
 
 use crate::domains::budgets::BudgetService;
+use crate::storage::CreateBudgetRow;
 use crate::storage::StorageBackend;
-use crate::storage::models::*;
+use crate::storage::*;
 use everruns_contracts::typed_id::{AgentId, PrincipalId};
 use everruns_core::EventListener;
 use everruns_core::events::{Event, EventContext, LlmGenerationData, TokenUsage};
@@ -30,7 +31,7 @@ async fn create_session_with_owner(
 ) -> SessionRow {
     db.create_session(CreateSessionRow {
         playground_user_id: None,
-        source: crate::records::SessionSource::Api,
+        source: crate::domains::sessions::record::SessionSource::Api,
         workspace_id: None,
         org_id,
         app_id: None,
@@ -89,6 +90,7 @@ pub(super) async fn seed_agent(db: &Arc<StorageBackend>, name: &str) -> AgentRow
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            communication: Default::default(),
             environments: None,
             is_built_in: false,
         },

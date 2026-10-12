@@ -577,7 +577,14 @@ impl ChatDriver for GeminiChatDriver {
             retry_metadata: retry_metadata.had_retries().then_some(retry_metadata),
             ..Default::default()
         };
-        Ok(convert_gemini_stream(byte_stream, state))
+        let captured_request = config
+            .capture_request
+            .then(|| serde_json::to_value(&request).ok())
+            .flatten();
+        Ok(everruns_contracts::driver_helpers::attach_request_body(
+            convert_gemini_stream(byte_stream, state),
+            captured_request,
+        ))
     }
 
     async fn list_models(
@@ -1454,8 +1461,8 @@ mod tests {
             config.prompt_cache = cache.map(|(enabled, handle)| {
                 everruns_contracts::driver_registry::PromptCacheConfig {
                     enabled,
-                    strategy: Default::default(),
                     gemini_cached_content: handle.map(str::to_string),
+                    ..Default::default()
                 }
             });
             config.parallel_tool_calls = parallel;

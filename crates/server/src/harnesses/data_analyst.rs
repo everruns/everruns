@@ -1,6 +1,6 @@
 //! Data Analyst harness.
 //!
-//! Inherits from Worker Base. Adds SQL databases, OpenUI
+//! Inherits from Bashkit Worker. Adds SQL databases, OpenUI
 //! visualization, task tracking, and a structured analysis pipeline inspired
 //! by OpenAI's Kepler data agent and the open-source Dash project.
 //!
@@ -9,7 +9,7 @@
 //! inherited file tools. There are no dedicated remember/recall tools, and the
 //! `memory` capability only mounts organization memories, so it is not bundled.
 
-use crate::records::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition};
+use crate::domains::harnesses::record::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition};
 pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         "data-analyst",
@@ -18,7 +18,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
         SYSTEM_PROMPT,
     )
     .with_icon("bar-chart")
-    .with_parent_name("worker-base")
+    .with_parent_name("bashkit-worker")
     .with_tags(["data", "sql", "analytics", "built-in"])
     .with_capabilities([
         BuiltInCapabilityDefinition::new("session_sql_database"),

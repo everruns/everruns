@@ -4,7 +4,7 @@ use crate::test_harness::{self, TestServer};
 
 use axum::http::StatusCode;
 use everruns_contracts::typed_id::PrincipalId;
-use everruns_server::org_init;
+use everruns_server::setup::org_init;
 use everruns_server::storage::{CreatePrincipalRow, CreateSessionRow, Database, StorageBackend};
 use serde_json::json;
 use sqlx::PgPool;
@@ -60,7 +60,7 @@ async fn platform_chat_starter_is_unique_per_owner_even_after_archive() {
     let starter = CreateSessionRow {
         playground_user_id: None,
 
-        source: everruns_server::records::SessionSource::Chat,
+        source: everruns_server::domains::sessions::record::SessionSource::Chat,
         workspace_id: None,
         org_id: TEST_ORG_ID,
         app_id: None,

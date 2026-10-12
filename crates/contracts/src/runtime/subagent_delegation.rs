@@ -42,6 +42,10 @@ pub struct PlatformCreateSessionRequest {
     /// set this explicitly; ordinary forks must leave it unset.
     pub budget_root_session_id: Option<SessionId>,
     pub seed: SessionSeedMode,
+    /// Why the tool creates this session, recorded in the session's change
+    /// history. Built-in tools state it themselves so an org that requires
+    /// agents to give reasons does not refuse them.
+    pub reason: String,
 }
 
 /// The narrow set of child-session operations a delegation provider needs.
@@ -64,10 +68,12 @@ pub trait SubagentSessionDelegate: Send + Sync {
     ///
     /// Returns the new participant row's id (a neutral correlation value);
     /// the stored participant record stays behind the host seam (EVE-882).
+    /// `reason` is recorded in the session's change history.
     async fn add_agent_session_participant(
         &self,
         session_id: SessionId,
         agent_id: AgentId,
+        reason: &str,
     ) -> Result<SessionParticipantId>;
 
     /// Create a child session with the given options. Returns the portable
@@ -104,8 +110,14 @@ pub trait SubagentSessionDelegate: Send + Sync {
     }
 
     /// Archive (`true`) or restore (`false`) a session. Coordinators resolve
-    /// and reopen threads through this.
-    async fn set_session_archived(&self, _session_id: SessionId, _archived: bool) -> Result<()> {
+    /// and reopen threads through this. `reason` is recorded in the session's
+    /// change history.
+    async fn set_session_archived(
+        &self,
+        _session_id: SessionId,
+        _archived: bool,
+        _reason: &str,
+    ) -> Result<()> {
         Err(crate::error::AgentLoopError::config(
             "Archiving sessions is not available in this host",
         ))
@@ -218,6 +230,7 @@ pub mod tests {
             &self,
             session_id: SessionId,
             agent_id: AgentId,
+            _reason: &str,
         ) -> Result<SessionParticipantId> {
             if let Ok(mut participants) = self.joined_participants.lock() {
                 participants.push((session_id, Some(agent_id)));

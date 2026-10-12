@@ -22,7 +22,7 @@ use everruns_core::{
     session_services::KeyInfo, session_services::SecretInfo, session_services::SessionStorageStore,
     tool_context::ToolContext,
 };
-use everruns_server::storage::models::{AuditLogQuery, AuditLogRow};
+use everruns_server::storage::{AuditLogQuery, AuditLogRow};
 use everruns_server::storage::{DbSessionTaskRegistry, StorageBackend};
 use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};
@@ -33,7 +33,7 @@ use tokio::time::{Duration, sleep};
 /// Compute the A2A request signature for tests.
 ///
 /// Basestring is `v0:{ts_secs}:{channel_scope}:{body}` (Slack-derived but
-/// scope-bound — see `crates/server/src/api/a2a_signing.rs` for the full
+/// scope-bound — see `crates/server/src/channels/a2a/signing.rs` for the full
 /// rationale). `channel_scope` is the same `{app_id}:{channel_id}` value
 /// the server uses to bind the signature to the target endpoint.
 fn a2a_sign(secret: &str, ts_secs: i64, channel_scope: &str, body: &[u8]) -> String {
@@ -965,7 +965,7 @@ async fn seed_structured_result(server: &TestServer, session_id: &str, result: V
     use everruns_core::session_task::{
         CreateSessionTask, SessionTaskState, SessionTaskUpdate, new_session_task, task_result_path,
     };
-    use everruns_server::storage::models::CreateSessionFileRow;
+    use everruns_server::storage::CreateSessionFileRow;
 
     let sid = session_id.parse::<SessionId>().expect("valid session id");
     let session = server
@@ -1030,7 +1030,7 @@ async fn seed_non_schema_result_path(server: &TestServer, session_id: &str, resu
     use everruns_core::session_task::{
         CreateSessionTask, SessionTaskState, SessionTaskUpdate, new_session_task,
     };
-    use everruns_server::storage::models::CreateSessionFileRow;
+    use everruns_server::storage::CreateSessionFileRow;
 
     let sid = session_id.parse::<SessionId>().expect("valid session id");
     let session = server

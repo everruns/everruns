@@ -274,7 +274,7 @@ describe("Thread surface", () => {
     );
     expect(screen.getByText("chat-panel:Platform Chat")).toBeInTheDocument();
     const openSession = screen.getByRole("link", { name: /Open session/ });
-    expect(openSession).toHaveAttribute("href", "/sessions/sess_1/transcript");
+    expect(openSession).toHaveAttribute("href", "/sessions/sess_1/trace");
     // Toolbar siblings must share the sm control height (h-7), not a taller
     // hand-padded link.
     expect(openSession).toHaveClass("h-7");

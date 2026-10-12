@@ -9,9 +9,9 @@ use super::types::{
 };
 use super::{VIRTUAL_USER_DANGEROUS, VIRTUAL_USER_MANAGE, VIRTUAL_USER_VIEW};
 use crate::domains::common::*;
+use crate::domains::users::PrincipalService;
+use crate::domains::users::record::PrincipalStatus;
 use crate::kernel_imports::{VirtualUser, contracts::typed_id::VirtualUserId};
-use crate::records::PrincipalStatus;
-use crate::services::PrincipalService;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -36,6 +36,7 @@ impl CommandSchema for CreateVirtualUser {
     method = "POST",
     path = "/v1/virtual-users",
     policy = VIRTUAL_USER_MANAGE,
+    cli = CliRoute::new(&["virtual-users"], "create").with_examples(&[CliExample::new("Create a service account for unattended agent runs", "everruns virtual-users create --name ops-bot --usage service --description 'Runs the nightly triage' --reason 'Dedicated identity for nightly triage'",)]),
 )]
 impl Command for CreateVirtualUser {
     type Output = VirtualUser;
@@ -87,7 +88,7 @@ impl Command for CreateVirtualUser {
 pub struct ListVirtualUsers {
     /// Immutable account purpose filter.
     #[schema(example = "service")]
-    pub usage: Option<crate::records::VirtualUserUsage>,
+    pub usage: Option<crate::domains::virtual_users::record::VirtualUserUsage>,
     /// Search runtime names and descriptions.
     #[schema(example = "Alex")]
     pub search: Option<String>,
@@ -112,6 +113,7 @@ pub struct ListVirtualUsers {
     method = "GET",
     path = "/v1/virtual-users",
     policy = VIRTUAL_USER_VIEW,
+    cli = CliRoute::new(&["virtual-users"], "list").with_examples(&[CliExample::new("Find service accounts by name", "everruns virtual-users list --usage service --search ops",)]),
 )]
 impl Command for ListVirtualUsers {
     type Output = Paginated<VirtualUser>;
@@ -155,7 +157,7 @@ impl Command for ListVirtualUsers {
 /// Get a single virtual user by ID.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetVirtualUser {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -167,6 +169,7 @@ pub struct GetVirtualUser {
     path = "/v1/virtual-users/{identity_id}",
     policy = VIRTUAL_USER_VIEW,
     positional = "id",
+    cli = CliRoute::new(&["virtual-users"], "get").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Show a virtual user's profile and status", "everruns virtual-users get identity_01h9",)]),
 )]
 impl Command for GetVirtualUser {
     type Output = VirtualUser;
@@ -190,7 +193,7 @@ impl Command for GetVirtualUser {
 /// Update a virtual user. Only provided fields are changed.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateVirtualUserCmd {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     #[serde(flatten)]
     pub req: UpdateVirtualUserRequest,
@@ -204,6 +207,7 @@ pub struct UpdateVirtualUserCmd {
     path = "/v1/virtual-users/{identity_id}",
     policy = VIRTUAL_USER_MANAGE,
     positional = "id",
+    cli = CliRoute::new(&["virtual-users"], "update").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Change a virtual user's display name", "everruns virtual-users update identity_01h9 --name triage-bot --reason 'Match the team naming'",)]),
 )]
 impl Command for UpdateVirtualUserCmd {
     type Output = VirtualUser;
@@ -297,7 +301,7 @@ async fn ensure_no_live_references(
 /// Archive a virtual user (soft delete).
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteVirtualUser {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -309,6 +313,7 @@ pub struct DeleteVirtualUser {
     path = "/v1/virtual-users/{identity_id}",
     policy = VIRTUAL_USER_MANAGE,
     positional = "id",
+    cli = CliRoute::new(&["virtual-users"], "delete").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Archive a virtual user that is no longer needed; it can be restored", "everruns virtual-users delete identity_01h9 --reason 'Integration decommissioned'",)]),
 )]
 impl Command for DeleteVirtualUser {
     type Output = serde_json::Value;
@@ -344,7 +349,7 @@ impl Command for DeleteVirtualUser {
 /// Permanently delete a virtual user.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DestroyVirtualUser {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -356,7 +361,7 @@ pub struct DestroyVirtualUser {
     path = "/v1/virtual-users/{identity_id}/delete",
     policy = VIRTUAL_USER_DANGEROUS,
     positional = "id",
-    cli = CliRoute::new(&["virtual-users"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove a virtual user", "everruns virtual-users destroy vu_01h9 --reason 'Integration decommissioned'",)]),
+    cli = CliRoute::new(&["virtual-users"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove a virtual user", "everruns virtual-users destroy identity_01h9 --reason 'Integration decommissioned'",)]),
 )]
 impl Command for DestroyVirtualUser {
     type Output = serde_json::Value;

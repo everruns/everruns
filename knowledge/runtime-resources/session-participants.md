@@ -20,7 +20,7 @@ driving the conversation.
 This spec captures the durable model and its invariants. Field-level shapes,
 enum variants, and SQL live in code, see `crates/contracts/src/runtime/session.rs`
 (`SessionParticipant`, `SessionParticipantKind`, `SessionParticipantRole`), the
-command layer in `crates/server/src/domains/sessions/commands.rs`, and migrations
+command layer in `crates/server/src/domains/sessions/commands/mod.rs`, and migrations
 `095_session_participants.sql` / `098_session_participant_user_identity.sql` /
 `112_session_participant_display_name.sql`.
 
@@ -66,7 +66,7 @@ Participant ids use the `part_` prefix (see `knowledge/foundations/id-schema.md`
 ## API
 
 Participants are managed under a session
-(`crates/server/src/api/sessions.rs`):
+(`crates/server/src/api/sessions/mod.rs`):
 
 - `GET /v1/sessions/{session_id}/participants`, full participant history
   (active and left), ordered by `joined_at`. Policy `SESSION_VIEW`.

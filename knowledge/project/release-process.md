@@ -28,6 +28,10 @@ changelog. CI renders the card through the docs image toolchain for review. At t
 regenerates the PNG from the trusted commit and attaches it to the GitHub Release. The card is presentation
 metadata, not a second release-notes source: it cannot introduce claims absent from `CHANGELOG.md`.
 
+Each release also publishes a release entry in the public changelog, with the card, and links the
+changelog entries of the features it carries from its `CHANGELOG.md` highlights; feature entries
+get the version stamped. See [Public Changelog](../docs/changelog.md#releases).
+
 Release readiness also includes the integration backstops that are intentionally kept off the `pull_request` hot path. Before cutting a release PR or merging it, review the latest push-only live integration workflow runs on `main` and the latest `.github/workflows/integration-live-sweep.yml` result. Do not release through unresolved failures there unless the failure is understood, documented, and explicitly accepted.
 
 Everruns ships **one version for the whole platform** (see [Crate Publishing](#crate-publishing)). The product version and every crates.io package move together, so release preparation carries no per-crate audit: bumping `workspace.package.version` releases the entire publish set. The only crate-level decision a release still makes is recording any crate **retired or absorbed** this cycle, whose orphaned package consumers must migrate off.
@@ -168,7 +172,7 @@ type: see [`LlmErrorKind`](../../crates/contracts/src/error.rs), the two
 [`CapabilityStatus`](../../crates/contracts/src/runtime/capability_types.rs),
 [`ModelCost`/`CostTier`](../../crates/contracts/src/model_profile_data/types.rs),
 [`LlmCallConfig`/`ProviderConfig`/`LlmCompletionMetadata`/`LlmStreamEvent`/`LlmContentPart`](../../crates/contracts/src/driver_registry.rs), and
-[`AgentAction`](../../crates/server/src/records/audit.rs), which grows a variant whenever an
+[`AgentAction`](../../crates/server/src/domains/audit_logs/record.rs), which grows a variant whenever an
 audited agent action is added, and whose two soft-approval variants were classified breaking
 under the previous scheme for a change no consumer could observe.
 Two consequences are deliberate:
@@ -316,7 +320,7 @@ build against the new version:
 - `Cargo.lock` - Run `cargo generate-lockfile`
 - `crates/everruns/tests/fixtures/external-consumer/Cargo.lock`,
   `evals/generic/Cargo.lock`, `evals/guardrail-calibration/Cargo.lock`,
-  `evals/platform-capability/Cargo.lock`,
+  `evals/platform-capability/Cargo.lock`, `evals/tools-in-shell/Cargo.lock`,
   `examples/weekend-concierge-host/Cargo.lock` - Run `cargo generate-lockfile` in each
 - `apps/ui/pnpm-lock.yaml` - Run `pnpm install --lockfile-only` in `apps/ui` to regenerate
 - `apps/docs/pnpm-lock.yaml` - Run `pnpm install --lockfile-only` in `apps/docs` to regenerate
@@ -381,7 +385,7 @@ After all CLI binaries are built and uploaded, the `Publish CLI Binaries` workfl
 | Version tag (`v*`) / `workflow_dispatch` | `linux/amd64` + `linux/arm64` | `vX.Y.Z`, `latest`, SHA |
 | Pull request (Docker-relevant paths only) | `linux/amd64` | SHA |
 
-- **`latest`**: Only updated on version tags. Safe for production use.
+- **`latest`**: Updated on version-tag builds. Recovery of an older published release does not overwrite the current release channel.
 - **SHA tags**: Generated on every build for traceability (short + full SHA).
 - **No `:development` tag and no per-main-commit images.** Docker images are a release artifact, not a per-commit artifact. Pin consumers to a released version (`vX.Y.Z` or `latest`).
 
@@ -392,8 +396,23 @@ Docker images are expensive to build, the slow path is `linux/arm64` via QEMU cr
 The current trigger shape (`docker-publish.yml`):
 
 1. **Release-only publish.** Multi-arch images are built only on version tag pushes and the `workflow_dispatch` the Release workflow fires after creating the tag. The slow arm64 path runs a handful of times per week instead of on every merge.
-2. **Path-filtered PR validation.** The workflow still runs on PRs, but only when Docker-relevant paths change (`docker/**`, `apps/ui/Dockerfile`, `apps/ui/.dockerignore`, `.dockerignore`, `.github/workflows/docker-publish.yml`). Rust/UI source changes are not validated per-PR; a broken Dockerfile will be caught by this gate, a source regression that only manifests inside the image is caught at release-tag time.
+2. **Path-filtered PR validation.** The workflow still runs on PRs, but only when Docker-relevant paths change (`docker/**`, `apps/ui/Dockerfile`, `apps/ui/.dockerignore`, `.dockerignore`, `.github/workflows/docker-publish.yml`, and its source resolver/tests). Rust/UI source changes are not validated per-PR; a broken Dockerfile will be caught by this gate, a source regression that only manifests inside the image is caught at release-tag time.
 3. **No rolling main-branch tag.** Dropping `:development` removes the hidden-drift problem where `:development` could silently lag main (e.g., under a paths-filter) or produce images for every commit (expensive). Consumers that need a mainline image should build locally or use a released tag.
+
+#### Recovering a failed image publication
+
+Dispatch Docker Publish from trusted `main` with the existing release tag to use a
+repaired pipeline without moving the release tag. The resolver requires a published
+GitHub release, checks the tagged workspace version, and passes its exact commit to
+both image jobs. Image revision labels and SHA tags identify that release commit,
+not the workflow's main-branch commit. Arbitrary branch dispatches and mismatched tag
+refs are rejected before publication jobs start. Older releases retain their version
+and SHA tags without updating `latest`.
+
+The shared Rust builder bounds BuildKit solver concurrency so the two architectures
+do not compile simultaneously on one hosted runner. The recovery command and source
+validation live in [Docker Publish](../../.github/workflows/docker-publish.yml) and
+[its resolver](../../scripts/docker-release-source.py).
 
 When a Dockerfile change is the *point* of a PR, the workflow runs and validates the amd64 build before merge. When the Dockerfile has not changed, the workflow is skipped entirely.
 

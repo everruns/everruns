@@ -100,6 +100,14 @@ impl WorkerAppBuilder {
         )
         .await
         .context("Failed to connect worker adapters")?;
+        // Granted org allowlist extensions, fetched from the control plane per
+        // org and cached at the egress boundary (TM-AGENT-036).
+        let egress_client = adapters.client();
+        crate::host::install_runtime_org_egress_allowlist(Arc::new(
+            crate::internal_commands::CommandOrgEgressAllowlist::new(move |org_id| {
+                crate::grpc_adapters::GrpcAdapter::new_org_scoped(egress_client.clone(), org_id)
+            }),
+        ));
         let mut worker = TaskWorker::new(config, store, adapters);
 
         // Decision: SIGTERM (what Docker and Kubernetes send) and Ctrl+C

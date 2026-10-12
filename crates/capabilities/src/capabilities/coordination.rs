@@ -10,7 +10,7 @@
 //   A thread runs at most one open assignment at a time.
 // Decision: a thread finishes an assignment explicitly with
 //   `complete_assignment`. A turn that ends without it is not a result: the
-//   server's thread turn listener (crates/server/src/services/coordination.rs)
+//   server's thread turn listener (crates/server/src/listeners/coordination/mod.rs)
 //   flags the assignment as needing attention, which wakes the coordinator.
 // Decision: assignment tasks carry no heartbeat and no watcher. The reaper
 //   ignores tasks without a heartbeat, so a thread can wait on the person for
@@ -774,7 +774,19 @@ async fn start_thread(
                 "This agent is not configured to work threads itself. Pass an allowed agent id as worker.",
             ));
         }
-        (coordinator.harness_id, coordinator.agent_id)
+        // The thread runs on the agent's current harness, not the coordinator
+        // session's: a long-lived Chat can predate a harness move (migration
+        // 165 left old Chats on `generic`), and session creation validates
+        // against the agent's binding.
+        let harness_id = match coordinator.agent_id {
+            Some(agent_id) => delegate
+                .get_agent_harness_id(agent_id)
+                .await
+                .map_err(ToolExecutionResult::internal_error)?
+                .unwrap_or(coordinator.harness_id),
+            None => coordinator.harness_id,
+        };
+        (harness_id, coordinator.agent_id)
     } else {
         let agent_id: AgentId = worker.parse().map_err(|_| {
             ToolExecutionResult::tool_error(format!(
@@ -819,6 +831,10 @@ async fn start_thread(
             forked_from_session_id: None,
             budget_root_session_id: None,
             seed: SessionSeedMode::Fresh,
+            reason: crate::platform_store::tool_change_reason(
+                "start_thread",
+                &format!("start thread \"{title}\""),
+            ),
         })
         .await
         .map_err(ToolExecutionResult::internal_error)?;
@@ -997,7 +1013,13 @@ async fn reopen(context: &ToolContext, thread: SessionId, latest: &SessionTask) 
             .await;
     }
     if let Some(delegate) = context.subagent_delegate.as_ref()
-        && let Err(error) = delegate.set_session_archived(thread, false).await
+        && let Err(error) = delegate
+            .set_session_archived(
+                thread,
+                false,
+                &crate::platform_store::tool_change_reason("coordination", "reopen thread"),
+            )
+            .await
     {
         tracing::debug!(%thread, %error, "coordination: unarchive failed");
     }
@@ -1246,7 +1268,14 @@ async fn resolve_thread(
         .await
         .map_err(ToolExecutionResult::internal_error)?;
     let archived = match context.subagent_delegate.as_ref() {
-        Some(delegate) => delegate.set_session_archived(thread, true).await.is_ok(),
+        Some(delegate) => delegate
+            .set_session_archived(
+                thread,
+                true,
+                &crate::platform_store::tool_change_reason("resolve_thread", "resolve thread"),
+            )
+            .await
+            .is_ok(),
         None => false,
     };
     Ok(ToolExecutionResult::success(json!({

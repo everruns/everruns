@@ -9,9 +9,8 @@ use crate::session_row_fixture::base_session_row;
 use crate::test_harness;
 use axum::http::StatusCode;
 use everruns_contracts::typed_id::{PrincipalId, SessionId};
-use everruns_server::storage::models::{
-    CreateOrganizationRow, CreatePrincipalRow, CreateSessionRow, UpsertLeasedResourceRow,
-};
+use everruns_server::storage::UpsertLeasedResourceRow;
+use everruns_server::storage::{CreateOrganizationRow, CreatePrincipalRow, CreateSessionRow};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 use uuid::Uuid;
@@ -24,7 +23,7 @@ async fn seed_foreign_voice_session(server: &TestServer) -> SessionId {
     let org = server
         .db
         .create_organization(CreateOrganizationRow {
-            public_id: everruns_server::records::generate_org_public_id(),
+            public_id: everruns_server::domains::organizations::record::generate_org_public_id(),
             name: "Foreign voice org".to_string(),
             created_by: None,
         })
@@ -250,6 +249,15 @@ async fn test_voice_channel_config_is_validated_and_normalized() {
         )
         .await;
     assert_eq!(with_auth.status(), StatusCode::BAD_REQUEST);
+    // Cascaded channels need an audio transport the server does not have yet.
+    let cascaded = server
+        .post(
+            &channels,
+            json!({ "channel_type": "voice", "channel_config": { "mode": "cascaded" } }),
+        )
+        .await;
+    assert_eq!(cascaded.status(), StatusCode::BAD_REQUEST);
+    assert!(cascaded.text().contains("delegated"), "{}", cascaded.text());
 
     let channel: Value = server
         .post(

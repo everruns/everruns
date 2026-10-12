@@ -379,4 +379,48 @@ describe("buildToolActivityGroups", () => {
     expect(row?.arguments).toEqual({ command: "rm -rf build" });
     expect(row?.result?.executed_arguments).toEqual({ command: "rm -rf ./build" });
   });
+
+  it("lists a script's tool calls under the shell call that ran them", () => {
+    const nested = (id: string, call_id: string, command: string, status: string, seq: number) =>
+      event(
+        id,
+        "tool.nested_call",
+        "exec-1",
+        {
+          parent_tool_call_id: "bash-1",
+          call_id,
+          tool_name: "x",
+          command,
+          status,
+          input_preview: "{}",
+        },
+        seq,
+      );
+    const built = buildToolActivityGroups(
+      [
+        event(
+          "start",
+          "tool.started",
+          "exec-1",
+          {
+            tool_call: { id: "bash-1", name: "bash", arguments: {} },
+            narration: "Run a script",
+          },
+          1,
+        ),
+        nested("n1", "bash-1:tools:0:a", "tools github list-pulls", "completed", 2),
+        nested("n2", "bash-1:tools:1:b", "tools github delete-branch", "needs_approval", 3),
+        nested("n3", "bash-1:tools:2:c", "tools web-fetch", "failed", 4),
+      ],
+      "Working",
+    );
+    const rows = built.byAnchorEventId.get("start")?.rows.map((row) => [row.label, row.state]);
+    expect(rows).toEqual([
+      ["Run a script", "running"],
+      ["tools github list-pulls", "completed"],
+      ["tools github delete-branch", "waiting"],
+      ["tools web-fetch", "error"],
+    ]);
+    expect(built.groupedEventIds.has("n2")).toBe(true);
+  });
 });

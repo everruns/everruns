@@ -14,19 +14,16 @@
 // Design: knowledge/execution/change-reasons-and-manager-context.md.
 
 #[cfg(test)]
-#[path = "tests.rs"]
 mod command_tests;
 pub mod commands;
 pub mod context;
 #[cfg(test)]
-#[path = "context_tests.rs"]
 mod context_tests;
 pub mod intent;
 pub mod registry;
 pub mod rest;
 pub mod revisions;
 #[cfg(test)]
-#[path = "revisions_tests.rs"]
 mod revisions_tests;
 pub mod snapshot;
 

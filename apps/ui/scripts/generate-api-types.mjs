@@ -15,7 +15,9 @@ const schemaTypesPath = resolve(uiRoot, "src/lib/api/schema-types.ts");
 // from schema-types.ts, which would make `export *` in types.ts ambiguous.
 const legacyTypesPaths = [
   "legacy-api-types.ts",
+  "connection-provider-types.ts",
   "agent-types.ts",
+  "agent-request-types.ts",
   "agent-preview-types.ts",
   "agent-mcp-types.ts",
   "mcp-server-types.ts",

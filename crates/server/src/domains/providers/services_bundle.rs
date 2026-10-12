@@ -6,9 +6,9 @@
 // cache provider/model writes invalidate is the one the runtime reads
 // (EVE-1233, EVE-1234).
 
-use crate::domains::models::ModelService;
+use crate::domains::models::{ModelService, ModelSyncService};
 use crate::kernel_imports::contracts::driver_registry::DriverRegistry;
-use crate::services::{ModelSyncService, ProviderResolverService};
+use crate::services::ProviderResolverService;
 use crate::storage::{EncryptionService, StorageBackend};
 use std::sync::Arc;
 

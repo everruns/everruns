@@ -4,6 +4,8 @@
 //! The `mai` module of `everruns-drivers` is part of the [Everruns](https://everruns.com) ecosystem. It
 //! implements the [`ChatDriver`] contract from `everruns-contracts` and registers a
 //! Microsoft MAI provider (e.g. `mai-code-1-flash`) into a [`DriverRegistry`].
+//! The same provider answers calibrated decisions on Microsoft's decision
+//! models (`Microsoft-Decision-1`) through [`MaiDecisionDriver`].
 //!
 //! Microsoft MAI models are served via [Azure AI Foundry](https://ai.azure.com)
 //! behind an OpenAI-compatible Chat Completions API, so [`MaiChatDriver`] wraps
@@ -35,11 +37,13 @@
 //! [`ProviderAuth`]: everruns_contracts::ProviderAuth
 
 mod auth;
+mod decisions;
 mod driver;
 
 pub use auth::{
     DEFAULT_ENTRA_AUTHORITY, DEFAULT_ENTRA_SCOPE, EntraOAuthConfig, EntraOAuthProvider, MaiAuth,
 };
+pub use decisions::{MaiDecisionDriver, decisions_url};
 pub use driver::{MaiChatDriver, descriptor, from_env, provider, register_driver};
 
 // Re-export core types for convenience.

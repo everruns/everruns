@@ -127,7 +127,7 @@ fn every_utoipa_handler_is_registered_in_apidoc() {
         "Handlers decorated with #[utoipa::path] but not registered in \
          openapi::ApiDoc — agents reading the OpenAPI spec cannot see them. \
          Either add them to the `paths(...)` block in \
-         crates/server/src/openapi.rs, or remove the unused annotation. \
+         crates/server/src/openapi/mod.rs, or remove the unused annotation. \
          Missing: {missing:?}"
     );
 }

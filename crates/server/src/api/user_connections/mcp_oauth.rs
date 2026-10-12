@@ -41,6 +41,26 @@ pub(super) struct OAuthClientRegistration {
 pub(super) async fn ensure_mcp_oauth_registration(
     state: &AppState,
     row: &crate::storage::McpServerRow,
+    settings: McpServerSettings,
+    provider: &str,
+) -> Result<
+    (
+        OAuthServerMetadata,
+        OAuthClientRegistration,
+        McpServerSettings,
+    ),
+    (StatusCode, String),
+> {
+    let egress = state.mcp_service.egress_service();
+    ensure_mcp_oauth_registration_via(state, egress.as_ref(), row, settings, provider).await
+}
+
+/// [`ensure_mcp_oauth_registration`] over an explicit egress, so the catalog
+/// connection check can see which host a failed request went to.
+pub(super) async fn ensure_mcp_oauth_registration_via(
+    state: &AppState,
+    egress: &dyn EgressService,
+    row: &crate::storage::McpServerRow,
     mut settings: McpServerSettings,
     provider: &str,
 ) -> Result<
@@ -57,10 +77,7 @@ pub(super) async fn ensure_mcp_oauth_registration(
     let needs_server_discovery =
         oauth.authorization_endpoint.is_none() || oauth.token_endpoint.is_none();
     let resource_metadata = if needs_server_discovery {
-        Some(
-            discover_resource_metadata(state.mcp_service.egress_service().as_ref(), &row.url)
-                .await?,
-        )
+        Some(discover_resource_metadata(egress, &row.url).await?)
     } else {
         None
     };
@@ -104,9 +121,7 @@ pub(super) async fn ensure_mcp_oauth_registration(
                 format!("OAuth issuer blocked: {e}"),
             )
         })?;
-        let metadata =
-            discover_oauth_server_metadata(state.mcp_service.egress_service().as_ref(), &issuer)
-                .await?;
+        let metadata = discover_oauth_server_metadata(egress, &issuer).await?;
         oauth.issuer = metadata.issuer.clone().or(Some(issuer));
         oauth.authorization_endpoint = Some(metadata.authorization_endpoint.clone());
         oauth.token_endpoint = Some(metadata.token_endpoint.clone());
@@ -136,7 +151,7 @@ pub(super) async fn ensure_mcp_oauth_registration(
                 .to_string(),
         ))?;
         let registration = register_oauth_client(
-            state.mcp_service.egress_service().as_ref(),
+            egress,
             registration_endpoint,
             &mcp_oauth_redirect_uri(&state.auth_config, provider),
         )

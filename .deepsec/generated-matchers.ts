@@ -7,7 +7,7 @@ const specs = [
     "description": "Identifies Everruns' Slack HMAC request-signature verification boundary.",
     "noiseTier": "normal",
     "filePatterns": [
-      "crates/server/src/api/slack_events/api.rs"
+      "crates/server/src/channels/slack/events/api.rs"
     ],
     "requires": {
       "tech": [
@@ -68,10 +68,10 @@ const specs = [
     "description": "Identifies server functions that register Everruns' long-running periodic background tasks.",
     "noiseTier": "normal",
     "filePatterns": [
-      "crates/server/src/session_scheduler.rs",
-      "crates/server/src/tool_result_timeout.rs",
-      "crates/server/src/event_retention.rs",
-      "crates/server/src/blob_gc.rs",
+      "crates/server/src/background/session_scheduler.rs",
+      "crates/server/src/background/tool_result_timeout.rs",
+      "crates/server/src/background/event_retention.rs",
+      "crates/server/src/background/blob_gc.rs",
       "crates/server/src/domains/reporting/background.rs"
     ],
     "requires": {

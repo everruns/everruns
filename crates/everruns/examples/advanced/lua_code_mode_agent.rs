@@ -6,51 +6,38 @@
 //! them as ordinary tool calls — instead it drives them from inside a single
 //! `lua` script via the code-mode `tools.<name>(args)` table.
 //!
-//! The model is simulated (`LlmSim`) so the example is deterministic and needs
-//! no API key — it doubles as a CI smoke test. The simulated model emits one
-//! `lua` tool call that orchestrates two hidden math tools and writes the result
-//! to the workspace, then a final answer.
+//! The model is OpenAI `gpt-6.1-sol` (set `OPENAI_API_KEY`). Given an
+//! arithmetic task, it writes a `lua` script that orchestrates the hidden math
+//! tools and saves the result to the workspace.
 //!
 //! Run it:
 //!
 //! ```text
-//! cargo run -p everruns --example lua_code_mode_agent --features lua
+//! cargo run -p everruns --example lua_code_mode_agent --features "lua openai"
 //! ```
 //!
-//! Without the `lua` feature the host does not link the Lua integration, so the
-//! example is gated behind it.
+//! Without the `lua` and `openai` features the host does not link the Lua
+//! integration or the OpenAI driver, so the example is gated behind them.
 
-use everruns_core::host::HostComposition;
-#[cfg(not(feature = "lua"))]
+#[cfg(not(all(feature = "lua", feature = "openai")))]
 fn main() {
     eprintln!(
-        "This example requires the `lua` feature:\n  \
-         cargo run -p everruns --example lua_code_mode_agent --features lua"
+        "This example requires the `lua` and `openai` features:\n  \
+         cargo run -p everruns --example lua_code_mode_agent --features \"lua openai\""
     );
 }
 
-#[cfg(feature = "lua")]
+#[cfg(all(feature = "lua", feature = "openai"))]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use everruns_contracts::driver_registry::DriverRegistry;
     use everruns_contracts::model_spec::ModelSpec;
-    use everruns_contracts::provider::DriverId;
     use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
     use everruns_core::CapabilityRegistry;
+    use everruns_core::host::HostComposition;
     use everruns_core::host::{AgentBuilder, HarnessBuilder, SessionBuilder};
     use everruns_integrations::lua::{LuaCapability, LuaCodeModeCapability};
-    use everruns_llmsim::LlmSimRuntimeExt;
-    use everruns_llmsim::{LlmSimConfig, SimToolCall, SimTurn};
     use everruns_test_support::TestMathCapability;
-
-    // The math tools the agent will orchestrate through Lua. `tools.multiply` /
-    // `tools.add` etc. become available inside the script.
-    const SCRIPT: &str = r#"
-        local product = tools.multiply({ a = 6, b = 7 })   -- 42
-        local total = tools.add({ a = product.result, b = 8 }) -- 50
-        fs.write("/workspace/out.txt", string.format("%d", total.result))
-        return total.result
-    "#;
 
     // Build the platform: only the math + lua capabilities are registered.
     // `FileSystemCapability` (`session_file_system`) is deliberately NOT
@@ -66,20 +53,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     caps.register(LuaCodeModeCapability);
     caps.register(TestMathCapability);
 
-    let mut drivers = DriverRegistry::new();
-    everruns_llmsim::register_driver(&mut drivers);
-    let platform = HostComposition::new(caps, drivers);
-
-    // Simulated model: turn 1 calls `lua` with the orchestration script; turn 2
-    // returns the final answer. No real API call.
-    let sim = LlmSimConfig::scripted(vec![
-        SimTurn::ToolCalls(vec![SimToolCall {
-            name: "lua".to_string(),
-            arguments: serde_json::json!({ "script": SCRIPT }),
-            id: None,
-        }]),
-        SimTurn::Assistant("The result is 50 (6 * 7 + 8).".to_string()),
-    ]);
+    // The OpenAI provider below carries its own driver, so the registry stays
+    // empty.
+    let platform = HostComposition::new(caps, DriverRegistry::new());
 
     let harness_id = HarnessId::new();
     let agent_id = AgentId::new();
@@ -96,10 +72,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .capability("test_math")
     .build();
 
-    let agent = AgentBuilder::new("code-mode-agent", "Complete the task, then stop.")
-        .id(agent_id)
-        .max_iterations(6)
-        .build();
+    let agent = AgentBuilder::new(
+        "code-mode-agent",
+        "Do arithmetic with the math tools, never in your head. Each math tool \
+         returns a table whose `result` field holds the number. Do the whole task \
+         in one `lua` script; if it fails, read the error and retry. Then stop.",
+    )
+    .id(agent_id)
+    .max_iterations(6)
+    .build();
 
     let session = SessionBuilder::new(harness_id)
         .id(session_id)
@@ -108,11 +89,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let runtime = everruns::batteries::runtime_builder()
         .host_composition(platform)
-        .llm_sim_as_default(sim)
-        .default_model(ModelSpec::on(
-            (DriverId::LlmSim).as_str(),
-            "llmsim-model".to_string(),
-        ))
+        .provider(everruns::OpenAI::from_env()?.into())
+        .default_model(ModelSpec::on("openai", "gpt-6.1-sol"))
         .harness(harness)
         .agent(agent)
         .session(session)
@@ -151,8 +129,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 2. Run the turn. The agent orchestrates the hidden tools inside Lua.
     let turn = runtime
-        .run_text_turn(session_id, "Compute 6 * 7 + 8.")
+        .run_text_turn(
+            session_id,
+            "Compute 6 * 7 + 8 and save just the number to /workspace/out.txt.",
+        )
         .await?;
+    println!("Agent: {}", turn.response.trim());
     assert!(turn.success, "turn should succeed");
 
     // 3. The model never called a math tool directly — only `lua`.
@@ -167,6 +149,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert!(
         direct_tool_names.iter().all(|n| n == "lua"),
         "the model must only call `lua` directly, got {direct_tool_names:?}",
+    );
+    assert!(
+        !direct_tool_names.is_empty(),
+        "the model should have used the `lua` tool"
     );
 
     // 4. The Lua script produced the answer in the workspace.

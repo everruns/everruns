@@ -24,12 +24,13 @@ Routing is intentionally split:
 - MCP OAuth lives at `/oauth/*` (authorize, token, register)
 - MCP JSON-RPC lives at `/mcp`
 - OAuth discovery metadata lives at `/.well-known/oauth-authorization-server`
-- Protected-resource metadata lives at `/.well-known/oauth-protected-resource/mcp` (RFC 9728 §3.1 path-derived for the `/mcp` resource)
+- Protected-resource metadata lives at `/.well-known/oauth-protected-resource/mcp` (RFC 9728 §3.1 path-derived for the `/mcp` resource). The bare `/.well-known/oauth-protected-resource` repeats it, because `/mcp` is the origin's only protected resource and agent-readiness scanners and some clients probe the root path first
+- An agent that only knows the origin starts at `/llms.txt` (also what `GET /` returns for `Accept: text/markdown`, and what the `Link` header on `/` points to), then `/auth.md` and the RFC 9727 `/.well-known/api-catalog`. All are generated from live config in [`agent_discovery`](../../crates/server/src/api/agent_discovery.rs); the reverse proxy routes them, see `docs/sre/runbooks/authentication.md`
 - The MCP server card lives at `/.well-known/mcp/server-card.json`. Its `version` and `serverInfo.version` are the running server's package version, the same value `initialize` and `server/discover` report and the same value a release tags. There is no separately edited version string. See [`MCP_SERVER_VERSION`](../../crates/server/src/api/mcp_endpoint/mod.rs).
 
 Everruns also acts as an **MCP client** (connecting to remote MCP servers). That side is covered in [`knowledge/integrations/mcp-servers.md`](mcp-servers.md), with the in-process runtime path (shared core MCP module, HTTP + optional stdio transport, pluggable auth) in [`knowledge/integrations/runtime-mcp.md`](runtime-mcp.md). The client speaks the legacy (`2025-03-26`), current (`2025-06-18`), and 2026 stateless RC (`2026-07-28`) eras, auto-negotiated per server, see [`knowledge/integrations/mcp-servers.md`](mcp-servers.md) ("Multi-era protocol support").
 
-> **Server-side RC adoption (follow-up).** This document describes Everruns' own `/mcp` *server* endpoint, which today negotiates `2025-06-18`/`2025-03-26`. Adopting the 2026 stateless RC on the server side, accepting session-less `_meta`-bearing requests, emitting `ttlMs`/`cacheScope` cache directives, and honoring the routable headers, is a separate workstream from the client-side multi-era support already shipped. When taken on, mind the `cacheScope` tenant-isolation requirement (per-user vs shared tool caches) given the per-user OAuth model below.
+This document describes Everruns' own `/mcp` *server* endpoint, which negotiates `2026-07-28`, `2025-11-25`, `2025-06-18`, and `2025-03-26` (see `SUPPORTED_PROTOCOL_VERSIONS` in [`mcp_endpoint`](../../crates/server/src/api/mcp_endpoint/mod.rs)). On `2026-07-28` complete results carry `ttlMs`/`cacheScope` cache hints ([`caching.rs`](../../crates/server/src/api/mcp_endpoint/caching.rs)); `resources/read` is `private` because its payloads are org-scoped, while `tools/list`, `resources/list` and `resources/templates/list` are `public` because they are static per protocol version.
 
 ## Protocol
 
@@ -53,16 +54,22 @@ The endpoint is stateless request/response per JSON-RPC call, no `Mcp-Session-Id
 
 ### Cacheable results (2026-07-28)
 
-Results are decorated at the dispatch layer, not inside each handler: the policy is per-method and per-era, and the handlers have many success paths (`crates/server/src/api/mcp_endpoint/caching.rs`).
+Result metadata follows method and protocol boundaries through the shared
+[`cache helper`](../../crates/server/src/api/mcp_endpoint/caching.rs). The
+[`resource-read wrapper`](../../crates/server/src/api/mcp_endpoint/resources.rs)
+chooses scope for skill files versus organization data across all success paths.
 
 | Method | `resultType` | `ttlMs` | `cacheScope` |
 |--------|--------------|---------|--------------|
 | `tools/list` | `complete` | 5 min | `public` |
 | `resources/list` | `complete` | 5 min | `public` |
-| `resources/read` | `complete` | 30 s | `private` |
+| `resources/templates/list` | `complete` | 5 min | `public` |
+| Org-data `resources/read` | `complete` | 30 s | `private` |
+| Public skill list/get/read/directory | `complete` | 5 min | `public` |
+| `server/discover` | `complete` | 30 s | `private` (org-specific Events support) |
 | `tools/call` | `complete` (or `task`) |, |, |
 
-`public` is only correct where the payload is identical for every caller, both list catalogs are static per protocol version, so a shared cache cannot leak between orgs. `resources/read` returns org-scoped data (agents, capabilities, harnesses, models) and is therefore `private`, since a cache keyed on the URI alone would serve one org's data to another. Tool results are never cacheable and carry `resultType` only; the Tasks extension's `resultType: "task"` takes precedence when a task handle is issued.
+`public` is only correct where the payload is identical for every caller: list catalogs and embedded public skill files. `resources/read` of org-scoped data (agents, capabilities, harnesses, models) remains `private`, since a cache keyed on the URI alone would serve one org's data to another. Tool results are never cacheable and carry `resultType` only; the Tasks extension's `resultType: "task"` takes precedence when a task handle is issued.
 
 Hints are emitted only under the negotiated `2026-07-28` protocol. They would be ignored by 2025-era clients, but gating keeps each era's responses exactly what that era specifies.
 
@@ -76,8 +83,11 @@ The Tasks extension (server-directed long-running `tools/call` driven by `tasks/
 | `ping` | Health check / keep-alive |
 | `tools/list` | Discover available tools |
 | `tools/call` | Execute a tool |
-| `resources/list` | Discover static Everruns resources |
-| `resources/read` | Read a static Everruns resource by URI |
+| `resources/list` | Discover Everruns resources (one page; `cursor` accepted) |
+| `resources/templates/list` | Discover the agent and session URI templates |
+| `resources/read` | Read a resource or a filled template URI; an unknown ordinary resource is `-32002` with `data.uri`, an unknown skill file is `-32602` |
+| `skills/list`, `skills/get` | (2026 Skills extension) Discover or directly look up public product skills |
+| `resources/directory/read` | (2026 Skills extension) List a public skill directory's direct children |
 | `tasks/get` | (2026-07-28 Tasks extension) Poll a task handle for status + result |
 | `tasks/update` | (2026-07-28 Tasks extension) Provide input to a task in `input_required` |
 | `tasks/cancel` | (2026-07-28 Tasks extension) Request cancellation of a task |
@@ -210,6 +220,39 @@ recently updated one wins.
 Implementation: `crates/server/src/api/mcp_endpoint/tasks.rs` (mapping helpers,
 capability gating, task-handle shapes) and `mod.rs` (`handle_tasks_method` and
 the `handle_tools_call` augmentation).
+
+## Public Skills extension
+
+The endpoint distributes two maintained MCP workflow skills from [`skills/`](../../skills/)
+through the official [Skills extension](https://modelcontextprotocol.io/extensions/skills/overview).
+[`everruns-mcp`](../../skills/everruns-mcp/SKILL.md) guides platform operation;
+[`everruns-agent-authoring`](../../skills/everruns-agent-authoring/SKILL.md) guides
+agent definition changes. Both are actionable using only the connected endpoint.
+The Rust Framework skill targets local application development and stays separately
+installable. Organization-owned Skills registry records and contributor workflows
+also have different audiences and owners.
+
+Publication uses an explicit build-time allowlist: adding a repository skill does
+not automatically expose it. Excluded skills must be absent from discovery,
+direct lookup, file reads, and directory reads. This keeps endpoint guidance
+focused on work the endpoint can perform.
+
+The server embeds complete trees at build time so an entry's frontmatter,
+manifest, and resource bytes describe the same deployment. It preserves authored
+frontmatter rather than projecting the registry's metadata model. Exact URI
+lookup into embedded files avoids host filesystem traversal and serves supporting
+files on demand. Catalog completeness and byte integrity are covered by
+[`endpoint round-trip tests`](../../crates/server/tests/domain/mcp_endpoint_test/skills.rs).
+
+The extension is declared and its new methods dispatched only for the 2026
+protocol. Older clients retain ordinary Resources reads. Public skill payloads
+may be shared by caches; live organization catalogs remain private. Both pass
+through the existing MCP authentication and org-resolution boundary. Host skill
+activation and approval remain the host's responsibility.
+
+Implementation: [`skills.rs`](../../crates/server/src/api/mcp_endpoint/skills.rs),
+[`build.rs`](../../crates/server/build.rs), and
+[`discovery.rs`](../../crates/server/src/api/mcp_endpoint/discovery.rs).
 
 ## URL mode elicitation (2026-07-28)
 
@@ -367,7 +410,7 @@ elicits afresh.
 The Tier-2 `discover`, `query`, and `execute` tools share their catalog search,
 Bashkit execution, positional rewriting, limits, and output/error formatting
 with the built-in `platform` capability. The shared implementation is
-`crates/server/src/services/platform_command_surface.rs`; MCP authentication and
+`crates/server/src/worker_link/platform_command_surface.rs`; MCP authentication and
 organization selection remain endpoint-adapter concerns. This prevents the
 agent-facing platform catalog from drifting from `/mcp`.
 
@@ -375,10 +418,10 @@ agent-facing platform catalog from drifting from `/mcp`.
 
 | Crate | Module | Responsibility |
 |-------|--------|----------------|
-| `everruns-server` | `auth/mcp_oauth.rs` | OAuth 2.1 endpoints (register, authorize, token) |
+| `everruns-server` | `auth/mcp_oauth/mod.rs` | OAuth 2.1 endpoints (register, authorize, token) |
 | `everruns-server` | `api/mcp_servers.rs` | HTTP CRUD routes for MCP server management |
 | `everruns-server` | `services/mcp_server.rs` | Business logic, tool caching, permission policies |
-| `everruns-server` | `storage/repositories/mcp_servers.rs` | PostgreSQL persistence |
+| `everruns-server` | `storage/repositories/mcp_servers/mod.rs` | PostgreSQL persistence |
 | `everruns-core` | `mcp_server.rs` | Domain types (`McpServer`, `McpToolDefinition`, content types), tool name helpers |
 | `everruns-core` (`mcp` feature) | `capability.rs` | Virtual capability wrapper, tool-to-definition conversion |
 | `everruns-core` (`mcp` feature) | `http.rs` | HTTP tool execution, SSE parsing, image extraction |
@@ -495,7 +538,7 @@ Dynamic Client Registration (RFC 7591). No auth required.
 - `https://` to any host.
 - `http://` only when the host is loopback: `localhost`, an IPv4 in `127.0.0.0/8`, or `[::1]`.
 
-All other schemes, including `javascript:`, `data:`, `file:`, `vbscript:`, custom app schemes, protocol-relative `//host/...`, and unparseable/relative URIs, are rejected with `400 invalid_redirect_uri`. The same check is enforced again at `GET /oauth/authorize` and `POST /oauth/authorize` confirmation as defense in depth, so a previously registered unsafe URI cannot become an open-redirect target. See `crates/server/src/auth/mcp_oauth.rs::validate_redirect_uri` for the canonical policy.
+All other schemes, including `javascript:`, `data:`, `file:`, `vbscript:`, custom app schemes, protocol-relative `//host/...`, and unparseable/relative URIs, are rejected with `400 invalid_redirect_uri`. The same check is enforced again at `GET /oauth/authorize` and `POST /oauth/authorize` confirmation as defense in depth, so a previously registered unsafe URI cannot become an open-redirect target. See `crates/server/src/auth/mcp_oauth/mod.rs::validate_redirect_uri` for the canonical policy.
 
 #### GET /oauth/authorize
 
@@ -591,7 +634,7 @@ Acting-as-user is preserved (claims still carry the user's identity and roles); 
 ### Database Schema
 
 The OAuth tables, `oauth_clients`, `oauth_authorization_codes`, `oauth_refresh_tokens`, are defined
-in [`crates/server/migrations/009_v0.8.8.sql`](../../crates/server/migrations/009_v0.8.8.sql).
+in [`crates/server/migrations/legacy/009_v0.8.8.sql`](../../crates/server/migrations/legacy/009_v0.8.8.sql).
 
 The shapes that carry security intent: secrets and codes are stored **hashed**, never in plaintext;
 authorization codes are single-use (`consumed`) and carry the PKCE challenge and method; and both
@@ -744,7 +787,7 @@ Deliberate gaps, recorded so the next pass does not have to re-derive them:
 
 ## Implementation
 
-See `crates/server/src/auth/mcp_oauth.rs` for the OAuth implementation.
+See `crates/server/src/auth/mcp_oauth/mod.rs` for the OAuth implementation.
 See `crates/server/src/api/mcp_endpoint/caching.rs` for the cacheable-result decoration.
 See `crates/server/src/api/mcp_endpoint/mod.rs` for the MCP endpoint and multi-org tool handlers.
 See `crates/server/src/api/mcp_endpoint/elicitation.rs` for the signed intent

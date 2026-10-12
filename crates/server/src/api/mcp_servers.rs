@@ -5,9 +5,9 @@
 
 use crate::api::state::ApiState;
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::mcp_servers::record::McpServer;
 use crate::domains::mcp_servers::types::{CreateMcpServerRequest, UpdateMcpServerRequest};
 use crate::domains::mcp_servers::{MCP_SERVER_DANGEROUS, MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
-use crate::records::McpServer;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -111,6 +111,10 @@ pub fn routes(state: ApiState) -> Router {
                 .delete(delete_mcp_server),
         )
         .command::<crate::domains::mcp_servers::DestroyMcpServer>()
+        .command::<crate::domains::mcp_servers::CheckMcpServerConnection>()
+        .command::<crate::domains::mcp_servers::tool_labels::ListMcpServerTools>()
+        .command::<crate::domains::mcp_servers::tool_labels::SetMcpToolLabel>()
+        .command::<crate::domains::mcp_servers::tool_labels::SuggestMcpToolLabels>()
         .with_state(state)
 }
 
@@ -230,6 +234,13 @@ pub async fn list_mcp_server_catalog(
     if has_more {
         servers.truncate(limit as usize);
     }
+    crate::domains::mcp_servers::presentation::refresh_rows(
+        &state.db,
+        state.capability_service.egress_service().as_ref(),
+        org.org_id,
+        &mut servers,
+    )
+    .await;
     let next_cursor = has_more
         .then(|| servers.last().map(|server| server.id.to_string()))
         .flatten();

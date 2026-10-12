@@ -158,7 +158,7 @@ impl RuntimeHostAdapter for MockHostAdapter {
         self.file_store.clone()
     }
 
-    fn session_task_registry(&self) -> Option<Arc<dyn SessionTaskRegistry>> {
+    fn session_task_registry(&self, _org_id: i64) -> Option<Arc<dyn SessionTaskRegistry>> {
         self.session_task_registry.clone()
     }
 }

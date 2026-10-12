@@ -18,7 +18,7 @@
 //! never absent for anyone else.
 //!
 //! The statement is mirrored from
-//! `crates/server/migrations/152_payment_policies_retire_app_subject.sql`;
+//! `crates/server/migrations/legacy/152_payment_policies_retire_app_subject.sql`;
 //! change them together.
 //!
 //! Run with: cargo test -p everruns-server --test domain payment_policy_app_subject_test:: -- --test-threads=1

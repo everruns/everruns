@@ -13,7 +13,7 @@
 // particular hidden account state. So edges carry a `worksFor` guard, and the
 // solver only traverses edges that genuinely advance that account state's goal.
 //
-// Sourced from apps/ui/src/app/(auth)/* and crates/server/src/auth/routes.rs on
+// Sourced from apps/ui/src/app/(auth)/* and crates/server/src/auth/routes/mod.rs on
 // main. When you change an auth page's affordances, update this model and keep
 // machine.test.ts green — that is the guard against reopening a closed trap.
 

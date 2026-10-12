@@ -27,6 +27,7 @@ import {
 import type { UserConnection, ConnectionProvider as ConnectionProviderType } from "@/lib/api/types";
 import { ProviderIcon } from "@/components/connections/provider-icon";
 import { IdentityApiKeyDialog } from "@/components/virtual-user/identity-api-key-dialog";
+import { ConnectErrorBanner } from "@/components/connections/connect-error-banner";
 
 function ConnectionRow({
   identityId,
@@ -68,7 +69,12 @@ function ConnectionRow({
   return (
     <div className="flex items-center justify-between p-4 border">
       <div className="flex items-center gap-3">
-        <ProviderIcon iconName={icon} className="h-5 w-5" />
+        <ProviderIcon
+          iconName={icon}
+          iconUrl={provider?.icon_url}
+          icons={provider?.icons}
+          className="h-5 w-5"
+        />
         <div>
           <div className="font-medium flex items-center gap-2">
             {displayName}
@@ -142,9 +148,17 @@ function AvailableProviderRow({
   return (
     <div className="flex items-center justify-between p-4 border">
       <div className="flex items-center gap-3">
-        <ProviderIcon iconName={provider.icon} className="h-5 w-5" />
+        <ProviderIcon
+          iconName={provider.icon}
+          iconUrl={provider.icon_url}
+          icons={provider.icons}
+          className="h-5 w-5"
+        />
         <div>
           <div className="font-medium">{provider.display_name}</div>
+          {provider.slug && provider.slug !== provider.display_name && (
+            <div className="text-xs text-muted-foreground">{provider.slug}</div>
+          )}
           <div className="text-sm text-muted-foreground">{provider.description}</div>
         </div>
       </div>
@@ -201,6 +215,8 @@ export function ConnectionsPanel({ identityId = "me" }: { identityId?: string })
 
   return (
     <div className="space-y-8">
+      {/* A failed OAuth return (`?connect_error=`) */}
+      <ConnectErrorBanner />
       {/* Success banner */}
       {successMessage && (
         <div className="flex items-center gap-2 bg-success/10 text-success p-3 text-sm">

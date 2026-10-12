@@ -16,7 +16,7 @@ use uuid::Uuid;
 use crate::domains::common::{Command, CommandErrorKind, Ctx, dispatch};
 use crate::domains::sessions::{SESSION_MANAGE, SESSION_VIEW};
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateSessionRow, UpsertSessionKeyValue, UpsertSessionSecret};
+use crate::storage::{CreateSessionRow, UpsertSessionKeyValue, UpsertSessionSecret};
 
 use super::{BatchSetSessionSecrets, DeleteSessionSecret, ListSessionSecrets, ListSessionStorage};
 

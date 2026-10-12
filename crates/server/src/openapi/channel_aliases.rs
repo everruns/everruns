@@ -1,5 +1,18 @@
 use utoipa::openapi::{Components, Deprecated, OpenApi, RefOr};
 
+/// Operations added after the channel rename. They never had a legacy path,
+/// so none is advertised: the Agent Execution API and agent keys live only
+/// under `/v1/channels/…` and `/v1/agents/{agent_id}/channels/…`.
+const NO_LEGACY_ALIAS: &[&str] = &[
+    "agent_api_get_card",
+    "agent_api_list_sessions",
+    "agent_api_list_events",
+    "list_agent_keys",
+    "create_agent_key",
+    "rotate_agent_key",
+    "revoke_agent_key",
+];
+
 pub(super) fn add_route_aliases(openapi: &mut OpenApi) {
     // Historical routes and schema components remain available to existing
     // clients. They share the canonical channel handlers and data model.
@@ -22,6 +35,28 @@ pub(super) fn add_route_aliases(openapi: &mut OpenApi) {
                 alias
             };
             let mut item = item.clone();
+            for slot in [
+                &mut item.get,
+                &mut item.post,
+                &mut item.patch,
+                &mut item.delete,
+            ] {
+                if slot.as_ref().is_some_and(|op| {
+                    op.operation_id
+                        .as_deref()
+                        .is_some_and(|id| NO_LEGACY_ALIAS.contains(&id))
+                }) {
+                    *slot = None;
+                }
+            }
+            if item.get.is_none()
+                && item.post.is_none()
+                && item.patch.is_none()
+                && item.delete.is_none()
+                && item.put.is_none()
+            {
+                return None;
+            }
             for operation in [
                 &mut item.get,
                 &mut item.post,

@@ -44,7 +44,7 @@ use everruns_server::domains::sessions::CreateSession;
 use everruns_server::records::FeatureFlags;
 use everruns_server::services::CapabilityService;
 use everruns_server::storage::StorageBackend;
-use everruns_server::storage::models::{CreateAgentRow, CreateHarnessRow};
+use everruns_server::storage::{CreateAgentRow, CreateHarnessRow};
 use uuid::Uuid;
 
 // ============================================================================
@@ -171,8 +171,8 @@ async fn run_blocks_member_from_manage_command() {
 async fn run_blocks_member_from_creating_a_provider() {
     // Provider credentials are org-wide secrets that every agent then spends
     // against, so create/update/delete carry LLM_PROVIDER_MANAGE
-    // (OrgProvidersManage) — a permission Member does not hold. Members keep
-    // OrgProvidersView so they can still see which providers exist.
+    // (OrgModelsManage) — a permission Member does not hold. Members keep
+    // OrgModelsView so they can still see which providers exist.
     let ctx = make_ctx(
         caller_with_role(OrgRole::Member),
         Arc::new(DefaultPermissionResolver),
@@ -535,6 +535,7 @@ fn create_session_request() -> CreateSessionRequest {
         forked_from_session_id: None,
         budget_root_session_id: None,
         seed: SessionSeedMode::Fresh,
+        fork_up_to_sequence: None,
     }
 }
 
@@ -586,6 +587,7 @@ async fn seed_agent(ctx: &Ctx, name: &str) -> AgentId {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -798,11 +800,17 @@ const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
     "upsert_agent_check_rule",
     "delete_agent_check_rule",
     "create_agent_credential_binding",
+    // The agent's GitHub App lives on its identity's connection and the
+    // github_apps table, never the agents row; same ground as a credential.
+    "connect_agent_github",
+    "disconnect_agent_github",
     // Operational probe. Runs the agent to report health; changes no definition.
     "trigger_agent_health_check",
     // Produces an analysis report. Non-read-only only because it spends utility
     // LLM budget and is rate limited; it does not write the agent.
     "analyze_agent",
+    // Returns a revised draft from the utility LLM; creates nothing.
+    "draft_agent",
     // --- Operational state on the agents row (EVE-1007) ----------------------
     // Unlike the bindings above these do write the `agents` row, so they are
     // exempted on a narrower ground: `exposures_suspended` is deployment state,

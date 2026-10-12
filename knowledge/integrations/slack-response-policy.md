@@ -18,7 +18,7 @@ Response policies are available on every Slack endpoint without deployment or
 organization enrollment. Existing endpoints retain their all-message default;
 builders choose filtering explicitly. Selecting all messages restores the previous
 behavior. The policy contract lives in
-[`slack_channel.rs`](../../crates/server/src/records/slack_channel.rs).
+[`slack_channel.rs`](../../crates/server/src/domains/agent_channels/record/slack_channel.rs).
 
 ## Participation
 
@@ -47,7 +47,7 @@ before session creation, user resolution, agent execution, progress acknowledgem
 or delivery registration. Missing service, bad verdict, storage failure, and timeout
 mean silence for unmentioned messages. Explicit invocations remain available.
 
-[`response_policy.rs`](../../crates/server/src/api/slack_events/response_policy.rs)
+[`response_policy.rs`](../../crates/server/src/channels/slack/events/response_policy/mod.rs)
 owns the question, input bounds, threshold, deadline, and thread isolation. Logs
 record the endpoint, verdict, probability, calibration, and answering model without
 recording message text. The classifier's vendor receives the bounded state through

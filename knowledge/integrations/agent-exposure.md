@@ -56,8 +56,8 @@ level down:
 | `status: draft/published` | per-channel status + one agent-level suspend | A "published" App with three draft channels is a lie the 2-D `App.status × channel.enabled` matrix tells today. |
 
 The three structural objections to collapsing App into Agent — N exposures per agent,
-`agent_versions` immutability, and the App-as-security-boundary rule in
-[app-api-keys.md](app-api-keys.md) — are objections to losing the **per-exposure row**,
+`agent_versions` immutability, and the App-as-security-boundary rule of the former
+App API keys (now [agent keys](agent-execution-api.md)) — are objections to losing the **per-exposure row**,
 not to losing the App. Every one is satisfied by an `agent_channels` row: the row is the
 boundary an API key scopes to, the row is what publish toggles, and the row is what stays
 out of the agent's config snapshot.
@@ -76,7 +76,7 @@ the server keeps the old OpenAPI component names as aliases of the channel schem
 The storage rename requires a coordinated API/worker rollout; existing spending
 subjects convert without resetting balances, limits, or periods. The implementation
 and migration live in `crates/server/src/domains/agent_channels/` and
-`crates/server/migrations/166_agent_channels.sql`.
+`crates/server/migrations/legacy/166_agent_channels.sql`.
 
 ## Model
 
@@ -84,7 +84,7 @@ and migration live in `crates/server/src/domains/agent_channels/` and
 
 One row per way in. Transport-typed config, exactly as `app_channels` is today — the
 config stays a per-transport typed union (the server-owned configs in
-`crates/server/src/records/agent_channel.rs` and `crates/server/src/records/slack_channel.rs`), because
+`crates/server/src/domains/agent_channels/record/mod.rs` and `crates/server/src/domains/agent_channels/record/slack_channel.rs`), because
 `agent_surface_enabled` has no meaning for A2A and pretending otherwise produces a
 lowest-common-denominator config that fits nothing.
 
@@ -102,7 +102,7 @@ Everything above is currently either an App column (wrong grain — shared acros
 that want different values) or duplicated inside several `channel_config` variants (wrong
 place — the shared exposure policy is not transport detail). The exposure policy that
 Slack and AG-UI already share, `public_tool_activity_text`, is the proof: it lives in
-`platform::app` today and is called from both `slack_delivery.rs` and `api/ag_ui.rs`. It
+`platform::app` today and is called from both `channels/slack/delivery/` and `channels/ag_ui/mod.rs`. It
 belongs in a transport-neutral `everruns_platform::exposure` module, and this design
 forces that move rather than inventing it (EVE-1001, independent of every phase).
 
@@ -204,9 +204,13 @@ live(channel) = channel.status == live
   flipping on the public chat channel sitting next to it.
 - A new channel always starts `draft`, even when its App is already published. Creating
   a new door never opens it without a separate publish action.
-- `agent.exposures_suspended` is the incident control — one switch, take the agent off the
-  internet — which is what App unpublish is actually reached for. It leaves per-channel
-  status untouched, so clearing it restores exactly the previously live set.
+- **One control: publish.** Unpublish closes the channel. Publish opens it, including a
+  channel stored with `enabled: false`. The channel form has no separate Enabled switch.
+  Callers can still send `enabled: false`, which writes `status: disabled` and refuses
+  traffic; that state is closed, and publish is what opens it.
+- `agent.exposures_suspended` is enable/disable for every channel on the agent. Off pauses
+  them all and leaves each channel's publish status untouched, so turning it back on restores
+  exactly the previously live set. Publish and unpublish stay on the individual channel.
 - `agent.status != active` must imply no live channel. Enforce at resolution time, not by
   writing rows, the same way the harness chain is folded behind the platform seam.
 - Agent exposure state for lists and badges is **derived** (`any channel live`), never
@@ -321,8 +325,9 @@ user-facingly (`/v1/agents/{id}/exposures/suspend`, `everruns agents exposures s
 so a different UI term would make the product say two things about one concept; and it
 covers triggers, which "Channels" does not. It sits under **Operational**, beside
 Sessions and Reports, because reading it is an operational act and the editing it links to
-lives on the agent. Under the `agents_home` flag this view moves onto the Agents page as its
-Channels view and the page says "channels" instead; see [Agents Home](../ui/agents-home.md).
+lives on the agent. This view has since moved onto the Agents page as its Channels view,
+which says "channels" instead, and `/exposures` redirects there; see
+[Agents Home](../ui/agents-home.md).
 
 The view **resolves** state rather than reading `channel.status`: it folds in the
 agent-level terms the same way `channel_ingress::channel_liveness` does, so a live channel on
@@ -421,7 +426,7 @@ rest proceeds.
 - [Apps](apps.md), the model this replaces
 - [App Invocation Channels](app-invocation-channels.md), webhook semantics and the session-ownership override
 - [App Channel Authentication](channel-auth.md), the auth config that moves to the channel
-- [App API Keys](app-api-keys.md), the exposure-as-boundary rule
+- [Agent Execution API](agent-execution-api.md), agent keys scoped to one channel (the exposure-as-boundary rule)
 - [Agent Triggers](../runtime-resources/agent-triggers.md), the trigger model that absorbs webhook
 - [Messaging Integrations](messaging-integrations.md), adapter lifecycle and routing tags
 - [Slack Integration Modernization](slack-modernization.md), per-event surface selection and what remains

@@ -2,8 +2,8 @@
 
 Start with a TOML folder. All definitions use stable names, omit resource IDs and
 credentials, and keep ordinary files relative to the directory root. Instructions
-live beside the manifest. [Format reference](https://docs.everruns.com/reference/agent-package/)
-and [how-to guide](https://docs.everruns.com/how-to/define-agents-as-files/).
+live beside the manifest. [Format reference](https://everruns.com/docs/reference/agent-package/)
+and [how-to guide](https://everruns.com/docs/how-to/define-agents-as-files/).
 
 | Folder | Demonstrates | Try |
 | --- | --- | --- |

@@ -29,8 +29,20 @@
 	handle /.well-known/* {
 		reverse_proxy {$SERVER_HOST}:9000
 	}
-	# Agent credential documentation, served by the API (see local/Caddyfile).
-	handle /auth.md {
+	# Agent-facing documents, served by the API (see local/Caddyfile).
+	@agent_docs path /auth.md /llms.txt /robots.txt /sitemap.xml
+	handle @agent_docs {
+		reverse_proxy {$SERVER_HOST}:9000
+	}
+	# The console at / needs JavaScript, so an agent that asks for markdown
+	# there gets llms.txt, which says where the MCP endpoint and auth.md are.
+	@agent_markdown {
+		path /
+		header Accept *text/markdown*
+	}
+	handle @agent_markdown {
+		header Vary Accept
+		rewrite * /llms.txt
 		reverse_proxy {$SERVER_HOST}:9000
 	}
 
@@ -47,6 +59,9 @@
 	}
 
 	handle {
+		# Point agents at the discovery documents (RFC 8288, RFC 9727).
+		header / +Link "</.well-known/api-catalog>; rel=\"api-catalog\", </llms.txt>; rel=\"describedby\"; type=\"text/markdown\", </auth.md>; rel=\"service-doc\"; type=\"text/markdown\", </api-doc/openapi.json>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi+json\""
+		header / +Vary Accept
 		reverse_proxy {$UI_HOST}:9100
 	}
 }

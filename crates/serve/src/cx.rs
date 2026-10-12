@@ -12,11 +12,12 @@ use std::pin::Pin;
 use std::sync::{Arc, Weak};
 
 use anyhow::anyhow;
-use everruns::ToolCallContext;
+use everruns::{InputMessage, ToolCallContext};
 use serde_json::Value;
 
 use crate::app::Mode;
-use crate::host::{Host, NewSession};
+use crate::channels::Destination;
+use crate::host::{Host, NewSession, TurnOutcome};
 
 /// The context of one tool call (inside tools) or of the app (in schedules).
 ///
@@ -131,39 +132,13 @@ impl Cx {
     }
 }
 
-/// Where a session's replies go: a channel and a target on it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DeliveryTarget {
-    pub channel: String,
-    pub target: String,
-}
-
-impl DeliveryTarget {
-    pub fn new(channel: impl Into<String>, target: impl Into<String>) -> Self {
-        Self {
-            channel: channel.into(),
-            target: target.into(),
-        }
-    }
-
-    /// `channel:target`, as stored with the session.
-    pub(crate) fn encode(&self) -> String {
-        format!("{}:{}", self.channel, self.target)
-    }
-
-    pub(crate) fn decode(value: &str) -> Option<Self> {
-        let (channel, target) = value.split_once(':')?;
-        Some(Self::new(channel, target))
-    }
-}
-
 /// A session being started from code. Configure, then `.await`.
 #[must_use = "a StartSession does nothing until awaited"]
 pub struct StartSession {
     cx: Cx,
     input: String,
     agent: Option<String>,
-    deliver_to: Option<DeliveryTarget>,
+    deliver_to: Option<Destination>,
     metadata: Option<Value>,
 }
 
@@ -174,9 +149,10 @@ impl StartSession {
         self
     }
 
-    /// Deliver every reply of this session to a channel.
-    pub fn deliver_to(mut self, target: DeliveryTarget) -> Self {
-        self.deliver_to = Some(target);
+    /// Post the first turn's replies to a channel, such as
+    /// `slack::channel("C0123ABC")`, while the turn runs.
+    pub fn deliver_to(mut self, destination: Destination) -> Self {
+        self.deliver_to = Some(destination);
         self
     }
 
@@ -198,12 +174,36 @@ impl IntoFuture for StartSession {
                 .create_session(NewSession {
                     agent: self.agent,
                     metadata: self.metadata,
-                    deliver_to: self.deliver_to.map(|target| target.encode()),
                     ..NewSession::default()
                 })
                 .await?;
-            let turn = host.send(&session, self.input).await?;
-            let outcome = turn.wait().await?;
+            let outcome = match self.deliver_to {
+                Some(destination) => {
+                    // The channel runtime sends the message, binds the thread
+                    // to this session and delivers the turn's replies.
+                    host.channels()
+                        .send(
+                            &destination.channel,
+                            &session,
+                            InputMessage::user(self.input),
+                            destination.target,
+                        )
+                        .await
+                        .map_err(|error| anyhow!("channel {}: {error}", destination.channel))?;
+                    match host.active_turn(&session) {
+                        Some(turn) => {
+                            let turn = turn.wait().await?;
+                            TurnOutcome {
+                                response: turn.response,
+                                success: turn.success,
+                                error: turn.error,
+                            }
+                        }
+                        None => return Ok(()),
+                    }
+                }
+                None => host.send(&session, self.input).await?.wait().await?,
+            };
             if !outcome.success {
                 anyhow::bail!(
                     "session {session} turn failed: {}",
@@ -212,17 +212,5 @@ impl IntoFuture for StartSession {
             }
             Ok(())
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn delivery_target_keeps_colons_in_the_target() {
-        let target = DeliveryTarget::new("slack", "C1:1700000000.0001");
-        let decoded = DeliveryTarget::decode(&target.encode()).unwrap();
-        assert_eq!(decoded, target);
     }
 }

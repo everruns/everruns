@@ -20,7 +20,9 @@ declare module "./legacy-api-types" {
     /** MCP attachments authored directly on the agent. */
     mcpServers?: ScopedMcpServers;
   }
+}
 
+declare module "./agent-request-types" {
   interface CreateAgentRequest {
     /** MCP attachments authored directly on the agent. */
     mcpServers?: ScopedMcpServers;

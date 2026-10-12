@@ -9,7 +9,7 @@
 // surfaces cannot drift.
 
 import { useMemo, type ReactNode } from "react";
-import { ArrowDown, Bot } from "lucide-react";
+import { ArrowDown } from "lucide-react";
 import { getEventData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
@@ -36,11 +36,14 @@ export function SessionTranscript({
   collapseWorkLog = false,
   /** Replaces the transcript's default empty state (see `ChatMessageList`). */
   emptyState,
+  /** Good / Bad and Branch on agent replies; only chats that can be forked. */
+  messageActions = false,
 }: {
   footer?: ReactNode;
   showRunCards?: boolean;
   collapseWorkLog?: boolean;
   emptyState?: ReactNode;
+  messageActions?: boolean;
 }) {
   const { t } = useLocale();
   const {
@@ -62,7 +65,10 @@ export function SessionTranscript({
     loadOlderEvents,
     getMessageText,
     getToolCalls,
+    chatSends,
+    isActive,
   } = useSessionContext();
+  const transcriptEmpty = chatEvents.length === 0 && chatSends.pending.length === 0;
 
   const { data: participants } = useSessionParticipants(sessionId);
 
@@ -76,7 +82,7 @@ export function SessionTranscript({
 
   const { scrollContainerRef, messagesEndRef, hasNewMessages, dismissNewMessages, handleScrollUp } =
     useScrollManager({
-      eventCount: chatEvents.length,
+      eventCount: chatEvents.length + chatSends.pending.length,
       eventsLoaded: !eventsLoading,
       hasMoreEvents,
       loadingOlderEvents,
@@ -117,63 +123,71 @@ export function SessionTranscript({
   });
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       <div
         ref={scrollContainerRef}
         onScroll={handleScrollUp}
         className={cn(
-          "relative flex-1 overflow-y-auto bg-background bg-brand-dots px-3 py-4 sm:px-4",
-          !eventsLoading && chatEvents.length === 0 && "flex flex-col justify-center",
+          "relative min-h-0 min-w-0 flex-1 overflow-y-auto bg-background bg-brand-dots px-3 py-4 sm:px-6",
+          !eventsLoading && transcriptEmpty && "flex flex-col justify-center",
         )}
       >
-        <ChatMessageList
-          events={events}
-          chatEvents={chatEvents}
-          sessionId={sessionId}
-          toolResultsMap={toolResultsMap}
-          toolProgressMap={toolProgressMap}
-          toolOutputMap={toolOutputMap}
-          eventsLoading={eventsLoading}
-          hasMoreEvents={hasMoreEvents}
-          loadingOlderEvents={loadingOlderEvents}
-          getMessageText={getMessageText}
-          getToolCalls={getToolCalls}
-          participants={participants}
-          runsByEventId={runsByEventId}
-          emptyState={emptyState}
-          collapseWorkLog={collapseWorkLog}
-          streamingWork={
-            (isThinking && !streamingText) || streamingPhase === "commentary"
-              ? {
-                  turnId: streamingTurnId ?? null,
-                  text: streamingPhase === "commentary" ? streamingText : null,
-                  isThinking: Boolean(isThinking && !streamingText),
-                }
-              : null
-          }
-        />
+        <div
+          className={cn(
+            chatSurfaceStyles.column,
+            !eventsLoading && transcriptEmpty && "flex flex-1 flex-col justify-center",
+          )}
+        >
+          <ChatMessageList
+            events={events}
+            chatEvents={chatEvents}
+            sessionId={sessionId}
+            toolResultsMap={toolResultsMap}
+            toolProgressMap={toolProgressMap}
+            toolOutputMap={toolOutputMap}
+            eventsLoading={eventsLoading}
+            hasMoreEvents={hasMoreEvents}
+            loadingOlderEvents={loadingOlderEvents}
+            getMessageText={getMessageText}
+            getToolCalls={getToolCalls}
+            participants={participants}
+            runsByEventId={runsByEventId}
+            emptyState={emptyState}
+            collapseWorkLog={collapseWorkLog}
+            pendingSends={chatSends.pending}
+            onRetrySend={chatSends.retry}
+            sessionActive={isActive}
+            messageActions={messageActions}
+            streamingWork={
+              (isThinking && !streamingText) || streamingPhase === "commentary"
+                ? {
+                    turnId: streamingTurnId ?? null,
+                    text: streamingPhase === "commentary" ? streamingText : null,
+                    isThinking: Boolean(isThinking && !streamingText),
+                  }
+                : null
+            }
+          />
 
-        {streamingText && streamingPhase !== "commentary" && (
-          <div className="mt-4 flex justify-start">
-            <div className={chatSurfaceStyles.agentMessageRow}>
-              <div className={chatSurfaceStyles.agentIcon}>
-                <Bot className="h-3 w-3" />
-              </div>
-              <div className={chatSurfaceStyles.agentMessage}>
-                {streamingIteration && streamingIteration > 1 && (
-                  <div className="mb-1 text-xs text-muted-foreground">
-                    {t("iteration", { value: streamingIteration })}
-                  </div>
-                )}
-                {streamingText && streamingMessageId ? (
-                  <StreamingMessage messageId={streamingMessageId} text={streamingText} />
-                ) : null}
+          {streamingText && streamingPhase !== "commentary" && (
+            <div className="mt-4 flex justify-start">
+              <div className={chatSurfaceStyles.agentMessageRow}>
+                <div className={chatSurfaceStyles.agentMessage}>
+                  {streamingIteration && streamingIteration > 1 && (
+                    <div className="mb-1 text-xs text-muted-foreground">
+                      {t("iteration", { value: streamingIteration })}
+                    </div>
+                  )}
+                  {streamingText && streamingMessageId ? (
+                    <StreamingMessage messageId={streamingMessageId} text={streamingText} />
+                  ) : null}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {footer}
+          {footer}
+        </div>
 
         <div ref={messagesEndRef} />
 

@@ -9,6 +9,7 @@
 //! A built Agent is an immutable behavior description. An application-owned
 //! [`Engine`](crate::Engine) owns session creation, identity, and resumption.
 
+mod communication;
 mod package;
 
 use std::collections::{HashMap, HashSet};
@@ -340,6 +341,7 @@ pub struct Agent {
     package_manifest: Option<everruns_core::agent_package::Manifest>,
     max_iterations: Option<usize>,
     parallel_tool_calls: Option<bool>,
+    communication: crate::conversation::Communication,
     workspace_root: Option<PathBuf>,
     default_workspace: crate::default_workspace::DefaultWorkspace,
     workspace_policy: everruns_core::WorkspacePolicy,
@@ -616,7 +618,8 @@ impl Agent {
         // EVE-877: the builder produces a portable AgentDefinition; the
         // harness link lives on the session, not the definition.
         let mut agent = RuntimeAgentBuilder::new(&self.name, &self.instructions)
-            .capabilities(capabilities.clone());
+            .capabilities(capabilities.clone())
+            .communication(self.communication);
         if let Some(parallel) = self.parallel_tool_calls {
             agent = agent.parallel_tool_calls(parallel);
         }
@@ -740,6 +743,10 @@ impl Agent {
         for implementation in &self.capability_implementations {
             builder = implementation.register(builder);
         }
+        #[cfg(feature = "builtins")]
+        if let Some(waits) = approval::waits_on_person(&self.capability_implementations) {
+            builder = builder.waits_on_person(waits);
+        }
         if let Some(capability) = hook_capability {
             builder = builder.capability(capability);
         }
@@ -775,6 +782,7 @@ pub struct AgentBuilder {
     package_manifest: Option<everruns_core::agent_package::Manifest>,
     max_iterations: Option<usize>,
     parallel_tool_calls: Option<bool>,
+    communication: crate::conversation::Communication,
     workspace_root: Option<PathBuf>,
     workspace_policy: everruns_core::WorkspacePolicy,
     workspace_backends: Vec<Arc<dyn WorkspaceBackend>>,
@@ -1322,13 +1330,7 @@ impl AgentBuilder {
         // Approval-gated function tools share one host gate whose policy names
         // exactly those tools. Fail closed: a gated tool without an approver
         // is a build error, never a silently ungated call.
-        let approval_predicates = function_tools
-            .iter()
-            .filter_map(|tool| {
-                tool.approval()
-                    .map(|predicate| (tool.name().to_string(), predicate.clone()))
-            })
-            .collect::<Vec<_>>();
+        let approval_predicates = crate::tool::approval_predicates(&function_tools);
         if let Some((first_gated, _)) = approval_predicates.first() {
             #[cfg(feature = "builtins")]
             {
@@ -1390,6 +1392,7 @@ impl AgentBuilder {
             package_manifest: self.package_manifest,
             max_iterations: self.max_iterations,
             parallel_tool_calls: self.parallel_tool_calls,
+            communication: self.communication,
             workspace_root: self.workspace_root,
             default_workspace,
             workspace_policy: self.workspace_policy,

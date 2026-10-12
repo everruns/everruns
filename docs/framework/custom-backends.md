@@ -44,9 +44,10 @@ copy state advancement or the phase loop into a custom backend; implement the
 execution boundary and keep deployment-specific service selection in the host.
 
 Where a turn runs is a separate interface: `everruns_core::host::TurnBackend`
-starts, cancels, and observes a session's turns. `InProcessBackend` is the
-default, and the facade's experimental `durable` feature selects the queued,
-checkpointed backend from `everruns-durable-engine`. A host that records input
+starts, cancels, and observes a session's turns. `InProcessBackend` runs a
+turn in process, `ActorRunner` (what every facade session uses) runs it there
+under the session's lease, and the Platform's `DurableRunner` in
+`everruns-durable-engine` runs it as queued, checkpointed steps. A host that records input
 through its own event store starts turns from it with
 `TurnInput::StoredMessage` and continues a parked turn with
 `TurnInput::RecordedToolResults`, which every backend serves. The trait is

@@ -28,7 +28,9 @@ impl ServerAppBuilder {
     /// Supply a deployment-owned Slack app provisioner.
     pub fn slack_app_provisioner(
         mut self,
-        provisioner: Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>,
+        provisioner: Arc<
+            dyn crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner,
+        >,
     ) -> Self {
         self.slack_app_provisioner = Some(provisioner);
         self

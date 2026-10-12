@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-pub use crate::storage::models::{
+pub use crate::storage::{
     CreatePluginInstallRow, CreatePluginMarketplaceRow, PluginInstallRow, PluginMarketplaceRow,
     UpdatePluginInstall, UpdatePluginMarketplace,
 };
@@ -61,7 +61,9 @@ pub struct CreatePluginMarketplaceRequest {
 /// Request body for updating a plugin marketplace.
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdatePluginMarketplaceRequest {
+    /// New marketplace name.
     pub name: Option<String>,
+    /// New lifecycle status, e.g. `active` or `disabled`.
     pub status: Option<String>,
 }
 

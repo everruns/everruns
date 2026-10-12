@@ -641,16 +641,6 @@ async fn enforce_subagent_depth_cap(
     Ok(())
 }
 
-/// Extract the last assistant/agent message content from a list of messages.
-fn last_agent_message(
-    messages: &[everruns_core::subagent_delegation::PlatformMessage],
-) -> Option<String> {
-    messages
-        .iter()
-        .rfind(|m| m.role == "agent" || m.role == "assistant")
-        .map(|m| m.content.clone())
-}
-
 /// Mirror a terminal outcome onto the subagent's session task (best-effort;
 /// tolerates a missing registry or task).
 async fn finish_subagent_task(
@@ -1267,6 +1257,7 @@ async fn spawn_create_and_wait(
                 .then_some(context.session_id),
             budget_root_session_id,
             seed,
+            reason: crate::platform_store::subagent_reason(name),
         })
         .await
     {
@@ -1498,7 +1489,7 @@ async fn settle_subagent_outcome(
         Err(e) => return Err(ToolExecutionResult::internal_error(e)),
     };
 
-    let result_text = last_agent_message(&messages)
+    let result_text = crate::platform_store::last_agent_message(&messages)
         .unwrap_or_else(|| format!("Subagent completed with status: {status}"));
 
     let terminal_status = terminal_subagent_status(status);
@@ -3455,12 +3446,10 @@ mod tests {
     #[test]
     fn subagent_and_channel_message_tools_have_distinct_names() {
         // EVE-727: the subagent interim-progress tool must not share a wire name
-        // with the channel-facing `channel_post_message` tool. `ToolRegistry` is keyed
+        // with the conversation-facing `send_message` tool. `ToolRegistry` is keyed
         // by name, so a collision would silently drop one tool. This guards the
         // rename against regressions: both tools must coexist in one registry.
-        use everruns_core::channel_messaging::{
-            CHANNEL_POST_MESSAGE_TOOL_NAME, ChannelPostMessageTool,
-        };
+        use everruns_core::conversation::{SEND_MESSAGE_TOOL_NAME, SendMessageTool};
         use everruns_core::tools::ToolRegistry;
 
         let subagent = ReportTaskProgressTool::new(
@@ -3470,15 +3459,15 @@ mod tests {
             json!({"type": "object"}),
         );
         assert_eq!(subagent.name(), "report_task_progress");
-        assert_eq!(CHANNEL_POST_MESSAGE_TOOL_NAME, "channel_post_message");
-        assert_ne!(subagent.name(), CHANNEL_POST_MESSAGE_TOOL_NAME);
+        assert_eq!(SEND_MESSAGE_TOOL_NAME, "send_message");
+        assert_ne!(subagent.name(), SEND_MESSAGE_TOOL_NAME);
 
         let mut registry = ToolRegistry::new();
-        registry.register(ChannelPostMessageTool);
+        registry.register(SendMessageTool);
         registry.register(subagent);
         assert!(
-            registry.has("channel_post_message"),
-            "channel_post_message tool must survive"
+            registry.has("send_message"),
+            "send_message tool must survive"
         );
         assert!(
             registry.has("report_task_progress"),

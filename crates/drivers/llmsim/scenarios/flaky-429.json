@@ -1,0 +1,13 @@
+{
+  "name": "flaky-429",
+  "description": "429 with Retry-After 1 s on the first step, then the research-3-tools steps: provider retry and backoff.",
+  "defaults": { "timing": { "ttft_ms": [800, 1300], "tokens_per_sec": 65 } },
+  "steps": [
+    { "fail_first": [{ "kind": "rate_limit", "retry_after_ms": 1000 }],
+      "turn": { "type": "mixed", "text": "Let me check the repo.",
+                "calls": [{ "tool": "any_read" }] } },
+    { "turn": { "type": "tool_calls", "calls": [{ "tool": "any_read" }] } },
+    { "turn": { "type": "tool_calls", "calls": [{ "tool": "any_read" }, { "tool": "any_read" }] } },
+    { "turn": { "type": "assistant", "lorem_tokens": 600 } }
+  ]
+}

@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // adopt the platform's default capability set without `everruns-capabilities`
     // entering the default facade graph, which is the whole point of this
     // fixture.
-    let harness = Harness::worker_base();
+    let harness = Harness::worker();
     let session = engine.create(agent).harness(harness).start().await?;
     let context = session.inspect().await?;
     assert!(

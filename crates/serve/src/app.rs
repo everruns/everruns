@@ -10,7 +10,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::agent::Agent;
-use crate::channel::Channel;
+use crate::channels::Channel;
 use crate::config::AppConfig;
 use crate::registry::{
     AgentRegistration, AppInfoRegistration, AssetRegistration, ChannelRegistration,
@@ -56,7 +56,9 @@ pub(crate) struct AgentEntry {
 pub(crate) struct ChannelEntry {
     pub name: &'static str,
     pub source: &'static str,
-    pub channel: Arc<dyn Channel>,
+    /// The agent answering on it; the default agent when `None`.
+    pub agent: Option<&'static str>,
+    pub channel: Channel,
 }
 
 /// A discovered schedule with its parsed cron.
@@ -138,10 +140,6 @@ impl App {
             .find(|agent| agent.default)
             .or_else(|| (top.len() == 1).then(|| &top[0]))
             .copied()
-    }
-
-    pub(crate) fn channel(&self, name: &str) -> Option<&ChannelEntry> {
-        self.inner.channels.iter().find(|entry| entry.name == name)
     }
 
     pub(crate) fn asset(&self, path: &str) -> Option<&'static AssetRegistration> {
@@ -399,10 +397,44 @@ fn discover(app: &mut AppInner) {
             registration.source,
             "channels",
         );
+        // Channels and agents share `/v1/channels/{name}`.
+        if app
+            .agents
+            .iter()
+            .any(|agent| !agent.sub && agent.name == registration.name)
+        {
+            app.errors.push(format!(
+                "channel `{}` has the name of an agent; both are served at /v1/channels/{{name}}, rename one",
+                registration.name
+            ));
+        }
+        match registration.agent {
+            Some(agent)
+                if !app
+                    .agents
+                    .iter()
+                    .any(|entry| !entry.sub && entry.name == agent) =>
+            {
+                app.errors.push(format!(
+                    "channel `{}` names agent `{agent}`, which is not a top-level agent",
+                    registration.name
+                ));
+            }
+            None if app.agents.iter().filter(|entry| !entry.sub).count() > 1
+                && !app.agents.iter().any(|entry| entry.default) =>
+            {
+                app.errors.push(format!(
+                    "channel `{}` names no agent and the app has no default; use #[channel(agent = \"…\")]",
+                    registration.name
+                ));
+            }
+            _ => {}
+        }
         app.channels.push(ChannelEntry {
             name: registration.name,
             source: registration.source,
-            channel: Arc::from((registration.build)()),
+            agent: registration.agent,
+            channel: (registration.build)(),
         });
     }
 

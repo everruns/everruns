@@ -3,6 +3,7 @@ mod channels;
 mod http_layers;
 mod integrations;
 mod listeners;
+mod pat_scope;
 mod serve;
 
 // Server app builder for composable server configurations
@@ -18,13 +19,14 @@ mod serve;
 
 use crate::api::sse::{SseConnectionLimits, SseConnectionTracker};
 use crate::auth::{self, AuthBackend};
-use crate::event_delivery::EventDelivery;
+use crate::background::supervised_task::TaskSupervisor;
+use crate::live_updates::event_delivery::EventDelivery;
+use crate::live_updates::pg_listener_config::resolve_pg_listener_database_url;
 use crate::openapi::ApiDoc;
-use crate::pg_listener_config::resolve_pg_listener_database_url;
 use crate::server::{ServerConfig, build_router_with_prefix};
+use crate::setup::{org_init, seed};
 use crate::storage::{EncryptionService, StorageBackend};
-use crate::supervised_task::TaskSupervisor;
-use crate::{api, org_init, seed, services};
+use crate::{api, services};
 use everruns_core::host::HostComposition;
 
 mod health;
@@ -92,7 +94,7 @@ fn spawn_background_tasks(
     server_context: &ServerContext,
     background_tasks: Vec<BackgroundTaskFn>,
 ) {
-    crate::agents_api_lifecycle::track(supervisor, server_context);
+    crate::background::agents_api_lifecycle::track(supervisor, server_context);
     for task_fn in background_tasks {
         let ctx = server_context.clone();
         supervisor.track("custom_background_task", tokio::spawn(task_fn(ctx)));
@@ -123,7 +125,7 @@ fn apply_personal_access_token_routes_wrap(
 pub struct ServerContext {
     pub db: Arc<StorageBackend>,
     pub event_service: Arc<services::EventService>,
-    pub event_delivery: crate::event_delivery::EventDelivery,
+    pub event_delivery: crate::live_updates::event_delivery::EventDelivery,
     pub encryption: Option<Arc<EncryptionService>>,
     pub runner: Arc<dyn everruns_core::host::TurnBackend>,
     pub driver_registry: Arc<everruns_contracts::driver_registry::DriverRegistry>,
@@ -134,8 +136,7 @@ pub struct ServerContext {
     pub egress_service: Arc<dyn everruns_core::EgressService>,
     /// System-wide utility LLM service from the platform profile.
     pub utility_llm_service: Arc<dyn everruns_core::UtilityLlmService>,
-    /// Vendor-neutral embedder-provided error reporter. Always present;
-    /// defaults to a no-op when no embedder has installed one.
+    /// Vendor-neutral embedder-provided error reporter; a no-op unless one is installed.
     pub error_reporter: SharedErrorReporter,
 }
 
@@ -173,10 +174,12 @@ pub struct ServerAppBuilder {
     config: ServerConfig,
     auth_factory: Option<AuthFactoryFn>,
     host_composition: Option<HostComposition>,
-    built_in_harnesses: Option<Vec<crate::records::BuiltInHarnessDefinition>>,
+    built_in_harnesses: Option<Vec<crate::domains::harnesses::record::BuiltInHarnessDefinition>>,
     connector_registry: Option<everruns_contracts::connector::ConnectorRegistry>,
     email_sender: Option<Arc<dyn crate::records::email::EmailSender>>,
-    slack_app_provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
+    slack_app_provisioner: Option<
+        Arc<dyn crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner>,
+    >,
     extra_routes: Vec<Router>,
     event_listeners: Vec<Arc<dyn EventListener>>,
     error_reporter: Option<SharedErrorReporter>,
@@ -185,6 +188,7 @@ pub struct ServerAppBuilder {
     personal_access_token_routes_wrap: Option<PersonalAccessTokenRoutesWrapFn>,
     org_create_policy: Option<Arc<dyn api::organizations::OrgCreatePolicy>>,
     org_initializers: Vec<Arc<dyn org_init::OrgInitializer>>,
+    pat_route_classes: crate::auth::pat_scope::ExtraRouteClasses,
 }
 
 impl ServerAppBuilder {
@@ -206,6 +210,7 @@ impl ServerAppBuilder {
             personal_access_token_routes_wrap: None,
             org_create_policy: None,
             org_initializers: Vec::new(),
+            pat_route_classes: Default::default(),
         }
     }
 
@@ -241,7 +246,7 @@ impl ServerAppBuilder {
     /// shared `HostComposition` runtime surface.
     pub fn built_in_harnesses(
         mut self,
-        harnesses: Vec<crate::records::BuiltInHarnessDefinition>,
+        harnesses: Vec<crate::domains::harnesses::record::BuiltInHarnessDefinition>,
     ) -> Self {
         self.built_in_harnesses = Some(harnesses);
         self
@@ -373,7 +378,7 @@ impl ServerAppBuilder {
         // Phase 1: Storage backend & runner
         // =====================================================================
         let migrations = self.migrations;
-        let crate::storage_init::StorageInit {
+        let crate::setup::storage_init::StorageInit {
             db,
             runner,
             background_runner,
@@ -381,7 +386,8 @@ impl ServerAppBuilder {
             database_url,
             database_unpooled_url,
             task_broadcaster,
-        } = crate::storage_init::init_storage(&self.config, migrations).await?;
+            actor_wakeups,
+        } = crate::setup::storage_init::init_storage(&self.config, migrations).await?;
 
         // Background loops draw from a pool of their own (EVE-1081). Prod had
         // the durable scheduler, the observer scoring worker and the sweeps
@@ -410,7 +416,7 @@ impl ServerAppBuilder {
                 None
             }
         };
-        let slack_provisioning = crate::slack_provisioning::configure(
+        let slack_provisioning = crate::channels::slack::provisioning::configure(
             &mut supervisor,
             db.clone(),
             encryption.clone(),
@@ -432,10 +438,15 @@ impl ServerAppBuilder {
             .await?,
         );
 
-        let sqldb_backend = Arc::new(crate::session_sqldb::InMemorySqlDbBackend::new());
-        let sqldb_store: Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore> =
-            Arc::new(crate::session_sqldb::InMemorySqlDbStore::new(sqldb_backend));
-        tracing::info!("Session SQL database store initialized (in-memory)");
+        crate::domains::agent_channels::api_endpoint_conversion::convert_at_startup(
+            &db,
+            encryption.as_ref(),
+        )
+        .await;
+        crate::platform::DbOrgEgressAllowlist::install(db.clone());
+        let sqldb_store: Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore> = Arc::new(
+            crate::session_sqldb::PostgresSqlDbStore::new(db.database().clone()),
+        );
 
         // =====================================================================
         // Phase 3: Valkey + Authentication
@@ -492,7 +503,6 @@ impl ServerAppBuilder {
         let auth_state = auth::AuthState::new(auth_config.clone(), auth_backend.clone())
             .with_db(db.clone())
             .with_feature_flag_policy(feature_flag_policy.clone());
-        let notifications_enabled = feature_flags.notifications;
         tracing::info!(?feature_flags, "Feature flags computed");
 
         // Prometheus metrics
@@ -528,7 +538,6 @@ impl ServerAppBuilder {
                 host_composition: host_composition.clone(),
                 auth_state: auth_state.clone(),
                 auth_config: auth_config.clone(),
-                notifications_enabled,
                 observers_enabled: feature_flags.observers,
                 prometheus_enabled: prometheus_handle.is_some(),
             },
@@ -539,9 +548,9 @@ impl ServerAppBuilder {
         // Event delivery (NATS JetStream / in-memory)
         // =====================================================================
         let event_delivery = if self.config.dev_mode {
-            crate::event_delivery::EventDelivery::in_memory()
+            crate::live_updates::event_delivery::EventDelivery::in_memory()
         } else {
-            crate::event_delivery::EventDelivery::from_env().await
+            crate::live_updates::event_delivery::EventDelivery::from_env().await
         };
         let resolve_listener_database_url = || {
             database_url
@@ -573,8 +582,10 @@ impl ServerAppBuilder {
             None
         } else if let Some(database_url) = resolve_listener_database_url()?.as_ref() {
             let broadcaster =
-                crate::event_notifications::EventNotificationBroadcaster::new(database_url.clone())
-                    .await;
+                crate::live_updates::event_notifications::EventNotificationBroadcaster::new(
+                    database_url.clone(),
+                )
+                .await;
             tracing::info!("Event notification broadcaster initialized for push-based SSE");
             Some(Arc::new(broadcaster))
         } else {
@@ -583,23 +594,20 @@ impl ServerAppBuilder {
             );
             None
         };
-        let notification_broadcaster = if notifications_enabled {
-            if let Some(database_url) = resolve_listener_database_url()?.as_ref() {
-                let broadcaster =
-                    crate::notification_notifications::NotificationNotificationBroadcaster::new(
-                        database_url.clone(),
-                    )
-                    .await;
-                tracing::info!("Notification broadcaster initialized for push-based SSE");
-                Some(Arc::new(broadcaster))
-            } else {
-                tracing::info!(
-                    "Notification broadcaster not available (DEV_MODE), notification SSE will use polling"
-                );
-                None
-            }
+        let notification_broadcaster = if let Some(database_url) =
+            resolve_listener_database_url()?.as_ref()
+        {
+            let broadcaster =
+                crate::live_updates::notification_notifications::NotificationNotificationBroadcaster::new(
+                    database_url.clone(),
+                )
+                .await;
+            tracing::info!("Notification broadcaster initialized for push-based SSE");
+            Some(Arc::new(broadcaster))
         } else {
-            tracing::info!("Notification broadcaster disabled via feature flag");
+            tracing::info!(
+                "Notification broadcaster not available (DEV_MODE), notification SSE will use polling"
+            );
             None
         };
 
@@ -652,7 +660,6 @@ impl ServerAppBuilder {
             db.clone(),
             runner.clone(),
             auth_state.clone(),
-            notifications_enabled,
             event_delivery.clone(),
             sse_tracker.clone(),
         );
@@ -662,18 +669,6 @@ impl ServerAppBuilder {
             auth_state.clone(),
             event_delivery.clone(),
         );
-        // Slack delivery dispatcher, always on: without the PostgreSQL listener
-        // (NATS) it polls sessions (EVERRUNS-2B) and takes bus deltas (EVE-1211).
-        let slack_wake = match event_broadcaster {
-            Some(ref broadcaster) => broadcaster.subscribe().into(),
-            None => crate::slack_delivery::DeliveryWake::Poll,
-        };
-        let slack_dispatcher = crate::slack_delivery::SlackDeliveryDispatcher::start(
-            db.clone(),
-            slack_wake,
-            auth_config.frontend_url.clone(),
-        );
-        slack_dispatcher.feed_live_deltas(&event_delivery);
         let events_state = api::events::AppState {
             db: db.clone(),
             session_service: Arc::new(
@@ -688,15 +683,13 @@ impl ServerAppBuilder {
             event_broadcaster,
             auth: auth_state.clone(),
         };
-        let notifications_state = notification_service.as_ref().map(|notification_service| {
-            api::notifications::AppState {
-                db: db.clone(),
-                notification_service: notification_service.clone(),
-                sse_tracker: sse_tracker.clone(),
-                notification_broadcaster,
-                auth: auth_state.clone(),
-            }
-        });
+        let notifications_state = api::notifications::AppState {
+            db: db.clone(),
+            notification_service,
+            sse_tracker: sse_tracker.clone(),
+            notification_broadcaster,
+            auth: auth_state.clone(),
+        };
         let driver_registry = Arc::new(host_composition.driver_registry().clone());
         let provider_resolver = Arc::new(
             services::ProviderResolverService::new(db.clone(), encryption.clone())
@@ -738,11 +731,11 @@ impl ServerAppBuilder {
             auth_state.clone(),
             Some(provider_resolver.clone()),
         );
-        let voice_state = api::voice::AppState::new(
+        let voice_state = crate::channels::voice::AppState::new(
             db.clone(),
             auth_state.clone(),
             feature_flags.clone(),
-            api::voice::AppDependencies {
+            crate::channels::voice::AppDependencies {
                 runner: runner.clone(),
                 message_service: messages_state.message_service.clone(),
                 provider_resolver: provider_resolver.clone(),
@@ -836,7 +829,6 @@ impl ServerAppBuilder {
             message_service: Arc::new(crate::domains::messages::MessageService::new(
                 db.clone(),
                 runner.clone(),
-                notifications_enabled,
                 event_delivery.clone(),
             )),
             // Judged scorers (citation_judged) use the org's own configured model,
@@ -854,11 +846,12 @@ impl ServerAppBuilder {
         let utility_llm = host_composition.utility_llm_service();
         let health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>> =
             if utility_llm.is_configured()
-                && let Some(default_harness_name) = crate::records::harness_for_role(
-                    &built_in_harnesses,
-                    crate::records::BuiltInHarnessRole::Default,
-                )
-                .map(|h| h.name.clone())
+                && let Some(default_harness_name) =
+                    crate::domains::harnesses::record::harness_for_role(
+                        &built_in_harnesses,
+                        crate::domains::harnesses::record::BuiltInHarnessRole::Default,
+                    )
+                    .map(|h| h.name.clone())
             {
                 let health_check_ctx = Arc::new(crate::domains::agents::HealthCheckRunContext {
                     db: db.clone(),
@@ -869,7 +862,6 @@ impl ServerAppBuilder {
                     message_service: Arc::new(crate::domains::messages::MessageService::new(
                         db.clone(),
                         runner.clone(),
-                        notifications_enabled,
                         event_delivery.clone(),
                     )),
                     utility_llm_service: utility_llm,
@@ -888,21 +880,21 @@ impl ServerAppBuilder {
             Some(svc) => agents_state.with_health_check_service(svc.clone()),
             None => agents_state,
         };
-        let slack_state = api::slack_events::SlackState::new(
+        let slack_state = crate::channels::slack::events::SlackState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
-            Some(slack_dispatcher.clone()),
-            notifications_enabled,
             event_delivery.clone(),
             auth_config.base_url.clone(),
         )
-        .with_decisions(&host_composition, &provider_resolver, &budget_service);
+        .with_frontend_url(auth_config.frontend_url.clone())
+        .with_decisions(&host_composition, &provider_resolver, &budget_service)
+        .with_channel_host();
+        let channel_recovery = slack_state.channels.clone();
         let channel_states = channels::ChannelStates::build(channels::ChannelDeps {
             db: db.clone(),
             encryption: encryption.clone(),
             runner: runner.clone(),
-            notifications_enabled,
             event_delivery: event_delivery.clone(),
             sse_tracker: sse_tracker.clone(),
             valkey: valkey_for_channel_rate_limits,
@@ -911,6 +903,7 @@ impl ServerAppBuilder {
             public_chat_enabled: feature_flags.public_chat,
             mcp_event_triggers: mcp_event_triggers.clone(),
         });
+        let (channel_api_routes, channel_root_routes) = channel_states.into_routes();
         let session_files_state = api::session_files::AppState::new(
             db.clone(),
             event_service.clone(),
@@ -1047,7 +1040,6 @@ impl ServerAppBuilder {
             auth_state.clone(),
             host_composition.as_ref(),
             &built_in_harnesses,
-            notifications_enabled,
             event_delivery.clone(),
             encryption.clone(),
             scheduler_store.clone(),
@@ -1064,6 +1056,9 @@ impl ServerAppBuilder {
         .with_elicitation_base_url(mcp_root_url.clone())
         .with_mcp_events(mcp_events)
         .with_slack_provisioner(slack_provisioner.clone())
+        .with_mcp_oauth_checker(Some(api::user_connections::OAuthConnectionChecker::shared(
+            user_connections_state.clone(),
+        )))
         .with_provider_services(provider_services.clone());
         let mcp_endpoint_state = match &session_sandbox_service {
             Some(service) => mcp_endpoint_state.with_session_sandbox_service(service.clone()),
@@ -1111,6 +1106,7 @@ impl ServerAppBuilder {
             .merge(api::agent_examples::routes(agent_examples_state))
             .merge(api::agents::routes(agents_state))
             .merge(api::agent_credentials::routes(api_state.clone()))
+            .merge(api::github_apps::agent_routes(api_state.clone()))
             .merge(api::runtime_auth::routes(api::runtime_auth::AppState {
                 db: db.clone(),
                 auth: auth_state.clone(),
@@ -1132,7 +1128,7 @@ impl ServerAppBuilder {
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
             .merge(api::messages::routes(messages_state))
-            .merge(api::voice::routes(voice_state))
+            .merge(crate::channels::voice::routes(voice_state))
             .merge(api::tool_results::routes(tool_results_state))
             .merge(api::events::routes(events_state))
             .merge(api::models::routes(models_state))
@@ -1195,23 +1191,19 @@ impl ServerAppBuilder {
             .merge(api::user_preferences::routes(api_state.clone()))
             .merge(api::session_schedules::routes(session_schedules_state))
             .merge(api::audit_logs::routes(api_state.clone()))
+            .merge(api::session_trace::routes(api_state.clone()))
             .merge(api::commands::routes(commands_state))
             .merge(api::command_dispatch::routes(mcp_endpoint_state.clone()))
-            .merge(api::slack_events::routes(slack_state.clone()))
-            .merge(api::slack_install::routes(
-                api::slack_install::SlackInstallState::new(
+            .merge(crate::channels::slack::events::routes(slack_state.clone()))
+            .merge(crate::channels::slack::install::routes(
+                crate::channels::slack::install::SlackInstallState::new(
                     slack_state,
                     auth_state.clone(),
                     auth_config.frontend_url.clone(),
                     slack_provisioning,
                 ),
             ))
-            .merge(api::channel_webhooks::routes(channel_states.webhooks))
-            .merge(api::channel_a2a::routes(channel_states.a2a))
-            .merge(api::channel_api::routes(channel_states.api))
-            .merge(api::ag_ui::routes(channel_states.ag_ui))
-            .merge(api::public_chat::routes(channel_states.public_chat))
-            .merge(api::fcp::routes(channel_states.fcp))
+            .merge(channel_api_routes)
             .merge(api::feature_flags::routes(feature_flags_state))
             .merge(api::budgets::routes(api::budgets::AppState::new(
                 db.clone(),
@@ -1219,9 +1211,7 @@ impl ServerAppBuilder {
                 auth_state.clone(),
             )));
 
-        if let Some(notifications_state) = notifications_state {
-            api_routes = api_routes.merge(api::notifications::routes(notifications_state));
-        }
+        api_routes = api_routes.merge(api::notifications::routes(notifications_state));
 
         if feature_flags.evals {
             api_routes = api_routes.merge(api::evals::routes(evals_state));
@@ -1270,6 +1260,12 @@ impl ServerAppBuilder {
         }
 
         let api_routes = http_layers::decorate_api_routes(api_routes, &auth_state.config);
+        // PAT scopes: tag each matched route with its declared access class.
+        let api_routes = crate::auth::pat_scope::classify_api_routes(
+            api_routes,
+            &self.config.api_prefix,
+            self.pat_route_classes,
+        );
         // TM-DOS: Global per-IP API rate limiting (applied to API routes only,
         // not /health or /metrics). Set RATE_LIMIT_API_REQUESTS_PER_MINUTE=0 to disable.
         let api_rate_limiter = http_layers::api_rate_limiter(valkey_for_api_rate_limits);
@@ -1290,7 +1286,8 @@ impl ServerAppBuilder {
         );
         let mut root_routes = Router::new()
             .merge(api::mcp_endpoint::routes(mcp_endpoint_state))
-            .merge(api::mcp_elicitation::routes(mcp_elicitation_state));
+            .merge(api::mcp_elicitation::routes(mcp_elicitation_state))
+            .merge(channel_root_routes);
 
         if let Some(public_routes) = auth_backend.public_routes() {
             root_routes = root_routes.merge(public_routes);
@@ -1337,6 +1334,7 @@ impl ServerAppBuilder {
         let app = http_layers::apply_outer_layers(
             app,
             &self.config.cors_origins,
+            api::agent_api_cors::ApiChannelOrigins::new(db.clone(), encryption.clone()),
             &feature_flags,
             prometheus_handle.is_some(),
         );
@@ -1390,14 +1388,22 @@ impl ServerAppBuilder {
             )?;
 
             // -- Stale task reclamation (everruns_durable::maintenance) --
-            crate::durable_reaper::spawn_stale_task_reaper(
+            crate::background::durable_reaper::spawn_stale_task_reaper(
                 &mut supervisor,
                 db.pool().clone(),
-                Arc::new(crate::durable_reaper::TurnReapHandler::new(
+                Arc::new(crate::background::durable_reaper::TurnReapHandler::new(
                     event_service.clone(),
                     reclaim_session_service.clone(),
                     error_reporter.clone(),
                 )),
+            );
+
+            // TEMPORARY (step 7 deletes it): old-path turn tasks a previous
+            // release still creates during a rolling deploy become actors.
+            crate::background::legacy_turn_sweep::spawn_legacy_turn_sweep(
+                &mut supervisor,
+                db.clone(),
+                task_broadcaster.clone(),
             );
 
             background::spawn_model_sync(
@@ -1420,28 +1426,28 @@ impl ServerAppBuilder {
                         &auth_config,
                         host_composition.egress_service(),
                     ),
+                    actor_wakeups,
                 },
             );
         } else {
             tracing::info!("DEV MODE: gRPC server disabled, no task worker available");
         }
 
-        // -- Slack delivery recovery (re-register active Slack sessions after restart) --
-        {
-            let dispatcher = slack_dispatcher.clone();
-            let recovery_enc = encryption.clone();
+        // Channel deliveries a restart cut off resume here. Slack's host
+        // resolves every channel type, so one loop covers them all.
+        if let Some(channels) = channel_recovery {
             supervisor.track(
-                "slack_delivery_recovery",
-                tokio::spawn(async move {
-                    dispatcher.recover(recovery_enc.as_ref()).await;
-                }),
+                "channel_delivery_recovery",
+                channels
+                    .host
+                    .spawn_recovery(std::time::Duration::from_secs(30)),
             );
         }
 
         // -- Durable task scheduler (both prod and dev) --
         let cluster_jobs_store = background_scheduler_store.clone();
         if let Some(store) = background_scheduler_store {
-            crate::system_schedules::ensure_worker_schedules(&store).await;
+            crate::background::system_schedules::ensure_worker_schedules(&store).await;
             let scheduler = everruns_durable::DurableScheduler::with_defaults(
                 store,
                 format!("scheduler-{}", uuid::Uuid::now_v7()),
@@ -1476,6 +1482,7 @@ impl ServerAppBuilder {
                 provider_resolver: provider_resolver.clone(),
                 driver_registry: driver_registry.clone(),
                 host_composition: host_composition.clone(),
+                session_sandbox_service: session_sandbox_service.clone(),
             },
             cluster_jobs_store,
         )

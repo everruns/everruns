@@ -1,16 +1,17 @@
 use super::playground::*;
 use super::{CreateSession, ListSessions, SessionFilterArgs, SessionService};
 use crate::domains::common::{Command, Ctx};
+use crate::domains::sessions::record::SessionSource;
 use crate::domains::sessions::types::CreateSessionRequest;
-use crate::records::{FeatureFlags, SessionSource};
-use crate::storage::{StorageBackend, models::CreateUserRow};
+use crate::records::FeatureFlags;
+use crate::storage::{CreateUserRow, StorageBackend};
 use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
 use std::sync::Arc;
 use uuid::Uuid;
 
 async fn fixture(role: OrgRole) -> Ctx {
     let db = Arc::new(StorageBackend::test_database());
-    crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
+    crate::setup::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
         .await
         .unwrap();
     let user = Uuid::now_v7();
@@ -106,7 +107,7 @@ async fn another_subject_requires_admin_and_must_be_active_in_org() {
     for (org_id, usage) in [(ctx.org_id(), "service"), (ctx.org_id() + 1, "end_user")] {
         let id = everruns_contracts::typed_id::VirtualUserId::new();
         ctx.db
-            .create_virtual_user(crate::storage::models::CreateVirtualUserRow {
+            .create_virtual_user(crate::storage::CreateVirtualUserRow {
                 org_id,
                 id,
                 usage: usage.into(),
@@ -232,8 +233,7 @@ async fn playground_input_records_subject_and_operator_without_management_author
     let service = Arc::new(crate::domains::messages::MessageService::new(
         ctx.db.clone(),
         Arc::new(NoopRunner),
-        false,
-        crate::event_delivery::EventDelivery::in_memory(),
+        crate::live_updates::event_delivery::EventDelivery::in_memory(),
     ));
     ctx = ctx.with_message_service(service.clone());
     let command = || {

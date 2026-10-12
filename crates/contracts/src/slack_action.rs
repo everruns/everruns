@@ -7,7 +7,7 @@
 //! the token and let the capability speak HTTP — would put a long-lived
 //! workspace credential in the process that also runs model-chosen tool
 //! arguments, and would need a second Slack HTTP path beside the one
-//! `slack_delivery` already maintains.
+//! `channels::slack::delivery` already maintains.
 //!
 //! So the *action* travels and the credential does not. The capability names
 //! what it wants done; the implementor (the control plane, which already holds
@@ -17,9 +17,9 @@
 //!
 //! # Fail closed
 //!
-//! Resolution keys off the `slack:endpoint:{id}` session tag that
-//! `build_session_tags` stamps on Slack-originated sessions. A session without
-//! that tag — one started from the API, a schedule, or another channel — has no
+//! Resolution keys off the Slack channel the session came in through (its
+//! channel FK; archival sessions, its App and Slack routing tag). A session
+//! without one — started from the API, a schedule, or another channel — has no
 //! Slack endpoint to act as, and every action must fail with
 //! [`SlackActionError::NoSlackSession`](crate::slack_action::SlackActionError::NoSlackSession) rather than falling back to some other
 //! endpoint's credential.

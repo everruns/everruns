@@ -1,8 +1,10 @@
 //! Sandbox Template storage across hosted and in-memory backends.
 
 use super::*;
-use crate::records::ResolvedSandboxSpec;
-use crate::records::{SandboxTemplate, SandboxTemplateRevision, SandboxTemplateSpec};
+use crate::domains::sandbox_templates::record::ResolvedSandboxSpec;
+use crate::domains::sandbox_templates::record::{
+    SandboxTemplate, SandboxTemplateRevision, SandboxTemplateSpec,
+};
 use crate::storage::{PgSandboxCheckpointStore, PrimarySandboxRecord};
 use everruns_contracts::typed_id::SessionId;
 use everruns_contracts::typed_id::{SandboxTemplateId, SandboxTemplateRevisionId};
