@@ -5,7 +5,7 @@
 use crate::kernel_imports::{
     contracts::typed_id::ScheduleId,
     contracts::typed_id::SessionId,
-    session_schedule::{MAX_ACTIVE_SCHEDULES_PER_SESSION, SessionSchedule},
+    session_schedule::{MAX_ACTIVE_SCHEDULES_PER_SESSION, SessionSchedule, normalize_session_cron},
 };
 use crate::storage::UpdateField;
 use anyhow::{Context, Result, anyhow};
@@ -20,10 +20,11 @@ use crate::storage::{CreateSessionScheduleRow, UpdateSessionScheduleRow};
 /// Compute the next trigger time for a schedule.
 ///
 /// For cron: accepts the standard 5-field form the `create_schedule` tool
-/// documents (the `cron` crate wants 6 or 7 fields, so a seconds field is
-/// prepended), evaluates it in the schedule's IANA timezone, and finds the
-/// next occurrence after now. Mirrors `next_cron_trigger` in the facade's
-/// local schedule store so hosted and embedded schedules fire alike.
+/// documents, read through `normalize_session_cron` (shared with the interval
+/// gate and the facade's local schedule store, so hosted and embedded
+/// schedules agree on what a cron means), evaluates it in the schedule's IANA
+/// timezone, and finds the next occurrence after now. Every error is a caller
+/// input error: an invalid cron or timezone.
 /// For one-shot: returns the scheduled_at time if it's in the future.
 pub fn compute_next_trigger(
     cron_expression: Option<&str>,
@@ -43,50 +44,16 @@ pub fn compute_next_trigger(
     }
 }
 
-fn unix_weekdays_to_names(field: &str) -> String {
-    const NAMES: [&str; 8] = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
-    let day = |value: &str| match value.parse::<usize>() {
-        Ok(index) if index < NAMES.len() => NAMES[index].to_string(),
-        _ => value.to_string(),
-    };
-    field
-        .split(',')
-        .map(|part| {
-            let (range, step) = match part.split_once('/') {
-                Some((range, step)) => (range, Some(step)),
-                None => (part, None),
-            };
-            let range = range.split('-').map(day).collect::<Vec<_>>().join("-");
-            match step {
-                Some(step) => format!("{range}/{step}"),
-                None => range,
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(",")
-}
-
 fn next_cron_occurrence(
     cron_expr: &str,
     timezone: &str,
     after: DateTime<Utc>,
 ) -> Result<Option<DateTime<Utc>>> {
-    let fields: Vec<_> = cron_expr.split_whitespace().collect();
-    let normalized = match fields.len() {
-        // Standard cron counts weekdays 0-6 from Sunday (7 is Sunday too);
-        // the `cron` crate counts 1-7 from Sunday, so name the days instead.
-        5 => format!(
-            "0 {} {}",
-            fields[..4].join(" "),
-            unix_weekdays_to_names(fields[4])
-        ),
-        6 | 7 => fields.join(" "),
-        _ => {
-            return Err(anyhow!(
-                "Invalid cron expression '{cron_expr}': use 5 fields (minute hour day month weekday)"
-            ));
-        }
-    };
+    let normalized = normalize_session_cron(cron_expr).ok_or_else(|| {
+        anyhow!(
+            "Invalid cron expression '{cron_expr}': use 5 fields (minute hour day month weekday)"
+        )
+    })?;
     let schedule = cron::Schedule::from_str(&normalized)
         .map_err(|e| anyhow!("Invalid cron expression '{}': {}", cron_expr, e))?;
     let tz = if timezone.trim().is_empty() {
@@ -317,12 +284,6 @@ mod tests {
 
     #[test]
     fn five_field_weekdays_count_from_sunday() {
-        assert_eq!(unix_weekdays_to_names("0"), "SUN");
-        assert_eq!(unix_weekdays_to_names("7"), "SUN");
-        assert_eq!(unix_weekdays_to_names("1-5"), "MON-FRI");
-        assert_eq!(unix_weekdays_to_names("0,6"), "SUN,SAT");
-        assert_eq!(unix_weekdays_to_names("*/2"), "*/2");
-        assert_eq!(unix_weekdays_to_names("MON"), "MON");
         // Monday 2026-10-12 09:00 UTC is the first weekday run after Sunday.
         let after = Utc.with_ymd_and_hms(2026, 10, 11, 23, 0, 0).unwrap();
         assert_eq!(
