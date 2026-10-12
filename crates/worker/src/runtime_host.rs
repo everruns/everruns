@@ -661,6 +661,12 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
                 },
             ));
         }
+        // Lets integration tools (github_checkout_pull_request) run in the
+        // session's managed sandbox without depending on its crate.
+        everruns_capabilities::capabilities::install_sandbox_workspace(
+            &mut extensions,
+            resolved_capabilities,
+        );
         extensions.insert(Arc::new(crate::core::tool_context::ExecutionServicesExt(
             Arc::new(PlatformExecutionScope {
                 store: platform_store.clone(),

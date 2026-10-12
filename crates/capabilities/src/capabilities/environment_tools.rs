@@ -24,11 +24,11 @@ const DEFAULT_SEARCH_LIMIT: usize = 200;
 const MAX_SEARCH_LIMIT: usize = 1_000;
 const SEARCH_TIMEOUT_MS: u64 = 30_000;
 
-fn workspace_root(instance: &SessionSandboxInstance) -> &str {
+pub(super) fn workspace_root(instance: &SessionSandboxInstance) -> &str {
     instance.workspace_path.as_deref().unwrap_or("/workspace")
 }
 
-fn resolve_workspace_path(
+pub(super) fn resolve_workspace_path(
     instance: &SessionSandboxInstance,
     input: &str,
 ) -> Result<String, String> {
@@ -69,7 +69,7 @@ fn is_workspace_end_boundary(value: Option<char>) -> bool {
 /// the same `/workspace` namespace as the file tools. Keep the translation at
 /// this boundary so neither prompts nor provider implementations need to know
 /// one another's paths.
-fn translate_workspace_command(command: &str, provider_root: &str) -> String {
+pub(super) fn translate_workspace_command(command: &str, provider_root: &str) -> String {
     if provider_root == "/workspace" {
         return command.to_string();
     }
@@ -94,7 +94,7 @@ fn translate_workspace_command(command: &str, provider_root: &str) -> String {
     translated
 }
 
-fn canonicalize_workspace_output(output: &str, provider_root: &str) -> String {
+pub(super) fn canonicalize_workspace_output(output: &str, provider_root: &str) -> String {
     if provider_root == "/workspace" {
         output.to_string()
     } else {

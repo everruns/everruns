@@ -28,6 +28,7 @@ mod platform_docs;
 pub mod platform_management;
 pub mod poppy_client;
 pub mod research;
+mod sandbox_workspace;
 pub mod session_sandbox;
 pub mod session_schedule;
 pub mod session_sql_database;
@@ -46,6 +47,7 @@ pub(crate) use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, MountDirectoryBuilder, MountPoint,
     RiskLevel, SpawnMode, SystemPromptContext,
 };
+pub use sandbox_workspace::{ManagedSandboxWorkspace, install_sandbox_workspace};
 
 #[cfg(feature = "a2a")]
 pub use a2a_delegation::{A2aAgentDelegationCapability, SpawnAgentTool};
