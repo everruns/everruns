@@ -496,6 +496,7 @@ impl McpEventsService {
             // replay window never rejects a legitimate retry.
             let outcome = self
                 .post(
+                    subscription.org_id,
                     &subscription.callback_url,
                     &subscription.subscription_key,
                     &message_id,
@@ -544,6 +545,7 @@ impl McpEventsService {
 
     async fn post(
         &self,
+        org_id: i64,
         url: &str,
         subscription_id: &str,
         message_id: &str,
@@ -571,7 +573,10 @@ impl McpEventsService {
             .header("webhook-signature", signature)
             .header("x-mcp-subscription-id", subscription_id)
             .body(body)
-            .timeout_ms(REQUEST_TIMEOUT_MS);
+            .timeout_ms(REQUEST_TIMEOUT_MS)
+            // The subscriber's org: the tenant egress proxy meters it and
+            // refuses delivery while its egress is suspended.
+            .scope(super::presentation::org_scope(org_id));
         request = if pinned.is_empty() {
             request.require_dns_pinning()
         } else {
