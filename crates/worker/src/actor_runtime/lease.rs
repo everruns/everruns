@@ -24,7 +24,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::{Duration, Instant};
 
-use everruns_contracts::error::Result;
+use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::{MessageId, SessionId};
 use tokio::sync::{Notify, watch};
 
@@ -127,8 +127,9 @@ impl Lease {
         *self.cancel.borrow()
     }
 
-    /// Extend the lease and commit the cursor. A lost lease flips `lost`; a
-    /// store error does too once no renew succeeded for a whole TTL.
+    /// Extend the lease and commit the cursor. A lost lease flips `lost`, as
+    /// does a deleted session (`SessionNotFound`, EVE-1235); a store error
+    /// does too once no renew succeeded for a whole TTL.
     pub(crate) async fn renew(&self) -> Result<()> {
         let renewal = self
             .store
@@ -156,6 +157,10 @@ impl Lease {
             Ok(None) => {
                 self.lost.send_replace(true);
                 Ok(())
+            }
+            Err(error @ AgentLoopError::SessionNotFound(_)) => {
+                self.lost.send_replace(true);
+                Err(error)
             }
             Err(error) => {
                 let stale = self
@@ -289,8 +294,15 @@ pub(crate) async fn renew_loop(lease: Arc<Lease>, poke: Arc<Notify>) {
             _ = tokio::time::sleep(period) => {}
             _ = poke.notified() => {}
         }
-        if let Err(error) = lease.renew().await {
-            tracing::warn!(session_id = %lease.session_id, error = %error, "Actor lease renew failed");
+        match lease.renew().await {
+            Ok(()) => {}
+            Err(AgentLoopError::SessionNotFound(_)) => {
+                tracing::info!(session_id = %lease.session_id, "Session deleted, stopping turn");
+                return;
+            }
+            Err(error) => {
+                tracing::warn!(session_id = %lease.session_id, error = %error, "Actor lease renew failed");
+            }
         }
         if lease.is_lost() {
             tracing::warn!(session_id = %lease.session_id, "Actor lease lost; stopping the turn");

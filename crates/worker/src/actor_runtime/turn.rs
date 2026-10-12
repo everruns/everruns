@@ -19,6 +19,9 @@
 //!   expire, after storing what the turn emitted: the next lease resumes from
 //!   the log, and the TTL is the backoff. A non-retryable one fails the turn
 //!   (user-facing message, `turn.failed`, idle) and releases.
+//! - A deleted session (EVE-1235) stops the turn like a lost lease, but
+//!   quietly: its actor row went with it, so there is nothing to fail, record
+//!   or release, and a renew or append that finds it gone is not a fault.
 //! - Poison guard: a lease that finds more attempts than the threshold (each
 //!   lease counts one; any release resets the count) seals the turn instead of
 //!   running it, so a turn that kills its worker cannot loop forever.
@@ -103,6 +106,9 @@ impl<H: ActorHosts> ActorRuntime<H> {
                 }
             },
             Ok(_) => {}
+            Err(AgentLoopError::SessionNotFound(_)) => {
+                tracing::info!(session_id = %actor.session_id, "Session deleted, stopping turn");
+            }
             Err(error) => {
                 tracing::warn!(session_id = %actor.session_id, error = %error, "Actor turn failed; the lease will expire and the turn resumes from the log");
             }
@@ -305,6 +311,15 @@ impl<H: ActorHosts> ActorRuntime<H> {
                 self.hosts.flush(host).await;
                 lease.skip_to_next_input().await?;
                 Finish::Release
+            }
+            Stopped::Done(Err(AgentLoopError::SessionNotFound(_))) => {
+                tracing::info!(
+                    session_id = %drive.session_id,
+                    turn_id = %drive.turn_id,
+                    "Session deleted, stopping turn"
+                );
+                self.hosts.abandon(host);
+                Finish::Expire
             }
             Stopped::Done(Err(error)) if error.is_non_retryable() => {
                 self.hosts.flush(host).await;

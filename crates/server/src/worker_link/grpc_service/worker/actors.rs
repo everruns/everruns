@@ -12,7 +12,9 @@
 use std::time::Duration;
 
 use crate::storage::DEFAULT_ACTOR_LEASES_PER_ORG;
-use crate::worker_link::grpc_service::worker::support::internal_status;
+use crate::worker_link::grpc_service::worker::support::{
+    internal_status, session_not_found_status,
+};
 use crate::worker_link::grpc_service::*;
 use everruns_contracts::typed_id::SessionId;
 
@@ -94,6 +96,19 @@ impl WorkerServiceImpl {
             )
             .await
             .map_err(|e| internal_status("Failed to renew actor lease", e))?;
+        // A lease lost to a missing actor row is a deleted session: the row
+        // goes only with it (FK cascade). `NotFound` naming it lets the worker
+        // stop the turn quietly (EVE-1235), as the in-process store does.
+        if renewal.is_none()
+            && self
+                .db
+                .get_session_actor(session_id)
+                .await
+                .map_err(|e| internal_status("Failed to renew actor lease", e))?
+                .is_none()
+        {
+            return Err(session_not_found_status(session_id));
+        }
         Ok(Response::new(match renewal {
             Some(renewal) => proto::RenewActorLeaseResponse {
                 held: true,

@@ -1,6 +1,7 @@
-//! EVE-1235: a worker still emitting for a session the user deleted, or
-//! starting a turn queued before the delete, must get "session not found"
-//! naming the session on both transports, never an internal store error.
+//! EVE-1235: a worker still emitting for a session the user deleted, renewing
+//! its actor lease on it, or starting a turn queued before the delete, must
+//! get "session not found" naming the session on both transports, never an
+//! internal store error or a plain lost lease.
 
 use super::test_adapters;
 use crate::services::EventService;
@@ -57,7 +58,9 @@ async fn direct_adapter_reports_deleted_session_as_not_found() {
     assert!(error.is_non_retryable());
 }
 
-fn grpc_service(adapters: &super::DirectWorkerAdapters) -> crate::worker_link::grpc_service::WorkerServiceImpl {
+fn grpc_service(
+    adapters: &super::DirectWorkerAdapters,
+) -> crate::worker_link::grpc_service::WorkerServiceImpl {
     crate::worker_link::grpc_service::WorkerServiceImpl::new(
         adapters.event_service.as_ref().clone(),
         adapters.db.clone(),
@@ -79,6 +82,7 @@ async fn grpc_emit_reports_deleted_session_as_not_found() {
                 event: Some(everruns_internal_protocol::schema_event_request_to_proto(
                     &late_event(session_id),
                 )),
+                actor_fence: None,
             },
         ))
         .await
@@ -163,6 +167,136 @@ async fn turn_context_for_deleted_session_is_session_not_found() {
         ))
         .await
         .expect_err("turn context for a deleted session must fail");
+    assert_eq!(status.code(), tonic::Code::NotFound, "{status:?}");
+    assert_eq!(status.message(), format!("Session not found: {session_id}"));
+}
+
+const ACTOR_TTL: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// A session leased to a worker's actor, then deleted under it.
+async fn leased_then_deleted(adapters: &super::DirectWorkerAdapters) -> (SessionId, u64) {
+    let session_id = adapters.db.create_test_session().await;
+    adapters
+        .db
+        .mark_session_actor_runnable(session_id, DEFAULT_ORG_ID, 1)
+        .await
+        .expect("mark runnable");
+    let leased = adapters
+        .actor_lease_store()
+        .lease_actors("worker-a", 10, ACTOR_TTL, None)
+        .await
+        .expect("lease");
+    let actor = leased
+        .iter()
+        .find(|actor| actor.session_id == session_id)
+        .expect("leased the session");
+    assert!(
+        adapters
+            .db
+            .delete_session(DEFAULT_ORG_ID, session_id)
+            .await
+            .expect("delete session")
+    );
+    (session_id, actor.fence)
+}
+
+/// The actor row goes with its session, so the holder's renew finds no lease.
+/// That is a deleted session, not another holder's lease: both transports
+/// name it, so the actor runtime stops the turn quietly.
+#[tokio::test]
+async fn actor_renew_for_a_deleted_session_is_session_not_found() {
+    let adapters = test_adapters();
+    let (session_id, fence) = leased_then_deleted(&adapters).await;
+
+    let error = adapters
+        .actor_lease_store()
+        .renew_actor_lease(session_id, "worker-a", fence, ACTOR_TTL, 0)
+        .await
+        .expect_err("renew for a deleted session must fail");
+    assert!(
+        matches!(error, AgentLoopError::SessionNotFound(id) if id == session_id),
+        "expected SessionNotFound, got {error:?}"
+    );
+
+    let status = grpc_service(&adapters)
+        .handle_renew_actor_lease(tonic::Request::new(
+            everruns_internal_protocol::proto::RenewActorLeaseRequest {
+                session_id: Some(everruns_internal_protocol::uuid_to_proto_uuid(
+                    session_id.uuid(),
+                )),
+                holder: "worker-a".to_string(),
+                fence: i64::try_from(fence).unwrap(),
+                ttl_ms: 0,
+                consumed_seq: 0,
+            },
+        ))
+        .await
+        .expect_err("renew for a deleted session must fail");
+    assert_eq!(status.code(), tonic::Code::NotFound, "{status:?}");
+    assert_eq!(status.message(), format!("Session not found: {session_id}"));
+}
+
+/// A lease lost to another holder stays a plain lost lease.
+#[tokio::test]
+async fn actor_renew_with_a_stale_fence_is_still_a_lost_lease() {
+    let adapters = test_adapters();
+    let session_id = adapters.db.create_test_session().await;
+    adapters
+        .db
+        .mark_session_actor_runnable(session_id, DEFAULT_ORG_ID, 1)
+        .await
+        .expect("mark runnable");
+    let store = adapters.actor_lease_store();
+    let leased = store
+        .lease_actors("worker-a", 10, ACTOR_TTL, None)
+        .await
+        .expect("lease");
+    let actor = leased
+        .iter()
+        .find(|actor| actor.session_id == session_id)
+        .expect("leased the session");
+    assert!(
+        store
+            .renew_actor_lease(session_id, "worker-b", actor.fence, ACTOR_TTL, 0)
+            .await
+            .expect("renew")
+            .is_none()
+    );
+}
+
+/// The holder's fenced appends (every platform turn's event writes) fail
+/// the session FK the same way an unfenced append does.
+#[tokio::test]
+async fn fenced_emit_for_a_deleted_session_is_session_not_found() {
+    let adapters = test_adapters();
+    let (session_id, fence) = leased_then_deleted(&adapters).await;
+
+    let error = adapters
+        .emit_events_fenced(
+            vec![late_event(session_id)],
+            &everruns_worker::ActorFence::new(session_id, "worker-a", fence),
+        )
+        .await
+        .expect_err("fenced emit for a deleted session must fail");
+    assert!(
+        matches!(error, AgentLoopError::SessionNotFound(id) if id == session_id),
+        "expected SessionNotFound, got {error:?}"
+    );
+
+    let status = grpc_service(&adapters)
+        .handle_emit_event(tonic::Request::new(
+            everruns_internal_protocol::proto::EmitEventRequest {
+                event: Some(everruns_internal_protocol::schema_event_request_to_proto(
+                    &late_event(session_id),
+                )),
+                actor_fence: Some(everruns_internal_protocol::proto::ActorFence {
+                    holder: "worker-a".to_string(),
+                    fence: i64::try_from(fence).unwrap(),
+                }),
+            },
+        ))
+        .await
+        .expect_err("fenced emit for a deleted session must fail");
     assert_eq!(status.code(), tonic::Code::NotFound, "{status:?}");
     assert_eq!(status.message(), format!("Session not found: {session_id}"));
 }

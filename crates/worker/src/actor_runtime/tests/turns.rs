@@ -402,3 +402,35 @@ async fn two_workers_never_run_one_session_at_once() {
     assert!(!open);
     assert_eq!(turn_ids(&events, "turn.completed").len(), 3);
 }
+
+/// EVE-1235: the session is deleted while its turn runs. The holder's next
+/// renew finds it gone and the turn stops at once, quietly: no `turn.failed`
+/// (there is nowhere to store it), no answer, and no lease to release.
+#[tokio::test]
+async fn a_turn_whose_session_is_deleted_stops_at_the_next_renew() {
+    let fixture = Fixture::new(model("Never shown.", vec![vec![call("c1", "read_inbox")]])).await;
+    fixture.gate.hold_first.store(true, Ordering::SeqCst);
+    let (worker, _) = fixture.worker("w1");
+    fixture.send("Read my inbox.").await;
+
+    let running = {
+        let worker = worker.clone();
+        tokio::spawn(async move { run_once(&worker).await })
+    };
+    tokio::time::timeout(WAIT, fixture.gate.held.notified())
+        .await
+        .unwrap();
+    fixture.store.delete(fixture.session_id);
+    worker.renew_poke().notify_waiters();
+
+    // Well inside the lease TTL (3s): a deleted session is not a store error
+    // the renewer waits out.
+    tokio::time::timeout(Duration::from_millis(1500), running)
+        .await
+        .expect("the turn stops at the renew")
+        .unwrap();
+    assert_eq!(fixture.count("turn.failed").await, 0);
+    assert_eq!(fixture.count("turn.completed").await, 0);
+    assert!(fixture.answers().await.is_empty());
+    assert!(!run_once(&worker).await, "nothing left to lease");
+}

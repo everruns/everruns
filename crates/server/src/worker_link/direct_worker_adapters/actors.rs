@@ -68,15 +68,29 @@ impl ActorLeaseStore for DirectActorLeaseStore {
         ttl: Duration,
         consumed_seq: i64,
     ) -> Result<Option<ActorRenewal>> {
-        Ok(self
+        let renewal = self
             .db
             .renew_session_actor_lease(session_id, holder, fence_to_db(fence)?, ttl, consumed_seq)
             .await
-            .map_err(|e| store_error(format!("Failed to renew actor lease: {e}")))?
-            .map(|row| ActorRenewal {
-                inbox_seq: row.inbox_seq,
-                cancel_requested: row.cancel_requested,
-            }))
+            .map_err(|e| store_error(format!("Failed to renew actor lease: {e}")))?;
+        let Some(row) = renewal else {
+            // Decision (EVE-1235): an actor row goes only with its session
+            // (FK cascade), so a lease lost to a missing row is a deleted
+            // session, which the runtime stops on quietly.
+            let actor = self
+                .db
+                .get_session_actor(session_id)
+                .await
+                .map_err(|e| store_error(format!("Failed to renew actor lease: {e}")))?;
+            return match actor {
+                Some(_) => Ok(None),
+                None => Err(AgentLoopError::session_not_found(session_id)),
+            };
+        };
+        Ok(Some(ActorRenewal {
+            inbox_seq: row.inbox_seq,
+            cancel_requested: row.cancel_requested,
+        }))
     }
 
     async fn release_actor(
