@@ -25,7 +25,7 @@ search with no key and no setup.
 | **Model provider search** (`native`) | The model's own search, on OpenAI, Anthropic, Gemini and OpenRouter models that have it (see below). Other models use free search. | Billed by the model provider |
 | **Brave Search** (`brave`) | The Brave Search API with a user, session or application key, else the organization's first Brave account | Billed on the Brave key |
 | **Parallel** (`parallel`) | The Parallel Search API (`fast` mode) with a user, session or application key, else the organization's first Parallel account | Billed on the Parallel key, about $1 per 1,000 searches |
-| **A search account** (`account`, with `account_id`) | One organization search account, such as "Brave Search · Team" or "Parallel · Research" | Billed on that account's key |
+| **A search account** (`account`, with `account_id`) | One organization search account, such as "Brave Search · Team", "Parallel · Research" or a [Cloudflare Web Search](/integrations/cloudflare-web-search/) account on Ceramic, Exa or Linkup | Billed on that account's key, or for Cloudflare on its AI Gateway credits ($0.25 per 1,000 searches on Ceramic) |
 | **Free search** (`free`) | DuckDuckGo, then DuckDuckGo Lite, then Mojeek, then Wikipedia | Free |
 
 Free search is the last fallback of every setting: when the chosen provider has no key, rejects
@@ -90,7 +90,8 @@ response. In Session Trace, a `web_search` step lists its attempts, with a faile
 ## Organization search accounts and defaults
 
 An organization admin connects search accounts as organization connections
-(`POST /v1/orgs/{org}/organization-connections/providers/brave_search`, or `.../parallel`), the
+(`POST /v1/orgs/{org}/organization-connections/providers/brave_search`, `.../parallel` or
+`.../cloudflare_web_search`), the
 same way sandbox provider accounts are connected. Every agent of the organization can then search with them; the
 key never reaches the agent.
 
@@ -119,6 +120,10 @@ Parallel account.
 Parallel searches its own web index and returns longer excerpts than Brave, so results carry an
 `excerpt` the model can quote. It applies the agent's allowed or blocked sites and freshness
 itself.
+
+A [Cloudflare Web Search](/integrations/cloudflare-web-search/) account searches the index it was
+connected with (Ceramic, Exa or Linkup) and returns at most 10 results. The API has no site or
+date filters, so allowed and blocked sites are applied to its results and freshness is not.
 
 Free search is best effort. Search engines sometimes answer automated traffic with a bot check;
 free search treats that as a failure and moves to the next source instead of reporting no

@@ -2,6 +2,10 @@
 
 ## 2026-10-12
 
+* **Web search: Cloudflare Web Search accounts.** A `cloudflare_web_search`
+  connection (account id, token, index, gateway, optional key alias) is a
+  search account on Ceramic, Exa or Linkup; non-secret settings travel as the
+  search account's `options`. See [Web Search](integrations/web-search.md).
 * **Web search step 7: Parallel Search API driver.** Parallel is a search
   account provider and a `parallel` provider setting (session, user or
   application key, else the organization's first Parallel account); the

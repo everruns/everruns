@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Web Search"
-description: "Proposal: one web_search capability backed by search providers (free, model provider native, Brave, Parallel), chosen per agent with organization defaults and an Automatic order; shared by the server, the Framework, serve and yolop."
+description: "Proposal: one web_search capability backed by search providers (free, model provider native, Brave, Parallel, Cloudflare Web Search), chosen per agent with organization defaults and an Automatic order; shared by the server, the Framework, serve and yolop."
 tags:
   - everruns
   - integrations
@@ -30,7 +30,7 @@ own. Three kinds of provider exist:
 |---|---|---|---|
 | Free search | DuckDuckGo, Mojeek fallback, developer sources | nothing | nobody |
 | Model provider search (native) | OpenAI, Anthropic, Gemini, OpenRouter | a model that supports it | on the model provider account |
-| Search account | Brave Search, Parallel (later Exa, Tavily) | an API key, stored as an organization connection | on that key |
+| Search account | Brave Search, Parallel, Cloudflare Web Search (Ceramic, Exa, Linkup; later Tavily) | an API key, stored as an organization connection | on that key, or Cloudflare AI Gateway credits |
 
 A fourth choice, **Automatic**, takes the first provider in an ordered list that
 can serve the model running the current turn: native search when the model has
@@ -93,8 +93,8 @@ the Trace still shows why a given search went where it did.
 provider, in the same spirit as LLM drivers: `SearchDriver` in
 `everruns-contracts` with `id()`, `capabilities()` (freshness, domain filters,
 excerpt length, pagination) and `search(SearchRequest) -> SearchResponse`. Free
-search, Brave and Parallel are drivers in `everruns-integrations`; Exa and
-Tavily later are one driver each. A `SearchDriverRegistry` maps provider ids to
+search, Brave, Parallel and Cloudflare are drivers in `everruns-integrations`;
+Tavily later is one more. A `SearchDriverRegistry` maps provider ids to
 drivers the way the connector registry maps connectors. The Parallel driver calls the Search API
 (`POST /v1/search`) in `fast` mode, Parallel's recommended mode for
 tool-calling agents (about 700 ms, $1 per 1,000 requests), with the query as
@@ -102,7 +102,17 @@ both the objective and the one search query; domain filters go in its source
 policy (allowed sites win, since Parallel ignores exclusions when inclusions
 are set) and freshness becomes `after_date`. The `parallel` connector already
 held the MCP key; the same key works for the Search API, so the connector
-declares the `web_search` connector capability. Native search is not a
+declares the `web_search` connector capability. The Cloudflare driver calls
+the Cloudflare Web Search API (`POST /client/v4/accounts/{id}/ai/websearch/`),
+which fronts three indexes (Ceramic, Exa, Linkup) and bills AI Gateway credits
+or a provider key stored on the gateway. It covers Exa, so no separate Exa
+driver is planned unless a feature Cloudflare hides is needed. Its connector,
+`cloudflare_web_search`, exists only for search accounts; the account id,
+gateway, index and key alias are not secret, so they live in the connection's
+`provider_metadata` and reach the worker as the search account's `options`
+(only the token is encrypted). One account is one index. The API has no site
+or date filters and caps results at 10, so site filters are applied to its
+results and freshness is reported as not applied. Native search is not a
 `SearchDriver`: it is a per-LLM-driver adapter (below) because the model
 provider runs it inside the model call.
 
@@ -258,7 +268,8 @@ policy like `web_fetch`. Search must never be blocked by it, in any policy mode
 | Free search, answer enrichment | `api.duckduckgo.com`, `*.wikipedia.org` | yes |
 | Brave | `api.search.brave.com` | yes (`*.brave.com`) |
 | Parallel | `api.parallel.ai` | yes (`*.parallel.ai`) |
-| Exa, Tavily (later) | `api.exa.ai`, `api.tavily.com` | yes |
+| Cloudflare Web Search | `api.cloudflare.com` | yes (`*.cloudflare.com`) |
+| Tavily (later) | `api.tavily.com` | yes |
 
 Each driver declares its hosts in code (`SearchDriver::egress_hosts()`), and a
 unit test checks every declared host against the compiled system allowlist,
@@ -587,6 +598,9 @@ Mockups: `/mnt/project-files/web-search/` in the project thread.
 6. SaaS: book native searches on the org ledger for the Everruns LLM provider.
 7. Parallel Search API driver.
 8. yolop adoption after the next platform release.
+9. Cloudflare Web Search accounts (Ceramic, Exa, Linkup). Next, behind a
+   search quality eval: a hosted built-in "Everruns search" on Ceramic through
+   the platform's Cloudflare account, booked on the org ledger.
 
 ## Options not taken
 

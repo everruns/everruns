@@ -496,7 +496,7 @@ async fn run_test(
             })?
             .decrypt_to_string(encrypted)
             .map_err(internal("Failed to decrypt search account key"))?;
-        account_search_driver(&row.provider, key)
+        account_search_driver(&row.provider, key, row.provider_metadata.as_ref())
             .ok_or_else(|| bad_request("The search account has no search driver"))?
     };
     let context = SearchContext {
@@ -527,6 +527,7 @@ fn connector_name(provider: &str) -> &str {
     match provider {
         "brave_search" => "Brave Search",
         "parallel" => "Parallel",
+        "cloudflare_web_search" => "Cloudflare Web Search",
         other => other,
     }
 }
