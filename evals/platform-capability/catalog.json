@@ -18761,7 +18761,12 @@
               ]
             },
             "starters": {
-              "description": "Conversation starters; omit to leave unchanged, send empty to clear.\n`icon` reuses the harness icon name set.",
+              "description": "Conversation starters as `[{\"text\": \"...\"}]`; omit to keep, `[]` to clear.\nAn optional `icon` reuses the harness icon name set.",
+              "example": [
+                {
+                  "text": "Who does the dishes today?"
+                }
+              ],
               "items": {
                 "$ref": "#/$defs/ConversationStarter"
               },
