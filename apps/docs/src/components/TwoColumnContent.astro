@@ -1,0 +1,28 @@
+---
+// Article column plus the "On this page" column (design handoff: 720px article,
+// 180px TOC at 1200px and wider). Below 1200px the TOC folds into the sticky
+// dropdown at the top of the article instead.
+import MobileTableOfContents from "./MobileTableOfContents.astro";
+
+const { toc } = Astro.locals.starlightRoute;
+---
+
+<div class:list={["er-content", { "er-has-toc": toc }]}>
+  <div class="main-pane">
+    {
+      toc && (
+        <div class="er-mobile-toc print:hidden">
+          <MobileTableOfContents />
+        </div>
+      )
+    }
+    <slot />
+  </div>
+  {
+    toc && (
+      <aside class="er-toc print:hidden">
+        <slot name="right-sidebar" />
+      </aside>
+    )
+  }
+</div>
