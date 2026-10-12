@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.25.0: Hierarchical AGENTS.md as conversation context"
-description: "Everruns 0.25.0 was released on 2026-09-11 with 5 highlights and 3 changelog entries. The release notes and any upgrade notes are linked here."
+description: "AGENTS.md files resolve hierarchically as conversation context, and every Everruns user starts in a pinned Platform Chat thread with more built-in tools."
 date: 2026-09-11
 kind: release
 significance: notable

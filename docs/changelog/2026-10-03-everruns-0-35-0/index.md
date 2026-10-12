@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.35.0: Safer sandbox tools"
-description: "Everruns 0.35.0 was released on 2026-10-03 with 3 highlights and 1 changelog entry. The release notes and any upgrade notes are linked here."
+description: "A computer use capability lets agents operate a browser screen, sandbox tools are safer, questions are answered in chat, and every org gets Platform Chat."
 date: 2026-10-03
 kind: release
 significance: notable

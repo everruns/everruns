@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.37.0: Approval history in context"
-description: "Everruns 0.37.0 was released on 2026-10-03 with 4 highlights and 1 changelog entry. The release notes and any upgrade notes are linked here."
+description: "Approval history shows in chat and on a new Approvals audit page, agent channels are visible at a glance, and navigation keeps your place."
 date: 2026-10-03
 kind: release
 significance: notable

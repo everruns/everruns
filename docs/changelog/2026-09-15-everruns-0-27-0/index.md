@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.27.0: Slack agent surface"
-description: "Everruns 0.27.0 was released on 2026-09-15 with 4 highlights and 2 changelog entries. The release notes and any upgrade notes are linked here."
+description: "Sessions show where their commands run and what they may touch, and Everruns agents run in Slack's agent pane with session environments."
 date: 2026-09-15
 kind: release
 significance: notable

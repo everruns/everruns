@@ -12,6 +12,8 @@ links:
   prs: [everruns/everruns#3927]
 ---
 
+![Everruns and OpenAI logos side by side, announcing the MCP App in ChatGPT and Codex](./integration@2x.png)
+
 The Everruns MCP server at `/mcp` is now an MCP App. In hosts that render MCP
 Apps, such as ChatGPT and Codex, running an agent shows a session view with
 status, messages and a reply box. Agent questions appear as a form, and pending

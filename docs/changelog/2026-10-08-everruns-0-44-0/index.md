@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.44.0: A2A 1.0 HTTP+JSON and PACT"
-description: "Everruns 0.44.0 was released on 2026-10-08 with 4 highlights and 4 changelog entries. The release notes and any upgrade notes are linked here."
+description: "Agent versions are retired in favor of change history, A2A channels serve HTTP+JSON and the PACT profiles, and MCP works inside conversations."
 date: 2026-10-08
 kind: release
 significance: notable

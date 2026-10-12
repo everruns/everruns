@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.41.0 release"
-description: "Everruns 0.41.0 was released on 2026-10-04 with 1 changelog entry. The release notes and any upgrade notes are linked here."
+description: "Framework crates are consolidated into everruns-core and the everruns facade, and the deprecated forwarding shims are removed. Read the upgrade notes."
 date: 2026-10-04
 kind: release
 significance: notable

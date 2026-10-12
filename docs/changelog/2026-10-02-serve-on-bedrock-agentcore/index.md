@@ -12,6 +12,8 @@ links:
   prs: [everruns/everruns#3990, everruns/everruns#4012]
 ---
 
+![Everruns and AWS logos side by side, announcing hosting on Amazon Bedrock AgentCore](./integration@2x.png)
+
 The new `everruns-serve-agentcore` crate hosts a serve app on Amazon Bedrock
 AgentCore Runtime. It answers `GET /ping` and `POST /invocations`, which take
 an AG-UI `RunAgentInput` or `{"prompt": ...}` and stream AG-UI events, plus a

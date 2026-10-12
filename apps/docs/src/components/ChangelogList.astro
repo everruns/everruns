@@ -1,24 +1,24 @@
 ---
-// The changelog list: every entry newest first, grouped by month, with filters
-// for product, surface, significance and kind.
+// The changelog list: every entry newest first, grouped by month and day, with
+// a category bar and Major only / Show releases toggles.
 //
 // Decision: filtering runs in the browser over a fully rendered list and keeps
-// its state in the query string (`?product=yolop&significance=major`), so a
-// filtered view is a shareable link and the page still works without
-// JavaScript. Per-product pages (/changelog/<product>/) pass `product` and get
-// the same list pre-filtered at build time, which is what feeds and search
-// engines see. Superseded entries stay in the list with a Superseded tag.
+// its state in the query string (`?kind=fix&significance=major&releases=0`),
+// so a filtered view is a shareable link and the page still works without
+// JavaScript. Products are filtered by the sidebar: per-product pages
+// (/changelog/<product>/) pass `product` and get the same list pre-filtered at
+// build time, which is what feeds and search engines see. `?product=` and
+// `?surface=` still filter for links that carry them. Superseded entries stay
+// in the list with a Superseded tag.
 import {
   KINDS,
-  PRODUCTS,
-  SIGNIFICANCE,
-  SURFACES,
   entryUrl,
   formatDate,
   getChangelogEntries,
   isoDate,
 } from "../lib/changelog";
 import ChangelogTags from "./ChangelogTags.astro";
+import { ICONS } from "../lib/changelog-icons";
 import { Image } from "astro:assets";
 import type { ImageMetadata } from "astro";
 
@@ -69,44 +69,55 @@ const days = (items: typeof entries) => {
 };
 
 const feed = product ? `/changelog/${product}/rss.xml` : "/changelog/rss.xml";
-const filters = [
-  ...(product ? [] : [{ name: "product", label: "Product", options: PRODUCTS }]),
-  { name: "surface", label: "Surface", options: SURFACES },
-  { name: "significance", label: "Significance", options: SIGNIFICANCE },
-  { name: "kind", label: "Category", options: KINDS },
-];
+// Deprecation and incident get a button only once an entry uses them.
+const kinds = KINDS.filter(
+  (k) => !["deprecation", "incident"].includes(k.id) || entries.some((e) => e.data.kind === k.id),
+);
+const monthSummary = (items: typeof entries) => {
+  const releases = items.filter((e) => e.data.kind === "release").length;
+  const changes = items.length - releases;
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  return [changes && plural(changes, "change"), releases && plural(releases, "release")].filter(Boolean).join(" · ");
+};
 ---
 
 <div class="changelog not-content" data-pagefind-ignore>
   <form class="changelog-filters" aria-label="Filter changes">
-    {
-      filters.map((filter) => (
-        <label>
-          <span>{filter.label}</span>
-          <select name={filter.name}>
-            <option value="">All</option>
-            {filter.options.map((option) => (
-              <option value={option.id}>{option.label}</option>
-            ))}
-          </select>
-        </label>
-      ))
-    }
-    <a class="changelog-feed" href={feed}>
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4 11a9 9 0 0 1 9 9" />
-        <path d="M4 4a16 16 0 0 1 16 16" />
-        <circle cx="5" cy="19" r="1" />
-      </svg>
-      RSS feed
-    </a>
+    <div class="changelog-kinds" role="group" aria-label="Category">
+      <button type="button" data-kind="" aria-pressed="true">All</button>
+      {
+        kinds.map((k) => (
+          <button type="button" data-kind={k.id} class={`cl-${k.id}`} aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              {(ICONS[k.id] ?? []).map((d) => <path d={d} />)}
+            </svg>
+            {k.label}
+          </button>
+        ))
+      }
+    </div>
+    <div class="changelog-toggles">
+      <label><input type="checkbox" name="major" /> Major only</label>
+      <label><input type="checkbox" name="releases" checked /> Show releases</label>
+      <a class="changelog-feed" href={feed} title="RSS feed">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 11a9 9 0 0 1 9 9" />
+          <path d="M4 4a16 16 0 0 1 16 16" />
+          <circle cx="5" cy="19" r="1" />
+        </svg>
+        RSS
+      </a>
+    </div>
   </form>
   <p class="changelog-status" aria-live="polite" hidden></p>
 
   {
     [...months].map(([month, items]) => (
       <section class="changelog-month">
-        <h2>{month}</h2>
+        <header class="changelog-month-head">
+          <h2>{month}</h2>
+          <span class="changelog-month-summary">{monthSummary(items)}</span>
+        </header>
         <ol>
           {days(items).map(([day, dayItems]) => (
             <li class="changelog-day">
@@ -123,12 +134,6 @@ const filters = [
                       data-kind={d.kind ?? ""}
                       data-release={d.release ?? ""}
                     >
-                      <p class="changelog-tags">
-                        <ChangelogTags kind={d.kind} significance={d.significance} products={d.products} />
-                        {(d.supersededBy || d.removedIn) && (
-                          <span class="changelog-superseded-tag">{d.removedIn ? "Removed" : "Superseded"}</span>
-                        )}
-                      </p>
                       <h3>
                         <a class="changelog-title" href={entryUrl(entry)}>{d.title}</a>
                       </h3>
@@ -143,6 +148,15 @@ const filters = [
                           )
                         );
                       })()}
+                      <p class="changelog-tags">
+                        <ChangelogTags kind={d.kind} significance={d.significance} products={d.products} />
+                        {(d.supersededBy || d.removedIn) && (
+                          <span class="changelog-superseded-tag">{d.removedIn ? "Removed" : "Superseded"}</span>
+                        )}
+                        {d.kind !== "release" && (
+                          <span class="changelog-avail">{d.release ? `In ${d.release}` : "On main"}</span>
+                        )}
+                      </p>
                     </li>
                   );
                 })}
@@ -176,6 +190,7 @@ const filters = [
     if (!root || !form) return;
     const params = new URLSearchParams(location.search);
     const since = params.get("since") ?? "";
+    const hideReleases = params.get("releases") === "0";
     let shown = 0;
     for (const item of root.querySelectorAll<HTMLElement>(".changelog-item")) {
       let visible = true;
@@ -184,6 +199,7 @@ const filters = [
         const have = (item.dataset[name] ?? "").split(" ");
         if (want && !have.includes(want)) visible = false;
       }
+      if (hideReleases && item.dataset.kind === "release") visible = false;
       if (since && !newer(item.dataset.release ?? "", since)) visible = false;
       item.hidden = !visible;
       if (visible) shown++;
@@ -192,30 +208,51 @@ const filters = [
       day.hidden = !day.querySelector(".changelog-item:not([hidden])");
     }
     for (const month of root.querySelectorAll<HTMLElement>(".changelog-month")) {
-      month.hidden = !month.querySelector(".changelog-item:not([hidden])");
+      const visible = [...month.querySelectorAll<HTMLElement>(".changelog-item:not([hidden])")];
+      month.hidden = visible.length === 0;
+      const releases = visible.filter((item) => item.dataset.kind === "release").length;
+      const changes = visible.length - releases;
+      const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+      const summary = month.querySelector(".changelog-month-summary");
+      if (summary) {
+        summary.textContent = [changes && plural(changes, "change"), releases && plural(releases, "release")]
+          .filter(Boolean)
+          .join(" · ");
+      }
     }
+    const kind = params.get("kind") ?? "";
+    for (const button of form.querySelectorAll<HTMLButtonElement>("[data-kind]")) {
+      button.setAttribute("aria-pressed", String(button.dataset.kind === kind));
+    }
+    form.querySelector<HTMLInputElement>("[name=major]")!.checked = params.get("significance") === "major";
+    form.querySelector<HTMLInputElement>("[name=releases]")!.checked = !hideReleases;
     if (status) {
-      status.hidden = !since;
-      status.textContent = since ? `${shown} changes since ${since}.` : "";
+      status.hidden = Boolean(shown) && !since;
+      status.textContent = !shown ? "No changes match these filters." : since ? `${shown} changes since ${since}.` : "";
     }
   }
 
+  function update(change: (params: URLSearchParams) => void) {
+    const next = new URLSearchParams(location.search);
+    change(next);
+    const query = next.toString();
+    history.replaceState(null, "", query ? `?${query}` : location.pathname);
+    apply();
+  }
+
   if (form) {
-    const params = new URLSearchParams(location.search);
-    for (const field of form.querySelectorAll<HTMLSelectElement>("select")) {
-      const value = params.get(field.name);
-      if (value) field.value = value;
+    for (const button of form.querySelectorAll<HTMLButtonElement>("[data-kind]")) {
+      button.addEventListener("click", () =>
+        update((p) => (button.dataset.kind ? p.set("kind", button.dataset.kind) : p.delete("kind"))),
+      );
     }
-    form.addEventListener("change", () => {
-      const next = new URLSearchParams(location.search);
-      for (const field of form.querySelectorAll<HTMLSelectElement>("select")) {
-        const value = field.value;
-        if (value) next.set(field.name, value);
-        else next.delete(field.name);
-      }
-      const query = next.toString();
-      history.replaceState(null, "", query ? `?${query}` : location.pathname);
-      apply();
+    form.querySelector("[name=major]")?.addEventListener("change", (event) => {
+      const on = (event.target as HTMLInputElement).checked;
+      update((p) => (on ? p.set("significance", "major") : p.delete("significance")));
+    });
+    form.querySelector("[name=releases]")?.addEventListener("change", (event) => {
+      const on = (event.target as HTMLInputElement).checked;
+      update((p) => (on ? p.delete("releases") : p.set("releases", "0")));
     });
     form.addEventListener("submit", (event) => event.preventDefault());
     apply();
@@ -226,43 +263,98 @@ const filters = [
   .changelog-filters {
     display: flex;
     flex-wrap: wrap;
-    align-items: end;
+    align-items: center;
     gap: 0.75rem 1rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid var(--sl-color-hairline);
-    font-size: var(--sl-text-sm);
+    font-size: var(--sl-text-xs);
   }
 
-  .changelog-filters label {
+  .changelog-kinds {
     display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    color: var(--sl-color-gray-3);
+    flex-wrap: wrap;
+    border: 1px solid var(--sl-color-hairline);
   }
 
-  .changelog-filters select {
-    min-width: 9rem;
-    padding: 0.375rem 0.5rem;
-    border: 1px solid var(--sl-color-gray-5);
-    border-radius: 0.25rem;
+  .changelog-kinds button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    height: 1.9rem;
+    padding: 0 0.65rem;
+    border: 0;
+    border-inline-end: 1px solid var(--sl-color-hairline);
     background: var(--sl-color-bg);
-    color: var(--sl-color-white);
+    color: var(--sl-color-gray-2);
     font: inherit;
+    cursor: pointer;
+  }
+
+  .changelog-kinds button:last-child {
+    border-inline-end: 0;
+  }
+
+  .changelog-kinds button:hover {
+    color: var(--sl-color-white);
+  }
+
+  .changelog-kinds button[aria-pressed="true"] {
+    background: var(--sl-color-gray-6);
+    color: var(--sl-color-white);
+    font-weight: 600;
+  }
+
+  .changelog-kinds svg {
+    width: 0.85rem;
+    height: 0.85rem;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .changelog-kinds .cl-feature svg { stroke: var(--sl-color-blue); }
+  .changelog-kinds .cl-improvement svg { stroke: var(--sl-color-green); }
+  .changelog-kinds .cl-fix svg,
+  .changelog-kinds .cl-deprecation svg { stroke: var(--sl-color-orange); }
+  .changelog-kinds .cl-breaking svg,
+  .changelog-kinds .cl-incident svg { stroke: var(--sl-color-red); }
+  .changelog-kinds .cl-release svg { stroke: var(--sl-color-purple); }
+
+  .changelog-toggles {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+    margin-inline-start: auto;
+    color: var(--sl-color-gray-2);
+  }
+
+  .changelog-toggles label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    cursor: pointer;
+  }
+
+  .changelog-toggles input {
+    margin: 0;
+    accent-color: var(--sl-color-accent);
   }
 
   a.changelog-feed.changelog-feed {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
-    margin-inline-start: auto;
+    gap: 0.3rem;
+    color: var(--sl-color-gray-2);
     text-decoration: none;
-    padding-bottom: 0.4rem;
+  }
+
+  a.changelog-feed.changelog-feed:hover {
     color: var(--sl-color-text-accent);
   }
 
   .changelog-feed svg {
-    width: 1rem;
-    height: 1rem;
+    width: 0.9rem;
+    height: 0.9rem;
     fill: none;
     stroke: #f26522;
     stroke-width: 2;
@@ -270,28 +362,36 @@ const filters = [
     stroke-linejoin: round;
   }
 
-  .changelog-superseded-tag {
-    padding: 0.1rem 0.5rem;
-    border: 1px dashed var(--sl-color-gray-4);
-    border-radius: 999px;
-    color: var(--sl-color-gray-3);
-    font-size: var(--sl-text-xs);
-    line-height: 1.5;
-  }
-
   .changelog-status {
-    margin-top: 0.75rem;
+    margin: 1.5rem 0 0;
     color: var(--sl-color-gray-3);
     font-size: var(--sl-text-sm);
   }
 
-  .changelog-month h2 {
-    margin: 2rem 0 0.5rem;
-    color: var(--sl-color-gray-3);
+  .changelog-month-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 2rem;
+    padding: 0.75rem 0 0.6rem;
+    border-bottom: 1px solid var(--sl-color-hairline);
+  }
+
+  .changelog-month-head h2 {
+    margin: 0;
+    color: var(--sl-color-gray-2);
     font-size: var(--sl-text-sm);
     font-weight: 600;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
+  }
+
+  .changelog-month-summary,
+  .changelog-avail {
+    color: var(--sl-color-gray-3);
+    font-family: var(--sl-font-mono);
+    font-size: 0.6875rem;
   }
 
   .changelog-month ol {
@@ -302,34 +402,28 @@ const filters = [
 
   .changelog-day {
     display: grid;
-    grid-template-columns: 9rem 1fr;
+    grid-template-columns: 9rem minmax(0, 1fr);
     gap: 1rem;
-    padding: 1rem 0;
-    border-top: 1px solid var(--sl-color-hairline);
+    padding: 1.75rem 0 2rem;
+    border-bottom: 1px solid var(--sl-color-hairline);
   }
 
   .changelog-day > ol {
+    display: flex;
+    flex-direction: column;
+    gap: 2.25rem;
     margin: 0;
     padding: 0;
     list-style: none;
   }
 
-  .changelog-visual {
-    display: block;
-    margin-top: 0.75rem;
-    overflow: hidden;
-    border: 1px solid var(--sl-color-hairline);
-    border-radius: 0.375rem;
-  }
-
-  .changelog-visual img {
-    display: block;
-    width: 100%;
-    height: auto;
-  }
-
-  .changelog-item + .changelog-item {
-    margin-top: 1.5rem;
+  .changelog-day > time {
+    position: sticky;
+    top: calc(var(--sl-nav-height, 4rem) + 1rem);
+    align-self: start;
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-sm);
+    line-height: 1.75;
   }
 
   .changelog-item[hidden],
@@ -338,19 +432,12 @@ const filters = [
     display: none;
   }
 
-  .changelog-day > time {
-    position: sticky;
-    top: calc(var(--sl-nav-height, 4rem) + 1rem);
-    align-self: start;
-    padding-top: 0.15rem;
-    color: var(--sl-color-gray-3);
-    font-size: var(--sl-text-sm);
-  }
-
   .changelog-item h3 {
-    margin: 0.25rem 0;
+    margin: 0 0 0.25rem;
     font-size: var(--sl-text-lg);
-    line-height: 1.35;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: -0.01em;
   }
 
   .changelog-item h3 a.changelog-title {
@@ -366,14 +453,44 @@ const filters = [
     margin: 0;
     color: var(--sl-color-gray-2);
     font-size: var(--sl-text-sm);
+    line-height: 1.6;
+    text-wrap: pretty;
+  }
+
+  .changelog-visual {
+    display: block;
+    margin-top: 0.75rem;
+    overflow: hidden;
+    border: 1px solid var(--sl-color-hairline);
+  }
+
+  .changelog-visual img {
+    display: block;
+    width: 100%;
+    height: auto;
   }
 
   .changelog-tags {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 0.375rem;
-    margin: 0;
+    margin: 0.6rem 0 0;
     padding: 0;
+  }
+
+  .changelog-avail {
+    margin-inline-start: auto;
+  }
+
+  .changelog-superseded-tag {
+    display: inline-flex;
+    align-items: center;
+    height: 1.4rem;
+    padding: 0 0.5rem;
+    border: 1px dashed var(--sl-color-gray-4);
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-xs);
   }
 
   @media (max-width: 50rem) {
@@ -384,6 +501,10 @@ const filters = [
 
     .changelog-day > time {
       position: static;
+    }
+
+    .changelog-toggles {
+      margin-inline-start: 0;
     }
   }
 </style>

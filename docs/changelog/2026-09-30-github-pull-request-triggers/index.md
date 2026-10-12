@@ -13,6 +13,8 @@ links:
   prs: [everruns/everruns#3935, everruns/everruns#3943, everruns/everruns#3915]
 ---
 
+![Everruns and GitHub logos side by side, announcing GitHub pull request triggers](./integration@2x.png)
+
 An agent can now act on GitHub pull requests. Use the **Connect GitHub** card on
 the agent's Integrations tab to create and install the agent's own GitHub App.
 The [GitHub](/capabilities/github/) capability then gives it

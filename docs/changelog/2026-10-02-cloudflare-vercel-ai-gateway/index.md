@@ -12,6 +12,8 @@ links:
   prs: [everruns/everruns#3996, everruns/everruns#4021]
 ---
 
+![Everruns, Cloudflare and Vercel logos side by side, announcing the two AI Gateway providers](./integration@2x.png)
+
 Two gateway providers are available. **Cloudflare** reaches many upstream
 providers and Cloudflare's own Workers AI models through one account token and
 account ID. **Vercel AI Gateway** uses its OpenAI-compatible Responses endpoint

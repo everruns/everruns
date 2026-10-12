@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.17.26: Live, steerable sessions"
-description: "Everruns 0.17.26 was released on 2026-08-10 with 4 highlights. The release notes and any upgrade notes and every pull request are linked here."
+description: "Live, steerable sessions, Sessions as the operational list, advanced capability authoring, and recovery for Daytona workspaces."
 date: 2026-08-10
 kind: release
 significance: minor

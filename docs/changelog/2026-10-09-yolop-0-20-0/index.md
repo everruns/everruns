@@ -1,6 +1,6 @@
 ---
 title: "Yolop 0.20.0 release"
-description: "Yolop 0.20.0 was released on 2026-10-09 with 5 highlights and 1 changelog entry. The release notes and any upgrade notes are linked here."
+description: "OpenAI models can edit with apply_patch as an opt-in, integrations prefer known CLIs, and command help includes runnable examples."
 date: 2026-10-09
 kind: release
 significance: notable

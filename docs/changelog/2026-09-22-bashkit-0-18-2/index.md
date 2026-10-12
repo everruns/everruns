@@ -1,6 +1,6 @@
 ---
 title: "Bashkit 0.18.2 release"
-description: "Bashkit 0.18.2 was released on 2026-09-22 with 3 highlights and 1 changelog entry. The release notes and any upgrade notes are linked here."
+description: "sed is rewritten to follow GNU sed 4.9 so scripts written for Linux behave the same, Windows paths resolve correctly, and releases are hardened."
 date: 2026-09-22
 kind: release
 significance: minor

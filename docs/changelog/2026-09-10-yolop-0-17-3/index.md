@@ -1,6 +1,6 @@
 ---
 title: "Yolop 0.17.3 release"
-description: "Yolop 0.17.3 was released on 2026-09-10 with 6 highlights and 1 changelog entry. The release notes and any upgrade notes are linked here."
+description: "Turn activity compacts into one summary row, yolop mcp covers show and disable, cargo install works again, and web_fetch reaches public URLs."
 date: 2026-09-10
 kind: release
 significance: minor

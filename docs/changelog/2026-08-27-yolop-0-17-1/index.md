@@ -1,6 +1,6 @@
 ---
 title: "Yolop 0.17.1 release"
-description: "Yolop 0.17.1 was released on 2026-08-27 with 6 highlights and 1 changelog entry. The release notes and any upgrade notes are linked here."
+description: "Run models on your machine with the local provider, plus recovery from repeated tool failures, batch file reads, and a lighter default binary."
 date: 2026-08-27
 kind: release
 significance: minor

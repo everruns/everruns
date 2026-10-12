@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.20.0: Register capabilities on a running runtime"
-description: "Everruns 0.20.0 was released on 2026-08-19 with 2 highlights and 2 changelog entries. The release notes and any upgrade notes are linked here."
+description: "A2A delegation in the everruns crate becomes an opt-in feature, and a running Framework runtime can register new capabilities without a restart."
 date: 2026-08-19
 kind: release
 significance: notable

@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.28.0: Agent exposure management"
-description: "Everruns 0.28.0 was released on 2026-09-16 with 3 highlights and 1 changelog entry. The release notes and any upgrade notes are linked here."
+description: "The Everruns UI gains dark mode with a theme setting, plus agent exposure management and sessions and budgets attributed to the endpoint that started them."
 date: 2026-09-16
 kind: release
 significance: notable

@@ -1,6 +1,6 @@
 ---
 title: "Yolop 0.21.0 release"
-description: "Yolop 0.21.0 was released on 2026-10-11 with 4 highlights and 3 changelog entries. The release notes and any upgrade notes are linked here."
+description: "Code search works without ripgrep installed, coordinators run threads as separate processes, and new setups default to the latest model on each provider."
 date: 2026-10-11
 kind: release
 significance: notable

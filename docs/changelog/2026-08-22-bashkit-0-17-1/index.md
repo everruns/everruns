@@ -1,6 +1,6 @@
 ---
 title: "Bashkit 0.17.1 release"
-description: "Bashkit 0.17.1 was released on 2026-08-22 with 1 highlight. The release notes and any upgrade notes and every pull request are linked here."
+description: "The native @everruns/bashkit npm package publishes again after stalling at 0.16.0, so Node users get the 0.17 features and fixes."
 date: 2026-08-22
 kind: release
 significance: minor

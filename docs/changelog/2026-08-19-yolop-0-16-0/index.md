@@ -1,6 +1,6 @@
 ---
 title: "Yolop 0.16.0 release"
-description: "Yolop 0.16.0 was released on 2026-08-19 with 8 highlights and 5 changelog entries. The release notes and any upgrade notes are linked here."
+description: "Yolop sets itself up as a Buzz Desktop harness in one command, extensions are managed from the extensions CLI, and profiles can define a whole agent."
 date: 2026-08-19
 kind: release
 significance: notable

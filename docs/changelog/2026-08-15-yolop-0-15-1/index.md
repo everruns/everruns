@@ -1,6 +1,6 @@
 ---
 title: "Yolop 0.15.1 release"
-description: "Yolop 0.15.1 was released on 2026-08-15 with 5 highlights. The release notes and any upgrade notes and every pull request are linked here."
+description: "The Meta Model API joins the supported providers, and terminal text selection survives Ctrl and Ctrl+C, on the tuika 0.8.0 toolkit."
 date: 2026-08-15
 kind: release
 significance: minor
