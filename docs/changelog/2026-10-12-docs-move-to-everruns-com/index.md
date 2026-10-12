@@ -8,6 +8,7 @@ products: [cloud, platform, framework]
 surfaces: [agent]
 links:
   docs: [/getting-started/use-in-ai-tools/]
+  prs: [everruns/everruns#4596]
 ---
 
 The documentation moved from docs.everruns.com to
