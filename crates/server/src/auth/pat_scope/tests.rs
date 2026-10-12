@@ -142,6 +142,18 @@ fn unknown_routes_are_unclassified() {
     assert_eq!(classify(&Method::GET, "/mcp"), None);
 }
 
+#[test]
+fn github_status_and_credential_binding_keep_their_classes() {
+    assert_eq!(
+        classify(&Method::GET, "/v1/agents/{agent_id}/github"),
+        Some(RouteAccess::Read)
+    );
+    assert_eq!(
+        classify(&Method::POST, "/v1/agents/{agent_id}/github/connect"),
+        Some(RouteAccess::Never)
+    );
+}
+
 // --- Test 5: predicate parity ---------------------------------------------
 
 /// The class of every command-backed route equals membership in the MCP
