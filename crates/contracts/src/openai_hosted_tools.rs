@@ -391,6 +391,11 @@ pub fn hosted_call_tool(item_type: &str) -> Option<&'static str> {
 /// one container serves many calls across turns, so they stay unpriced here.
 /// Source: openai.com/api/pricing.
 pub fn hosted_call_price_usd(item_type: &str, model: &str) -> Option<f64> {
+    // A gateway slug (`openai/gpt-4.1`) prices like the model it names. Native
+    // search of other vendors through a gateway (Anthropic, Google, ...) uses
+    // the same $10 per 1,000 rate here; the gateway's reported cost, when it
+    // sends one, stays the authoritative amount.
+    let model = model.rsplit('/').next().unwrap_or(model);
     match item_type {
         "web_search_call" if model.starts_with("gpt-4o") || model.starts_with("gpt-4.1") => {
             Some(25.0 / 1000.0)

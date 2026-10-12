@@ -10,7 +10,10 @@
 //! compaction-cost folding that build the same event.
 
 use crate::engine::driver_registry::LlmCompletionMetadata;
-use crate::engine::events::{LlmCompactionInfo, LlmGenerationData, LlmRetryInfo, TokenUsage};
+use crate::engine::events::{
+    LlmCompactionInfo, LlmCostComponent, LlmGenerationData, LlmRetryInfo, TokenUsage,
+};
+use everruns_contracts::openai_hosted_tools::hosted_call_price_usd;
 
 /// The ending of one generation, as the driver reported it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -26,6 +29,9 @@ pub(super) struct GenerationOutcome {
     /// The request body the driver sent, when it captured one; stored on
     /// `llm.generation` for the session trace's native request view.
     pub request_body: Option<serde_json::Value>,
+    /// Provider-run tool calls billed per call (native web search, ...), by
+    /// item type; each becomes a `hosted_tool` cost component.
+    pub hosted_tool_calls: std::collections::BTreeMap<String, u32>,
 }
 
 impl GenerationOutcome {
@@ -43,17 +49,46 @@ impl GenerationOutcome {
             tool_calls_dropped: meta.map_or(0, |m| m.tool_calls_dropped),
             tool_calls_truncated_executed: meta.map_or(0, |m| m.tool_calls_truncated_executed),
             request_body: meta.and_then(|m| m.request_body.clone()),
+            hosted_tool_calls: meta
+                .map(|m| m.hosted_tool_calls.clone())
+                .unwrap_or_default(),
         }
     }
 
     /// Stamp the outcome on an `llm.generation` payload.
     pub(super) fn apply(&self, data: LlmGenerationData) -> LlmGenerationData {
-        data.with_stop_details(
-            self.provider_finish_reason.clone(),
-            self.tool_calls_dropped,
-            self.tool_calls_truncated_executed,
-        )
-        .with_request_body(self.request_body.clone())
+        let data = data
+            .with_stop_details(
+                self.provider_finish_reason.clone(),
+                self.tool_calls_dropped,
+                self.tool_calls_truncated_executed,
+            )
+            .with_request_body(self.request_body.clone());
+        if self.hosted_tool_calls.is_empty() {
+            return data;
+        }
+        // Each per-call priced hosted call (native web search, file search) is
+        // its own billable line next to the tokens, priced from the table and
+        // already folded into the estimated cost. Container tools bill per
+        // session, not per call, and stay out, as they did before.
+        let model = data.metadata.model.clone();
+        let components: Vec<_> = self
+            .hosted_tool_calls
+            .iter()
+            .filter_map(|(kind, count)| {
+                let price = hosted_call_price_usd(kind, &model)?;
+                Some(LlmCostComponent::new(
+                    LlmCostComponent::HOSTED_TOOL,
+                    kind.clone(),
+                    Some(u64::from(*count)),
+                    Some(price * f64::from(*count)),
+                ))
+            })
+            .collect();
+        if components.is_empty() {
+            return data;
+        }
+        data.with_cost_components(components)
     }
 
     /// The `ReasonAtom: LLM call completed` line, now carrying the ending.
@@ -243,6 +278,29 @@ mod tests {
             None,
             None,
         )
+    }
+
+    #[test]
+    fn hosted_calls_become_priced_cost_components() {
+        let mut meta = completion(Some("stop"), None, 0);
+        meta.hosted_tool_calls.insert("web_search_call".into(), 3);
+        meta.hosted_tool_calls
+            .insert("code_interpreter_call".into(), 1);
+        let mut data = generation();
+        data.metadata.model = "openai/gpt-5.2".into();
+        let data = GenerationOutcome::from_completion(Some(&meta), false).apply(data);
+        let components = &data.metadata.cost_components;
+        // Container tools bill per session, not per call: no per-call line.
+        assert_eq!(components.len(), 1);
+        let search = &components[0];
+        assert_eq!(search.name, "web_search_call");
+        assert_eq!(search.kind, LlmCostComponent::HOSTED_TOOL);
+        assert_eq!(search.quantity, Some(3));
+        assert!((search.cost_usd.unwrap() - 0.03).abs() < 1e-9);
+        // No hosted calls, no components.
+        let plain = GenerationOutcome::from_completion(Some(&completion(None, None, 0)), false)
+            .apply(generation());
+        assert!(plain.metadata.cost_components.is_empty());
     }
 
     #[test]

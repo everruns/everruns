@@ -19,12 +19,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::openrouter::options::{
     OPENROUTER_HTTP_REFERER_METADATA_KEY, OPENROUTER_ROUTING_OPTION_KEY,
     OPENROUTER_X_TITLE_METADATA_KEY, OpenRouterCapacityStrategy, OpenRouterPluginConfig,
-    OpenRouterRoutingConfig,
+    OpenRouterRoutingConfig, OpenRouterServerToolKind,
 };
 use everruns_contracts::OpenResponsesRequestExtension;
 use everruns_contracts::driver_registry::{LlmCallConfig, PromptCacheStrategy};
 use everruns_contracts::error::{AgentLoopError, BillingPressureReason, LlmErrorKind, Result};
 use everruns_contracts::llm_retry::{RateLimitInfo, RateLimitType};
+use everruns_contracts::native_web_search::{NativeWebSearch, WEB_SEARCH_FUNCTION_TOOL};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, RETRY_AFTER};
 use serde_json::{Value, json};
 
@@ -55,7 +56,9 @@ impl OpenResponsesRequestExtension for OpenRouterRequestExtension {
         apply_private_reasoning_policy(obj, config);
         apply_anthropic_cache_control(obj, config);
 
-        let Some(routing) = effective_routing(config)? else {
+        let routing = effective_routing(config)?;
+        apply_native_web_search(obj, config, routing.as_ref());
+        let Some(routing) = routing else {
             return Ok(());
         };
 
@@ -154,6 +157,52 @@ impl OpenResponsesRequestExtension for OpenRouterRequestExtension {
         error_body: &str,
     ) -> Option<LlmErrorKind> {
         classify_billing_pressure(status, headers, error_body)
+    }
+}
+
+/// Native web search (`everruns/web_search`): swap the `web_search` function
+/// tool for `openrouter:web_search` on its native engine when OpenRouter runs
+/// the model vendor's own search for this model and can apply the agent's
+/// domain filters. Otherwise the function tool stays and the search plan's
+/// next provider answers; OpenRouter's own fallback engine never does (see
+/// `NativeWebSearch::openrouter_parameters`).
+///
+/// An `openrouter:web_search` the agent configured through OpenRouter Server
+/// Tools wins: the function tool is dropped and that entry answers.
+fn apply_native_web_search(
+    obj: &mut serde_json::Map<String, Value>,
+    config: &LlmCallConfig,
+    routing: Option<&OpenRouterRoutingConfig>,
+) {
+    let Some(native) = NativeWebSearch::requested(config) else {
+        return;
+    };
+    let Some(parameters) = native.openrouter_parameters(&config.model) else {
+        return;
+    };
+    let Some(tools) = obj.get_mut("tools").and_then(Value::as_array_mut) else {
+        return;
+    };
+    let is_function = |tool: &Value| {
+        tool.get("type").and_then(Value::as_str) == Some("function")
+            && tool.get("name").and_then(Value::as_str) == Some(WEB_SEARCH_FUNCTION_TOOL)
+    };
+    // A tool deferred behind tool search is not a top-level entry; leave it.
+    let Some(index) = tools.iter().position(is_function) else {
+        return;
+    };
+    tools.remove(index);
+    let configured = routing.is_some_and(|routing| {
+        routing
+            .server_tools
+            .iter()
+            .any(|tool| tool.kind == OpenRouterServerToolKind::WebSearch)
+    });
+    if !configured {
+        tools.push(json!({
+            "type": OpenRouterServerToolKind::WebSearch.wire_type(),
+            "parameters": parameters,
+        }));
     }
 }
 

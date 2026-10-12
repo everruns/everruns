@@ -40,6 +40,7 @@ pub use plan::{
     resolve_plan, run_plan,
 };
 
+use everruns_contracts::native_web_search::NativeWebSearch;
 use everruns_contracts::runtime::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
 };
@@ -136,6 +137,17 @@ impl Capability for WebSearchCapability {
         ))]
     }
 
+    /// Ask for the model's own search while native can come first in this
+    /// agent's plan. The host drops the request for a turn whose organization
+    /// settings put something else first, and a driver without native search
+    /// for the model ignores it (see `everruns_contracts::native_web_search`).
+    fn driver_options(&self, config: &serde_json::Value) -> Vec<(String, serde_json::Value)> {
+        let config = WebSearchConfig::from_value(config).unwrap_or_default();
+        native_request(&config)
+            .map(|native| vec![native.to_driver_option()])
+            .unwrap_or_default()
+    }
+
     fn config_schema(&self) -> Option<serde_json::Value> {
         Some(config::schema())
     }
@@ -161,10 +173,60 @@ impl Capability for WebSearchCapability {
     }
 }
 
+/// The native search request for an agent setting, or `None` when the
+/// setting never starts with model provider search.
+fn native_request(config: &WebSearchConfig) -> Option<NativeWebSearch> {
+    matches!(
+        config.provider,
+        ProviderSetting::OrgDefault | ProviderSetting::Auto | ProviderSetting::Native
+    )
+    .then(|| NativeWebSearch {
+        provider: config.provider.as_str().to_string(),
+        allowed_domains: config.allowed_domains.clone(),
+        blocked_domains: config.blocked_domains.clone(),
+        freshness: config.freshness.and_then(|freshness| {
+            serde_json::to_value(freshness)
+                .ok()
+                .and_then(|value| value.as_str().map(str::to_string))
+        }),
+        max_uses: None,
+        user_location: None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use everruns_contracts::runtime::system_allowlist::SystemAllowlist;
+
+    #[test]
+    fn native_capable_settings_request_native_search() {
+        use everruns_contracts::native_web_search::NATIVE_WEB_SEARCH_OPTION;
+        let cap = WebSearchCapability::default();
+        for config in [
+            serde_json::json!({}),
+            serde_json::json!({"provider": "auto", "blocked_domains": ["pinterest.com"], "freshness": "week"}),
+            serde_json::json!({"provider": "native", "fallback": "none"}),
+        ] {
+            let options = cap.driver_options(&config);
+            assert_eq!(options.len(), 1, "{config}");
+            assert_eq!(options[0].0, NATIVE_WEB_SEARCH_OPTION);
+        }
+        let options = cap.driver_options(&serde_json::json!({
+            "provider": "auto", "blocked_domains": ["pinterest.com"], "freshness": "week"
+        }));
+        assert_eq!(
+            options[0].1,
+            serde_json::json!({"provider": "auto", "blocked_domains": ["pinterest.com"], "freshness": "week"})
+        );
+        for config in [
+            serde_json::json!({"provider": "free"}),
+            serde_json::json!({"provider": "brave"}),
+            serde_json::json!({"provider": "account", "account_id": "00000000-0000-0000-0000-000000000007"}),
+        ] {
+            assert!(cap.driver_options(&config).is_empty(), "{config}");
+        }
+    }
     use everruns_contracts::runtime::web_search::SearchDriver;
 
     #[test]

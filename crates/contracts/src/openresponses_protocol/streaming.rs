@@ -600,6 +600,15 @@ pub(crate) fn handle_streaming_event(
                 .and_then(|u| u.output_tokens_details.as_ref())
                 .map(|d| d.reasoning_tokens);
             let provider_cost_usd = response.usage.as_ref().and_then(|u| u.cost);
+            let mut hosted_tool_calls = std::collections::BTreeMap::new();
+            if let Some(used) = response
+                .usage
+                .as_ref()
+                .and_then(|u| u.server_tool_use.clone())
+            {
+                let usage = serde_json::json!({ "server_tool_use": used });
+                super::hosted_tools::add_server_tool_use(&mut hosted_tool_calls, Some(&usage));
+            }
             let incomplete = matches!(response.status, types::ResponseStatus::Incomplete);
             let provider_reason = incomplete
                 .then_some(response.incomplete_details.as_ref())
@@ -644,6 +653,7 @@ pub(crate) fn handle_streaming_event(
                 retry_metadata: retry_metadata.map(|arc| (*arc).clone()),
                 response_id: Some(response.id),
                 phase,
+                hosted_tool_calls,
                 ..Default::default()
             }))
         }
