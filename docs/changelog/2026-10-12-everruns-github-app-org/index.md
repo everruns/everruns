@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui, api]
 links:
   docs: [/how-to/summarize-github-pull-requests/]
-  prs: [everruns/everruns#PRNUM]
+  prs: [everruns/everruns#4669]
 ---
 
 The shared Everruns GitHub App now belongs to the organization. An org admin links a GitHub
