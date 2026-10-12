@@ -1414,8 +1414,9 @@ message LeaseActorsRequest {
     uint32 limit = 2;
     // Lease life in milliseconds; 0 = the server default (10 s).
     uint32 ttl_ms = 3;
-    // Fairness cap on leases one org holds at once, counting leases already
-    // held; 0 = the server default.
+    // Fairness order: an org holding this many leases or more (counting
+    // leases already held) is leased after every other org. Not a limit;
+    // 0 = the server default.
     uint32 max_leased_per_org = 4;
 }
 

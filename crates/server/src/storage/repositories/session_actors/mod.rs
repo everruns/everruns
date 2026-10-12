@@ -15,15 +15,21 @@
 //   lease calls take disjoint sets without waiting on each other. Every lease
 //   raises the fence, so an expired holder can neither renew nor release the
 //   lease that replaced it.
-// - The per-org cap counts held leases at the start of the lease statement.
-//   Two concurrent lease calls do not see each other's new leases, so the cap
-//   is a fairness bound, not a quota: one org can exceed it by at most what the
-//   concurrent callers take in that instant. Admission (`ORG_MAX_ACTIVE_TURNS`)
-//   stays where the input is accepted.
+// - The per-org cap orders a batch, it does not limit it: actors of orgs
+//   under their cap (counting leases already held) go first, oldest first,
+//   and an org's actors past its cap fill only the room left, fewest over
+//   first. A lease runs a whole turn, model and tool waits included, so a
+//   hard cap was a hard bound on one org's concurrent turns across the
+//   fleet: with every other org idle, its input queued behind its own long
+//   turns while worker slots sat free (chaos harness, one org with 50 live
+//   sessions: pickup p50 1.3 s). Admission (`ORG_MAX_ACTIVE_TURNS`) stays
+//   where the input is accepted. The count is read at the start of the
+//   statement, so concurrent lease calls do not see each other's new leases.
 // - The candidate scan reads at most `ACTOR_LEASE_SCAN_FACTOR` times the batch,
-//   oldest first, then applies the cap. An org over its cap spends scan slots
-//   without taking any, so a deep backlog from one org can delay others by at
-//   most one scan window per lease call; widen the factor if that shows up.
+//   oldest first, then orders by the cap. Another org's actor past the scan
+//   window waits for a later call, so a deep backlog from one org can delay
+//   others by at most one scan window per lease call; widen the factor if
+//   that shows up.
 // - Cancel has one writer for its events. On an actor a live holder leases,
 //   the request is recorded on the row and the holder ends the turn (a lease
 //   or renew reports it and marks it reported; release clears a reported
@@ -64,7 +70,8 @@ use everruns_contracts::typed_id::SessionId;
 use everruns_server_macros::sql;
 use std::time::Duration;
 
-/// Held leases one org may have at once, unless the caller passes its own cap.
+/// Held leases past which an org's actors go after every other org's, unless
+/// the caller passes its own cap.
 pub const DEFAULT_ACTOR_LEASES_PER_ORG: i64 = 32;
 /// Most actors one lease call takes.
 pub const MAX_ACTOR_LEASE_BATCH: i64 = 100;
@@ -279,8 +286,9 @@ impl Database {
     }
 
     /// Lease up to `limit` runnable actors whose lease is free or expired, to
-    /// `holder` for `ttl`, oldest first, taking at most `max_per_org` held
-    /// leases per org (counting leases already held).
+    /// `holder` for `ttl`: first those of orgs holding fewer than
+    /// `max_per_org` leases, oldest first, then the rest, fewest over the cap
+    /// first. See the header.
     pub async fn lease_session_actors(
         &self,
         holder: &str,
@@ -289,7 +297,7 @@ impl Database {
         max_per_org: i64,
     ) -> Result<Vec<LeasedActorRow>> {
         let limit = limit.clamp(0, MAX_ACTOR_LEASE_BATCH);
-        if limit == 0 || max_per_org <= 0 {
+        if limit == 0 {
             return Ok(Vec::new());
         }
         let scan = (limit * ACTOR_LEASE_SCAN_FACTOR).min(MAX_ACTOR_LEASE_SCAN);
@@ -325,8 +333,7 @@ impl Database {
             chosen AS (
                 SELECT session_id
                 FROM ranked
-                WHERE org_slot <= $3
-                ORDER BY runnable_since, session_id
+                ORDER BY GREATEST(org_slot - $3, 0), runnable_since, session_id
                 LIMIT $1
             ),
             leased AS (
@@ -351,7 +358,7 @@ impl Database {
         )
         .bind(limit)
         .bind(scan)
-        .bind(max_per_org)
+        .bind(max_per_org.max(0))
         .bind(holder)
         .bind(ttl_millis(ttl))
         .fetch_all(&self.pool)

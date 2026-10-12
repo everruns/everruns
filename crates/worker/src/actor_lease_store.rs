@@ -173,8 +173,9 @@ pub struct ActorJournal {
 #[async_trait]
 pub trait ActorLeaseStore: Send + Sync {
     /// Lease up to `limit` runnable actors to `holder` for `ttl`, oldest
-    /// first. `max_leased_per_org` caps the leases one org holds at once,
-    /// counting leases already held (`None` = the control plane's default).
+    /// first, except that an org holding `max_leased_per_org` leases or more
+    /// (counting leases already held) goes after every other org: a fairness
+    /// order, not a limit (`None` = the control plane's default).
     async fn lease_actors(
         &self,
         holder: &str,

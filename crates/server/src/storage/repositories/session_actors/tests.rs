@@ -464,44 +464,64 @@ async fn leased_actors_are_counted() {
     assert!(db.count_leased_session_actors().await.unwrap() >= before + leased.len() as i64);
 }
 
+/// Lease up to `limit` actors as `holder`, oldest first.
+async fn lease_order(db: &StorageBackend, holder: &str, limit: i64, cap: i64) -> Vec<SessionId> {
+    db.lease_session_actors(holder, limit, TTL, cap)
+        .await
+        .unwrap()
+        .iter()
+        .map(|row| row.session_id)
+        .collect()
+}
+
 #[tokio::test]
-async fn the_per_org_cap_limits_a_batch() {
+async fn the_per_org_cap_puts_other_orgs_first() {
+    let db = StorageBackend::test_database();
+    let mut org_a = Vec::new();
+    for _ in 0..5 {
+        org_a.push(runnable(&db, ORG_A, 1).await);
+    }
+    let mut org_b = Vec::new();
+    for _ in 0..2 {
+        org_b.push(runnable(&db, ORG_B, 1).await);
+    }
+
+    // Under the cap, oldest first: org A's first three are older than B's.
+    let first = lease_order(&db, "worker-a", 4, 3).await;
+    assert_eq!(first, vec![org_a[0], org_a[1], org_a[2], org_b[0]]);
+
+    // Held leases count toward the cap on the next call: org A is at it, so
+    // B's newer actor goes before A's older ones.
+    let second = lease_order(&db, "worker-b", 2, 3).await;
+    assert_eq!(
+        second.into_iter().collect::<HashSet<_>>(),
+        HashSet::from([org_b[1], org_a[3]])
+    );
+    // What is left is over the cap, and still leased when there is room.
+    assert_eq!(lease_order(&db, "worker-c", 10, 3).await, vec![org_a[4]]);
+}
+
+#[tokio::test]
+async fn the_per_org_cap_never_leaves_room_unused() {
     let db = StorageBackend::test_database();
     let mut org_a = HashSet::new();
     for _ in 0..5 {
         org_a.insert(runnable(&db, ORG_A, 1).await);
     }
-    let mut org_b = HashSet::new();
-    for _ in 0..2 {
-        org_b.insert(runnable(&db, ORG_B, 1).await);
-    }
 
+    // Only one org has work: the cap orders it, it does not hold it back.
     let leased = db
-        .lease_session_actors("worker-a", 10, TTL, 3)
+        .lease_session_actors("worker-a", 10, TTL, 2)
         .await
         .unwrap();
-    let from_a = leased.iter().filter(|row| row.org_id == ORG_A).count();
-    let from_b = leased.iter().filter(|row| row.org_id == ORG_B).count();
-    assert_eq!((from_a, from_b), (3, 2));
-
-    // Held leases count toward the cap on the next call.
+    assert_eq!(ids(&leased), org_a);
     assert!(
-        db.lease_session_actors("worker-b", 10, TTL, 3)
+        db.lease_session_actors("worker-b", 10, TTL, 2)
             .await
             .unwrap()
-            .is_empty()
+            .is_empty(),
+        "every actor is leased once"
     );
-    // Releasing one frees one slot for the org.
-    let done = leased.iter().find(|row| row.org_id == ORG_A).unwrap();
-    db.release_session_actor(done.session_id, "worker-a", done.fence, 1)
-        .await
-        .unwrap();
-    let more = db
-        .lease_session_actors("worker-b", 10, TTL, 3)
-        .await
-        .unwrap();
-    assert_eq!(more.len(), 1);
-    assert!(org_a.contains(&more[0].session_id));
 }
 
 #[tokio::test]
