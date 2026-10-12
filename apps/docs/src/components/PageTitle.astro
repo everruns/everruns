@@ -19,7 +19,8 @@ const entry = Astro.locals.starlightRoute.entry;
 
 const route = Astro.locals.starlightRoute;
 const appliesTo: string[] | undefined = entry.data.appliesTo;
-const isHome = entry.id === "index" || entry.id === "";
+// The home and 404 pages draw their own heading (DocsHome, NotFound).
+const isHome = entry.id === "index" || entry.id === "" || entry.id === "404";
 
 const topic = Astro.locals.starlightSidebarTopics?.topics?.find((t: any) => t.isCurrent);
 const title = entry.data.title;

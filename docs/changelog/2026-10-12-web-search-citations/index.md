@@ -16,7 +16,16 @@ model backs with a search result links to that page. Chat shows the numbered sou
 hover preview and **Sources** strip that retrieval citations already use.
 
 ```json
-{ "capabilities": [{ "ref": "web_search" }, { "ref": "citation_web" }] }
+{
+  "capabilities": [
+    {
+      "ref": "web_search"
+    },
+    {
+      "ref": "citation_web"
+    }
+  ]
+}
 ```
 
 It reads the URLs and result ids the model cites from `web_search` results, and the citations

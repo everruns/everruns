@@ -21,7 +21,9 @@ turn is something a host can render. `record_approval` writes the grant and
 ```json
 {
   "ref": "soft_approval",
-  "config": { "mode": "normal" }
+  "config": {
+    "mode": "normal"
+  }
 }
 ```
 

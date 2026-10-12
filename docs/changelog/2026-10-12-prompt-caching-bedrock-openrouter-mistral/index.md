@@ -27,6 +27,9 @@ Bedrock and OpenRouter Claude models:
 ```json
 {
   "ref": "prompt_caching",
-  "config": { "strategy": "auto", "retention": "1h" }
+  "config": {
+    "strategy": "auto",
+    "retention": "1h"
+  }
 }
 ```

@@ -18,7 +18,10 @@ an Everruns agent becomes that personal agent for any company that publishes
 `/.well-known/poppy.json`, with nothing to register. Platform Chat has it.
 
 ```json
-{ "ref": "poppy_client", "config": {} }
+{
+  "ref": "poppy_client",
+  "config": {}
+}
 ```
 
 The deployment holds one personal agent identity with pairwise user IDs, and

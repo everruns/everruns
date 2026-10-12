@@ -811,6 +811,7 @@ async fn fork_copies_history_files_and_records_lineage() {
         session_id: parent.id,
         name: "API_TOKEN".to_string(),
         value_encrypted: b"ciphertext".to_vec(),
+        binding: None,
     })
     .await
     .unwrap();

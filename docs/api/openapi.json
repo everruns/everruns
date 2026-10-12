@@ -27237,14 +27237,11 @@
       },
       "AgentCredentialBinding": {
         "type": "object",
-        "description": "Metadata for a write-only credential bound to one agent and MCP tool parameter.",
+        "description": "Metadata for a write-only credential bound to one agent: either an MCP\ntool parameter or an HTTP API the agent's shell calls.",
         "required": [
           "id",
           "agent_id",
-          "mcp_server_name",
-          "mcp_server_url",
-          "tool_name",
-          "parameter_name",
+          "kind",
           "label",
           "configured",
           "created_at",
@@ -27256,6 +27253,17 @@
             "type": "string",
             "description": "Agent that exclusively owns and may use this credential.",
             "example": "agent_01933b5a000070008000000000000001"
+          },
+          "binding": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SecretBinding",
+                "description": "URL prefix and auth form the value may be sent with (`http`)."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "configured": {
             "type": "boolean",
@@ -27275,11 +27283,23 @@
             "description": "Optional explanation of why the credential is needed.",
             "example": "Delivers scheduled status notifications"
           },
+          "env_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Env var the agent's shell uses as a placeholder (`http`).",
+            "example": "JEV_API_KEY"
+          },
           "id": {
             "type": "string",
             "format": "uuid",
             "description": "Stable credential binding identifier.",
             "example": "01933b5a-0000-7000-8000-000000000001"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AgentCredentialKind",
+            "description": "How the credential is injected."
           },
           "label": {
             "type": "string",
@@ -27287,18 +27307,27 @@
             "example": "Visti channel key"
           },
           "mcp_server_name": {
-            "type": "string",
-            "description": "Name of the attached MCP server.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Name of the attached MCP server (`mcp_parameter`).",
             "example": "visti"
           },
           "mcp_server_url": {
-            "type": "string",
-            "description": "Exact MCP endpoint authorized to receive the credential.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Exact MCP endpoint authorized to receive the credential (`mcp_parameter`).",
             "example": "https://visti.sh/mcp"
           },
           "parameter_name": {
-            "type": "string",
-            "description": "Top-level tool argument injected by the server.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Top-level tool argument injected by the server (`mcp_parameter`).",
             "example": "channel_key"
           },
           "setup_url": {
@@ -27307,8 +27336,11 @@
             "example": "/agents/agent_01933b5a000070008000000000000001?tab=credentials"
           },
           "tool_name": {
-            "type": "string",
-            "description": "MCP tool whose outbound call receives the credential.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "MCP tool whose outbound call receives the credential (`mcp_parameter`).",
             "example": "visti_send"
           },
           "updated_at": {
@@ -27317,6 +27349,14 @@
             "example": "2026-08-08T16:05:00Z"
           }
         }
+      },
+      "AgentCredentialKind": {
+        "type": "string",
+        "description": "How a write-only agent credential reaches the outside world.",
+        "enum": [
+          "mcp_parameter",
+          "http"
+        ]
       },
       "AgentDraft": {
         "type": "object",
@@ -29347,6 +29387,16 @@
           "secrets"
         ],
         "properties": {
+          "bindings": {
+            "type": "object",
+            "description": "Optional bindings keyed by secret name. A bound secret is write-only:\nthe agent's shell sees `$NAME` as a placeholder, and the platform puts\nthe value on requests to the bound URL only. A name set without a\nbinding becomes an ordinary secret again.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SecretBinding"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
           "secrets": {
             "type": "object",
             "description": "Map of secret names to values. Names are case-sensitive; values are stored encrypted\nand never returned by list/read endpoints. Existing keys are overwritten.\nExample: `{\"OPENAI_API_KEY\": \"sk-...\", \"GITHUB_TOKEN\": \"ghp_...\"}`.",
@@ -32216,11 +32266,8 @@
       },
       "CreateAgentCredentialBinding": {
         "type": "object",
-        "description": "Declare a credential requirement for an agent's attached MCP tool.",
+        "description": "Declare a credential requirement for an agent: an attached MCP tool's\nparameter (`mcp_server_name`, `tool_name`, `parameter_name`), or an HTTP\nAPI the agent's shell calls (`env_name`, `url`, `auth`).",
         "required": [
-          "mcp_server_name",
-          "tool_name",
-          "parameter_name",
           "label"
         ],
         "properties": {
@@ -32228,6 +32275,14 @@
             "type": "string",
             "description": "Agent ID, populated from the request path by the HTTP API.",
             "example": "agent_01933b5a000070008000000000000001"
+          },
+          "auth": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`bearer` (default) sends `Authorization: Bearer <value>`; `header`\nsends the value in `header_name` (HTTP API).",
+            "example": "bearer"
           },
           "description": {
             "type": [
@@ -32237,25 +32292,58 @@
             "description": "Optional explanation of how the credential will be used.",
             "example": "Delivers scheduled status notifications"
           },
+          "env_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Env var name the agent's shell uses as a placeholder (HTTP API).",
+            "example": "JEV_API_KEY"
+          },
+          "header_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Header that carries the value when `auth` is `header` (HTTP API).",
+            "example": "X-Api-Key"
+          },
           "label": {
             "type": "string",
             "description": "Human-readable label shown in the secure setup UI.",
             "example": "Visti channel key"
           },
           "mcp_server_name": {
-            "type": "string",
-            "description": "Name of an MCP server attached to the agent.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Name of an MCP server attached to the agent (MCP tool parameter).",
             "example": "visti"
           },
           "parameter_name": {
-            "type": "string",
-            "description": "Top-level tool argument to inject outside model context.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Top-level tool argument to inject outside model context (MCP tool parameter).",
             "example": "channel_key"
           },
           "tool_name": {
-            "type": "string",
-            "description": "MCP tool whose outbound call requires the credential.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "MCP tool whose outbound call requires the credential (MCP tool parameter).",
             "example": "visti_send"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "HTTPS URL prefix the value may be sent to (HTTP API).",
+            "example": "https://api.typesafe.ai"
           }
         }
       },
@@ -40753,14 +40841,11 @@
             "type": "array",
             "items": {
               "type": "object",
-              "description": "Metadata for a write-only credential bound to one agent and MCP tool parameter.",
+              "description": "Metadata for a write-only credential bound to one agent: either an MCP\ntool parameter or an HTTP API the agent's shell calls.",
               "required": [
                 "id",
                 "agent_id",
-                "mcp_server_name",
-                "mcp_server_url",
-                "tool_name",
-                "parameter_name",
+                "kind",
                 "label",
                 "configured",
                 "created_at",
@@ -40772,6 +40857,17 @@
                   "type": "string",
                   "description": "Agent that exclusively owns and may use this credential.",
                   "example": "agent_01933b5a000070008000000000000001"
+                },
+                "binding": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/SecretBinding",
+                      "description": "URL prefix and auth form the value may be sent with (`http`)."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 },
                 "configured": {
                   "type": "boolean",
@@ -40791,11 +40887,23 @@
                   "description": "Optional explanation of why the credential is needed.",
                   "example": "Delivers scheduled status notifications"
                 },
+                "env_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Env var the agent's shell uses as a placeholder (`http`).",
+                  "example": "JEV_API_KEY"
+                },
                 "id": {
                   "type": "string",
                   "format": "uuid",
                   "description": "Stable credential binding identifier.",
                   "example": "01933b5a-0000-7000-8000-000000000001"
+                },
+                "kind": {
+                  "$ref": "#/components/schemas/AgentCredentialKind",
+                  "description": "How the credential is injected."
                 },
                 "label": {
                   "type": "string",
@@ -40803,18 +40911,27 @@
                   "example": "Visti channel key"
                 },
                 "mcp_server_name": {
-                  "type": "string",
-                  "description": "Name of the attached MCP server.",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Name of the attached MCP server (`mcp_parameter`).",
                   "example": "visti"
                 },
                 "mcp_server_url": {
-                  "type": "string",
-                  "description": "Exact MCP endpoint authorized to receive the credential.",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Exact MCP endpoint authorized to receive the credential (`mcp_parameter`).",
                   "example": "https://visti.sh/mcp"
                 },
                 "parameter_name": {
-                  "type": "string",
-                  "description": "Top-level tool argument injected by the server.",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Top-level tool argument injected by the server (`mcp_parameter`).",
                   "example": "channel_key"
                 },
                 "setup_url": {
@@ -40823,8 +40940,11 @@
                   "example": "/agents/agent_01933b5a000070008000000000000001?tab=credentials"
                 },
                 "tool_name": {
-                  "type": "string",
-                  "description": "MCP tool whose outbound call receives the credential.",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "MCP tool whose outbound call receives the credential (`mcp_parameter`).",
                   "example": "visti_send"
                 },
                 "updated_at": {
@@ -43336,6 +43456,17 @@
                 "updated_at"
               ],
               "properties": {
+                "binding": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/SecretBinding",
+                      "description": "Where the value may be sent, for a bound (write-only) secret."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "created_at": {
                   "type": "string",
                   "description": "When the secret was created"
@@ -55371,6 +55502,64 @@
           }
         }
       },
+      "SecretAuth": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "`Authorization: Bearer <value>`.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "bearer"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "`<name>: <value>`, e.g. `X-Api-Key`.",
+            "required": [
+              "name",
+              "type"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Header name."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "header"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "How a bound secret is put on an outbound request.\n\nHeader-only by design: a value\nis never placed in a URL or a body."
+      },
+      "SecretBinding": {
+        "type": "object",
+        "description": "Where a bound secret may be sent, and how.",
+        "required": [
+          "url",
+          "auth"
+        ],
+        "properties": {
+          "auth": {
+            "$ref": "#/components/schemas/SecretAuth",
+            "description": "How the value is attached."
+          },
+          "url": {
+            "type": "string",
+            "description": "`https://host[:port][/path-prefix]` the value may be sent to."
+          }
+        }
+      },
       "SecretInfo": {
         "type": "object",
         "description": "Secret entry info (name and timestamps only, no value)",
@@ -55380,6 +55569,17 @@
           "updated_at"
         ],
         "properties": {
+          "binding": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SecretBinding",
+                "description": "Where the value may be sent, for a bound (write-only) secret."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "created_at": {
             "type": "string",
             "description": "When the secret was created"

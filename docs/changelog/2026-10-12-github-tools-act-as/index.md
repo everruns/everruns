@@ -18,7 +18,12 @@ used that person's connection, so a review bot could post as the Everruns app
 instead of as itself.
 
 ```json
-{ "ref": "github", "config": { "acts_as": "person" } }
+{
+  "ref": "github",
+  "config": {
+    "acts_as": "person"
+  }
+}
 ```
 
 Every call also gets a short-lived token limited to the repository it names and

@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use utoipa::ToSchema;
 
+pub use everruns_contracts::runtime::{SecretAuth, SecretBinding, SecretScope};
+
 /// Batch secret set request
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct BatchSetSecretsRequest {
@@ -15,6 +17,12 @@ pub struct BatchSetSecretsRequest {
     /// and never returned by list/read endpoints. Existing keys are overwritten.
     /// Example: `{"OPENAI_API_KEY": "sk-...", "GITHUB_TOKEN": "ghp_..."}`.
     pub secrets: HashMap<String, String>,
+    /// Optional bindings keyed by secret name. A bound secret is write-only:
+    /// the agent's shell sees `$NAME` as a placeholder, and the platform puts
+    /// the value on requests to the bound URL only. A name set without a
+    /// binding becomes an ordinary secret again.
+    #[serde(default)]
+    pub bindings: HashMap<String, SecretBinding>,
 }
 
 /// Batch secret set response
@@ -42,6 +50,9 @@ pub struct KeyValueInfo {
 pub struct SecretInfo {
     /// The secret name
     pub name: String,
+    /// Where the value may be sent, for a bound (write-only) secret.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub binding: Option<SecretBinding>,
     /// When the secret was created
     pub created_at: String,
     /// When the secret was last updated

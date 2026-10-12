@@ -939,10 +939,12 @@ async fn export_raw(
         .send()
         .await
         .context("Failed to export session")?;
-    let status = resp.status();
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Export session failed ({}): {}", status, body);
+    if !resp.status().is_success() {
+        return Err(
+            super::api::ApiError::from_response("Export session failed", resp)
+                .await
+                .into(),
+        );
     }
 
     resp.text()

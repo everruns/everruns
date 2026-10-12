@@ -213,10 +213,17 @@ export async function listHealthCheckRuns(agentId: string): Promise<HealthCheckR
   return response.data;
 }
 
+/// Either an MCP tool parameter (`mcp_server_name`, `tool_name`,
+/// `parameter_name`) or an HTTP API the agent's shell calls (`env_name`,
+/// `url`, `auth`, `header_name`).
 export interface CreateAgentCredentialBindingRequest {
-  mcp_server_name: string;
-  tool_name: string;
-  parameter_name: string;
+  mcp_server_name?: string;
+  tool_name?: string;
+  parameter_name?: string;
+  env_name?: string;
+  url?: string;
+  auth?: "bearer" | "header";
+  header_name?: string;
   label: string;
   description?: string;
 }

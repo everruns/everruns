@@ -636,6 +636,10 @@ pub fn declared(name: &str) -> Change {
         | "worker_delete_session_secret" => {
             Change::Exempt("the runtime's session storage is the session's working state")
         }
+        // POST only because the answer carries plaintext; it reads, never writes.
+        "worker_resolve_bound_secrets" => {
+            Change::Exempt("reads bound secrets for the shell's HTTP layer; changes nothing")
+        }
         // Never `Subject`: a recorded change captures the params, and these
         // carry credential material (TM-AUTHZ-023).
         "worker_invalidate_mcp_connection" => {
