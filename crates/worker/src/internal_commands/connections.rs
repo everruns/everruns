@@ -17,6 +17,7 @@ use crate::core::McpServerActsAs;
 use crate::core::connection_services::{ServiceApiKeyConnection, UserConnectionResolver};
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
+use everruns_contracts::runtime::web_search::WebSearchOrgSettings;
 use everruns_contracts::session_sandbox::SessionSandboxCredential;
 use everruns_contracts::typed_id::SessionId;
 use serde_json::{Value, json};
@@ -190,6 +191,34 @@ impl<T: InternalCommandTransport + 'static> UserConnectionResolver
         .await
     }
 
+    async fn get_web_search_settings(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Option<WebSearchOrgSettings>> {
+        call(
+            &*self.transport,
+            "Get web search settings",
+            "worker_get_web_search_settings",
+            json!({ "session_id": session_id.to_string() }),
+        )
+        .await
+        .map(Some)
+    }
+
+    async fn get_web_search_account_key(
+        &self,
+        session_id: SessionId,
+        account_id: Uuid,
+    ) -> Result<Option<String>> {
+        call_secret(
+            &*self.transport,
+            "Get search account key",
+            "worker_get_web_search_account_key",
+            json!({ "session_id": session_id.to_string(), "account_id": account_id }),
+        )
+        .await
+    }
+
     async fn get_connection_token_for_user(
         &self,
         user_id: Uuid,
@@ -331,6 +360,33 @@ mod tests {
         assert_eq!(calls[0].1["virtual_user_id"], owner.to_string());
         assert_eq!(calls[1].0, "worker_get_connection_token_for_connection");
         assert_eq!(calls[1].1["connection_id"], connection.to_string());
+    }
+
+    #[tokio::test]
+    async fn web_search_lookups_name_the_session_and_account() {
+        let (resolver, calls) = resolver(Ok(json!({ "defaults": { "provider": "free" } })));
+        let session = SessionId::new();
+        let settings = resolver
+            .get_web_search_settings(session)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            settings.defaults.provider,
+            everruns_contracts::runtime::web_search::SearchProviderSetting::Free
+        );
+        let (resolver, key_calls) = resolver_for(json!("brave-key"));
+        let account = Uuid::new_v4();
+        let key = resolver
+            .get_web_search_account_key(session, account)
+            .await
+            .unwrap();
+        assert_eq!(key.as_deref(), Some("brave-key"));
+        assert_eq!(calls.lock().unwrap()[0].0, "worker_get_web_search_settings");
+        let key_calls = key_calls.lock().unwrap();
+        assert_eq!(key_calls[0].0, "worker_get_web_search_account_key");
+        assert_eq!(key_calls[0].1["account_id"], account.to_string());
+        assert_eq!(key_calls[0].1["session_id"], session.to_string());
     }
 
     #[tokio::test]

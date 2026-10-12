@@ -257,6 +257,30 @@ pub trait UserConnectionResolver: Send + Sync {
         Ok(None)
     }
 
+    /// The session's organization web search defaults and search accounts
+    /// (no keys). `Ok(None)` means the host has no organization settings, and
+    /// web search uses the built-in defaults.
+    async fn get_web_search_settings(
+        &self,
+        _session_id: SessionId,
+    ) -> Result<Option<crate::runtime::web_search::WebSearchOrgSettings>> {
+        Ok(None)
+    }
+
+    /// Decrypt one organization search account's key for this session.
+    ///
+    /// THREAT[TM-TOOL-041]: fail-closed by default. An implementation answers
+    /// only for an account of the session's own organization whose provider
+    /// has a search driver, never for another kind of organization account
+    /// (for example a sandbox provider key).
+    async fn get_web_search_account_key(
+        &self,
+        _session_id: SessionId,
+        _account_id: Uuid,
+    ) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     /// Get provider-specific metadata stored alongside the connection.
     /// Returns None if no metadata is stored or no connection exists.
     async fn get_connection_metadata(

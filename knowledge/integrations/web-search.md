@@ -12,7 +12,9 @@ tags:
 # Web Search
 
 Status: approved (2026-10-11), being built in the delivery order below. Step 1 (the
-capability, free and Brave drivers, harnesses, Framework builder) is in place.
+capability, free and Brave drivers, harnesses, Framework builder) and step 2
+(organization search accounts, `web_search_defaults`, live plan resolution, the
+catalog and preview endpoints, flags removed) are in place.
 
 ## Abstract
 
@@ -162,7 +164,11 @@ Agent setting (capability config), one of:
 - **Free search**
 
 Plus optional `limit`, `freshness`, `allowed_domains` and `blocked_domains`.
-Organization blocked domains always apply on top of the agent's.
+Organization blocked domains always apply on top of the agent's. A named
+account is `{"provider": "account", "account_id": "<connection id>"}`; an agent
+that leaves `fallback` or `limit` unset follows the organization's. `brave`
+(session, user or application key) remains a setting for agents built around
+one key, and falls back to the organization's first Brave account.
 
 Organization defaults (a `web_search_defaults` column on `organization_settings`):
 
@@ -178,6 +184,16 @@ Organization defaults (a `web_search_defaults` column on `organization_settings`
   names (for example to keep every search on a paid index).
 - results per search (default 8, cap 20)
 - blocked domains
+
+The Automatic order is an order, never an exclusion: entries it does not name
+keep their natural place (native first, accounts not listed after the listed
+ones, in the organization's listing order), so connecting an account changes
+Automatic without anyone editing the order. Native is switched off with "allow
+model provider search"; an account leaves Automatic by being disconnected. With
+fallback `none`, Automatic keeps only its first available entry. Until step 4
+lands a native adapter, a native step at tool time records that the model did
+not search and the next provider answers; the preview already lists native for
+the provider types that will have it (`NATIVE_WEB_SEARCH_PROVIDER_TYPES`).
 
 Resolution happens live: each turn decides whether native applies to the model
 running it (that is what makes Automatic follow a mid-session model switch), and
@@ -487,13 +503,19 @@ Mockups: `/mnt/project-files/web-search/` in the project thread.
 
 - `GET /v1/search-providers`: the catalog for the org: built-ins, which model
   providers offer native search, connectors with `web_search`, and connected
-  accounts with status.
+  accounts with status and their place in Automatic.
 - Accounts reuse `/v1/orgs/{org}/organization-connections`, which accepts
   connectors declaring `web_search` as well as `sandbox_provisioning`.
 - `PATCH /v1/orgs/{org}` takes `web_search_defaults`.
 - `POST /v1/search-providers/preview`: resolves an agent's setting and model to
   a plan, for the agent editor's "How this agent will search" box, and runs an
-  optional test query against one provider for the cards' test button.
+  optional test query against one provider for the cards' test button (an
+  organization admin only, since it spends the account's quota).
+- The worker reads the defaults and account list through the internal
+  `worker_get_web_search_settings` command and one account's key through
+  `worker_get_web_search_account_key`, which answers only for a search account
+  of the session's own organization; keys are fetched when a plan step runs and
+  never cached.
 
 ## Testing
 

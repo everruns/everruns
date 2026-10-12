@@ -90,7 +90,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         crate_name: "everruns-integrations::brave_search",
         capabilities: everruns_integrations::brave_search::CAPABILITY_PLUGINS,
         connectors: everruns_integrations::brave_search::CONNECTOR_PLUGINS,
-        feature_flags: everruns_integrations::brave_search::FEATURE_FLAGS,
+        feature_flags: &[],
     },
     CatalogEntry {
         crate_name: "everruns-integrations::browserless",
@@ -126,7 +126,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         crate_name: "everruns-integrations::duckduckgo",
         capabilities: everruns_integrations::duckduckgo::CAPABILITY_PLUGINS,
         connectors: &[],
-        feature_flags: everruns_integrations::duckduckgo::FEATURE_FLAGS,
+        feature_flags: &[],
     },
     CatalogEntry {
         crate_name: "everruns-integrations::e2b",
@@ -156,7 +156,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         crate_name: "everruns-integrations::parallel",
         capabilities: everruns_integrations::parallel::CAPABILITY_PLUGINS,
         connectors: everruns_integrations::parallel::CONNECTOR_PLUGINS,
-        feature_flags: everruns_integrations::parallel::FEATURE_FLAGS,
+        feature_flags: &[],
     },
     CatalogEntry {
         crate_name: "everruns-integrations-experimental::sprites",

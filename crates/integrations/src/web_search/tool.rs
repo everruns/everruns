@@ -10,18 +10,21 @@ use everruns_contracts::runtime::tool_narration::{
 use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 use everruns_contracts::runtime::web_search::{
     SearchContext, SearchFailureKind, SearchFreshness, SearchHit, SearchRequest, SearchTopic,
-    WEB_SEARCH_DEFAULT_RESULTS, WEB_SEARCH_MAX_RESULTS, WEB_SEARCH_TOOL_NAME,
+    WEB_SEARCH_MAX_RESULTS, WEB_SEARCH_TOOL_NAME,
 };
 use everruns_contracts::tool_types::{ToolCall, ToolHints};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tracing::debug;
 
-use super::brave::BraveSearchDriver;
+use super::account::{account_driver, org_settings};
+use super::brave::{BRAVE_API_BASE, BraveSearchDriver};
 use super::config::WebSearchConfig;
 use super::free::FreeSearchDriver;
 use super::http::DirectEgress;
-use super::plan::{PlanDrivers, SearchOutcome, resolve_plan, run_plan};
+use super::plan::{
+    PlanDrivers, PlanInputs, ResolvedPlan, SearchOutcome, plan_steps, resolve_plan, run_plan,
+};
 use super::{BRAVE_SEARCH_API_KEY, BRAVE_SEARCH_CONNECTION_PROVIDER};
 
 const DESCRIPTION: &str = "Search the web. Returns results with an id, title, url, site, \
@@ -47,6 +50,7 @@ pub(super) struct WebSearchTool {
     config: WebSearchConfig,
     app_brave_key: Option<String>,
     free: Arc<FreeSearchDriver>,
+    brave_base: String,
 }
 
 impl WebSearchTool {
@@ -55,7 +59,14 @@ impl WebSearchTool {
             config,
             app_brave_key,
             free: Arc::new(FreeSearchDriver::default()),
+            brave_base: BRAVE_API_BASE.to_string(),
         }
+    }
+
+    #[cfg(test)]
+    fn with_brave_base(mut self, base: impl Into<String>) -> Self {
+        self.brave_base = base.into();
+        self
     }
 
     #[cfg(test)]
@@ -65,7 +76,9 @@ impl WebSearchTool {
     }
 
     /// Merge the model's arguments with the agent's settings. The agent's
-    /// domain filters always win: the model can narrow, never widen.
+    /// domain filters always win: the model can narrow, never widen. A limit
+    /// of 0 means neither the model nor the agent set one; the plan fills it
+    /// from the organization default.
     fn request(&self, arguments: Arguments) -> Result<SearchRequest, String> {
         let query = arguments.query.trim();
         if query.is_empty() {
@@ -75,8 +88,7 @@ impl WebSearchTool {
         request.limit = arguments
             .limit
             .or(self.config.limit)
-            .unwrap_or(WEB_SEARCH_DEFAULT_RESULTS)
-            .clamp(1, WEB_SEARCH_MAX_RESULTS);
+            .map_or(0, |limit| limit.clamp(1, WEB_SEARCH_MAX_RESULTS));
         request.freshness = arguments.freshness.or(self.config.freshness);
         request.topic = arguments.topic;
         request.blocked_domains = self.config.blocked_domains.clone();
@@ -120,33 +132,70 @@ impl WebSearchTool {
 
     async fn run(
         &self,
-        request: SearchRequest,
+        mut request: SearchRequest,
         context: Option<&ToolContext>,
     ) -> ToolExecutionResult {
-        let brave_key = match context {
-            Some(context) => self.brave_key(context).await,
-            None => self.app_brave_key.clone(),
+        let (brave_key, org) = match context {
+            Some(context) => (self.brave_key(context).await, org_settings(context).await),
+            None => (self.app_brave_key.clone(), None),
+        };
+        let plan = resolve_plan(PlanInputs {
+            config: &self.config,
+            org: org.as_deref(),
+            model_has_native: false,
+            brave_key: brave_key.is_some(),
+        });
+        if request.limit == 0 {
+            request.limit = plan.limit;
+        }
+        for domain in &plan.org_blocked_domains {
+            if !request.blocked_domains.contains(domain) {
+                request.blocked_domains.push(domain.clone());
+            }
+        }
+        let accounts = match (context, &org) {
+            (Some(context), Some(org)) => context
+                .connection_resolver
+                .as_ref()
+                .map(|resolver| {
+                    org.accounts
+                        .iter()
+                        .filter_map(|account| {
+                            account_driver(
+                                account,
+                                resolver.clone(),
+                                context.session_id,
+                                &self.brave_base,
+                            )
+                            .map(|driver| (account.id, account.provider.clone(), driver))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+            _ => Vec::new(),
         };
         let drivers = PlanDrivers {
             free: self.free.clone(),
-            brave: brave_key.map(|key| Arc::new(BraveSearchDriver::new(key)) as Arc<_>),
+            brave: brave_key.map(|key| {
+                Arc::new(BraveSearchDriver::with_base_url(key, &self.brave_base)) as Arc<_>
+            }),
+            accounts,
         };
-        let plan = resolve_plan(&self.config, &drivers);
+        let steps = plan_steps(&plan, &drivers);
         let search_context = SearchContext {
             egress: context
                 .and_then(|context| context.egress_service.clone())
                 .unwrap_or_else(|| Arc::new(DirectEgress::new())),
             network_access: context.and_then(|context| context.network_access.clone()),
         };
-        let outcome = run_plan(&plan, &request, &search_context).await;
-        let plan_ids: Vec<&str> = plan.iter().map(|step| step.id()).collect();
-        self.result(&request, &plan_ids, outcome)
+        let outcome = run_plan(&steps, &request, &search_context).await;
+        self.result(&request, &plan, outcome)
     }
 
     fn result(
         &self,
         request: &SearchRequest,
-        plan: &[&str],
+        plan: &ResolvedPlan,
         outcome: SearchOutcome,
     ) -> ToolExecutionResult {
         let notes = outcome.fallback_notes();
@@ -161,9 +210,17 @@ impl WebSearchTool {
             "request": request,
             "setting": {
                 "provider": self.config.provider.as_str(),
+                "account_id": self.config.account_id,
                 "fallback": self.config.fallback,
             },
-            "plan": plan,
+            // The plan this attempt used, resolved live from the agent's
+            // setting and the organization's defaults at call time.
+            "resolved": {
+                "provider": plan.provider.as_str(),
+                "account_id": plan.account_id,
+                "fallback": plan.fallback,
+            },
+            "plan": plan.ids(),
             "ok": outcome.response.is_some(),
             "attempts": outcome.attempts,
             "results": results,

@@ -16,6 +16,10 @@ pub struct BraveSearchConnector;
 
 #[async_trait]
 impl Connector for BraveSearchConnector {
+    /// Organization Brave accounts answer the provider-neutral `web_search`.
+    fn capabilities(&self) -> &'static [&'static str] {
+        &[everruns_contracts::runtime::web_search::WEB_SEARCH_CONNECTOR_CAPABILITY]
+    }
     fn provider_id(&self) -> &str {
         "brave_search"
     }
@@ -84,6 +88,13 @@ mod tests {
     fn test_provider_metadata() {
         let p = BraveSearchConnector;
         assert_eq!(p.provider_id(), "brave_search");
+        // Its organization accounts are search accounts, and the contract's
+        // list of providers with a search driver names it.
+        assert!(p.capabilities().contains(&"web_search"));
+        assert!(
+            everruns_contracts::runtime::web_search::WEB_SEARCH_ACCOUNT_PROVIDERS
+                .contains(&p.provider_id())
+        );
         assert_eq!(p.display_name(), "Brave Search");
         assert_eq!(p.connection_type(), ConnectorType::ApiKey);
         assert_eq!(p.icon(), "search");

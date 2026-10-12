@@ -10,11 +10,7 @@ fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
     let mut registry = CapabilityRegistry::new();
     registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
         plugin.feature_flag.is_none_or(|flag| {
-            everruns_contracts::runtime::feature_flag_available(
-                flag,
-                everruns_integrations::duckduckgo::FEATURE_FLAGS,
-                grade,
-            )
+            everruns_contracts::runtime::feature_flag_available(flag, &[], grade)
         })
     });
     registry
@@ -33,7 +29,7 @@ fn test_duckduckgo_plugin_is_published() {
 }
 
 #[test]
-fn test_duckduckgo_plugin_is_behind_its_feature_flag() {
+fn test_duckduckgo_plugin_is_not_behind_a_feature_flag() {
     let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     let duckduckgo = plugins
         .iter()
@@ -43,11 +39,7 @@ fn test_duckduckgo_plugin_is_behind_its_feature_flag() {
         })
         .expect("DuckDuckGo plugin not found");
 
-    assert_eq!(
-        duckduckgo.feature_flag,
-        Some("duckduckgo"),
-        "duckduckgo should be behind its feature flag"
-    );
+    assert_eq!(duckduckgo.feature_flag, None);
 }
 
 #[test]
@@ -64,7 +56,7 @@ fn test_duckduckgo_registered_in_prod_registry() {
     let registry = registry_for_grade(DeploymentGrade::Prod);
     assert!(
         registry.has("duckduckgo"),
-        "DuckDuckGo is adoption grade, so it should be in prod registry"
+        "DuckDuckGo has no feature flag, so it is in the prod registry"
     );
 }
 

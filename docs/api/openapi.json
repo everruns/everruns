@@ -16034,7 +16034,7 @@
         "tags": [
           "sandbox-templates"
         ],
-        "description": "List non-secret metadata for organization-owned sandbox provider accounts.",
+        "description": "List non-secret metadata for organization-owned provider accounts: sandbox provider accounts and web search accounts.",
         "operationId": "list_connections",
         "responses": {
           "200": {
@@ -16057,7 +16057,7 @@
         "tags": [
           "sandbox-templates"
         ],
-        "description": "Create and validate an encrypted organization-owned sandbox provider account.",
+        "description": "Create and validate an encrypted organization-owned account for a connector that declares sandbox_provisioning or web_search.",
         "operationId": "create_connection",
         "parameters": [
           {
@@ -16105,7 +16105,7 @@
         "tags": [
           "sandbox-templates"
         ],
-        "description": "Replace the name and credential for an organization-owned sandbox provider account.",
+        "description": "Replace the name and credential for an organization-owned provider account.",
         "operationId": "update_connection",
         "parameters": [
           {
@@ -16183,7 +16183,7 @@
         "tags": [
           "sandbox-templates"
         ],
-        "description": "Revalidate an organization-owned sandbox provider credential without returning the secret.",
+        "description": "Revalidate an organization-owned provider credential without returning the secret.",
         "operationId": "verify_connection",
         "parameters": [
           {
@@ -19096,6 +19096,76 @@
           },
           "404": {
             "description": "Sandbox not found"
+          }
+        }
+      }
+    },
+    "/v1/search-providers": {
+      "get": {
+        "tags": [
+          "web-search"
+        ],
+        "description": "List the web search providers of the active organization: built-in free and model provider search, connected model providers that search natively, connectors that hold search accounts, connected search accounts with status, and the organization's web search defaults.",
+        "operationId": "list_search_providers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchProviderCatalog"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/search-providers/preview": {
+      "post": {
+        "tags": [
+          "web-search"
+        ],
+        "description": "Resolve an agent's web search setting and model to the ordered plan its searches follow, with the organization's current defaults. Optionally run a test query against one provider (`free` or `account:<id>`; organization admins only).",
+        "operationId": "preview_search_plan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchPlanPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchPlanPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid config, unknown model, or unknown test provider",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Test queries need an organization admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -29595,6 +29665,35 @@
           "agent_trigger",
           "agent_channel"
         ]
+      },
+      "BuiltInSearchProvider": {
+        "type": "object",
+        "description": "A provider that needs no setup.",
+        "required": [
+          "id",
+          "name",
+          "description"
+        ],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "description": "`free` or `native`.",
+            "example": "free"
+          },
+          "name": {
+            "type": "string"
+          },
+          "price_note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Plain-words cost, when the provider bills per search."
+          }
+        }
       },
       "BuiltinTool": {
         "type": "object",
@@ -42965,6 +43064,7 @@
                 "name",
                 "default_provider_per_service",
                 "system_decisions",
+                "web_search_defaults",
                 "created_at",
                 "updated_at"
               ],
@@ -43037,6 +43137,10 @@
                   "type": "string",
                   "format": "date-time",
                   "description": "When the organization was last updated"
+                },
+                "web_search_defaults": {
+                  "$ref": "#/components/schemas/WebSearchDefaults",
+                  "description": "Web search defaults: the provider agents on \"Organization default\"\nuse, the Automatic order, whether model provider search is allowed,\nthe fallback, results per search and blocked domains. Built-in\ndefaults (Automatic) when the organization never set any."
                 }
               }
             },
@@ -47679,6 +47783,31 @@
           }
         }
       },
+      "NativeSearchProvider": {
+        "type": "object",
+        "description": "A connected model provider whose models search natively.",
+        "required": [
+          "provider_id",
+          "name",
+          "provider_type",
+          "price_note"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "price_note": {
+            "type": "string"
+          },
+          "provider_id": {
+            "type": "string"
+          },
+          "provider_type": {
+            "type": "string",
+            "example": "anthropic"
+          }
+        }
+      },
       "NativeToolCall": {
         "oneOf": [
           {
@@ -48278,7 +48407,7 @@
       },
       "OrganizationConnectionResponse": {
         "type": "object",
-        "description": "Non-secret metadata for an organization-owned sandbox provider account.",
+        "description": "Non-secret metadata for an organization-owned provider account.",
         "required": [
           "id",
           "name",
@@ -48296,7 +48425,7 @@
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "Stable connection identifier used by Sandbox Templates.",
+            "description": "Stable connection identifier used by Sandbox Templates and web search.",
             "example": "00000000-0000-0000-0000-000000000002"
           },
           "name": {
@@ -48306,7 +48435,7 @@
           },
           "provider": {
             "type": "string",
-            "description": "Sandbox provider connector identifier.",
+            "description": "Connector identifier, e.g. `daytona` or `brave_search`.",
             "example": "daytona"
           },
           "provider_username": {
@@ -48333,6 +48462,7 @@
           "name",
           "default_provider_per_service",
           "system_decisions",
+          "web_search_defaults",
           "created_at",
           "updated_at"
         ],
@@ -48405,6 +48535,10 @@
             "type": "string",
             "format": "date-time",
             "description": "When the organization was last updated"
+          },
+          "web_search_defaults": {
+            "$ref": "#/components/schemas/WebSearchDefaults",
+            "description": "Web search defaults: the provider agents on \"Organization default\"\nuse, the Automatic order, whether model provider search is allowed,\nthe fallback, results per search and blocked domains. Built-in\ndefaults (Automatic) when the organization never set any."
           }
         }
       },
@@ -53762,13 +53896,13 @@
             "properties": {
               "name": {
                 "type": "string",
-                "description": "Human-readable account name shown in Sandbox Template selectors.",
+                "description": "Human-readable account name shown in Sandbox Template and web search selectors.",
                 "example": "Production Daytona"
               }
             }
           }
         ],
-        "description": "Organization-owned sandbox provider account input."
+        "description": "Organization-owned provider account input (sandbox provider or search account)."
       },
       "SavedReport": {
         "type": "object",
@@ -54791,6 +54925,337 @@
           "wake_agent_on_failure": {
             "type": "boolean",
             "description": "When the run fails or stops, hand the result to the agent's model,\nwhich then answers in the same turn. Off: the run only records it."
+          }
+        }
+      },
+      "SearchAccountSummary": {
+        "type": "object",
+        "description": "A connected organization search account (never its key).",
+        "required": [
+          "id",
+          "provider",
+          "name",
+          "status",
+          "connected_at"
+        ],
+        "properties": {
+          "automatic_position": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Place in the Automatic order (1-based), counting native and accounts.",
+            "minimum": 0
+          },
+          "connected_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "Account name the admin gave it."
+          },
+          "provider": {
+            "type": "string",
+            "example": "brave_search"
+          },
+          "status": {
+            "type": "string",
+            "description": "`ready` when a key is stored, `missing_key` otherwise.",
+            "example": "ready"
+          }
+        }
+      },
+      "SearchConnector": {
+        "type": "object",
+        "description": "A connector whose organization accounts answer web search.",
+        "required": [
+          "provider",
+          "name",
+          "description",
+          "icon"
+        ],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string",
+            "description": "Connector id, used to connect an account at\n`/v1/orgs/{org}/organization-connections/providers/{provider}`.",
+            "example": "brave_search"
+          }
+        }
+      },
+      "SearchFallbackMode": {
+        "type": "string",
+        "description": "What happens when a provider cannot answer.",
+        "enum": [
+          "next",
+          "none"
+        ]
+      },
+      "SearchPlanPreview": {
+        "type": "object",
+        "description": "The plan an agent's search would follow.",
+        "required": [
+          "provider",
+          "fallback",
+          "limit",
+          "model_has_native",
+          "org_blocked_domains",
+          "steps"
+        ],
+        "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "fallback": {
+            "$ref": "#/components/schemas/SearchFallbackMode"
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Results per search when the model does not ask.",
+            "minimum": 0
+          },
+          "model_has_native": {
+            "type": "boolean",
+            "description": "Whether the model searches natively (and the organization allows it)."
+          },
+          "org_blocked_domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "provider": {
+            "$ref": "#/components/schemas/SearchProviderSetting",
+            "description": "The setting in effect after following the organization default."
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchPlanStep"
+            }
+          },
+          "test": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SearchTestOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "SearchPlanPreviewRequest": {
+        "type": "object",
+        "description": "Resolve an agent's web search setting and model to a plan.",
+        "properties": {
+          "config": {
+            "type": "object",
+            "description": "The agent's `web_search` capability config; omitted means\n`{\"provider\": \"org_default\"}`."
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The model the agent runs; omitted uses the organization's default model."
+          },
+          "test": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SearchTestQuery",
+                "description": "Optional test query against one provider (organization admins)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "SearchPlanStep": {
+        "type": "object",
+        "description": "One provider in a previewed plan.",
+        "required": [
+          "id",
+          "label",
+          "available"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "Whether this step can answer for this model now."
+          },
+          "id": {
+            "type": "string",
+            "description": "`native`, `brave`, `account:<id>` or `free`."
+          },
+          "label": {
+            "type": "string"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it cannot, or what it relies on."
+          },
+          "price_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "SearchProviderCatalog": {
+        "type": "object",
+        "description": "Everything the organization can search with.",
+        "required": [
+          "built_in",
+          "native_providers",
+          "connectors",
+          "accounts",
+          "defaults"
+        ],
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchAccountSummary"
+            }
+          },
+          "built_in": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BuiltInSearchProvider"
+            }
+          },
+          "connectors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchConnector"
+            }
+          },
+          "defaults": {
+            "$ref": "#/components/schemas/WebSearchDefaults"
+          },
+          "native_providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NativeSearchProvider"
+            }
+          }
+        }
+      },
+      "SearchProviderSetting": {
+        "type": "string",
+        "description": "Which provider web search uses.",
+        "enum": [
+          "org_default",
+          "auto",
+          "native",
+          "brave",
+          "account",
+          "free"
+        ]
+      },
+      "SearchTestOutcome": {
+        "type": "object",
+        "description": "What a test query returned.",
+        "required": [
+          "provider",
+          "ok",
+          "duration_ms",
+          "results"
+        ],
+        "properties": {
+          "duration_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchTestResult"
+            }
+          }
+        }
+      },
+      "SearchTestQuery": {
+        "type": "object",
+        "description": "Run one query against one provider.",
+        "required": [
+          "query",
+          "provider"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "`free` or `account:<id>`.",
+            "example": "free"
+          },
+          "query": {
+            "type": "string",
+            "example": "tokio release notes"
+          }
+        }
+      },
+      "SearchTestResult": {
+        "type": "object",
+        "description": "One result of a test query.",
+        "required": [
+          "title",
+          "url",
+          "site"
+        ],
+        "properties": {
+          "site": {
+            "type": "string"
+          },
+          "snippet": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
           }
         }
       },
@@ -61459,6 +61924,17 @@
                 "type": "null"
               }
             ]
+          },
+          "web_search_defaults": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WebSearchDefaults",
+                "description": "Web search defaults; replaces the stored defaults as a whole. Omitted\nfields take their built-in default. `provider` cannot be\n`org_default`, `account_id` and `automatic_order` entries must name\nthis organization's search accounts, free search is always last in\nthe Automatic order, and `results_per_search` is 1 to 20."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -62892,6 +63368,53 @@
             "description": "Prefixed voice connection identifier this transcript belongs to."
           }
         }
+      },
+      "WebSearchDefaults": {
+        "type": "object",
+        "description": "An organization's web search defaults.",
+        "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The search account when `provider` is `account`."
+          },
+          "allow_native": {
+            "type": "boolean",
+            "description": "Whether agents may use the model provider's own search (billed by the\nmodel provider)."
+          },
+          "automatic_order": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Automatic order: `native`, search account ids, and `free`, which is\nalways last. Entries left out keep their natural place."
+          },
+          "blocked_domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Sites no search in this organization returns, on top of each agent's."
+          },
+          "fallback": {
+            "$ref": "#/components/schemas/SearchFallbackMode",
+            "description": "When a provider cannot answer: `next` falls back (free search last),\n`none` stops. An agent's own `fallback` wins."
+          },
+          "provider": {
+            "$ref": "#/components/schemas/SearchProviderSetting",
+            "description": "Provider for agents set to the organization default: `auto`, `native`,\n`brave`, `account` (with `account_id`) or `free`."
+          },
+          "results_per_search": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Results per search when neither the model nor the agent asks (1 to 20).",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "WebhookInvocationResponse": {
         "type": "object",
@@ -65978,6 +66501,10 @@
     {
       "name": "session-sandbox",
       "description": "Managed session sandbox lifecycle endpoints"
+    },
+    {
+      "name": "web-search",
+      "description": "Web search providers, organization search accounts and plan previews"
     },
     {
       "name": "mcp-servers",

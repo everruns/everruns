@@ -38,6 +38,11 @@ pub struct OrganizationResponse {
     /// How many agents one AgentID owner may sign in; null means the platform
     /// default.
     pub agentid_agents_per_owner: Option<i32>,
+    /// Web search defaults: the provider agents on "Organization default"
+    /// use, the Automatic order, whether model provider search is allowed,
+    /// the fallback, results per search and blocked domains. Built-in
+    /// defaults (Automatic) when the organization never set any.
+    pub web_search_defaults: everruns_contracts::runtime::web_search::WebSearchDefaults,
     /// When the organization was created
     pub created_at: chrono::DateTime<chrono::Utc>,
     /// When the organization was last updated

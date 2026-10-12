@@ -80,6 +80,7 @@ pub mod reporting;
 pub mod resolver;
 pub mod sandbox_templates;
 pub mod schedules;
+pub mod search_providers;
 pub mod session_databases;
 pub mod session_files;
 pub mod session_git;

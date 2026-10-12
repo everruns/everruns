@@ -14,6 +14,10 @@ use serde::{Deserialize, Serialize};
 use crate::runtime::egress::EgressService;
 use crate::runtime::network_access::NetworkAccessList;
 
+#[path = "web_search_org.rs"]
+mod org;
+pub use org::*;
+
 /// Canonical capability id and tool name.
 pub const WEB_SEARCH_CAPABILITY_ID: &str = "web_search";
 /// The single model-facing tool every provider answers through.

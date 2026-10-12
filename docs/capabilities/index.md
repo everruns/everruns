@@ -130,6 +130,9 @@ External-service capabilities and blueprint-backed workflows.
 | Cursor | `cursor` | 9 |
 | [Agentic Resource Discovery](/integrations/ard/) | `resource_discovery` | 3 |
 | [AgentID Sign-In](/integrations/agentid/) | `agentid` | 1 |
+| [Brave Search](/integrations/brave-search/) | `brave_search` | 1 |
+| [DuckDuckGo](/integrations/duckduckgo/) | `duckduckgo` | 1 |
+| [Parallel Search and Fetch](/integrations/parallel/) | `parallel_search` | 0 (2 hosted MCP tools from Parallel) |
 | [Jev Decisions](/integrations/typesafe/) | `jev` | 1 |
 | [User MCP Servers](/capabilities/user-mcp-servers/) | `user_mcp` | 6 (only with `manage` on) |
 | [Poppy Personal Agent](/capabilities/poppy-personal-agent/) | `poppy_client` | 5 |

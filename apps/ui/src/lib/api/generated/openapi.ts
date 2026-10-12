@@ -4098,7 +4098,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List non-secret metadata for organization-owned sandbox provider accounts. */
+    /** @description List non-secret metadata for organization-owned provider accounts: sandbox provider accounts and web search accounts. */
     get: operations["list_connections"];
     put?: never;
     post?: never;
@@ -4117,7 +4117,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Create and validate an encrypted organization-owned sandbox provider account. */
+    /** @description Create and validate an encrypted organization-owned account for a connector that declares sandbox_provisioning or web_search. */
     post: operations["create_connection"];
     delete?: never;
     options?: never;
@@ -4133,7 +4133,7 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** @description Replace the name and credential for an organization-owned sandbox provider account. */
+    /** @description Replace the name and credential for an organization-owned provider account. */
     put: operations["update_connection"];
     post?: never;
     /** @description Delete an organization-owned provider account when no active sandbox configuration or lease references it. */
@@ -4152,7 +4152,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Revalidate an organization-owned sandbox provider credential without returning the secret. */
+    /** @description Revalidate an organization-owned provider credential without returning the secret. */
     post: operations["verify_connection"];
     delete?: never;
     options?: never;
@@ -4892,6 +4892,40 @@ export interface paths {
     get: operations["get_sandbox"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/search-providers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List the web search providers of the active organization: built-in free and model provider search, connected model providers that search natively, connectors that hold search accounts, connected search accounts with status, and the organization's web search defaults. */
+    get: operations["list_search_providers"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/search-providers/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Resolve an agent's web search setting and model to the ordered plan its searches follow, with the organization's current defaults. Optionally run a test query against one provider (`free` or `account:<id>`; organization admins only). */
+    post: operations["preview_search_plan"];
     delete?: never;
     options?: never;
     head?: never;
@@ -8575,6 +8609,18 @@ export interface components {
       | "organization"
       | "agent_trigger"
       | "agent_channel";
+    /** @description A provider that needs no setup. */
+    BuiltInSearchProvider: {
+      description: string;
+      /**
+       * @description `free` or `native`.
+       * @example free
+       */
+      id: string;
+      name: string;
+      /** @description Plain-words cost, when the provider bills per search. */
+      price_note?: string | null;
+    };
     /**
      * @description Built-in tool configuration
      *
@@ -16249,6 +16295,13 @@ export interface components {
          * @description When the organization was last updated
          */
         updated_at: string;
+        /**
+         * @description Web search defaults: the provider agents on "Organization default"
+         *     use, the Automatic order, whether model provider search is allowed,
+         *     the fallback, results per search and blocked domains. Built-in
+         *     defaults (Automatic) when the organization never set any.
+         */
+        web_search_defaults: components["schemas"]["WebSearchDefaults"];
       }[];
     };
     /**
@@ -18704,6 +18757,14 @@ export interface components {
       org_name: string;
       role: string;
     };
+    /** @description A connected model provider whose models search natively. */
+    NativeSearchProvider: {
+      name: string;
+      price_note: string;
+      provider_id: string;
+      /** @example anthropic */
+      provider_type: string;
+    };
     /**
      * @description A complete provider-native call, retaining its original identity and payload.
      * @example {
@@ -19041,7 +19102,7 @@ export interface components {
     OrgFeatureFlagsSettingsResponse: {
       flags: components["schemas"]["OrgFeatureFlagSetting"][];
     };
-    /** @description Non-secret metadata for an organization-owned sandbox provider account. */
+    /** @description Non-secret metadata for an organization-owned provider account. */
     OrganizationConnectionResponse: {
       /**
        * Format: date-time
@@ -19051,7 +19112,7 @@ export interface components {
       connected_at: string;
       /**
        * Format: uuid
-       * @description Stable connection identifier used by Sandbox Templates.
+       * @description Stable connection identifier used by Sandbox Templates and web search.
        * @example 00000000-0000-0000-0000-000000000002
        */
       id: string;
@@ -19061,7 +19122,7 @@ export interface components {
        */
       name: string;
       /**
-       * @description Sandbox provider connector identifier.
+       * @description Connector identifier, e.g. `daytona` or `brave_search`.
        * @example daytona
        */
       provider: string;
@@ -19124,6 +19185,13 @@ export interface components {
        * @description When the organization was last updated
        */
       updated_at: string;
+      /**
+       * @description Web search defaults: the provider agents on "Organization default"
+       *     use, the Automatic order, whether model provider search is allowed,
+       *     the fallback, results per search and blocked domains. Built-in
+       *     defaults (Automatic) when the organization never set any.
+       */
+      web_search_defaults: components["schemas"]["WebSearchDefaults"];
     };
     /** @description Data for output.message.completed event */
     OutputMessageCompletedData: {
@@ -22194,10 +22262,10 @@ export interface components {
       /** @description Spans clipped to the window, oldest first. */
       spans: components["schemas"]["SandboxStateSpan"][];
     };
-    /** @description Organization-owned sandbox provider account input. */
+    /** @description Organization-owned provider account input (sandbox provider or search account). */
     SaveOrganizationConnectionRequest: components["schemas"]["CreateConnectionRequest"] & {
       /**
-       * @description Human-readable account name shown in Sandbox Template selectors.
+       * @description Human-readable account name shown in Sandbox Template and web search selectors.
        * @example Production Daytona
        */
       name: string;
@@ -22756,6 +22824,120 @@ export interface components {
        *     which then answers in the same turn. Off: the run only records it.
        */
       wake_agent_on_failure?: boolean;
+    };
+    /** @description A connected organization search account (never its key). */
+    SearchAccountSummary: {
+      /** @description Place in the Automatic order (1-based), counting native and accounts. */
+      automatic_position?: number | null;
+      /** Format: date-time */
+      connected_at: string;
+      /** Format: uuid */
+      id: string;
+      /** @description Account name the admin gave it. */
+      name: string;
+      /** @example brave_search */
+      provider: string;
+      /**
+       * @description `ready` when a key is stored, `missing_key` otherwise.
+       * @example ready
+       */
+      status: string;
+    };
+    /** @description A connector whose organization accounts answer web search. */
+    SearchConnector: {
+      description: string;
+      icon: string;
+      name: string;
+      /**
+       * @description Connector id, used to connect an account at
+       *     `/v1/orgs/{org}/organization-connections/providers/{provider}`.
+       * @example brave_search
+       */
+      provider: string;
+    };
+    /**
+     * @description What happens when a provider cannot answer.
+     * @enum {string}
+     */
+    SearchFallbackMode: "next" | "none";
+    /** @description The plan an agent's search would follow. */
+    SearchPlanPreview: {
+      /** Format: uuid */
+      account_id?: string | null;
+      fallback: components["schemas"]["SearchFallbackMode"];
+      /**
+       * Format: int32
+       * @description Results per search when the model does not ask.
+       */
+      limit: number;
+      /** @description Whether the model searches natively (and the organization allows it). */
+      model_has_native: boolean;
+      org_blocked_domains: string[];
+      /** @description The setting in effect after following the organization default. */
+      provider: components["schemas"]["SearchProviderSetting"];
+      steps: components["schemas"]["SearchPlanStep"][];
+      test?: components["schemas"]["SearchTestOutcome"] | null;
+    };
+    /** @description Resolve an agent's web search setting and model to a plan. */
+    SearchPlanPreviewRequest: {
+      /**
+       * @description The agent's `web_search` capability config; omitted means
+       *     `{"provider": "org_default"}`.
+       */
+      config?: Record<string, unknown>;
+      /** @description The model the agent runs; omitted uses the organization's default model. */
+      model_id?: string | null;
+      test?: components["schemas"]["SearchTestQuery"] | null;
+    };
+    /** @description One provider in a previewed plan. */
+    SearchPlanStep: {
+      /** @description Whether this step can answer for this model now. */
+      available: boolean;
+      /** @description `native`, `brave`, `account:<id>` or `free`. */
+      id: string;
+      label: string;
+      /** @description Why it cannot, or what it relies on. */
+      note?: string | null;
+      price_note?: string | null;
+    };
+    /** @description Everything the organization can search with. */
+    SearchProviderCatalog: {
+      accounts: components["schemas"]["SearchAccountSummary"][];
+      built_in: components["schemas"]["BuiltInSearchProvider"][];
+      connectors: components["schemas"]["SearchConnector"][];
+      defaults: components["schemas"]["WebSearchDefaults"];
+      native_providers: components["schemas"]["NativeSearchProvider"][];
+    };
+    /**
+     * @description Which provider web search uses.
+     * @enum {string}
+     */
+    SearchProviderSetting: "org_default" | "auto" | "native" | "brave" | "account" | "free";
+    /** @description What a test query returned. */
+    SearchTestOutcome: {
+      /** Format: int64 */
+      duration_ms: number;
+      message?: string | null;
+      ok: boolean;
+      provider: string;
+      results: components["schemas"]["SearchTestResult"][];
+    };
+    /** @description Run one query against one provider. */
+    SearchTestQuery: {
+      /**
+       * @description `free` or `account:<id>`.
+       * @example free
+       */
+      provider: string;
+      /** @example tokio release notes */
+      query: string;
+    };
+    /** @description One result of a test query. */
+    SearchTestResult: {
+      site: string;
+      snippet?: string | null;
+      title: string;
+      url: string;
     };
     /** @description Secret entry info (name and timestamps only, no value) */
     SecretInfo: {
@@ -26389,6 +26571,7 @@ export interface components {
        */
       name?: string | null;
       system_decisions?: components["schemas"]["SystemDecisions"] | null;
+      web_search_defaults?: components["schemas"]["WebSearchDefaults"] | null;
     };
     /** @description Request body for the `update_payment_account` operation. */
     UpdatePaymentAccountRequest: {
@@ -27107,6 +27290,41 @@ export interface components {
       response_id?: string | null;
       /** @description Prefixed voice connection identifier this transcript belongs to. */
       voice_connection_id: string;
+    };
+    /** @description An organization's web search defaults. */
+    WebSearchDefaults: {
+      /**
+       * Format: uuid
+       * @description The search account when `provider` is `account`.
+       */
+      account_id?: string | null;
+      /**
+       * @description Whether agents may use the model provider's own search (billed by the
+       *     model provider).
+       */
+      allow_native?: boolean;
+      /**
+       * @description Automatic order: `native`, search account ids, and `free`, which is
+       *     always last. Entries left out keep their natural place.
+       */
+      automatic_order?: string[];
+      /** @description Sites no search in this organization returns, on top of each agent's. */
+      blocked_domains?: string[];
+      /**
+       * @description When a provider cannot answer: `next` falls back (free search last),
+       *     `none` stops. An agent's own `fallback` wins.
+       */
+      fallback?: components["schemas"]["SearchFallbackMode"];
+      /**
+       * @description Provider for agents set to the organization default: `auto`, `native`,
+       *     `brave`, `account` (with `account_id`) or `free`.
+       */
+      provider?: components["schemas"]["SearchProviderSetting"];
+      /**
+       * Format: int32
+       * @description Results per search when neither the model nor the agent asks (1 to 20).
+       */
+      results_per_search?: number;
     };
     /** @description Response body for webhook invocation. */
     WebhookInvocationResponse: {
@@ -43456,6 +43674,66 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  list_search_providers: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SearchProviderCatalog"];
+        };
+      };
+    };
+  };
+  preview_search_plan: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SearchPlanPreviewRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SearchPlanPreview"];
+        };
+      };
+      /** @description Invalid config, unknown model, or unknown test provider */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Test queries need an organization admin */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
       };
     };
   };

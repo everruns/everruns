@@ -30,7 +30,7 @@ path = "src/bin/export_openapi.rs"
 lua = ["everruns-capabilities/lua"]
 
 [dependencies]
-everruns-integrations = { workspace = true, features = ["typesafe", "bashkit", "web-fetch", "github", "slack-channel"] }
+everruns-integrations = { workspace = true, features = ["typesafe", "bashkit", "web-fetch", "web-search", "github", "slack-channel"] }
 
 mimalloc.workspace = true
 axum.workspace = true

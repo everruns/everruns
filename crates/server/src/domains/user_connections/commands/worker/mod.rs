@@ -292,5 +292,7 @@ impl Command for WorkerGetConnectionTokenForConnection {
     }
 }
 
+mod web_search;
+
 #[cfg(test)]
 mod tests;
