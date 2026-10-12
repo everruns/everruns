@@ -294,6 +294,22 @@ describe("ModelsPage", () => {
     expect(screen.getByRole("button", { name: /Add model/ })).toBeDisabled();
   });
 
+  it("groups defaults into Chat, Decisions and Other services", () => {
+    mockPathname = "/models/defaults";
+    render(<ModelsPage />, { wrapper });
+    const chat = screen.getByRole("region", { name: "Chat" });
+    const decisions = screen.getByRole("region", { name: "Decisions" });
+    const other = screen.getByRole("region", { name: "Other services" });
+    expect(within(chat).getByLabelText("Default model")).toBeInTheDocument();
+    expect(within(decisions).getByLabelText("Default decision model")).toBeInTheDocument();
+    expect(
+      within(decisions).getByRole("combobox", { name: "System decisions" }),
+    ).toBeInTheDocument();
+    for (const label of ["Realtime (voice)", "Embeddings", "Images", "Rerank"]) {
+      expect(within(other).getByLabelText(label)).toBeInTheDocument();
+    }
+  });
+
   it("lets the organization answer system decisions with its own model", async () => {
     mockPathname = "/models/defaults";
     render(<ModelsPage />, { wrapper });

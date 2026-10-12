@@ -1,6 +1,10 @@
 "use client";
 
-// Organization defaults, one row per service.
+// Organization defaults, one row per service, grouped by what they drive:
+// Chat (the model agents and sessions run on), Decisions (the Jev decision
+// model and who answers system checks), and Other services (provider-level
+// defaults). The groups follow the two kinds of default below, so a row's
+// meaning comes from its section rather than repeated row text.
 //
 // Chat and decisions default to a model; realtime, embeddings, images and
 // rerank default to a provider (EVE-569: tier 2 of service-bound resolution,
@@ -142,7 +146,7 @@ export function DefaultsTab({
   const busy = !canManage || !org || updateOrg.isPending;
 
   return (
-    <div className="flex max-w-3xl flex-col gap-3">
+    <div className="flex max-w-3xl flex-col gap-6">
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
@@ -151,7 +155,7 @@ export function DefaultsTab({
       {!canManage && (
         <p className="text-sm text-muted-foreground">Only organization admins change defaults.</p>
       )}
-      <div className="divide-y border bg-card">
+      <DefaultSection title="Chat" description="The model agents and sessions run on.">
         <DefaultRow
           label="Default model"
           description="Used when no model is set on the agent or session."
@@ -168,6 +172,11 @@ export function DefaultsTab({
             disabled={busy}
           />
         </DefaultRow>
+      </DefaultSection>
+      <DefaultSection
+        title="Decisions"
+        description="Yes-or-no checks: the Jev capability, guardrails and the Slack relevance check."
+      >
         <DefaultRow
           label="Default decision model"
           description="Used by the Jev capability when no model is bound. Calibrated models only."
@@ -222,11 +231,16 @@ export function DefaultsTab({
             </SelectContent>
           </Select>
         </DefaultRow>
+      </DefaultSection>
+      <DefaultSection
+        title="Other services"
+        description="Each defaults to a provider. A provider whose driver lacks the service is rejected when it runs."
+      >
         {PROVIDER_SERVICES.map((service) => (
           <DefaultRow
             key={service.key}
             label={service.label}
-            description={`${service.description} Defaults to a provider; a provider whose driver lacks the service is rejected when it runs.`}
+            description={service.description}
             problem={providerDefaultProblem(serviceDraft[service.key], providers)}
           >
             <Combobox
@@ -245,8 +259,31 @@ export function DefaultsTab({
             />
           </DefaultRow>
         ))}
-      </div>
+      </DefaultSection>
     </div>
+  );
+}
+
+function DefaultSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  const id = `defaults-${title.toLowerCase().replace(/\s+/g, "-")}`;
+  return (
+    <section aria-labelledby={id} className="flex flex-col gap-2">
+      <div>
+        <h3 id={id} className="text-sm font-semibold">
+          {title}
+        </h3>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      <div className="divide-y border bg-card">{children}</div>
+    </section>
   );
 }
 
