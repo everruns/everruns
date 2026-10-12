@@ -288,6 +288,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/avatar/set": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Set an agent's avatar from a curated preset (preset_id, see list_avatar_presets) or an image (image_base64: PNG, JPEG, GIF or WebP, at least 64x64, at most 1 MB). Replaces the previous avatar and updates the icon of the agent's one-click Slack apps. */
+    post: operations["set_agent_avatar"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/channels": {
     parameters: {
       query?: never;
@@ -23801,6 +23818,24 @@ export interface components {
       /** @description New session title. */
       title: string;
     };
+    /** @description The avatar source: exactly one of `preset_id` or `image_base64`. */
+    SetAgentAvatarRequest: {
+      /**
+       * @description MIME type of `image_base64`. Detected from the bytes when omitted.
+       * @example image/png
+       */
+      content_type?: string | null;
+      /**
+       * @description Image bytes as base64 (a `data:image/...;base64,` URI also works): PNG, JPEG, GIF or
+       *     WebP, at least 64x64, at most 1 MB decoded. Center-cropped to a square.
+       */
+      image_base64?: string | null;
+      /**
+       * @description Curated preset ID from `list_avatar_presets`. Pass this or `image_base64`, not both.
+       * @example familiars-patch
+       */
+      preset_id?: string | null;
+    };
     /** @description Request to replace a credential binding's encrypted value. */
     SetAgentCredentialValueRequest: {
       /**
@@ -30111,6 +30146,47 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  set_agent_avatar: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetAgentAvatarRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentAvatar"];
+        };
+      };
+      /** @description Invalid preset or image */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

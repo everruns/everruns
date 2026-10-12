@@ -6,6 +6,7 @@ use everruns_core::{Permission, Policy, Rule};
 
 pub mod analysis;
 pub mod avatar;
+pub mod avatar_commands;
 pub mod avatar_presets;
 pub mod avatar_slack;
 mod branding_slack;
@@ -27,6 +28,7 @@ pub mod record;
 pub(crate) mod sandbox_policy;
 pub mod types;
 
+pub use avatar_commands::{ListAvatarPresets, SetAgentAvatar};
 pub use commands::*;
 pub use draft::DraftAgent;
 pub use health_check::{AgentHealthCheckService, HealthCheckRunContext};

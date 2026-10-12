@@ -1,4 +1,6 @@
 agents analyze	--capabilities --context-revision --harness-id --initial-files --mcp-servers --reason --system-prompt --tools
+agents avatar presets	--context-revision --reason
+agents avatar set	--agent --content-type --context-revision --image-base64 --preset --reason <agent_id>
 agents channels create	--agent-id! --channel-config --channel-type! --context-revision --enabled --reason
 agents channels delete	--agent-id! --channel-id! --context-revision --reason
 agents channels get	--agent-id! --channel-id! --context-revision --reason
