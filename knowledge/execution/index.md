@@ -23,6 +23,7 @@
 * [Background Execution Capability](background-execution.md) - `background_execution` capability and cross-cutting / auto-activation contract.
 * [Client-Side Tools](client-side-tools.md) - Client-side tools for API/SDK consumers.
 * [Tool Search Specification](tool-search.md) - OpenAI tool_search deferred tool loading capability.
+* [Cache-Stable Tool Changes](cache-stable-tool-changes.md) - Proposed: a fixed tool list per session, with later tool changes recorded in the conversation and sent in each provider's cache-safe form.
 * [fetchkit](fetchkit.md) - fetchkit library powering the `web_fetch` capability.
 * [Toolkit Library Contract](toolkit-library-contract.md) - Convention for external toolkit libraries.
 * [Tools in Shell](tools-in-shell.md) - Proposed `tools_in_shell` capability: an agent's tools as a JSON-in, JSON-out `tools` shell command, plus saved scripts.

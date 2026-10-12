@@ -1,5 +1,14 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-12
+
+* **Cache-stable tool changes design (awaiting approval).** The tool list
+  sent to the provider is fixed per session; reveals, MCP attaches and
+  refreshes, capability switches and client tools become recorded tool
+  changes in the conversation, sent as Anthropic `tool_addition` blocks or
+  OpenAI `additional_tools` items, with today's behavior as the fallback. See
+  [Cache-Stable Tool Changes](execution/cache-stable-tool-changes.md).
+
 ## 2026-10-11
 
 * **Personal access token scopes design (awaiting approval).** Two scopes,
