@@ -1,6 +1,9 @@
 //! Startup and bootstrap: storage bring-up, service seeding, and organization
 //! initialization.
 
+// Schema migrations: baseline, timestamped migrations, legacy adoption
+pub mod migrations;
+
 // Organization initialization (built-in harnesses, reconciliation)
 pub mod org_init;
 

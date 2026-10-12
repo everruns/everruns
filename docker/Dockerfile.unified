@@ -77,6 +77,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARG
     cp target/$(xx-cargo --print-target-triple)/release/everruns-server /app/everruns-server && \
     cp target/$(xx-cargo --print-target-triple)/release/everruns-worker /app/everruns-worker && \
     cp target/$(xx-cargo --print-target-triple)/release/reencrypt-secrets /app/reencrypt-secrets && \
+    cp target/$(xx-cargo --print-target-triple)/release/everruns-migrate /app/everruns-migrate && \
     xx-cargo install sqlx-cli --no-default-features --features postgres,rustls --locked
 
 # ============================================================================
@@ -148,6 +149,9 @@ COPY --from=builder-all /usr/local/cargo/bin/sqlx /usr/local/bin/sqlx
 
 # Copy the reencrypt-secrets binary
 COPY --from=builder-all /app/reencrypt-secrets /app/reencrypt-secrets
+
+# Copy the migrate binary (adopts the migration baseline; sqlx-cli cannot)
+COPY --from=builder-all /app/everruns-migrate /app/everruns-migrate
 
 # Copy migrations
 COPY crates/server/migrations /app/migrations

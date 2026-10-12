@@ -45,7 +45,7 @@ async fn live_refresh_tokens_become_full_access_grants() {
         .expect("seed pre-migration refresh tokens");
 
     let mut transaction = pool.begin().await.expect("begin migration");
-    sqlx::raw_sql(include_str!("../../migrations/199_oauth_grants.sql"))
+    sqlx::raw_sql(include_str!("../../migrations/legacy/199_oauth_grants.sql"))
         .execute(&mut *transaction)
         .await
         .expect("run migration 199");

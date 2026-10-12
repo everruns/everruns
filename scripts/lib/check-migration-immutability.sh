@@ -59,6 +59,10 @@ if [ -n "$violations" ]; then
   # trigger subject values move to 219 and the session database generation to 220.
   violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/218_agent_trigger_subject_values.sql\tcrates/server/migrations/219_agent_trigger_subject_values.sql' || true)"
   violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/218_session_database_generation.sql\tcrates/server/migrations/220_session_database_generation.sql' || true)"
+  # The 2026-10-11 baseline moved the legacy history 001..222, unchanged, into
+  # migrations/legacy/ (knowledge/operations/migrations.md). Only an exact,
+  # content-identical move of a NNN_ file into legacy/ under its own name passes.
+  violations="$(printf '%s\n' "$violations" | grep -vE $'^R100\tcrates/server/migrations/([0-9]{3}_[^/]+\\.sql)\tcrates/server/migrations/legacy/\\1$' || true)"
 fi
 
 if [ -n "$violations" ]; then

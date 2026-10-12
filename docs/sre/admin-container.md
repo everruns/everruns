@@ -17,7 +17,7 @@ docker build --target admin -f docker/Dockerfile.unified -t everruns-admin .
 
 | Command | Description |
 |---------|-------------|
-| `migrate` | Run pending database migrations |
+| `migrate` | Run pending database migrations, the same way server startup does |
 | `migrate-info` | Show migration status |
 | `reencrypt` | Re-encrypt secrets with new key |
 | `shell` | Interactive shell for debugging |
@@ -100,7 +100,7 @@ If a migration succeeded but caused issues, use **forward-fix**:
 
 ```bash
 # Create a new migration that fixes the problem
-sqlx migrate add -r fix_bad_migration
+just new-migration fix_bad_migration
 # Edit the migration, then redeploy
 ```
 

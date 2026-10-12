@@ -28,7 +28,7 @@
 //! is never absent for anyone else and the seeded rows never land — the
 //! alternative, dropping a constraint on a shared table mid-suite, would be
 //! visible to every other test against this database. The statement is mirrored
-//! from `crates/server/migrations/151_retire_app_budget_levels.sql`; change them
+//! from `crates/server/migrations/legacy/151_retire_app_budget_levels.sql`; change them
 //! together.
 //!
 //! Run with: cargo test -p everruns-server --test domain app_budget_retirement_test:: -- --test-threads=1

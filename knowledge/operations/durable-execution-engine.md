@@ -313,7 +313,7 @@ each session is an actor, a worker leases a session and runs its whole turn,
 and the session event log is the only turn state, so resume is a fold of the
 log. Step 6b adds the control-plane half, inert until the worker cuts over:
 the `session_actors` runnable index
-([migration 215](../../crates/server/migrations/215_session_actors.sql),
+([migration 215](../../crates/server/migrations/legacy/215_session_actors.sql),
 [repository](../../crates/server/src/storage/repositories/session_actors/mod.rs))
 and four worker-link calls, `LeaseActors`, `RenewActorLease`, `ReleaseActor`
 and `ReadActorJournal`, served over gRPC and, in DEV_MODE, by

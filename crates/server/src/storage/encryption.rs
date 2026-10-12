@@ -737,22 +737,30 @@ mod tests {
 
         let mut found = HashSet::new();
 
-        // Find migrations directory (relative to crate root)
+        // The legacy history, then every migration after the baseline. The
+        // baseline is a pg_dump of the legacy history, so it adds nothing and
+        // its `public.`-qualified DDL would not parse the same way.
         let migrations_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
-
-        if !migrations_dir.exists() {
-            return found;
-        }
-
-        // Read all .sql files in migration order (sort by filename so RENAME
-        // migrations are processed after their corresponding CREATE TABLE).
-        let mut paths: Vec<_> = fs::read_dir(&migrations_dir)
-            .expect("Failed to read migrations directory")
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|ext| ext == "sql"))
-            .collect();
-        paths.sort();
+        let sql_files = |dir: &Path| {
+            let mut paths: Vec<_> = fs::read_dir(dir)
+                .expect("Failed to read migrations directory")
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|ext| ext == "sql"))
+                .collect();
+            // Sort by filename so RENAME migrations are processed after their
+            // corresponding CREATE TABLE.
+            paths.sort();
+            paths
+        };
+        let baseline = format!("{}_", crate::setup::migrations::BASELINE_VERSION);
+        let paths = sql_files(&migrations_dir.join("legacy")).into_iter().chain(
+            sql_files(&migrations_dir).into_iter().filter(|p| {
+                !p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with(&baseline))
+            }),
+        );
 
         for path in paths {
             let content = fs::read_to_string(&path).expect("Failed to read migration file");
