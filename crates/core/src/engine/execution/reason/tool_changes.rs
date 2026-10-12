@@ -24,7 +24,7 @@ use everruns_contracts::driver_registry::Message;
 use everruns_contracts::tool_changes::{DeclaredTools, ToolChanges};
 use std::collections::HashMap;
 
-pub(super) const KEY: &str = "tool_changes";
+pub(super) const KEY: &str = everruns_contracts::tool_changes::METADATA_KEY;
 
 #[derive(Debug, Default)]
 pub(super) struct ToolChangeReplay {

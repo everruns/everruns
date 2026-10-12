@@ -62,6 +62,7 @@ pub(super) async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     // executor, which is a harmless superset: on native models the reason path
     // never shows that tool to the model, so it is simply never called.
     let prompt_ctx = SystemPromptContext {
+        tool_disclosure: Default::default(),
         session_id,
         locale: locale.or(session.locale.clone()),
         // Pin system-prompt file reads to the session's workspace (the default

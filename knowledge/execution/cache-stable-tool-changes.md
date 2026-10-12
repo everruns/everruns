@@ -149,7 +149,7 @@ Context is rebuilt on every reasoning step (`crates/core/src/runtime_context.rs`
 
 | Source | Where | State today |
 |---|---|---|
-| Generic `tool_search` reveal rewrites the stub | `crates/core/src/builtins/tool_search.rs` (`DeferSchemaHook`) | process memory, capped at 4,096 sessions; lost on restart or a different worker |
+| Generic `tool_search` reveal rewrites the stub | `crates/core/src/builtins/tool_search.rs` (`DeferSchemaHook`) | the conversation: `tool_search` results and recorded stubs (was process memory until step 5) |
 | Deferral threshold: when the tool count crosses 15, every deferrable tool flips between stub and full | same file, `transform` | recomputed each step |
 | Deferred MCP server revealed: the placeholder disappears and the server's tools are inserted mid-list | `crates/contracts/src/runtime/mcp_deferred.rs`, `crates/worker/src/reveal_storage.rs` | session record `mcp_reveal:*` |
 | ARD or chat-scoped MCP attach; A2A targets change `spawn_agent` and its prompt | `crates/core/src/ard_attachment.rs` | session records |
@@ -387,7 +387,10 @@ Each step is one PR and leaves `main` working.
 5. **Sources move onto the comparison**: generic `tool_search` (drop the
    in-memory registry), deferred MCP, ARD, capability switches, AG-UI, host
    tools, `tools_in_shell` catalogue. A failed MCP fetch keeps the last
-   declared definitions.
+   declared definitions. Done for `tool_search`: the in-memory registry is
+   gone; context assembly reads reveals from stored `tool_search` results and
+   keeps deferral on once a recorded tool list holds a stub, so reveals
+   survive restarts and look the same on every worker.
 6. **Prompt text with changes**: capability prompt additions that appear
    mid-session ride in the change's `note` instead of the system prompt;
    compaction and trimming re-baseline; the infinity-context notice and

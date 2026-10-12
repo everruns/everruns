@@ -15,6 +15,10 @@
 use crate::tool_types::ToolDefinition;
 use serde::{Deserialize, Serialize};
 
+/// Metadata key of the completed assistant message that stores the entry
+/// recorded before its generation.
+pub const METADATA_KEY: &str = "tool_changes";
+
 /// One recorded change to the tools the model may call.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ToolChanges {
