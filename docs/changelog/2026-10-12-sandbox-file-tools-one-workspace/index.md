@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [agent]
 links:
   docs: [/features/sandbox-templates/]
-  prs: []
+  prs: [4667]
 ---
 
 On a Sandbox Worker with a managed Sandbox such as Daytona, `read_file` read the
