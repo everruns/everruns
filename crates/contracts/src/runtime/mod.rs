@@ -259,7 +259,8 @@ pub use self::session_resource::{
     RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
 };
 pub use self::session_services::{
-    KeyInfo, LeasedResourceStore, SecretInfo, SessionResourceRegistry, SessionStorageStore,
+    BoundSecret, BoundSecretInfo, KeyInfo, LeasedResourceStore, SecretAuth, SecretBinding,
+    SecretInfo, SecretScope, SessionResourceRegistry, SessionStorageStore,
 };
 pub use self::session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,

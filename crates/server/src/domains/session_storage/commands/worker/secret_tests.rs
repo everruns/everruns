@@ -7,11 +7,13 @@ use everruns_core::{Caller, DEFAULT_ORG_ID};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
-const COMMANDS: [&str; 4] = [
+const COMMANDS: [&str; 6] = [
     "worker_set_session_secret",
     "worker_get_session_secret",
     "worker_delete_session_secret",
     "worker_list_session_secrets",
+    "worker_list_bound_secrets",
+    "worker_resolve_bound_secrets",
 ];
 
 const PLAINTEXT: &str = "pl41ntext-secret-value";

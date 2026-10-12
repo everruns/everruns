@@ -7370,13 +7370,17 @@ export interface components {
       id: string;
       status: components["schemas"]["ChannelStatus"];
     };
-    /** @description Metadata for a write-only credential bound to one agent and MCP tool parameter. */
+    /**
+     * @description Metadata for a write-only credential bound to one agent: either an MCP
+     *     tool parameter or an HTTP API the agent's shell calls.
+     */
     AgentCredentialBinding: {
       /**
        * @description Agent that exclusively owns and may use this credential.
        * @example agent_01933b5a000070008000000000000001
        */
       agent_id: string;
+      binding?: components["schemas"]["SecretBinding"] | null;
       /**
        * @description Whether an encrypted value has been provisioned.
        * @example true
@@ -7393,47 +7397,59 @@ export interface components {
        */
       description?: string | null;
       /**
+       * @description Env var the agent's shell uses as a placeholder (`http`).
+       * @example JEV_API_KEY
+       */
+      env_name?: string | null;
+      /**
        * Format: uuid
        * @description Stable credential binding identifier.
        * @example 01933b5a-0000-7000-8000-000000000001
        */
       id: string;
+      /** @description How the credential is injected. */
+      kind: components["schemas"]["AgentCredentialKind"];
       /**
        * @description Human-readable credential label.
        * @example Visti channel key
        */
       label: string;
       /**
-       * @description Name of the attached MCP server.
+       * @description Name of the attached MCP server (`mcp_parameter`).
        * @example visti
        */
-      mcp_server_name: string;
+      mcp_server_name?: string | null;
       /**
-       * @description Exact MCP endpoint authorized to receive the credential.
+       * @description Exact MCP endpoint authorized to receive the credential (`mcp_parameter`).
        * @example https://visti.sh/mcp
        */
-      mcp_server_url: string;
+      mcp_server_url?: string | null;
       /**
-       * @description Top-level tool argument injected by the server.
+       * @description Top-level tool argument injected by the server (`mcp_parameter`).
        * @example channel_key
        */
-      parameter_name: string;
+      parameter_name?: string | null;
       /**
        * @description Relative UI route where the user can securely provision the value.
        * @example /agents/agent_01933b5a000070008000000000000001?tab=credentials
        */
       setup_url: string;
       /**
-       * @description MCP tool whose outbound call receives the credential.
+       * @description MCP tool whose outbound call receives the credential (`mcp_parameter`).
        * @example visti_send
        */
-      tool_name: string;
+      tool_name?: string | null;
       /**
        * @description RFC 3339 last-update time.
        * @example 2026-08-08T16:05:00Z
        */
       updated_at: string;
     };
+    /**
+     * @description How a write-only agent credential reaches the outside world.
+     * @enum {string}
+     */
+    AgentCredentialKind: "mcp_parameter" | "http";
     /**
      * @description The agent the builder is shaping. Nothing is created from it until the
      *     user confirms.
@@ -8464,6 +8480,15 @@ export interface components {
     };
     /** @description Batch secret set request */
     BatchSetSecretsRequest: {
+      /**
+       * @description Optional bindings keyed by secret name. A bound secret is write-only:
+       *     the agent's shell sees `$NAME` as a placeholder, and the platform puts
+       *     the value on requests to the bound URL only. A name set without a
+       *     binding becomes an ordinary secret again.
+       */
+      bindings?: {
+        [key: string]: components["schemas"]["SecretBinding"];
+      };
       /**
        * @description Map of secret names to values. Names are case-sensitive; values are stored encrypted
        *     and never returned by list/read endpoints. Existing keys are overwritten.
@@ -10006,7 +10031,11 @@ export interface components {
       /** @description Whether the channel can accept ingress traffic. */
       enabled?: boolean;
     };
-    /** @description Declare a credential requirement for an agent's attached MCP tool. */
+    /**
+     * @description Declare a credential requirement for an agent: an attached MCP tool's
+     *     parameter (`mcp_server_name`, `tool_name`, `parameter_name`), or an HTTP
+     *     API the agent's shell calls (`env_name`, `url`, `auth`).
+     */
     CreateAgentCredentialBinding: {
       /**
        * @description Agent ID, populated from the request path by the HTTP API.
@@ -10014,30 +10043,51 @@ export interface components {
        */
       agent_id?: string;
       /**
+       * @description `bearer` (default) sends `Authorization: Bearer <value>`; `header`
+       *     sends the value in `header_name` (HTTP API).
+       * @example bearer
+       */
+      auth?: string | null;
+      /**
        * @description Optional explanation of how the credential will be used.
        * @example Delivers scheduled status notifications
        */
       description?: string | null;
+      /**
+       * @description Env var name the agent's shell uses as a placeholder (HTTP API).
+       * @example JEV_API_KEY
+       */
+      env_name?: string | null;
+      /**
+       * @description Header that carries the value when `auth` is `header` (HTTP API).
+       * @example X-Api-Key
+       */
+      header_name?: string | null;
       /**
        * @description Human-readable label shown in the secure setup UI.
        * @example Visti channel key
        */
       label: string;
       /**
-       * @description Name of an MCP server attached to the agent.
+       * @description Name of an MCP server attached to the agent (MCP tool parameter).
        * @example visti
        */
-      mcp_server_name: string;
+      mcp_server_name?: string | null;
       /**
-       * @description Top-level tool argument to inject outside model context.
+       * @description Top-level tool argument to inject outside model context (MCP tool parameter).
        * @example channel_key
        */
-      parameter_name: string;
+      parameter_name?: string | null;
       /**
-       * @description MCP tool whose outbound call requires the credential.
+       * @description MCP tool whose outbound call requires the credential (MCP tool parameter).
        * @example visti_send
        */
-      tool_name: string;
+      tool_name?: string | null;
+      /**
+       * @description HTTPS URL prefix the value may be sent to (HTTP API).
+       * @example https://api.typesafe.ai
+       */
+      url?: string | null;
     };
     /** @description Request to create an ingress channel owned by an Agent. */
     CreateAgentEndpointRequest: {
@@ -14939,6 +14989,7 @@ export interface components {
          * @example agent_01933b5a000070008000000000000001
          */
         agent_id: string;
+        binding?: components["schemas"]["SecretBinding"] | null;
         /**
          * @description Whether an encrypted value has been provisioned.
          * @example true
@@ -14955,41 +15006,48 @@ export interface components {
          */
         description?: string | null;
         /**
+         * @description Env var the agent's shell uses as a placeholder (`http`).
+         * @example JEV_API_KEY
+         */
+        env_name?: string | null;
+        /**
          * Format: uuid
          * @description Stable credential binding identifier.
          * @example 01933b5a-0000-7000-8000-000000000001
          */
         id: string;
+        /** @description How the credential is injected. */
+        kind: components["schemas"]["AgentCredentialKind"];
         /**
          * @description Human-readable credential label.
          * @example Visti channel key
          */
         label: string;
         /**
-         * @description Name of the attached MCP server.
+         * @description Name of the attached MCP server (`mcp_parameter`).
          * @example visti
          */
-        mcp_server_name: string;
+        mcp_server_name?: string | null;
         /**
-         * @description Exact MCP endpoint authorized to receive the credential.
+         * @description Exact MCP endpoint authorized to receive the credential (`mcp_parameter`).
          * @example https://visti.sh/mcp
          */
-        mcp_server_url: string;
+        mcp_server_url?: string | null;
         /**
-         * @description Top-level tool argument injected by the server.
+         * @description Top-level tool argument injected by the server (`mcp_parameter`).
          * @example channel_key
          */
-        parameter_name: string;
+        parameter_name?: string | null;
         /**
          * @description Relative UI route where the user can securely provision the value.
          * @example /agents/agent_01933b5a000070008000000000000001?tab=credentials
          */
         setup_url: string;
         /**
-         * @description MCP tool whose outbound call receives the credential.
+         * @description MCP tool whose outbound call receives the credential (`mcp_parameter`).
          * @example visti_send
          */
-        tool_name: string;
+        tool_name?: string | null;
         /**
          * @description RFC 3339 last-update time.
          * @example 2026-08-08T16:05:00Z
@@ -16400,6 +16458,7 @@ export interface components {
     ListResponse_SecretInfo: {
       /** @description Array of items returned by the list operation. */
       data: {
+        binding?: components["schemas"]["SecretBinding"] | null;
         /** @description When the secret was created */
         created_at: string;
         /** @description The secret name */
@@ -23000,8 +23059,33 @@ export interface components {
       title: string;
       url: string;
     };
+    /**
+     * @description How a bound secret is put on an outbound request.
+     *
+     *     Header-only by design: a value
+     *     is never placed in a URL or a body.
+     */
+    SecretAuth:
+      | {
+          /** @enum {string} */
+          type: "bearer";
+        }
+      | {
+          /** @description Header name. */
+          name: string;
+          /** @enum {string} */
+          type: "header";
+        };
+    /** @description Where a bound secret may be sent, and how. */
+    SecretBinding: {
+      /** @description How the value is attached. */
+      auth: components["schemas"]["SecretAuth"];
+      /** @description `https://host[:port][/path-prefix]` the value may be sent to. */
+      url: string;
+    };
     /** @description Secret entry info (name and timestamps only, no value) */
     SecretInfo: {
+      binding?: components["schemas"]["SecretBinding"] | null;
       /** @description When the secret was created */
       created_at: string;
       /** @description The secret name */
