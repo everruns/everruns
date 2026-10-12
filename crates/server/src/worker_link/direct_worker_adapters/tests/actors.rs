@@ -50,7 +50,7 @@ async fn direct_adapter_leases_renews_reads_and_releases_an_actor() {
         .await
         .unwrap()
         .expect("still held");
-    assert!(!renewal.cancel_requested);
+    assert!(renewal.cancel_inbox_seq.is_none());
     assert!(
         store
             .renew_actor_lease(session_id, "worker-b", actor.fence, TTL, 0)

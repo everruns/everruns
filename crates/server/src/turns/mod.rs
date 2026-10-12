@@ -431,7 +431,7 @@ mod tests {
                         .await
                         .unwrap()
                         .expect("held");
-                    if renewal.cancel_requested {
+                    if renewal.cancel_requested() {
                         break;
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(20)).await;

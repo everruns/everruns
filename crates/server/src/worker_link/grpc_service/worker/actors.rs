@@ -69,7 +69,8 @@ impl WorkerServiceImpl {
                     org_id: row.org_id,
                     fence: row.fence,
                     inbox_seq: row.inbox_seq,
-                    cancel_requested: row.cancel_requested,
+                    cancel_requested: row.cancel_requested(),
+                    cancel_inbox_seq: row.cancel_inbox_seq,
                     consumed_seq: row.consumed_seq,
                     next_input_seq: row.next_input_seq,
                     attempts: u32::try_from(row.attempts).unwrap_or(0),
@@ -113,7 +114,8 @@ impl WorkerServiceImpl {
             Some(renewal) => proto::RenewActorLeaseResponse {
                 held: true,
                 inbox_seq: renewal.inbox_seq,
-                cancel_requested: renewal.cancel_requested,
+                cancel_requested: renewal.cancel_requested(),
+                cancel_inbox_seq: renewal.cancel_inbox_seq,
             },
             None => proto::RenewActorLeaseResponse::default(),
         }))
