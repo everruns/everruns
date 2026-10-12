@@ -301,6 +301,7 @@ Each step is one PR unless noted, and leaves everything working.
    template, injected at the egress proxy (Modal, saas egress proxy) or
    through a credential helper with a cut-down token.
 7. **Usage report** (D6).
+
 ## Open questions
 
 1. ~~Who may link a shared App installation?~~ Decided (user, 2026-10-12):
