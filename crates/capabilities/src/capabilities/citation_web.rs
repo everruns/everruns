@@ -1,7 +1,6 @@
 //! `citation_web` capability — claim-level citations from web search.
 //!
-//! The web search feed of Citations (`knowledge/runtime-resources/citations.md`,
-//! `knowledge/integrations/web-search.md` "Citations"). Like
+//! The web search feed of Citations. Like
 //! `citation_retrieval` it contributes no tools, only a post-generation
 //! annotation hook, and never rewrites the answer. Two inputs:
 //!

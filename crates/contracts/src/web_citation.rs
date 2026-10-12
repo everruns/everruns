@@ -1,5 +1,5 @@
 //! Provider-native web citations, carried from a chat driver to the
-//! `citation_web` feed (`knowledge/integrations/web-search.md`, "Citations").
+//! `citation_web` feed.
 //!
 //! Decision: drivers do not attach `TextAnnotation`s themselves. A driver
 //! reports what the provider cited on
