@@ -25,12 +25,38 @@ do both for you.
 |---|---|
 | `get_github_pull_request` | Title, description, author, state, branches, size, and up to 100 changed files. |
 | `get_github_pull_request_diff` | The unified diff, cut to `max_bytes` (default 60,000, at most 200,000). `truncated` says whether it was cut. |
+| `github_checkout_pull_request` | Checks the pull request out into the session's [managed sandbox](/features/sandbox-templates/), private repositories included. See [Check out a pull request](#check-out-a-pull-request). |
 | `upsert_github_comment` | Posts a Markdown comment, or edits the one it posted earlier with the same `marker` (default `summary`). |
 | `submit_github_pull_request_review` | Submits one review (`COMMENT` or `REQUEST_CHANGES`; it cannot approve) with a summary and inline comments on changed lines. |
 | `upsert_github_issue` | Files a finding as an issue keyed by a `fingerprint`; updates the open issue for the same fingerprint, leaves a closed one closed. |
 | `create_github_pull_request` | Opens a pull request (draft by default) from a branch already pushed to the same repository. Only offered when `allow_pull_requests` is on. |
 
 The pull request tools take `repo` (`owner/repo`) and `number`.
+
+### Check out a pull request
+
+`github_checkout_pull_request` fetches the pull request's head and its base
+branch into `/workspace/<repo name>` (or `path`, which must stay inside
+`/workspace`) and leaves the head checked out at a detached HEAD, so `bash` can
+build, test and diff it:
+
+```json
+{
+  "repo": "acme/app",
+  "number": 42
+}
+```
+
+It returns `path`, `head_sha`, `base_ref` and `base_sha`; `depth` (default 100)
+sets how much history is fetched. It needs the Managed Sandbox
+(`session_sandbox`) capability on a Sandbox Worker, and says so otherwise.
+
+The sandbox never keeps a GitHub credential. The tool hands a token with
+**Contents: read** and **Pull requests: read** for that one repository to a
+single `git fetch` through a temporary file it removes before returning, so the
+token is not in `.git/config`, in later `bash` commands, or in sandbox
+checkpoints. Plain `git fetch` in `bash` therefore works only for public
+repositories; call the tool again to refresh a checkout.
 
 ### Reviews without repeats
 
@@ -75,6 +101,7 @@ The tools act on GitHub as the identity `acts_as` names; only
 
 Each call gets a short-lived token limited to the one repository it names and
 the permissions that tool needs: the read tools ask for **Pull requests: read**,
+the checkout tool for **Contents: read** and **Pull requests: read**,
 the comment tool for **Issues** and **Pull requests: write**, the review tool for
 **Pull requests: write**, the issue tool for **Issues: write**, and
 `create_github_pull_request` for **Pull requests: write** and **Contents: read**.
