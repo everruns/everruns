@@ -3,7 +3,9 @@
 // Decision: search accounts are organization connections (the same rows and
 // endpoints as sandbox provider accounts) whose provider has a search driver
 // (`WEB_SEARCH_ACCOUNT_PROVIDERS`, whose connectors declare the `web_search`
-// connector capability). Nothing else is stored for them.
+// connector capability). Nothing else is stored for them: a provider that
+// needs more than a key (Cloudflare) keeps its non-secret settings in the
+// connection's `provider_metadata`, which travels as the account's `options`.
 //
 // Decision: the running tool reads these through two internal worker commands
 // (settings without keys, then one account's key when its plan step runs), so
@@ -29,6 +31,7 @@ pub async fn search_accounts(
             id: row.id,
             name: row.name.unwrap_or_else(|| row.provider.clone()),
             provider: row.provider,
+            options: row.provider_metadata,
         })
         .collect())
 }

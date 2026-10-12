@@ -488,6 +488,10 @@ pub struct ModelProfile {
     /// surfaces that do not opt in remain disabled.
     #[serde(default)]
     pub supports_server_compaction: bool,
+    /// The vendor's model card or system card for this model: capabilities,
+    /// evaluations, safety testing and known limits, in the vendor's words.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_card_url: Option<String>,
     /// Typed semantics when this profile describes a decision model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decisions: Option<DecisionModelProfile>,
@@ -529,6 +533,7 @@ impl ModelProfile {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }
     }

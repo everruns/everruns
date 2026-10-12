@@ -14,6 +14,10 @@
   [Execution Backends](framework/execution-backends.md),
   [Durable Execution Engine](operations/durable-execution-engine.md) and
   [Agent Reliability Tests](runtime-resources/agent-reliability-tests.md).
+* **Web search: Cloudflare Web Search accounts.** A `cloudflare_web_search`
+  connection (account id, token, index, gateway, optional key alias) is a
+  search account on Ceramic, Exa or Linkup; non-secret settings travel as the
+  search account's `options`. See [Web Search](integrations/web-search.md).
 * **Native web search for external drivers.** `NativeWebSearchDriver`
   (inventory) lets a driver outside the built-in provider types declare which
   models search natively, so the search provider catalog and plan preview list

@@ -51,6 +51,7 @@ mod computer;
 mod hosted_tools;
 mod input;
 mod streaming;
+mod tool_changes;
 mod websocket;
 #[cfg(feature = "responses-websocket")]
 mod websocket_transport;
@@ -168,6 +169,7 @@ pub struct OpenResponsesProtocolChatDriver {
     background_mode: bool,
     required_completion: bool,
     websocket: websocket::WebSocketPolicy,
+    inline_tool_changes: tool_changes::InlineToolChangeHosts,
 }
 
 impl OpenResponsesProtocolChatDriver {
@@ -189,6 +191,7 @@ impl OpenResponsesProtocolChatDriver {
             background_mode: false,
             required_completion: false,
             websocket: Default::default(),
+            inline_tool_changes: Default::default(),
         }
     }
 
@@ -202,6 +205,27 @@ impl OpenResponsesProtocolChatDriver {
     pub fn with_native_features(mut self, phases: bool, hosted_tool_search: bool) -> Self {
         self.native_phases = phases;
         self.hosted_tool_search = hosted_tool_search;
+        self
+    }
+
+    /// Send recorded tool changes as `additional_tools` developer items and
+    /// keep the session's first tool list as `tools`, so a reveal keeps the
+    /// prompt cache. Applies only to `api.openai.com` and to models whose
+    /// profile lists `inline_tool_changes`; other requests send the current
+    /// tool list.
+    pub fn with_inline_tool_changes(mut self, enabled: bool) -> Self {
+        self.inline_tool_changes = if enabled {
+            tool_changes::InlineToolChangeHosts::OpenAi
+        } else {
+            tool_changes::InlineToolChangeHosts::Off
+        };
+        self
+    }
+
+    /// Inline tool changes on any endpoint, for request tests on a mock server.
+    #[cfg(test)]
+    pub(crate) fn with_inline_tool_changes_on_any_host(mut self) -> Self {
+        self.inline_tool_changes = tool_changes::InlineToolChangeHosts::Any;
         self
     }
 
@@ -1106,9 +1130,21 @@ impl OpenResponsesProtocolChatDriver {
     /// `previous_response_id` is in play — see [`compute_delta_input_items`]. The
     /// stateful Responses invariant is: a request must not mix `previous_response_id`
     /// with prior transcript input the provider already holds server-side.
+    #[cfg(test)]
     fn build_input(
         messages: &[Message],
         supports_phases: bool,
+    ) -> (Option<String>, Vec<ResponsesInputItem>) {
+        Self::build_input_with_changes(messages, supports_phases, None)
+    }
+
+    /// The transcript conversion, plus each recorded tool change rendered after
+    /// the input it took effect at, before the next assistant output, when
+    /// `inline` is set.
+    fn build_input_with_changes(
+        messages: &[Message],
+        supports_phases: bool,
+        inline: Option<tool_changes::InlineToolChanges>,
     ) -> (Option<String>, Vec<ResponsesInputItem>) {
         // Accumulate all system messages into `instructions`. Multiple system
         // messages legitimately occur in one request — the agent system prompt
@@ -1117,8 +1153,19 @@ impl OpenResponsesProtocolChatDriver {
         // keep only the last notice. See `fold_system_messages`.
         let instructions: Option<String> = fold_system_messages(messages);
         let mut input_items = Vec::new();
+        let mut pending_changes = Vec::new();
 
         for msg in messages {
+            if let Some(mode) = inline {
+                if msg.role == MessageRole::Assistant {
+                    for changes in pending_changes.drain(..) {
+                        input_items.extend(tool_changes::items(changes, mode));
+                    }
+                }
+                if let Some(changes) = &msg.tool_changes {
+                    pending_changes.push(changes);
+                }
+            }
             if supports_phases && let Some(effort) = msg.configuration_update {
                 input_items.push(configuration_update_item(effort));
             }
@@ -1199,6 +1246,11 @@ impl OpenResponsesProtocolChatDriver {
                 }
             } else {
                 input_items.push(Self::convert_message(msg, supports_phases));
+            }
+        }
+        if let Some(mode) = inline {
+            for changes in pending_changes {
+                input_items.extend(tool_changes::items(changes, mode));
             }
         }
 

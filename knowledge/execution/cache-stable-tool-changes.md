@@ -77,6 +77,34 @@ Haiku 5.5 read 0 and wrote the prefix again. Sonnet 5 read 0 in one of two
 runs and Haiku 4.5 in both, so neither has the flag. Fable 5 answered without
 searching in two runs, so it stays unverified.
 
+### Anthropic hosted tool search (2026-10-12)
+
+Raw API probe, prefix of about 15k tokens, hosted `tool_search_tool_bm25`, 12
+deferred tools plus one non-deferred. Request 2 adds `deploy_service` and asks
+for it; the model searched and called it correctly in every case. Each request
+runs two model passes (search, then the call), so the read is reported twice.
+
+| Change on request 2 | Opus 5.5 | Sonnet 5.5 | Haiku 5.5 |
+|---|---|---|---|
+| Append a deferred tool to `tools` | 30338 read, 0 written | same | same |
+| Insert a deferred tool mid-list | 30338 read, 0 written | n/a | n/a |
+| Remove a deferred tool | 30338 read, 0 written | same | same |
+| Append a non-deferred tool | 15250 read, **15250 written** | n/a | n/a |
+| `tool_addition` (deferred) after the user turn | 30338 read, 0 written | same | same |
+
+Deferred tools are outside the cached prefix, so with hosted search the
+fallback (send the tools wanted now) is already cache-safe for every
+deferrable tool. Only a change to a non-deferrable tool rewrites the prefix;
+those are a small fixed set, so hosted search keeps the fallback. A
+`role: "system"` message must follow a user turn or a server tool result.
+
+### OpenAI Responses through the driver (2026-10-12)
+
+`test_openai_tool_reveal_keeps_prompt_cache`, the same scenario as the Anthropic
+driver test. The call after the reveal read 4909 tokens (the whole prefix
+written by the first call) on GPT-6 Astra, Sol, Luna and 6.1 Sol, and each
+model called `add`. With the flag off, Luna read 0 and wrote 5075.
+
 ### OpenAI Responses (2026-10-12)
 
 Prefix of about 5.6k tokens, `cached_tokens` of request 2. Every case where the
@@ -253,9 +281,9 @@ the first-party endpoint only:
   computer and browser toolsets, an empty baseline, a gateway endpoint, or a
   change with no user turn before it (it would land in top-level `system`,
   which cannot hold a definition).
-- Hosted Claude search with tools added inline (`defer_loading: true` on the
-  addition) is not verified yet; until it is, hosted search keeps today's
-  behavior.
+- Hosted Claude search keeps the fallback: deferred tools are outside the
+  cached prefix, so sending the current tools is already cache-safe for them
+  (measured above).
 - Bedrock and Google Cloud have only the by-reference form; a reference must
   name a tool already in `tools`, so on those hosts only removals and
   re-offers of baseline tools are cache-safe. Requests there fall back until
@@ -264,7 +292,12 @@ the first-party endpoint only:
 
 #### OpenAI Responses
 
-- Additions are `additional_tools` developer items at the entry's position.
+Implemented in `crates/contracts/src/openresponses_protocol/tool_changes.rs`,
+on models with `inline_tool_changes` (the GPT-6 family), against
+`api.openai.com` only (the OpenAI driver opts in; compatible endpoints never do).
+
+- Additions are `additional_tools` developer items at the entry's position:
+  after the input the change took effect at, before the next model output.
 - On models where redefinition is cache-safe (GPT-6 family, measured above),
   redefinitions go the same way.
 - On models where it is not (gpt-5.5), the generic `tool_search` puts deferred
@@ -348,6 +381,9 @@ Each step is one PR and leaves `main` working.
    5.1 (see the 2026-10-12 driver results above).
 4. **OpenAI Responses driver** renders `additional_tools`; profile flag
    (`add_and_redefine` for GPT-6, `add_only` for 5.x) with live tests.
+   Done for GPT-6 (add and redefine, live-tested). The add-only mode for
+   gpt-5.x moves to step 5, the first step where a source produces additions
+   rather than redefinitions.
 5. **Sources move onto the comparison**: generic `tool_search` (drop the
    in-memory registry), deferred MCP, ARD, capability switches, AG-UI, host
    tools, `tools_in_shell` catalogue. A failed MCP fetch keeps the last
@@ -367,7 +403,6 @@ Each step is one PR and leaves `main` working.
   it is also cache-safe; OpenAI has no equivalent.
 - **Inline tools on Bedrock and Google Cloud.** Today only by-reference changes
   work there, so additions fall back. Revisit when Anthropic extends the beta.
-- **Anthropic hosted search with tools added inline** needs a live check.
 
 ## References
 

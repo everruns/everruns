@@ -189,6 +189,7 @@ impl ModelService {
             },
             supports_phases: hardcoded.supports_phases,
             supports_server_compaction: hardcoded.supports_server_compaction,
+            model_card_url: hardcoded.model_card_url.or(discovered.model_card_url),
             decisions: hardcoded.decisions,
         }
     }

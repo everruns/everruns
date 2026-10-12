@@ -25,7 +25,8 @@ pub const WEB_SEARCH_CONNECTOR_CAPABILITY: &str = "web_search";
 /// Connection providers whose organization accounts have a search driver.
 /// Their connectors declare [`WEB_SEARCH_CONNECTOR_CAPABILITY`]; a test in
 /// `everruns-integrations` keeps the two in step.
-pub const WEB_SEARCH_ACCOUNT_PROVIDERS: &[&str] = &["brave_search", "parallel"];
+pub const WEB_SEARCH_ACCOUNT_PROVIDERS: &[&str] =
+    &["brave_search", "parallel", "cloudflare_web_search"];
 
 /// Model provider types whose drivers run the model's own search (native
 /// search, billed by the model provider). Bedrock is not here: Anthropic does
@@ -427,6 +428,10 @@ pub struct SearchAccount {
     pub provider: String,
     /// Account name the admin gave it.
     pub name: String,
+    /// Non-secret settings stored with the connection when its provider needs
+    /// more than a key (Cloudflare: account id, AI Gateway, search index).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub options: Option<serde_json::Value>,
 }
 
 /// What a running agent needs from its organization to plan a search.
@@ -639,6 +644,7 @@ mod tests {
                     id: *id,
                     provider: "brave_search".into(),
                     name: "Team".into(),
+                    options: None,
                 })
                 .collect(),
         }

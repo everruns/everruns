@@ -1,4 +1,5 @@
 import {
+  accountLabel,
   attemptStatus,
   automaticEntries,
   automaticOrder,
@@ -24,6 +25,15 @@ function account(id: string, name: string, status = "ready"): SearchAccountSumma
     connected_at: "2026-10-11T00:00:00Z",
   };
 }
+
+describe("accountLabel", () => {
+  it("names the connector, then the account", () => {
+    expect(accountLabel({ provider: "cloudflare_web_search", name: "Team" })).toBe(
+      "Cloudflare Web Search · Team",
+    );
+    expect(accountLabel({ provider: "parallel", name: "parallel" })).toBe("Parallel");
+  });
+});
 
 describe("parseWebSearchDetails", () => {
   it("reads web search details and ignores anything else", () => {
