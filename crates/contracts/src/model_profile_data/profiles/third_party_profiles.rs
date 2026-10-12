@@ -53,6 +53,7 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -100,6 +101,7 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -142,6 +144,7 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -177,6 +180,7 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -214,6 +218,7 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -256,6 +261,7 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -298,6 +304,7 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -344,6 +351,7 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -401,6 +409,7 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -446,6 +455,7 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -486,6 +496,7 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -534,6 +545,7 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -582,6 +594,7 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 

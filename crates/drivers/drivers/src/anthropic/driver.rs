@@ -1835,6 +1835,7 @@ impl AnthropicModelInfo {
             supports_phases: false,
             // Only curated direct Anthropic profiles can prove server compaction.
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }
     }

@@ -352,6 +352,7 @@ fn openai_compatible_profile(
         supported_parameters,
         supports_phases: false,
         supports_server_compaction: false,
+        model_card_url: None,
         decisions: None,
     });
 
