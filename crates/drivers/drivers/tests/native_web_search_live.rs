@@ -128,5 +128,5 @@ async fn openrouter_answers_the_web_search_tool_with_the_native_engine() {
         return;
     };
     let provider = everruns_drivers::openrouter::provider("openrouter", api_key);
-    assert_searched_natively(provider, config("openai/gpt-5.6-luna")).await;
+    assert_searched_natively(provider, config("openai/gpt-6-luna")).await;
 }
