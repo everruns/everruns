@@ -308,7 +308,7 @@ Draft fields:
 - capabilities: ids chosen only from this list:
 {capabilities}
 - channels: ways people reach the agent, chosen only from: public_chat (hosted chat page), ag_ui (embed in an app), webhook (another system posts events), slack.
-- github_trigger: null, or {{"events": [...], "repositories": ["owner/name"], "changes_only": true or false, "message": what the agent is told for each event}} when GitHub activity should start the agent. Events only from: {github_events}. For CI (a build or workflow passing or failing) use workflow_run.completed; set changes_only to true when the person only cares when the result changes (broken or fixed), so a run that stays red or green does nothing. The message may use {{{{github.repository}}}}, {{{{github.url}}}}, {{{{github.ci.outcome}}}} and {{{{github.ci.branch}}}}. Prefer this over a schedule that polls.
+- github_trigger: null, or {{"events": [...], "repositories": ["owner/name"], "changes_only": true or false, "branches": ["main"], "workflows": ["CI"], "message": what the agent is told for each event}} when GitHub activity should start the agent. Events only from: {github_events}. For CI (a build or workflow passing or failing) use workflow_run.completed; set changes_only to true when the person only cares when the result changes (broken or fixed), so a run that stays red or green does nothing. For CI events, list branches (e.g. main) and workflow names when the person names them; leave them empty to accept every branch or workflow. The message may use {{{{github.repository}}}}, {{{{github.url}}}}, {{{{github.ci.outcome}}}} and {{{{github.ci.branch}}}}. Prefer this over a schedule that polls.
 - mcp_servers: names of servers to connect, chosen only from this catalog:
 {mcp_servers}
   When the person wants to be told, alerted, notified or pinged, add a server whose description says it sends notifications or messages, and tell the agent in system_prompt to use it. If none is listed, say so in your reply instead of inventing one.
@@ -540,6 +540,8 @@ mod tests {
                    "github_trigger": {"events": ["workflow_run.completed"],
                                       "repositories": ["everruns/everruns"],
                                       "changes_only": true,
+                                      "branches": ["main"],
+                                      "workflows": ["CI"],
                                       "message": "CI {{github.ci.outcome}}"},
                    "mcp_servers": ["visti", "made-up"],
                    "model_id": "model_attacker"}}"#;
@@ -551,6 +553,8 @@ mod tests {
         let trigger = out.draft.github_trigger.unwrap();
         assert_eq!(trigger.events, vec!["workflow_run.completed"]);
         assert!(trigger.changes_only);
+        assert_eq!(trigger.branches, vec!["main"]);
+        assert_eq!(trigger.workflows, vec!["CI"]);
         let names: Vec<_> = out
             .draft
             .mcp_servers

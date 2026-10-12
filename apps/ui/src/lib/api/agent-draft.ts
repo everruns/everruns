@@ -22,6 +22,10 @@ export interface DraftGitHubTrigger {
   repositories: string[];
   /** Run only when a CI outcome changes. */
   changes_only: boolean;
+  /** CI events only: branches to accept; empty means every branch. */
+  branches?: string[];
+  /** CI events only: workflow names to accept; empty means every workflow. */
+  workflows?: string[];
   message: string;
 }
 

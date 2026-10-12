@@ -99,6 +99,8 @@ describe("new agent page", () => {
         events: ["workflow_run.completed"],
         repositories: ["everruns/everruns"],
         changes_only: true,
+        branches: ["main"],
+        workflows: ["CI"],
         message: "Main CI is {{github.ci.outcome}}",
       },
       mcp_servers: [
@@ -113,7 +115,13 @@ describe("new agent page", () => {
       session_mode: "session_per_invocation",
       message: "Main CI is {{github.ci.outcome}}",
       enabled: true,
-      filter: { conditions: [], changes_only: { path: "github.ci.outcome" } },
+      filter: {
+        conditions: [
+          { path: "github.ci.branch", any_of: ["main"] },
+          { path: "github.ci.workflow", any_of: ["CI"] },
+        ],
+        changes_only: { path: "github.ci.outcome" },
+      },
     });
     expect(draftMcpAttachments(watcher)).toEqual({
       visti: { use: "catalog:visti", actsAs: "none" },
@@ -124,6 +132,8 @@ describe("new agent page", () => {
 
     const href = githubTriggerSetupHref("agent_1", watcher)!;
     expect(href.startsWith("/agents/agent_1/triggers/new?type=github&")).toBe(true);
+    expect(new URL(href, "http://x").searchParams.get("branches")).toBe("main");
+    expect(new URL(href, "http://x").searchParams.get("workflows")).toBe("CI");
     const form = githubFormFromParams(new URL(href, "http://x").searchParams);
     expect(form.events).toEqual(["workflow_run.completed"]);
     expect(form.repositories).toEqual(["everruns/everruns"]);

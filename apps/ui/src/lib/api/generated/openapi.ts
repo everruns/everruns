@@ -11641,6 +11641,8 @@ export interface components {
     };
     /** @description A GitHub trigger to create once GitHub is connected on the agent. */
     DraftGitHubTrigger: {
+      /** @description CI events only: branches to accept, e.g. `main`; empty means every branch. */
+      branches?: string[];
       /**
        * @description Run only when a CI outcome differs from the previous one for the same
        *     repository and branch.
@@ -11652,6 +11654,11 @@ export interface components {
       message?: string;
       /** @description `owner/name` repositories; empty means every repository the App sees. */
       repositories?: string[];
+      /**
+       * @description CI events only: workflow (or check suite app) names to accept, e.g. `CI`;
+       *     empty means every workflow.
+       */
+      workflows?: string[];
     };
     /** @description A catalog MCP server to attach. */
     DraftMcpServer: {
