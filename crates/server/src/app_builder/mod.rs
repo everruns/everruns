@@ -1031,8 +1031,6 @@ impl ServerAppBuilder {
         // to (RFC 8707). Must match the `aud` minted in `mcp_oauth.rs` so the
         // audience check in `validate_mcp_token` accepts real MCP tokens (TM-MCP-006).
         let mcp_resource = format!("{mcp_root_url}/mcp");
-        // One provider-service bundle for every command surface: REST, MCP and
-        // both worker transports (EVE-1234).
         let provider_services = providers_state.provider_services();
         let mcp_endpoint_state = api::mcp_endpoint::AppState::new(
             db.clone(),
