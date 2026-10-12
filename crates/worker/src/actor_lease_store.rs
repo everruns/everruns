@@ -69,6 +69,11 @@ impl ActorFence {
         self
     }
 
+    /// Whether the lease this fence belongs to is known to be lost.
+    pub fn is_lost(&self) -> bool {
+        self.on_lost.as_ref().is_some_and(|lost| *lost.borrow())
+    }
+
     /// The fence as the control plane stores it.
     pub fn fence_i64(&self) -> i64 {
         i64::try_from(self.fence).unwrap_or(i64::MAX)

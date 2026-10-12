@@ -315,24 +315,21 @@ impl<H: ActorHosts> ActorRuntime<H> {
         {
             stopped = Stopped::Deleted;
         }
-        let finish = match stopped {
-            Stopped::Lost => {
+        // Every way the drive ended but a lost lease or a deleted session
+        // waits for the turn's queued events first. A queued store that gave
+        // up left a gap in the log (see `crate::write_behind`): the turn ends
+        // as on a retryable failure, without committing its input or writing
+        // anything more, and the next holder resumes from the log.
+        let flushed = match &stopped {
+            Stopped::Cancel | Stopped::Done(_) => self.hosts.flush(host).await,
+            Stopped::Lost | Stopped::Deleted => Ok(()),
+        };
+        let finish = match (stopped, flushed) {
+            (Stopped::Lost, _) => {
                 self.hosts.abandon(host);
                 Finish::Expire
             }
-            Stopped::Cancel => {
-                self.hosts.flush(host).await;
-                lease.turn_stored();
-                self.record_cancel(lease, host, &drive).await?;
-                Finish::Release
-            }
-            Stopped::Done(Ok(_)) => {
-                self.hosts.flush(host).await;
-                lease.turn_stored();
-                lease.skip_to_next_input().await?;
-                Finish::Release
-            }
-            Stopped::Deleted => {
+            (Stopped::Deleted, _) => {
                 tracing::info!(
                     session_id = %drive.session_id,
                     turn_id = %drive.turn_id,
@@ -341,15 +338,32 @@ impl<H: ActorHosts> ActorRuntime<H> {
                 self.hosts.abandon(host);
                 Finish::Expire
             }
-            Stopped::Done(Err(error)) if error.is_non_retryable() => {
-                self.hosts.flush(host).await;
+            (_, Err(error)) => {
+                tracing::warn!(
+                    session_id = %drive.session_id,
+                    turn_id = %drive.turn_id,
+                    error = %error,
+                    "Actor turn's queued events were not stored; the lease will expire and the turn resumes from the log"
+                );
+                Finish::Expire
+            }
+            (Stopped::Cancel, Ok(())) => {
+                lease.turn_stored();
+                self.record_cancel(lease, host, &drive).await?;
+                Finish::Release
+            }
+            (Stopped::Done(Ok(_)), Ok(())) => {
+                lease.turn_stored();
+                lease.skip_to_next_input().await?;
+                Finish::Release
+            }
+            (Stopped::Done(Err(error)), Ok(())) if error.is_non_retryable() => {
                 lease.turn_stored();
                 self.record_failure(host, &drive, &error).await?;
                 lease.skip_to_next_input().await?;
                 Finish::Release
             }
-            Stopped::Done(Err(error)) => {
-                self.hosts.flush(host).await;
+            (Stopped::Done(Err(error)), Ok(())) => {
                 tracing::warn!(
                     session_id = %drive.session_id,
                     turn_id = %drive.turn_id,

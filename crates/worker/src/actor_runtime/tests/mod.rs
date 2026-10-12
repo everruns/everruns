@@ -122,6 +122,8 @@ struct Probe {
     flushes: AtomicUsize,
     /// The flush (1-based) that never returns; 0 = none.
     hang_at_flush: AtomicUsize,
+    /// The flush (1-based) that reports a queued store gave up; 0 = none.
+    fail_at_flush: AtomicUsize,
     hung: Notify,
     running: Mutex<HashSet<SessionId>>,
     overlapped: AtomicBool,
@@ -159,12 +161,18 @@ impl ActorHosts for TestHosts {
         self.runtime.clone()
     }
 
-    async fn flush(&self, _host: &InProcessRuntime) {
+    async fn flush(&self, _host: &InProcessRuntime) -> everruns_contracts::error::Result<()> {
         let flush = self.probe.flushes.fetch_add(1, Ordering::SeqCst) + 1;
         if flush == self.probe.hang_at_flush.load(Ordering::SeqCst) {
             self.probe.hung.notify_one();
             std::future::pending::<()>().await;
         }
+        if flush == self.probe.fail_at_flush.load(Ordering::SeqCst) {
+            return Err(everruns_contracts::error::AgentLoopError::store(
+                "queued events were not stored: pool timed out",
+            ));
+        }
+        Ok(())
     }
 
     async fn turn_ended(&self, drive: &TurnDrive) {
