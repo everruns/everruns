@@ -1,6 +1,6 @@
 ---
 title: "Bashkit 0.17.0 release"
-description: "Bashkit 0.17.0 was released on 2026-08-22 with 5 highlights and 2 changelog entries. The release notes and any upgrade notes are linked here."
+description: "TLS backend and timezone data become explicit features, Bashkit runs as a WebAssembly component without JS or WASI, and host-boundary escapes are closed."
 date: 2026-08-22
 kind: release
 significance: notable

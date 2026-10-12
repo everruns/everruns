@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.31.0: Ask User over MCP and A2A"
-description: "Everruns 0.31.0 was released on 2026-09-24 with 3 highlights and 2 changelog entries. The release notes and any upgrade notes are linked here."
+description: "Claude always-thinking models no longer return 400s or empty answers, and Ask User lets an agent pause mid-run to ask you a question."
 date: 2026-09-24
 kind: release
 significance: notable

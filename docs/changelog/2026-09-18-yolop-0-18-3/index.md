@@ -1,6 +1,6 @@
 ---
 title: "Yolop 0.18.3 release"
-description: "Yolop 0.18.3 was released on 2026-09-18 with 4 highlights. The release notes and any upgrade notes and every pull request are linked here."
+description: "yolop coordination spawn-workers prints validated launch commands for each worker, and yolop_spawn routes agent and session spawns separately."
 date: 2026-09-18
 kind: release
 significance: minor

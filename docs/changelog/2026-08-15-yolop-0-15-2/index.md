@@ -1,6 +1,6 @@
 ---
 title: "Yolop 0.15.2 release"
-description: "Yolop 0.15.2 was released on 2026-08-15 with 6 highlights and 1 changelog entry. The release notes and any upgrade notes are linked here."
+description: "OpenRouter connects with a browser sign-in, and Terra and Luna model variants join the OpenAI and Codex selectors ahead of Sol."
 date: 2026-08-15
 kind: release
 significance: minor

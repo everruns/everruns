@@ -12,6 +12,8 @@ links:
   prs: [everruns/yolop#806, everruns/yolop#808]
 ---
 
+![Yolop and OpenAI logos side by side, announcing ChatGPT sign-in](./integration@2x.png)
+
 A browser sign-in for `--provider codex` now uses OpenAI's open-source Sign in
 with ChatGPT by default. Yolop registers its own client for your account on the
 first sign-in and runs turns on the public Responses API, still billed to your

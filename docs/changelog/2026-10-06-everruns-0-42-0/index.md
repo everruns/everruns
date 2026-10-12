@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.42.0 release"
-description: "Everruns 0.42.0 was released on 2026-10-06 with 3 changelog entries. The release notes and any upgrade notes are linked here."
+description: "Agents get avatars from presets or an uploaded image, sandboxes can start from templates, and a Sandboxes fleet view shows every running sandbox."
 date: 2026-10-06
 kind: release
 significance: notable

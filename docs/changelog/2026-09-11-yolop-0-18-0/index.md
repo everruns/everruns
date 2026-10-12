@@ -1,6 +1,6 @@
 ---
 title: "Yolop 0.18.0 release"
-description: "Yolop 0.18.0 was released on 2026-09-11 with 5 highlights and 2 changelog entries. The release notes and any upgrade notes are linked here."
+description: "Manage and log in to MCP servers from the CLI, and session search and self-configuration move to CLI commands, with fixes listed in the release notes."
 date: 2026-09-11
 kind: release
 significance: notable

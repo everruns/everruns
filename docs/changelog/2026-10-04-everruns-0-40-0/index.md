@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.40.0 release"
-description: "Everruns 0.40.0 was released on 2026-10-04 as a maintenance release with fixes and internal changes. The full release notes are linked here."
+description: "Engine, host, builtins, MCP and AG-UI become everruns-core features, operators can enroll adoption features, and the MCP card reports the version."
 date: 2026-10-04
 kind: release
 significance: minor

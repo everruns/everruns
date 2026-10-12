@@ -88,6 +88,10 @@ async function checkEntry(folder) {
   if (description.length < 120 || description.length > 160) {
     fail(where, `description is ${description.length} characters; keep it 120-160 (meta description)`);
   }
+  // A release's description is what readers see in the list: name the highlights, never count them.
+  if (fm.kind === "release" && /\d+ (highlights?|changelog entr)/i.test(description)) {
+    fail(where, "release description counts highlights; name them instead");
+  }
   if (String(fm.date ?? "") !== folder.slice(0, 10)) {
     fail(where, `date ${fm.date} must match the folder's date ${folder.slice(0, 10)}`);
   }

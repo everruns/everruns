@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.39.0 release"
-description: "Everruns 0.39.0 was released on 2026-10-04 with 2 changelog entries. The release notes and any upgrade notes are linked here."
+description: "Chat threads keep conversations and ongoing work beside Chat, and Slack permission problems appear in Health with steps to recover."
 date: 2026-10-04
 kind: release
 significance: notable

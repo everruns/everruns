@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.34.0: AG-UI 1.0"
-description: "Everruns 0.34.0 was released on 2026-10-02 with 10 highlights and 6 changelog entries. The release notes and any upgrade notes are linked here."
+description: "PR reviewer and security scanner templates for GitHub, MCP Events with session webhooks and triggers, and AG-UI 1.0 and A2A 1.0 support."
 date: 2026-10-02
 kind: release
 significance: notable

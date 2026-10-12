@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.32.0: Per-organization Slack app provisioning"
-description: "Everruns 0.32.0 was released on 2026-09-26 with 5 highlights and 2 changelog entries. The release notes and any upgrade notes are linked here."
+description: "Ask User questions reach MCP, A2A and Tasks clients, and Framework engines gain event listeners, OpenTelemetry export and an app framework."
 date: 2026-09-26
 kind: release
 significance: notable

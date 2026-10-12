@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.46.0: Agents home"
-description: "Everruns 0.46.0 was released on 2026-10-09 with 2 highlights and 1 changelog entry. The release notes and any upgrade notes are linked here."
+description: "Save shell scripts on agents and run them with tools scripts, and the Agents home shows run activity, setup alerts and a shared Channels view."
 date: 2026-10-09
 kind: release
 significance: notable

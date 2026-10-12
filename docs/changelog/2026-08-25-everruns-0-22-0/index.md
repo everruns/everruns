@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.22.0: Reasoning modeled as ordered artifacts"
-description: "Everruns 0.22.0 was released on 2026-08-25 with 2 highlights and 3 changelog entries. The release notes and any upgrade notes are linked here."
+description: "Agents read several workspace files in one read_many_files call with bounded batches, and the global chat session endpoints are removed from the API."
 date: 2026-08-25
 kind: release
 significance: notable

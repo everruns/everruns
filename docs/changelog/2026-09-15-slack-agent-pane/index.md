@@ -12,6 +12,8 @@ links:
   prs: [everruns/everruns#3560, everruns/everruns#3564, everruns/everruns#3568, everruns/everruns#3581, everruns/everruns#3567, everruns/everruns#3563, everruns/everruns#3606]
 ---
 
+![Everruns and Slack logos side by side, announcing agents in Slack's agent pane](./integration@2x.png)
+
 Set `agent_surface_enabled` on a Slack channel and its app also appears as an
 agent in Slack's dedicated assistant pane, while `@mentions` in channels keep
 working. In the pane, replies stream as the agent writes them, the stop button

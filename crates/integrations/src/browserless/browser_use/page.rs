@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use everruns_contracts::runtime::browser_use::{
-    DEFAULT_READ_DEPTH, MAX_FIND_MATCHES, MAX_PAGE_OUTPUT_CHARS, ReadFilter,
+    DEFAULT_READ_DEPTH, MAX_FIND_MATCHES, MAX_PAGE_OUTPUT_CHARS, ReadFilter, clean_state_text,
 };
 use everruns_contracts::runtime::computer_use::DisplaySize;
 
@@ -151,6 +151,7 @@ pub(crate) fn parse_ax_nodes(nodes: &[Value]) -> (HashMap<String, AxNode>, Vec<S
             let value = property.get("value").and_then(|v| v.get("value"));
             match (name, value) {
                 ("focusable", Some(Value::Bool(true))) => focusable = true,
+                ("focused", Some(Value::Bool(true))) => states.push("focused".to_string()),
                 ("checked" | "pressed", Some(Value::String(state)))
                     if state == "true" || state == "mixed" =>
                 {
@@ -613,6 +614,25 @@ pub(crate) async fn capture(
         in_viewport,
         rendered,
     })
+}
+
+/// The element that has keyboard focus, as `role "name"` the way `read_page`
+/// prints it, or `None` when focus is on the document itself.
+///
+/// Decision: keyboard testing (Tab order, focus traps, skip links) needs to
+/// know where focus went after each key; without it the agent has to re-read
+/// the whole page after every press. Read from the accessibility tree, so
+/// no page script runs.
+pub(crate) fn focused_label(tree: &PageTree) -> Option<String> {
+    tree.order
+        .iter()
+        .filter_map(|id| tree.nodes.get(id))
+        .find(|node| {
+            node.states.iter().any(|state| state == "focused")
+                && node.role != "RootWebArea"
+                && node.role != "WebArea"
+        })
+        .map(|node| format!("{} {}", clean_state_text(&node.role), quoted(&node.name)))
 }
 
 /// The backend node id a ref names, or the stale-ref error.

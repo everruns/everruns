@@ -12,6 +12,8 @@ links:
   prs: [everruns/yolop#579]
 ---
 
+![Yolop and Buzz logos side by side, announcing Yolop as a Buzz Desktop harness](./integration@2x.png)
+
 `yolop into buzz` writes a custom harness file for Buzz Desktop, next to the
 existing `yolop into zed` and `yolop into paseo` commands. Buzz then starts
 Yolop over ACP.

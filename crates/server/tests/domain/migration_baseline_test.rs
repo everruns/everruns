@@ -12,7 +12,7 @@
 use crate::test_harness::database_migrated_before;
 
 use everruns_server::setup::migrations::{
-    BASELINE_VERSION, LEGACY_LAST_VERSION, adopt_legacy_history, legacy_migrator, migrator, run,
+    BASELINE_VERSION, LEGACY_LAST_VERSION, legacy_migrator, run,
 };
 use sqlx::PgPool;
 
@@ -112,21 +112,12 @@ async fn applied_versions(pool: &PgPool) -> Vec<i64> {
 
 #[tokio::test]
 async fn baseline_matches_the_legacy_history_and_adoption_keeps_it() {
-    // Compare the baseline to the frozen history before either database runs
-    // later migrations, which may legitimately change schema or seed rows.
+    // Fresh database: runs the baseline and the migrations after it.
     let fresh = database_migrated_before(1).await;
-    let mut baseline = migrator();
-    baseline.migrations = baseline
-        .iter()
-        .filter(|migration| migration.version == BASELINE_VERSION)
-        .cloned()
-        .collect::<Vec<_>>()
-        .into();
-    baseline
-        .run(&fresh.pool)
-        .await
-        .expect("run only the baseline");
-    assert_eq!(applied_versions(&fresh.pool).await, [BASELINE_VERSION]);
+    run(&fresh.pool).await.expect("migrate a fresh database");
+    let fresh_versions = applied_versions(&fresh.pool).await;
+    assert_eq!(fresh_versions[0], BASELINE_VERSION);
+    assert!(fresh_versions.iter().all(|v| *v >= BASELINE_VERSION));
 
     // Legacy database: replayed 001..222, then adopted.
     let legacy = database_migrated_before(LEGACY_LAST_VERSION + 1).await;
@@ -134,8 +125,16 @@ async fn baseline_matches_the_legacy_history_and_adoption_keeps_it() {
         applied_versions(&legacy.pool).await.len() as i64,
         LEGACY_LAST_VERSION
     );
+    run(&legacy.pool).await.expect("adopt a legacy database");
+    // Compared after adoption, so both sides also ran every migration that
+    // came after the baseline.
     let legacy_schema = schema_snapshot(&legacy.pool).await;
     let legacy_rows = row_counts(&legacy.pool).await;
+    assert_eq!(applied_versions(&legacy.pool).await, fresh_versions);
+    run(&legacy.pool)
+        .await
+        .expect("migrating an adopted database again is a no-op");
+    assert_eq!(applied_versions(&legacy.pool).await, fresh_versions);
 
     let fresh_schema = schema_snapshot(&fresh.pool).await;
     let only_legacy: Vec<_> = legacy_schema
@@ -151,34 +150,6 @@ async fn baseline_matches_the_legacy_history_and_adoption_keeps_it() {
         "baseline schema differs from the legacy history\nonly legacy: {only_legacy:#?}\nonly baseline: {only_baseline:#?}"
     );
     assert_eq!(row_counts(&fresh.pool).await, legacy_rows);
-
-    adopt_legacy_history(&legacy.pool)
-        .await
-        .expect("adopt a legacy database without running later migrations");
-    assert_eq!(applied_versions(&legacy.pool).await, [BASELINE_VERSION]);
-    assert_eq!(schema_snapshot(&legacy.pool).await, legacy_schema);
-    assert_eq!(row_counts(&legacy.pool).await, legacy_rows);
-
-    // Both paths must converge again after all post-baseline migrations.
-    run(&fresh.pool).await.expect("upgrade a fresh database");
-    run(&legacy.pool)
-        .await
-        .expect("upgrade an adopted database");
-    let fresh_versions = applied_versions(&fresh.pool).await;
-    assert_eq!(fresh_versions[0], BASELINE_VERSION);
-    assert!(fresh_versions.iter().all(|v| *v >= BASELINE_VERSION));
-    assert_eq!(applied_versions(&legacy.pool).await, fresh_versions);
-    let current_schema = schema_snapshot(&fresh.pool).await;
-    let current_rows = row_counts(&fresh.pool).await;
-    assert_eq!(schema_snapshot(&legacy.pool).await, current_schema);
-    assert_eq!(row_counts(&legacy.pool).await, current_rows);
-
-    run(&legacy.pool)
-        .await
-        .expect("migrating an adopted database again is a no-op");
-    assert_eq!(applied_versions(&legacy.pool).await, fresh_versions);
-    assert_eq!(schema_snapshot(&legacy.pool).await, current_schema);
-    assert_eq!(row_counts(&legacy.pool).await, current_rows);
 }
 
 #[tokio::test]

@@ -1,6 +1,6 @@
 ---
 title: "Yolop 0.18.4 release"
-description: "Yolop 0.18.4 was released on 2026-09-25 with 4 highlights. The release notes and any upgrade notes and every pull request are linked here."
+description: "ACP advertises user-invocable skills to clients and announces finished background work even when the wake turn itself stays silent."
 date: 2026-09-25
 kind: release
 significance: minor

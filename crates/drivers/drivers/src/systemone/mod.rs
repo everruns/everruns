@@ -141,10 +141,7 @@ pub fn evaluation(request: &DecisionRequest) -> Result<client::Evaluation> {
                 no,
             } => client::Question::Noul {
                 instructions: instructions.clone().into(),
-                criteria: Some(client::NoulCriteria {
-                    yes: yes.clone(),
-                    no: no.clone(),
-                }),
+                criteria: client::NoulCriteria::described(yes.clone(), no.clone()),
             },
             DecisionQuestion::Choice {
                 instructions,

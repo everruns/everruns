@@ -12,8 +12,27 @@ import sitemapEnhance from "./integrations/sitemap-enhance.mjs";
 import changelogMedia from "./integrations/changelog-media.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Entry count per product for the changelog sidebar, read from entry
+// frontmatter at config time (the content collection is not available here).
+const changelogDir = path.join(__dirname, "../../docs/changelog");
+const changelogCounts = {};
+for (const folder of readdirSync(changelogDir, { withFileTypes: true })) {
+  if (!folder.isDirectory()) continue;
+  const source = readFileSync(path.join(changelogDir, folder.name, "index.md"), "utf8");
+  const products = source.match(/^products: \[([^\]]*)\]/m)?.[1] ?? "";
+  for (const product of products.split(",").map((p) => p.trim()).filter(Boolean)) {
+    changelogCounts[product] = (changelogCounts[product] ?? 0) + 1;
+  }
+}
+const changelogProduct = (label, id) => ({
+  label,
+  link: `/changelog/${id}/`,
+  badge: { text: String(changelogCounts[id] ?? 0), class: "changelog-count" },
+});
 
 // https://astro.build/config
 export default defineConfig({
@@ -587,14 +606,14 @@ export default defineConfig({
                 {
                   label: "By product",
                   items: [
-                    { label: "Cloud", link: "/changelog/cloud/" },
-                    { label: "Platform", link: "/changelog/platform/" },
-                    { label: "Framework", link: "/changelog/framework/" },
-                    { label: "SDK", link: "/changelog/sdk/" },
-                    { label: "CLI", link: "/changelog/cli/" },
-                    { label: "Yolop", link: "/changelog/yolop/" },
-                    { label: "Mira", link: "/changelog/mira/" },
-                    { label: "Bashkit", link: "/changelog/bashkit/" },
+                    changelogProduct("Cloud", "cloud"),
+                    changelogProduct("Platform", "platform"),
+                    changelogProduct("Framework", "framework"),
+                    changelogProduct("SDK", "sdk"),
+                    changelogProduct("CLI", "cli"),
+                    changelogProduct("Yolop", "yolop"),
+                    changelogProduct("Mira", "mira"),
+                    changelogProduct("Bashkit", "bashkit"),
                   ],
                 },
                 { label: "Feeds", slug: "changelog/feeds" },

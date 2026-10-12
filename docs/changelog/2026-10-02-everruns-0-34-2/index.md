@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.34.2: Execution kernel in a JavaScript isolate"
-description: "Everruns 0.34.2 was released on 2026-10-02 with 3 highlights and 2 changelog entries. The release notes and any upgrade notes are linked here."
+description: "Cloudflare AI Gateway and Vercel AI Gateway become model providers, serve apps run durably on celld, and the kernel runs in a JavaScript isolate."
 date: 2026-10-02
 kind: release
 significance: minor

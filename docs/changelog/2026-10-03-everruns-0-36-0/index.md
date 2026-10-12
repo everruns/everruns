@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.36.0: Choose an Agent Environment"
-description: "Everruns 0.36.0 was released on 2026-10-03 with 3 highlights. The release notes and any upgrade notes and every pull request are linked here."
+description: "Agents can choose their environment, a broken Slack installation can be repaired in place, and session storage gets its own permissions."
 date: 2026-10-03
 kind: release
 significance: notable

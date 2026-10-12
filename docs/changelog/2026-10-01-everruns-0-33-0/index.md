@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.33.0 release"
-description: "Everruns 0.33.0 was released on 2026-10-01 with 8 highlights and 5 changelog entries. The release notes and any upgrade notes are linked here."
+description: "The agent page is one view-and-edit workspace, the Everruns MCP server renders as an MCP App in ChatGPT and Codex, and triggers react to agent events."
 date: 2026-10-01
 kind: release
 significance: notable

@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.19.0: First-class sandbox and checkpoint records"
-description: "Everruns 0.19.0 was released on 2026-08-18 with 1 highlight. The release notes and any upgrade notes and every pull request are linked here."
+description: "Sandboxes and checkpoints become first-class records, giving durable runs an explicit, addressable place to execute and resume from."
 date: 2026-08-18
 kind: release
 significance: notable

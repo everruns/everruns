@@ -1,6 +1,6 @@
 ---
 title: "Yolop 0.18.1 release"
-description: "Yolop 0.18.1 was released on 2026-09-12 with 4 highlights. The release notes and any upgrade notes and every pull request are linked here."
+description: "Named profiles can be managed from the CLI and the control plane, and configured MCP servers are listed in the agent system prompt."
 date: 2026-09-12
 kind: release
 significance: minor
