@@ -177,7 +177,7 @@ impl<H: ActorHosts> ActorRuntime<H> {
                 lease.advance(lease.inbox_seq());
                 return Ok(Finish::Release);
             };
-            lease.advance(input.sequence);
+            lease.start_fresh(input.sequence);
             let resolved = setup
                 .load_resolved_turn_for_execution(org_id, session_id, input.message_id)
                 .await?;
@@ -314,11 +314,13 @@ impl<H: ActorHosts> ActorRuntime<H> {
             }
             Stopped::Cancel => {
                 self.hosts.flush(host).await;
+                lease.turn_stored();
                 self.record_cancel(lease, host, &drive).await?;
                 Finish::Release
             }
             Stopped::Done(Ok(_)) => {
                 self.hosts.flush(host).await;
+                lease.turn_stored();
                 lease.skip_to_next_input().await?;
                 Finish::Release
             }
@@ -333,6 +335,7 @@ impl<H: ActorHosts> ActorRuntime<H> {
             }
             Stopped::Done(Err(error)) if error.is_non_retryable() => {
                 self.hosts.flush(host).await;
+                lease.turn_stored();
                 self.record_failure(host, &drive, &error).await?;
                 lease.skip_to_next_input().await?;
                 Finish::Release

@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -51,6 +52,7 @@ pub(super) struct MemoryActors {
     runtime: InProcessRuntime,
     rows: Mutex<HashMap<SessionId, Row>>,
     line: Mutex<u64>,
+    renews: AtomicUsize,
 }
 
 impl MemoryActors {
@@ -59,6 +61,7 @@ impl MemoryActors {
             runtime,
             rows: Mutex::new(HashMap::new()),
             line: Mutex::new(0),
+            renews: AtomicUsize::new(0),
         }
     }
 
@@ -66,6 +69,11 @@ impl MemoryActors {
         let mut line = self.line.lock().unwrap();
         *line += 1;
         *line
+    }
+
+    /// Renews that reached the index, by any holder.
+    pub(super) fn renews(&self) -> usize {
+        self.renews.load(Ordering::SeqCst)
     }
 
     pub(super) fn row(&self, session_id: SessionId) -> Row {
@@ -196,6 +204,7 @@ impl ActorLeaseStore for MemoryActors {
         ttl: Duration,
         consumed_seq: i64,
     ) -> Result<Option<ActorRenewal>> {
+        self.renews.fetch_add(1, Ordering::SeqCst);
         let mut rows = self.rows.lock().unwrap();
         // No row at all: the session was deleted (EVE-1235).
         let Some(row) = rows.get_mut(&session_id) else {

@@ -50,6 +50,7 @@ impl<H: ActorHosts> ActorInbox<'_, H> {
 impl<H: ActorHosts> TurnInbox for ActorInbox<'_, H> {
     async fn take(&self, _session_id: SessionId) -> Result<Vec<MessageId>> {
         self.hosts.flush(self.host).await;
+        self.lease.turn_stored();
         self.refresh().await;
         let inputs = self.lease.take_inputs().await?;
         self.hosts.begin_phase(self.host, self.drive, Phase::Reason);
@@ -70,6 +71,7 @@ impl<H: ActorHosts> TurnInbox for ActorInbox<'_, H> {
             return Ok(PendingInput::new(pending, Vec::new()));
         }
         self.hosts.flush(self.host).await;
+        self.lease.turn_stored();
         self.refresh().await;
         let inputs = self.lease.take_inputs().await?;
         Ok(PendingInput::new(inputs.len(), inputs))

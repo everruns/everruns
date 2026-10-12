@@ -50,6 +50,58 @@ async fn a_crash_before_the_first_reason_is_resumed_by_another_worker() {
     fixture.assert_idle();
 }
 
+// Chaos harness: a pool timeout while a fresh turn was being set up failed
+// the turn before `turn.started`, after the renewer had already committed the
+// cursor over its input. The next holder found no open turn and nothing past
+// the cursor, released, and the message was never answered.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_crash_before_the_turn_starts_still_answers_after_a_renew() {
+    let fixture = Fixture::new(model("Done.", vec![])).await;
+    let (crashing, probe) = fixture.worker("w1");
+    let reached = Arc::new(tokio::sync::Notify::new());
+    let (resume, held) = std::sync::mpsc::channel::<()>();
+    {
+        let reached = reached.clone();
+        *probe.at_turn_host.lock().unwrap() = Some(Box::new(move || {
+            reached.notify_one();
+            // Hold the turn's setup (on this worker thread) until a renew
+            // ran, then die before the turn starts.
+            let _ = held.recv();
+            panic!("worker died before the turn started");
+        }));
+    }
+    fixture.send("Hello.").await;
+
+    let run = {
+        let worker = crashing.clone();
+        tokio::spawn(async move { run_once(&worker).await })
+    };
+    tokio::time::timeout(WAIT, reached.notified())
+        .await
+        .expect("the turn's setup is reached");
+    let renews = fixture.store.renews();
+    tokio::time::timeout(WAIT, async {
+        while fixture.store.renews() == renews {
+            // Poke until the renewer is waiting for it.
+            crashing.renew_poke().notify_waiters();
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the renewer runs while the turn is set up");
+    resume.send(()).unwrap();
+    assert!(run.await.is_err(), "the worker died");
+    assert_eq!(fixture.count("turn.started").await, 0);
+    fixture.store.expire(fixture.session_id);
+
+    let (survivor, _) = fixture.worker("w2");
+    assert_eq!(run_until_idle(&survivor).await, 1);
+    assert_eq!(fixture.count("turn.started").await, 1);
+    assert_eq!(fixture.count("turn.completed").await, 1);
+    assert_eq!(fixture.answers().await, vec!["Done."]);
+    fixture.assert_idle();
+}
+
 #[tokio::test]
 async fn a_crash_after_the_answer_completes_the_turn_without_a_second_answer() {
     let fixture = Fixture::new(model("Only once.", vec![])).await;

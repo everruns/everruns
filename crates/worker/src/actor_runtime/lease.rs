@@ -7,6 +7,15 @@
 //!   steering handed to a reason). Renew and release commit it, so a holder
 //!   that dies mid-turn leaves the next one a cursor that delivers only input
 //!   the model never saw.
+//! - A fresh turn's own input is not committed until the turn is in the log.
+//!   The cursor moves over it at once (so the turn's inbox never hands it
+//!   back as steering), but `turn.started` is a write-behind event stored at
+//!   the first phase boundary, and setup before it reads the control plane
+//!   (and can fail on it). A renew in that window used to commit the input,
+//!   so a holder that failed or died before the turn started left the next
+//!   one a consumed input and no open turn: the message was never answered.
+//!   Renew and release commit below that input until the turn's events are
+//!   stored ([`Lease::turn_stored`]).
 //! - A turn input is an `input.message` without a turn id. Everything a turn
 //!   or a resolution writes into the conversation carries the turn's id, so
 //!   it is part of that turn's history, never input that starts or steers one.
@@ -58,6 +67,9 @@ pub(crate) struct Lease {
     ttl: Duration,
     page: u32,
     cursor: AtomicI64,
+    /// The sequence of the fresh turn's input while its `turn.started` may
+    /// not be stored yet; 0 when there is none. See the module notes.
+    unstarted_input: AtomicI64,
     inbox_seq: AtomicI64,
     last_renewed: Mutex<Instant>,
     lost: Arc<watch::Sender<bool>>,
@@ -80,6 +92,7 @@ impl Lease {
             ttl,
             page,
             cursor: AtomicI64::new(actor.consumed_seq),
+            unstarted_input: AtomicI64::new(0),
             inbox_seq: AtomicI64::new(actor.inbox_seq),
             last_renewed: Mutex::new(Instant::now()),
             lost: Arc::new(watch::channel(false).0),
@@ -93,6 +106,28 @@ impl Lease {
 
     pub(crate) fn advance(&self, sequence: i64) {
         self.cursor.fetch_max(sequence, Ordering::SeqCst);
+    }
+
+    /// A fresh turn starts from the input at `sequence`: move the cursor over
+    /// it, but commit below it until [`Lease::turn_stored`].
+    pub(crate) fn start_fresh(&self, sequence: i64) {
+        self.unstarted_input.store(sequence, Ordering::SeqCst);
+        self.advance(sequence);
+    }
+
+    /// The turn's queued events (its `turn.started` among them) are stored:
+    /// its input may be committed.
+    pub(crate) fn turn_stored(&self) {
+        self.unstarted_input.store(0, Ordering::SeqCst);
+    }
+
+    /// The cursor renew and release commit.
+    pub(crate) fn committed_cursor(&self) -> i64 {
+        let cursor = self.cursor();
+        match self.unstarted_input.load(Ordering::SeqCst) {
+            0 => cursor,
+            input => cursor.min(input - 1),
+        }
     }
 
     pub(crate) fn inbox_seq(&self) -> i64 {
@@ -138,7 +173,7 @@ impl Lease {
                 &self.holder,
                 self.fence,
                 self.ttl,
-                self.cursor(),
+                self.committed_cursor(),
             )
             .await;
         match renewal {
@@ -180,7 +215,12 @@ impl Lease {
     /// Give the actor back with the cursor as consumed input.
     pub(crate) async fn release(&self) -> Result<ActorRelease> {
         self.store
-            .release_actor(self.session_id, &self.holder, self.fence, self.cursor())
+            .release_actor(
+                self.session_id,
+                &self.holder,
+                self.fence,
+                self.committed_cursor(),
+            )
             .await
     }
 
