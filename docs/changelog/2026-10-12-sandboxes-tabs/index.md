@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui]
 links:
   docs: [/features/sandbox-templates/]
-  prs: [everruns/everruns#PR]
+  prs: [everruns/everruns#4653]
 ---
 
 ![Sandboxes page with Sandboxes, Templates and Provider accounts tabs](./sandboxes-tabs@2x.png)
