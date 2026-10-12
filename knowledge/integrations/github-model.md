@@ -310,9 +310,10 @@ Each step is one PR unless noted, and leaves everything working.
    org?** The App itself is global, created once by the deployment. What each
    org adds is an installation on its GitHub account, and the agreement that
    its agents may act as `everruns[bot]` there. Proposed: org admins only.
-2. **Should a personal agent ever post as its bot?** Proposed: no. A personal
-   agent acts as `user` throughout; a team bot acts as `service` throughout;
-   `user_or_service` stays an explicit, labelled choice for MCP only.
+2. ~~Should a personal agent ever post as its bot?~~ Decided (user,
+   2026-10-12): yes, it may. A personal agent can hold both the person's
+   connection and a bot identity; each use still says which one it acts as,
+   so posting as the bot is an explicit setting, never a fallback.
 3. **Repository sync direction.** Read-only first (memories and indexes from
    a repository, as today) or two-way with pull requests for agent definitions
    from the start. Proposed: read first, write in the step 8 design.
