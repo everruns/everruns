@@ -110,6 +110,10 @@ const MAX_REVEAL_SESSIONS: usize = 4096;
 #[derive(Default)]
 struct RevealRegistry {
     sets: HashMap<SessionId, HashSet<String>>,
+    /// Sessions whose tool list has crossed the deferral threshold once. They
+    /// keep deferring even if the count later drops below it: flipping every
+    /// stub back to its full schema rewrites the head of the cached prompt.
+    deferring: HashSet<SessionId>,
     /// Insertion order of session keys, for bounded eviction.
     order: VecDeque<SessionId>,
 }
@@ -127,14 +131,38 @@ impl RevealRegistry {
             set.extend(names);
         }
 
+        self.evict();
+    }
+
+    /// Drop the oldest sessions past `MAX_REVEAL_SESSIONS`.
+    fn evict(&mut self) {
         while self.sets.len() > MAX_REVEAL_SESSIONS {
             match self.order.pop_front() {
                 Some(old) => {
                     self.sets.remove(&old);
+                    self.deferring.remove(&old);
                 }
                 None => break,
             }
         }
+    }
+
+    /// Whether `session` defers schemas at this step: once the tool count has
+    /// reached `threshold`, it stays deferring for the rest of the session.
+    fn defers(&mut self, session: SessionId, tool_count: usize, threshold: usize) -> bool {
+        if self.deferring.contains(&session) {
+            return true;
+        }
+        if tool_count < threshold {
+            return false;
+        }
+        if !self.sets.contains_key(&session) {
+            self.order.push_back(session);
+            self.sets.insert(session, HashSet::new());
+        }
+        self.deferring.insert(session);
+        self.evict();
+        true
     }
 
     /// Names revealed for `session` so far (empty if none / evicted).
@@ -358,11 +386,14 @@ impl DeferSchemaHook {
 impl ToolDefinitionHook for DeferSchemaHook {
     fn transform(&self, tools: Vec<ToolDefinition>) -> Vec<ToolDefinition> {
         // Below the threshold full schemas fit comfortably; don't defer.
-        if tools.len() < self.threshold {
-            return tools;
-        }
-
-        let revealed = lock_reveals(&self.revealed).revealed(self.session);
+        // Sticky per session, see `RevealRegistry::defers`.
+        let revealed = {
+            let mut registry = lock_reveals(&self.revealed);
+            if !registry.defers(self.session, tools.len(), self.threshold) {
+                return tools;
+            }
+            registry.revealed(self.session)
+        };
 
         tools
             .into_iter()
@@ -766,6 +797,36 @@ mod tests {
     }
 
     #[test]
+    fn test_deferral_stays_on_when_the_tool_count_drops() {
+        // A tool leaving (an MCP server dropping out, a client tool set
+        // shrinking) must not flip every stub back to its full schema: that
+        // rewrites the head of the cached prompt.
+        let hook = hook(15);
+        assert!(hook.transform(many_tools(20)).iter().all(is_stubbed));
+        let out = hook.transform(many_tools(10));
+        assert!(
+            out.iter().all(is_stubbed),
+            "deferral stays on below threshold"
+        );
+        // A session that never reached the threshold still keeps full schemas.
+        assert!(
+            !hook_for_new_session(&hook)
+                .transform(many_tools(10))
+                .iter()
+                .any(is_stubbed)
+        );
+    }
+
+    fn hook_for_new_session(hook: &DeferSchemaHook) -> DeferSchemaHook {
+        DeferSchemaHook {
+            threshold: hook.threshold,
+            never_defer: hook.never_defer.clone(),
+            revealed: hook.revealed.clone(),
+            session: SessionId::new(),
+        }
+    }
+
+    #[test]
     fn test_hook_preserves_never_defer_and_search_tool() {
         let hook = hook(3);
         let mut tools = many_tools(3);
@@ -905,6 +966,13 @@ mod tests {
         // The oldest session was evicted once we exceeded the bound.
         assert!(reg.revealed(first).is_empty());
         assert!(reg.sets.len() <= MAX_REVEAL_SESSIONS);
+
+        // Sessions that only crossed the deferral threshold are bounded too.
+        let mut reg = RevealRegistry::default();
+        for _ in 0..=MAX_REVEAL_SESSIONS {
+            assert!(reg.defers(SessionId::new(), 20, 15));
+        }
+        assert!(reg.deferring.len() <= MAX_REVEAL_SESSIONS);
     }
 
     #[test]
