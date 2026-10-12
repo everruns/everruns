@@ -1,6 +1,6 @@
 ---
 title: "Tool reveals keep the prompt cache on Claude Opus 5.5 and Sonnet 5.5"
-description: "A tool found through tool search no longer rewrites the cached tool list on Claude Opus 5.5 and Sonnet 5.5; the change rides in the conversation, and Session Trace shows it."
+description: "Tools found through tool search no longer rewrite the cached tool list on Claude Opus 5.5 and Sonnet 5.5, and Session Trace shows each tool change."
 date: 2026-10-12
 kind: improvement
 significance: notable
