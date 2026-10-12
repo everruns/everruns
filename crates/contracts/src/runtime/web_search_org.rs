@@ -28,11 +28,16 @@ pub const WEB_SEARCH_CONNECTOR_CAPABILITY: &str = "web_search";
 pub const WEB_SEARCH_ACCOUNT_PROVIDERS: &[&str] = &["brave_search"];
 
 /// Model provider types whose drivers run the model's own search (native
-/// search, billed by the model provider). Anthropic and Gemini join when their
-/// driver adapters land; until then their models search with the next
-/// provider of the plan.
-pub const NATIVE_WEB_SEARCH_PROVIDER_TYPES: &[&str] =
-    &["openai", "azure_openai", "chatgpt", "openrouter"];
+/// search, billed by the model provider). Bedrock is not here: Anthropic does
+/// not offer web search there, and its driver has no server tools.
+pub const NATIVE_WEB_SEARCH_PROVIDER_TYPES: &[&str] = &[
+    "openai",
+    "azure_openai",
+    "chatgpt",
+    "openrouter",
+    "anthropic",
+    "gemini",
+];
 
 /// Plain-words price of native search, shown wherever it is offered.
 pub const NATIVE_WEB_SEARCH_PRICE_NOTE: &str =
@@ -55,6 +60,8 @@ pub fn native_web_search_supported_model(provider_type: &str, model: &str) -> bo
             crate::native_web_search::openai_has_native_web_search(model)
         }
         "openrouter" => crate::native_web_search::openrouter_native_vendor(model).is_some(),
+        "anthropic" => crate::native_web_search::anthropic_has_native_web_search(model),
+        "gemini" => crate::native_web_search::gemini_has_native_web_search(model),
         _ => false,
     }
 }
@@ -543,8 +550,9 @@ mod tests {
     #[test]
     fn native_search_is_a_provider_type_and_model_property() {
         assert!(native_web_search_supported("openrouter"));
-        // Anthropic and Gemini adapters are not in yet.
-        assert!(!native_web_search_supported("anthropic"));
+        assert!(native_web_search_supported("anthropic"));
+        assert!(native_web_search_supported("gemini"));
+        assert!(!native_web_search_supported("bedrock"));
         assert!(!native_web_search_supported("mistral"));
         assert!(native_web_search_supported_model("openai", "gpt-6.1-sol"));
         assert!(!native_web_search_supported_model(
@@ -559,8 +567,24 @@ mod tests {
             "openrouter",
             "mistralai/mistral-large"
         ));
+        assert!(native_web_search_supported_model(
+            "anthropic",
+            "claude-opus-5-5"
+        ));
         assert!(!native_web_search_supported_model(
             "anthropic",
+            "claude-3-5-sonnet-20241022"
+        ));
+        assert!(native_web_search_supported_model(
+            "gemini",
+            "gemini-3.8-flash"
+        ));
+        assert!(!native_web_search_supported_model(
+            "gemini",
+            "gemini-1.5-pro"
+        ));
+        assert!(!native_web_search_supported_model(
+            "bedrock",
             "claude-opus-5-5"
         ));
     }

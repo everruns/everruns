@@ -27,6 +27,8 @@ import { SearchProviderIcon } from "./search-provider-icon";
 /** Model provider types whose drivers run native search; mirrors `NATIVE_WEB_SEARCH_PROVIDER_TYPES`. */
 const NATIVE_TYPES: { type: string; label: string }[] = [
   { type: "openai", label: "OpenAI" },
+  { type: "anthropic", label: "Anthropic" },
+  { type: "gemini", label: "Gemini" },
   { type: "openrouter", label: "OpenRouter" },
   { type: "azure_openai", label: "Azure OpenAI" },
   { type: "chatgpt", label: "ChatGPT" },
@@ -220,7 +222,8 @@ export function SearchProvidersTab({
             <div key="types" className="flex flex-wrap gap-1">
               {NATIVE_TYPES.filter(
                 (entry) =>
-                  nativeTypes.has(entry.type) || ["openai", "openrouter"].includes(entry.type),
+                  nativeTypes.has(entry.type) ||
+                  ["openai", "anthropic", "gemini", "openrouter"].includes(entry.type),
               ).map((entry) => (
                 <Badge
                   key={entry.type}
@@ -241,14 +244,17 @@ export function SearchProvidersTab({
             : []),
           ["Cost", <strong key="cost">{nativePrice}</strong>],
           ["Network", "Runs at the model provider, outside your network allowlist"],
-          // OpenAI and OpenRouter drivers run it today; a model without native
-          // search, or one that cannot apply the agent's blocked sites, falls
-          // through to the next provider of the plan.
+          // A model without native search, or one that cannot apply the
+          // agent's sites, falls through to the next provider of the plan.
+          // Gemini grounding also needs web search to be the call's only tool.
           [
             "Models",
-            "OpenAI models with web search and OpenRouter models with native search. Others use the next provider in the plan",
+            "OpenAI models with web search, Claude 3.7 Sonnet, 3.5 Haiku and 4 or later, Gemini 2.0 Flash or later, and OpenRouter models with native search. Others use the next provider in the plan",
           ],
-          ["Coming next", "Anthropic and Gemini"],
+          [
+            "Limits",
+            "Gemini searches natively only when web search is the agent's only tool and no sites are allowed or blocked",
+          ],
         ]}
         footer={
           modelProviders.length > 0
