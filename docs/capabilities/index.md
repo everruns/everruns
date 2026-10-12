@@ -66,7 +66,7 @@ Cloud and container sandbox environments for isolated code execution.
 
 | Capability | ID | Tools |
 |---|---|---|
-| Managed Environment | `session_sandbox` | 6 |
+| Managed Environment | `session_sandbox` | 8 |
 | [Sandbox Fleet](/capabilities/sandbox-fleet/) | `sandbox_fleet` | 8 |
 | [Daytona](/capabilities/daytona/) | `daytona` | 10 |
 | [E2B](/capabilities/e2b/) | `e2b` | 6 |
