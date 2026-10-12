@@ -117,15 +117,17 @@ request to any other host (including a redirect target) carries the
 placeholder, and the key is redacted if a response echoes it back. The bound
 URL still has to pass the agent's network access list.
 
-Set one for every session of an agent:
+Set one for every session of an agent on the agent's **Credentials** tab:
+**Add binding**, choose **HTTP API**, and give the shell variable, the URL and
+how it is sent. Platform Chat or the CLI can declare it without a value, and
+you paste the value on that tab:
 
 ```bash
-everruns agents secrets set --agent-id agent_01h9 --name EXAMPLE_API_KEY \
-  --value "$EXAMPLE_API_KEY" \
-  --binding '{"url":"https://api.example.com","auth":{"type":"bearer"}}'
+everruns agents credentials create --agent-id agent_01h9 \
+  --env-name EXAMPLE_API_KEY --url https://api.example.com --label 'Example API key'
 ```
 
-or for one session, with `bindings` on
+Set one for a single session with `bindings` on
 `PUT /v1/sessions/{session_id}/storage/secrets`. Over MCP,
 `session_set_secret` takes `url`, `auth`, `header` and `scope` and collects
 the value on a secure page, so it never passes through the MCP client.

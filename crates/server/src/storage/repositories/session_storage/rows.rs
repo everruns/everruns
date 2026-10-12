@@ -69,15 +69,6 @@ pub struct BoundSecretRow {
     pub scope: String,
 }
 
-/// Agent-scoped bound secret, without its value.
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
-pub struct AgentSecretInfoRow {
-    pub name: String,
-    pub binding: sqlx::types::Json<everruns_contracts::runtime::SecretBinding>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
 /// Lightweight secret info for listing (without encrypted value)
 #[derive(Debug, Clone, FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct SessionSecretInfoRow {

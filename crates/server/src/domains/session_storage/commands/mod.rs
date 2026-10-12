@@ -310,7 +310,5 @@ fn validate_bindings(
         .collect()
 }
 
-mod agent_secrets;
-pub use agent_secrets::*;
 mod worker;
 pub use worker::*;

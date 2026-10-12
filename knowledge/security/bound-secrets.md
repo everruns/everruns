@@ -53,7 +53,11 @@ hop. Elsewhere the placeholder goes out unchanged and is worthless.
 - **Write-only.** No API, tool or internal command returns a bound value.
   `secret_store get` refuses a bound name and points at `$NAME`;
   `secret_store list` shows name, URL and auth so the model knows what to use.
-- **Agent scope.** Stored per agent and resolved from the session's agent, so
+- **Agent scope.** An agent-scoped bound secret is an agent credential of kind
+  `http`, next to the MCP tool-parameter kind on the agent's **Credentials**
+  tab, not a separate store: one place lists every write-only key an agent
+  holds. It is declared without a value (Platform Chat or **Add binding**) and
+  the person pastes the value there. It resolves from the session's agent, so
   shared sessions and per-invocation trigger sessions get it. A session secret
   with the same name wins.
 - **No network by itself.** The bound URL must still pass the agent's network
@@ -79,8 +83,9 @@ hop. Elsewhere the placeholder goes out unchanged and is worthless.
    It gains optional `url`, `auth`, `header` and an agent scope; the signed
    elicitation token carries the binding.
 3. **API, CLI and agent page.** `PUT /v1/sessions/{id}/storage/secrets`
-   accepts bindings; `/v1/agents/{id}/secrets` manages agent-scoped ones; the
-   agent page gets a **Secrets** section.
+   accepts bindings; agent-scoped ones are agent credentials
+   (`/v1/agents/{id}/credentials` with `env_name` and `url`), shown on the
+   existing **Credentials** tab.
 
 ## Replay and redirection protection
 
@@ -107,10 +112,10 @@ the [threat model](threat-model.md).
 
 ## Rollout
 
-1. Store, API, Bashkit injection and redaction: binding columns on
-   `session_secrets`, `agent_secrets` table, write-only `secret_store`.
-2. `request_secret` tool, pending requests, in-chat Secret card, agent page
-   Secrets section.
+1. Store, API, Bashkit injection and redaction: binding column on
+   `session_secrets`, `http` credential kind on agent credentials, write-only
+   `secret_store`.
+2. `request_secret` tool, pending requests, in-chat Secret card.
 3. MCP `session_set_secret` binding and agent scope.
 4. Later: the same rule at the egress boundary, for managed sandboxes and
    `web_fetch`.

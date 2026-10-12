@@ -2,6 +2,8 @@
 
 import { FormEvent, useState } from "react";
 import { KeyRound, LockKeyhole, Plus, RefreshCw, Trash2 } from "lucide-react";
+import type { AgentCredentialBinding } from "@/lib/api/types";
+import type { CreateAgentCredentialBindingRequest } from "@/lib/api/agents";
 import {
   useAgentCredentials,
   useCreateAgentCredentialBinding,
@@ -88,42 +90,72 @@ function SecretValueForm({
   );
 }
 
+type CredentialKind = "http" | "mcp_parameter";
+
+const EMPTY_DRAFT = {
+  kind: "http" as CredentialKind,
+  mcp_server_name: "",
+  tool_name: "",
+  parameter_name: "",
+  env_name: "",
+  url: "",
+  auth: "bearer" as "bearer" | "header",
+  header_name: "",
+  label: "",
+  description: "",
+  value: "",
+};
+
+/// Where a credential goes, in one line: the MCP tool argument it fills, or
+/// the env var the shell uses and the URL and header it is sent with.
+function bindingTarget(binding: AgentCredentialBinding): string {
+  if (binding.kind === "http") {
+    const auth = binding.binding?.auth;
+    const header =
+      auth?.type === "header" ? `${auth.name} header` : "Authorization: Bearer";
+    return `$${binding.env_name} → ${binding.binding?.url} (${header})`;
+  }
+  return `${binding.mcp_server_name} / ${binding.tool_name} → ${binding.parameter_name}`;
+}
+
+function draftRequest(draft: typeof EMPTY_DRAFT): CreateAgentCredentialBindingRequest {
+  const common = {
+    label: draft.label.trim(),
+    description: draft.description.trim() || undefined,
+  };
+  if (draft.kind === "http") {
+    return {
+      ...common,
+      env_name: draft.env_name.trim(),
+      url: draft.url.trim(),
+      auth: draft.auth,
+      header_name: draft.auth === "header" ? draft.header_name.trim() : undefined,
+    };
+  }
+  return {
+    ...common,
+    mcp_server_name: draft.mcp_server_name.trim(),
+    tool_name: draft.tool_name.trim(),
+    parameter_name: draft.parameter_name.trim(),
+  };
+}
+
 export function AgentCredentialsPanel({ agentId }: { agentId: string }) {
   const credentials = useAgentCredentials(agentId);
   const create = useCreateAgentCredentialBinding(agentId);
   const remove = useDeleteAgentCredentialBinding(agentId);
   const setValue = useSetAgentCredentialValue(agentId);
   const [showCreate, setShowCreate] = useState(false);
-  const [draft, setDraft] = useState({
-    mcp_server_name: "",
-    tool_name: "",
-    parameter_name: "",
-    label: "",
-    description: "",
-    value: "",
-  });
+  const [draft, setDraft] = useState(EMPTY_DRAFT);
 
   const submitNew = async (event: FormEvent) => {
     event.preventDefault();
     const secretValue = draft.value;
     try {
-      const binding = await create.mutateAsync({
-        mcp_server_name: draft.mcp_server_name.trim(),
-        tool_name: draft.tool_name.trim(),
-        parameter_name: draft.parameter_name.trim(),
-        label: draft.label.trim(),
-        description: draft.description.trim() || undefined,
-      });
+      const binding = await create.mutateAsync(draftRequest(draft));
       await setValue.mutateAsync({ bindingId: binding.id, value: secretValue });
       setShowCreate(false);
-      setDraft({
-        mcp_server_name: "",
-        tool_name: "",
-        parameter_name: "",
-        label: "",
-        description: "",
-        value: "",
-      });
+      setDraft(EMPTY_DRAFT);
     } finally {
       setDraft((current) => ({ ...current, value: "" }));
     }
@@ -145,8 +177,10 @@ export function AgentCredentialsPanel({ agentId }: { agentId: string }) {
             </CardTitle>
             <CardDescription>
               Agent-scoped and durable across shared or per-invocation sessions. Values are
-              encrypted, never readable after saving, and injected directly into the bound MCP tool
-              call without entering prompts, chat history, or model-visible tool arguments.
+              encrypted and never readable after saving. An MCP tool credential is injected into
+              the bound tool call; an HTTP API credential is a placeholder in the agent&apos;s
+              shell, replaced only in requests to its URL. Neither enters prompts, chat history,
+              or anything the model sees.
             </CardDescription>
           </div>
           <Button variant="outline" onClick={() => setShowCreate((value) => !value)}>
@@ -160,42 +194,129 @@ export function AgentCredentialsPanel({ agentId }: { agentId: string }) {
               className="grid gap-4 border bg-muted/30 p-4 md:grid-cols-2"
               autoComplete="off"
             >
-              <div className="space-y-2">
-                <Label htmlFor="credential-server">Attached MCP server name</Label>
-                <Input
-                  id="credential-server"
-                  value={draft.mcp_server_name}
-                  onChange={(e) => setDraft({ ...draft, mcp_server_name: e.target.value })}
-                  required
-                />
+              <div
+                className="flex gap-2 md:col-span-2"
+                role="radiogroup"
+                aria-label="Credential type"
+              >
+                {(
+                  [
+                    ["http", "HTTP API"],
+                    ["mcp_parameter", "MCP tool parameter"],
+                  ] as const
+                ).map(([kind, label]) => (
+                  <Button
+                    key={kind}
+                    type="button"
+                    role="radio"
+                    aria-checked={draft.kind === kind}
+                    variant={draft.kind === kind ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => setDraft({ ...draft, kind })}
+                  >
+                    {label}
+                  </Button>
+                ))}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="credential-tool">MCP tool name</Label>
-                <Input
-                  id="credential-tool"
-                  value={draft.tool_name}
-                  onChange={(e) => setDraft({ ...draft, tool_name: e.target.value })}
-                  placeholder="visti_send"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="credential-parameter">Secret parameter</Label>
-                <Input
-                  id="credential-parameter"
-                  value={draft.parameter_name}
-                  onChange={(e) => setDraft({ ...draft, parameter_name: e.target.value })}
-                  placeholder="channel_key"
-                  required
-                />
-              </div>
+              {draft.kind === "http" ? (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="credential-env">Shell variable</Label>
+                    <Input
+                      id="credential-env"
+                      value={draft.env_name}
+                      onChange={(e) => setDraft({ ...draft, env_name: e.target.value })}
+                      placeholder="JEV_API_KEY"
+                      pattern="[A-Za-z_][A-Za-z0-9_]*"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="credential-url">Sent only to (HTTPS URL prefix)</Label>
+                    <Input
+                      id="credential-url"
+                      type="url"
+                      value={draft.url}
+                      onChange={(e) => setDraft({ ...draft, url: e.target.value })}
+                      placeholder="https://api.example.com"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="credential-auth">Sent as</Label>
+                    <div id="credential-auth" className="flex gap-2">
+                      {(
+                        [
+                          ["bearer", "Bearer token"],
+                          ["header", "Custom header"],
+                        ] as const
+                      ).map(([auth, label]) => (
+                        <Button
+                          key={auth}
+                          type="button"
+                          aria-pressed={draft.auth === auth}
+                          variant={draft.auth === auth ? "secondary" : "ghost"}
+                          size="sm"
+                          onClick={() => setDraft({ ...draft, auth })}
+                        >
+                          {label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                  {draft.auth === "header" && (
+                    <div className="space-y-2">
+                      <Label htmlFor="credential-header">Header name</Label>
+                      <Input
+                        id="credential-header"
+                        value={draft.header_name}
+                        onChange={(e) => setDraft({ ...draft, header_name: e.target.value })}
+                        placeholder="X-Api-Key"
+                        required
+                      />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="credential-server">Attached MCP server name</Label>
+                    <Input
+                      id="credential-server"
+                      value={draft.mcp_server_name}
+                      onChange={(e) => setDraft({ ...draft, mcp_server_name: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="credential-tool">MCP tool name</Label>
+                    <Input
+                      id="credential-tool"
+                      value={draft.tool_name}
+                      onChange={(e) => setDraft({ ...draft, tool_name: e.target.value })}
+                      placeholder="visti_send"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="credential-parameter">Secret parameter</Label>
+                    <Input
+                      id="credential-parameter"
+                      value={draft.parameter_name}
+                      onChange={(e) => setDraft({ ...draft, parameter_name: e.target.value })}
+                      placeholder="channel_key"
+                      required
+                    />
+                  </div>
+                </>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="credential-label">Label</Label>
                 <Input
                   id="credential-label"
                   value={draft.label}
                   onChange={(e) => setDraft({ ...draft, label: e.target.value })}
-                  placeholder="Visti channel key"
+                  placeholder={draft.kind === "http" ? "Jev API key" : "Visti channel key"}
                   required
                 />
               </div>
@@ -261,7 +382,7 @@ export function AgentCredentialsPanel({ agentId }: { agentId: string }) {
                       </Badge>
                     </div>
                     <p className="font-mono text-xs text-muted-foreground">
-                      {binding.mcp_server_name} / {binding.tool_name} → {binding.parameter_name}
+                      {bindingTarget(binding)}
                     </p>
                     {binding.description && (
                       <p className="text-sm text-muted-foreground">{binding.description}</p>
@@ -295,8 +416,8 @@ export function AgentCredentialsPanel({ agentId }: { agentId: string }) {
               <LockKeyhole className="mx-auto mb-2 size-8 text-muted-foreground" />
               <p className="font-medium">No Agent credentials</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                When Platform Chat attaches a credentialed MCP tool, its setup request appears here.
-                You can also add an exact tool-parameter binding manually.
+                When Platform Chat attaches a credentialed MCP tool or HTTP API, its setup request
+                appears here. You can also add an HTTP API key or a tool-parameter binding manually.
               </p>
             </div>
           )}

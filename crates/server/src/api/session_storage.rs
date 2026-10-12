@@ -8,10 +8,9 @@ use crate::domains::common::Command;
 pub use crate::domains::session_storage::types::{
     BatchSetSecretsRequest, BatchSetSecretsResponse, KeyValueInfo, SecretInfo,
 };
-pub use crate::domains::session_storage::types::{AgentSecretInfo, SecretAuth, SecretBinding};
+pub use crate::domains::session_storage::types::{SecretAuth, SecretBinding};
 use crate::domains::session_storage::{
-    BatchSetSessionSecrets, DeleteAgentSecret, DeleteSessionSecret, ListAgentSecrets,
-    ListSessionSecrets, ListSessionStorage, SetAgentSecret,
+    BatchSetSessionSecrets, DeleteSessionSecret, ListSessionSecrets, ListSessionStorage,
 };
 use crate::kernel_imports::contracts::typed_id::SessionId;
 use axum::{
@@ -34,11 +33,6 @@ pub fn routes(state: ApiState) -> Router {
         .route(
             "/v1/sessions/{session_id}/storage/secrets/{name}",
             axum::routing::delete(delete_secret),
-        )
-        .route("/v1/agents/{agent_id}/secrets", get(list_agent_secrets))
-        .route(
-            "/v1/agents/{agent_id}/secrets/{name}",
-            axum::routing::put(set_agent_secret).delete(delete_agent_secret),
         )
         .with_state(state)
 }
@@ -167,96 +161,6 @@ pub async fn batch_set_secrets(
         .run(&state.ctx(&org))
         .await?,
     ))
-}
-
-/// Request to store an agent's bound secret.
-#[derive(serde::Deserialize, utoipa::ToSchema)]
-pub struct SetAgentSecretRequest {
-    /// Write-only value; encrypted and never returned.
-    pub value: String,
-    /// Where the value may be sent, and how.
-    pub binding: SecretBinding,
-}
-
-/// GET /v1/agents/{agent_id}/secrets - List an agent's bound secrets
-#[utoipa::path(
-    get,
-    path = "/v1/agents/{agent_id}/secrets",
-    description = "List an agent's bound secrets: names, bound URLs and auth forms, never values.",
-    params(("agent_id" = String, Path, description = "Agent ID")),
-    responses(
-        (status = 200, description = "Bound secrets (no values)", body = ListResponse<AgentSecretInfo>),
-        (status = 404, description = "Agent not found", body = ErrorResponse)
-    ),
-    tag = "agents"
-)]
-pub async fn list_agent_secrets(
-    org: ResolvedOrg,
-    State(state): State<ApiState>,
-    Path(agent_id): Path<String>,
-) -> ApiResult<ListResponse<AgentSecretInfo>> {
-    let items = ListAgentSecrets { agent_id }.run(&state.ctx(&org)).await?;
-    Ok(Json(ListResponse::new(items)))
-}
-
-/// PUT /v1/agents/{agent_id}/secrets/{name} - Store an agent's bound secret
-#[utoipa::path(
-    put,
-    path = "/v1/agents/{agent_id}/secrets/{name}",
-    description = "Encrypt and store a bound secret for every session of an agent. The shell sees $NAME as a placeholder; the value goes only on requests to the bound URL.",
-    params(
-        ("agent_id" = String, Path, description = "Agent ID"),
-        ("name" = String, Path, description = "Env var name, e.g. JEV_API_KEY")
-    ),
-    request_body = SetAgentSecretRequest,
-    responses(
-        (status = 200, description = "Bound secret stored", body = AgentSecretInfo),
-        (status = 400, description = "Invalid name, binding or value", body = ErrorResponse),
-        (status = 404, description = "Agent not found", body = ErrorResponse)
-    ),
-    tag = "agents"
-)]
-pub async fn set_agent_secret(
-    org: ResolvedOrg,
-    State(state): State<ApiState>,
-    Path((agent_id, name)): Path<(String, String)>,
-    Json(body): Json<SetAgentSecretRequest>,
-) -> ApiResult<AgentSecretInfo> {
-    Ok(Json(
-        SetAgentSecret {
-            agent_id,
-            name,
-            value: body.value,
-            binding: body.binding,
-        }
-        .run(&state.ctx(&org))
-        .await?,
-    ))
-}
-
-/// DELETE /v1/agents/{agent_id}/secrets/{name} - Delete an agent's bound secret
-#[utoipa::path(
-    delete,
-    path = "/v1/agents/{agent_id}/secrets/{name}",
-    params(
-        ("agent_id" = String, Path, description = "Agent ID"),
-        ("name" = String, Path, description = "Secret name")
-    ),
-    responses(
-        (status = 204, description = "Bound secret deleted"),
-        (status = 404, description = "Agent or secret not found", body = ErrorResponse)
-    ),
-    tag = "agents"
-)]
-pub async fn delete_agent_secret(
-    org: ResolvedOrg,
-    State(state): State<ApiState>,
-    Path((agent_id, name)): Path<(String, String)>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    DeleteAgentSecret { agent_id, name }
-        .run(&state.ctx(&org))
-        .await?;
-    Ok(StatusCode::NO_CONTENT)
 }
 
 // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.

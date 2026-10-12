@@ -49,7 +49,7 @@ Manage encrypted secrets. Same interface as `kv_store` but values are encrypted 
 - The Storage tab can create, replace, and delete values, but never reads a value back
 - A session secret is available only to that session. It does not follow an Agent Trigger that creates a session per invocation.
 - `secret_store get` exposes the decrypted value to the running model. Do not use session secrets for MCP tool-parameter credentials that must stay out of model context; configure those on the Agent's **Credentials** tab instead.
-- A **bound secret** (stored with a URL to send it to) is write-only: `secret_store list` shows its name, URL and how to use it, while `get`, `set` and `delete` refuse it. The Bashkit shell uses it as `$NAME` in HTTP requests to that URL; see [Bashkit Shell](/capabilities/bashkit-shell/#api-keys-the-agent-never-sees). Bound secrets can also be set on an agent, for all of its sessions and triggers.
+- A **bound secret** (stored with a URL to send it to) is write-only: `secret_store list` shows its name, URL and how to use it, while `get`, `set` and `delete` refuse it. The Bashkit shell uses it as `$NAME` in HTTP requests to that URL; see [Bashkit Shell](/capabilities/bashkit-shell/#api-keys-the-agent-never-sees). To give every session and trigger of an agent the same key, add it as an **HTTP API** credential on the Agent's **Credentials** tab.
 
 ## See Also
 

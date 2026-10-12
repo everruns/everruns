@@ -514,9 +514,6 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::session_storage::list_secrets,
         api::session_storage::batch_set_secrets,
         api::session_storage::delete_secret,
-        api::session_storage::list_agent_secrets,
-        api::session_storage::set_agent_secret,
-        api::session_storage::delete_agent_secret,
         // Client-side tool results
         api::tool_results::submit_tool_results,
         api::mcp_url_consent::submit_elicitation_consent,

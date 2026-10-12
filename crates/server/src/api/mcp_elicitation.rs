@@ -36,7 +36,7 @@ use crate::api::mcp_endpoint::elicitation::{SecretAuth, SecretBinding, SecretSco
 use crate::auth::middleware::AuthUser;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
-use crate::domains::session_storage::{BatchSetSessionSecrets, SetAgentSecret};
+use crate::domains::session_storage::BatchSetSessionSecrets;
 use crate::kernel_imports::Caller;
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
@@ -178,16 +178,13 @@ async fn submit_secret(
     let ctx = state.ctx(&org);
     let stored = match (binding, scope) {
         (Some(binding), SecretScope::Agent) => {
-            match crate::domains::session_storage::agent_of_session(&ctx, &session_id).await {
-                Ok(agent_id) => SetAgentSecret {
-                    agent_id,
-                    name: name.clone(),
-                    value: form.value,
-                    binding,
+            use crate::domains::agents::credentials::{
+                agent_of_session, store_agent_http_credential,
+            };
+            match agent_of_session(&ctx, &session_id).await {
+                Ok(agent_id) => {
+                    store_agent_http_credential(&ctx, agent_id, &name, binding, &form.value).await
                 }
-                .run(&ctx)
-                .await
-                .map(|_| ()),
                 Err(e) => Err(e),
             }
         }

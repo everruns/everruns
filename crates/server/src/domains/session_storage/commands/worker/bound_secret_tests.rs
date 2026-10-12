@@ -163,8 +163,36 @@ async fn a_bound_session_secret_resolves_for_the_shell_and_never_reads_back() {
     );
 }
 
+/// Declare an HTTP credential on the agent (no value), as Platform Chat or
+/// the Credentials tab's "Add binding" would, then store its value the way
+/// the panel's value form does.
+async fn agent_credential(ctx: &Ctx, agent: &AgentRow, env_name: &str, value: &str) -> Value {
+    let declared = run(
+        ctx,
+        "create_agent_credential_binding",
+        json!({
+            "agent_id": agent.id.to_string(),
+            "env_name": env_name,
+            "url": "https://api.typesafe.ai/",
+            "label": "Jev API key",
+        }),
+    )
+    .await
+    .expect("declare http credential");
+    assert_eq!(declared["kind"], "http");
+    assert_eq!(declared["configured"], false);
+    let id: uuid::Uuid = declared["id"].as_str().unwrap().parse().unwrap();
+    let encrypted = encryption().encrypt_string(value).unwrap();
+    ctx.db
+        .set_agent_mcp_secret_binding_value(DEFAULT_ORG_ID, agent.id, id, encrypted)
+        .await
+        .unwrap()
+        .unwrap();
+    declared
+}
+
 #[tokio::test]
-async fn agent_secrets_reach_every_session_of_the_agent_and_sessions_shadow_them() {
+async fn agent_http_credentials_reach_every_session_of_the_agent_and_sessions_shadow_them() {
     let db = Arc::new(StorageBackend::test_database());
     let agent = agent(&db).await;
     let first = session(&db, Some(&agent)).await;
@@ -172,24 +200,34 @@ async fn agent_secrets_reach_every_session_of_the_agent_and_sessions_shadow_them
     let unrelated = session(&db, None).await;
     let ctx = ctx(&db);
 
-    let stored = run(
+    // Declared without a value: nothing for the shell yet.
+    let declared = run(
         &ctx,
-        "set_agent_secret",
+        "create_agent_credential_binding",
         json!({
-            "agent_id": agent.public_id,
-            "name": "JEV_API_KEY",
-            "value": KEY,
-            "binding": jev_binding(),
+            "agent_id": agent.id.to_string(),
+            "env_name": "JEV_API_KEY",
+            "url": "https://api.typesafe.ai/",
+            "label": "Jev API key",
         }),
     )
     .await
-    .expect("set agent secret");
-    assert!(!stored.to_string().contains(KEY));
+    .unwrap();
+    assert_eq!(declared["binding"]["url"], "https://api.typesafe.ai");
+    assert_eq!(declared["binding"]["auth"]["type"], "bearer");
+    assert_eq!(
+        run(&ctx, "worker_resolve_bound_secrets", sid(first))
+            .await
+            .unwrap(),
+        json!([])
+    );
 
+    agent_credential(&ctx, &agent, "JEV_API_KEY", KEY).await;
     for session_id in [first, second] {
         let resolved = run(&ctx, "worker_resolve_bound_secrets", sid(session_id))
             .await
             .unwrap();
+        assert_eq!(resolved[0]["name"], "JEV_API_KEY");
         assert_eq!(resolved[0]["value"], KEY);
         assert_eq!(resolved[0]["scope"], "agent");
     }
@@ -200,7 +238,49 @@ async fn agent_secrets_reach_every_session_of_the_agent_and_sessions_shadow_them
         json!([])
     );
 
+    // THREAT[TM-BASH-030]: the runtime cannot overwrite the agent's key.
+    let swap = json!({ "session_id": first.to_string(), "name": "JEV_API_KEY", "value": "attacker" });
+    run(&ctx, "worker_set_session_secret", swap)
+        .await
+        .expect_err("bound set");
+
+    // Re-declaring with the same binding keeps the value; pointing it at
+    // another host drops it, so the person has to paste it again.
+    let same = run(
+        &ctx,
+        "create_agent_credential_binding",
+        json!({
+            "agent_id": agent.id.to_string(),
+            "env_name": "JEV_API_KEY",
+            "url": "https://api.typesafe.ai",
+            "label": "Jev API key (renamed)",
+        }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(same["configured"], true);
+    let moved = run(
+        &ctx,
+        "create_agent_credential_binding",
+        json!({
+            "agent_id": agent.id.to_string(),
+            "env_name": "JEV_API_KEY",
+            "url": "https://attacker.example",
+            "label": "Jev API key",
+        }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(moved["configured"], false);
+    assert_eq!(
+        run(&ctx, "worker_resolve_bound_secrets", sid(second))
+            .await
+            .unwrap(),
+        json!([])
+    );
+
     // A session secret of the same name wins in that session only.
+    agent_credential(&ctx, &agent, "JEV_API_KEY", KEY).await;
     run(
         &ctx,
         "batch_set_session_secrets",
@@ -217,30 +297,23 @@ async fn agent_secrets_reach_every_session_of_the_agent_and_sessions_shadow_them
         .unwrap();
     assert_eq!(resolved.as_array().unwrap().len(), 1);
     assert_eq!(resolved[0]["value"], "session-key");
+    let resolved = run(&ctx, "worker_resolve_bound_secrets", sid(second))
+        .await
+        .unwrap();
+    assert_eq!(resolved[0]["value"], KEY);
 
-    let listed = run(
-        &ctx,
-        "list_agent_secrets",
-        json!({ "agent_id": agent.public_id }),
+    // HTTP credentials never reach MCP tool argument injection.
+    let mcp = crate::domains::agents::credentials::resolve_runtime_secret_bindings(
+        &db,
+        Some(&encryption()),
+        DEFAULT_ORG_ID,
+        Some(agent.id),
+        "jev",
+        "https://api.typesafe.ai",
     )
     .await
     .unwrap();
-    assert_eq!(listed[0]["name"], "JEV_API_KEY");
-    assert!(!listed.to_string().contains(KEY));
-
-    run(
-        &ctx,
-        "delete_agent_secret",
-        json!({ "agent_id": agent.public_id, "name": "JEV_API_KEY" }),
-    )
-    .await
-    .unwrap();
-    assert_eq!(
-        run(&ctx, "worker_resolve_bound_secrets", sid(second))
-            .await
-            .unwrap(),
-        json!([])
-    );
+    assert!(mcp.is_empty());
 }
 
 #[tokio::test]
@@ -249,37 +322,44 @@ async fn bindings_must_be_https_header_only_env_names() {
     let agent = agent(&db).await;
     let ctx = ctx(&db);
 
-    for (name, binding) in [
-        (
-            "JEV",
-            json!({ "url": "http://api.typesafe.ai", "auth": { "type": "bearer" } }),
-        ),
-        (
-            "JEV",
-            json!({ "url": "https://u:p@api.typesafe.ai", "auth": { "type": "bearer" } }),
-        ),
-        (
-            "JEV",
-            json!({ "url": "https://api.typesafe.ai?k=1", "auth": { "type": "bearer" } }),
-        ),
-        (
-            "JEV",
-            json!({ "url": "https://api.typesafe.ai", "auth": { "type": "header", "name": "X Key" } }),
-        ),
-        ("not-an-env", jev_binding()),
+    for request in [
+        json!({ "env_name": "JEV", "url": "http://api.typesafe.ai" }),
+        json!({ "env_name": "JEV", "url": "https://u:p@api.typesafe.ai" }),
+        json!({ "env_name": "JEV", "url": "https://api.typesafe.ai?k=1" }),
+        json!({ "env_name": "JEV", "url": "https://api.typesafe.ai", "auth": "header", "header_name": "X Key" }),
+        json!({ "env_name": "JEV", "url": "https://api.typesafe.ai", "auth": "header" }),
+        json!({ "env_name": "JEV", "url": "https://api.typesafe.ai", "auth": "basic" }),
+        json!({ "env_name": "JEV" }),
+        json!({ "env_name": "not-an-env", "url": "https://api.typesafe.ai" }),
+        json!({ "env_name": "JEV", "url": "https://api.typesafe.ai", "tool_name": "x" }),
+        json!({ "url": "https://api.typesafe.ai" }),
     ] {
-        let error = run(
-            &ctx,
-            "set_agent_secret",
-            json!({ "agent_id": agent.public_id, "name": name, "value": KEY, "binding": binding }),
-        )
-        .await
-        .expect_err("invalid binding");
+        let mut request = request;
+        request["agent_id"] = json!(agent.id.to_string());
+        request["label"] = json!("Jev");
+        let error = run(&ctx, "create_agent_credential_binding", request.clone())
+            .await
+            .expect_err("invalid binding");
         assert!(
             matches!(error.kind, CommandErrorKind::BadRequest(_)),
-            "{error:?}"
+            "{request}: {error:?}"
         );
     }
+    let header = run(
+        &ctx,
+        "create_agent_credential_binding",
+        json!({
+            "agent_id": agent.id.to_string(),
+            "label": "Jev",
+            "env_name": "JEV",
+            "url": "https://api.typesafe.ai/v1",
+            "auth": "header",
+            "header_name": "X-Api-Key",
+        }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(header["binding"]["auth"]["name"], "X-Api-Key");
 
     let session_id = session(&db, None).await;
     let orphan = run(

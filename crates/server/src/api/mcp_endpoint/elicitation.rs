@@ -579,17 +579,19 @@ async fn elicitation_satisfied(
             binding,
             scope: SecretScope::Agent,
         } => {
+            use crate::domains::agents::credentials::{
+                agent_of_session, agent_http_credential_configured,
+            };
             let ctx = mcp_ctx(org, state);
-            let agent_id = crate::domains::session_storage::agent_of_session(&ctx, session_id)
+            let Some(binding) = binding else {
+                return Ok(false);
+            };
+            let agent_id = agent_of_session(&ctx, session_id)
                 .await
                 .map_err(|e| e.to_string())?;
-            let secrets = crate::domains::session_storage::ListAgentSecrets { agent_id }
-                .run(&ctx)
+            agent_http_credential_configured(&ctx, agent_id, name, binding)
                 .await
-                .map_err(|e| e.to_string())?;
-            Ok(secrets
-                .iter()
-                .any(|secret| &secret.name == name && Some(&secret.binding) == binding.as_ref()))
+                .map_err(|e| e.to_string())
         }
         ElicitationIntent::Connect { provider } => {
             // The connection belongs to the authenticated user, not the org:

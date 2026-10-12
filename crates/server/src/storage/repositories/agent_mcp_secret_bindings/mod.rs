@@ -44,6 +44,43 @@ impl Database {
         .map_err(Into::into)
     }
 
+    /// Declare an HTTP credential. Re-declaring keeps the stored value only
+    /// when the binding (URL and auth form) is unchanged, so moving a key to
+    /// another host always needs the person to paste it again.
+    pub async fn upsert_agent_http_credential(
+        &self,
+        input: UpsertAgentHttpCredentialRow,
+    ) -> Result<AgentMcpSecretBindingRow> {
+        sqlx::query_as::<_, AgentMcpSecretBindingRow>(sql!(
+            r#"
+            INSERT INTO agent_mcp_secret_bindings
+                (org_id, agent_id, kind, env_name, binding, label, description)
+            VALUES ($1, $2, 'http', $3, $4, $5, $6)
+            ON CONFLICT (agent_id, env_name) WHERE kind = 'http'
+            DO UPDATE SET
+                binding = EXCLUDED.binding,
+                label = EXCLUDED.label,
+                description = EXCLUDED.description,
+                value_encrypted = CASE
+                    WHEN agent_mcp_secret_bindings.binding = EXCLUDED.binding
+                    THEN agent_mcp_secret_bindings.value_encrypted
+                    ELSE NULL
+                END,
+                updated_at = NOW()
+            RETURNING {AgentMcpSecretBindingRow}
+            "#
+        ))
+        .bind(input.org_id)
+        .bind(input.agent_id)
+        .bind(input.env_name)
+        .bind(sqlx::types::Json(input.binding))
+        .bind(input.label)
+        .bind(input.description)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(Into::into)
+    }
+
     pub async fn list_agent_mcp_secret_bindings(
         &self,
         org_id: i64,
@@ -54,7 +91,7 @@ impl Database {
             SELECT {AgentMcpSecretBindingRow}
             FROM agent_mcp_secret_bindings
             WHERE org_id = $1 AND agent_id = $2
-            ORDER BY mcp_server_name, tool_name, parameter_name
+            ORDER BY kind, mcp_server_name, tool_name, parameter_name, env_name
             "#
         ))
         .bind(org_id)

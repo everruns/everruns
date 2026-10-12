@@ -58,16 +58,3 @@ pub struct SecretInfo {
     /// When the secret was last updated
     pub updated_at: String,
 }
-
-/// An agent-scoped bound secret, without its value.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct AgentSecretInfo {
-    /// Env var name the agent's shell sees.
-    pub name: String,
-    /// Where the value may be sent, and how.
-    pub binding: SecretBinding,
-    /// When the secret was created
-    pub created_at: String,
-    /// When the secret was last updated
-    pub updated_at: String,
-}
