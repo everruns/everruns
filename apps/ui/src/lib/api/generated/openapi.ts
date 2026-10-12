@@ -4098,7 +4098,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List non-secret metadata for organization-owned sandbox provider accounts. */
+    /** @description List non-secret metadata for organization-owned provider accounts: sandbox provider accounts and web search accounts. */
     get: operations["list_connections"];
     put?: never;
     post?: never;
@@ -4117,7 +4117,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Create and validate an encrypted organization-owned sandbox provider account. */
+    /** @description Create and validate an encrypted organization-owned account for a connector that declares sandbox_provisioning or web_search. */
     post: operations["create_connection"];
     delete?: never;
     options?: never;
@@ -4133,7 +4133,7 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** @description Replace the name and credential for an organization-owned sandbox provider account. */
+    /** @description Replace the name and credential for an organization-owned provider account. */
     put: operations["update_connection"];
     post?: never;
     /** @description Delete an organization-owned provider account when no active sandbox configuration or lease references it. */
@@ -4152,7 +4152,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Revalidate an organization-owned sandbox provider credential without returning the secret. */
+    /** @description Revalidate an organization-owned provider credential without returning the secret. */
     post: operations["verify_connection"];
     delete?: never;
     options?: never;
@@ -4892,6 +4892,40 @@ export interface paths {
     get: operations["get_sandbox"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/search-providers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List the web search providers of the active organization: built-in free and model provider search, connected model providers that search natively, connectors that hold search accounts, connected search accounts with status, and the organization's web search defaults. */
+    get: operations["list_search_providers"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/search-providers/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Resolve an agent's web search setting and model to the ordered plan its searches follow, with the organization's current defaults. Optionally run a test query against one provider (`free` or `account:<id>`; organization admins only). */
+    post: operations["preview_search_plan"];
     delete?: never;
     options?: never;
     head?: never;
@@ -7185,7 +7219,7 @@ export interface components {
        */
       circle_url: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example avatar_01933b5a000070008000000000000001
        */
       id: string;
@@ -7317,17 +7351,13 @@ export interface components {
       id: string;
       status: components["schemas"]["ChannelStatus"];
     };
-    /**
-     * @description Metadata for a write-only credential bound to one agent: either an MCP
-     *     tool parameter or an HTTP API the agent's shell calls.
-     */
+    /** @description Metadata for a write-only credential bound to one agent and MCP tool parameter. */
     AgentCredentialBinding: {
       /**
        * @description Agent that exclusively owns and may use this credential.
        * @example agent_01933b5a000070008000000000000001
        */
       agent_id: string;
-      binding?: components["schemas"]["SecretBinding"] | null;
       /**
        * @description Whether an encrypted value has been provisioned.
        * @example true
@@ -7344,59 +7374,47 @@ export interface components {
        */
       description?: string | null;
       /**
-       * @description Env var the agent's shell uses as a placeholder (`http`).
-       * @example JEV_API_KEY
-       */
-      env_name?: string | null;
-      /**
        * Format: uuid
        * @description Stable credential binding identifier.
        * @example 01933b5a-0000-7000-8000-000000000001
        */
       id: string;
-      /** @description How the credential is injected. */
-      kind: components["schemas"]["AgentCredentialKind"];
       /**
        * @description Human-readable credential label.
        * @example Visti channel key
        */
       label: string;
       /**
-       * @description Name of the attached MCP server (`mcp_parameter`).
+       * @description Name of the attached MCP server.
        * @example visti
        */
-      mcp_server_name?: string | null;
+      mcp_server_name: string;
       /**
-       * @description Exact MCP endpoint authorized to receive the credential (`mcp_parameter`).
+       * @description Exact MCP endpoint authorized to receive the credential.
        * @example https://visti.sh/mcp
        */
-      mcp_server_url?: string | null;
+      mcp_server_url: string;
       /**
-       * @description Top-level tool argument injected by the server (`mcp_parameter`).
+       * @description Top-level tool argument injected by the server.
        * @example channel_key
        */
-      parameter_name?: string | null;
+      parameter_name: string;
       /**
        * @description Relative UI route where the user can securely provision the value.
        * @example /agents/agent_01933b5a000070008000000000000001?tab=credentials
        */
       setup_url: string;
       /**
-       * @description MCP tool whose outbound call receives the credential (`mcp_parameter`).
+       * @description MCP tool whose outbound call receives the credential.
        * @example visti_send
        */
-      tool_name?: string | null;
+      tool_name: string;
       /**
        * @description RFC 3339 last-update time.
        * @example 2026-08-08T16:05:00Z
        */
       updated_at: string;
     };
-    /**
-     * @description How a write-only agent credential reaches the outside world.
-     * @enum {string}
-     */
-    AgentCredentialKind: "mcp_parameter" | "http";
     /**
      * @description The agent the builder is shaping. Nothing is created from it until the
      *     user confirms.
@@ -8304,7 +8322,7 @@ export interface components {
        * @example auth.login
        */
       event_type: string;
-      /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+      /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
       id: string;
       /** @description Client IP address of the request, when known. */
       ip_address?: string | null;
@@ -8427,15 +8445,6 @@ export interface components {
     };
     /** @description Batch secret set request */
     BatchSetSecretsRequest: {
-      /**
-       * @description Optional bindings keyed by secret name. A bound secret is write-only:
-       *     the agent's shell sees `$NAME` as a placeholder, and the platform puts
-       *     the value on requests to the bound URL only. A name set without a
-       *     binding becomes an ordinary secret again.
-       */
-      bindings?: {
-        [key: string]: components["schemas"]["SecretBinding"];
-      };
       /**
        * @description Map of secret names to values. Names are case-sensitive; values are stored encrypted
        *     and never returned by list/read endpoints. Existing keys are overwritten.
@@ -8607,6 +8616,18 @@ export interface components {
       | "organization"
       | "agent_trigger"
       | "agent_channel";
+    /** @description A provider that needs no setup. */
+    BuiltInSearchProvider: {
+      description: string;
+      /**
+       * @description `free` or `native`.
+       * @example free
+       */
+      id: string;
+      name: string;
+      /** @description Plain-words cost, when the provider bills per search. */
+      price_note?: string | null;
+    };
     /**
      * @description Built-in tool configuration
      *
@@ -8706,7 +8727,7 @@ export interface components {
        */
       description: string;
       /**
-       * @description Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.
+       * @description Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.
        * @example session_file_system
        */
       docs_slug?: string | null;
@@ -9966,11 +9987,7 @@ export interface components {
       /** @description Whether the channel can accept ingress traffic. */
       enabled?: boolean;
     };
-    /**
-     * @description Declare a credential requirement for an agent: an attached MCP tool's
-     *     parameter (`mcp_server_name`, `tool_name`, `parameter_name`), or an HTTP
-     *     API the agent's shell calls (`env_name`, `url`, `auth`).
-     */
+    /** @description Declare a credential requirement for an agent's attached MCP tool. */
     CreateAgentCredentialBinding: {
       /**
        * @description Agent ID, populated from the request path by the HTTP API.
@@ -9978,51 +9995,30 @@ export interface components {
        */
       agent_id?: string;
       /**
-       * @description `bearer` (default) sends `Authorization: Bearer <value>`; `header`
-       *     sends the value in `header_name` (HTTP API).
-       * @example bearer
-       */
-      auth?: string | null;
-      /**
        * @description Optional explanation of how the credential will be used.
        * @example Delivers scheduled status notifications
        */
       description?: string | null;
-      /**
-       * @description Env var name the agent's shell uses as a placeholder (HTTP API).
-       * @example JEV_API_KEY
-       */
-      env_name?: string | null;
-      /**
-       * @description Header that carries the value when `auth` is `header` (HTTP API).
-       * @example X-Api-Key
-       */
-      header_name?: string | null;
       /**
        * @description Human-readable label shown in the secure setup UI.
        * @example Visti channel key
        */
       label: string;
       /**
-       * @description Name of an MCP server attached to the agent (MCP tool parameter).
+       * @description Name of an MCP server attached to the agent.
        * @example visti
        */
-      mcp_server_name?: string | null;
+      mcp_server_name: string;
       /**
-       * @description Top-level tool argument to inject outside model context (MCP tool parameter).
+       * @description Top-level tool argument to inject outside model context.
        * @example channel_key
        */
-      parameter_name?: string | null;
+      parameter_name: string;
       /**
-       * @description MCP tool whose outbound call requires the credential (MCP tool parameter).
+       * @description MCP tool whose outbound call requires the credential.
        * @example visti_send
        */
-      tool_name?: string | null;
-      /**
-       * @description HTTPS URL prefix the value may be sent to (HTTP API).
-       * @example https://api.typesafe.ai
-       */
-      url?: string | null;
+      tool_name: string;
     };
     /** @description Request to create an ingress channel owned by an Agent. */
     CreateAgentEndpointRequest: {
@@ -11691,6 +11687,8 @@ export interface components {
     };
     /** @description A GitHub trigger to create once GitHub is connected on the agent. */
     DraftGitHubTrigger: {
+      /** @description CI events only: branches to accept, e.g. `main`; empty means every branch. */
+      branches?: string[];
       /**
        * @description Run only when a CI outcome differs from the previous one for the same
        *     repository and branch.
@@ -11702,6 +11700,11 @@ export interface components {
       message?: string;
       /** @description `owner/name` repositories; empty means every repository the App sees. */
       repositories?: string[];
+      /**
+       * @description CI events only: workflow (or check suite app) names to accept, e.g. `CI`;
+       *     empty means every workflow.
+       */
+      workflows?: string[];
     };
     /** @description A catalog MCP server to attach. */
     DraftMcpServer: {
@@ -11935,7 +11938,7 @@ export interface components {
       title: string;
       /**
        * @description RFC 9457 problem type URI. Optional; identifies the problem class.
-       * @example https://docs.everruns.com/errors/session_not_found
+       * @example https://everruns.com/docs/errors/session_not_found
        */
       type?: string | null;
     };
@@ -12706,7 +12709,7 @@ export interface components {
        */
       org_id: number;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example org_01933b5a000070008000000000000001
        */
       public_id: string;
@@ -12731,7 +12734,7 @@ export interface components {
        */
       expires_at?: string | null;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example 019e8957539a7aa0bb92e0d2b49427b1
        */
       id: string;
@@ -12789,7 +12792,7 @@ export interface components {
        */
       email_verified: boolean;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example user_01933b5a000070008000000000000001
        */
       id: string;
@@ -14008,7 +14011,7 @@ export interface components {
       created_at: string;
       filename: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example img_01933b5a00007000800000000000001
        */
       id: string;
@@ -14027,7 +14030,7 @@ export interface components {
       created_at: string;
       filename: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example img_01933b5a00007000800000000000001
        */
       id: string;
@@ -14333,7 +14336,7 @@ export interface components {
       /** @description Optional embedding model for hybrid retrieval. `null` = keyword search only. */
       embedding_model_id?: string | null;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example kb_01933b5a000070008000000000000001
        */
       id: string;
@@ -14356,7 +14359,7 @@ export interface components {
        */
       created_at: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example kbe_01933b5a000070008000000000000001
        */
       id: string;
@@ -14397,7 +14400,7 @@ export interface components {
        */
       created_at: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example kidoc_01933b5a000070008000000000000001
        */
       id: string;
@@ -14452,7 +14455,7 @@ export interface components {
       /** @description Embedding model used to embed chunks. Required. */
       embedding_model_id: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example kidx_01933b5a000070008000000000000001
        */
       id: string;
@@ -14906,7 +14909,6 @@ export interface components {
          * @example agent_01933b5a000070008000000000000001
          */
         agent_id: string;
-        binding?: components["schemas"]["SecretBinding"] | null;
         /**
          * @description Whether an encrypted value has been provisioned.
          * @example true
@@ -14923,48 +14925,41 @@ export interface components {
          */
         description?: string | null;
         /**
-         * @description Env var the agent's shell uses as a placeholder (`http`).
-         * @example JEV_API_KEY
-         */
-        env_name?: string | null;
-        /**
          * Format: uuid
          * @description Stable credential binding identifier.
          * @example 01933b5a-0000-7000-8000-000000000001
          */
         id: string;
-        /** @description How the credential is injected. */
-        kind: components["schemas"]["AgentCredentialKind"];
         /**
          * @description Human-readable credential label.
          * @example Visti channel key
          */
         label: string;
         /**
-         * @description Name of the attached MCP server (`mcp_parameter`).
+         * @description Name of the attached MCP server.
          * @example visti
          */
-        mcp_server_name?: string | null;
+        mcp_server_name: string;
         /**
-         * @description Exact MCP endpoint authorized to receive the credential (`mcp_parameter`).
+         * @description Exact MCP endpoint authorized to receive the credential.
          * @example https://visti.sh/mcp
          */
-        mcp_server_url?: string | null;
+        mcp_server_url: string;
         /**
-         * @description Top-level tool argument injected by the server (`mcp_parameter`).
+         * @description Top-level tool argument injected by the server.
          * @example channel_key
          */
-        parameter_name?: string | null;
+        parameter_name: string;
         /**
          * @description Relative UI route where the user can securely provision the value.
          * @example /agents/agent_01933b5a000070008000000000000001?tab=credentials
          */
         setup_url: string;
         /**
-         * @description MCP tool whose outbound call receives the credential (`mcp_parameter`).
+         * @description MCP tool whose outbound call receives the credential.
          * @example visti_send
          */
-        tool_name?: string | null;
+        tool_name: string;
         /**
          * @description RFC 3339 last-update time.
          * @example 2026-08-08T16:05:00Z
@@ -15004,7 +14999,7 @@ export interface components {
          * @example auth.login
          */
         event_type: string;
-        /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+        /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
         id: string;
         /** @description Client IP address of the request, when known. */
         ip_address?: string | null;
@@ -15055,7 +15050,7 @@ export interface components {
          */
         description: string;
         /**
-         * @description Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.
+         * @description Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.
          * @example session_file_system
          */
         docs_slug?: string | null;
@@ -15782,7 +15777,7 @@ export interface components {
         /** @description Optional embedding model for hybrid retrieval. `null` = keyword search only. */
         embedding_model_id?: string | null;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example kb_01933b5a000070008000000000000001
          */
         id: string;
@@ -15811,7 +15806,7 @@ export interface components {
          */
         created_at: string;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example kbe_01933b5a000070008000000000000001
          */
         id: string;
@@ -15858,7 +15853,7 @@ export interface components {
          */
         created_at: string;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example kidoc_01933b5a000070008000000000000001
          */
         id: string;
@@ -15919,7 +15914,7 @@ export interface components {
         /** @description Embedding model used to embed chunks. Required. */
         embedding_model_id: string;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example kidx_01933b5a000070008000000000000001
          */
         id: string;
@@ -16061,7 +16056,7 @@ export interface components {
          */
         description?: string | null;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example mem_01933b5a000070008000000000000001
          */
         id: string;
@@ -16324,6 +16319,13 @@ export interface components {
          * @description When the organization was last updated
          */
         updated_at: string;
+        /**
+         * @description Web search defaults: the provider agents on "Organization default"
+         *     use, the Automatic order, whether model provider search is allowed,
+         *     the fallback, results per search and blocked domains. Built-in
+         *     defaults (Automatic) when the organization never set any.
+         */
+        web_search_defaults: components["schemas"]["WebSearchDefaults"];
       }[];
     };
     /**
@@ -16368,7 +16370,6 @@ export interface components {
     ListResponse_SecretInfo: {
       /** @description Array of items returned by the list operation. */
       data: {
-        binding?: components["schemas"]["SecretBinding"] | null;
         /** @description When the secret was created */
         created_at: string;
         /** @description The secret name */
@@ -16411,7 +16412,7 @@ export interface components {
         /** @description When `true`, the LLM is prevented from auto-invoking this skill; only the user can trigger it explicitly. */
         disable_model_invocation?: boolean;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example skill_01933b5a00007000800000000000001
          */
         id: string;
@@ -16550,7 +16551,7 @@ export interface components {
          */
         created_at: string;
         email: string;
-        /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+        /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
         id: string;
         /** @description Human-readable name. Safe to render in user-facing messages. */
         name: string;
@@ -16841,7 +16842,7 @@ export interface components {
         /** @description Whether this model is selectable. Controls UI visibility AND server-side resolution: `ProviderResolverService` requires `enabled = true`, and org default-model validation rejects disabled models. Disabled models stay visible in raw list endpoints (so admins can re-enable them) but cannot be used in active sessions or as a session/agent default. */
         enabled: boolean;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example model_01933b5a00007000800000000000001
          */
         id: string;
@@ -16922,7 +16923,7 @@ export interface components {
          */
         healthy: boolean;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example model_01933b5a00007000800000000000001
          */
         id: string;
@@ -17006,7 +17007,7 @@ export interface components {
          */
         created_at: string;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example provider_01933b5a00007000800000000000001
          */
         id: string;
@@ -17244,7 +17245,7 @@ export interface components {
         /** @description When `true`, the LLM is prevented from auto-invoking this skill; only the user can trigger it explicitly. */
         disable_model_invocation?: boolean;
         /**
-         * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
          * @example skill_01933b5a00007000800000000000001
          */
         id: string;
@@ -18177,7 +18178,7 @@ export interface components {
        */
       description?: string | null;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example mem_01933b5a000070008000000000000001
        */
       id: string;
@@ -18476,7 +18477,7 @@ export interface components {
       /** @description Whether this model is selectable. Controls UI visibility AND server-side resolution: `ProviderResolverService` requires `enabled = true`, and org default-model validation rejects disabled models. Disabled models stay visible in raw list endpoints (so admins can re-enable them) but cannot be used in active sessions or as a session/agent default. */
       enabled: boolean;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example model_01933b5a00007000800000000000001
        */
       id: string;
@@ -18710,7 +18711,7 @@ export interface components {
        */
       healthy: boolean;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example model_01933b5a00007000800000000000001
        */
       id: string;
@@ -18779,6 +18780,14 @@ export interface components {
       id: string;
       org_name: string;
       role: string;
+    };
+    /** @description A connected model provider whose models search natively. */
+    NativeSearchProvider: {
+      name: string;
+      price_note: string;
+      provider_id: string;
+      /** @example anthropic */
+      provider_type: string;
     };
     /**
      * @description A complete provider-native call, retaining its original identity and payload.
@@ -18882,7 +18891,7 @@ export interface components {
        */
       href?: string | null;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example notification_01933b5a00007000800000000000001
        */
       id: string;
@@ -19117,7 +19126,7 @@ export interface components {
     OrgFeatureFlagsSettingsResponse: {
       flags: components["schemas"]["OrgFeatureFlagSetting"][];
     };
-    /** @description Non-secret metadata for an organization-owned sandbox provider account. */
+    /** @description Non-secret metadata for an organization-owned provider account. */
     OrganizationConnectionResponse: {
       /**
        * Format: date-time
@@ -19127,7 +19136,7 @@ export interface components {
       connected_at: string;
       /**
        * Format: uuid
-       * @description Stable connection identifier used by Sandbox Templates.
+       * @description Stable connection identifier used by Sandbox Templates and web search.
        * @example 00000000-0000-0000-0000-000000000002
        */
       id: string;
@@ -19137,7 +19146,7 @@ export interface components {
        */
       name: string;
       /**
-       * @description Sandbox provider connector identifier.
+       * @description Connector identifier, e.g. `daytona` or `brave_search`.
        * @example daytona
        */
       provider: string;
@@ -19200,6 +19209,13 @@ export interface components {
        * @description When the organization was last updated
        */
       updated_at: string;
+      /**
+       * @description Web search defaults: the provider agents on "Organization default"
+       *     use, the Automatic order, whether model provider search is allowed,
+       *     the fallback, results per search and blocked domains. Built-in
+       *     defaults (Automatic) when the organization never set any.
+       */
+      web_search_defaults: components["schemas"]["WebSearchDefaults"];
     };
     /** @description Data for output.message.completed event */
     OutputMessageCompletedData: {
@@ -19805,7 +19821,7 @@ export interface components {
          */
         description: string;
         /**
-         * @description Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.
+         * @description Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.
          * @example session_file_system
          */
         docs_slug?: string | null;
@@ -20257,7 +20273,7 @@ export interface components {
        * @example 2026-04-01T10:00:00Z
        */
       created_at: string;
-      /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+      /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
       id: components["schemas"]["payacctId"];
       /**
        * @description Human-readable label for this account. Safe to render in user-facing messages.
@@ -20327,7 +20343,7 @@ export interface components {
        * @example rail.insufficient_funds: settled balance below minimum
        */
       error_message?: string | null;
-      /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+      /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
       id: components["schemas"]["payattId"];
       /**
        * @description Capability-specific operation name that originated this paid call.
@@ -20400,7 +20416,7 @@ export interface components {
        * @example 2026-04-01T10:00:00Z
        */
       created_at: string;
-      /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+      /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
       id: components["schemas"]["paypolId"];
       /**
        * Format: double
@@ -20616,7 +20632,7 @@ export interface components {
     ProfileResponse: {
       avatar_url?: string | null;
       email: string;
-      /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+      /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
       id: string;
       /** @description Human-readable name. Safe to render in user-facing messages. */
       name: string;
@@ -20675,7 +20691,7 @@ export interface components {
        */
       created_at: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example provider_01933b5a00007000800000000000001
        */
       id: string;
@@ -22270,10 +22286,10 @@ export interface components {
       /** @description Spans clipped to the window, oldest first. */
       spans: components["schemas"]["SandboxStateSpan"][];
     };
-    /** @description Organization-owned sandbox provider account input. */
+    /** @description Organization-owned provider account input (sandbox provider or search account). */
     SaveOrganizationConnectionRequest: components["schemas"]["CreateConnectionRequest"] & {
       /**
-       * @description Human-readable account name shown in Sandbox Template selectors.
+       * @description Human-readable account name shown in Sandbox Template and web search selectors.
        * @example Production Daytona
        */
       name: string;
@@ -22833,33 +22849,122 @@ export interface components {
        */
       wake_agent_on_failure?: boolean;
     };
+    /** @description A connected organization search account (never its key). */
+    SearchAccountSummary: {
+      /** @description Place in the Automatic order (1-based), counting native and accounts. */
+      automatic_position?: number | null;
+      /** Format: date-time */
+      connected_at: string;
+      /** Format: uuid */
+      id: string;
+      /** @description Account name the admin gave it. */
+      name: string;
+      /** @example brave_search */
+      provider: string;
+      /**
+       * @description `ready` when a key is stored, `missing_key` otherwise.
+       * @example ready
+       */
+      status: string;
+    };
+    /** @description A connector whose organization accounts answer web search. */
+    SearchConnector: {
+      description: string;
+      icon: string;
+      name: string;
+      /**
+       * @description Connector id, used to connect an account at
+       *     `/v1/orgs/{org}/organization-connections/providers/{provider}`.
+       * @example brave_search
+       */
+      provider: string;
+    };
     /**
-     * @description How a bound secret is put on an outbound request.
-     *
-     *     Header-only by design: a value
-     *     is never placed in a URL or a body.
+     * @description What happens when a provider cannot answer.
+     * @enum {string}
      */
-    SecretAuth:
-      | {
-          /** @enum {string} */
-          type: "bearer";
-        }
-      | {
-          /** @description Header name. */
-          name: string;
-          /** @enum {string} */
-          type: "header";
-        };
-    /** @description Where a bound secret may be sent, and how. */
-    SecretBinding: {
-      /** @description How the value is attached. */
-      auth: components["schemas"]["SecretAuth"];
-      /** @description `https://host[:port][/path-prefix]` the value may be sent to. */
+    SearchFallbackMode: "next" | "none";
+    /** @description The plan an agent's search would follow. */
+    SearchPlanPreview: {
+      /** Format: uuid */
+      account_id?: string | null;
+      fallback: components["schemas"]["SearchFallbackMode"];
+      /**
+       * Format: int32
+       * @description Results per search when the model does not ask.
+       */
+      limit: number;
+      /** @description Whether the model searches natively (and the organization allows it). */
+      model_has_native: boolean;
+      org_blocked_domains: string[];
+      /** @description The setting in effect after following the organization default. */
+      provider: components["schemas"]["SearchProviderSetting"];
+      steps: components["schemas"]["SearchPlanStep"][];
+      test?: components["schemas"]["SearchTestOutcome"] | null;
+    };
+    /** @description Resolve an agent's web search setting and model to a plan. */
+    SearchPlanPreviewRequest: {
+      /**
+       * @description The agent's `web_search` capability config; omitted means
+       *     `{"provider": "org_default"}`.
+       */
+      config?: Record<string, unknown>;
+      /** @description The model the agent runs; omitted uses the organization's default model. */
+      model_id?: string | null;
+      test?: components["schemas"]["SearchTestQuery"] | null;
+    };
+    /** @description One provider in a previewed plan. */
+    SearchPlanStep: {
+      /** @description Whether this step can answer for this model now. */
+      available: boolean;
+      /** @description `native`, `brave`, `account:<id>` or `free`. */
+      id: string;
+      label: string;
+      /** @description Why it cannot, or what it relies on. */
+      note?: string | null;
+      price_note?: string | null;
+    };
+    /** @description Everything the organization can search with. */
+    SearchProviderCatalog: {
+      accounts: components["schemas"]["SearchAccountSummary"][];
+      built_in: components["schemas"]["BuiltInSearchProvider"][];
+      connectors: components["schemas"]["SearchConnector"][];
+      defaults: components["schemas"]["WebSearchDefaults"];
+      native_providers: components["schemas"]["NativeSearchProvider"][];
+    };
+    /**
+     * @description Which provider web search uses.
+     * @enum {string}
+     */
+    SearchProviderSetting: "org_default" | "auto" | "native" | "brave" | "account" | "free";
+    /** @description What a test query returned. */
+    SearchTestOutcome: {
+      /** Format: int64 */
+      duration_ms: number;
+      message?: string | null;
+      ok: boolean;
+      provider: string;
+      results: components["schemas"]["SearchTestResult"][];
+    };
+    /** @description Run one query against one provider. */
+    SearchTestQuery: {
+      /**
+       * @description `free` or `account:<id>`.
+       * @example free
+       */
+      provider: string;
+      /** @example tokio release notes */
+      query: string;
+    };
+    /** @description One result of a test query. */
+    SearchTestResult: {
+      site: string;
+      snippet?: string | null;
+      title: string;
       url: string;
     };
     /** @description Secret entry info (name and timestamps only, no value) */
     SecretInfo: {
-      binding?: components["schemas"]["SecretBinding"] | null;
       /** @description When the secret was created */
       created_at: string;
       /** @description The secret name */
@@ -23771,7 +23876,7 @@ export interface components {
       /** @description When `true`, the LLM is prevented from auto-invoking this skill; only the user can trigger it explicitly. */
       disable_model_invocation?: boolean;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example skill_01933b5a00007000800000000000001
        */
       id: string;
@@ -26533,6 +26638,7 @@ export interface components {
        */
       name?: string | null;
       system_decisions?: components["schemas"]["SystemDecisions"] | null;
+      web_search_defaults?: components["schemas"]["WebSearchDefaults"] | null;
     };
     /** @description Request body for the `update_payment_account` operation. */
     UpdatePaymentAccountRequest: {
@@ -26831,7 +26937,7 @@ export interface components {
        */
       created_at: string;
       email: string;
-      /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+      /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
       id: string;
       /** @description Human-readable name. Safe to render in user-facing messages. */
       name: string;
@@ -27251,6 +27357,41 @@ export interface components {
       response_id?: string | null;
       /** @description Prefixed voice connection identifier this transcript belongs to. */
       voice_connection_id: string;
+    };
+    /** @description An organization's web search defaults. */
+    WebSearchDefaults: {
+      /**
+       * Format: uuid
+       * @description The search account when `provider` is `account`.
+       */
+      account_id?: string | null;
+      /**
+       * @description Whether agents may use the model provider's own search (billed by the
+       *     model provider).
+       */
+      allow_native?: boolean;
+      /**
+       * @description Automatic order: `native`, search account ids, and `free`, which is
+       *     always last. Entries left out keep their natural place.
+       */
+      automatic_order?: string[];
+      /** @description Sites no search in this organization returns, on top of each agent's. */
+      blocked_domains?: string[];
+      /**
+       * @description When a provider cannot answer: `next` falls back (free search last),
+       *     `none` stops. An agent's own `fallback` wins.
+       */
+      fallback?: components["schemas"]["SearchFallbackMode"];
+      /**
+       * @description Provider for agents set to the organization default: `auto`, `native`,
+       *     `brave`, `account` (with `account_id`) or `free`.
+       */
+      provider?: components["schemas"]["SearchProviderSetting"];
+      /**
+       * Format: int32
+       * @description Results per search when neither the model nor the agent asks (1 to 20).
+       */
+      results_per_search?: number;
     };
     /** @description Response body for webhook invocation. */
     WebhookInvocationResponse: {
@@ -27674,7 +27815,7 @@ export interface components {
        */
       description: string;
       /**
-       * @description Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.
+       * @description Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.
        * @example session_file_system
        */
       docs_slug?: string | null;
@@ -28125,7 +28266,7 @@ export interface components {
       /** @description Whether this model is selectable. Controls UI visibility AND server-side resolution: `ProviderResolverService` requires `enabled = true`, and org default-model validation rejects disabled models. Disabled models stay visible in raw list endpoints (so admins can re-enable them) but cannot be used in active sessions or as a session/agent default. */
       enabled: boolean;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example model_01933b5a00007000800000000000001
        */
       id: string;
@@ -28208,7 +28349,7 @@ export interface components {
        */
       healthy: boolean;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example model_01933b5a00007000800000000000001
        */
       id: string;
@@ -28294,7 +28435,7 @@ export interface components {
        */
       created_at: string;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example provider_01933b5a00007000800000000000001
        */
       id: string;
@@ -28831,7 +28972,7 @@ export interface components {
       /** @description When `true`, the LLM is prevented from auto-invoking this skill; only the user can trigger it explicitly. */
       disable_model_invocation?: boolean;
       /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
        * @example skill_01933b5a00007000800000000000001
        */
       id: string;
@@ -43603,6 +43744,66 @@ export interface operations {
       };
     };
   };
+  list_search_providers: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SearchProviderCatalog"];
+        };
+      };
+    };
+  };
+  preview_search_plan: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SearchPlanPreviewRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SearchPlanPreview"];
+        };
+      };
+      /** @description Invalid config, unknown model, or unknown test provider */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Test queries need an organization admin */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   list_sessions: {
     parameters: {
       query?: {
@@ -43748,7 +43949,7 @@ export interface operations {
            *       "detail": "Harness 'generic' not found in org org_00000000000000000000000000000001.",
            *       "status": 404,
            *       "title": "Not Found",
-           *       "type": "https://docs.everruns.com/errors/harness_not_found"
+           *       "type": "https://everruns.com/docs/errors/harness_not_found"
            *     }
            */
           "application/json": components["schemas"]["ErrorResponse"];
@@ -44171,7 +44372,7 @@ export interface operations {
            *       "detail": "Session session_01933b5a000070008000000000000001 not found in org org_00000000000000000000000000000001.",
            *       "status": 404,
            *       "title": "Not Found",
-           *       "type": "https://docs.everruns.com/errors/session_not_found"
+           *       "type": "https://everruns.com/docs/errors/session_not_found"
            *     }
            */
           "application/json": components["schemas"]["ErrorResponse"];

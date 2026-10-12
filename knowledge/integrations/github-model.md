@@ -285,10 +285,12 @@ through the missing-permissions prompt that already exists.
 Each step is one PR unless noted, and leaves everything working.
 
 1. **One resolver call.** `acts as` plus repositories plus permissions in,
-   cut-down cached token out; `kind` on the connection (migration via
+   cut-down token out; `kind` on the connection (migration via
    `just new-migration`). Move the `github` capability, connection-backed MCP,
    Daytona clone, Modal injection and memory and knowledge sync onto it.
-   Capability config gains `acts_as` (default `service`).
+   Started: `get_github_token` with `GitHubAccess` mints narrowed installation
+   tokens (`storage/connection_resolver/github.rs`), and the `github`
+   capability uses it with an `acts_as` setting (default `agent`).
 2. **GitHub section on the agent page** (D7), name rules and avatar step (D2).
    Coordinate with the Yolop PR Reviewer thread's org picker, which lands first.
 3. **Shared App at org level** (D3): org opt-in, deployment webhook route by

@@ -51,7 +51,7 @@ such as `/workspace`; that prefix is a runtime alias, not a package layout.
 ## Minimal manifest
 
 ```toml
-#:schema https://docs.everruns.com/schemas/agent/v1.json
+#:schema https://everruns.com/docs/schemas/agent/v1.json
 schema_version = 1
 name = "my-agent"
 ```
@@ -315,7 +315,7 @@ short_description = "Investigate incidents with evidence."
 starters = [{ text = "Investigate the current incident.", icon = "search" }]
 
 [network_access]
-allowed = ["https://docs.everruns.com/**"]
+allowed = ["https://everruns.com/docs/**"]
 blocked = ["https://example.com/private/**"]
 ```
 
@@ -370,7 +370,7 @@ Use this header for completion and diagnostics in editors supporting the
 [Taplo schema directive](https://taplo.tamasfe.dev/configuration/directives.html):
 
 ```toml
-#:schema https://docs.everruns.com/schemas/agent/v1.json
+#:schema https://everruns.com/docs/schemas/agent/v1.json
 ```
 
 This is a comment, not an agent field. Do not add a `$schema` field to the

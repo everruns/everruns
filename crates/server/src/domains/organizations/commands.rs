@@ -76,7 +76,7 @@ impl Command for GetOrg {
 // (Cross-Org Resource Resolution).
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ResolveOrg {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 

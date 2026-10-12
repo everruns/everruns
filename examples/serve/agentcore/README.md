@@ -4,7 +4,7 @@ A [serve](../../../crates/serve) app packaged for
 [Amazon Bedrock AgentCore Runtime](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-agui-protocol-contract.html)
 with [serve-agentcore](../../../crates/serve-agentcore). The app is ordinary serve
 code; only `main` changes, from `serve::start` to `serve_agentcore::start`.
-The full guide is [Serve on AgentCore](https://docs.everruns.com/framework/serve-agentcore/);
+The full guide is [Serve on AgentCore](https://everruns.com/docs/framework/serve-agentcore/);
 [agentcore-workspace](../agentcore-workspace) adds a shell in the microVM and approvals.
 
 ## Try the contract locally

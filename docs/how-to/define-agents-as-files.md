@@ -264,7 +264,7 @@ validation limits and compatibility rules. The
 Add its editor directive at the top of `agent.toml`:
 
 ```toml
-#:schema https://docs.everruns.com/schemas/agent/v1.json
+#:schema https://everruns.com/docs/schemas/agent/v1.json
 schema_version = 1
 name = "my-agent"
 ```

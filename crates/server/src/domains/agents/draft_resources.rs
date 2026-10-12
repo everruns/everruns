@@ -10,7 +10,8 @@
 //   told to attach a preset whose description says it sends notifications. There
 //   is no built-in notify capability (D3 was descoped).
 // - GitHub events come from a fixed list. `changes_only` keeps only CI outcome
-//   changes, so it is dropped when no CI event is chosen.
+//   changes, so it is dropped when no CI event is chosen; so are `branches` and
+//   `workflows`, which narrow CI events to named branches and workflow names.
 // - The model is never the LLM's choice. The draft keeps the org default unless
 //   that model has no working key, then names the first enabled chat model that
 //   has one and says why. "Working" is the model list's `healthy` flag: an
@@ -38,6 +39,8 @@ pub const DRAFT_GITHUB_EVENTS: &[&str] = &[
 const CI_EVENTS: &[&str] = &["workflow_run.completed", "check_suite.completed"];
 
 const MAX_REPOSITORIES: usize = 20;
+const MAX_CI_NAMES: usize = 10;
+const MAX_CI_NAME_CHARS: usize = 100;
 const MAX_TRIGGER_MESSAGE_CHARS: usize = 2_000;
 const MAX_OFFERED_PRESETS: usize = 40;
 
@@ -54,6 +57,13 @@ pub struct DraftGitHubTrigger {
     /// repository and branch.
     #[serde(default)]
     pub changes_only: bool,
+    /// CI events only: branches to accept, e.g. `main`; empty means every branch.
+    #[serde(default)]
+    pub branches: Vec<String>,
+    /// CI events only: workflow (or check suite app) names to accept, e.g. `CI`;
+    /// empty means every workflow.
+    #[serde(default)]
+    pub workflows: Vec<String>,
     /// Message the agent receives for each event.
     #[serde(default)]
     pub message: String,
@@ -190,12 +200,31 @@ pub fn normalize_github_trigger(
         }
     }
     repositories.truncate(MAX_REPOSITORIES);
-    let changes_only =
-        trigger.changes_only && events.iter().any(|e| CI_EVENTS.contains(&e.as_str()));
+    let has_ci = events.iter().any(|e| CI_EVENTS.contains(&e.as_str()));
+    let ci_names = |names: Vec<String>| -> Vec<String> {
+        if !has_ci {
+            return Vec::new();
+        }
+        let mut out: Vec<String> = Vec::new();
+        for name in names {
+            let name = name.trim().to_string();
+            if !name.is_empty()
+                && name.chars().count() <= MAX_CI_NAME_CHARS
+                && !name.chars().any(char::is_control)
+                && !out.contains(&name)
+            {
+                out.push(name);
+            }
+        }
+        out.truncate(MAX_CI_NAMES);
+        out
+    };
     Some(DraftGitHubTrigger {
+        changes_only: trigger.changes_only && has_ci,
+        branches: ci_names(trigger.branches),
+        workflows: ci_names(trigger.workflows),
         events,
         repositories,
-        changes_only,
         message,
     })
 }
@@ -311,12 +340,16 @@ mod tests {
                 "a/b/c".into(),
             ],
             changes_only: true,
+            branches: vec![" main ".into(), "main".into(), "".into()],
+            workflows: vec!["CI".into()],
             message: "  CI finished: {{github.ci.outcome}}  ".into(),
         }))
         .unwrap();
         assert_eq!(out.events, vec!["workflow_run.completed"]);
         assert_eq!(out.repositories, vec!["everruns/everruns"]);
         assert!(out.changes_only);
+        assert_eq!(out.branches, vec!["main"]);
+        assert_eq!(out.workflows, vec!["CI"]);
         assert_eq!(out.message, "CI finished: {{github.ci.outcome}}");
     }
 
@@ -326,16 +359,21 @@ mod tests {
             events: vec!["pull_request.opened".into()],
             repositories: vec![],
             changes_only: true,
+            branches: vec!["main".into()],
+            workflows: vec!["CI".into()],
             message: "Review it".into(),
         }))
         .unwrap();
         assert!(!pr_only.changes_only);
+        assert!(pr_only.branches.is_empty() && pr_only.workflows.is_empty());
 
         assert!(
             normalize_github_trigger(Some(DraftGitHubTrigger {
                 events: vec!["push".into()],
                 repositories: vec![],
                 changes_only: false,
+                branches: vec![],
+                workflows: vec![],
                 message: "x".into(),
             }))
             .is_none()
@@ -345,6 +383,8 @@ mod tests {
                 events: vec!["pull_request.opened".into()],
                 repositories: vec![],
                 changes_only: false,
+                branches: vec![],
+                workflows: vec![],
                 message: "  ".into(),
             }))
             .is_none()

@@ -36,7 +36,7 @@ use utoipa::ToSchema;
 /// square crop is at `/v1/avatars/{id}/source.png`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct AgentAvatar {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     #[schema(value_type = String, example = "avatar_01933b5a000070008000000000000001")]
     pub id: AvatarId,
     /// Square avatar, 256 px.

@@ -159,7 +159,7 @@ impl Command for ListModels {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetModel {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -187,7 +187,7 @@ impl Command for GetModel {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateModel {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     /// LLM provider's prefixed public identifier.
     pub provider_id: Option<String>,
@@ -252,7 +252,7 @@ impl Command for UpdateModel {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteModel {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 

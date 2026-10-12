@@ -24,8 +24,8 @@ use axum::{
     http::StatusCode,
     routing::post,
 };
-use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
-use everruns_core::events::{EventContext, EventRequest, ToolCompletedData};
+use everruns_contracts::typed_id::SessionId;
+use everruns_core::events::{EventRequest, ToolCompletedData};
 use everruns_core::mcp::{StoredConsent, consent_storage_key};
 use everruns_core::message::ContentPart;
 use serde::{Deserialize, Serialize};
@@ -174,8 +174,10 @@ pub async fn submit_elicitation_consent(
     } else {
         Vec::new()
     };
-    let turn_id = TurnId::from_uuid(session_id.uuid());
-    let event_message_id = MessageId::from_uuid(session_id.uuid());
+    // Recorded under the waiting turn, which the worker resumes.
+    let context = crate::turns::open_turn_context(&state.db, session_id)
+        .await
+        .log_internal_error_json("read the waiting turn")?;
 
     // What the model reads. On an accept it needs to know the retry is now
     // worth making; on a decline it needs to stop asking.
@@ -242,14 +244,10 @@ pub async fn submit_elicitation_consent(
         events: vec![
             EventRequest::new(
                 session_id,
-                EventContext::empty(),
+                context.clone(),
                 everruns_core::events::InputMessageData::new(message),
             ),
-            EventRequest::new(
-                session_id,
-                EventContext::turn(turn_id, event_message_id),
-                completed,
-            ),
+            EventRequest::new(session_id, context, completed),
         ],
         session_values,
         response: serde_json::json!({ "host": pending.host }),

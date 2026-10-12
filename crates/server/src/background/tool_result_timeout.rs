@@ -20,11 +20,9 @@ use crate::services::EventService;
 use crate::storage::StorageBackend;
 use crate::storage::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
 use chrono::{DateTime, Utc};
-use everruns_contracts::typed_id::{EventId, MessageId, SessionId, TurnId};
+use everruns_contracts::typed_id::{EventId, SessionId};
 use everruns_core::builtins::ask_user::{AskUserAnsweredBy, AskUserStatus};
-use everruns_core::events::{
-    EventContext, EventData, EventRequest, ToolCompletedData, deserialize_event_data,
-};
+use everruns_core::events::{EventData, EventRequest, ToolCompletedData, deserialize_event_data};
 use everruns_core::host::TurnBackend;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
@@ -446,14 +444,14 @@ async fn timeout_session(
             "No tool.call_requested event found for timed-out session"
         );
     }
-    let turn_id = TurnId::from_uuid(session_id.uuid());
-    let message_id = MessageId::from_uuid(session_id.uuid());
+    // Recorded under the waiting turn, so the worker's fold settles them.
+    let context = crate::turns::open_turn_context(db, session_id).await?;
     let events = tool_call_ids
         .into_iter()
         .map(|tool_call_id| {
             EventRequest::new(
                 session_id,
-                EventContext::turn(turn_id, message_id),
+                context.clone(),
                 ToolCompletedData::failure(
                     tool_call_id,
                     String::new(),

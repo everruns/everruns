@@ -209,7 +209,7 @@ what it registered.
 
 ## Documentation
 
-- [Serve overview](https://docs.everruns.com/framework/serve/)
+- [Serve overview](https://everruns.com/docs/framework/serve/)
 - [API reference](https://docs.rs/everruns-serve)
 - [Guide](https://github.com/everruns/everruns/blob/main/crates/serve/docs/guide.md): writing an app, piece by piece.
 - [Wire API](https://github.com/everruns/everruns/blob/main/crates/serve/docs/wire-api.md): the `/v1` routes, the event stream, and resuming.

@@ -1,4 +1,6 @@
-//! Organization-owned provider accounts for managed sandboxes.
+//! Organization-owned provider accounts: sandbox provider accounts (connectors
+//! declaring `sandbox_provisioning`) and search accounts (connectors declaring
+//! `web_search`).
 
 use crate::auth::middleware::OrgAdmin;
 use crate::storage::CreateOrganizationConnectionRow;
@@ -22,10 +24,16 @@ use super::{
 
 pub type AppState = super::virtual_user_connections::AppState;
 
+/// Connector capabilities whose connectors can hold organization accounts.
+const ORGANIZATION_ACCOUNT_CAPABILITIES: [&str; 2] = [
+    "sandbox_provisioning",
+    everruns_contracts::runtime::web_search::WEB_SEARCH_CONNECTOR_CAPABILITY,
+];
+
 #[derive(Debug, Deserialize, ToSchema)]
-/// Organization-owned sandbox provider account input.
+/// Organization-owned provider account input (sandbox provider or search account).
 pub struct SaveOrganizationConnectionRequest {
-    /// Human-readable account name shown in Sandbox Template selectors.
+    /// Human-readable account name shown in Sandbox Template and web search selectors.
     #[schema(example = "Production Daytona")]
     pub name: String,
     /// Provider credential and any provider-specific connection fields.
@@ -34,15 +42,15 @@ pub struct SaveOrganizationConnectionRequest {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-/// Non-secret metadata for an organization-owned sandbox provider account.
+/// Non-secret metadata for an organization-owned provider account.
 pub struct OrganizationConnectionResponse {
-    /// Stable connection identifier used by Sandbox Templates.
+    /// Stable connection identifier used by Sandbox Templates and web search.
     #[schema(example = "00000000-0000-0000-0000-000000000002")]
     pub id: Uuid,
     /// Human-readable account name.
     #[schema(example = "Production Daytona")]
     pub name: String,
-    /// Sandbox provider connector identifier.
+    /// Connector identifier, e.g. `daytona` or `brave_search`.
     #[schema(example = "daytona")]
     pub provider: String,
     /// Provider identity returned while validating the credential, when available.
@@ -87,7 +95,9 @@ pub fn routes(state: AppState) -> Router {
             "/v1/orgs/{org}/organization-connections/{connection_id}/verify",
             post(verify_connection),
         )
-        .with_state(state)
+        .with_state(state.clone())
+        // Web search reads these accounts; its catalog and preview share the state.
+        .merge(super::search_providers::routes(state))
 }
 
 fn clean_name(name: &str) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
@@ -109,11 +119,14 @@ fn provider<'a>(
     let provider = state.connectors.get(id).ok_or_else(|| {
         ErrorResponse::new(format!("Unknown connector: {id}")).into_response(StatusCode::NOT_FOUND)
     })?;
+    let capabilities = provider.capabilities();
     if provider.connection_type() != ConnectorType::ApiKey
-        || !provider.capabilities().contains(&"sandbox_provisioning")
+        || !ORGANIZATION_ACCOUNT_CAPABILITIES
+            .iter()
+            .any(|capability| capabilities.contains(capability))
     {
         return Err(ErrorResponse::new(format!(
-            "Provider '{id}' does not support organization sandbox accounts"
+            "Provider '{id}' does not support organization accounts"
         ))
         .into_response(StatusCode::BAD_REQUEST));
     }
@@ -151,7 +164,7 @@ fn fields(body: &SaveOrganizationConnectionRequest) -> HashMap<String, String> {
     fields
 }
 
-#[utoipa::path(get, path = "/v1/orgs/{org}/organization-connections", description = "List non-secret metadata for organization-owned sandbox provider accounts.", responses((status = 200, body = Vec<OrganizationConnectionResponse>)), tag = "sandbox-templates")]
+#[utoipa::path(get, path = "/v1/orgs/{org}/organization-connections", description = "List non-secret metadata for organization-owned provider accounts: sandbox provider accounts and web search accounts.", responses((status = 200, body = Vec<OrganizationConnectionResponse>)), tag = "sandbox-templates")]
 pub async fn list_connections(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
@@ -171,7 +184,7 @@ pub async fn list_connections(
     ))
 }
 
-#[utoipa::path(post, path = "/v1/orgs/{org}/organization-connections/providers/{provider}", description = "Create and validate an encrypted organization-owned sandbox provider account.", request_body = SaveOrganizationConnectionRequest, responses((status = 201, body = OrganizationConnectionResponse)), tag = "sandbox-templates")]
+#[utoipa::path(post, path = "/v1/orgs/{org}/organization-connections/providers/{provider}", description = "Create and validate an encrypted organization-owned account for a connector that declares sandbox_provisioning or web_search.", request_body = SaveOrganizationConnectionRequest, responses((status = 201, body = OrganizationConnectionResponse)), tag = "sandbox-templates")]
 pub async fn create_connection(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
@@ -221,7 +234,7 @@ pub async fn create_connection(
     ))
 }
 
-#[utoipa::path(put, path = "/v1/orgs/{org}/organization-connections/{connection_id}", description = "Replace the name and credential for an organization-owned sandbox provider account.", request_body = SaveOrganizationConnectionRequest, responses((status = 200, body = OrganizationConnectionResponse)), tag = "sandbox-templates")]
+#[utoipa::path(put, path = "/v1/orgs/{org}/organization-connections/{connection_id}", description = "Replace the name and credential for an organization-owned provider account.", request_body = SaveOrganizationConnectionRequest, responses((status = 200, body = OrganizationConnectionResponse)), tag = "sandbox-templates")]
 pub async fn update_connection(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
@@ -314,7 +327,7 @@ pub async fn delete_connection(
     }
 }
 
-#[utoipa::path(post, path = "/v1/orgs/{org}/organization-connections/{connection_id}/verify", description = "Revalidate an organization-owned sandbox provider credential without returning the secret.", responses((status = 200, body = VerifyConnectionResponse)), tag = "sandbox-templates")]
+#[utoipa::path(post, path = "/v1/orgs/{org}/organization-connections/{connection_id}/verify", description = "Revalidate an organization-owned provider credential without returning the secret.", responses((status = 200, body = VerifyConnectionResponse)), tag = "sandbox-templates")]
 pub async fn verify_connection(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,

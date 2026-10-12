@@ -243,7 +243,7 @@ pub async fn session_config(
             description = "Harness, Agent, or Model not found",
             body = ErrorResponse,
             example = json!({
-                "type": "https://docs.everruns.com/errors/harness_not_found",
+                "type": "https://everruns.com/docs/errors/harness_not_found",
                 "title": "Not Found",
                 "status": 404,
                 "detail": "Harness 'generic' not found in org org_00000000000000000000000000000001.",
@@ -810,7 +810,7 @@ pub async fn unarchive_session(
             description = "Session not found",
             body = ErrorResponse,
             example = json!({
-                "type": "https://docs.everruns.com/errors/session_not_found",
+                "type": "https://everruns.com/docs/errors/session_not_found",
                 "title": "Not Found",
                 "status": 404,
                 "detail": "Session session_01933b5a000070008000000000000001 not found in org org_00000000000000000000000000000001.",

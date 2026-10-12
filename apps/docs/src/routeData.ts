@@ -14,6 +14,7 @@
 // Head entries are already computed before middleware runs, so we modify
 // route.head directly (not just route.entry.data).
 
+import { docsPath, docsUrl } from "./lib/site";
 import { defineRouteMiddleware } from "@astrojs/starlight/route-data";
 import { productLabel } from "./lib/changelog";
 
@@ -27,7 +28,7 @@ const methodPathPrefix =
 const CLOUD_BANNER = {
   content:
     "Everruns Cloud is open in early access. " +
-    '<a href="/getting-started/cloud/">Run agents without operating the platform</a>.',
+    `<a href="${docsPath("/getting-started/cloud/")}">Run agents without operating the platform</a>.`,
 };
 
 export const onRequest = defineRouteMiddleware((context) => {
@@ -118,7 +119,7 @@ export const onRequest = defineRouteMiddleware((context) => {
   // Falls back to the global /og-image.png set in astro.config.mjs.
   const ogImagePath = deriveOgImagePath(slug);
   if (ogImagePath) {
-    setOgMeta(route, "og:image", `https://docs.everruns.com${ogImagePath}`);
+    setOgMeta(route, "og:image", docsUrl(ogImagePath));
     // The per-page card renders this page's title, so the global alt in
     // astro.config.mjs (which describes the fallback card) no longer fits.
     setOgMeta(route, "og:image:alt", route.entry.data.title);
@@ -264,13 +265,13 @@ function addChangelogHead(
       rel: "alternate",
       type: "application/rss+xml",
       title: "Everruns changelog",
-      href: "/changelog/rss.xml",
+      href: docsPath("/changelog/rss.xml"),
     },
     content: "",
   });
   const data = route.entry.data;
   if (!data.date) return;
-  const url = `https://docs.everruns.com/${slug.replace(/\/index$/, "")}/`;
+  const url = docsUrl(`/${slug.replace(/\/index$/, "")}/`);
   const published = data.date.toISOString();
   setOgMeta(route, "og:type", "article");
   setOgMeta(route, "article:published_time", published);
@@ -293,7 +294,7 @@ function addChangelogHead(
       dateModified: (data.lastUpdated instanceof Date ? data.lastUpdated : data.date).toISOString(),
       url,
       mainEntityOfPage: url,
-      image: `https://docs.everruns.com/og/${slug.replace(/\/index$/, "")}.png`,
+      image: docsUrl(`/og/${slug.replace(/\/index$/, "")}.png`),
       author: { "@type": "Organization", name: "Everruns", url: "https://everruns.com" },
       publisher: { "@type": "Organization", name: "Everruns", url: "https://everruns.com" },
       keywords: [...(data.products ?? []), ...(data.surfaces ?? []), data.kind].filter(Boolean),

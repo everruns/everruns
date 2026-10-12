@@ -302,7 +302,7 @@ impl Command for ListAgents {
 /// Get a single agent by ID or name.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetAgent {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -332,7 +332,7 @@ impl Command for GetAgent {
 /// Update an agent. Only provided fields are changed.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateAgentCmd {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     #[serde(flatten)]
     pub req: UpdateAgentRequest,
@@ -545,7 +545,7 @@ impl Command for UpdateAgentCmd {
 /// Archive an agent (soft delete).
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteAgent {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -593,7 +593,7 @@ pub struct UpsertAgent {
     /// Internal replacement mode used by complete portable manifests.
     #[serde(skip)]
     pub(crate) replace_capabilities: bool,
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     #[serde(flatten)]
     pub req: CreateAgentRequest,
@@ -730,7 +730,7 @@ impl Command for UpsertAgent {
 /// Copy an agent. Generates a unique name ({name}-copy, -copy-2, etc.)
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CopyAgent {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -1056,7 +1056,7 @@ mod tests;
 /// Permanently delete an archived agent.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DestroyAgent {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 

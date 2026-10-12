@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use test_harness::TestServer;
 
-const DOCS: &str = "https://docs.everruns.com/features/channels/#agent-api";
+const DOCS: &str = "https://everruns.com/docs/features/channels/#agent-api";
 
 /// An `api_endpoint` channel as the retired handler stored it: an api
 /// channel rewritten to the old type and config. Returns its key.

@@ -847,6 +847,14 @@ impl WorkerAdapters for DirectWorkerAdapters {
         })
     }
 
+    async fn emit_events_fenced(
+        &self,
+        requests: Vec<EventRequest>,
+        fence: &everruns_worker::ActorFence,
+    ) -> Result<Option<Event>> {
+        self.emit_fenced(requests, fence).await
+    }
+
     // =========================================================================
     // LLM Provider Operations
     // =========================================================================
@@ -1760,26 +1768,6 @@ impl WorkerAdapters for DirectWorkerAdapters {
         Arc::new(actors::DirectActorLeaseStore {
             db: self.db.clone(),
         })
-    }
-}
-
-impl DirectWorkerAdapters {
-    /// Build MCP tool definitions from pre-loaded capability rows, through the
-    /// same mapping as the gRPC worker path (annotations and saved labels).
-    async fn build_mcp_tool_definitions_with_capabilities(
-        &self,
-        org_id: i64,
-        capability_rows: &[AgentCapabilityRow],
-    ) -> Result<Vec<ToolDefinition>> {
-        Ok(
-            crate::domains::mcp_servers::tool_labels::org_mcp_tool_definitions(
-                &self.mcp_server_service,
-                &self.db,
-                org_id,
-                capability_rows.iter().map(|row| row.capability_id.as_str()),
-            )
-            .await,
-        )
     }
 }
 

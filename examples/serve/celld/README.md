@@ -6,7 +6,7 @@ A [serve](../../../crates/serve) app that runs durably on
 `main` changes, from `serve::start` to `serve_celld::start`. `worker/` is the
 celld application: a Durable Object per name that runs the app in a container and
 keeps its state. The full guide is
-[Serve on celld](https://docs.everruns.com/framework/serve-celld/).
+[Serve on celld](https://everruns.com/docs/framework/serve-celld/).
 
 ## Try it without containers
 

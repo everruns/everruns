@@ -8,7 +8,7 @@ import { createAgentTrigger } from "@/lib/api/agent-triggers";
 import type { AgentDraft } from "@/lib/api/agent-draft";
 import type { ScopedMcpServers } from "@/lib/api/agent-mcp-types";
 import type { AgentCapabilityConfig, Capability, CreateAgentTriggerRequest } from "@/lib/api/types";
-import { CI_OUTCOME_PATH } from "@/components/agents/github-trigger-form";
+import { ciFilter } from "@/lib/github-ci-filter";
 import { generateChannelToken } from "@/lib/channel-tokens";
 import { DEFAULT_WEBHOOK_MESSAGE } from "@/lib/new-agent";
 import { queryKeys } from "@/lib/query-keys";
@@ -91,9 +91,11 @@ export function draftGitHubTrigger(draft: AgentDraft): CreateAgentTriggerRequest
     session_mode: ciOnly ? "session_per_invocation" : "per_thread",
     message: trigger.message,
     enabled: true,
-    ...(trigger.changes_only
-      ? { filter: { conditions: [], changes_only: { path: CI_OUTCOME_PATH } } }
-      : {}),
+    filter: ciFilter({
+      changesOnly: trigger.changes_only,
+      branches: trigger.branches,
+      workflows: trigger.workflows,
+    }),
   };
 }
 
@@ -107,6 +109,8 @@ export function githubTriggerSetupHref(agentId: string, draft: AgentDraft): stri
   const params = new URLSearchParams({ type: "github", events: trigger.events.join(",") });
   if (trigger.repositories.length > 0) params.set("repos", trigger.repositories.join(","));
   if (trigger.changes_only) params.set("changes_only", "1");
+  if (trigger.branches?.length) params.set("branches", trigger.branches.join(","));
+  if (trigger.workflows?.length) params.set("workflows", trigger.workflows.join(","));
   params.set("message", trigger.message);
   return `/agents/${agentId}/triggers/new?${params.toString()}`;
 }

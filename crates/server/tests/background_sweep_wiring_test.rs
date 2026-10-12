@@ -189,10 +189,8 @@ async fn wait_for_server_sweeps(
                     WHERE session_id = $2 AND event_type = 'input.message'
                 ),
                 EXISTS(
-                    SELECT 1 FROM durable_task_queue
-                    WHERE workflow_id = $2
-                      AND activity_type = 'process_input'
-                      AND status = 'pending'
+                    SELECT 1 FROM session_actors
+                    WHERE session_id = $2 AND runnable_since IS NOT NULL
                 ),
                 EXISTS(
                     SELECT 1 FROM events
@@ -201,10 +199,8 @@ async fn wait_for_server_sweeps(
                       AND data->>'tool_call_id' = $4
                 ),
                 EXISTS(
-                    SELECT 1 FROM durable_task_queue
-                    WHERE workflow_id = $3
-                      AND activity_type = 'reason'
-                      AND status = 'pending'
+                    SELECT 1 FROM session_actors
+                    WHERE session_id = $3 AND runnable_since IS NOT NULL
                 ),
                 EXISTS(
                     SELECT 1 FROM sessions
@@ -225,7 +221,7 @@ async fn wait_for_server_sweeps(
         assert!(
             Instant::now() < deadline,
             "built-in sweep outcomes incomplete: schedule_triggered={}, input_event={}, \
-             process_input_task={}, timeout_event={}, reason_task={}, timeout_session_active={}",
+             scheduled_actor_runnable={}, timeout_event={}, resumed_actor_runnable={}, timeout_session_active={}",
             outcomes.0,
             outcomes.1,
             outcomes.2,

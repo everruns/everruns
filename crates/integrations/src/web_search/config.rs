@@ -1,51 +1,16 @@
 //! Per-agent web search settings (the capability config).
 
-use everruns_contracts::runtime::web_search::{SearchFreshness, WEB_SEARCH_MAX_RESULTS};
+use everruns_contracts::runtime::web_search::{
+    SearchFreshness, WEB_SEARCH_MAX_RESULTS, normalize_domains,
+};
 use serde::{Deserialize, Serialize};
-
-/// Which provider an agent searches with.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProviderSetting {
-    /// Follow the organization's default. Until organizations can set one,
-    /// this behaves as [`Self::Auto`].
-    #[default]
-    OrgDefault,
-    /// Model provider search when the model has it, then a configured search
-    /// account, then free search.
-    Auto,
-    /// The model provider's own search. When the running model has none, the
-    /// tool is executed and the rest of the plan answers.
-    Native,
-    /// Brave Search with a key from the session, the user, or the application.
-    Brave,
-    /// Keyless best-effort search.
-    Free,
-}
-
-impl ProviderSetting {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::OrgDefault => "org_default",
-            Self::Auto => "auto",
-            Self::Native => "native",
-            Self::Brave => "brave",
-            Self::Free => "free",
-        }
-    }
-}
+use uuid::Uuid;
 
 /// What happens when the chosen provider cannot answer.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum FallbackMode {
-    /// Try the next provider in the plan; free search is always last.
-    #[default]
-    Next,
-    /// Use only the chosen provider (for example to keep every search on a
-    /// paid index).
-    None,
-}
+pub use everruns_contracts::runtime::web_search::SearchFallbackMode as FallbackMode;
+/// Which provider an agent searches with (`org_default` follows the
+/// organization's `web_search_defaults`).
+pub use everruns_contracts::runtime::web_search::SearchProviderSetting as ProviderSetting;
 
 /// The `web_search` capability config.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,8 +18,12 @@ pub enum FallbackMode {
 pub struct WebSearchConfig {
     #[serde(default)]
     pub provider: ProviderSetting,
-    #[serde(default)]
-    pub fallback: FallbackMode,
+    /// The organization search account when `provider` is `account`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<Uuid>,
+    /// Unset follows the organization's fallback (fall back by default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback: Option<FallbackMode>,
     /// Results per search when the model does not ask for a number.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
@@ -84,14 +53,20 @@ impl WebSearchConfig {
                 "web_search limit must be between 1 and {WEB_SEARCH_MAX_RESULTS}, got {limit}"
             ));
         }
-        for domain in config.allowed_domains.iter().chain(&config.blocked_domains) {
-            let domain = domain.trim();
-            if domain.is_empty() || domain.contains(['/', ' ', ':']) {
-                return Err(format!(
-                    "web_search domains are bare host names like example.com, got {domain:?}"
-                ));
+        match (config.provider, config.account_id) {
+            (ProviderSetting::Account, None) => {
+                return Err("web_search account_id is required when provider is account".into());
+            }
+            (ProviderSetting::Account, Some(_)) | (_, None) => {}
+            (_, Some(_)) => {
+                return Err(
+                    "web_search account_id is only allowed when provider is account".into(),
+                );
             }
         }
+        normalize_domains(&config.allowed_domains)
+            .and(normalize_domains(&config.blocked_domains))
+            .map_err(|error| format!("web_search {error}"))?;
         Ok(config)
     }
 }
@@ -104,12 +79,13 @@ pub(super) fn schema() -> serde_json::Value {
             "provider": {
                 "type": "string",
                 "title": "Search provider",
-                "enum": ["org_default", "auto", "native", "brave", "free"],
+                "enum": ["org_default", "auto", "native", "brave", "account", "free"],
                 "enumNames": [
                     "Organization default",
                     "Automatic",
                     "Model provider search",
                     "Brave Search",
+                    "A search account",
                     "Free search"
                 ],
                 "default": "org_default",
@@ -117,12 +93,18 @@ pub(super) fn schema() -> serde_json::Value {
                                 the model provider, about $10 per 1,000 searches), then a \
                                 connected search account, then free search."
             },
+            "account_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Search account",
+                "description": "The organization search account, when the provider is a search account."
+            },
             "fallback": {
                 "type": "string",
                 "title": "When the provider cannot answer",
+                "description": "Unset follows the organization default.",
                 "enum": ["next", "none"],
-                "enumNames": ["Fall back to the next provider, then free search", "Stop"],
-                "default": "next"
+                "enumNames": ["Fall back to the next provider, then free search", "Stop"]
             },
             "limit": {
                 "type": "integer",
@@ -158,7 +140,7 @@ pub(super) fn schema() -> serde_json::Value {
 pub(super) fn ui_schema() -> serde_json::Value {
     serde_json::json!({
         "ui:order": [
-            "provider", "fallback", "limit", "freshness",
+            "provider", "account_id", "fallback", "limit", "freshness",
             "allowed_domains", "blocked_domains", "show_provider"
         ],
         "allowed_domains": {"ui:options": {"orderable": false}},
@@ -174,7 +156,7 @@ mod tests {
     fn defaults_follow_the_organization_and_fall_back() {
         let config = WebSearchConfig::from_value(&serde_json::json!({})).unwrap();
         assert_eq!(config.provider, ProviderSetting::OrgDefault);
-        assert_eq!(config.fallback, FallbackMode::Next);
+        assert_eq!(config.fallback, None);
         assert!(!config.show_provider);
     }
 
@@ -185,6 +167,22 @@ mod tests {
                 "blocked_domains": ["https://pinterest.com"]
             }))
             .is_err()
+        );
+    }
+
+    #[test]
+    fn account_id_goes_with_the_account_provider() {
+        let id = "00000000-0000-0000-0000-000000000007";
+        assert!(
+            WebSearchConfig::from_value(
+                &serde_json::json!({"provider": "account", "account_id": id})
+            )
+            .is_ok()
+        );
+        assert!(WebSearchConfig::from_value(&serde_json::json!({"provider": "account"})).is_err());
+        assert!(
+            WebSearchConfig::from_value(&serde_json::json!({"provider": "free", "account_id": id}))
+                .is_err()
         );
     }
 

@@ -1,6 +1,8 @@
 // Authentication middleware and extractors
 // Decision: Support both cookie-based (UI) and header-based (API) auth
 // Decision: In "none" mode, create an anonymous user context
+// Decision: a personal access token's scope is checked right after it
+//   validates, against the route's class (`pat_scope::enforce_route`).
 
 use crate::domains::organizations::record::{
     ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, OrgMembership,
@@ -24,6 +26,7 @@ use uuid::Uuid;
 use super::{
     backend::AuthBackend,
     config::{AuthConfig, AuthMode},
+    pat_scope::enforce_route,
     personal_access_token::PAT_PREFIX,
 };
 use crate::storage::StorageBackend;
@@ -126,7 +129,9 @@ impl IntoResponse for AuthError {
         if let Some(code) = self.code {
             body = body.with_code(code);
         }
-        body.into_response(self.status).into_response()
+        let mut response = body.into_response(self.status).into_response();
+        crate::auth::pat_scope::add_challenge(self.code, &mut response);
+        response
     }
 }
 
@@ -333,10 +338,11 @@ async fn extract_auth_user(
         // Bearer token: either personal access token (evr_pat_ prefix) or JWT
         if let Some(token) = token_after_bearer {
             if token.starts_with(PAT_PREFIX) {
-                return auth_state
+                let user = auth_state
                     .backend
                     .validate_personal_access_token(token)
-                    .await;
+                    .await?;
+                return enforce_route(&mut parts.extensions, &parts.method, token, user);
             }
             return auth_state.backend.validate_token(token).await;
         }
@@ -350,17 +356,13 @@ async fn extract_auth_user(
             }
         };
 
-        if let Some(token) = token_after_scheme {
-            return auth_state
+        let token = token_after_scheme.or(auth_str.starts_with(PAT_PREFIX).then_some(auth_str));
+        if let Some(token) = token {
+            let user = auth_state
                 .backend
                 .validate_personal_access_token(token)
-                .await;
-        }
-        if auth_str.starts_with(PAT_PREFIX) {
-            return auth_state
-                .backend
-                .validate_personal_access_token(auth_str)
-                .await;
+                .await?;
+            return enforce_route(&mut parts.extensions, &parts.method, token, user);
         }
     }
 

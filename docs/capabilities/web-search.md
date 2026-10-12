@@ -20,18 +20,42 @@ search with no key and no setup.
 
 | Setting | What answers | Cost |
 |---|---|---|
-| **Organization default** (`org_default`) | The organization's choice. Until organizations can set one, this is Automatic. | Depends on the provider |
-| **Automatic** (`auto`) | Brave Search when a Brave key is available, otherwise free search | Brave bills its key; free search costs nothing |
+| **Organization default** (`org_default`) | The organization's default provider (see below); Automatic for a new organization | Depends on the provider |
+| **Automatic** (`auto`) | The organization's Automatic order: the model's own search, then the organization's search accounts, then free search | Depends on the provider that answers |
 | **Model provider search** (`native`) | The model's own search. Until model provider search ships, free search answers. | Billed by the model provider |
-| **Brave Search** (`brave`) | The Brave Search API | Billed on the Brave key |
+| **Brave Search** (`brave`) | The Brave Search API with a user, session or application key, else the organization's first Brave account | Billed on the Brave key |
+| **A search account** (`account`, with `account_id`) | One organization search account, such as "Brave Search · Team" | Billed on that account's key |
 | **Free search** (`free`) | DuckDuckGo, then DuckDuckGo Lite, then Mojeek, then Wikipedia | Free |
 
 Free search is the last fallback of every setting: when the chosen provider has no key, rejects
 it, is rate limited or is unavailable, free search answers and the run records why. Set
 `fallback` to `none` to use only the chosen provider.
 
-A Brave key is read from the user's Brave Search connection, then the `BRAVE_SEARCH_API_KEY`
-session secret, then (Framework only) the `BRAVE_SEARCH_API_KEY` environment variable.
+## Organization search accounts and defaults
+
+An organization admin connects search accounts as organization connections
+(`POST /v1/orgs/{org}/organization-connections/providers/brave_search`), the same way sandbox
+provider accounts are connected. Every agent of the organization can then search with them; the
+key never reaches the agent.
+
+`PATCH /v1/orgs/{org}` with `web_search_defaults` sets the organization's defaults:
+
+| Field | Default | Description |
+|---|---|---|
+| `provider` | `auto` | What `org_default` agents use: `auto`, `native`, `brave`, `account` (with `account_id`) or `free` |
+| `automatic_order` | `["native", "free"]` | Order of Automatic: `native` and search account ids. Free search is always last; entries left out keep their place (native first, other accounts after the listed ones) |
+| `allow_native` | `true` | Whether agents may use the model provider's own search (billed by the model provider) |
+| `fallback` | `next` | Fallback for agents that do not set their own |
+| `results_per_search` | 8 | Results per search when neither the model nor the agent asks, 1 to 20 |
+| `blocked_domains` | none | Sites no search returns, on top of each agent's `blocked_domains` |
+
+Changes reach running sessions from their next search, within 30 seconds. `GET
+/v1/search-providers` lists what the organization can search with, and `POST
+/v1/search-providers/preview` shows the plan an agent's setting resolves to for a model.
+
+For `brave`, a key is read from the user's Brave Search connection, then the
+`BRAVE_SEARCH_API_KEY` session secret, then (Framework only) the `BRAVE_SEARCH_API_KEY`
+environment variable, then the organization's first Brave Search account.
 
 Free search is best effort. Search engines sometimes answer automated traffic with a bot check;
 free search treats that as a failure and moves to the next source instead of reporting no
@@ -42,8 +66,9 @@ results. Answers are cached for ten minutes, and requests to one search engine a
 | Field | Default | Description |
 |---|---|---|
 | `provider` | `org_default` | One of the settings above |
-| `fallback` | `next` | `next` falls back to the next provider, then free search; `none` stops |
-| `limit` | 8 | Results per search, 1 to 20 |
+| `account_id` | none | The search account, with `provider: account` |
+| `fallback` | organization's | `next` falls back to the next provider, then free search; `none` stops |
+| `limit` | organization's (8) | Results per search, 1 to 20 |
 | `freshness` | none | `day`, `week`, `month` or `year` |
 | `allowed_domains` | none | Only results from these sites |
 | `blocked_domains` | none | Never results from these sites |

@@ -187,6 +187,19 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         self.emit_event(last).await
     }
 
+    /// Store `requests` in order as the holder of the session actor lease
+    /// `fence`, returning the last one as stored (`None` when the control
+    /// plane did not return it). The control plane stores them only while
+    /// `fence` is still the holder's unexpired lease, checked in the insert's
+    /// transaction; otherwise nothing lands and the error is
+    /// [`crate::actor_lease_store::actor_lease_lost`]. Every write of a leased
+    /// turn goes through here (see `SessionAdapter::with_actor_fence`).
+    async fn emit_events_fenced(
+        &self,
+        requests: Vec<EventRequest>,
+        fence: &crate::actor_lease_store::ActorFence,
+    ) -> Result<Option<Event>>;
+
     // =========================================================================
     // LLM Provider Operations
     // =========================================================================
@@ -792,6 +805,8 @@ pub struct SessionAdapter<A: WorkerAdapters> {
     reads: Option<PhaseReads>,
     /// Stores a phase's lifecycle start events in the background.
     write_behind: Option<WriteBehind>,
+    /// The actor lease every event is appended under, on a leased turn.
+    fence: Option<crate::actor_lease_store::ActorFence>,
 }
 
 impl<A: WorkerAdapters> SessionAdapter<A> {
@@ -818,6 +833,30 @@ impl<A: WorkerAdapters> SessionAdapter<A> {
             org_id: None,
             reads: None,
             write_behind: None,
+            fence: None,
+        }
+    }
+
+    /// Append every event under the actor lease `fence` (see
+    /// [`WorkerAdapters::emit_events_fenced`]).
+    pub fn with_actor_fence(mut self, fence: Option<crate::actor_lease_store::ActorFence>) -> Self {
+        self.fence = fence;
+        self
+    }
+
+    /// Store `requests` in order: under the lease when this adapter has one.
+    async fn store_batch(
+        adapters: &A,
+        fence: Option<&crate::actor_lease_store::ActorFence>,
+        requests: Vec<EventRequest>,
+    ) -> Result<()> {
+        match fence {
+            Some(fence) => {
+                let stored = adapters.emit_events_fenced(requests, fence).await;
+                fence.observe(&stored);
+                stored.map(drop)
+            }
+            None => adapters.emit_events(requests).await,
         }
     }
 
@@ -1094,25 +1133,36 @@ impl<A: WorkerAdapters> crate::core::event_emitter::EventEmitter for SessionAdap
         if let Some(reads) = &self.reads {
             reads.note_event(&request.event_type);
         }
+        let mut pending = Vec::new();
         if let Some(queue) = &self.write_behind {
             if WriteBehind::queues(&request) {
                 let event = provisional_event(&request);
                 let adapters = self.adapters.clone();
+                let fence = self.fence.clone();
                 queue.enqueue_event(request, move |batch| {
                     Box::pin(async move {
                         let count = batch.len();
-                        if let Err(error) = adapters.emit_events(batch).await {
+                        if let Err(error) =
+                            Self::store_batch(&adapters, fence.as_ref(), batch).await
+                        {
                             tracing::warn!(count, error = %error, "queued event store failed");
                         }
                     })
                 });
                 return Ok(event);
             }
-            let pending = queue.take_pending();
+            pending = queue.take_pending();
             queue.flush().await;
-            if !pending.is_empty() {
-                return self.adapters.emit_events_then(pending, request).await;
-            }
+        }
+        if let Some(fence) = &self.fence {
+            let provisional = provisional_event(&request);
+            pending.push(request);
+            let stored = self.adapters.emit_events_fenced(pending, fence).await;
+            fence.observe(&stored);
+            return Ok(stored?.unwrap_or(provisional));
+        }
+        if !pending.is_empty() {
+            return self.adapters.emit_events_then(pending, request).await;
         }
         self.adapters.emit_event(request).await
     }

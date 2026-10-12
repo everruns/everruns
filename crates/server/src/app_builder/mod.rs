@@ -3,6 +3,7 @@ mod channels;
 mod http_layers;
 mod integrations;
 mod listeners;
+mod pat_scope;
 mod serve;
 
 // Server app builder for composable server configurations
@@ -187,6 +188,7 @@ pub struct ServerAppBuilder {
     personal_access_token_routes_wrap: Option<PersonalAccessTokenRoutesWrapFn>,
     org_create_policy: Option<Arc<dyn api::organizations::OrgCreatePolicy>>,
     org_initializers: Vec<Arc<dyn org_init::OrgInitializer>>,
+    pat_route_classes: crate::auth::pat_scope::ExtraRouteClasses,
 }
 
 impl ServerAppBuilder {
@@ -208,6 +210,7 @@ impl ServerAppBuilder {
             personal_access_token_routes_wrap: None,
             org_create_policy: None,
             org_initializers: Vec::new(),
+            pat_route_classes: Default::default(),
         }
     }
 
@@ -383,6 +386,7 @@ impl ServerAppBuilder {
             database_url,
             database_unpooled_url,
             task_broadcaster,
+            actor_wakeups,
         } = crate::setup::storage_init::init_storage(&self.config, migrations).await?;
 
         // Background loops draw from a pool of their own (EVE-1081). Prod had
@@ -1254,8 +1258,11 @@ impl ServerAppBuilder {
 
         let api_routes = http_layers::decorate_api_routes(api_routes, &auth_state.config);
         // PAT scopes: tag each matched route with its declared access class.
-        let api_routes =
-            crate::auth::pat_scope::classify_api_routes(api_routes, &self.config.api_prefix);
+        let api_routes = crate::auth::pat_scope::classify_api_routes(
+            api_routes,
+            &self.config.api_prefix,
+            self.pat_route_classes,
+        );
         // TM-DOS: Global per-IP API rate limiting (applied to API routes only,
         // not /health or /metrics). Set RATE_LIMIT_API_REQUESTS_PER_MINUTE=0 to disable.
         let api_rate_limiter = http_layers::api_rate_limiter(valkey_for_api_rate_limits);
@@ -1387,6 +1394,14 @@ impl ServerAppBuilder {
                 )),
             );
 
+            // TEMPORARY (step 7 deletes it): old-path turn tasks a previous
+            // release still creates during a rolling deploy become actors.
+            crate::background::legacy_turn_sweep::spawn_legacy_turn_sweep(
+                &mut supervisor,
+                db.clone(),
+                task_broadcaster.clone(),
+            );
+
             background::spawn_model_sync(
                 &mut supervisor,
                 db.clone(),
@@ -1407,6 +1422,7 @@ impl ServerAppBuilder {
                         &auth_config,
                         host_composition.egress_service(),
                     ),
+                    actor_wakeups,
                 },
             );
         } else {

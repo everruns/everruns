@@ -32,7 +32,7 @@ assert_eq!(OpenRouterWorkspaceCapability.id(), "openrouter_workspace");
 
 ## Documentation
 
-- [Framework models and providers](https://docs.everruns.com/framework/models-and-providers/)
+- [Framework models and providers](https://everruns.com/docs/framework/models-and-providers/)
 - [API reference](https://docs.rs/everruns-integrations)
 
 ## License

@@ -12,8 +12,9 @@ use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
-const SESSION_COMMANDS: [&str; 4] = [
+const SESSION_COMMANDS: [&str; 5] = [
     "worker_get_connection_token",
+    "worker_get_github_token",
     "worker_get_sandbox_connection_token",
     "worker_get_service_api_key_connection",
     "worker_get_connection_user",
@@ -51,6 +52,17 @@ impl UserConnectionResolver for Recording {
     async fn get_connection_token(&self, _: SessionId, _: &str) -> CoreResult<Option<String>> {
         self.note("token");
         Ok(Some(TOKEN.to_string()))
+    }
+    async fn get_github_token(
+        &self,
+        _: SessionId,
+        access: &everruns_contracts::runtime::GitHubAccess,
+    ) -> CoreResult<Option<everruns_contracts::runtime::McpResolvedCredential>> {
+        self.note(&format!("github:{}", access.acts_as));
+        Ok(Some(everruns_contracts::runtime::McpResolvedCredential {
+            token: TOKEN.to_string(),
+            acted_as: access.acts_as,
+        }))
     }
     async fn get_sandbox_connection_token(
         &self,
@@ -137,6 +149,7 @@ fn session_params(session_id: SessionId, input: Option<Uuid>) -> Value {
         "provider": "daytona",
         "input_message_id": input,
         "credential": SessionSandboxCredential::default(),
+        "access": {"acts_as": "service", "permissions": {"contents": "read"}},
     })
 }
 
@@ -164,6 +177,14 @@ async fn lookups_run_through_the_servers_resolver() {
     .await
     .unwrap();
     assert_eq!(token, json!(TOKEN));
+    let github = run(
+        &ctx,
+        "worker_get_github_token",
+        session_params(session_id, Some(invocation)),
+    )
+    .await
+    .unwrap();
+    assert_eq!(github, json!({"token": TOKEN, "acted_as": "service"}));
     let sandbox = run(
         &ctx,
         "worker_get_sandbox_connection_token",
@@ -200,6 +221,7 @@ async fn lookups_run_through_the_servers_resolver() {
         *resolver.calls.lock().unwrap(),
         [
             format!("token@{invocation}"),
+            format!("github:service@{invocation}"),
             "sandbox".to_string(),
             format!("service@{invocation}"),
             "user".to_string(),
@@ -424,4 +446,96 @@ async fn tokens_stay_out_of_logs() {
         "the capture saw the commands"
     );
     assert!(!logged.contains(TOKEN), "a token was logged");
+}
+
+/// THREAT[TM-TOOL-041]: the search account key lookup answers only for a
+/// search account of the worker's own org. A sandbox provider account of the
+/// same org and another org's search account are both `null`.
+#[tokio::test]
+async fn web_search_lookups_answer_only_for_the_orgs_search_accounts() {
+    use crate::storage::{CreateOrganizationConnectionRow, CreateOrganizationRow};
+    let db = Arc::new(StorageBackend::test_database());
+    let encryption = Arc::new(
+        crate::storage::EncryptionService::new(
+            "kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            &[],
+        )
+        .unwrap(),
+    );
+    let session_id = session(&db, DEFAULT_ORG_ID).await;
+    let other_org = db
+        .create_organization(CreateOrganizationRow {
+            public_id: crate::domains::organizations::record::generate_org_public_id(),
+            name: "Other".to_string(),
+            created_by: None,
+        })
+        .await
+        .unwrap()
+        .org_id;
+    let account = |org_id: i64, provider: &str, key: &str| CreateOrganizationConnectionRow {
+        org_id,
+        name: format!("{provider} account"),
+        provider: provider.to_string(),
+        access_token_encrypted: encryption.encrypt_string(key).unwrap(),
+        provider_username: None,
+        provider_metadata: None,
+    };
+    let brave = db
+        .create_organization_connection(account(DEFAULT_ORG_ID, "brave_search", "brave-key"))
+        .await
+        .unwrap()
+        .id;
+    let daytona = db
+        .create_organization_connection(account(DEFAULT_ORG_ID, "daytona", "sandbox-key"))
+        .await
+        .unwrap()
+        .id;
+    let foreign = db
+        .create_organization_connection(account(other_org, "brave_search", "foreign-key"))
+        .await
+        .unwrap()
+        .id;
+    let ctx = Ctx::minimal_for_test(
+        Caller::internal(DEFAULT_ORG_ID),
+        db.clone(),
+        Some(encryption),
+    );
+
+    let settings = run(
+        &ctx,
+        "worker_get_web_search_settings",
+        json!({ "session_id": session_id.to_string() }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(settings["defaults"]["provider"], "auto");
+    let accounts = settings["accounts"].as_array().unwrap();
+    assert_eq!(accounts.len(), 1, "only search accounts: {settings}");
+    assert_eq!(accounts[0]["id"], brave.to_string());
+    assert!(!settings.to_string().contains("brave-key"));
+
+    let key = |account: Uuid| {
+        run(
+            &ctx,
+            "worker_get_web_search_account_key",
+            json!({ "session_id": session_id.to_string(), "account_id": account }),
+        )
+    };
+    assert_eq!(key(brave).await.unwrap(), json!("brave-key"));
+    assert_eq!(key(daytona).await.unwrap(), Value::Null);
+    assert_eq!(key(foreign).await.unwrap(), Value::Null);
+
+    // A worker of another org cannot name this org's session.
+    let other_ctx = Ctx::minimal_for_test(Caller::internal(other_org), db, None);
+    let error = run(
+        &other_ctx,
+        "worker_get_web_search_account_key",
+        json!({ "session_id": session_id.to_string(), "account_id": foreign }),
+    )
+    .await
+    .expect_err("foreign session");
+    assert!(
+        matches!(error.kind, CommandErrorKind::NotFound(_)),
+        "{error:?}"
+    );
 }

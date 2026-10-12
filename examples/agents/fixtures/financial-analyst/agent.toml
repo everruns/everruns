@@ -1,4 +1,4 @@
-#:schema https://docs.everruns.com/schemas/agent/v1.json
+#:schema https://everruns.com/docs/schemas/agent/v1.json
 schema_version = 1
 name = "financial-analyst"
 display_name = "Financial Analyst"

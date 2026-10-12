@@ -139,7 +139,7 @@ surrounding canvas, never re-derive ring coordinates by bounding box.
 #### Writing mechanics
 
 Prose should read as written by a person, not a model. Applies to public docs
-(docs.everruns.com), `knowledge/`, `README`s, and UI copy.
+(everruns.com/docs), `knowledge/`, `README`s, and UI copy.
 
 1. **No em-dashes (`—`).** Use a comma, colon, semicolon, parentheses, or two
    sentences. Pick the punctuation that fits the clause. (Hyphens in compound
@@ -218,7 +218,7 @@ refinement does not change the public site's palette.
 - Footer: Charcoal background, Silver text
 - Accents: Gold for highlights, Navy for links
 
-#### Documentation (docs.everruns.com)
+#### Documentation (everruns.com/docs)
 
 - Light theme: White/Smoke backgrounds, Navy links
 - Dark theme: Navy background, Gold accents

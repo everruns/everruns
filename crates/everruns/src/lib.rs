@@ -1,6 +1,6 @@
 #![deny(missing_docs)]
 
-//! The application-facing crate for the [Everruns Framework](https://docs.everruns.com/framework/).
+//! The application-facing crate for the [Everruns Framework](https://everruns.com/docs/framework/).
 //!
 //! Build agents, attach provider configuration, select model ids, add typed
 //! tools, run isolated multi-turn sessions, bind backend-owned workspace heads

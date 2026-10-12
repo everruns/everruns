@@ -52,5 +52,5 @@ saying anything, and resolving went through the coordinator.
   threads get the same script whatever order they run in. The example binary
   never uses it.
 
-See [Coordinator agents](https://docs.everruns.com/framework/coordination/)
+See [Coordinator agents](https://everruns.com/docs/framework/coordination/)
 for the model.

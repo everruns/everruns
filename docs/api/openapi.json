@@ -16034,7 +16034,7 @@
         "tags": [
           "sandbox-templates"
         ],
-        "description": "List non-secret metadata for organization-owned sandbox provider accounts.",
+        "description": "List non-secret metadata for organization-owned provider accounts: sandbox provider accounts and web search accounts.",
         "operationId": "list_connections",
         "responses": {
           "200": {
@@ -16057,7 +16057,7 @@
         "tags": [
           "sandbox-templates"
         ],
-        "description": "Create and validate an encrypted organization-owned sandbox provider account.",
+        "description": "Create and validate an encrypted organization-owned account for a connector that declares sandbox_provisioning or web_search.",
         "operationId": "create_connection",
         "parameters": [
           {
@@ -16105,7 +16105,7 @@
         "tags": [
           "sandbox-templates"
         ],
-        "description": "Replace the name and credential for an organization-owned sandbox provider account.",
+        "description": "Replace the name and credential for an organization-owned provider account.",
         "operationId": "update_connection",
         "parameters": [
           {
@@ -16183,7 +16183,7 @@
         "tags": [
           "sandbox-templates"
         ],
-        "description": "Revalidate an organization-owned sandbox provider credential without returning the secret.",
+        "description": "Revalidate an organization-owned provider credential without returning the secret.",
         "operationId": "verify_connection",
         "parameters": [
           {
@@ -19100,6 +19100,76 @@
         }
       }
     },
+    "/v1/search-providers": {
+      "get": {
+        "tags": [
+          "web-search"
+        ],
+        "description": "List the web search providers of the active organization: built-in free and model provider search, connected model providers that search natively, connectors that hold search accounts, connected search accounts with status, and the organization's web search defaults.",
+        "operationId": "list_search_providers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchProviderCatalog"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/search-providers/preview": {
+      "post": {
+        "tags": [
+          "web-search"
+        ],
+        "description": "Resolve an agent's web search setting and model to the ordered plan its searches follow, with the organization's current defaults. Optionally run a test query against one provider (`free` or `account:<id>`; organization admins only).",
+        "operationId": "preview_search_plan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchPlanPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchPlanPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid config, unknown model, or unknown test provider",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Test queries need an organization admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/sessions": {
       "get": {
         "tags": [
@@ -19372,7 +19442,7 @@
                   "detail": "Harness 'generic' not found in org org_00000000000000000000000000000001.",
                   "status": 404,
                   "title": "Not Found",
-                  "type": "https://docs.everruns.com/errors/harness_not_found"
+                  "type": "https://everruns.com/docs/errors/harness_not_found"
                 }
               }
             }
@@ -19862,7 +19932,7 @@
                   "detail": "Session session_01933b5a000070008000000000000001 not found in org org_00000000000000000000000000000001.",
                   "status": 404,
                   "title": "Not Found",
-                  "type": "https://docs.everruns.com/errors/session_not_found"
+                  "type": "https://everruns.com/docs/errors/session_not_found"
                 }
               }
             }
@@ -26816,7 +26886,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
             "example": "avatar_01933b5a000070008000000000000001"
           },
           "sizes": {
@@ -27119,11 +27189,14 @@
       },
       "AgentCredentialBinding": {
         "type": "object",
-        "description": "Metadata for a write-only credential bound to one agent: either an MCP\ntool parameter or an HTTP API the agent's shell calls.",
+        "description": "Metadata for a write-only credential bound to one agent and MCP tool parameter.",
         "required": [
           "id",
           "agent_id",
-          "kind",
+          "mcp_server_name",
+          "mcp_server_url",
+          "tool_name",
+          "parameter_name",
           "label",
           "configured",
           "created_at",
@@ -27135,17 +27208,6 @@
             "type": "string",
             "description": "Agent that exclusively owns and may use this credential.",
             "example": "agent_01933b5a000070008000000000000001"
-          },
-          "binding": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/SecretBinding",
-                "description": "URL prefix and auth form the value may be sent with (`http`)."
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "configured": {
             "type": "boolean",
@@ -27165,23 +27227,11 @@
             "description": "Optional explanation of why the credential is needed.",
             "example": "Delivers scheduled status notifications"
           },
-          "env_name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Env var the agent's shell uses as a placeholder (`http`).",
-            "example": "JEV_API_KEY"
-          },
           "id": {
             "type": "string",
             "format": "uuid",
             "description": "Stable credential binding identifier.",
             "example": "01933b5a-0000-7000-8000-000000000001"
-          },
-          "kind": {
-            "$ref": "#/components/schemas/AgentCredentialKind",
-            "description": "How the credential is injected."
           },
           "label": {
             "type": "string",
@@ -27189,27 +27239,18 @@
             "example": "Visti channel key"
           },
           "mcp_server_name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Name of the attached MCP server (`mcp_parameter`).",
+            "type": "string",
+            "description": "Name of the attached MCP server.",
             "example": "visti"
           },
           "mcp_server_url": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Exact MCP endpoint authorized to receive the credential (`mcp_parameter`).",
+            "type": "string",
+            "description": "Exact MCP endpoint authorized to receive the credential.",
             "example": "https://visti.sh/mcp"
           },
           "parameter_name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Top-level tool argument injected by the server (`mcp_parameter`).",
+            "type": "string",
+            "description": "Top-level tool argument injected by the server.",
             "example": "channel_key"
           },
           "setup_url": {
@@ -27218,11 +27259,8 @@
             "example": "/agents/agent_01933b5a000070008000000000000001?tab=credentials"
           },
           "tool_name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "MCP tool whose outbound call receives the credential (`mcp_parameter`).",
+            "type": "string",
+            "description": "MCP tool whose outbound call receives the credential.",
             "example": "visti_send"
           },
           "updated_at": {
@@ -27231,14 +27269,6 @@
             "example": "2026-08-08T16:05:00Z"
           }
         }
-      },
-      "AgentCredentialKind": {
-        "type": "string",
-        "description": "How a write-only agent credential reaches the outside world.",
-        "enum": [
-          "mcp_parameter",
-          "http"
-        ]
       },
       "AgentDraft": {
         "type": "object",
@@ -29023,7 +29053,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/)."
           },
           "ip_address": {
             "type": [
@@ -29269,16 +29299,6 @@
           "secrets"
         ],
         "properties": {
-          "bindings": {
-            "type": "object",
-            "description": "Optional bindings keyed by secret name. A bound secret is write-only:\nthe agent's shell sees `$NAME` as a placeholder, and the platform puts\nthe value on requests to the bound URL only. A name set without a\nbinding becomes an ordinary secret again.",
-            "additionalProperties": {
-              "$ref": "#/components/schemas/SecretBinding"
-            },
-            "propertyNames": {
-              "type": "string"
-            }
-          },
           "secrets": {
             "type": "object",
             "description": "Map of secret names to values. Names are case-sensitive; values are stored encrypted\nand never returned by list/read endpoints. Existing keys are overwritten.\nExample: `{\"OPENAI_API_KEY\": \"sk-...\", \"GITHUB_TOKEN\": \"ghp_...\"}`.",
@@ -29654,6 +29674,35 @@
           "agent_channel"
         ]
       },
+      "BuiltInSearchProvider": {
+        "type": "object",
+        "description": "A provider that needs no setup.",
+        "required": [
+          "id",
+          "name",
+          "description"
+        ],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "description": "`free` or `native`.",
+            "example": "free"
+          },
+          "name": {
+            "type": "string"
+          },
+          "price_note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Plain-words cost, when the provider bills per search."
+          }
+        }
+      },
       "BuiltinTool": {
         "type": "object",
         "description": "Built-in tool configuration\n\nNote: The `kind` field has been removed. Tools are now identified\nsolely by their `name` field, and execution happens via the ToolRegistry\nwhich looks up tools by name.",
@@ -29837,7 +29886,7 @@
               "string",
               "null"
             ],
-            "description": "Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.",
+            "description": "Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.",
             "example": "session_file_system"
           },
           "features": {
@@ -32119,8 +32168,11 @@
       },
       "CreateAgentCredentialBinding": {
         "type": "object",
-        "description": "Declare a credential requirement for an agent: an attached MCP tool's\nparameter (`mcp_server_name`, `tool_name`, `parameter_name`), or an HTTP\nAPI the agent's shell calls (`env_name`, `url`, `auth`).",
+        "description": "Declare a credential requirement for an agent's attached MCP tool.",
         "required": [
+          "mcp_server_name",
+          "tool_name",
+          "parameter_name",
           "label"
         ],
         "properties": {
@@ -32128,14 +32180,6 @@
             "type": "string",
             "description": "Agent ID, populated from the request path by the HTTP API.",
             "example": "agent_01933b5a000070008000000000000001"
-          },
-          "auth": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "`bearer` (default) sends `Authorization: Bearer <value>`; `header`\nsends the value in `header_name` (HTTP API).",
-            "example": "bearer"
           },
           "description": {
             "type": [
@@ -32145,58 +32189,25 @@
             "description": "Optional explanation of how the credential will be used.",
             "example": "Delivers scheduled status notifications"
           },
-          "env_name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Env var name the agent's shell uses as a placeholder (HTTP API).",
-            "example": "JEV_API_KEY"
-          },
-          "header_name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Header that carries the value when `auth` is `header` (HTTP API).",
-            "example": "X-Api-Key"
-          },
           "label": {
             "type": "string",
             "description": "Human-readable label shown in the secure setup UI.",
             "example": "Visti channel key"
           },
           "mcp_server_name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Name of an MCP server attached to the agent (MCP tool parameter).",
+            "type": "string",
+            "description": "Name of an MCP server attached to the agent.",
             "example": "visti"
           },
           "parameter_name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Top-level tool argument to inject outside model context (MCP tool parameter).",
+            "type": "string",
+            "description": "Top-level tool argument to inject outside model context.",
             "example": "channel_key"
           },
           "tool_name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "MCP tool whose outbound call requires the credential (MCP tool parameter).",
+            "type": "string",
+            "description": "MCP tool whose outbound call requires the credential.",
             "example": "visti_send"
-          },
-          "url": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "HTTPS URL prefix the value may be sent to (HTTP API).",
-            "example": "https://api.typesafe.ai"
           }
         }
       },
@@ -35037,6 +35048,13 @@
         "type": "object",
         "description": "A GitHub trigger to create once GitHub is connected on the agent.",
         "properties": {
+          "branches": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "CI events only: branches to accept, e.g. `main`; empty means every branch."
+          },
           "changes_only": {
             "type": "boolean",
             "description": "Run only when a CI outcome differs from the previous one for the same\nrepository and branch."
@@ -35058,6 +35076,13 @@
               "type": "string"
             },
             "description": "`owner/name` repositories; empty means every repository the App sees."
+          },
+          "workflows": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "CI events only: workflow (or check suite app) names to accept, e.g. `CI`;\nempty means every workflow."
           }
         }
       },
@@ -35452,7 +35477,7 @@
               "null"
             ],
             "description": "RFC 9457 problem type URI. Optional; identifies the problem class.",
-            "example": "https://docs.everruns.com/errors/session_not_found"
+            "example": "https://everruns.com/docs/errors/session_not_found"
           }
         }
       },
@@ -36802,7 +36827,7 @@
           },
           "public_id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
             "example": "org_01933b5a000070008000000000000001"
           },
           "role": {
@@ -36840,7 +36865,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
             "example": "019e8957539a7aa0bb92e0d2b49427b1"
           },
           "last_used_at": {
@@ -36921,7 +36946,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
             "example": "user_01933b5a000070008000000000000001"
           },
           "name": {
@@ -39120,7 +39145,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
             "example": "img_01933b5a00007000800000000000001"
           },
           "metadata": {
@@ -39156,7 +39181,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
             "example": "img_01933b5a00007000800000000000001"
           },
           "size_bytes": {
@@ -39750,7 +39775,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
             "example": "kb_01933b5a000070008000000000000001"
           },
           "name": {
@@ -39792,7 +39817,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
             "example": "kbe_01933b5a000070008000000000000001"
           },
           "kb_id": {
@@ -39861,7 +39886,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
             "example": "kidoc_01933b5a000070008000000000000001"
           },
           "index_id": {
@@ -39965,7 +39990,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
             "example": "kidx_01933b5a000070008000000000000001"
           },
           "last_sync_error": {
@@ -40672,11 +40697,14 @@
             "type": "array",
             "items": {
               "type": "object",
-              "description": "Metadata for a write-only credential bound to one agent: either an MCP\ntool parameter or an HTTP API the agent's shell calls.",
+              "description": "Metadata for a write-only credential bound to one agent and MCP tool parameter.",
               "required": [
                 "id",
                 "agent_id",
-                "kind",
+                "mcp_server_name",
+                "mcp_server_url",
+                "tool_name",
+                "parameter_name",
                 "label",
                 "configured",
                 "created_at",
@@ -40688,17 +40716,6 @@
                   "type": "string",
                   "description": "Agent that exclusively owns and may use this credential.",
                   "example": "agent_01933b5a000070008000000000000001"
-                },
-                "binding": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/SecretBinding",
-                      "description": "URL prefix and auth form the value may be sent with (`http`)."
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
                 },
                 "configured": {
                   "type": "boolean",
@@ -40718,23 +40735,11 @@
                   "description": "Optional explanation of why the credential is needed.",
                   "example": "Delivers scheduled status notifications"
                 },
-                "env_name": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Env var the agent's shell uses as a placeholder (`http`).",
-                  "example": "JEV_API_KEY"
-                },
                 "id": {
                   "type": "string",
                   "format": "uuid",
                   "description": "Stable credential binding identifier.",
                   "example": "01933b5a-0000-7000-8000-000000000001"
-                },
-                "kind": {
-                  "$ref": "#/components/schemas/AgentCredentialKind",
-                  "description": "How the credential is injected."
                 },
                 "label": {
                   "type": "string",
@@ -40742,27 +40747,18 @@
                   "example": "Visti channel key"
                 },
                 "mcp_server_name": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Name of the attached MCP server (`mcp_parameter`).",
+                  "type": "string",
+                  "description": "Name of the attached MCP server.",
                   "example": "visti"
                 },
                 "mcp_server_url": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Exact MCP endpoint authorized to receive the credential (`mcp_parameter`).",
+                  "type": "string",
+                  "description": "Exact MCP endpoint authorized to receive the credential.",
                   "example": "https://visti.sh/mcp"
                 },
                 "parameter_name": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Top-level tool argument injected by the server (`mcp_parameter`).",
+                  "type": "string",
+                  "description": "Top-level tool argument injected by the server.",
                   "example": "channel_key"
                 },
                 "setup_url": {
@@ -40771,11 +40767,8 @@
                   "example": "/agents/agent_01933b5a000070008000000000000001?tab=credentials"
                 },
                 "tool_name": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "MCP tool whose outbound call receives the credential (`mcp_parameter`).",
+                  "type": "string",
+                  "description": "MCP tool whose outbound call receives the credential.",
                   "example": "visti_send"
                 },
                 "updated_at": {
@@ -40840,7 +40833,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+                  "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/)."
                 },
                 "ip_address": {
                   "type": [
@@ -40935,7 +40928,7 @@
                     "string",
                     "null"
                   ],
-                  "description": "Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.",
+                  "description": "Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.",
                   "example": "session_file_system"
                 },
                 "features": {
@@ -42135,7 +42128,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                  "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
                   "example": "kb_01933b5a000070008000000000000001"
                 },
                 "name": {
@@ -42190,7 +42183,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                  "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
                   "example": "kbe_01933b5a000070008000000000000001"
                 },
                 "kb_id": {
@@ -42272,7 +42265,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                  "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
                   "example": "kidoc_01933b5a000070008000000000000001"
                 },
                 "index_id": {
@@ -42389,7 +42382,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                  "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
                   "example": "kidx_01933b5a000070008000000000000001"
                 },
                 "last_sync_error": {
@@ -42653,7 +42646,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                  "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
                   "example": "mem_01933b5a000070008000000000000001"
                 },
                 "is_readonly": {
@@ -43118,6 +43111,7 @@
                 "name",
                 "default_provider_per_service",
                 "system_decisions",
+                "web_search_defaults",
                 "created_at",
                 "updated_at"
               ],
@@ -43190,6 +43184,10 @@
                   "type": "string",
                   "format": "date-time",
                   "description": "When the organization was last updated"
+                },
+                "web_search_defaults": {
+                  "$ref": "#/components/schemas/WebSearchDefaults",
+                  "description": "Web search defaults: the provider agents on \"Organization default\"\nuse, the Automatic order, whether model provider search is allowed,\nthe fallback, results per search and blocked domains. Built-in\ndefaults (Automatic) when the organization never set any."
                 }
               }
             },
@@ -43282,17 +43280,6 @@
                 "updated_at"
               ],
               "properties": {
-                "binding": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/SecretBinding",
-                      "description": "Where the value may be sent, for a bound (write-only) secret."
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
                 "created_at": {
                   "type": "string",
                   "description": "When the secret was created"
@@ -43380,7 +43367,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                  "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
                   "example": "skill_01933b5a00007000800000000000001"
                 },
                 "license": {
@@ -43664,7 +43651,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+                  "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/)."
                 },
                 "name": {
                   "type": "string",
@@ -44229,7 +44216,7 @@
                     },
                     "id": {
                       "type": "string",
-                      "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                      "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
                       "example": "model_01933b5a00007000800000000000001"
                     },
                     "is_favorite": {
@@ -44368,7 +44355,7 @@
                     },
                     "id": {
                       "type": "string",
-                      "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                      "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
                       "example": "model_01933b5a00007000800000000000001"
                     },
                     "is_favorite": {
@@ -44524,7 +44511,7 @@
                     },
                     "id": {
                       "type": "string",
-                      "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                      "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
                       "example": "provider_01933b5a00007000800000000000001"
                     },
                     "last_synced_at": {
@@ -44940,7 +44927,7 @@
                     },
                     "id": {
                       "type": "string",
-                      "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                      "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
                       "example": "skill_01933b5a00007000800000000000001"
                     },
                     "license": {
@@ -46660,7 +46647,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
             "example": "mem_01933b5a000070008000000000000001"
           },
           "is_readonly": {
@@ -47263,7 +47250,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
             "example": "model_01933b5a00007000800000000000001"
           },
           "is_favorite": {
@@ -47727,7 +47714,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
             "example": "model_01933b5a00007000800000000000001"
           },
           "is_favorite": {
@@ -47840,6 +47827,31 @@
           },
           "role": {
             "type": "string"
+          }
+        }
+      },
+      "NativeSearchProvider": {
+        "type": "object",
+        "description": "A connected model provider whose models search natively.",
+        "required": [
+          "provider_id",
+          "name",
+          "provider_type",
+          "price_note"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "price_note": {
+            "type": "string"
+          },
+          "provider_id": {
+            "type": "string"
+          },
+          "provider_type": {
+            "type": "string",
+            "example": "anthropic"
           }
         }
       },
@@ -47990,7 +48002,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
             "example": "notification_01933b5a00007000800000000000001"
           },
           "kind": {
@@ -48442,7 +48454,7 @@
       },
       "OrganizationConnectionResponse": {
         "type": "object",
-        "description": "Non-secret metadata for an organization-owned sandbox provider account.",
+        "description": "Non-secret metadata for an organization-owned provider account.",
         "required": [
           "id",
           "name",
@@ -48460,7 +48472,7 @@
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "Stable connection identifier used by Sandbox Templates.",
+            "description": "Stable connection identifier used by Sandbox Templates and web search.",
             "example": "00000000-0000-0000-0000-000000000002"
           },
           "name": {
@@ -48470,7 +48482,7 @@
           },
           "provider": {
             "type": "string",
-            "description": "Sandbox provider connector identifier.",
+            "description": "Connector identifier, e.g. `daytona` or `brave_search`.",
             "example": "daytona"
           },
           "provider_username": {
@@ -48497,6 +48509,7 @@
           "name",
           "default_provider_per_service",
           "system_decisions",
+          "web_search_defaults",
           "created_at",
           "updated_at"
         ],
@@ -48569,6 +48582,10 @@
             "type": "string",
             "format": "date-time",
             "description": "When the organization was last updated"
+          },
+          "web_search_defaults": {
+            "$ref": "#/components/schemas/WebSearchDefaults",
+            "description": "Web search defaults: the provider agents on \"Organization default\"\nuse, the Automatic order, whether model provider search is allowed,\nthe fallback, results per search and blocked domains. Built-in\ndefaults (Automatic) when the organization never set any."
           }
         }
       },
@@ -49646,7 +49663,7 @@
                         "string",
                         "null"
                       ],
-                      "description": "Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.",
+                      "description": "Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.",
                       "example": "session_file_system"
                     },
                     "features": {
@@ -50335,7 +50352,7 @@
           },
           "id": {
             "$ref": "#/components/schemas/payacctId",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/)."
           },
           "label": {
             "type": "string",
@@ -50432,7 +50449,7 @@
           },
           "id": {
             "$ref": "#/components/schemas/payattId",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/)."
           },
           "operation": {
             "type": "string",
@@ -50559,7 +50576,7 @@
           },
           "id": {
             "$ref": "#/components/schemas/paypolId",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/)."
           },
           "max_amount_usd_per_day": {
             "type": [
@@ -50930,7 +50947,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/)."
           },
           "name": {
             "type": "string",
@@ -51041,7 +51058,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
             "example": "provider_01933b5a00007000800000000000001"
           },
           "last_synced_at": {
@@ -53926,13 +53943,13 @@
             "properties": {
               "name": {
                 "type": "string",
-                "description": "Human-readable account name shown in Sandbox Template selectors.",
+                "description": "Human-readable account name shown in Sandbox Template and web search selectors.",
                 "example": "Production Daytona"
               }
             }
           }
         ],
-        "description": "Organization-owned sandbox provider account input."
+        "description": "Organization-owned provider account input (sandbox provider or search account)."
       },
       "SavedReport": {
         "type": "object",
@@ -54958,61 +54975,334 @@
           }
         }
       },
-      "SecretAuth": {
-        "oneOf": [
-          {
-            "type": "object",
-            "description": "`Authorization: Bearer <value>`.",
-            "required": [
-              "type"
-            ],
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": [
-                  "bearer"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "`<name>: <value>`, e.g. `X-Api-Key`.",
-            "required": [
-              "name",
-              "type"
-            ],
-            "properties": {
-              "name": {
-                "type": "string",
-                "description": "Header name."
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "header"
-                ]
-              }
-            }
-          }
-        ],
-        "description": "How a bound secret is put on an outbound request.\n\nHeader-only by design: a value\nis never placed in a URL or a body."
-      },
-      "SecretBinding": {
+      "SearchAccountSummary": {
         "type": "object",
-        "description": "Where a bound secret may be sent, and how.",
+        "description": "A connected organization search account (never its key).",
         "required": [
-          "url",
-          "auth"
+          "id",
+          "provider",
+          "name",
+          "status",
+          "connected_at"
         ],
         "properties": {
-          "auth": {
-            "$ref": "#/components/schemas/SecretAuth",
-            "description": "How the value is attached."
+          "automatic_position": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Place in the Automatic order (1-based), counting native and accounts.",
+            "minimum": 0
+          },
+          "connected_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "Account name the admin gave it."
+          },
+          "provider": {
+            "type": "string",
+            "example": "brave_search"
+          },
+          "status": {
+            "type": "string",
+            "description": "`ready` when a key is stored, `missing_key` otherwise.",
+            "example": "ready"
+          }
+        }
+      },
+      "SearchConnector": {
+        "type": "object",
+        "description": "A connector whose organization accounts answer web search.",
+        "required": [
+          "provider",
+          "name",
+          "description",
+          "icon"
+        ],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string",
+            "description": "Connector id, used to connect an account at\n`/v1/orgs/{org}/organization-connections/providers/{provider}`.",
+            "example": "brave_search"
+          }
+        }
+      },
+      "SearchFallbackMode": {
+        "type": "string",
+        "description": "What happens when a provider cannot answer.",
+        "enum": [
+          "next",
+          "none"
+        ]
+      },
+      "SearchPlanPreview": {
+        "type": "object",
+        "description": "The plan an agent's search would follow.",
+        "required": [
+          "provider",
+          "fallback",
+          "limit",
+          "model_has_native",
+          "org_blocked_domains",
+          "steps"
+        ],
+        "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "fallback": {
+            "$ref": "#/components/schemas/SearchFallbackMode"
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Results per search when the model does not ask.",
+            "minimum": 0
+          },
+          "model_has_native": {
+            "type": "boolean",
+            "description": "Whether the model searches natively (and the organization allows it)."
+          },
+          "org_blocked_domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "provider": {
+            "$ref": "#/components/schemas/SearchProviderSetting",
+            "description": "The setting in effect after following the organization default."
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchPlanStep"
+            }
+          },
+          "test": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SearchTestOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "SearchPlanPreviewRequest": {
+        "type": "object",
+        "description": "Resolve an agent's web search setting and model to a plan.",
+        "properties": {
+          "config": {
+            "type": "object",
+            "description": "The agent's `web_search` capability config; omitted means\n`{\"provider\": \"org_default\"}`."
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The model the agent runs; omitted uses the organization's default model."
+          },
+          "test": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SearchTestQuery",
+                "description": "Optional test query against one provider (organization admins)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "SearchPlanStep": {
+        "type": "object",
+        "description": "One provider in a previewed plan.",
+        "required": [
+          "id",
+          "label",
+          "available"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "Whether this step can answer for this model now."
+          },
+          "id": {
+            "type": "string",
+            "description": "`native`, `brave`, `account:<id>` or `free`."
+          },
+          "label": {
+            "type": "string"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it cannot, or what it relies on."
+          },
+          "price_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "SearchProviderCatalog": {
+        "type": "object",
+        "description": "Everything the organization can search with.",
+        "required": [
+          "built_in",
+          "native_providers",
+          "connectors",
+          "accounts",
+          "defaults"
+        ],
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchAccountSummary"
+            }
+          },
+          "built_in": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BuiltInSearchProvider"
+            }
+          },
+          "connectors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchConnector"
+            }
+          },
+          "defaults": {
+            "$ref": "#/components/schemas/WebSearchDefaults"
+          },
+          "native_providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NativeSearchProvider"
+            }
+          }
+        }
+      },
+      "SearchProviderSetting": {
+        "type": "string",
+        "description": "Which provider web search uses.",
+        "enum": [
+          "org_default",
+          "auto",
+          "native",
+          "brave",
+          "account",
+          "free"
+        ]
+      },
+      "SearchTestOutcome": {
+        "type": "object",
+        "description": "What a test query returned.",
+        "required": [
+          "provider",
+          "ok",
+          "duration_ms",
+          "results"
+        ],
+        "properties": {
+          "duration_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchTestResult"
+            }
+          }
+        }
+      },
+      "SearchTestQuery": {
+        "type": "object",
+        "description": "Run one query against one provider.",
+        "required": [
+          "query",
+          "provider"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "`free` or `account:<id>`.",
+            "example": "free"
+          },
+          "query": {
+            "type": "string",
+            "example": "tokio release notes"
+          }
+        }
+      },
+      "SearchTestResult": {
+        "type": "object",
+        "description": "One result of a test query.",
+        "required": [
+          "title",
+          "url",
+          "site"
+        ],
+        "properties": {
+          "site": {
+            "type": "string"
+          },
+          "snippet": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
           },
           "url": {
-            "type": "string",
-            "description": "`https://host[:port][/path-prefix]` the value may be sent to."
+            "type": "string"
           }
         }
       },
@@ -55025,17 +55315,6 @@
           "updated_at"
         ],
         "properties": {
-          "binding": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/SecretBinding",
-                "description": "Where the value may be sent, for a bound (write-only) secret."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "created_at": {
             "type": "string",
             "description": "When the secret was created"
@@ -56616,7 +56895,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
             "example": "skill_01933b5a00007000800000000000001"
           },
           "license": {
@@ -61747,6 +62026,17 @@
                 "type": "null"
               }
             ]
+          },
+          "web_search_defaults": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WebSearchDefaults",
+                "description": "Web search defaults; replaces the stored defaults as a whole. Omitted\nfields take their built-in default. `provider` cannot be\n`org_default`, `account_id` and `automatic_order` entries must name\nthis organization's search accounts, free search is always last in\nthe Automatic order, and `results_per_search` is 1 to 20."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -62371,7 +62661,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/)."
           },
           "name": {
             "type": "string",
@@ -63181,6 +63471,53 @@
           }
         }
       },
+      "WebSearchDefaults": {
+        "type": "object",
+        "description": "An organization's web search defaults.",
+        "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The search account when `provider` is `account`."
+          },
+          "allow_native": {
+            "type": "boolean",
+            "description": "Whether agents may use the model provider's own search (billed by the\nmodel provider)."
+          },
+          "automatic_order": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Automatic order: `native`, search account ids, and `free`, which is\nalways last. Entries left out keep their natural place."
+          },
+          "blocked_domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Sites no search in this organization returns, on top of each agent's."
+          },
+          "fallback": {
+            "$ref": "#/components/schemas/SearchFallbackMode",
+            "description": "When a provider cannot answer: `next` falls back (free search last),\n`none` stops. An agent's own `fallback` wins."
+          },
+          "provider": {
+            "$ref": "#/components/schemas/SearchProviderSetting",
+            "description": "Provider for agents set to the organization default: `auto`, `native`,\n`brave`, `account` (with `account_id`) or `free`."
+          },
+          "results_per_search": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Results per search when neither the model nor the agent asks (1 to 20).",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "WebhookInvocationResponse": {
         "type": "object",
         "description": "Response body for webhook invocation.",
@@ -63918,7 +64255,7 @@
                   "string",
                   "null"
                 ],
-                "description": "Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.",
+                "description": "Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.",
                 "example": "session_file_system"
               },
               "features": {
@@ -64598,7 +64935,7 @@
               },
               "id": {
                 "type": "string",
-                "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
                 "example": "model_01933b5a00007000800000000000001"
               },
               "is_favorite": {
@@ -64724,7 +65061,7 @@
               },
               "id": {
                 "type": "string",
-                "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
                 "example": "model_01933b5a00007000800000000000001"
               },
               "is_favorite": {
@@ -64867,7 +65204,7 @@
               },
               "id": {
                 "type": "string",
-                "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
                 "example": "provider_01933b5a00007000800000000000001"
               },
               "last_synced_at": {
@@ -65697,7 +66034,7 @@
               },
               "id": {
                 "type": "string",
-                "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
                 "example": "skill_01933b5a00007000800000000000001"
               },
               "license": {
@@ -66266,6 +66603,10 @@
     {
       "name": "session-sandbox",
       "description": "Managed session sandbox lifecycle endpoints"
+    },
+    {
+      "name": "web-search",
+      "description": "Web search providers, organization search accounts and plan previews"
     },
     {
       "name": "mcp-servers",

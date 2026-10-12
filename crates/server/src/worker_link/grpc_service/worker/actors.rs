@@ -68,6 +68,9 @@ impl WorkerServiceImpl {
                     fence: row.fence,
                     inbox_seq: row.inbox_seq,
                     cancel_requested: row.cancel_requested,
+                    consumed_seq: row.consumed_seq,
+                    next_input_seq: row.next_input_seq,
+                    attempts: u32::try_from(row.attempts).unwrap_or(0),
                 })
                 .collect(),
         }))
@@ -87,6 +90,7 @@ impl WorkerServiceImpl {
                 &req.holder,
                 req.fence,
                 requested_actor_lease_ttl(req.ttl_ms),
+                req.consumed_seq,
             )
             .await
             .map_err(|e| internal_status("Failed to renew actor lease", e))?;

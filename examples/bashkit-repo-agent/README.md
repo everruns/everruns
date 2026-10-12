@@ -152,5 +152,5 @@ transcript. `examples/demo-support::shell` provides terminal presentation.
 
 ## See also
 
-- [Bashkit Shell capability](https://docs.everruns.com/capabilities/bashkit-shell/)
+- [Bashkit Shell capability](https://everruns.com/docs/capabilities/bashkit-shell/)
 - [`coding-cli`](../coding-cli) — a fuller terminal coding agent

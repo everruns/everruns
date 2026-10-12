@@ -62,7 +62,7 @@ pub struct UpdateProfileRequest {
 /// Response from profile update
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ProfileResponse {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     pub email: String,
     /// Human-readable name. Safe to render in user-facing messages.
@@ -80,7 +80,7 @@ pub struct DeleteAccountResponse {
 /// Exported user profile data
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ExportedUserProfile {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     #[schema(example = "user_01933b5a000070008000000000000001")]
     pub id: String,
     /// Email address associated with the user account.
@@ -114,7 +114,7 @@ pub struct ExportedOrganization {
     /// Owning organization's internal numeric id (not part of the public identifier surface).
     #[schema(example = 42)]
     pub org_id: i64,
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     #[schema(example = "org_01933b5a000070008000000000000001")]
     pub public_id: String,
     /// Human-readable name. Safe to render in user-facing messages.
@@ -128,7 +128,7 @@ pub struct ExportedOrganization {
 /// Exported personal access token metadata (no sensitive data)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ExportedPersonalAccessToken {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     #[schema(example = "019e8957539a7aa0bb92e0d2b49427b1")]
     pub id: String,
     /// Human-readable name. Safe to render in user-facing messages.

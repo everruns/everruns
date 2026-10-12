@@ -91,6 +91,8 @@ export function DraftCard({
           <span>
             {github.events.join(", ")}
             {github.repositories.length > 0 && ` in ${github.repositories.join(", ")}`}
+            {(github.workflows?.length ?? 0) > 0 && `, workflow ${github.workflows?.join(", ")}`}
+            {(github.branches?.length ?? 0) > 0 && ` on ${github.branches?.join(", ")}`}
             {github.changes_only && " when the outcome changes"}
             <span className="block text-xs text-muted-foreground">
               You connect GitHub to the agent after it is created.

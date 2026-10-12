@@ -309,6 +309,9 @@ pub struct WorkerRuntimeHost<A: WorkerAdapters> {
     event_metadata: Option<serde_json::Map<String, serde_json::Value>>,
     reads: PhaseReads,
     write_behind: WriteBehind,
+    /// The session actor lease this host's turn runs on: every event it
+    /// emits is appended under it (see `crate::actor_lease_store::ActorFence`).
+    actor_fence: Option<crate::actor_lease_store::ActorFence>,
 }
 
 impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
@@ -325,11 +328,33 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
         self
     }
 
+    /// A new phase of the turn this host runs begins: memoize its setup
+    /// afresh and start its reads (a worker running a whole turn on a session
+    /// lease keeps one host for the turn; see `actor_runtime`).
+    pub fn begin_phase(&self, ids: Option<crate::phase_reads::PhaseIds>) {
+        self.reads.begin_phase();
+        if let Some(ids) = ids {
+            self.reads.prefetch(&self.adapters, ids);
+        }
+    }
+
+    /// Drop the events queued and not yet stored: the turn lost its lease,
+    /// and another worker now owns the session's log.
+    pub fn abandon_events(&self) {
+        drop(self.write_behind.take_pending());
+    }
+
     /// Start the phase's setup reads now, concurrently (see `phase_reads`).
     pub fn prefetching(self, ids: Option<crate::phase_reads::PhaseIds>) -> Self {
         if let Some(ids) = ids {
             self.reads.prefetch(&self.adapters, ids);
         }
+        self
+    }
+
+    /// Append every event this host emits under the actor lease `fence`.
+    pub fn with_actor_fence(mut self, fence: Option<crate::actor_lease_store::ActorFence>) -> Self {
+        self.actor_fence = fence;
         self
     }
 
@@ -357,6 +382,7 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
             event_metadata: metadata,
             reads: PhaseReads::new(),
             write_behind: WriteBehind::new(),
+            actor_fence: None,
         }
     }
 }
@@ -498,7 +524,8 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             SessionAdapter::new(self.adapters.clone())
                 .with_event_metadata(self.event_metadata.clone())
                 .with_reads(self.reads.clone())
-                .with_write_behind(self.write_behind.clone()),
+                .with_write_behind(self.write_behind.clone())
+                .with_actor_fence(self.actor_fence.clone()),
         )
     }
 

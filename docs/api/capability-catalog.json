@@ -179,7 +179,7 @@
       "category": "Network",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": "brave_search",
+      "feature_flag": null,
       "features": [],
       "grades": [
         "prod",
@@ -624,7 +624,7 @@
       "category": "Network",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": "duckduckgo",
+      "feature_flag": null,
       "features": [],
       "grades": [
         "prod",
@@ -1079,7 +1079,7 @@
       "category": "Network",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": "parallel_search",
+      "feature_flag": null,
       "features": [],
       "grades": [
         "prod",

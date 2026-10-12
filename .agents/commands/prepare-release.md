@@ -147,7 +147,7 @@ entry, and the feature entries the release carries get their version:
 1. Every entry folder dated after the previous release entry whose `products` include `platform`,
    `framework` or `cli` and that has no `release:` gets `release: "X.Y.Z"`.
 2. Each **Highlights** bullet in the new `CHANGELOG.md` section links its changelog entry, for
-   example `- **Agent keys** - ... ([changelog](https://docs.everruns.com/changelog/2026-10-11-agent-keys/), [#4527](...))`.
+   example `- **Agent keys** - ... ([changelog](https://everruns.com/docs/changelog/2026-10-11-agent-keys/), [#4527](...))`.
    A highlight with no entry is a missing entry: write it (`.agents/skills/ship/references/changelog-entry.md`).
 3. Add `docs/changelog/YYYY-MM-DD-everruns-X-Y-Z/index.md` with `kind: release`, `significance`
    `major` for a minor-version release with highlights (else `notable`), `products` covering what
@@ -166,7 +166,7 @@ entry, and the feature entries the release carries get their version:
    ```
    and embed it as `![Everruns X.Y.Z release card](./card@2x.png)`.
 5. Add a line under the version heading in `CHANGELOG.md`:
-   `Changelog: https://docs.everruns.com/changelog/YYYY-MM-DD-everruns-X-Y-Z/`.
+   `Changelog: https://everruns.com/docs/changelog/YYYY-MM-DD-everruns-X-Y-Z/`.
 6. `(cd apps/docs && pnpm run check:changelog)`.
 
 ## 8. Verify migrations without rewriting them

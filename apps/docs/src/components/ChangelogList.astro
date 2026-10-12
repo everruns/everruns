@@ -1,4 +1,5 @@
 ---
+import { docsPath } from "../lib/site";
 // The changelog list: every entry newest first, grouped by month and day, with
 // a category bar and Major only / Show releases toggles.
 //
@@ -68,7 +69,7 @@ const days = (items: typeof entries) => {
   return [...byDay];
 };
 
-const feed = product ? `/changelog/${product}/rss.xml` : "/changelog/rss.xml";
+const feed = docsPath(product ? `/changelog/${product}/rss.xml` : "/changelog/rss.xml");
 // Deprecation and incident get a button only once an entry uses them.
 const kinds = KINDS.filter(
   (k) => !["deprecation", "incident"].includes(k.id) || entries.some((e) => e.data.kind === k.id),
@@ -135,14 +136,14 @@ const monthSummary = (items: typeof entries) => {
                       data-release={d.release ?? ""}
                     >
                       <h3>
-                        <a class="changelog-title" href={entryUrl(entry)}>{d.title}</a>
+                        <a class="changelog-title" href={docsPath(entryUrl(entry))}>{d.title}</a>
                       </h3>
                       {d.description && <p class="changelog-summary">{d.description}</p>}
                       {(() => {
                         const visual = firstVisual(entry);
                         return (
                           visual && (
-                            <a class="changelog-visual" href={entryUrl(entry)} tabindex="-1">
+                            <a class="changelog-visual" href={docsPath(entryUrl(entry))} tabindex="-1">
                               <Image src={visual.image} alt={visual.alt} widths={[800, 1600]} sizes="(max-width: 50rem) 100vw, 40rem" />
                             </a>
                           )

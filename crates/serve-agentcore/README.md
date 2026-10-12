@@ -91,8 +91,8 @@ adds the microVM shell, an approval tool and an `@ag-ui/client` script.
 
 ## Documentation
 
-- [Serve on AgentCore guide](https://docs.everruns.com/framework/serve-agentcore/)
-- [Serve overview](https://docs.everruns.com/framework/serve/)
+- [Serve on AgentCore guide](https://everruns.com/docs/framework/serve-agentcore/)
+- [Serve overview](https://everruns.com/docs/framework/serve/)
 - [`everruns-serve` API reference](https://docs.rs/everruns-serve)
 - [API reference](https://docs.rs/everruns-serve-agentcore)
 - [AgentCore AG-UI protocol contract](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-agui-protocol-contract.html)

@@ -1,6 +1,6 @@
 ---
 title: Prompt Caching
-description: Turns on provider prompt caching for Anthropic, OpenAI, and Gemini requests, and records the cache mode on each llm.generation event.
+description: Turns on provider prompt caching for Anthropic, OpenAI, Gemini, Bedrock, OpenRouter, and Mistral requests, and records the cache mode on each llm.generation event.
 appliesTo: [framework, platform, cloud]
 ---
 
@@ -31,6 +31,9 @@ The [Platform Chat](/built-ins/harnesses/platform-chat/) harness includes it.
 | Anthropic | `cache_control` breakpoints on the system prompt, the last tool definition, and the two most recent stable conversation messages, four in total | Breakpoints on the system prompt and the last tool definition only, so the conversation is never written to cache |
 | OpenAI | A `prompt_cache_key` derived from the session (or agent, harness, or organization), model, instructions, and tools. On models whose profile supports cache options, also `prompt_cache_options` with mode `implicit` and a 30 minute TTL | `prompt_cache_key`, and on supporting models `prompt_cache_options` with mode `explicit`: the instructions move into a developer message marked as the cache breakpoint, so only that prefix is written to cache |
 | Gemini | The provider's default behavior, such as implicit caching on supported models | Same as `auto` |
+| Bedrock (Claude, Nova) | `cachePoint` blocks after the system prompt, after the tool definitions (Claude only; Nova does not cache tools), and on the two most recent messages | `cachePoint` blocks after the system prompt and tools only |
+| OpenRouter, Claude models | A top-level `cache_control`, which turns on Anthropic's automatic caching through OpenRouter. Other OpenRouter models keep their vendor's implicit caching | Nothing extra: automatic caching cannot exclude the conversation |
+| Mistral | A `prompt_cache_key` derived from the session (or agent, harness, or organization) and model, so requests sharing a prefix reach the same cache | Same as `auto` |
 
 On Gemini, setting `gemini_cached_content` sends that existing cached content
 resource in the request's `cachedContent` field.
@@ -51,6 +54,8 @@ use. Each driver rounds it to the nearest value its provider supports.
 | Provider | `default`, `5m` | `30m` | `1h` |
 |---|---|---|---|
 | Anthropic | 5 minutes | 5 minutes | 1 hour (`ttl: "1h"` on every breakpoint) |
+| Bedrock, Claude models | 5 minutes | 5 minutes | 1 hour (`ttl` on every cache point) |
+| OpenRouter, Claude models | 5 minutes | 5 minutes | 1 hour (`ttl: "1h"` on `cache_control`) |
 | OpenAI with cache options | 30 minutes | 30 minutes | 30 minutes |
 | Others | Provider default | Provider default | Provider default |
 

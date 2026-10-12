@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { useAgentGitHub, useGitHubRepositories } from "@/hooks/use-agent-github";
 import { ConnectGitHubButton } from "@/components/agents/connect-github-button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -15,9 +17,20 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type { SessionBinding } from "@/lib/api/types";
 import type { TriggerEventFilter } from "@/lib/api/schema-types";
+import {
+  CI_BRANCH_PATH,
+  CI_OUTCOME_PATH,
+  CI_WORKFLOW_PATH,
+  conditionValues,
+  splitList,
+  withCondition,
+} from "@/lib/github-ci-filter";
 
-/// One session per pull request, or a fresh one per event.
-export type GitHubSessionMode = Extract<SessionBinding, "per_thread" | "session_per_invocation">;
+/// One session per pull request, one for everything, or a fresh one per event.
+export type GitHubSessionMode = Extract<
+  SessionBinding,
+  "per_thread" | "shared_session" | "session_per_invocation"
+>;
 
 export type GitHubTriggerFormState = {
   events: string[];
@@ -28,9 +41,6 @@ export type GitHubTriggerFormState = {
   /** Kept as saved so conditions set through the API survive an edit here. */
   filter: TriggerEventFilter | null;
 };
-
-/** Where CI events carry their normalized result. */
-export const CI_OUTCOME_PATH = "github.ci.outcome";
 
 const CI_EVENTS = ["workflow_run.completed", "check_suite.completed"];
 
@@ -71,8 +81,8 @@ export const EMPTY_GITHUB_FORM: GitHubTriggerFormState = {
 };
 
 /**
- * A new trigger prefilled from the page URL (`events`, `repos`, `changes_only`,
- * `message`), as the agent builder links it after creating the agent.
+ * A new trigger prefilled from the page URL (`events`, `repos`, `branches`,
+ * `workflows`, `changes_only`, `message`), as the agent builder links it after creating the agent.
  */
 export function githubFormFromParams(params: URLSearchParams | null): GitHubTriggerFormState {
   if (!params?.get("events")) return EMPTY_GITHUB_FORM;
@@ -92,7 +102,13 @@ export function githubFormFromParams(params: URLSearchParams | null): GitHubTrig
       : "per_thread",
     message: params.get("message")?.trim() || EMPTY_GITHUB_FORM.message,
   };
-  return withOutcomeChanges(form, params.get("changes_only") === "1");
+  let filter = withCondition(form.filter, CI_BRANCH_PATH, list("branches"));
+  filter = withCondition(filter, CI_WORKFLOW_PATH, list("workflows"));
+  const narrowed = (filter.conditions?.length ?? 0) > 0;
+  return withOutcomeChanges(
+    { ...form, filter: narrowed ? filter : null },
+    params.get("changes_only") === "1",
+  );
 }
 
 /// What a GitHub trigger listens to, for its page subtitle.
@@ -102,6 +118,46 @@ export function githubEventsLabel(events: string[]): string {
     return "Pull request events";
   }
   return "GitHub events";
+}
+
+/// A comma-separated list bound to one CI filter condition. Keeps its own text so a
+/// trailing comma survives typing; the filter gets the parsed list on each change.
+function CiNamesField({
+  id,
+  label,
+  hint,
+  placeholder,
+  path,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  hint: string;
+  placeholder: string;
+  path: string;
+  value: GitHubTriggerFormState;
+  onChange: (next: GitHubTriggerFormState) => void;
+}) {
+  const [text, setText] = useState(() => conditionValues(value.filter, path).join(", "));
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        value={text}
+        placeholder={placeholder}
+        onChange={(event) => {
+          setText(event.target.value);
+          onChange({
+            ...value,
+            filter: withCondition(value.filter, path, splitList(event.target.value)),
+          });
+        }}
+      />
+      <p className="text-xs text-muted-foreground">{hint}</p>
+    </div>
+  );
 }
 
 export function isGitHubFormValid(form: GitHubTriggerFormState): boolean {
@@ -170,19 +226,39 @@ export function GitHubTriggerForm({
         </div>
       </div>
       {value.events.some((event) => CI_EVENTS.includes(event)) && (
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id={`${idPrefix}-changes-only`}
-              checked={onlyWhenOutcomeChanges(value)}
-              onCheckedChange={(on) => onChange(withOutcomeChanges(value, on === true))}
-            />
-            <Label htmlFor={`${idPrefix}-changes-only`}>Only when the CI result changes</Label>
+        <>
+          <CiNamesField
+            id={`${idPrefix}-branches`}
+            label="Branches"
+            hint="Comma-separated. Empty means every branch."
+            placeholder="main"
+            path={CI_BRANCH_PATH}
+            value={value}
+            onChange={onChange}
+          />
+          <CiNamesField
+            id={`${idPrefix}-workflows`}
+            label="Workflows"
+            hint="Comma-separated workflow names, as GitHub shows them. Empty means every workflow."
+            placeholder="CI"
+            path={CI_WORKFLOW_PATH}
+            value={value}
+            onChange={onChange}
+          />
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id={`${idPrefix}-changes-only`}
+                checked={onlyWhenOutcomeChanges(value)}
+                onCheckedChange={(on) => onChange(withOutcomeChanges(value, on === true))}
+              />
+              <Label htmlFor={`${idPrefix}-changes-only`}>Only when the CI result changes</Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Wakes on green to red and red to green for each workflow and branch, not on every run.
+            </p>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Wakes on green to red and red to green for each workflow and branch, not on every run.
-          </p>
-        </div>
+        </>
       )}
       <div className="space-y-2">
         <Label>Repositories</Label>
@@ -222,6 +298,7 @@ export function GitHubTriggerForm({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="per_thread">One session per pull request or CI workflow</SelectItem>
+            <SelectItem value="shared_session">One session for everything</SelectItem>
             <SelectItem value="session_per_invocation">New session per event</SelectItem>
           </SelectContent>
         </Select>

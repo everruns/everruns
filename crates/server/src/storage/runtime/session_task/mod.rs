@@ -101,11 +101,11 @@ impl SessionTaskWaker for InjectedMessageWaker {
         if let Some(runner) = self.runner.clone() {
             let scope = crate::turns::scope(session.org_id, harness_id, session.agent_id);
             let request = crate::turns::stored_message(session_id, scope, message_id, None);
-            tokio::spawn(async move {
-                if let Err(e) = crate::turns::start(&*runner, request).await {
-                    tracing::warn!(%session_id, "SessionTaskWaker: failed to start turn workflow: {e}");
-                }
-            });
+            // Awaited, not spawned: marking the session's actor runnable joins
+            // the caller's transaction, if any, with the wake message.
+            if let Err(e) = crate::turns::start(&*runner, request).await {
+                tracing::warn!(%session_id, "SessionTaskWaker: failed to start turn: {e}");
+            }
         }
         Ok(())
     }

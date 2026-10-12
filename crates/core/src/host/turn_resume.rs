@@ -106,6 +106,16 @@ impl OpenTurn {
         self.input_message_id
     }
 
+    /// The reasons the turn ran, as its `reason.completed` events count them.
+    pub fn reasons(&self) -> u32 {
+        self.reasons
+    }
+
+    /// The token usage the turn's reasons recorded, summed.
+    pub fn usage(&self) -> Option<&TokenUsage> {
+        self.usage.as_ref()
+    }
+
     /// Whether the turn's latest agent message made no tool calls: it has
     /// its answer and only its end is missing, so resuming it would answer
     /// twice.

@@ -7,6 +7,7 @@ import { getSchemaStaticPaths, type StarlightOpenAPIRouteProps } from "starlight
 import OpenAPIPage from "starlight-openapi/routes/static";
 import { PRODUCTS, isChangelogEntry } from "../src/lib/changelog";
 import { changelogListMarkdown, withEntryFacts } from "../src/lib/changelog-markdown";
+import { withBase } from "../site.config.mjs";
 
 type Props =
   | {
@@ -34,14 +35,14 @@ export const getStaticPaths = (async () => {
     const path = pagePath(doc.id);
     return {
       params: { slug: path ? `${path}/index` : "index" },
-      props: { kind: "docs" as const, doc, pageUrl: path ? `/${path}/` : "/" },
+      props: { kind: "docs" as const, doc, pageUrl: withBase(path ? `/${path}/` : "/") },
     };
   });
   const openAPIPaths = getSchemaStaticPaths().map(({ params, props }) => ({
     params: { slug: `${params.openAPISlug}/index` },
     props: {
       kind: "openapi" as const,
-      pageUrl: `/${params.openAPISlug}/`,
+      pageUrl: withBase(`/${params.openAPISlug}/`),
       routeProps: props,
     },
   }));
@@ -49,7 +50,7 @@ export const getStaticPaths = (async () => {
   // Per-product changelog pages are Astro pages, not docs entries.
   const changelogPaths = PRODUCTS.map((p) => ({
     params: { slug: `changelog/${p.id}/index` },
-    props: { kind: "changelog" as const, product: p.id, pageUrl: `/changelog/${p.id}/` },
+    props: { kind: "changelog" as const, product: p.id, pageUrl: withBase(`/changelog/${p.id}/`) },
   }));
 
   return [...docsPaths, ...openAPIPaths, ...changelogPaths];

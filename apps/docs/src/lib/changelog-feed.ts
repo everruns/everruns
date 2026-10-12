@@ -3,11 +3,11 @@
 // Items carry the full rendered entry, not just the description, so a reader
 // never has to leave the feed to see what changed. Relative links and media in
 // an entry resolve against the entry's own URL (its media sit in its folder).
+import { docsUrl } from "./site";
 import { experimental_AstroContainer } from "astro/container";
 import { render } from "astro:content";
 import { entryUrl, getChangelogEntries, kindLabel, productLabel, productName, type Entry } from "./changelog";
 
-const SITE = "https://docs.everruns.com";
 const container = await experimental_AstroContainer.create();
 
 const xml = (s: string) =>
@@ -20,7 +20,7 @@ function absolutize(html: string, base: string): string {
 }
 
 async function item(entry: Entry): Promise<string> {
-  const url = `${SITE}${entryUrl(entry)}`;
+  const url = docsUrl(entryUrl(entry));
   const { Content } = await render(entry);
   const html = absolutize(await container.renderToString(Content), url);
   const categories = [
@@ -45,8 +45,8 @@ export async function changelogFeed(product?: string): Promise<Response> {
     (e) => !product || (e.data.products as string[] | undefined)?.includes(product),
   );
   const title = product ? `${productName(product)} changelog` : "Everruns changelog";
-  const page = product ? `${SITE}/changelog/${product}/` : `${SITE}/changelog/`;
-  const self = product ? `${SITE}/changelog/${product}/rss.xml` : `${SITE}/changelog/rss.xml`;
+  const page = docsUrl(product ? `/changelog/${product}/` : "/changelog/");
+  const self = docsUrl(product ? `/changelog/${product}/rss.xml` : "/changelog/rss.xml");
   const items = await Promise.all(entries.map(item));
   const body = [
     '<?xml version="1.0" encoding="UTF-8"?>',

@@ -30,7 +30,7 @@ pub mod provider_resolver;
 pub mod standard_webhooks;
 
 pub use capability::CapabilityService;
-pub use event::EventService;
+pub use event::{ActorAppendFence, EventService};
 pub use provider_resolver::{ProviderResolverService, ResolvedModel};
 
 // kept for saas; remove after adoption

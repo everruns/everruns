@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Public Changelog"
-description: "A compact public changelog on docs.everruns.com with one entry per completed user-facing feature or significant incident across every Everruns product, filterable by product, surface and significance, served as HTML, Markdown and RSS, linked from versioned release notes, and kept current by maintenance."
+description: "A compact public changelog on everruns.com/docs with one entry per completed user-facing feature or significant incident across every Everruns product, filterable by product, surface and significance, served as HTML, Markdown and RSS, linked from versioned release notes, and kept current by maintenance."
 tags:
   - everruns
   - documentation
@@ -15,7 +15,7 @@ August 2026 are built; the process changes are in the skills named below.
 
 ## Abstract
 
-`docs.everruns.com/changelog/` lists what changed for people who use Everruns,
+`everruns.com/docs/changelog/` lists what changed for people who use Everruns,
 one short entry per finished user-facing feature or significant incident. It
 covers every product: Everruns Cloud, the self-hosted Platform, the Framework
 crates, the SDKs, the `everruns` CLI, Yolop, Mira and Bashkit.

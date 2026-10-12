@@ -7,6 +7,7 @@ import {
   githubTriggerSetupHref,
 } from "@/components/agents/new/create-from-draft";
 import { githubFormFromParams } from "@/components/agents/github-trigger-form";
+import { conditionValues } from "@/lib/github-ci-filter";
 import { EMPTY_DRAFT, type AgentDraft } from "@/lib/api/agent-draft";
 import type { Capability } from "@/lib/api/types";
 import {
@@ -99,6 +100,8 @@ describe("new agent page", () => {
         events: ["workflow_run.completed"],
         repositories: ["everruns/everruns"],
         changes_only: true,
+        branches: ["main"],
+        workflows: ["CI"],
         message: "Main CI is {{github.ci.outcome}}",
       },
       mcp_servers: [
@@ -113,7 +116,13 @@ describe("new agent page", () => {
       session_mode: "session_per_invocation",
       message: "Main CI is {{github.ci.outcome}}",
       enabled: true,
-      filter: { conditions: [], changes_only: { path: "github.ci.outcome" } },
+      filter: {
+        conditions: [
+          { path: "github.ci.branch", any_of: ["main"] },
+          { path: "github.ci.workflow", any_of: ["CI"] },
+        ],
+        changes_only: { path: "github.ci.outcome" },
+      },
     });
     expect(draftMcpAttachments(watcher)).toEqual({
       visti: { use: "catalog:visti", actsAs: "none" },
@@ -124,12 +133,16 @@ describe("new agent page", () => {
 
     const href = githubTriggerSetupHref("agent_1", watcher)!;
     expect(href.startsWith("/agents/agent_1/triggers/new?type=github&")).toBe(true);
+    expect(new URL(href, "http://x").searchParams.get("branches")).toBe("main");
+    expect(new URL(href, "http://x").searchParams.get("workflows")).toBe("CI");
     const form = githubFormFromParams(new URL(href, "http://x").searchParams);
     expect(form.events).toEqual(["workflow_run.completed"]);
     expect(form.repositories).toEqual(["everruns/everruns"]);
     expect(form.session_mode).toBe("session_per_invocation");
     expect(form.message).toBe("Main CI is {{github.ci.outcome}}");
     expect(form.filter?.changes_only?.path).toBe("github.ci.outcome");
+    expect(conditionValues(form.filter, "github.ci.branch")).toEqual(["main"]);
+    expect(conditionValues(form.filter, "github.ci.workflow")).toEqual(["CI"]);
   });
 
   it("keeps pull request triggers per thread and ignores unknown events in the URL", () => {

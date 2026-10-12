@@ -807,23 +807,29 @@ mod tests {
     fn integration_flags_gate_their_capabilities_and_connectors() {
         let disabled = FeatureFlags::default();
         let enabled = FeatureFlags::all_enabled();
-        for capability in [
-            "modal",
-            "brave_search",
-            "duckduckgo",
-            "parallel_search",
-            "sprites",
-        ] {
+        for capability in ["modal", "sprites"] {
             assert!(!disabled.is_capability_enabled(capability), "{capability}");
             assert!(enabled.is_capability_enabled(capability), "{capability}");
         }
         // Integrations an agent only reaches after someone adds the capability
         // or a connection carry no feature flag.
-        for capability in ["resource_discovery", "tools_in_shell", "agentid", "jev"] {
+        // Web search providers ship without flags: adding the capability or
+        // connecting an account is the opt-in.
+        for capability in [
+            "resource_discovery",
+            "tools_in_shell",
+            "agentid",
+            "jev",
+            "brave_search",
+            "duckduckgo",
+            "parallel_search",
+        ] {
             assert!(disabled.is_capability_enabled(capability), "{capability}");
         }
         assert!(disabled.is_connector_enabled("ard"));
-        for connector in ["browserless", "modal", "parallel", "brave_search"] {
+        assert!(disabled.is_connector_enabled("parallel"));
+        assert!(disabled.is_connector_enabled("brave_search"));
+        for connector in ["browserless", "modal"] {
             assert!(!disabled.is_connector_enabled(connector), "{connector}");
             assert!(enabled.is_connector_enabled(connector), "{connector}");
         }

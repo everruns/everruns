@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-04/schema#",
-  "id": "https://docs.everruns.com/schemas/agent/v1.json",
+  "id": "https://everruns.com/docs/schemas/agent/v1.json",
   "title": "Everruns agent.toml v1",
   "description": "Canonical agent.toml authoring schema. Also applies to parsed YAML and JSON. Validate asset paths, skills, credentials and destination dependencies with everruns agents validate.",
   "$ref": "#/definitions/Manifest",

@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use super::http;
 
-const BRAVE_API_BASE: &str = "https://api.search.brave.com/res/v1";
+pub(super) const BRAVE_API_BASE: &str = "https://api.search.brave.com/res/v1";
 
 /// Brave Search with one API key. The key travels only in the
 /// `X-Subscription-Token` header, so recorded exchanges never contain it.

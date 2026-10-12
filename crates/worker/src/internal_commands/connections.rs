@@ -14,9 +14,12 @@
 
 use super::{InternalCommandTransport, call, call_secret};
 use crate::core::McpServerActsAs;
-use crate::core::connection_services::{ServiceApiKeyConnection, UserConnectionResolver};
+use crate::core::connection_services::{
+    GitHubAccess, McpResolvedCredential, ServiceApiKeyConnection, UserConnectionResolver,
+};
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
+use everruns_contracts::runtime::web_search::WebSearchOrgSettings;
 use everruns_contracts::session_sandbox::SessionSandboxCredential;
 use everruns_contracts::typed_id::SessionId;
 use serde_json::{Value, json};
@@ -66,6 +69,13 @@ impl<T: InternalCommandTransport + 'static> CommandConnectionResolver<T> {
             "input_message_id": self.input_message_id,
         })
     }
+}
+
+/// A GitHub token for one use, as it crosses the wire.
+#[derive(serde::Deserialize)]
+struct GitHubToken {
+    token: String,
+    acted_as: McpServerActsAs,
 }
 
 /// The service API-key connection, as it crosses the wire.
@@ -140,6 +150,28 @@ impl<T: InternalCommandTransport + 'static> UserConnectionResolver
         .await
     }
 
+    async fn get_github_token(
+        &self,
+        session_id: SessionId,
+        access: &GitHubAccess,
+    ) -> Result<Option<McpResolvedCredential>> {
+        let token: Option<GitHubToken> = call_secret(
+            &*self.transport,
+            "Get GitHub token",
+            "worker_get_github_token",
+            json!({
+                "session_id": session_id.to_string(),
+                "access": access,
+                "input_message_id": self.input_message_id,
+            }),
+        )
+        .await?;
+        Ok(token.map(|token| McpResolvedCredential {
+            token: token.token,
+            acted_as: token.acted_as,
+        }))
+    }
+
     async fn get_service_api_key_connection(
         &self,
         session_id: SessionId,
@@ -186,6 +218,34 @@ impl<T: InternalCommandTransport + 'static> UserConnectionResolver
             "Invalidate MCP connection",
             "worker_invalidate_mcp_connection",
             params,
+        )
+        .await
+    }
+
+    async fn get_web_search_settings(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Option<WebSearchOrgSettings>> {
+        call(
+            &*self.transport,
+            "Get web search settings",
+            "worker_get_web_search_settings",
+            json!({ "session_id": session_id.to_string() }),
+        )
+        .await
+        .map(Some)
+    }
+
+    async fn get_web_search_account_key(
+        &self,
+        session_id: SessionId,
+        account_id: Uuid,
+    ) -> Result<Option<String>> {
+        call_secret(
+            &*self.transport,
+            "Get search account key",
+            "worker_get_web_search_account_key",
+            json!({ "session_id": session_id.to_string(), "account_id": account_id }),
         )
         .await
     }
@@ -290,6 +350,32 @@ mod tests {
         assert_eq!(calls[1].1["acts_as"], "user");
     }
 
+    /// A GitHub use sends its whole access request with the invocation, and
+    /// the answer names the identity that served it.
+    #[tokio::test]
+    async fn github_token_carries_the_access_and_the_acting_identity() {
+        let (resolver, calls) = resolver(Ok(json!({"token": "ghs_x", "acted_as": "service"})));
+        let session = SessionId::new();
+        let invocation = Uuid::new_v4();
+        let access = GitHubAccess::new(McpServerActsAs::UserOrService, &[("issues", "write")])
+            .for_repository("acme/app");
+        let credential = resolver
+            .for_execution(invocation)
+            .unwrap()
+            .get_github_token(session, &access)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(credential.token, "ghs_x");
+        assert_eq!(credential.acted_as, McpServerActsAs::Service);
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls[0].0, "worker_get_github_token");
+        assert_eq!(calls[0].1["input_message_id"], invocation.to_string());
+        assert_eq!(calls[0].1["access"]["acts_as"], "user_or_service");
+        assert_eq!(calls[0].1["access"]["repositories"], json!(["acme/app"]));
+        assert_eq!(calls[0].1["access"]["permissions"]["issues"], "write");
+    }
+
     /// `user_or_service` asks for each concrete identity in turn, as the
     /// RPC-based resolver did, and reports the one that answered.
     #[tokio::test]
@@ -331,6 +417,33 @@ mod tests {
         assert_eq!(calls[0].1["virtual_user_id"], owner.to_string());
         assert_eq!(calls[1].0, "worker_get_connection_token_for_connection");
         assert_eq!(calls[1].1["connection_id"], connection.to_string());
+    }
+
+    #[tokio::test]
+    async fn web_search_lookups_name_the_session_and_account() {
+        let (resolver, calls) = resolver(Ok(json!({ "defaults": { "provider": "free" } })));
+        let session = SessionId::new();
+        let settings = resolver
+            .get_web_search_settings(session)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            settings.defaults.provider,
+            everruns_contracts::runtime::web_search::SearchProviderSetting::Free
+        );
+        let (resolver, key_calls) = resolver_for(json!("brave-key"));
+        let account = Uuid::new_v4();
+        let key = resolver
+            .get_web_search_account_key(session, account)
+            .await
+            .unwrap();
+        assert_eq!(key.as_deref(), Some("brave-key"));
+        assert_eq!(calls.lock().unwrap()[0].0, "worker_get_web_search_settings");
+        let key_calls = key_calls.lock().unwrap();
+        assert_eq!(key_calls[0].0, "worker_get_web_search_account_key");
+        assert_eq!(key_calls[0].1["account_id"], account.to_string());
+        assert_eq!(key_calls[0].1["session_id"], session.to_string());
     }
 
     #[tokio::test]

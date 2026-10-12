@@ -10,11 +10,13 @@ tags:
 ---
 # Personal Access Token Scopes
 
-> Status: **Approved; rollout step 1 (classification, no enforcement) landed.**
-> Stored scopes are parsed onto `AuthUser` and every `/v1` route is classified
-> ([`auth/pat_scope`](../../crates/server/src/auth/pat_scope/mod.rs)), but
-> nothing reads the class yet: a narrow token is not refused anywhere, and
-> creation still accepts only `*` (EVE-701). Steps 2 onward are not built.
+> Status: **Approved; rollout steps 1 (classification) and 2 (enforcement on
+> REST and `/v1/commands`) landed.** A narrow token is refused with
+> `403 insufficient_scope` on every `/v1` route outside its scope
+> ([`auth/pat_scope`](../../crates/server/src/auth/pat_scope/mod.rs)). Not yet
+> enforced: `/mcp` and the execution API's `org_member` (step 3). Creation still
+> accepts only `*` (EVE-701), and step 2 deletes the legacy narrow rows (see
+> [Legacy narrow tokens](#legacy-narrow-tokens)).
 
 ## Abstract
 
@@ -318,9 +320,9 @@ token while any surface still ignores it.
    route table, and tests 1, 2 and 5. Nothing changes on the wire. SaaS's
    `AuthUser` struct literals need the new field when SaaS adopts this.
 2. **Enforce on REST and `/v1/commands`.** Extractor check, error shape,
-   logging and metric, per-command check, and tests 3 and 4. The same PR
-   carries the migration that deletes legacy non-`*` rows, so no token is
-   narrowed by surprise.
+   logging and metric, per-command check, the embedder classification hook,
+   tests 3 and 4, and the migration that deletes legacy non-`*` rows (see
+   [Legacy narrow tokens](#legacy-narrow-tokens)).
 3. **Enforce on MCP and the execution API.** Tool classification and filtering,
    the `org_member` boundary, and test 6.
 4. **Open creation.** `normalize_pat_scopes` accepts `["read"]`. Add a scope
@@ -358,9 +360,37 @@ Settled while building step 1, where the decisions above left a detail open:
   rows in a second, undocumented list; the coverage test checks each still
   names a route literal in the server source and is not in the document. Any
   other undocumented route stays unclassified, so a narrow token is denied it.
-- **Embedder hook deferred.** The `ServerAppBuilder` hook that lets an
-  embedder classify its own routes lands with enforcement (step 2); until
-  then embedder routes are unclassified, which changes nothing on the wire.
+- **Embedder hook.** `ServerAppBuilder::classify_pat_routes` takes rows in the
+  table's `(method, path, class)` shape
+  ([`app_builder/pat_scope.rs`](../../crates/server/src/app_builder/pat_scope.rs)).
+  The built-in classification always wins, so an embedder can classify only
+  routes this crate leaves unclassified, and it cannot register `PerCommand`,
+  which relies on a handler-side check.
+
+Settled while building step 2:
+
+- **The command check reads the scope from the request.** The extractor
+  leaves the token's `PatScope` in the request extensions;
+  `execute_command` applies the command's class to it before anything else.
+  A name `dispatch_named` would not run (unknown or unexposed) skips the
+  check and stays 404.
+- **The denial log names the token by its display prefix.** `AuthUser` does
+  not carry the token id, so the `warn!` carries `user_id` and the first
+  characters of the token as stored in `personal_access_tokens.token_prefix`
+  (and shown in the token list), never the secret. The counter is
+  `everruns_pat_scope_denied_total{class}`, with `unclassified` and
+  `per_command` beside the three route classes.
+- **The runtime sweep is its own test binary.** It starts the production
+  router through `ServerAppBuilder` in `AUTH_MODE=full`
+  ([`pat_scope_sweep_test.rs`](../../crates/server/tests/pat_scope_sweep_test.rs)),
+  which reads process environment. It also checks that no `Read` route
+  denies a `read` token, which catches a router spelling the layer does not
+  resolve. Write and Never routes that do not answer through the extractor
+  are a reviewed list in the test: channel ingress authenticated by the
+  channel's own credential (where a PAT counts only through `org_member`,
+  step 3), OAuth and install callbacks bound to their flow state, and two
+  documented routes this configuration does not serve. A row that starts
+  answering `insufficient_scope` fails as stale.
 
 ## Rejected options
 
@@ -393,6 +423,11 @@ their owner asked for. Step 2 drops them: a migration deletes every
 owners get a 401 and mint a new token, choosing full or read access
 deliberately. Step 0 counts the rows first so the number is known before the
 migration ships.
+
+The step 0 count could not be taken (no production database access from the
+agent environment); the owner confirmed the deletion without it on
+2026-10-12. The migration is
+[`drop_narrow_personal_access_tokens`](../../crates/server/migrations/20261012025005_drop_narrow_personal_access_tokens.sql).
 
 ## See also
 

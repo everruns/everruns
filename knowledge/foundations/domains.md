@@ -276,7 +276,7 @@ a move must be deployed together:
   with the deployment key. The value travels only in the request (set) or the
   answer (get); `Command::run` logs neither, the set/delete entries are
   history-`Exempt`, and the set command's `Debug` is redacted;
-- connection credentials (`worker_get_connection_token`,
+- connection credentials (`worker_get_connection_token`, `worker_get_github_token`,
   `worker_get_sandbox_connection_token`, `worker_get_service_api_key_connection`,
   `worker_get_connection_user`, `worker_get_virtual_user_connection_token`,
   `worker_get_connection_token_for_connection`) in `user_connections`, and

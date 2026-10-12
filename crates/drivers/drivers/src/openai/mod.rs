@@ -25,7 +25,7 @@
 //!
 //! Application authors normally configure OpenAI through the
 //! application-facing `everruns::OpenAI` value. See the
-//! [Framework model guide](https://docs.everruns.com/framework/models-and-providers/).
+//! [Framework model guide](https://everruns.com/docs/framework/models-and-providers/).
 
 mod driver;
 pub(crate) mod embeddings;

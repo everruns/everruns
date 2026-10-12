@@ -68,6 +68,7 @@ mod mcp_oauth_user_switch_test;
 mod mcp_tool_labels_test;
 mod migration_baseline_test;
 mod migration_history_test;
+mod narrow_pat_cleanup_migration_test;
 mod oauth_grants_migration_test;
 mod observers_integration_test;
 mod openapi_coverage_test;

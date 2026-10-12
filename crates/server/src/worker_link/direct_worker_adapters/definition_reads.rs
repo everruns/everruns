@@ -2,6 +2,24 @@
 use super::*;
 
 impl DirectWorkerAdapters {
+    /// Build MCP tool definitions from pre-loaded capability rows, through the
+    /// same mapping as the gRPC worker path (annotations and saved labels).
+    pub(super) async fn build_mcp_tool_definitions_with_capabilities(
+        &self,
+        org_id: i64,
+        capability_rows: &[AgentCapabilityRow],
+    ) -> Result<Vec<ToolDefinition>> {
+        Ok(
+            crate::domains::mcp_servers::tool_labels::org_mcp_tool_definitions(
+                &self.mcp_server_service,
+                &self.db,
+                org_id,
+                capability_rows.iter().map(|row| row.capability_id.as_str()),
+            )
+            .await,
+        )
+    }
+
     pub(super) async fn hydrate_capability_rows(
         &self,
         org_id: i64,

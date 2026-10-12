@@ -117,7 +117,7 @@ for package in published:
         "add a What It Provides or Features section",
     )
     require(re.search(r"^## Documentation\s*$", readme_text, re.M | re.I) is not None, readme, "add a Documentation section")
-    require("https://docs.everruns.com" in readme_text, readme, "link relevant public documentation")
+    require("https://everruns.com/docs" in readme_text, readme, "link relevant public documentation")
     if has_library:
         require("https://docs.rs" in readme_text, readme, "link the docs.rs API reference")
     require(re.search(r"^## License\s*$", readme_text, re.M | re.I) is not None, readme, "add a License section")

@@ -1174,7 +1174,7 @@
       "description": "Check again whether an OAuth MCP server's sign-in service is reachable.",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -1355,7 +1355,7 @@
       "description": "Copy an agent. Generates a unique name ({name}-copy, -copy-2, etc.)",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -1379,7 +1379,7 @@
       "description": "Copy a harness. Generates a unique name ({name}-copy, -copy-2, etc.)",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -8465,7 +8465,7 @@
       "description": "Archive an agent (soft delete).",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -8621,7 +8621,7 @@
     "input_schema": {
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -8696,7 +8696,7 @@
       "description": "Archive a harness (soft delete).",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -8794,7 +8794,7 @@
       "description": "Archive an MCP server (soft delete).",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -8840,7 +8840,7 @@
     "input_schema": {
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -8910,7 +8910,7 @@
     "input_schema": {
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -9064,7 +9064,7 @@
       "description": "Archive a skill (soft delete).",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -9121,7 +9121,7 @@
       "description": "Archive a virtual user (soft delete).",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -9200,7 +9200,7 @@
       "description": "Permanently delete an archived agent.",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -9223,7 +9223,7 @@
     "input_schema": {
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -9247,7 +9247,7 @@
       "description": "Permanently delete an archived harness.",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -9271,7 +9271,7 @@
       "description": "Permanently delete an archived MCP server.",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -9295,7 +9295,7 @@
       "description": "Permanently delete an archived skill.",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -9319,7 +9319,7 @@
       "description": "Permanently delete a virtual user.",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -9570,6 +9570,13 @@
         "DraftGitHubTrigger": {
           "description": "A GitHub trigger to create once GitHub is connected on the agent.",
           "properties": {
+            "branches": {
+              "description": "CI events only: branches to accept, e.g. `main`; empty means every branch.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
             "changes_only": {
               "description": "Run only when a CI outcome differs from the previous one for the same\nrepository and branch.",
               "type": "boolean"
@@ -9587,6 +9594,13 @@
             },
             "repositories": {
               "description": "`owner/name` repositories; empty means every repository the App sees.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "workflows": {
+              "description": "CI events only: workflow (or check suite app) names to accept, e.g. `CI`;\nempty means every workflow.",
               "items": {
                 "type": "string"
               },
@@ -10356,7 +10370,7 @@
       "description": "Get a single agent by ID or name.",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -10542,7 +10556,7 @@
       "description": "Get a specific capability by ID.",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -10565,7 +10579,7 @@
     "input_schema": {
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -10784,7 +10798,7 @@
       "description": "Get a single harness by ID or name.",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -10833,7 +10847,7 @@
     "input_schema": {
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -11010,7 +11024,7 @@
       "description": "Get a single MCP server by ID.",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -11056,7 +11070,7 @@
     "input_schema": {
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -11242,7 +11256,7 @@
     "input_schema": {
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -11921,7 +11935,7 @@
       "description": "Get a single skill by ID.",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -11945,7 +11959,7 @@
       "description": "Get full skill content (SKILL.md + files).",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -11969,7 +11983,7 @@
       "description": "Get a single virtual user by ID.",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -13611,7 +13625,7 @@
       "description": "List the tools an MCP server offers, with their saved risk labels.",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -16487,7 +16501,7 @@
     "input_schema": {
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -16618,7 +16632,7 @@
     "input_schema": {
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -17116,7 +17130,7 @@
       "description": "Set or clear a person's risk label for one tool of an MCP server.",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         },
         "label": {
@@ -17472,7 +17486,7 @@
       "description": "Suggest a risk label for every tool of an MCP server that has none.",
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -17589,7 +17603,7 @@
     "input_schema": {
       "properties": {
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         }
       },
@@ -19055,7 +19069,7 @@
         {
           "properties": {
             "id": {
-              "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+              "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
               "type": "string"
             }
           },
@@ -19561,7 +19575,7 @@
         {
           "properties": {
             "id": {
-              "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+              "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
               "type": "string"
             }
           },
@@ -20992,7 +21006,7 @@
         {
           "properties": {
             "id": {
-              "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+              "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
               "type": "string"
             }
           },
@@ -21405,7 +21419,7 @@
         {
           "properties": {
             "id": {
-              "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+              "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
               "type": "string"
             }
           },
@@ -21668,7 +21682,7 @@
           ]
         },
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         },
         "is_favorite": {
@@ -22608,7 +22622,7 @@
           ]
         },
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
           "type": "string"
         },
         "name": {
@@ -23204,7 +23218,7 @@
         {
           "properties": {
             "id": {
-              "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+              "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
               "type": "string"
             }
           },
@@ -23301,7 +23315,7 @@
         {
           "properties": {
             "id": {
-              "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+              "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
               "type": "string"
             }
           },
@@ -24597,7 +24611,7 @@
         {
           "properties": {
             "id": {
-              "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+              "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
               "type": "string"
             }
           },

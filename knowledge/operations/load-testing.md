@@ -298,8 +298,23 @@ Baselines to start from (numbers, not targets):
 | Local stack, realistic model | 2026-10-08, 0.44.0 | 100 sessions: queueing for worker slots added about 5 s before first token at 50 slots; it disappeared at 300 slots (since #4444 a turn frees its slot while waiting on the model) |
 | Hosted, instant model | 2026-10-08, 0.44.0 | turn p50 0.48 s at 10 sessions, 0.89 s at 25, 1.86 s at 50 (includes about 0.15 s network round trip) |
 | Hosted, 0.9 s first token | 2026-10-08, 0.44.0 | turn p50 1.55 s at 25 sessions, 2.13 s at 50, 4.44 s at 100; at 100, worker slots added about 3 s of waiting |
+| Chaos harness, 200 sessions, low-memory release build | 2026-10-12, actor cutover | pickup p50/p95 102/604 ms without kills and 94/496 ms with them (1.3 s/3.2 s while the per-org lease cap held work back; main 53/462 ms); recovery 21 s after a worker kill, 20 s after a server kill; about 475 statements per turn |
 
 Known gaps in the method: a single driver machine hits the per-IP limit early, and a few long idle SSE streams were cut on the client or edge side during the hosted run, so the driver reconnects with `since_id` like the UI does.
+
+## Chaos Harness
+
+`scripts/chaos/` (Python 3 stdlib, `just chaos`) answers a question the benches above do not: are turns still correct when processes die under load? It runs a multi-process topology from release binaries against already running PostgreSQL, NATS and Valkey (`PORT_PREFIX=433`), drives it only through the public HTTP API, SIGKILLs processes on a schedule, and then asserts over the persisted event log.
+
+- **Topology.** Two API servers and three gRPC workers (`DEV_MODE=false`, `AUTH_MODE=none`), workers spread round robin over the servers' gRPC ports. Each process logs to its own file in the run directory, with a marker line at every start and kill. Provider keys are stripped from the environment, so only llmsim can answer.
+- **Load.** N sessions (default 200) round robin over both servers, in a fixed mix: plain turns, tool turns (llmsim scenario markers), a second message sent mid-turn (steering), tool approvals (`tool_approval` capability in protective mode), and cancels followed by a new message. Each message carries a `client_message_id`, so a retry after a killed server is deduplicated by the server.
+- **Chaos.** `--chaos "kill:worker-0@15,restart:worker-0@21,kill:server-1@35,restart:server-1@41"` by default; `--no-chaos` runs the same load with no kills.
+- **Assertions.** Every user message gets exactly one completed turn, or a cancelled one when it was cancelled. No turn has two terminal events, and no events follow a terminal event, apart from session lifecycle events and the cancel note. No duplicate assistant output, and every steered message is read by a later reason step. Every session ends idle. No session runs on two workers at once: on the step engine this is checked from worker task spans; on the actor runtime it is checked from `session_actors` lease samples (fence order, takeovers before expiry) and from per-worker activity spans in the logs. The run prints PASS or FAIL with counts and offending session ids, and exits non-zero on FAIL.
+- **Metrics.** Turns per second, end-to-end latency p50/p95/p99 per session kind, pickup latency, recovery time per kill (when the last turn open at the kill ended), and PostgreSQL statements per terminal turn (`pg_stat_statements`, when it is preloaded).
+
+- **CI.** [`chaos.yml`](../../.github/workflows/chaos.yml) runs it at 60 sessions with the kill schedule on pull requests that touch the server, worker, core or internal protocol crates (or the harness), and on demand. It builds release binaries with the low-memory settings (no LTO, 16 codegen units, no debug info) under its own cache key and gates only on the assertions; latency and statement counts go to the job summary, since shared runners are too noisy to gate on them.
+
+The harness reads `session_actors` and the `durable_workflow_instances` session mapping directly; everything else goes through the API. Run artifacts (`result.json`, `runs.json`, per-process logs) stay in the run directory for evidence.
 
 ## Related Testing Specs
 

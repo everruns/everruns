@@ -17,7 +17,7 @@ pub enum ProviderStatus {
 /// This is the persisted provider entity, separate from the runtime provider trait.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Provider {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     #[schema(value_type = String, example = "provider_01933b5a00007000800000000000001")]
     pub id: ProviderId,
     /// Human-readable provider name. Safe to render in user-facing messages.

@@ -45,6 +45,7 @@ pub use everruns_durable_engine::turn_store;
 pub mod task_wakeup;
 pub use everruns_durable_engine::turn_driver;
 pub mod actor_lease_store;
+pub mod actor_runtime;
 pub mod turn_host;
 pub mod unified_worker;
 #[cfg(test)]
@@ -76,7 +77,8 @@ pub use grpc_adapters::{
 
 // Re-export task worker types
 pub use actor_lease_store::{
-    ActorJournal, ActorLeaseStore, ActorRelease, ActorRenewal, LeasedActor,
+    ACTOR_LEASE_LOST, ActorFence, ActorJournal, ActorLeaseLost, ActorLeaseStore, ActorRelease,
+    ActorRenewal, LeasedActor, actor_lease_lost, is_actor_lease_lost,
 };
 pub use grpc_actor_lease_store::GrpcActorLeaseStore;
 pub use grpc_worker_adapters::GrpcWorkerAdapters;

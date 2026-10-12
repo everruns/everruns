@@ -56,8 +56,8 @@ An agent's call looks like this:
 
 - [API reference (docs.rs)](https://docs.rs/everruns-integrations)
 - [Design notes](SPEC.md)
-- [TypeSafe integration](https://docs.everruns.com/integrations/typesafe/)
-- [Everruns documentation](https://docs.everruns.com)
+- [TypeSafe integration](https://everruns.com/docs/integrations/typesafe/)
+- [Everruns documentation](https://everruns.com/docs)
 
 ## License
 

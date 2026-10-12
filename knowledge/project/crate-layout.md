@@ -122,8 +122,8 @@ actor runs every turn through it, on the in-process default today.
 application can choose it from the facade, it must therefore carry nothing
 private to the platform. The gRPC stores and runner constructors, `tonic`, and
 `everruns-internal-protocol` therefore live in the worker, which implements
-durable-engine's store traits for its own gRPC client and builds `DurableRunner`
-through the engine's transport-neutral `DurableRunner::from_store`;
+durable-engine's store traits for its own gRPC client (platform turns run as
+session actors, not on `DurableRunner`, since the 2026-10-11 cutover);
 [`check-durable-isolation.sh`](../../scripts/lib/check-durable-isolation.sh) rejects
 `tonic` or the internal protocol in durable-engine's normal and build edges. Worker-only
 core features (MCP, telemetry, OpenAI Agents API, tree-sitter outlines) are selected

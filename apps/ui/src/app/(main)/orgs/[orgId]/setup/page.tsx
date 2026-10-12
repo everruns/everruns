@@ -109,7 +109,7 @@ const MORE_PROVIDERS = ["Gemini", "Azure OpenAI", "Bedrock"];
 const MORE_PROVIDERS_EXTRA = 5; // openrouter, openai_completions, mai, fireworks, meta (mistral is flag-gated)
 
 // Docs base used elsewhere in the app (see capabilities page).
-const DOCS_URL = "https://docs.everruns.com";
+const DOCS_URL = "https://everruns.com/docs";
 
 function getProviderName(providerType: SetupProviderType): string {
   switch (providerType) {

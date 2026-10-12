@@ -62,7 +62,7 @@ impl WebSearch {
     /// Use only the chosen provider; a failure is reported instead of falling
     /// back to free search.
     pub fn no_fallback(mut self) -> Self {
-        self.config.fallback = FallbackMode::None;
+        self.config.fallback = Some(FallbackMode::None);
         self
     }
 

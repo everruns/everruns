@@ -14,6 +14,19 @@
   changes in the conversation, sent as Anthropic `tool_addition` blocks or
   OpenAI `additional_tools` items, with today's behavior as the fallback. See
   [Cache-Stable Tool Changes](execution/cache-stable-tool-changes.md).
+* **PAT scopes step 2: enforced on REST and `/v1/commands`.** The auth
+  extractor refuses a narrow token on any route outside its scope, including
+  unclassified ones, with `403 insufficient_scope`; `POST /v1/commands/{name}`
+  checks the named command. Embedders classify their own routes through
+  `ServerAppBuilder::classify_pat_routes`. A migration deletes legacy tokens
+  whose stored scopes are not exactly `["*"]` (owner decision). See
+  [Personal Access Token Scopes](security/pat-scopes.md).
+* **Docs moved to everruns.com/docs.** The docs Worker serves the Starlight
+  build on the `everruns.com/docs*` route beside the landing site, with
+  Markdown negotiation like landing; docs.everruns.com 301s every path there
+  and a daily check guards pages, agent files and redirects. The docs wear the
+  everruns.com header and footer (synced from landing) and their search merges
+  the landing index. See [Documentation Site Specification](ui/documentation.md).
 
 ## 2026-10-11
 
@@ -70,6 +83,31 @@
   deployment layers, with October 2026 numbers to compare against, and the
   method's known gaps. See
   [Load Testing](operations/load-testing.md#load-testing-a-hosted-deployment-and-baselines).
+* **Platform turns run as session actors.** The server's turn backend is now
+  `ActorTurnBackend` (production and DEV_MODE): intake marks the session's
+  actor runnable in the transaction that stored the input, and a worker leases
+  it and runs the whole turn with core's `drive_turn`, renewing every third of
+  the lease life and releasing with the input it consumed. A crashed worker's
+  turn is resumed from the log by the next lease; a lost lease stops all
+  writes; cancel has a single writer (the live holder, otherwise the server);
+  a turn that keeps killing its worker is sealed after
+  `DURABLE_NO_PROGRESS_SEAL_THRESHOLD` leases. Resolutions now write under the
+  open turn's id. Migration 20261012014120 adds the inbox cursor, the fresh-turn input
+  pointer and the lease count; migration 20261012014121 moves in-flight sessions onto
+  actors and cancels old-path turn tasks and runs, so the cutover wants a
+  recreate deploy. The worker no longer claims `process_input`, `reason` or
+  `act`, and the reaper no longer sweeps stranded `turn_workflow` runs; the
+  per-step code is removed in step 7. See
+  [Durable Execution Engine](operations/durable-execution-engine.md#session-actors-turn-execution)
+  and [Execution Backends](framework/execution-backends.md#the-platform-sessions-as-actors-on-workers).
+* **Session actor writes are fenced; rolling deploys are bridged.** Every
+  event a leased turn appends carries its holder and fence, and the control
+  plane refuses a stale one in the insert's transaction, so a write in flight
+  when the lease was lost no longer lands (TM-DOS-047). A cancel answers only
+  after the holder recorded it, also inside a command transaction. A temporary
+  sweep hands old-path turn tasks that a previous release creates during a
+  rolling deploy to session actors (removed in step 7). See
+  [Durable Execution Engine](operations/durable-execution-engine.md#session-actors-turn-execution).
 
 ## 2026-10-10
 
@@ -106,7 +144,7 @@
   pending cancel) and the worker link gains `LeaseActors`, `RenewActorLease`,
   `ReleaseActor` and `ReadActorJournal`, over gRPC and in-process. Nothing
   calls them yet; the worker cuts over next. See
-  [Durable Execution Engine](operations/durable-execution-engine.md#session-actors-runnable-index).
+  [Durable Execution Engine](operations/durable-execution-engine.md#session-actors-turn-execution).
 * **A serve daemon can keep its data in a bucket.** `start --store
   s3://bucket/prefix` takes the bucket's lease, rebuilds the data directory
   from it, and copies every change back (databases by changed pages, other

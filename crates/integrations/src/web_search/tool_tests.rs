@@ -185,3 +185,146 @@ fn narration_names_sites_and_handles_empty_results() {
         "No results for \"zzz\""
     );
 }
+
+/// A session in an organization with one Brave search account and the given
+/// defaults; records which account keys were asked for.
+struct OrgResolver {
+    settings: everruns_contracts::runtime::web_search::WebSearchOrgSettings,
+    key_requests: std::sync::Mutex<Vec<uuid::Uuid>>,
+}
+
+#[async_trait]
+impl everruns_contracts::runtime::connection_services::UserConnectionResolver for OrgResolver {
+    async fn get_connection_token(
+        &self,
+        _: everruns_contracts::typed_id::SessionId,
+        _: &str,
+    ) -> everruns_contracts::error::Result<Option<String>> {
+        Ok(None)
+    }
+    async fn get_web_search_settings(
+        &self,
+        _: everruns_contracts::typed_id::SessionId,
+    ) -> everruns_contracts::error::Result<
+        Option<everruns_contracts::runtime::web_search::WebSearchOrgSettings>,
+    > {
+        Ok(Some(self.settings.clone()))
+    }
+    async fn get_web_search_account_key(
+        &self,
+        _: everruns_contracts::typed_id::SessionId,
+        account: uuid::Uuid,
+    ) -> everruns_contracts::error::Result<Option<String>> {
+        self.key_requests.lock().unwrap().push(account);
+        Ok((account == ACCOUNT).then(|| "org-brave-key".to_string()))
+    }
+}
+
+const ACCOUNT: uuid::Uuid = uuid::Uuid::from_u128(0x7f);
+
+fn org_context(defaults: Value) -> (ToolContext, Arc<OrgResolver>) {
+    let resolver = Arc::new(OrgResolver {
+        settings: everruns_contracts::runtime::web_search::WebSearchOrgSettings {
+            defaults: serde_json::from_value(defaults).unwrap(),
+            accounts: vec![everruns_contracts::runtime::web_search::SearchAccount {
+                id: ACCOUNT,
+                provider: "brave_search".into(),
+                name: "Team".into(),
+            }],
+        },
+        key_requests: Default::default(),
+    });
+    let mut context = ToolContext::new(everruns_contracts::typed_id::SessionId::new());
+    context.connection_resolver = Some(resolver.clone());
+    (context, resolver)
+}
+
+async fn mount_brave(server: &MockServer) {
+    Mock::given(method("GET"))
+        .and(path("/web/search"))
+        .and(wiremock::matchers::header(
+            "X-Subscription-Token",
+            "org-brave-key",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "web": {"results": [
+                {"title": "Tokio", "url": "https://tokio.rs/", "description": "Async Rust"},
+                {"title": "Pins", "url": "https://pinterest.com/tokio", "description": "x"}
+            ]}
+        })))
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn organization_default_uses_the_org_search_account_and_blocked_domains() {
+    let server = server(200, DDG_HTML).await;
+    mount_brave(&server).await;
+    let (context, resolver) = org_context(json!({
+        "provider": "account", "account_id": ACCOUNT, "blocked_domains": ["pinterest.com"],
+        "results_per_search": 5
+    }));
+    let (model, details) = split(
+        tool(&server, json!({}))
+            .with_brave_base(server.uri())
+            .execute_with_context(json!({"query": "tokio"}), &context)
+            .await,
+    );
+    assert_eq!(model["results"].as_array().unwrap().len(), 1, "{model}");
+    assert_eq!(model["results"][0]["url"], "https://tokio.rs/");
+    assert_eq!(details["provider"], format!("account:{ACCOUNT}"));
+    assert_eq!(details["provider_label"], "Brave Search · Team");
+    assert_eq!(details["setting"]["provider"], "org_default");
+    assert_eq!(details["resolved"]["provider"], "account");
+    assert_eq!(
+        details["plan"],
+        json!([format!("account:{ACCOUNT}"), "free"])
+    );
+    assert_eq!(details["request"]["limit"], 5);
+    assert_eq!(*resolver.key_requests.lock().unwrap(), [ACCOUNT]);
+}
+
+#[tokio::test]
+async fn a_free_search_default_never_reads_an_account_key() {
+    let server = server(200, DDG_HTML).await;
+    let (context, resolver) = org_context(json!({"provider": "free"}));
+    let (_, details) = split(
+        tool(&server, json!({}))
+            .with_brave_base(server.uri())
+            .execute_with_context(json!({"query": "tokio"}), &context)
+            .await,
+    );
+    assert_eq!(details["plan"], json!(["free"]));
+    assert_eq!(details["provider"], "free");
+    assert!(resolver.key_requests.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn an_account_without_a_key_falls_back_to_free_search() {
+    let server = server(200, DDG_HTML).await;
+    let other = uuid::Uuid::from_u128(0x99);
+    let (mut context, _) = org_context(json!({}));
+    // Automatic with a second account whose key the org no longer has.
+    let resolver = Arc::new(OrgResolver {
+        settings: everruns_contracts::runtime::web_search::WebSearchOrgSettings {
+            defaults: Default::default(),
+            accounts: vec![everruns_contracts::runtime::web_search::SearchAccount {
+                id: other,
+                provider: "brave_search".into(),
+                name: "Gone".into(),
+            }],
+        },
+        key_requests: Default::default(),
+    });
+    context.connection_resolver = Some(resolver);
+    let (_, details) = split(
+        tool(&server, json!({"provider": "auto"}))
+            .with_brave_base(server.uri())
+            .execute_with_context(json!({"query": "tokio"}), &context)
+            .await,
+    );
+    assert_eq!(details["plan"], json!([format!("account:{other}"), "free"]));
+    assert_eq!(details["attempts"][0]["ok"], false);
+    assert_eq!(details["attempts"][0]["failure_kind"], "not_configured");
+    assert_eq!(details["provider"], "free");
+}

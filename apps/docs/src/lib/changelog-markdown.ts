@@ -6,6 +6,7 @@
 // its date, products, kind and release. Entry pages keep their converted body
 // and gain the same facts as a short header, so an agent can tell whether a
 // change is in the version it runs without opening the HTML.
+import { docsUrl } from "./site";
 import {
   availability,
   entryUrl,
@@ -17,7 +18,6 @@ import {
   type Entry,
 } from "./changelog";
 
-const SITE = "https://docs.everruns.com";
 
 const facts = (entry: Entry) => {
   const d = entry.data;
@@ -34,7 +34,7 @@ export async function changelogListMarkdown(product?: string): Promise<string> {
   const entries = (await getChangelogEntries()).filter(
     (e) => !product || (e.data.products as string[] | undefined)?.includes(product),
   );
-  const page = product ? `${SITE}/changelog/${product}/` : `${SITE}/changelog/`;
+  const page = docsUrl(product ? `/changelog/${product}/` : "/changelog/");
   const title = product ? `${productName(product)} changelog` : "Changelog";
   const lines = [
     `# ${title}`,
@@ -49,7 +49,7 @@ export async function changelogListMarkdown(product?: string): Promise<string> {
   for (const entry of entries) {
     const superseded = entry.data.supersededBy ? " (superseded)" : "";
     lines.push(
-      `- [${entry.data.title}](${SITE}${entryUrl(entry)})${superseded}: ${facts(entry).join(" · ")}. ${entry.data.description ?? ""}`,
+      `- [${entry.data.title}](${docsUrl(entryUrl(entry))})${superseded}: ${facts(entry).join(" · ")}. ${entry.data.description ?? ""}`,
     );
   }
   return `${lines.join("\n")}\n`;
@@ -63,7 +63,7 @@ export function withEntryFacts(markdown: string, entry: Entry): string {
     `Products: ${(d.products ?? []).map(productLabel).join(", ")}`,
     d.kind ? `Category: ${kindLabel(d.kind)}` : "",
     availability(entry).length ? `Available: ${availability(entry).map((a) => a.label).join("; ")}` : "",
-    d.supersededBy ? `Superseded by: ${SITE}/changelog/${d.supersededBy}/` : "",
+    d.supersededBy ? `Superseded by: ${docsUrl(`/changelog/${d.supersededBy}/`)}` : "",
     ...(d.links?.prs ?? []).map((pr) => `Pull request: ${pr}`),
   ].filter(Boolean);
   return markdown.replace(/(Source: <[^>]+>\n)/, `$1\n${header.join("\n")}\n`);

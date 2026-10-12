@@ -11,12 +11,18 @@
 //   token will be denied (fail closed).
 // Decision: classification happens in a router layer (`layer.rs`), which
 //   knows the matched route but not the credential. The auth extractor, which
-//   knows the credential, compares the two. Rollout step 1 only classifies:
-//   nothing reads the `RouteAccess` extension yet, so no response changes.
+//   knows the credential, compares the two (`enforce.rs`).
+// Decision: an embedder classifies its own routes through `ExtraRouteClasses`
+//   (`ServerAppBuilder::classify_pat_routes`). The built-in classification
+//   always wins, so an embedder can open only routes this crate left
+//   unclassified, and never `PerCommand`, which relies on a handler check.
 
+mod enforce;
 mod layer;
 pub mod routes;
 
+pub use enforce::{INSUFFICIENT_SCOPE, INSUFFICIENT_SCOPE_MESSAGE, enforce_command};
+pub(crate) use enforce::{add_challenge, enforce_route};
 pub use layer::classify_api_routes;
 
 use axum::http::Method;
@@ -68,7 +74,7 @@ impl PatScope {
 
     /// Whether a token with this scope may reach a route of class `access`
     /// (`None`: unclassified). `PerCommand` passes the route; the command
-    /// itself is checked where it is dispatched. Not enforced yet (step 2).
+    /// itself is checked where it is dispatched ([`enforce_command`]).
     pub fn permits(self, access: Option<RouteAccess>) -> bool {
         match self {
             Self::Full => true,
@@ -178,6 +184,37 @@ pub fn classify_command(desc: &CommandDescriptor) -> RouteAccess {
     }
 }
 
+/// Classifications an embedder registers for routes it merges into the API
+/// router (SaaS `extra_routes`, backend `auth_routes()`). Consulted only for a
+/// route the built-in classification leaves unclassified.
+#[derive(Debug, Clone, Default)]
+pub struct ExtraRouteClasses(HashMap<RouteKey, RouteAccess>);
+
+impl ExtraRouteClasses {
+    /// Classify `(method, path)`, with `path` as the router spells it under
+    /// the API prefix (`/v1/...`). Panics on `PerCommand`, which only
+    /// `POST /v1/commands/{name}` may carry, and on an invalid method: both
+    /// are programming errors caught at startup.
+    pub fn insert(&mut self, method: &str, path: &str, access: RouteAccess) {
+        assert!(
+            access != RouteAccess::PerCommand,
+            "an embedder route cannot be PerCommand: {method} {path}"
+        );
+        self.0.insert(route_key(method, path), access);
+    }
+
+    /// Class of `(method, template)` from this list alone.
+    pub fn get(&self, method: &Method, template: &str) -> Option<RouteAccess> {
+        self.0
+            .get(&(method_key(method), normalize_template(template)))
+            .copied()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
 /// Class of `(method, template)`, where `template` is the matched route with
 /// the API prefix removed (`/v1/...`). `None` means unclassified.
 pub fn classify(method: &Method, template: &str) -> Option<RouteAccess> {
@@ -197,5 +234,7 @@ pub fn classify(method: &Method, template: &str) -> Option<RouteAccess> {
     })
 }
 
+#[cfg(test)]
+mod enforce_tests;
 #[cfg(test)]
 mod tests;

@@ -215,6 +215,13 @@ pub struct UpdateOrganizationRequest {
     #[serde(default, deserialize_with = "double_option")]
     #[schema(value_type = Option<i32>, example = 5, minimum = 0)]
     pub agentid_agents_per_owner: Option<Option<i32>>,
+    /// Web search defaults; replaces the stored defaults as a whole. Omitted
+    /// fields take their built-in default. `provider` cannot be
+    /// `org_default`, `account_id` and `automatic_order` entries must name
+    /// this organization's search accounts, free search is always last in
+    /// the Automatic order, and `results_per_search` is 1 to 20.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub web_search_defaults: Option<everruns_contracts::runtime::web_search::WebSearchDefaults>,
 }
 
 fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
@@ -602,6 +609,7 @@ pub async fn update_organization(
         default_provider_per_service,
         system_decisions,
         agentid_agents_per_owner,
+        web_search_defaults,
     } = req;
     if agentid_agents_per_owner
         .flatten()
@@ -701,6 +709,26 @@ pub async fn update_organization(
         }
     }
 
+    let web_search_defaults = match web_search_defaults {
+        Some(defaults) => Some(
+            crate::domains::organizations::web_search::validate_defaults(
+                &state.db,
+                org_row.org_id,
+                defaults,
+            )
+            .await
+            .map_err(|error| match error {
+                Ok(message) => ErrorResponse::new(message).into_response(StatusCode::BAD_REQUEST),
+                Err(error) => {
+                    tracing::error!(%error, "Failed to validate web search defaults");
+                    ErrorResponse::new("Internal error")
+                        .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+                }
+            })?,
+        ),
+        None => None,
+    };
+
     // Update organization
     let input = UpdateOrganization { name };
 
@@ -738,6 +766,13 @@ pub async fn update_organization(
             )
             .await
             .log_internal_error_json("update organization settings")?;
+    }
+    if let Some(defaults) = &web_search_defaults {
+        state
+            .db
+            .set_org_web_search_defaults(org_row.org_id, defaults)
+            .await
+            .log_internal_error_json("update web search defaults")?;
     }
     if let Some(cap) = agentid_agents_per_owner {
         state
@@ -875,6 +910,10 @@ async fn build_organization_response(
         .agentid_agents_per_owner_setting(org_id)
         .await
         .log_internal_error_json("get AgentID owner cap")?;
+    let web_search_defaults = db
+        .org_web_search_defaults(org_id)
+        .await
+        .log_internal_error_json("get web search defaults")?;
 
     let onboarding_completed_at = row.onboarding_completed_at;
     let org = Organization {
@@ -899,6 +938,7 @@ async fn build_organization_response(
             .map(|s| crate::storage::SystemDecisions::from_db(&s.system_decisions))
             .unwrap_or_default(),
         agentid_agents_per_owner,
+        web_search_defaults,
         created_at: org.created_at,
         updated_at: org.updated_at,
         onboarding_completed_at,

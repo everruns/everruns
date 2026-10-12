@@ -300,7 +300,7 @@ No integration capability is removed. Delete the deprecated shims in the next pl
 
 ### Migration
 
-- Replace the five retired crate names with their matching `everruns-core` module features. Use `everruns` for driver and integration composition and `everruns-contracts` for portable contracts. See the [upgrade notes](https://docs.everruns.com/framework/upgrade-notes/).
+- Replace the five retired crate names with their matching `everruns-core` module features. Use `everruns` for driver and integration composition and `everruns-contracts` for portable contracts. See the [upgrade notes](https://everruns.com/docs/framework/upgrade-notes/).
 - No capabilities are removed. Published legacy versions remain available and are not yanked.
 
 ## [0.40.0] - 2026-10-04

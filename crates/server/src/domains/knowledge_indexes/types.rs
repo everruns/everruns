@@ -13,7 +13,7 @@ pub use crate::storage::{
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct KnowledgeIndexResponse {
     #[schema(value_type = String, example = "kidx_01933b5a000070008000000000000001")]
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: KnowledgeIndexId,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
@@ -144,7 +144,7 @@ pub fn knowledge_index_response(
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct KnowledgeIndexDocumentResponse {
     #[schema(value_type = String, example = "kidoc_01933b5a000070008000000000000001")]
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: KnowledgeIndexDocumentId,
     #[schema(value_type = String, example = "kidx_01933b5a000070008000000000000001")]
     /// Parent index's prefixed public identifier.

@@ -154,7 +154,7 @@ impl Command for ListSkills {
 /// Get a single skill by ID.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSkill {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -197,7 +197,7 @@ impl Command for GetSkill {
 /// Get full skill content (SKILL.md + files).
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSkillContent {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -282,7 +282,7 @@ impl Command for GetSkillContent {
 /// Update a skill. Only provided fields are changed.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateSkillCmd {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     #[serde(flatten)]
     pub req: UpdateSkillRequest,
@@ -424,7 +424,7 @@ impl Command for UpdateSkillCmd {
 /// Archive a skill (soft delete).
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteSkill {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -469,7 +469,7 @@ impl Command for DeleteSkill {
 /// Permanently delete an archived skill.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DestroySkill {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 

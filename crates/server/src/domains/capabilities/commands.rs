@@ -106,7 +106,7 @@ impl Command for ListCapabilities {
 /// Get a specific capability by ID.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetCapability {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -234,7 +234,7 @@ impl Command for ListDeclarativeCapabilities {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetDeclarativeCapability {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -259,7 +259,7 @@ impl Command for GetDeclarativeCapability {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateDeclarativeCapabilityCmd {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     #[serde(flatten)]
     pub req: UpdateDeclarativeCapabilityRequest,
@@ -326,7 +326,7 @@ impl Command for UpdateDeclarativeCapabilityCmd {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteDeclarativeCapability {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -358,7 +358,7 @@ impl Command for DeleteDeclarativeCapability {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DestroyDeclarativeCapability {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 

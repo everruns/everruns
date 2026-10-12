@@ -212,7 +212,7 @@ impl Command for ListMcpServers {
 /// Get a single MCP server by ID.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetMcpServer {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -248,7 +248,7 @@ impl Command for GetMcpServer {
 /// Update an MCP server. Only provided fields are changed.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateMcpServerCmd {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     #[serde(flatten)]
     pub req: UpdateMcpServerRequest,
@@ -471,7 +471,7 @@ async fn check_after_save(ctx: &Ctx, row: crate::storage::McpServerRow) -> McpSe
 /// Check again whether an OAuth MCP server's sign-in service is reachable.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CheckMcpServerConnection {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -529,7 +529,7 @@ impl Command for CheckMcpServerConnection {
 /// Archive an MCP server (soft delete).
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteMcpServer {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -572,7 +572,7 @@ impl Command for DeleteMcpServer {
 /// Permanently delete an archived MCP server.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DestroyMcpServer {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
