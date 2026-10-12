@@ -11,7 +11,7 @@ tags:
 
 # Cache-Stable Tool Changes
 
-> Status: **Accepted 2026-10-12. Step 1 implemented.**
+> Status: **Accepted 2026-10-12. Steps 1 and 2 implemented.**
 > Builds on the earlier analysis of Pi's approach (project notes,
 > `pi-1-0/cache-stable-tool-reveals.md`) and the caching comparison with
 > Pydantic AI (`caching/pydantic-unified-caching.md`), where this is ranked as
@@ -149,23 +149,34 @@ tools sorted by name within each server.
 
 ### 2. Recorded tool changes
 
-A new typed field on the runtime message, following the precedent of
-`configuration_update` (an Astra effort change that drivers render natively
-and is never shown as conversation text):
+One recorded entry, `ToolChanges` (`crates/contracts/src/tool_changes.rs`),
+holding
 
-- `tool_changes: Option<ToolChanges>` on a `system` message, holding
-  - `added`: full definitions of tools that become callable,
-  - `redefined`: full definitions that replace an earlier definition of the
-    same name (a stub becoming its full schema is a redefinition),
-  - `removed`: names that are no longer callable,
-  - `note`: optional prompt text that comes with the change (a capability's
-    how-to, "these tools are no longer available").
+- `baseline`: present on the first entry of an epoch, the full list sent as
+  `tools`,
+- `added`: full definitions of tools that become callable,
+- `redefined`: full definitions that replace an earlier definition of the
+  same name (a stub becoming its full schema is a redefinition),
+- `removed`: names that are no longer callable,
+- `note`: optional prompt text that comes with the change (a capability's
+  how-to, "these tools are no longer available").
 
-The entry is stored with the session's messages, hidden from chat, visible in
-Session Trace. Replaying baseline plus entries in order always yields the tool
-set the conversation has seen. That makes the conversation, not process memory,
-the record of what was revealed, which also replaces `tool_search`'s in-memory
-registry and fixes reveals being forgotten after a restart or on another worker.
+Entries are stored on the metadata of the completed assistant message whose
+request they preceded, following the precedent of Astra effort snapshots
+(`configuration_update`, rendered natively and never shown as conversation
+text). That keeps them in the immutable transcript without a new message kind
+in chat, and the reason step replays them to the input they took effect at
+(`crates/core/src/engine/execution/reason/tool_changes.rs`). The driver
+`Message` carries the entry as `tool_changes` on that input. Replaying baseline
+plus entries in order always yields the tool set the conversation has seen.
+That makes the conversation, not process memory, the record of what was
+revealed, which also lets `tool_search` drop its in-memory registry (step 5)
+and fixes reveals being forgotten after a restart or on another worker.
+
+An epoch ends where the cache restarts anyway: an answer from another model,
+or a transcript cut by a compaction checkpoint (the earlier answers, and so
+the baseline, are no longer in the loaded messages). The next request records
+a new baseline.
 
 ### 3. One comparison before each request
 
@@ -296,11 +307,13 @@ Each step is one PR and leaves `main` working.
    infinity-context notice and compaction summary out of top-level `system`
    needs them sent as something other than a leading system message, so it is
    in step 6.
-2. **Recorded tool changes in contracts and core.** The `tool_changes` field,
-   baseline, the comparison in the reason step, persistence, Session Trace
-   display. Every driver uses the fallback, so requests are unchanged.
-3. **Anthropic driver** renders changes inline; profile flag for verified
-   families; live tests once the key has credit.
+2. **Recorded tool changes in contracts and core.** Done: the `ToolChanges`
+   entry, the baseline, the comparison in the reason step and persistence on
+   assistant messages. Every driver uses the fallback, so requests are
+   unchanged. Session Trace display moved to step 3, where changes first reach
+   a request.
+3. **Anthropic driver** renders changes inline and Session Trace shows them;
+   profile flag for verified families; live tests once the key has credit.
 4. **OpenAI Responses driver** renders `additional_tools`; profile flag
    (`add_and_redefine` for GPT-6, `add_only` for 5.x) with live tests.
 5. **Sources move onto the comparison**: generic `tool_search` (drop the

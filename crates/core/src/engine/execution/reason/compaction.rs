@@ -917,6 +917,7 @@ pub(super) async fn apply_reactive_compaction(
                     phase: None,
                     reasoning: Vec::new(),
                     configuration_update: None,
+                    tool_changes: None,
                 },
                 Message {
                     native_tool_calls: Vec::new(),
@@ -931,6 +932,7 @@ pub(super) async fn apply_reactive_compaction(
                     phase: None,
                     reasoning: Vec::new(),
                     configuration_update: None,
+                    tool_changes: None,
                 },
             ];
             let mut summary_config = crate::engine::driver_registry::LlmCallConfig::new(

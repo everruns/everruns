@@ -67,6 +67,7 @@ pub fn llm_message_from_message(msg: &RuntimeMessage) -> Message {
 
     Message {
         configuration_update: None,
+        tool_changes: None,
         native_tool_calls: msg
             .tool_calls()
             .iter()
@@ -202,6 +203,7 @@ pub fn llm_message_from_message_with_attachments(
 
     Message {
         configuration_update: None,
+        tool_changes: None,
         native_tool_calls: msg
             .tool_calls()
             .iter()

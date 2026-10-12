@@ -22,7 +22,8 @@
   OpenAI `additional_tools` items, with today's behavior as the fallback. See
   [Cache-Stable Tool Changes](execution/cache-stable-tool-changes.md).
   Accepted; step 1 (sticky deferral, sorted MCP tools, order-stable AG-UI
-  frontend tools) implemented.
+  frontend tools) and step 2 (changes recorded on assistant messages and
+  replayed before each request; requests unchanged) implemented.
 * **PAT scopes step 2: enforced on REST and `/v1/commands`.** The auth
   extractor refuses a narrow token on any route outside its scope, including
   unclassified ones, with `403 insufficient_scope`; `POST /v1/commands/{name}`
