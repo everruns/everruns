@@ -2,6 +2,10 @@
 
 ## 2026-10-12
 
+* **Web search step 7: Parallel Search API driver.** Parallel is a search
+  account provider and a `parallel` provider setting (session, user or
+  application key, else the organization's first Parallel account); the
+  driver uses `fast` mode. See [Web Search](integrations/web-search.md).
 * **PAT scopes step 5: CLI.** `everruns whoami` asks `GET /v1/auth/me` and
   shows a token's access (`full` or `read-only`) from `token_scope`;
   `login --token` accepts a read token. Every failed CLI request keeps its

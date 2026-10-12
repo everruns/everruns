@@ -8,8 +8,9 @@ use super::config::{FallbackMode, ProviderSetting, WebSearchConfig};
 /// Web search for `AgentBuilder::capability`.
 ///
 /// The builder only writes capability config; keys never enter it. For
-/// Brave Search, set `BRAVE_SEARCH_API_KEY` in the environment (the facade's
-/// `web-search` feature registers the capability with
+/// Brave Search or Parallel, set `BRAVE_SEARCH_API_KEY` or `PARALLEL_API_KEY`
+/// in the environment (the facade's `web-search` feature registers the
+/// capability with
 /// [`WebSearchCapability::from_env`](super::WebSearchCapability::from_env)),
 /// or store the key as the session secret of the same name.
 ///
@@ -38,8 +39,8 @@ impl WebSearch {
         }
     }
 
-    /// The model's own search when it has one, then Brave when a key is
-    /// configured, then free search.
+    /// The model's own search when it has one, then Brave and Parallel when
+    /// keys are configured, then free search.
     pub fn auto() -> Self {
         Self::with_provider(ProviderSetting::Auto)
     }
@@ -52,6 +53,11 @@ impl WebSearch {
     /// Brave Search, with free search as the fallback.
     pub fn brave() -> Self {
         Self::with_provider(ProviderSetting::Brave)
+    }
+
+    /// Parallel's Search API, with free search as the fallback.
+    pub fn parallel() -> Self {
+        Self::with_provider(ProviderSetting::Parallel)
     }
 
     /// Keyless best-effort search only.

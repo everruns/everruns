@@ -23032,7 +23032,14 @@ export interface components {
      * @description Which provider web search uses.
      * @enum {string}
      */
-    SearchProviderSetting: "org_default" | "auto" | "native" | "brave" | "account" | "free";
+    SearchProviderSetting:
+      | "org_default"
+      | "auto"
+      | "native"
+      | "brave"
+      | "parallel"
+      | "account"
+      | "free";
     /** @description What a test query returned. */
     SearchTestOutcome: {
       /** Format: int64 */

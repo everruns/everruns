@@ -30,6 +30,7 @@ export const SETTING_LABELS: Record<SearchProviderSetting, string> = {
   auto: "Automatic",
   native: "Model provider search",
   brave: "Brave Search",
+  parallel: "Parallel",
   account: "Search account",
   free: "Free search",
 };
