@@ -106,17 +106,23 @@ pub(crate) async fn init_storage(
     )
     .await
     .map(Arc::new);
-    // One backend serves request and background callers: starting a turn is a
-    // single upsert on the request pool, which joins a caller's command
-    // transaction when one is open.
+    // Starting a turn is a single upsert that joins a caller's command
+    // transaction when one is open. Request callers write through the request
+    // pool; background loops (scheduler, tool-result timeouts) get a backend on
+    // the reserved pool, so a saturated request pool cannot strand a schedule
+    // that already fired or a park that already timed out (EVE-1081).
     let db = Arc::new(backend);
     let runner: Arc<dyn TurnBackend> =
         Arc::new(ActorTurnBackend::new(db.clone(), task_broadcaster.clone()));
+    let background_runner: Arc<dyn TurnBackend> = Arc::new(ActorTurnBackend::new(
+        Arc::new(db.for_background()),
+        task_broadcaster.clone(),
+    ));
 
     tracing::info!("Using the session actor turn backend");
     Ok(StorageInit {
         db,
-        background_runner: runner.clone(),
+        background_runner,
         runner,
         shared_durable_store: None,
         database_url: Some(database_url),
