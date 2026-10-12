@@ -8,6 +8,7 @@ products: [platform, cloud]
 surfaces: [ui, api]
 links:
   docs: [/event-reference/]
+  prs: [everruns/everruns#4642]
 ---
 
 Before this fix, a cancel could outlive the turn it was meant for. When the
@@ -24,3 +25,5 @@ A turn also no longer goes on after its worker failed to store its start
 events, which could leave an answer with no `turn.started`. The store is
 retried, and if it keeps failing, the next worker resumes the turn from the
 event log.
+
+The [event reference](/event-reference/) lists the turn events.
