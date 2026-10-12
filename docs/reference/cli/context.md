@@ -1,6 +1,6 @@
 ---
 title: everruns context
-description: "Notes managers keep about an entity, read by agents that manage it. CLI reference for everruns context."
+description: "Notes managers keep about an entity, read by agents that manage it. CLI reference for everruns context: usage, flags and examples."
 sidebar:
   label: context
 appliesTo: [platform, cloud]

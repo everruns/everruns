@@ -1,6 +1,6 @@
 ---
 title: everruns knowledge-indexes
-description: "Searchable indexes synced from external sources. CLI reference for everruns knowledge-indexes."
+description: "Searchable indexes synced from external sources. CLI reference for everruns knowledge-indexes: usage, flags and examples."
 sidebar:
   label: knowledge-indexes
 appliesTo: [platform, cloud]

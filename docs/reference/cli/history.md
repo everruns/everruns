@@ -1,6 +1,6 @@
 ---
 title: everruns history
-description: "Recorded changes to entities: list, compare, restore. CLI reference for everruns history."
+description: "Recorded changes to entities: list, compare, restore. CLI reference for everruns history: usage, flags and examples."
 sidebar:
   label: history
 appliesTo: [platform, cloud]

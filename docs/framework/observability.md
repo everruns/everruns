@@ -1,6 +1,10 @@
 ---
 title: Observability
 description: Export Framework sessions to OpenTelemetry and Braintrust, register your own event listeners, and flush them on shutdown.
+# The feature page shares this title; keep the <title> distinct for search results.
+head:
+  - tag: title
+    content: "Framework Observability: OpenTelemetry and Braintrust | Everruns"
 ---
 
 An Engine delivers every event from every session it owns to the listeners

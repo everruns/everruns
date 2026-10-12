@@ -1,6 +1,6 @@
 ---
 title: everruns plugins
-description: "Plugins installed in this organization. CLI reference for everruns plugins."
+description: "Plugins installed in this organization. CLI reference for everruns plugins: usage, flags and examples."
 sidebar:
   label: plugins
 appliesTo: [platform, cloud]

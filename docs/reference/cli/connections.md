@@ -1,6 +1,6 @@
 ---
 title: everruns connections
-description: "Your LLM provider API keys. CLI reference for everruns connections."
+description: "Your LLM provider API keys. CLI reference for everruns connections: usage, flags and examples."
 sidebar:
   label: connections
 appliesTo: [platform, cloud]

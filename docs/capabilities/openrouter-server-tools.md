@@ -1,6 +1,6 @@
 ---
 title: OpenRouter Server Tools
-description: Enable OpenRouter's provider-executed server tools, web search, web fetch, datetime, image generation, and more. OpenRouter runs them server-side and returns the final answer; non-OpenRouter providers ignore the setting.
+description: Enable OpenRouter's server tools (web search, web fetch, datetime, image generation and more), which OpenRouter runs before it returns the final answer.
 sidebar:
   order: 95
 appliesTo: [platform, cloud]

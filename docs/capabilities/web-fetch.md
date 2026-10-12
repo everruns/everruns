@@ -1,6 +1,6 @@
 ---
 title: Web Fetch
-description: Fetch a URL and convert its HTML to markdown.
+description: Fetch a URL and convert its HTML to markdown or plain text, with SSRF protection and structured fetchers for common developer and research sources.
 appliesTo: [framework, platform, cloud]
 ---
 

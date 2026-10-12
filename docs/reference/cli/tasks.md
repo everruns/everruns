@@ -1,6 +1,6 @@
 ---
 title: everruns tasks
-description: "Background tasks across every session in the organization. CLI reference for everruns tasks."
+description: "Background tasks across every session in the organization. CLI reference for everruns tasks: usage, flags and examples."
 sidebar:
   label: tasks
 appliesTo: [platform, cloud]

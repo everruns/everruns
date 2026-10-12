@@ -1,6 +1,6 @@
 ---
 title: everruns capabilities
-description: "Capabilities agents can use, including declarative ones you define. CLI reference for everruns capabilities."
+description: "Capabilities agents can use, including declarative ones you define. CLI reference for everruns capabilities: usage, flags and examples."
 sidebar:
   label: capabilities
 appliesTo: [platform, cloud]

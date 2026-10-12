@@ -1,6 +1,6 @@
 ---
 title: ChatGPT plan
-description: Connect a personal ChatGPT account to Everruns.
+description: Connect a personal ChatGPT account to Everruns and chat with agents on the models your ChatGPT plan includes, using the plan's allowance instead of an API key.
 appliesTo: [platform]
 ---
 

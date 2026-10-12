@@ -1,6 +1,6 @@
 ---
 title: everruns orgs
-description: "Organizations you belong to, and which one is active. CLI reference for everruns orgs."
+description: "Organizations you belong to, and which one is active. CLI reference for everruns orgs: usage, flags and examples."
 sidebar:
   label: orgs
 appliesTo: [platform, cloud]

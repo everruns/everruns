@@ -1,6 +1,6 @@
 ---
 title: Serve on celld (experimental)
-description: Run a serve app durably on celld, self-hosted Durable Objects, with everruns-serve-celld. The agent runs in a container, and a Durable Object snapshots, restores and replays its state.
+description: "Run a serve app durably on celld with everruns-serve-celld: the agent runs in a container, and a Durable Object snapshots, restores and replays its state."
 sidebar:
   order: 3
 ---

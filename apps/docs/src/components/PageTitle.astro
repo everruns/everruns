@@ -34,6 +34,10 @@ const description = isChangelogEntry(entry) ? undefined : entry.data.description
 const words = typeof entry.body === "string" ? entry.body.split(/\s+/).filter(Boolean).length : 0;
 const minutes = words > 0 ? Math.max(1, Math.round(words / 200)) : 0;
 const { lastUpdated, editUrl, lang } = route;
+// Changelog lists (the index and each product page) carry their RSS feed in
+// the title row; entries and the feeds page do not.
+const changelogList = /^changelog(\/[a-z]+)?$/.test(entry.id.replace(/\/index$/, "")) && !isChangelogEntry(entry) && entry.id !== "changelog/feeds";
+const feed = changelogList ? docsPath(`/${entry.id.replace(/\/index$/, "")}/rss.xml`) : undefined;
 
 // Same order and names as the Start here chooser.
 const targets = [
@@ -57,14 +61,32 @@ const targets = [
   )
 }
 
-{!isHome && <Default />}
+{
+  !isHome && feed ? (
+    <div class="er-title-row">
+      <Default />
+      <a class="er-title-feed" href={feed} title="RSS feed">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 11a9 9 0 0 1 9 9" />
+          <path d="M4 4a16 16 0 0 1 16 16" />
+          <circle cx="5" cy="19" r="1" />
+        </svg>
+        RSS
+      </a>
+    </div>
+  ) : (
+    !isHome && <Default />
+  )
+}
 
 {!isHome && description && <p class="er-lede">{description}</p>}
 
 {isChangelogEntry(entry) && <ChangelogMeta entry={entry} />}
 
 {
-  !isHome && (minutes > 0 || lastUpdated || editUrl) && (
+  // A changelog list is a feed, not an article: no reading time or edit link,
+  // and no meta rule pressed against its filter bar.
+  !isHome && !feed && (minutes > 0 || lastUpdated || editUrl) && (
     <p class="er-page-meta">
       {minutes > 0 && <span>{minutes} min read</span>}
       {lastUpdated && (
@@ -107,6 +129,46 @@ const targets = [
 }
 
 <style>
+  .er-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 16px;
+  }
+
+  .er-title-row :global(h1) {
+    margin: 0;
+  }
+
+  .er-title-feed {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 0.375rem;
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-sm);
+    text-decoration: none;
+  }
+
+  .er-title-feed:hover {
+    color: var(--sl-color-white);
+  }
+
+  .er-title-feed svg {
+    width: 1rem;
+    height: 1rem;
+    fill: none;
+    stroke: #f26522;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .er-title-feed svg circle {
+    fill: #f26522;
+  }
+
   .applies-to {
     display: flex;
     flex-wrap: wrap;

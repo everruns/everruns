@@ -1,6 +1,6 @@
 ---
 title: everruns evals
-description: "Evaluation cases, runs, results and scores. CLI reference for everruns evals."
+description: "Evaluation cases, runs, results and scores. CLI reference for everruns evals: usage, flags and examples."
 sidebar:
   label: evals
 appliesTo: [platform, cloud]

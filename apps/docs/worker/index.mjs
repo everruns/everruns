@@ -109,6 +109,17 @@ export default {
     }
 
     const response = await env.ASSETS.fetch(request);
+    // auto-trailing-slash answers `/docs/page` with a 307 to `/docs/page/`.
+    // That move is permanent, and a temporary redirect tells search engines to
+    // keep the slashless URL; answer 301 instead, query kept.
+    const location = response.headers.get("location");
+    if (response.status === 307 && location) {
+      const target = new URL(location, url);
+      if (target.origin === url.origin && target.pathname === `${url.pathname}/`) {
+        target.search = url.search;
+        return Response.redirect(target.toString(), 301);
+      }
+    }
     return withHeaders(response, [...vary, ...(markdown ? links : [])]);
   },
 };

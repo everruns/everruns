@@ -1,6 +1,6 @@
 ---
 title: everruns sandbox-targets
-description: "Sandbox providers this deployment offers. CLI reference for everruns sandbox-targets."
+description: "Sandbox providers this deployment offers. CLI reference for everruns sandbox-targets: usage, flags and examples."
 sidebar:
   label: sandbox-targets
 appliesTo: [platform, cloud]

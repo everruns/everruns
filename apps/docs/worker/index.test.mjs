@@ -13,7 +13,12 @@ const ASSETS = {
     "/docs/framework/index.md": ["# Framework", "text/markdown"],
   },
   async fetch(req) {
-    const file = this.files[new URL(req.url).pathname];
+    const { pathname } = new URL(req.url);
+    // Like html_handling "auto-trailing-slash": a page asked without its slash.
+    if (this.files[`${pathname}/`]) {
+      return new Response(null, { status: 307, headers: { location: `${pathname}/` } });
+    }
+    const file = this.files[pathname];
     return file
       ? new Response(file[0], { headers: { "Content-Type": file[1] } })
       : new Response("not found", { status: 404 });
@@ -74,4 +79,10 @@ test("the former docs host redirects every URL to the same page under /docs", as
     assert.equal(response.status, 301);
     assert.equal(response.headers.get("location"), to);
   }
+});
+
+test("a page asked without its trailing slash redirects permanently, query kept", async () => {
+  const response = await worker.fetch(request("/docs/framework?ref=x"), { ASSETS });
+  assert.equal(response.status, 301);
+  assert.equal(response.headers.get("location"), "https://everruns.com/docs/framework/?ref=x");
 });

@@ -107,6 +107,7 @@ export default defineConfig({
     // The memory model design note moved to knowledge/; the shipped
     // behavior it describes is on the memory scopes page.
     "/advanced/memory-model/": "/features/memory-scopes/",
+    "/advanced/command-path/": "/explanation/command-path/",
   }).map(([from, to]) => [from, withBase(to)])),
   // Screenshots are mostly text. Astro's default WebP quality (80) smears
   // small type and colored UI text, so encode at 92 with smart chroma
@@ -394,7 +395,6 @@ export default defineConfig({
                   items: [
                     { label: "Architecture", slug: "explanation/architecture" },
                     { label: "Physical Architecture", slug: "advanced/physical-architecture" },
-                    { label: "Command Path", slug: "advanced/command-path" },
                   ],
                 },
                 {
@@ -419,6 +419,7 @@ export default defineConfig({
                     { slug: "explanation/agentic-loop" },
                     { slug: "explanation/durable-execution" },
                     { slug: "explanation/events" },
+                    { slug: "explanation/command-path" },
                     { slug: "advanced/compaction" },
                     { slug: "advanced/tool-output-pipeline" },
                   ],

@@ -1,6 +1,6 @@
 ---
 title: everruns mcp-servers
-description: "Registered MCP servers available to agents and sessions. CLI reference for everruns mcp-servers."
+description: "Registered MCP servers available to agents and sessions. CLI reference for everruns mcp-servers: usage, flags and examples."
 sidebar:
   label: mcp-servers
 appliesTo: [platform, cloud]

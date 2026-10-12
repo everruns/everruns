@@ -1,6 +1,6 @@
 ---
 title: Integrations
-description: An index of the external vendors Everruns agents connect to, cloud sandboxes, browsers, search, messaging, and discovery, with links to each one's setup and tool reference.
+description: "An index of the external services Everruns agents connect to: cloud sandboxes, browsers, search, messaging and discovery, with setup and tool references."
 sidebar:
   label: Overview
   order: 0

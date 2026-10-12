@@ -10,7 +10,7 @@
     "precheck": "pnpm run prepare-content",
     "prebuild": "pnpm run prepare-content && node scripts/check-changelog.mjs && node scripts/generate-og-image.mjs",
     "build": "astro build",
-    "postbuild": "node scripts/verify-notebooks.mjs && node scripts/verify-llms.mjs",
+    "postbuild": "node scripts/verify-notebooks.mjs && node scripts/verify-llms.mjs && node scripts/verify-seo.mjs",
     "preview": "astro preview",
     "stage-worker": "node scripts/stage-worker-assets.mjs",
     "worker:test": "node --test worker/index.test.mjs",

@@ -4,6 +4,10 @@ description: Give an agent the MCP servers of the person chatting with it, signe
 sidebar:
   order: 97
 appliesTo: [platform, cloud]
+# The feature page shares this title; keep the <title> distinct for search results.
+head:
+  - tag: title
+    content: "User MCP Servers Capability | Everruns"
 ---
 
 | | |

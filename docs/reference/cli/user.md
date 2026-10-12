@@ -1,6 +1,6 @@
 ---
 title: everruns user
-description: "Your own account settings. CLI reference for everruns user."
+description: "Your own account settings. CLI reference for everruns user: usage, flags and examples."
 sidebar:
   label: user
 appliesTo: [platform, cloud]

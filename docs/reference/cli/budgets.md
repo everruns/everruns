@@ -1,6 +1,6 @@
 ---
 title: everruns budgets
-description: "Spending limits for sessions, agents, users and organizations. CLI reference for everruns budgets."
+description: "Spending limits for sessions, agents, users and organizations. CLI reference for everruns budgets: usage, flags and examples."
 sidebar:
   label: budgets
 appliesTo: [platform, cloud]

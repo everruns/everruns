@@ -1,6 +1,6 @@
 ---
 title: everruns workspaces
-description: "Durable working areas holding the files agents work on. CLI reference for everruns workspaces."
+description: "Durable working areas holding the files agents work on. CLI reference for everruns workspaces: usage, flags and examples."
 sidebar:
   label: workspaces
 appliesTo: [platform, cloud]

@@ -1,6 +1,6 @@
 ---
 title: everruns images
-description: "Uploaded images. CLI reference for everruns images."
+description: "Uploaded images. CLI reference for everruns images: usage, flags and examples."
 sidebar:
   label: images
 appliesTo: [platform, cloud]
