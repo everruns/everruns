@@ -174,7 +174,26 @@ impl<H: ActorHosts> ActorRuntime<H> {
         }
 
         let Some(turn) = open else {
-            let Some(input) = lease.fresh_input(actor.next_input_seq).await? else {
+            // The latest turn is closed. Its holder may have died between the
+            // turn's terminal event and `session.idled` (chaos harness: the
+            // session stayed `active` with nothing running), and before a
+            // renew committed the cursor over its input (the input would run
+            // a second turn). Finish both here, idempotently: the log says
+            // whether the idle and the input are still owed.
+            let closed = unidled_turn(&tail);
+            if let Some((turn_id, input_message_id)) = closed {
+                RuntimeSessionLifecycle::new(setup.clone(), org_id, session_id)
+                    .emit_session_idled(turn_id, input_message_id, None, None)
+                    .await?;
+            }
+            let mut fresh = lease.fresh_input(actor.next_input_seq).await?;
+            if let Some(found) = fresh
+                && closed_input(&tail) == Some(found.message_id)
+            {
+                lease.advance(found.sequence);
+                fresh = lease.fresh_input(actor.next_input_seq).await?;
+            }
+            let Some(input) = fresh else {
                 // A mark with nothing to run (its input was consumed).
                 lease.advance(lease.inbox_seq());
                 return Ok(Finish::Release);
@@ -605,4 +624,41 @@ async fn assistant_error<A: RuntimeHostAdapter>(
         ))
         .await?;
     Ok(())
+}
+
+/// Terminal events: a turn that logged one is closed.
+fn is_turn_terminal(event_type: &str) -> bool {
+    matches!(
+        event_type,
+        crate::core::events::TURN_COMPLETED
+            | crate::core::events::TURN_FAILED
+            | crate::core::events::TURN_CANCELLED
+            | crate::core::events::TURN_SEALED
+    )
+}
+
+/// The input of the closed turn the tail starts with: its `turn.started`, when
+/// a terminal event follows it.
+fn closed_input(tail: &[Event]) -> Option<MessageId> {
+    let started = tail
+        .first()
+        .filter(|event| event.event_type == crate::core::TURN_STARTED)?;
+    tail.iter()
+        .any(|event| is_turn_terminal(&event.event_type))
+        .then_some(started.context.input_message_id)
+        .flatten()
+}
+
+/// The turn (id, input) whose terminal event is the tail's last and has no
+/// `session.idled` after it: its holder died before idling the session.
+fn unidled_turn(tail: &[Event]) -> Option<(TurnId, MessageId)> {
+    for event in tail.iter().rev() {
+        if event.event_type == crate::core::events::SESSION_IDLED {
+            return None;
+        }
+        if is_turn_terminal(&event.event_type) {
+            return event.context.turn_id.zip(event.context.input_message_id);
+        }
+    }
+    None
 }

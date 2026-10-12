@@ -37,8 +37,12 @@ impl ChatDriver for AnthropicChatDriver {
                 .is_some_and(|profile| profile.supports_server_compaction);
         let mut prefix_messages = match &config.provider_opaque_context {
             Some(ProviderOpaqueContext::AnthropicMessagesPrefix { messages_json }) => {
+                // A driver error, not a control-plane one: a store error would
+                // be retried as infrastructure (see
+                // the reason step's `error_policy::returned_to_turn_driver`), and a
+                // corrupt checkpoint does not heal on retry.
                 serde_json::from_str::<Vec<Value>>(messages_json).map_err(|error| {
-                    AgentLoopError::store(format!(
+                    AgentLoopError::llm(format!(
                         "invalid Anthropic messages-prefix checkpoint: {error}"
                     ))
                 })?

@@ -296,7 +296,11 @@ production and DEV_MODE alike; the worker side is
 - **Intake marks the actor runnable in the input's transaction.** Starting a
   turn is an upsert the caller runs in the transaction that persists the
   input, so the input and the marker commit together and a rolled-back message
-  starts nothing. `inbox_seq` (the newest input's event sequence) only moves
+  starts nothing. Intake that is not a transactional command (a person's
+  message, a scheduled message, a wake) opens that transaction itself
+  ([`store_input_and_start`](../../crates/server/src/turns/mod.rs)): a send
+  that fails stored nothing, and a retry with the same `client_message_id`
+  that finds the message stored but not marked marks it. `inbox_seq` (the newest input's event sequence) only moves
   forward. A stored message also records `next_input_seq`, the input the next
   fresh turn starts from, when the previous one was consumed, so queued
   messages start turns in arrival order and history written without a mark (a
@@ -310,7 +314,10 @@ production and DEV_MODE alike; the worker side is
   `interrupted`; an open turn whose answer is already in the log is completed
   without another model call. With no open turn, the first unconsumed input
   starts a fresh turn through core's `turn_entry_plan`, the entry step the
-  in-process runtime uses.
+  in-process runtime uses. A closed latest turn whose terminal event has no
+  `session.idled` after it lost its holder between the two: the next holder
+  idles the session (the log keeps that idempotent) and treats the turn's
+  input as consumed even when no renew committed it, so it never runs twice.
 - **The inbox is the log; the cursor is `consumed_seq`.** A turn input is an
   `input.message` without a turn id; everything a turn or a resolution writes
   carries the turn's id. Before each reason (and when a reason would finish)
@@ -328,6 +335,10 @@ production and DEV_MODE alike; the worker side is
   lease: it stops the turn, drops its unwritten events and releases nothing.
   A retryable failure (a store or transport error) also lets the lease
   expire; the TTL is the backoff before another worker resumes from the log.
+  That includes a control-plane read or write the reason step needs (a pool
+  timeout loading the compaction checkpoint): the reason step returns it
+  instead of reporting it as a model failure, so it never becomes a
+  `turn.failed` with a provider-error message.
   Expiry is database time.
 - **Every log append is fenced.** Stopping on a lost renew leaves a window: a
   write already in flight when the lease ran out could land after another

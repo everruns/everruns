@@ -733,3 +733,107 @@ async fn a_turn_whose_session_is_deleted_before_it_runs_stops_without_error() {
     assert!(fixture.answers().await.is_empty());
     assert!(!run_once(&worker).await, "nothing left to lease");
 }
+
+/// The log of a holder that stored `terminal` for a turn on `input` and died
+/// before `session.idled`; with `committed`, a renew had already committed
+/// the cursor over the input.
+async fn died_before_idling(fixture: &Fixture, terminal: &str, committed: bool) -> MessageId {
+    let input = fixture.send("Hello.").await;
+    let turn_id = everruns_contracts::typed_id::TurnId::new();
+    let context = EventContext::turn(turn_id, input);
+    let emitter = fixture.runtime.event_emitter();
+    emitter
+        .emit(EventRequest::new(
+            fixture.session_id,
+            context.clone(),
+            crate::core::events::TurnStartedData {
+                turn_id,
+                input_message_id: input,
+                input_content: None,
+                agent_id: None,
+                agent_name: None,
+                agent_description: None,
+            },
+        ))
+        .await
+        .unwrap();
+    let request = match terminal {
+        "turn.completed" => EventRequest::new(
+            fixture.session_id,
+            context,
+            crate::core::events::TurnCompletedData {
+                turn_id,
+                iterations: 1,
+                status: Some("completed".to_string()),
+                ..Default::default()
+            },
+        ),
+        "turn.failed" => EventRequest::new(
+            fixture.session_id,
+            context,
+            crate::core::events::TurnFailedData {
+                turn_id,
+                error: "provider rejected the request".to_string(),
+                error_code: None,
+                error_fields: None,
+                error_disclosure: None,
+            },
+        ),
+        other => panic!("unexpected terminal {other}"),
+    };
+    emitter.emit(request).await.unwrap();
+    let started = fixture
+        .events()
+        .await
+        .iter()
+        .find(|event| event.event_type == "turn.started")
+        .and_then(|event| event.sequence)
+        .map(i64::from)
+        .unwrap();
+    // The holder held the lease when it died.
+    let (dead, _) = fixture.worker("w1");
+    let leased = dead.lease(1).await.unwrap();
+    assert_eq!(leased.len(), 1);
+    if committed {
+        fixture.store.commit(fixture.session_id, started);
+    }
+    fixture.store.expire(fixture.session_id);
+    input
+}
+
+// Chaos harness: a holder stored `turn.completed`, then died before
+// `session.idled`. The next holder found no open turn and no fresh input and
+// released, leaving the session `active` with nothing running, forever.
+#[tokio::test]
+async fn a_holder_that_dies_before_idling_leaves_the_next_holder_to_idle_the_session() {
+    for terminal in ["turn.completed", "turn.failed"] {
+        for committed in [true, false] {
+            let fixture = Fixture::new(model("Never.", vec![])).await;
+            died_before_idling(&fixture, terminal, committed).await;
+
+            let (survivor, _) = fixture.worker("w2");
+            assert_eq!(run_until_idle(&survivor).await, 1, "{terminal} {committed}");
+            assert_eq!(
+                fixture.count("session.idled").await,
+                1,
+                "{terminal} committed={committed}: the session is idled"
+            );
+            assert_eq!(
+                fixture.count("turn.started").await,
+                1,
+                "{terminal} committed={committed}: the answered input is not run again"
+            );
+            assert!(fixture.answers().await.is_empty());
+            fixture.assert_idle();
+
+            // Idempotent: another lease of the idled session adds nothing.
+            fixture
+                .store
+                .mark_resumable(fixture.session_id, ORG_ID)
+                .await;
+            run_until_idle(&survivor).await;
+            assert_eq!(fixture.count("session.idled").await, 1);
+            fixture.assert_idle();
+        }
+    }
+}
