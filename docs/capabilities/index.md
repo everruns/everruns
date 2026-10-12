@@ -93,6 +93,7 @@ Structured data, knowledge retrieval, and memory.
 | [SQL Database](/capabilities/sql-database/) | `session_sql_database` | 3 |
 | [Retrieval Citations](/capabilities/citation-retrieval/) | `citation_retrieval` | 0 |
 | [Citation Verification](/capabilities/citation-verification/) | `citation_verification` | 0 |
+| [Web Citations](/capabilities/citation-web/) | `citation_web` | 0 |
 | [Data Knowledge](/capabilities/data-knowledge/) | `data_knowledge` | 0 |
 | [Knowledge Base](/capabilities/knowledge-base/) | `knowledge_base` | 1; `FEATURE_KNOWLEDGE` grade |
 | [Knowledge Index](/capabilities/knowledge-index/) | `knowledge_index` | 0 (adds `search_index` when `indexes` is set); `FEATURE_KNOWLEDGE` grade |

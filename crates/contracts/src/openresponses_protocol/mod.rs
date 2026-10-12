@@ -45,6 +45,7 @@ use crate::user_facing_error::is_provider_quota_message;
 // module's public surface is unchanged.
 mod background;
 mod chat_driver;
+mod citations;
 mod completion_contract;
 mod computer;
 mod hosted_tools;

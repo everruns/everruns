@@ -12,6 +12,7 @@ pub mod agent_handoff;
 pub mod background_execution;
 pub mod citation_retrieval;
 pub mod citation_verification;
+pub mod citation_web;
 pub mod coordination;
 pub mod data_knowledge;
 pub mod delegation_result;
@@ -60,6 +61,7 @@ pub use citation_verification::{
     CITATION_VERIFICATION_CAPABILITY_ID, CitationVerificationCapability,
     CitationVerificationConfig, VerificationMode,
 };
+pub use citation_web::{CITATION_WEB_CAPABILITY_ID, CitationWebCapability};
 pub use coordination::{
     AssignmentTaskExecutor, COORDINATION_CAPABILITY_ID, CoordinationCapability,
     THREAD_RESOLVED_DETAIL,
@@ -245,6 +247,7 @@ pub fn register_hosted_capabilities(
     registry.register(KnowledgeBaseCapability);
     registry.register(KnowledgeIndexCapability);
     registry.register(CitationRetrievalCapability);
+    registry.register(CitationWebCapability);
     registry.register(CitationVerificationCapability);
     // Inert unless the org flag lets it through to the worker snapshot.
     registry.register(openai_agents_api_runtime::OpenAiAgentsApiRuntimeCapability);

@@ -1920,16 +1920,15 @@ impl ReasonAtom {
             (text, thinking, reasoning, tool_calls);
         compaction_lifecycle.record_observed(&mut llm_config, compaction_started_at);
 
-        // End-of-message citation annotation seam (see knowledge/runtime-resources/citations.md). Runs
-        // once on the finalized final-answer text to attach claim-level citations
-        // before guardrails inspect the complete client-visible payload. Skipped
-        // when a guardrail already tripped,
-        // when there are no citation providers, when there is no text, or while
-        // the message still carries tool calls (citations attach to answer
-        // prose, not intermediate tool-calling turns). The built-in feeds do not
-        // rewrite text, so streamed deltas stay valid and no buffering is needed;
-        // a future feed that rewrites (e.g. to strip inline markers) must also
-        // opt into delta buffering.
+        // End-of-message citation annotation seam (see knowledge/runtime-resources/citations.md).
+        // Runs once on the finalized final-answer text to attach claim-level citations, with any
+        // web citations the provider returned, before guardrails inspect the complete client-
+        // visible payload. Skipped when a guardrail already tripped, when there are no citation
+        // providers, when there is no text, or while the message still carries tool calls
+        // (citations attach to answer prose, not intermediate tool-calling turns). The built-in
+        // feeds do not rewrite text, so streamed deltas stay valid and no buffering is needed; a
+        // future feed that rewrites (e.g. to strip inline markers) must also opt into delta
+        // buffering.
         let mut citation_annotations: Vec<crate::engine::message::TextAnnotation> = Vec::new();
         if tripped.is_none()
             && !annotation_providers.is_empty()
@@ -1948,6 +1947,7 @@ impl ReasonAtom {
                 &runtime_agent.system_prompt,
                 &text,
                 &messages,
+                output_hooks::web_citations(&completion_metadata),
                 self.utility_llm_service.as_ref(),
             )
             .await;

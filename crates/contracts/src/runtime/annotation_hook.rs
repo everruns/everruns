@@ -18,6 +18,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::runtime::message::{RuntimeMessage, TextAnnotation};
+use crate::web_citation::WebCitation;
 
 /// Async, end-of-message hook that attaches citation annotations to the
 /// finalized assistant text.
@@ -43,6 +44,10 @@ pub struct AnnotationContext<'a> {
     /// like `citation_retrieval` scan it for the tool-result citations they
     /// align to claim spans.
     pub messages: &'a [RuntimeMessage],
+    /// Sources the provider itself cited for this message (native web
+    /// search), spans relative to the text the model streamed. The
+    /// `citation_web` feed maps them; other feeds ignore them.
+    pub web_citations: &'a [WebCitation],
     /// Utility LLM service for model-backed alignment/verification. `None` when
     /// the deployment has no utility model configured.
     pub utility_llm_service: Option<&'a Arc<dyn crate::runtime::UtilityLlmService>>,
@@ -94,6 +99,7 @@ pub async fn collect_annotations(
     system_prompt: &str,
     message_text: &str,
     messages: &[RuntimeMessage],
+    web_citations: &[WebCitation],
     utility_llm_service: Option<&Arc<dyn crate::runtime::UtilityLlmService>>,
 ) -> CollectedAnnotations {
     let mut text = message_text.to_string();
@@ -104,6 +110,7 @@ pub async fn collect_annotations(
             system_prompt,
             message_text: &text,
             messages,
+            web_citations,
             utility_llm_service,
         };
         let result = p.provider.annotate(&ctx).await;
@@ -293,10 +300,10 @@ mod tests {
             ],
             rewritten: None,
         })];
-        let out = collect_annotations(&providers, "", "αβγ", &[], None).await;
+        let out = collect_annotations(&providers, "", "αβγ", &[], &[], None).await;
         assert_eq!(out.text, "αβγ");
         assert_eq!(out.annotations, [valid]);
-        let empty = collect_annotations(&[], "", "Unchanged α", &[], None).await;
+        let empty = collect_annotations(&[], "", "Unchanged α", &[], &[], None).await;
         assert_eq!(empty.text, "Unchanged α");
         assert!(empty.annotations.is_empty());
     }
@@ -313,7 +320,7 @@ mod tests {
                 rewritten: Some("hi".into()),
             }),
         ];
-        let out = collect_annotations(&providers, "", "hello", &[], None).await;
+        let out = collect_annotations(&providers, "", "hello", &[], &[], None).await;
         assert_eq!(out.text, "hi");
         assert_eq!(out.annotations, [ann(0, 2)]);
     }
@@ -324,7 +331,7 @@ mod tests {
             annotations: vec![ann(0, 5)],
             rewritten: Some("hi".into()),
         })];
-        let out = collect_annotations(&providers, "", "hello", &[], None).await;
+        let out = collect_annotations(&providers, "", "hello", &[], &[], None).await;
         assert_eq!(out.text, "hi");
         assert!(out.annotations.is_empty());
     }
@@ -381,6 +388,7 @@ mod tests {
             "system",
             "αβγ",
             &[RuntimeMessage::user("question")],
+            &[],
             Some(&service),
         )
         .await;

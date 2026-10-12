@@ -99,6 +99,7 @@ pub mod turn_collector;
 pub mod typed_id;
 pub mod url_validation;
 pub mod user_facing_error;
+pub mod web_citation;
 
 // ============================================================================
 // Convenience root re-exports

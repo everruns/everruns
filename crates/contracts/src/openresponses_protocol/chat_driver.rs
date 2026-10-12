@@ -812,6 +812,9 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             tool_calls_truncated_executed: truncated_executed,
                                             hosted_tool_calls:
                                                 super::hosted_tools::hosted_tool_calls(response_obj),
+                                            web_citations: super::citations::web_citations(
+                                                response_obj.get("output"),
+                                            ),
                                             ..Default::default()
                                         })))
                                     }

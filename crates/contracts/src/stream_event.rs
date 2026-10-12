@@ -155,6 +155,11 @@ pub struct LlmCompletionMetadata {
     /// Provider-executed tool calls in this response, keyed by kind
     /// (`web_search_call`, ...). Hosted tools bill per call on top of tokens.
     pub hosted_tool_calls: std::collections::BTreeMap<String, u32>,
+    /// Sources the provider cited for this response's text (native web
+    /// search), spans in chars of the text this stream emitted. Only the
+    /// `citation_web` capability turns them into annotations; see
+    /// [`crate::web_citation`].
+    pub web_citations: Vec<crate::web_citation::WebCitation>,
 }
 
 /// State of one provider-executed tool call. See [`LlmStreamEvent::HostedToolCall`].

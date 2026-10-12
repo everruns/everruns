@@ -28,6 +28,11 @@
 //!   unpaired is dropped, since the API rejects a search call without a
 //!   result once the assistant turn is over.
 //!
+//! Citations: a text block that cites search results carries
+//! `web_search_result_location` citations, and the block is the claim.
+//! [`citations`] reports them for the `citation_web` feed with the block's
+//! char span in the streamed answer (the text blocks' deltas, in order).
+//!
 //! Decision: a paused turn is not continued. The driver ends the generation
 //! with what the model wrote so far (`pause_turn` maps to `stop`), and the
 //! default search cap keeps generations well under the server loop's limit.
@@ -40,6 +45,7 @@ use everruns_contracts::driver_registry::{
 use everruns_contracts::native_web_search::{
     NativeWebSearch, WEB_SEARCH_FUNCTION_TOOL, anthropic_has_native_web_search,
 };
+use everruns_contracts::web_citation::{CitedSpan, WebCitation};
 use serde_json::Value;
 
 const SERVER_TOOL_USE: &str = "server_tool_use";
@@ -243,6 +249,39 @@ pub(crate) fn search_count(reported: u32, content: &[Value]) -> u32 {
     reported.max(u32::try_from(results).unwrap_or(u32::MAX))
 }
 
+/// The web search citations of a response's raw blocks, each spanning the
+/// text block that carries it. The streamed answer is every text block's text
+/// in block order, so a block starts where the previous ones' chars end.
+pub(crate) fn citations(content: &[Value]) -> Vec<WebCitation> {
+    let mut out = Vec::new();
+    let mut offset = 0;
+    for block in content {
+        if block.get("type").and_then(Value::as_str) != Some("text") {
+            continue;
+        }
+        let text = block
+            .get("text")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let chars = text.chars().count();
+        let cites = block.get("citations").and_then(Value::as_array);
+        for citation in cites.into_iter().flatten() {
+            let field = |key: &str| citation.get(key).and_then(Value::as_str);
+            let Some(url) = field("url").filter(|_| field("type") == Some(CITATION)) else {
+                continue;
+            };
+            out.push(WebCitation {
+                url: url.to_string(),
+                title: field("title").map(str::to_string),
+                snippet: field("cited_text").map(str::to_string),
+                span: CitedSpan::from_chars(text, 0, chars).map(|span| span.offset(offset)),
+            });
+        }
+        offset += chars;
+    }
+    out
+}
+
 /// `usage.server_tool_use.web_search_requests` from a usage payload.
 pub(crate) fn reported_searches(server_tool_use: Option<&Value>) -> Option<u32> {
     server_tool_use?
@@ -419,6 +458,35 @@ mod tests {
         let tool_search = json!({ "type": "server_tool_use", "id": "srv_4",
                                   "name": "tool_search_tool_bm25", "input": {} });
         assert!(hosted_call_at_start(&tool_search, |_| None).is_none());
+    }
+
+    #[test]
+    fn citations_span_their_text_block_in_chars() {
+        let content = vec![
+            json!({ "type": "text", "text": "Zürich 😀: " }),
+            call("srv_1"),
+            result("srv_1"),
+            cited_text(),
+            json!({ "type": "text", "text": " Über.", "citations": [
+                { "type": "char_location", "cited_text": "x" },
+                { "type": "web_search_result_location", "url": "https://ü.de",
+                  "encrypted_index": "E", "cited_text": "über" } ] }),
+        ];
+        let cites = citations(&content);
+        assert_eq!(cites.len(), 2);
+        let streamed = "Zürich 😀: Rust 1.95 is out. Über.";
+        let first = cites[0].span.as_ref().unwrap();
+        assert_eq!((first.start, first.end), (10, 27));
+        assert_eq!(first.text, "Rust 1.95 is out.");
+        let covered: String = streamed.chars().skip(first.start).take(17).collect();
+        assert_eq!(covered, first.text);
+        assert_eq!(cites[0].url, "https://blog.rust-lang.org");
+        assert_eq!(cites[0].title.as_deref(), Some("Rust"));
+        assert_eq!(cites[0].snippet.as_deref(), Some("1.95"));
+        let second = cites[1].span.as_ref().unwrap();
+        assert_eq!((second.start, second.end), (27, 33));
+        assert_eq!(cites[1].title, None);
+        assert!(citations(&[call("srv_1"), result("srv_1")]).is_empty());
     }
 
     #[test]

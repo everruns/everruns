@@ -25,6 +25,9 @@
 // contract yet (the combination is also still a preview). Gemini 2.x rejects
 // the combination outright. With other tools on the call the request declines
 // and the function tool stays, for the next provider of the search plan.
+//
+// Citations: the grounding sources and supports are reported as web citations
+// on `Done`, mapped against the streamed answer text (see `grounding`).
 
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
@@ -54,6 +57,8 @@ use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
 use everruns_contracts::stream_accumulator::StreamToolCallAccumulator;
 use everruns_contracts::stream_reconnect::{ByteStream, connect_bytes_with_reconnect};
 use everruns_contracts::tool_types::ToolDefinition;
+
+use super::grounding::{self, GroundingChunk, GroundingSupport};
 
 const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
 
@@ -822,6 +827,10 @@ struct GeminiStreamState {
     grounded: bool,
     /// Distinct grounding queries the model ran, in order.
     search_queries: Vec<String>,
+    /// The answer text streamed so far, and the latest grounding sources and
+    /// supports (a later chunk repeats the lists in full).
+    answer: String,
+    grounding: (Vec<GroundingChunk>, Vec<GroundingSupport>),
     pending: std::collections::VecDeque<LlmStreamEvent>,
     done: bool,
 }
@@ -880,6 +889,7 @@ impl GeminiStreamState {
                             });
                         }
                         GeminiResponsePart::Text { text, .. } => {
+                            self.answer.push_str(&text);
                             self.pending.push_back(LlmStreamEvent::TextDelta(text))
                         }
                         GeminiResponsePart::FunctionCall {
@@ -934,6 +944,12 @@ impl GeminiStreamState {
     /// sends no search progress: the queries arrive with the grounded text,
     /// and a later chunk may repeat earlier ones.
     fn record_searches(&mut self, grounding: &GeminiGroundingMetadata) {
+        if !grounding.grounding_supports.is_empty() {
+            self.grounding = (
+                grounding.grounding_chunks.clone(),
+                grounding.grounding_supports.clone(),
+            );
+        }
         for query in &grounding.web_search_queries {
             if query.trim().is_empty() || self.search_queries.contains(query) {
                 continue;
@@ -996,6 +1012,8 @@ impl GeminiStreamState {
             );
             (metadata.provider_finish_reason, metadata.tool_calls_dropped) = (raw, dropped);
             metadata.retry_metadata = self.retry_metadata.take();
+            let (chunks, supports) = &self.grounding;
+            metadata.web_citations = grounding::web_citations(&self.answer, chunks, supports);
             let searches = self.billed_searches();
             if searches > 0 {
                 metadata
@@ -1187,12 +1205,16 @@ struct GeminiCandidate {
 }
 
 /// The part of `groundingMetadata` the driver reads: the search queries the
-/// model ran. Sources and support spans are not surfaced yet.
+/// model ran, and the sources with the answer segments they support.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GeminiGroundingMetadata {
     #[serde(default)]
     web_search_queries: Vec<String>,
+    #[serde(default)]
+    grounding_chunks: Vec<GroundingChunk>,
+    #[serde(default)]
+    grounding_supports: Vec<GroundingSupport>,
 }
 
 #[derive(Debug, Deserialize)]

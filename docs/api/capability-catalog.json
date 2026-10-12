@@ -324,6 +324,23 @@
       "tools": []
     },
     {
+      "category": "Knowledge",
+      "dependencies": [],
+      "docs_slug": "citation-web",
+      "feature_flag": null,
+      "features": [
+        "citations"
+      ],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "citation_web",
+      "name": "Web citations",
+      "status": "available",
+      "tools": []
+    },
+    {
       "category": "Optimization",
       "dependencies": [],
       "docs_slug": "tool-search",

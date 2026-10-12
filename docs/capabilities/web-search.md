@@ -158,6 +158,10 @@ Returns the query and a list of results, each with an `id`, `title`, `url`, `sit
 `id` stays the same for the same URL throughout a session. Free search adds an `answer` when an
 encyclopedia abstract matches.
 
+To show those citations as numbered source chips in the chat, also add
+[Web Citations](/capabilities/citation-web/) (`citation_web`). It covers model provider search
+too, from the citations the provider returns.
+
 Which provider answered, every attempt with its reason, and each provider's raw response are kept
 on the tool call for people (the run's details and Session Trace). The model sees them only with
 `show_provider`.

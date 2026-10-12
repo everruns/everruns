@@ -932,6 +932,8 @@ impl ChatDriver for AnthropicChatDriver {
                                         .lock()
                                         .unwrap()
                                         .clone();
+                                    metadata.web_citations =
+                                        crate::anthropic::web_search::citations(&content);
                                     if !content.is_empty() {
                                         metadata.provider_opaque_content =
                                             Some(ProviderOpaqueContent::new(
