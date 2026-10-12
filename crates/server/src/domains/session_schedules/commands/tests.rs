@@ -172,6 +172,73 @@ async fn a_limit_rejection_is_unprocessable() {
     );
 }
 
+/// An invalid cron or timezone is the caller's mistake, not a server fault: it
+/// must come back unprocessable with the reason, so the tool tells the model
+/// what to fix instead of "Internal server error" (Sentry EVERRUNS-2Q).
+#[tokio::test]
+async fn an_invalid_cron_or_timezone_is_unprocessable() {
+    let db = Arc::new(StorageBackend::test_database());
+    let session_id = session(&db, DEFAULT_ORG_ID).await;
+    let ctx = worker_ctx(db);
+
+    for (cron, timezone, reason) in [
+        ("not a cron", "UTC", "Invalid cron expression 'not a cron'"),
+        (
+            "0 7 * * *",
+            "Mars/Base",
+            "Invalid IANA timezone 'Mars/Base'",
+        ),
+        ("0 7 * * 9", "UTC", "Invalid cron expression '0 7 * * 9'"),
+    ] {
+        let error = run(
+            &ctx,
+            "worker_create_session_schedule",
+            json!({
+                "session_id": session_id.to_string(),
+                "description": "check the build",
+                "cron_expression": cron,
+                "timezone": timezone,
+            }),
+        )
+        .await
+        .expect_err(cron);
+        match &error.kind {
+            CommandErrorKind::Unprocessable(message) => {
+                assert!(message.contains(reason), "{cron} {timezone}: {message}");
+            }
+            _ => panic!("{cron} {timezone}: {error:?}"),
+        }
+    }
+}
+
+/// A Sunday-only every-minute cron in the standard 5-field form is held to
+/// the minimum interval like any other.
+#[tokio::test]
+async fn a_unix_weekday_cron_cannot_dodge_the_minimum_interval() {
+    let db = Arc::new(StorageBackend::test_database());
+    let session_id = session(&db, DEFAULT_ORG_ID).await;
+    let ctx = worker_ctx(db);
+
+    let error = run(
+        &ctx,
+        "worker_create_session_schedule",
+        json!({
+            "session_id": session_id.to_string(),
+            "description": "every minute on Sundays",
+            "cron_expression": "* * * * 0",
+            "timezone": "UTC",
+        }),
+    )
+    .await
+    .expect_err("a one-minute Sunday cron is under the minimum interval");
+    match &error.kind {
+        CommandErrorKind::Unprocessable(message) => {
+            assert!(message.contains("no more than once every"), "{message}");
+        }
+        _ => panic!("{error:?}"),
+    }
+}
+
 /// THREAT[TM-TENANT-001]: a worker acting for one org cannot read or count
 /// another org's session schedules by naming the session.
 #[tokio::test]
@@ -181,12 +248,17 @@ async fn another_orgs_session_is_not_found() {
     let ctx = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID + 1), db, None);
 
     for name in [
+        "worker_create_session_schedule",
         "worker_list_session_schedules",
         "worker_count_active_session_schedules",
     ] {
-        let error = run(&ctx, name, json!({ "session_id": foreign.to_string() }))
-            .await
-            .expect_err(name);
+        let params = json!({
+            "session_id": foreign.to_string(),
+            "description": "x",
+            "cron_expression": "0 7 * * *",
+            "timezone": "UTC",
+        });
+        let error = run(&ctx, name, params).await.expect_err(name);
         assert!(
             matches!(error.kind, CommandErrorKind::NotFound(_)),
             "{name}: {error:?}"

@@ -21,7 +21,7 @@ use everruns_contracts::typed_id::{PrincipalId, ScheduleId, SessionId};
 use everruns_core::host::EventLog;
 use everruns_core::session_schedule::{
     DEFAULT_MAX_SCHEDULES_PER_ORG, DEFAULT_MIN_INTERVAL_SECONDS, MAX_ACTIVE_SCHEDULES_PER_SESSION,
-    ScheduleLimitError, SessionSchedule, validate_cron_min_interval_with,
+    ScheduleLimitError, SessionSchedule, normalize_session_cron, validate_cron_min_interval_with,
 };
 use everruns_core::session_services::SessionScheduleStore;
 use rusqlite::{OptionalExtension, TransactionBehavior};
@@ -703,16 +703,8 @@ fn next_cron_trigger(schedule: &SessionSchedule, after: DateTime<Utc>) -> Result
         .cron_expression
         .as_deref()
         .ok_or_else(|| AgentLoopError::config("recurring schedule has no cron expression"))?;
-    let fields: Vec<_> = expression.split_whitespace().collect();
-    let normalized = match fields.len() {
-        5 => format!("0 {} *", fields.join(" ")),
-        6 | 7 => expression.to_string(),
-        _ => {
-            return Err(AgentLoopError::config(format!(
-                "invalid cron expression '{expression}'"
-            )));
-        }
-    };
+    let normalized = normalize_session_cron(expression)
+        .ok_or_else(|| AgentLoopError::config(format!("invalid cron expression '{expression}'")))?;
     let cron = cron::Schedule::from_str(&normalized).map_err(|error| {
         AgentLoopError::config(format!("invalid cron expression '{expression}': {error}"))
     })?;
@@ -772,7 +764,12 @@ impl SessionScheduleStore for LocalScheduleStore {
                 scheduled_at,
                 timezone,
             )
-            .map_err(ScheduleLimitError::Store)?;
+            // build_schedule fails only on an invalid cron or timezone: the
+            // caller's input, which the tool reports back so the model can fix it.
+            .map_err(|error| match error {
+                AgentLoopError::Configuration(message) => ScheduleLimitError::Rejected(message),
+                error => ScheduleLimitError::Store(error),
+            })?;
         let snapshot = serde_json::to_string(&schedule)
             .map_err(|e| ScheduleLimitError::Store(AgentLoopError::from(LocalError::from(e))))?;
         let metadata_json = serde_json::to_string(&Value::Object(Default::default()))

@@ -8,9 +8,12 @@
 //! `SessionScheduleStore` and keep its exact semantics, including create-time
 //! limits.
 //!
-//! Errors keep the store's split: a limit rejection is `unprocessable`, which
-//! the worker reads back as `ScheduleLimitError::Rejected` (the tool tells the
-//! model why); every other failure stays internal, as it was over the RPCs.
+//! Errors keep the store's split: a rejection of the caller's input (a limit,
+//! the minimum interval, an invalid cron expression or timezone) is
+//! `unprocessable`, which the worker reads back as
+//! `ScheduleLimitError::Rejected` (the tool tells the model why). A session
+//! outside the caller's org is `not_found`. Every other failure stays internal,
+//! as it was over the RPCs.
 
 use super::super::session_resources::queries::parse_session_id;
 use super::super::session_storage::queries::verify_session_ownership;
@@ -70,8 +73,10 @@ impl Command for WorkerCreateSessionSchedule {
     type Output = SessionSchedule;
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionSchedule, CommandError> {
-        // The store resolves the session within the org itself.
-        let session_id = parse_session_id(&self.session_id)?;
+        // The store resolves the session within the org itself, but only as a
+        // store failure; checking here first makes a missing (or another
+        // org's) session `not_found` rather than an internal error.
+        let session_id = owned_session(ctx, &self.session_id).await?;
         store(ctx)
             .create_schedule_enforcing_limits(
                 session_id,

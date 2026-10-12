@@ -22,23 +22,65 @@ pub const DEFAULT_MIN_INTERVAL_SECONDS: i64 = 300;
 /// Default maximum number of active (enabled) schedules per org.
 pub const DEFAULT_MAX_SCHEDULES_PER_ORG: i64 = 100;
 
+/// Normalize a session-schedule cron expression to the seconds-aware form the
+/// `cron` crate parses, or `None` when it has the wrong number of fields.
+///
+/// Accepts 5-field (`min hour dom mon dow`) and 6/7-field cron forms; 5-field
+/// gains sec=0 and year=*. This is more permissive than the app schedule
+/// channel's `normalize_cron_expression` (which accepts only 5 or 7 fields):
+/// here we also accept the 6-field seconds form the agent may already pass.
+///
+/// THREAT[TM-SCHED-001]: one normalizer for the interval gate and every next-trigger
+/// computation. When they disagreed, a 5-field Sunday cron failed to parse at
+/// the gate (and passed as "unrecognized") while the trigger computation
+/// accepted it, so `* * * * 0` slipped under the minimum interval.
+pub fn normalize_session_cron(cron_expression: &str) -> Option<String> {
+    let fields: Vec<&str> = cron_expression.split_whitespace().collect();
+    match fields.len() {
+        // Standard cron counts weekdays 0-6 from Sunday (7 is Sunday too);
+        // the `cron` crate counts 1-7 from Sunday, so name the days instead.
+        5 => Some(format!(
+            "0 {} {} *",
+            fields[..4].join(" "),
+            unix_weekdays_to_names(fields[4])
+        )),
+        6 | 7 => Some(fields.join(" ")),
+        _ => None,
+    }
+}
+
+/// Rewrite a standard-cron weekday field's numbers (0-7, Sunday first) as
+/// day names, keeping lists, ranges, steps, and existing names intact.
+fn unix_weekdays_to_names(field: &str) -> String {
+    const NAMES: [&str; 8] = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+    let day = |value: &str| match value.parse::<usize>() {
+        Ok(index) if index < NAMES.len() => NAMES[index].to_string(),
+        _ => value.to_string(),
+    };
+    field
+        .split(',')
+        .map(|part| {
+            let (range, step) = match part.split_once('/') {
+                Some((range, step)) => (range, Some(step)),
+                None => (part, None),
+            };
+            let range = range.split('-').map(day).collect::<Vec<_>>().join("-");
+            match step {
+                Some(step) => format!("{range}/{step}"),
+                None => range,
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
 /// Returns the minimum interval (seconds) between the next few consecutive
 /// triggers of `cron_expression`, or `None` when the expression cannot be parsed
-/// or fires fewer than twice.
-///
-/// Accepts 5-field (`min hour dom mon dow`) and 6/7-field cron forms; 5-field is
-/// normalized to the seconds-aware form the `cron` crate expects (sec=0, year=*).
-/// This is more permissive than the app schedule channel's
-/// `normalize_cron_expression` (which accepts only 5 or 7 fields): here we also
-/// accept the 6-field seconds form the agent may already pass through to the store.
+/// or fires fewer than twice. Reads the expression through
+/// [`normalize_session_cron`].
 pub fn cron_min_interval_seconds(cron_expression: &str) -> Option<i64> {
     use std::str::FromStr;
-    let fields: Vec<&str> = cron_expression.split_whitespace().collect();
-    let normalized = match fields.len() {
-        5 => format!("0 {} *", fields.join(" ")),
-        6 | 7 => cron_expression.to_string(),
-        _ => return None,
-    };
+    let normalized = normalize_session_cron(cron_expression)?;
     let schedule = cron::Schedule::from_str(&normalized).ok()?;
     let upcoming: Vec<_> = schedule.upcoming(chrono::Utc).take(3).collect();
     if upcoming.len() < 2 {
@@ -221,6 +263,37 @@ mod limit_tests {
                 "{expression}"
             );
         }
+    }
+
+    /// Standard cron counts weekdays 0-6 from Sunday; the `cron` crate counts
+    /// 1-7. A Sunday-only every-minute cron must still hit the interval gate
+    /// rather than fail to parse here and slip through as "unrecognized".
+    #[test]
+    fn unix_weekday_crons_are_interval_checked() {
+        assert_eq!(cron_min_interval_seconds("* * * * 0"), Some(60));
+        assert!(validate_cron_min_interval("* * * * 0").is_err());
+        assert!(validate_cron_min_interval("*/2 * * * 0,6").is_err());
+        assert_eq!(cron_min_interval_seconds("0 18 * * 0"), Some(7 * 86_400));
+        assert_eq!(validate_cron_min_interval("0 18 * * 0"), Ok(()));
+    }
+
+    #[test]
+    fn five_field_weekdays_become_names() {
+        assert_eq!(
+            normalize_session_cron("0 18 * * 0").as_deref(),
+            Some("0 0 18 * * SUN *")
+        );
+        assert_eq!(unix_weekdays_to_names("0"), "SUN");
+        assert_eq!(unix_weekdays_to_names("7"), "SUN");
+        assert_eq!(unix_weekdays_to_names("1-5"), "MON-FRI");
+        assert_eq!(unix_weekdays_to_names("0,6"), "SUN,SAT");
+        assert_eq!(unix_weekdays_to_names("*/2"), "*/2");
+        assert_eq!(unix_weekdays_to_names("MON"), "MON");
+        assert_eq!(
+            normalize_session_cron(" 0 0 7 * * * ").as_deref(),
+            Some("0 0 7 * * *")
+        );
+        assert_eq!(normalize_session_cron("* * *"), None);
     }
 
     #[test]
