@@ -19,7 +19,7 @@ shell calls the API with `$NAME`. The platform swaps the real key into that
 header only for requests to the bound URL and redacts it if a response echoes
 it back.
 
-**In the API:** session secrets accept `bindings` on
+**In the API:** [session secrets](/capabilities/session-storage/) accept `bindings` on
 `PUT /v1/sessions/{session_id}/storage/secrets`, and the MCP tool
 `session_set_secret` takes `url`, `auth` and `scope`, collecting the value on a
 secure page.

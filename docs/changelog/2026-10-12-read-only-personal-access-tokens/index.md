@@ -23,7 +23,7 @@ the full account export; those requests fail with `403` and
 `"code": "insufficient_scope"`. `GET /v1/auth/me` reports the token's
 `token_scope`.
 
-**In the CLI:** `everruns login --token` accepts a read-only token,
+**In the CLI:** [`everruns login --token`](/features/cli/#configure) accepts a read-only token,
 `everruns whoami` shows its access, and a refused command says the token is
 read-only.
 
