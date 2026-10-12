@@ -239,7 +239,8 @@ async fn agent_http_credentials_reach_every_session_of_the_agent_and_sessions_sh
     );
 
     // THREAT[TM-BASH-030]: the runtime cannot overwrite the agent's key.
-    let swap = json!({ "session_id": first.to_string(), "name": "JEV_API_KEY", "value": "attacker" });
+    let swap =
+        json!({ "session_id": first.to_string(), "name": "JEV_API_KEY", "value": "attacker" });
     run(&ctx, "worker_set_session_secret", swap)
         .await
         .expect_err("bound set");

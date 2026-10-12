@@ -22719,7 +22719,7 @@ export interface components {
     /**
      * @description How a bound secret is put on an outbound request.
      *
-     *     Header-only by design (see `knowledge/security/bound-secrets.md`): a value
+     *     Header-only by design: a value
      *     is never placed in a URL or a body.
      */
     SecretAuth:

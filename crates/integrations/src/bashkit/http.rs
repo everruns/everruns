@@ -184,7 +184,7 @@ impl OutputRedactor {
             })
             .collect();
         // Longest first, so a value containing another is replaced whole.
-        values.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+        values.sort_by_key(|value| std::cmp::Reverse(value.0.len()));
         Self {
             values: Arc::new(values),
         }

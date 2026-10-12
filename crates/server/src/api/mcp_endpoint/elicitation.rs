@@ -580,7 +580,7 @@ async fn elicitation_satisfied(
             scope: SecretScope::Agent,
         } => {
             use crate::domains::agents::credentials::{
-                agent_of_session, agent_http_credential_configured,
+                agent_http_credential_configured, agent_of_session,
             };
             let ctx = mcp_ctx(org, state);
             let Some(binding) = binding else {

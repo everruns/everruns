@@ -286,9 +286,7 @@ pub(crate) fn http_binding(
         ("bearer", None) => SecretAuth::Bearer,
         ("header", Some(name)) => SecretAuth::Header { name },
         ("header", None) => {
-            return Err(CommandError::bad_request(
-                "auth 'header' needs header_name",
-            ));
+            return Err(CommandError::bad_request("auth 'header' needs header_name"));
         }
         ("bearer", Some(_)) => {
             return Err(CommandError::bad_request(
