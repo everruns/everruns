@@ -21,8 +21,18 @@ Model reasoning is now stored as ordered parts of a message instead of two flat 
   "phase": "final_answer",
   "phase_source": "provider",
   "content": [
-    {"type": "reasoning", "provider": "anthropic", "text": {"kind": "plain", "text": "Check the config first."}},
-    {"type": "text", "text": "The config is valid."}
+    {
+      "type": "reasoning",
+      "provider": "anthropic",
+      "text": {
+        "kind": "plain",
+        "text": "Check the config first."
+      }
+    },
+    {
+      "type": "text",
+      "text": "The config is valid."
+    }
   ]
 }
 ```

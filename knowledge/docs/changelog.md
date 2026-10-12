@@ -158,6 +158,8 @@ Rules for the body:
   entry. `links.docs` stays as the machine-readable index, and the check fails
   when a page listed there is not linked from the body. Pull requests from
   `links.prs` render at the end of the entry.
+- JSON examples are valid JSON with a two-space indent, never squeezed onto
+  one line; the check reformats nothing and fails a block that differs.
 - Code blocks are real: Rust snippets go through the same doc-snippet check as
   the rest of `docs/`, and Python through `check-python-snippets.py`.
 - At least one internal docs link for `feature`, `improvement`, `breaking` and

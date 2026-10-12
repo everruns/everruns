@@ -25,7 +25,10 @@ and keeps the system prompt stable for caching. Resolution is bounded to 16 file
 
 ```json
 {
-  "files": ["AGENTS.md", "CLAUDE.md"]
+  "files": [
+    "AGENTS.md",
+    "CLAUDE.md"
+  ]
 }
 ```
 

@@ -24,7 +24,12 @@ say whose sign-in its calls use with `actsAs` (`none`, `service`, `user` or
 `user_or_service`):
 
 ```json
-{ "github": { "use": "catalog:github", "actsAs": "user" } }
+{
+  "github": {
+    "use": "catalog:github",
+    "actsAs": "user"
+  }
+}
 ```
 
 See [MCP](/features/mcp/) and [MCP credentials](/integrations/mcp-credentials/). [#3726](https://github.com/everruns/everruns/pull/3726), [#3675](https://github.com/everruns/everruns/pull/3675), [#3638](https://github.com/everruns/everruns/pull/3638)

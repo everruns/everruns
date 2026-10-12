@@ -22,7 +22,14 @@ off gets a hint to turn on [Prompt Caching](/capabilities/prompt-caching/).
 `caching_would_help`:
 
 ```json
-{ "usage": { "cache_reset": {
-  "reason": "tools_changed", "lost_tokens": 18420,
-  "previous_cached_tokens": 18420, "idle_seconds": 42 } } }
+{
+  "usage": {
+    "cache_reset": {
+      "reason": "tools_changed",
+      "lost_tokens": 18420,
+      "previous_cached_tokens": 18420,
+      "idle_seconds": 42
+    }
+  }
+}
 ```

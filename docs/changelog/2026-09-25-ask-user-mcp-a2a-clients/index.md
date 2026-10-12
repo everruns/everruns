@@ -26,13 +26,29 @@ can now read and answer it. Before, they saw a session that stayed working.
 An A2A answer names the task and the `ask_user` call:
 
 ```json
-{"role": "user", "taskId": "<task id>", "parts": [{"kind": "data", "data": {
-  "everruns/ask_user_answer": {
-    "tool_call_id": "call_ask_1",
-    "status": "answered",
-    "answers": [{"id": "target", "selected": ["Production"]}]
-  }
-}}]}
+{
+  "role": "user",
+  "taskId": "<task id>",
+  "parts": [
+    {
+      "kind": "data",
+      "data": {
+        "everruns/ask_user_answer": {
+          "tool_call_id": "call_ask_1",
+          "status": "answered",
+          "answers": [
+            {
+              "id": "target",
+              "selected": [
+                "Production"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
 ```
 
 See [Ask User](/capabilities/ask-user/), [MCP](/features/mcp/) and

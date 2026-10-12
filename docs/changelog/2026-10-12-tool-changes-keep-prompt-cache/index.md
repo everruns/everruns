@@ -28,6 +28,14 @@ stored on each answer and on `llm.generation` as `metadata.tool_changes`; the
 trace request summary carries `tool_changes`:
 
 ```json
-{ "tool_changes": { "baseline_tools": null,
-  "added": ["web_fetch"], "redefined": [], "removed": [] } }
+{
+  "tool_changes": {
+    "baseline_tools": null,
+    "added": [
+      "web_fetch"
+    ],
+    "redefined": [],
+    "removed": []
+  }
+}
 ```
