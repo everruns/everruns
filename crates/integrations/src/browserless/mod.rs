@@ -106,6 +106,16 @@ pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
 // Constants
 // ============================================================================
 
+/// Concurrency class shared by every tool that drives the session's
+/// persistent Browserless browser (`browserless_*` and `browser`).
+///
+/// Decision: these tools share one browser and, without a class, the act
+/// scheduler runs a batch of them concurrently. Two navigations on the same
+/// page then abort each other (`net::ERR_ABORTED`), and a key press lands on a
+/// page another call just navigated. One class makes a batch apply in order.
+pub(crate) const SESSION_BROWSER_CONCURRENCY_CLASS: &str =
+    everruns_contracts::runtime::browser_use::BROWSER_TOOL_NAME;
+
 const DEFAULT_API_BASE: &str = "https://production-sfo.browserless.io";
 const DEFAULT_WS_BASE: &str = "wss://production-sfo.browserless.io";
 
