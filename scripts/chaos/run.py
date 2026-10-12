@@ -42,7 +42,7 @@ from check import (  # noqa: E402
     worker_overlap,
 )
 from load import Driver, plan_kinds  # noqa: E402
-from topology import Topology  # noqa: E402
+from topology import Topology, event_delivery_backend, unshared_event_delivery  # noqa: E402
 
 DEFAULT_CHAOS = "kill:worker-0@15,restart:worker-0@21,kill:server-1@35,restart:server-1@41"
 
@@ -166,7 +166,10 @@ def chaos_thread(topo: Topology, schedule: list, t0: float, log: list, stop: thr
         else:
             p.start()
             ok = p.wait_healthy(60)
-            log.append({"action": "restart", "proc": name, "t": time.time(), "healthy": ok})
+            entry = {"action": "restart", "proc": name, "t": time.time(), "healthy": ok}
+            if p.kind == "server":
+                entry["event_delivery"] = event_delivery_backend(p.http_port)  # type: ignore[attr-defined]
+            log.append(entry)
             print(f"[chaos] +{time.time() - t0:5.1f}s restarted {name} healthy={ok}", flush=True)
 
 
@@ -197,6 +200,7 @@ def main():
     try:
         topo.start()
         print(f"topology up: servers {topo.base_urls}, {len(topo.workers)} workers", flush=True)
+        topo.require_shared_event_delivery()
         # Every worker must have reached its server (registered over gRPC).
         # A port clash once had two workers talking to a sandbox proxy while
         # the third did all the work, which makes a worker kill meaningless.
@@ -273,6 +277,11 @@ def main():
                 time.sleep(2)
         t_quiet = time.time()
         rep.counts["sessions_not_quiet_at_timeout"] = len(pending)
+
+        # A restarted server must come back on the shared backend too.
+        for c in chaos_log:
+            if "event_delivery" in c and unshared_event_delivery({c["proc"]: c["event_delivery"]}):
+                rep.fail("event_delivery_not_shared", c["proc"], f"restarted with event_delivery={c['event_delivery']}")
 
         # Assertions over persisted events.
         print("[check] reading events", flush=True)

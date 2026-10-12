@@ -127,6 +127,9 @@ struct Probe {
     on_turn_ended: Mutex<Option<Hook>>,
     /// The fence of the latest turn host, as its appends would carry it.
     fence: Mutex<Option<crate::actor_lease_store::ActorFence>>,
+    /// Runs (once) where a fresh turn's host is built: after its input was
+    /// taken, before its `turn.started`.
+    at_turn_host: Mutex<Option<Box<dyn FnOnce() + Send>>>,
 }
 
 #[derive(Clone)]
@@ -141,6 +144,12 @@ impl ActorHosts for TestHosts {
 
     fn host(&self, turn: HostTurn, signals: &TurnSignals) -> InProcessRuntime {
         *self.probe.fence.lock().unwrap() = signals.fence.clone();
+        if turn.input_message_id.is_some() {
+            let hook = self.probe.at_turn_host.lock().unwrap().take();
+            if let Some(hook) = hook {
+                hook();
+            }
+        }
         if turn.input_message_id.is_some()
             && !self.probe.running.lock().unwrap().insert(turn.session_id)
         {
