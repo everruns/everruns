@@ -93,6 +93,10 @@ pub(super) fn status_failure(label: &str, status: u16) -> Option<SearchFailure> 
     let (kind, what) = match status {
         200..=299 => return None,
         401 | 403 => (SearchFailureKind::Unauthorized, "rejected the key"),
+        402 => (
+            SearchFailureKind::Unavailable,
+            "has no credit left on the key",
+        ),
         429 => (SearchFailureKind::RateLimited, "was rate limited"),
         _ => (SearchFailureKind::Unavailable, "returned an error"),
     };
@@ -230,6 +234,10 @@ mod tests {
         assert_eq!(
             status_failure("Brave", 401).unwrap().kind,
             SearchFailureKind::Unauthorized
+        );
+        assert_eq!(
+            status_failure("Parallel", 402).unwrap().message,
+            "Parallel has no credit left on the key (402)"
         );
     }
 }
