@@ -111,6 +111,9 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
         "/v1/agents/{agent_id}/credentials/{binding_id}",
         Never,
     ),
+    // Command-backed (`connect_agent_github`); Never overrides the command:
+    // it starts a GitHub App install grant (Decision 4).
+    ("POST", "/v1/agents/{agent_id}/github/connect", Never),
     ("GET", "/v1/agents/{agent_id}/endpoints", Read),
     ("POST", "/v1/agents/{agent_id}/endpoints", Write),
     (
