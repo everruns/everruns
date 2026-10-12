@@ -80,15 +80,17 @@ pub async fn store_input_and_start<T>(
     store: impl std::future::Future<Output = anyhow::Result<T>>,
     request: TurnRequest,
 ) -> anyhow::Result<T> {
-    crate::storage::transaction::scope(
+    // Boxed: the store and start futures are large, and holding them inline
+    // in every caller's future overflowed the 2 MiB test-thread stack.
+    Box::pin(crate::storage::transaction::scope(
         db,
-        async {
-            let stored = store.await?;
+        Box::pin(async {
+            let stored = Box::pin(store).await?;
             start(backend, request).await?;
             Ok(stored)
-        },
+        }),
         |error| error,
-    )
+    ))
     .await
 }
 
