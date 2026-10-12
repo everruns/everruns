@@ -357,6 +357,29 @@ pub struct AppCredentials {
     pub private_key_pem: String,
 }
 
+/// What an installation token is limited to. Empty fields leave that side
+/// unlimited (everything the installation holds).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TokenScope {
+    /// Repository names (without the owner) under the installation's account.
+    pub repositories: Vec<String>,
+    /// Permission name to level.
+    pub permissions: std::collections::BTreeMap<String, String>,
+}
+
+impl TokenScope {
+    fn body(&self) -> Value {
+        let mut body = json!({});
+        if !self.repositories.is_empty() {
+            body["repositories"] = json!(self.repositories);
+        }
+        if !self.permissions.is_empty() {
+            body["permissions"] = json!(self.permissions);
+        }
+        body
+    }
+}
+
 /// Thin GitHub REST client for App operations.
 #[derive(Clone)]
 pub struct GitHubAppApi {
@@ -440,11 +463,24 @@ impl GitHubAppApi {
         read_json(response, "reading installation").await
     }
 
-    /// Mint a one-hour installation access token.
+    /// Mint a one-hour installation access token with everything the
+    /// installation was granted.
     pub async fn mint_installation_token(
         &self,
         credentials: &AppCredentials,
         installation_id: i64,
+    ) -> Result<String> {
+        self.mint_scoped_installation_token(credentials, installation_id, &TokenScope::default())
+            .await
+    }
+
+    /// Mint a one-hour installation access token limited to `scope`. GitHub
+    /// refuses (422) a scope that asks for more than the installation holds.
+    pub async fn mint_scoped_installation_token(
+        &self,
+        credentials: &AppCredentials,
+        installation_id: i64,
+        scope: &TokenScope,
     ) -> Result<String> {
         #[derive(Deserialize)]
         struct Token {
@@ -457,6 +493,7 @@ impl GitHubAppApi {
                 &format!("/app/installations/{installation_id}/access_tokens"),
             )
             .bearer_auth(jwt)
+            .json(&scope.body())
             .send()
             .await
             .context("GitHub installation token request failed")?;

@@ -45,6 +45,8 @@ enum OAuthScope {
     Session(SessionId),
     Org(i64),
 }
+mod github;
+
 const REFRESH_LOCK_MAX_CAPACITY: u64 = 10_000;
 const REFRESH_LOCK_IDLE_TTL: StdDuration = StdDuration::from_secs(10 * 60);
 
@@ -681,24 +683,8 @@ impl DbConnectionResolver {
         // and the GitHub MCP all act as the same installation.
         if provider == "github"
             && let Some(installation_id) = row.installation_id
-            && let Some(app) = self
-                .db
-                .get_github_app_for_identity(self.scope_org_id(scope).await?, row.virtual_user_id)
-                .await
-                .map_err(|e| {
-                    AgentLoopError::store(format!("Failed to resolve agent GitHub App: {e}"))
-                })?
+            && let Some(credentials) = self.agent_app_credentials(scope, &row).await?
         {
-            let private_key = self
-                .encryption
-                .decrypt_to_string(&app.private_key_encrypted)
-                .map_err(|e| {
-                    AgentLoopError::store(format!("Failed to decrypt GitHub App key: {e}"))
-                })?;
-            let credentials = crate::github_apps::AppCredentials {
-                app_id: app.app_id,
-                private_key_pem: private_key,
-            };
             let token = self
                 .github_apps
                 .mint_installation_token(&credentials, installation_id)
@@ -707,17 +693,6 @@ impl DbConnectionResolver {
                     AgentLoopError::store(format!("Failed to mint GitHub installation token: {e}"))
                 })?;
             return Ok(Some(token));
-        }
-
-        if provider == "github"
-            && let Some(minter) = &self.github_app
-            && let Some(id) = row.installation_id
-        {
-            return minter
-                .mint_token(id)
-                .await
-                .map(Some)
-                .map_err(AgentLoopError::store);
         }
         if let Some(server) = Self::parse_mcp_oauth_provider(provider) {
             return self.resolve_identity_oauth_token(scope, server, row).await;
@@ -831,6 +806,14 @@ impl UserConnectionResolver for DbConnectionResolver {
         };
         self.token_for_connection_row(OAuthScope::Session(session), provider, row)
             .await
+    }
+
+    async fn get_github_token(
+        &self,
+        session: SessionId,
+        access: &everruns_contracts::runtime::GitHubAccess,
+    ) -> Result<Option<everruns_contracts::runtime::McpResolvedCredential>> {
+        self.github_token(session, access).await
     }
 
     async fn get_sandbox_connection_token(

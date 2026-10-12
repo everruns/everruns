@@ -11,10 +11,12 @@ use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 use everruns_contracts::tool_types::ToolHints;
 use serde_json::{Value, json};
 
+use crate::github::GitHubActsAs;
 use crate::github::tools::{
     enforce_github_network_access, get_github_token, github_client, is_valid_owner_repo,
     required_str,
 };
+use everruns_contracts::runtime::GitHubAccess;
 
 const DEFAULT_DIFF_BYTES: u64 = 60_000;
 const MAX_DIFF_BYTES: u64 = 200_000;
@@ -39,9 +41,17 @@ pub(crate) fn target(arguments: &Value) -> Result<(String, u64), ToolExecutionRe
     Ok((repo.to_string(), number))
 }
 
-pub(crate) async fn github_token(context: &ToolContext) -> Result<String, ToolExecutionResult> {
+/// A token for one tool call: acting as `acts_as`, limited to `repo` and
+/// `permissions`.
+pub(crate) async fn github_token(
+    context: &ToolContext,
+    acts_as: GitHubActsAs,
+    repo: &str,
+    permissions: &[(&str, &str)],
+) -> Result<String, ToolExecutionResult> {
     enforce_github_network_access(context)?;
-    get_github_token(context).await
+    let access = GitHubAccess::new(acts_as.into(), permissions).for_repository(repo);
+    get_github_token(context, &access).await
 }
 
 pub(crate) fn target_schema(extra: Value) -> Value {
@@ -83,7 +93,10 @@ pub(crate) fn valid_marker(marker: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
 }
 
-pub struct GetGitHubPullRequestTool;
+#[derive(Default)]
+pub struct GetGitHubPullRequestTool {
+    pub(crate) acts_as: GitHubActsAs,
+}
 
 #[async_trait]
 impl Tool for GetGitHubPullRequestTool {
@@ -147,10 +160,11 @@ impl Tool for GetGitHubPullRequestTool {
             Ok(target) => target,
             Err(e) => return e,
         };
-        let client = match github_token(context).await {
-            Ok(token) => github_client(token),
-            Err(e) => return e,
-        };
+        let client =
+            match github_token(context, self.acts_as, &repo, &[("pull_requests", "read")]).await {
+                Ok(token) => github_client(token),
+                Err(e) => return e,
+            };
         let pull = match client.pull_request(&repo, number).await {
             Ok(pull) => pull,
             Err(e) => return ToolExecutionResult::tool_error(e),
@@ -193,7 +207,10 @@ impl Tool for GetGitHubPullRequestTool {
     }
 }
 
-pub struct GetGitHubPullRequestDiffTool;
+#[derive(Default)]
+pub struct GetGitHubPullRequestDiffTool {
+    pub(crate) acts_as: GitHubActsAs,
+}
 
 #[async_trait]
 impl Tool for GetGitHubPullRequestDiffTool {
@@ -269,10 +286,11 @@ impl Tool for GetGitHubPullRequestDiffTool {
             .and_then(Value::as_u64)
             .unwrap_or(DEFAULT_DIFF_BYTES)
             .clamp(1000, MAX_DIFF_BYTES) as usize;
-        let client = match github_token(context).await {
-            Ok(token) => github_client(token),
-            Err(e) => return e,
-        };
+        let client =
+            match github_token(context, self.acts_as, &repo, &[("pull_requests", "read")]).await {
+                Ok(token) => github_client(token),
+                Err(e) => return e,
+            };
         match client.pull_request_diff(&repo, number, max_bytes).await {
             Ok(diff) => ToolExecutionResult::success(json!({
                 "repo": repo,
@@ -290,7 +308,10 @@ impl Tool for GetGitHubPullRequestDiffTool {
     }
 }
 
-pub struct UpsertGitHubCommentTool;
+#[derive(Default)]
+pub struct UpsertGitHubCommentTool {
+    pub(crate) acts_as: GitHubActsAs,
+}
 
 #[async_trait]
 impl Tool for UpsertGitHubCommentTool {
@@ -392,7 +413,14 @@ impl Tool for UpsertGitHubCommentTool {
                 body.len()
             ));
         }
-        let client = match github_token(context).await {
+        let client = match github_token(
+            context,
+            self.acts_as,
+            &repo,
+            &[("issues", "write"), ("pull_requests", "write")],
+        )
+        .await
+        {
             Ok(token) => github_client(token),
             Err(e) => return e,
         };
@@ -432,7 +460,7 @@ mod tests {
             json!({"repo": "acme/app", "number": 0}),
             json!({"repo": "acme/app"}),
         ] {
-            let result = run(&GetGitHubPullRequestTool, arguments.clone()).await;
+            let result = run(&GetGitHubPullRequestTool::default(), arguments.clone()).await;
             assert!(
                 matches!(result, ToolExecutionResult::ToolError { .. }),
                 "{arguments}: {result:?}"
@@ -447,7 +475,7 @@ mod tests {
             json!({"repo": "acme/app", "number": 1, "body": "hi", "marker": "--><script>"}),
             json!({"repo": "acme/app", "number": 1, "body": "  "}),
         ] {
-            let result = run(&UpsertGitHubCommentTool, arguments.clone()).await;
+            let result = run(&UpsertGitHubCommentTool::default(), arguments.clone()).await;
             assert!(
                 matches!(result, ToolExecutionResult::ToolError { .. }),
                 "{arguments}: {result:?}"
@@ -463,7 +491,7 @@ mod tests {
             json!({"repo": "acme/app", "number": 1, "comments": [{"path": "a", "line": 1}]}),
         ] {
             let result = run(
-                &crate::github::reviews::SubmitGitHubReviewTool,
+                &crate::github::reviews::SubmitGitHubReviewTool::default(),
                 arguments.clone(),
             )
             .await;
@@ -478,19 +506,19 @@ mod tests {
     async fn valid_calls_without_a_connection_ask_for_github() {
         for (tool, arguments) in [
             (
-                &GetGitHubPullRequestTool as &dyn Tool,
+                &GetGitHubPullRequestTool::default() as &dyn Tool,
                 json!({"repo": "acme/app", "number": 1}),
             ),
             (
-                &GetGitHubPullRequestDiffTool,
+                &GetGitHubPullRequestDiffTool::default(),
                 json!({"repo": "acme/app", "number": 1, "max_bytes": 5000}),
             ),
             (
-                &UpsertGitHubCommentTool,
+                &UpsertGitHubCommentTool::default(),
                 json!({"repo": "acme/app", "number": 1, "body": "Summary"}),
             ),
             (
-                &crate::github::reviews::SubmitGitHubReviewTool,
+                &crate::github::reviews::SubmitGitHubReviewTool::default(),
                 json!({"repo": "acme/app", "number": 1, "body": "Summary"}),
             ),
             (
@@ -498,7 +526,7 @@ mod tests {
                 json!({"repo": "acme/app", "fingerprint": "f", "title": "t", "body": "b"}),
             ),
             (
-                &crate::github::fix_pull_requests::CreateGitHubPullRequestTool,
+                &crate::github::fix_pull_requests::CreateGitHubPullRequestTool::default(),
                 json!({"repo": "acme/app", "head": "fix", "base": "main", "title": "t"}),
             ),
         ] {
@@ -517,13 +545,117 @@ mod tests {
     #[test]
     fn schemas_require_the_target() {
         assert_eq!(
-            UpsertGitHubCommentTool.parameters_schema()["required"],
+            UpsertGitHubCommentTool::default().parameters_schema()["required"],
             json!(["repo", "number", "body"])
         );
         assert_eq!(
-            GetGitHubPullRequestDiffTool.parameters_schema()["required"],
+            GetGitHubPullRequestDiffTool::default().parameters_schema()["required"],
             json!(["repo", "number"])
         );
         assert_eq!(marker_line("summary"), "<!-- everruns:summary -->");
+    }
+
+    /// Records the access each tool asks for and holds no token.
+    #[derive(Default)]
+    struct RecordingResolver {
+        asked: std::sync::Mutex<Vec<GitHubAccess>>,
+    }
+
+    #[async_trait]
+    impl everruns_contracts::runtime::UserConnectionResolver for RecordingResolver {
+        async fn get_connection_token(
+            &self,
+            _: SessionId,
+            _: &str,
+        ) -> everruns_contracts::error::Result<Option<String>> {
+            panic!("GitHub tools resolve through get_github_token");
+        }
+
+        async fn get_github_token(
+            &self,
+            _: SessionId,
+            access: &GitHubAccess,
+        ) -> everruns_contracts::error::Result<
+            Option<everruns_contracts::runtime::McpResolvedCredential>,
+        > {
+            self.asked.lock().unwrap().push(access.clone());
+            Ok(None)
+        }
+    }
+
+    /// THREAT[TM-GITHUB-006]: each tool asks for the configured identity and
+    /// only the repository and permissions it needs, never a full token.
+    #[tokio::test]
+    async fn tools_ask_for_the_configured_identity_and_least_access() {
+        use everruns_contracts::runtime::capabilities::Capability;
+        use everruns_contracts::runtime::mcp_server::McpServerActsAs;
+        let resolver = std::sync::Arc::new(RecordingResolver::default());
+        let context = ToolContext::new(SessionId::new()).with_connection_resolver(resolver.clone());
+        let tools = crate::github::GitHubCapability
+            .tools_with_config(&json!({"acts_as": "person", "allow_pull_requests": true}));
+        let call = |name: &str, arguments: Value| {
+            let tool = tools.iter().find(|tool| tool.name() == name).unwrap();
+            let context = &context;
+            async move { tool.execute_with_context(arguments, context).await }
+        };
+        let target = json!({"repo": "acme/app", "number": 7});
+        for name in ["get_github_pull_request", "get_github_pull_request_diff"] {
+            assert!(matches!(
+                call(name, target.clone()).await,
+                ToolExecutionResult::ConnectionRequired { .. }
+            ));
+        }
+        call(
+            "upsert_github_comment",
+            json!({"repo": "acme/app", "number": 7, "body": "hi"}),
+        )
+        .await;
+        call(
+            "submit_github_pull_request_review",
+            json!({"repo": "acme/app", "number": 7, "body": "ok"}),
+        )
+        .await;
+        call(
+            "upsert_github_issue",
+            json!({"repo": "acme/app", "fingerprint": "f", "title": "t", "body": "b"}),
+        )
+        .await;
+        call(
+            "create_github_pull_request",
+            json!({"repo": "acme/app", "head": "fix", "base": "main", "title": "t"}),
+        )
+        .await;
+
+        let asked = resolver.asked.lock().unwrap();
+        let permissions: Vec<Vec<(String, String)>> = asked
+            .iter()
+            .map(|access| {
+                assert_eq!(access.acts_as, McpServerActsAs::User);
+                assert_eq!(access.repositories, vec!["acme/app".to_string()]);
+                access.permissions.clone().into_iter().collect()
+            })
+            .collect();
+        let pair = |n: &str, l: &str| (n.to_string(), l.to_string());
+        assert_eq!(
+            permissions,
+            vec![
+                vec![pair("pull_requests", "read")],
+                vec![pair("pull_requests", "read")],
+                vec![pair("issues", "write"), pair("pull_requests", "write")],
+                vec![pair("pull_requests", "write")],
+                vec![pair("issues", "write")],
+                vec![pair("contents", "read"), pair("pull_requests", "write")],
+            ]
+        );
+    }
+
+    #[test]
+    fn tools_act_as_the_agent_by_default() {
+        assert_eq!(
+            everruns_contracts::runtime::mcp_server::McpServerActsAs::from(
+                crate::github::GitHubConfig::default().acts_as
+            ),
+            everruns_contracts::runtime::mcp_server::McpServerActsAs::Service
+        );
     }
 }

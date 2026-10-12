@@ -10,6 +10,7 @@ The GitHub integration contributes two capabilities: `github`, with host-facing 
 - `upsert_github_issue` keys an issue by `<!-- everruns:finding:<fingerprint> -->` at the start of a bot-authored issue body among the newest 1,000 issues: open is updated, closed is left alone, missing is created. With `private_issues_only` it refuses public repositories.
 - `create_github_pull_request` exists only with `allow_pull_requests: true`. Head must be a branch of the same repository; draft by default; an open pull request from the same head is returned instead of a second one.
 - Only `Bot`-authored comments, reviews and issues are matched against markers, so a person cannot suppress a finding by pasting a marker.
+- Tools act as the identity in `acts_as` (`agent` default, `person`, `person_or_agent`) through `get_github_token`, and each call's token is limited to the one repository it names and that tool's permissions (read tools `pull_requests: read`; comment `issues` + `pull_requests: write`; review `pull_requests: write`; issue `issues: write`; pull request `pull_requests: write` + `contents: read`).
 - Arguments are validated (`owner/repo`, positive number) before any token is resolved or request sent.
 - Diffs are capped on a UTF-8 boundary; the result reports total size and truncation.
 
@@ -22,14 +23,14 @@ Read-only scout agent for repository exploration.
 - Searches GitHub code.
 - Reads specific repository files by path and ref.
 - Searches issues and pull requests through GitHub search qualifiers.
-- Uses the existing `github` user connection. If no token is available, tools return `connection_required`.
+- Acts as the person when they connected GitHub, else the agent (`user_or_service`), with an unnarrowed token since it searches across repositories. If no token is available, tools return `connection_required`.
 - Runs with fixed model `claude-haiku-4-5-20251001`.
 
 ## Security
 
 - Scout tools are read-only and private to blueprint-backed child sessions. Host writes are limited to marked comments, reviews that cannot approve, marked issues, and (opt-in) draft pull requests.
 - HTTP calls enforce the session network access policy for `https://api.github.com/` when present.
-- Tokens are resolved from user connections or the `GITHUB_TOKEN` session secret fallback and are never returned in tool output.
+- Tokens are resolved through `get_github_token` or the `GITHUB_TOKEN` session secret fallback and are never returned in tool output.
 
 ## Tests
 

@@ -69,17 +69,48 @@ pub const GITHUB_API_BASE: &str = "https://api.github.com";
 pub const GITHUB_CONNECTION_PROVIDER: &str = "github";
 pub const GITHUB_TOKEN_SECRET: &str = "GITHUB_TOKEN";
 
-/// Pull request, review and issue tools authenticated as the session's
-/// `github` connection, which for an agent with its own GitHub App is that
-/// App's installation.
+/// Pull request, review and issue tools. Each call asks for a token acting as
+/// the configured identity and limited to the one repository and the
+/// permissions that tool needs.
 pub struct GitHubCapability;
 
-/// Per-agent settings for the `github` capability. Both default to off, so an
-/// agent that just lists `github` gets the least it can do.
+/// Whose GitHub identity the `github` tools act as.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+#[schemars(crate = "everruns_contracts::capability::schemars")]
+pub enum GitHubActsAs {
+    /// The agent's own GitHub identity (its App, or the Everruns app).
+    #[default]
+    Agent,
+    /// The person talking to the agent, through their own GitHub connection.
+    Person,
+    /// The person when they connected GitHub, otherwise the agent.
+    PersonOrAgent,
+}
+
+impl From<GitHubActsAs> for everruns_contracts::runtime::mcp_server::McpServerActsAs {
+    fn from(value: GitHubActsAs) -> Self {
+        match value {
+            GitHubActsAs::Agent => Self::Service,
+            GitHubActsAs::Person => Self::User,
+            GitHubActsAs::PersonOrAgent => Self::UserOrService,
+        }
+    }
+}
+
+/// Per-agent settings for the `github` capability. The tools act as the agent
+/// and both switches default to off, so an agent that just lists `github` gets
+/// the least it can do.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, default)]
 #[schemars(crate = "everruns_contracts::capability::schemars")]
 pub struct GitHubConfig {
+    /// Whose GitHub identity the tools use. `agent` (default) is the agent's
+    /// own GitHub App or the Everruns app it was given; `person` is the
+    /// signed-in person talking to the agent; `person_or_agent` uses the
+    /// person when they connected GitHub and the agent otherwise.
+    #[schemars(title = "Act on GitHub as")]
+    pub acts_as: GitHubActsAs,
     /// Offer `create_github_pull_request`, so the agent can open (draft) pull
     /// requests from branches it pushed. Pushing also needs the GitHub App's
     /// Contents write permission.
@@ -133,15 +164,16 @@ impl Capability for GitHubCapability {
         // Invalid config is rejected on write (`validate_config`); anything that
         // still fails to parse here gets the defaults, which are the safe side.
         let config = GitHubConfig::parse(config).unwrap_or_default();
+        let acts_as = config.acts_as;
         let mut tools: Vec<Box<dyn Tool>> = vec![
-            Box::new(GetGitHubPullRequestTool),
-            Box::new(GetGitHubPullRequestDiffTool),
-            Box::new(UpsertGitHubCommentTool),
-            Box::new(SubmitGitHubReviewTool),
-            Box::new(UpsertGitHubIssueTool::new(config.private_issues_only)),
+            Box::new(GetGitHubPullRequestTool { acts_as }),
+            Box::new(GetGitHubPullRequestDiffTool { acts_as }),
+            Box::new(UpsertGitHubCommentTool { acts_as }),
+            Box::new(SubmitGitHubReviewTool { acts_as }),
+            Box::new(UpsertGitHubIssueTool::new(config.private_issues_only).acting_as(acts_as)),
         ];
         if config.allow_pull_requests {
-            tools.push(Box::new(CreateGitHubPullRequestTool));
+            tools.push(Box::new(CreateGitHubPullRequestTool { acts_as }));
         }
         tools
     }

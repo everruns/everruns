@@ -50,6 +50,7 @@ so a person cannot hide a finding by pasting a marker into their own comment.
 
 | Setting | Default | Effect |
 |---|---|---|
+| `acts_as` | `agent` | Whose GitHub identity the tools use: `agent`, `person`, or `person_or_agent`. See [Authentication](#authentication). |
 | `allow_pull_requests` | `false` | Adds `create_github_pull_request`. Pushing the branch also needs the GitHub App's **Contents: write** permission. |
 | `private_issues_only` | `false` | `upsert_github_issue` refuses public repositories, so a finding is never disclosed in a public issue. |
 
@@ -60,11 +61,24 @@ time. Use a different marker for each kind of comment.
 
 ## Authentication
 
-The tools use the session's `github` connection. When the agent has its own
-GitHub App connected, that is the App's installation, so comments are posted as
-the agent's bot and the tools reach only the repositories the App is installed
-on. Without a connection the tools return `connection_required`, which asks the
-user to connect GitHub.
+The tools act on GitHub as the identity `acts_as` names; only
+`person_or_agent` ever uses a second one:
+
+- `agent` (default) uses the agent's own GitHub connection: its GitHub App when
+  you connected one, so comments are posted as the agent's bot and the tools
+  reach only the repositories the App is installed on. Use it for bots, and for
+  anything triggered without a person.
+- `person` uses the GitHub connection of the person talking to the agent. Use it
+  for a personal agent. A triggered run has no person, so it gets nothing.
+- `person_or_agent` uses the person's connection when they have one, otherwise
+  the agent's.
+
+Each call gets a short-lived token limited to the one repository it names and
+the permissions that tool needs: the read tools ask for **Pull requests: read**,
+the comment tool for **Issues** and **Pull requests: write**, the review tool for
+**Pull requests: write**, the issue tool for **Issues: write**, and
+`create_github_pull_request` for **Pull requests: write** and **Contents: read**.
+Without a connection for that identity the tools return `connection_required`.
 
 The session's network access policy must allow `https://api.github.com/` when
 one is set.

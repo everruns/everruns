@@ -22,6 +22,7 @@ use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 use everruns_contracts::tool_types::ToolHints;
 use serde_json::{Value, json};
 
+use crate::github::GitHubActsAs;
 use crate::github::client::{GitHubClient, Issue};
 use crate::github::pull_requests::{github_token, valid_marker};
 use crate::github::tools::{is_valid_owner_repo, required_str};
@@ -37,11 +38,21 @@ fn fingerprint_line(fingerprint: &str) -> String {
 
 pub struct UpsertGitHubIssueTool {
     private_only: bool,
+    acts_as: GitHubActsAs,
 }
 
 impl UpsertGitHubIssueTool {
     pub fn new(private_only: bool) -> Self {
-        Self { private_only }
+        Self {
+            private_only,
+            acts_as: GitHubActsAs::default(),
+        }
+    }
+
+    /// The same tool, acting as `acts_as` on GitHub.
+    pub(crate) fn acting_as(mut self, acts_as: GitHubActsAs) -> Self {
+        self.acts_as = acts_as;
+        self
     }
 }
 
@@ -242,10 +253,11 @@ impl Tool for UpsertGitHubIssueTool {
             Ok(draft) => draft,
             Err(e) => return ToolExecutionResult::tool_error(e),
         };
-        let client = match github_token(context).await {
-            Ok(token) => crate::github::tools::github_client(token),
-            Err(e) => return e,
-        };
+        let client =
+            match github_token(context, self.acts_as, &draft.repo, &[("issues", "write")]).await {
+                Ok(token) => crate::github::tools::github_client(token),
+                Err(e) => return e,
+            };
         match upsert(&client, draft, self.private_only).await {
             Ok(result) => ToolExecutionResult::success(result),
             Err(e) => ToolExecutionResult::tool_error(e),

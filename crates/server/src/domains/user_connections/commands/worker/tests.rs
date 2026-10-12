@@ -12,8 +12,9 @@ use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
-const SESSION_COMMANDS: [&str; 4] = [
+const SESSION_COMMANDS: [&str; 5] = [
     "worker_get_connection_token",
+    "worker_get_github_token",
     "worker_get_sandbox_connection_token",
     "worker_get_service_api_key_connection",
     "worker_get_connection_user",
@@ -51,6 +52,17 @@ impl UserConnectionResolver for Recording {
     async fn get_connection_token(&self, _: SessionId, _: &str) -> CoreResult<Option<String>> {
         self.note("token");
         Ok(Some(TOKEN.to_string()))
+    }
+    async fn get_github_token(
+        &self,
+        _: SessionId,
+        access: &everruns_contracts::runtime::GitHubAccess,
+    ) -> CoreResult<Option<everruns_contracts::runtime::McpResolvedCredential>> {
+        self.note(&format!("github:{}", access.acts_as));
+        Ok(Some(everruns_contracts::runtime::McpResolvedCredential {
+            token: TOKEN.to_string(),
+            acted_as: access.acts_as,
+        }))
     }
     async fn get_sandbox_connection_token(
         &self,
@@ -137,6 +149,7 @@ fn session_params(session_id: SessionId, input: Option<Uuid>) -> Value {
         "provider": "daytona",
         "input_message_id": input,
         "credential": SessionSandboxCredential::default(),
+        "access": {"acts_as": "service", "permissions": {"contents": "read"}},
     })
 }
 
@@ -164,6 +177,14 @@ async fn lookups_run_through_the_servers_resolver() {
     .await
     .unwrap();
     assert_eq!(token, json!(TOKEN));
+    let github = run(
+        &ctx,
+        "worker_get_github_token",
+        session_params(session_id, Some(invocation)),
+    )
+    .await
+    .unwrap();
+    assert_eq!(github, json!({"token": TOKEN, "acted_as": "service"}));
     let sandbox = run(
         &ctx,
         "worker_get_sandbox_connection_token",
@@ -200,6 +221,7 @@ async fn lookups_run_through_the_servers_resolver() {
         *resolver.calls.lock().unwrap(),
         [
             format!("token@{invocation}"),
+            format!("github:service@{invocation}"),
             "sandbox".to_string(),
             format!("service@{invocation}"),
             "user".to_string(),

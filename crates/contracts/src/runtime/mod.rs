@@ -132,7 +132,7 @@ pub use self::config_layer::{
     AgentConfigOverlay, merge_capabilities, merge_initial_files, normalize_initial_file_path,
 };
 pub use self::connection_services::{
-    McpResolvedCredential, ServiceApiKeyConnection, UserConnectionResolver,
+    GitHubAccess, McpResolvedCredential, ServiceApiKeyConnection, UserConnectionResolver,
 };
 pub use self::decisions::{
     DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionUsage,
