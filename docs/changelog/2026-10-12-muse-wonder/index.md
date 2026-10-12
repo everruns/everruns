@@ -8,7 +8,7 @@ products: [platform, cloud, framework]
 surfaces: [ui, api, code]
 links:
   docs: [/providers/meta/]
-  prs: [everruns/everruns#PR_NUMBER]
+  prs: [everruns/everruns#4637]
 ---
 
 **Muse Wonder** (`muse-wonder-1.0`, preview) is Meta's most capable Muse model, built for long
@@ -19,4 +19,4 @@ so usage and cost tracking work from the first run.
 Every Muse model now has a reasoning effort picker: Minimal through Extra High, plus Max on
 Muse Wonder and Muse Spark 1.3. Before this, Muse ran only at the level Meta picks by default.
 
-See [Meta](/providers/meta/).
+See [Meta](/providers/meta/). [#4637](https://github.com/everruns/everruns/pull/4637)
