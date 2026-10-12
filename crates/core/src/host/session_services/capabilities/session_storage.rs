@@ -29,6 +29,9 @@ const INTERNAL_KV_PREFIXES: &[&str] = &[
     // Revealed deferred MCP servers: written only by tool search and the
     // server's placeholder, so the kv_store tool cannot list or clear them.
     crate::DEFERRED_MCP_REVEAL_KV_PREFIX,
+    // Last listed tools of each MCP server, kept for turns whose listing
+    // fails. A forged record would publish tools the server never offered.
+    crate::MCP_LAST_TOOLS_KV_PREFIX,
     // Persisted channel ThreadContext (EVE-977). Reserved for the same reason
     // as the ARD prefixes: its participant list and "user is viewing" hint
     // reach the model as context, so a session/tool actor forging them would

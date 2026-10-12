@@ -190,8 +190,8 @@ pub use self::llm_error_hook::{
     LlmErrorContext, LlmErrorHook, LlmErrorHookOutcome, LlmErrorHookServices,
 };
 pub use self::mcp_deferred::{
-    DEFERRED_MCP_REVEAL_KV_PREFIX, DeferredMcpServerTool, deferred_mcp_server_definition,
-    deferred_mcp_server_prefix, deferred_mcp_server_tool_name,
+    DEFERRED_MCP_REVEAL_KV_PREFIX, DeferredMcpServerTool, MCP_LAST_TOOLS_KV_PREFIX,
+    deferred_mcp_server_definition, deferred_mcp_server_prefix, deferred_mcp_server_tool_name,
     normalize_deferred_mcp_server_definition, partition_deferred_mcp_servers,
     reveal_deferred_mcp_server, revealed_mcp_servers,
 };
