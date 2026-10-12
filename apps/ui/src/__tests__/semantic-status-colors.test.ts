@@ -26,7 +26,6 @@ const rawPaletteExceptions: Record<string, Record<string, number>> = {
   "app/(main)/durable/workflows/[workflowId]/page.tsx": {
     "text-blue-500": 1,
     "text-purple-500": 1,
-    "text-yellow-500": 1,
   },
   "app/(main)/evals/[evalId]/page.tsx": {
     "text-green-600": 1,
