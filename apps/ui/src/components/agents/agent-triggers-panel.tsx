@@ -195,7 +195,7 @@ export function AgentTriggersPanel({
                         ? "New session per run"
                         : config.session_mode === "per_thread"
                           ? "One session per pull request"
-                          : "Shared session"}
+                          : "One session for everything"}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
