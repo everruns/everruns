@@ -103,7 +103,8 @@ those are a small fixed set, so hosted search keeps the fallback. A
 `test_openai_tool_reveal_keeps_prompt_cache`, the same scenario as the Anthropic
 driver test. The call after the reveal read 4909 tokens (the whole prefix
 written by the first call) on GPT-6 Astra, Sol, Luna and 6.1 Sol, and each
-model called `add`. With the flag off, Luna read 0 and wrote 5075.
+model called `add`. With the flag off, Luna read 0 and wrote 5075. GPT-5.6
+Terra passed the same test (step 5).
 
 ### OpenAI Responses (2026-10-12)
 
@@ -118,6 +119,18 @@ tool was available produced the correct call `deploy_service({"env":"prod"})`.
 | Redefine an existing stub by name through `additional_tools` | **0** | 5588 | 5588 |
 | Hosted `tool_search`: append a deferred tool to `tools` | **0** | **0** | **0** |
 | Hosted `tool_search`: add a deferred tool through `additional_tools` | 5632 | 5924 | 5924 |
+
+A second probe (step 5) put the same two cases to the other gpt-5.x models:
+
+| Scenario | gpt-5.4 | gpt-5.5 | gpt-5.6 Sol, Terra, Luna |
+|---|---|---|---|
+| New tool through `additional_tools` | 4608 | 4608 | 5564 |
+| Append a new tool to `tools` | **0** | **0** | **0** |
+| Redefine a stub through `additional_tools` | **0** | **0** | 5588 |
+
+So gpt-5.6 gets the full mode (`inline_tool_changes`), and gpt-5.5 and gpt-5.4
+the add-only mode (`inline_tool_additions`): an epoch whose changes include a
+redefinition falls back to sending the wanted tools.
 
 Two things follow. On GPT-6 models a stub can be redefined in place, the same
 as on Claude. On gpt-5.5 it cannot, so there the stub must never be in `tools`
@@ -390,7 +403,9 @@ Each step is one PR and leaves `main` working.
    declared definitions. Done for `tool_search`: the in-memory registry is
    gone; context assembly reads reveals from stored `tool_search` results and
    keeps deferral on once a recorded tool list holds a stub, so reveals
-   survive restarts and look the same on every worker.
+   survive restarts and look the same on every worker. Done for OpenAI
+   profiles: gpt-5.6 Sol, Terra and Luna take the full mode, gpt-5.5 and gpt-5.4
+   the add-only mode (probe above).
 6. **Prompt text with changes**: capability prompt additions that appear
    mid-session ride in the change's `note` instead of the system prompt;
    compaction and trimming re-baseline; the infinity-context notice and

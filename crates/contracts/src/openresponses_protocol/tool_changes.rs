@@ -9,7 +9,8 @@
 //! stays declared and a call to it is refused by the runtime.
 //!
 //! This runs only against `api.openai.com`, on models whose profile says a live
-//! round trip kept the cache after a redefinition. Anything else, including a
+//! round trip kept the cache after a redefinition, or after an addition for
+//! add-only models (whose epochs with a redefinition fall back). Anything else, including a
 //! change that touches a tool a native tool stands in for, falls back to
 //! sending the tools wanted now, which is the behavior before recorded changes
 //! existed.
@@ -19,7 +20,7 @@ use serde_json::json;
 
 use super::{OpenResponsesProtocolChatDriver, ResponsesContent, ResponsesInputItem};
 use crate::driver_registry::{LlmCallConfig, Message};
-use crate::model::INLINE_TOOL_CHANGES_PARAMETER;
+use crate::model::{INLINE_TOOL_ADDITIONS_PARAMETER, INLINE_TOOL_CHANGES_PARAMETER};
 use crate::tool_changes::ToolChanges;
 use crate::tool_types::{DeferrablePolicy, ToolDefinition};
 
@@ -65,21 +66,29 @@ pub(crate) fn eligible(
     messages: &[Message],
     replaced: &[&str],
 ) -> bool {
+    let Some(profile) = crate::get_model_profile(&crate::DriverId::OpenAI, &config.model) else {
+        return false;
+    };
+    // Add-only models (gpt-5.5, gpt-5.4) lose the cache when a definition is
+    // replaced, so a redefinition anywhere in the epoch falls back.
+    let redefines = profile.supports_parameter(INLINE_TOOL_CHANGES_PARAMETER);
+    if !redefines && !profile.supports_parameter(INLINE_TOOL_ADDITIONS_PARAMETER) {
+        return false;
+    }
     hosts.allows(base_url)
         && config.tool_baseline.as_ref().is_some_and(|b| !b.is_empty())
-        && crate::get_model_profile(&crate::DriverId::OpenAI, &config.model)
-            .is_some_and(|profile| profile.supports_parameter(INLINE_TOOL_CHANGES_PARAMETER))
         && messages
             .iter()
             .filter_map(|message| message.tool_changes.as_ref())
             .all(|changes| {
-                changes
-                    .added
-                    .iter()
-                    .chain(&changes.redefined)
-                    .map(ToolDefinition::name)
-                    .chain(changes.removed.iter().map(String::as_str))
-                    .all(|name| !replaced.contains(&name))
+                (redefines || changes.redefined.is_empty())
+                    && changes
+                        .added
+                        .iter()
+                        .chain(&changes.redefined)
+                        .map(ToolDefinition::name)
+                        .chain(changes.removed.iter().map(String::as_str))
+                        .all(|name| !replaced.contains(&name))
             })
 }
 
@@ -205,6 +214,31 @@ mod tests {
             ),
             "a change to a tool a native tool replaces"
         );
+    }
+
+    #[test]
+    fn add_only_models_fall_back_on_a_redefinition() {
+        let openai = Some("https://api.openai.com/v1");
+        let hosts = InlineToolChangeHosts::OpenAi;
+        let redefinition = changed(ToolChanges {
+            redefined: vec![tool("deploy")],
+            ..ToolChanges::default()
+        });
+        for model in ["gpt-5.5", "gpt-5.4"] {
+            let mut add_only = config(vec![tool("a")]);
+            add_only.model = model.to_string();
+            assert!(
+                eligible(hosts, openai, &add_only, &changed(addition("deploy")), &[]),
+                "{model} keeps the cache on an addition"
+            );
+            assert!(
+                !eligible(hosts, openai, &add_only, &redefinition, &[]),
+                "{model} loses the cache on a redefinition"
+            );
+        }
+        let mut full = config(vec![tool("a")]);
+        full.model = "gpt-5.6-sol".to_string();
+        assert!(eligible(hosts, openai, &full, &redefinition, &[]));
     }
 
     #[test]
