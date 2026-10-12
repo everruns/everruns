@@ -830,6 +830,29 @@ body:has(#starlight__sidebar:popover-open) .er-menu-button {
   margin-top: 0;
 }
 
+/* Anchor link icon. Starlight sizes it in em of its own heading scale, which
+   is larger than these headings, so the icon came out oversized and overlapped
+   the last letter. Fixed rem sizes resolve the same on the heading's padding
+   and on the icon, and the muted color keeps it secondary to the title. */
+.sl-markdown-content .sl-heading-wrapper {
+  --sl-anchor-icon-size: 1.125rem;
+  --sl-anchor-icon-gap: 0.5rem;
+}
+
+.sl-markdown-content .sl-anchor-link {
+  color: hsl(var(--muted-foreground));
+  text-decoration: none;
+}
+
+.sl-markdown-content .sl-anchor-link:hover {
+  color: hsl(var(--foreground));
+}
+
+.sl-markdown-content .sl-anchor-icon > svg {
+  vertical-align: middle;
+  transform: none;
+}
+
 .sl-markdown-content :is(ul, ol):not(:where(.not-content *)) {
   padding-left: 20px;
 }
