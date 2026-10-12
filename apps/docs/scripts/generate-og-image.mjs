@@ -378,7 +378,7 @@ async function generateDocCards() {
         // API pages come from the OpenAPI spec (section 2).
         if (!(prefix === "" && entry.name === "api")) scan(full, prefix ? `${prefix}/${entry.name}` : entry.name);
       } else if (/\.mdx?$/.test(entry.name)) {
-        const slug = (prefix ? `${prefix}/${entry.name}` : entry.name).replace(/\.mdx?$/, "").replace(/\/?index$/, "");
+        const slug = (prefix ? `${prefix}/${entry.name}` : entry.name).replace(/\.mdx?$/, "").replace(/(^|\/)index$/, "");
         files.push({ full, slug });
       }
     }

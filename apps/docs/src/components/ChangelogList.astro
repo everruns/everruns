@@ -1,10 +1,11 @@
 ---
 import { docsPath } from "../lib/site";
 // The changelog list: every entry newest first, grouped by month and day, with
-// a category bar and Major only / Show releases toggles.
+// a category bar and a Major only toggle on the same row. The RSS link sits
+// in the page title row (PageTitle.astro).
 //
 // Decision: filtering runs in the browser over a fully rendered list and keeps
-// its state in the query string (`?kind=fix&significance=major&releases=0`),
+// its state in the query string (`?kind=fix&significance=major`),
 // so a filtered view is a shareable link and the page still works without
 // JavaScript. Products are filtered by the sidebar: per-product pages
 // (/changelog/<product>/) pass `product` and get the same list pre-filtered at
@@ -69,7 +70,6 @@ const days = (items: typeof entries) => {
   return [...byDay];
 };
 
-const feed = docsPath(product ? `/changelog/${product}/rss.xml` : "/changelog/rss.xml");
 // Deprecation and incident get a button only once an entry uses them.
 const kinds = KINDS.filter(
   (k) => !["deprecation", "incident"].includes(k.id) || entries.some((e) => e.data.kind === k.id),
@@ -97,17 +97,8 @@ const monthSummary = (items: typeof entries) => {
         ))
       }
     </div>
-    <div class="changelog-toggles">
-      <label><input type="checkbox" name="major" /> Major only</label>
-      <label><input type="checkbox" name="releases" checked /> Show releases</label>
-      <a class="changelog-feed" href={feed} title="RSS feed">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M4 11a9 9 0 0 1 9 9" />
-          <path d="M4 4a16 16 0 0 1 16 16" />
-          <circle cx="5" cy="19" r="1" />
-        </svg>
-        RSS
-      </a>
+    <div class="changelog-kinds">
+      <button type="button" class="changelog-major" aria-pressed="false">Major only</button>
     </div>
   </form>
   <p class="changelog-status" aria-live="polite" hidden></p>
@@ -191,7 +182,6 @@ const monthSummary = (items: typeof entries) => {
     if (!root || !form) return;
     const params = new URLSearchParams(location.search);
     const since = params.get("since") ?? "";
-    const hideReleases = params.get("releases") === "0";
     let shown = 0;
     for (const item of root.querySelectorAll<HTMLElement>(".changelog-item")) {
       let visible = true;
@@ -200,7 +190,6 @@ const monthSummary = (items: typeof entries) => {
         const have = (item.dataset[name] ?? "").split(" ");
         if (want && !have.includes(want)) visible = false;
       }
-      if (hideReleases && item.dataset.kind === "release") visible = false;
       if (since && !newer(item.dataset.release ?? "", since)) visible = false;
       item.hidden = !visible;
       if (visible) shown++;
@@ -225,8 +214,7 @@ const monthSummary = (items: typeof entries) => {
     for (const button of form.querySelectorAll<HTMLButtonElement>("[data-kind]")) {
       button.setAttribute("aria-pressed", String(button.dataset.kind === kind));
     }
-    form.querySelector<HTMLInputElement>("[name=major]")!.checked = params.get("significance") === "major";
-    form.querySelector<HTMLInputElement>("[name=releases]")!.checked = !hideReleases;
+    form.querySelector(".changelog-major")?.setAttribute("aria-pressed", String(params.get("significance") === "major"));
     if (status) {
       status.hidden = Boolean(shown) && !since;
       status.textContent = !shown ? "No changes match these filters." : since ? `${shown} changes since ${since}.` : "";
@@ -247,14 +235,9 @@ const monthSummary = (items: typeof entries) => {
         update((p) => (button.dataset.kind ? p.set("kind", button.dataset.kind) : p.delete("kind"))),
       );
     }
-    form.querySelector("[name=major]")?.addEventListener("change", (event) => {
-      const on = (event.target as HTMLInputElement).checked;
-      update((p) => (on ? p.set("significance", "major") : p.delete("significance")));
-    });
-    form.querySelector("[name=releases]")?.addEventListener("change", (event) => {
-      const on = (event.target as HTMLInputElement).checked;
-      update((p) => (on ? p.delete("releases") : p.set("releases", "0")));
-    });
+    form.querySelector(".changelog-major")?.addEventListener("click", () =>
+      update((p) => (p.get("significance") === "major" ? p.delete("significance") : p.set("significance", "major"))),
+    );
     form.addEventListener("submit", (event) => event.preventDefault());
     apply();
   }
@@ -266,6 +249,7 @@ const monthSummary = (items: typeof entries) => {
     flex-wrap: wrap;
     align-items: center;
     gap: 0.75rem 1rem;
+    margin-top: 2rem;
     font-size: var(--sl-text-xs);
   }
 
@@ -297,6 +281,11 @@ const monthSummary = (items: typeof entries) => {
     color: var(--sl-color-white);
   }
 
+  /* Major only cuts across categories, so it stands apart at the row's end. */
+  .changelog-kinds:has(.changelog-major) {
+    margin-inline-start: auto;
+  }
+
   .changelog-kinds button[aria-pressed="true"] {
     background: var(--sl-color-gray-6);
     color: var(--sl-color-white);
@@ -320,48 +309,6 @@ const monthSummary = (items: typeof entries) => {
   .changelog-kinds .cl-incident svg { stroke: var(--sl-color-red); }
   .changelog-kinds .cl-release svg { stroke: var(--sl-color-purple); }
 
-  .changelog-toggles {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 1rem;
-    margin-inline-start: auto;
-    color: var(--sl-color-gray-2);
-  }
-
-  .changelog-toggles label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    cursor: pointer;
-  }
-
-  .changelog-toggles input {
-    margin: 0;
-    accent-color: var(--sl-color-accent);
-  }
-
-  a.changelog-feed.changelog-feed {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    color: var(--sl-color-gray-2);
-    text-decoration: none;
-  }
-
-  a.changelog-feed.changelog-feed:hover {
-    color: var(--sl-color-text-accent);
-  }
-
-  .changelog-feed svg {
-    width: 0.9rem;
-    height: 0.9rem;
-    fill: none;
-    stroke: #f26522;
-    stroke-width: 2;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
 
   .changelog-status {
     margin: 1.5rem 0 0;
@@ -504,8 +451,5 @@ const monthSummary = (items: typeof entries) => {
       position: static;
     }
 
-    .changelog-toggles {
-      margin-inline-start: 0;
-    }
   }
 </style>
