@@ -567,6 +567,24 @@ mod tests {
         assert_eq!(params["harness_name"], "generic");
     }
 
+    /// A running session can be moved to another model from the CLI.
+    #[test]
+    fn sessions_update_takes_a_model_id() {
+        let contract = contract("update_session").expect("sessions update is routed");
+        let parser = contract.clap_command("everruns sessions update");
+        let matches = parser
+            .try_get_matches_from([
+                "everruns sessions update",
+                "session_01h9",
+                "--model-id",
+                "model_01933b5a00007000800000000000001",
+            ])
+            .expect("--model-id parses");
+        let params = everruns_cli_contract::params_from(contract, &matches);
+        assert_eq!(params["model_id"], "model_01933b5a00007000800000000000001");
+        assert_eq!(params["session_id"], "session_01h9");
+    }
+
     /// Entry names in a rendered help block, in order.
     fn listed_commands(text: &str) -> Vec<String> {
         text.lines()

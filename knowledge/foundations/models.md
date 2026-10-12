@@ -148,7 +148,14 @@ When `controls.reasoning.effort` is set, reasoning models generate chain-of-thou
 1. `controls.model_id` (from the last user message) - highest priority
 2. `session.model_id` - session-level override
 3. `agent.default_model_id` - agent's default model
-4. System default model - fallback if no model is configured above
+4. Harness default model
+5. System default model - fallback if no model is configured above
+
+`session.model_id` holds only a model someone chose for the session (at create,
+or later through `PATCH /v1/sessions/{id}`; `null` clears it). It never copies
+the agent or harness default: the fallback is resolved per turn, so changing the
+agent's default model reaches existing sessions, which is how an operator moves
+a run off a model whose provider is limiting it.
 
 ### Image
 

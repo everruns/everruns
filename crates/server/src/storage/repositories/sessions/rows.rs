@@ -254,7 +254,7 @@ pub struct UpdateSession {
     pub resolved_owner_user_id: UpdateField<Uuid>,
     pub locale: Option<String>,
     pub tags: Option<Vec<String>>,
-    pub model_id: Option<ModelId>,
+    pub model_id: UpdateField<ModelId>,
     pub status: Option<String>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,

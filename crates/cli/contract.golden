@@ -317,7 +317,7 @@ sessions trace turns steps list	--context-revision --errors-only --from-step --l
 sessions trace turns steps request list	--context-revision --full --limit --native --offset --reason --role --session-id! --step! --turn!
 sessions unarchive	--context-revision --reason --session <session_id>
 sessions unpin	--context-revision --reason --session <session_id>
-sessions update	--context-revision --goal --locale --reason --session --tags... --title --virtual-user-id <session_id>
+sessions update	--context-revision --goal --locale --model-id --reason --session --tags... --title --virtual-user-id <session_id>
 sessions watch	<session>!
 skills content	--context-revision --id --reason <id>
 skills create	--context-revision --reason --skill-md!

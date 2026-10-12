@@ -419,17 +419,10 @@ impl SessionService {
             }
         }
 
-        // Resolve model_id: session > agent > harness
-        let model_id = self
-            .validate_model_id(org_id, req.model_id)
-            .await?
-            .or_else(|| {
-                // Try agent's default_model_id first, then fall back to harness's default_model_id.
-                agent
-                    .as_ref()
-                    .and_then(|a| a.default_model_id)
-                    .or(effective_harness.default_model_id)
-            });
+        // Store only an explicitly requested model. Turns resolve the rest
+        // (agent, then harness, then org default) when they run, so changing
+        // the agent's default model reaches sessions that already exist.
+        let model_id = self.validate_model_id(org_id, req.model_id).await?;
 
         let has_caller_supplied_session_capabilities = !req.capabilities.is_empty();
         crate::domains::capabilities::validation::validate_caller_sandbox_capabilities(

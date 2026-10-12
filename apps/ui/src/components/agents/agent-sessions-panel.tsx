@@ -11,7 +11,14 @@ import type { ModelWithProvider } from "@/lib/api/types";
 const PAGE_SIZE = 20;
 
 /** The agent page's Sessions tab: every session of the agent, paginated. */
-export function AgentSessionsPanel({ agentId }: { agentId: string }) {
+export function AgentSessionsPanel({
+  agentId,
+  defaultModelId,
+}: {
+  agentId: string;
+  /** Model a session without its own model runs on: the agent's default. */
+  defaultModelId?: string | null;
+}) {
   const [page, setPage] = useState(0);
   const offset = page * PAGE_SIZE;
   const { data: sessionsResponse, isLoading } = useSessions(agentId, {
@@ -53,7 +60,7 @@ export function AgentSessionsPanel({ agentId }: { agentId: string }) {
           <SessionCard
             key={session.id}
             session={session}
-            model={session.model_id ? modelMap.get(session.model_id) : undefined}
+            model={modelMap.get(session.model_id ?? defaultModelId ?? "")}
           />
         ))}
       </div>

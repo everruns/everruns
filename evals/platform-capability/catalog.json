@@ -23167,7 +23167,7 @@
   {
     "category": "sessions",
     "cli": "sessions update",
-    "description": "Update session title, tags, or locale.",
+    "description": "Update session title, tags, locale, or model. A null `model_id` clears the session model so turns follow the agent's default again.",
     "input_schema": {
       "$defs": {
         "UpdateSessionRequest": {
@@ -23184,6 +23184,14 @@
             "locale": {
               "description": "Session locale (BCP 47, e.g. `uk-UA`).",
               "example": "uk-UA",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "model_id": {
+              "description": "Model for this session's turns. `null` clears it so turns follow the\nagent's default model again.",
+              "example": "model_01933b5a00007000800000000000001",
               "type": [
                 "string",
                 "null"

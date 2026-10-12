@@ -137,6 +137,9 @@ impl LlmErrorKind {
         }
         match status {
             401 | 403 => LlmErrorKind::Authentication,
+            // Payment Required: every provider that sends it means the account
+            // cannot pay for this request (OpenRouter: "requires more credits").
+            402 => LlmErrorKind::QuotaExhausted,
             429 => LlmErrorKind::RateLimited,
             408 | 409 => LlmErrorKind::Unavailable,
             501 => LlmErrorKind::Other,
