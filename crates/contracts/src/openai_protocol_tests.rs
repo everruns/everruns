@@ -379,6 +379,7 @@ fn the_request_capture_is_opt_in_and_is_what_goes_on_the_wire() {
         verbosity: None,
         metadata: None,
         response_format: None,
+        prompt_cache_key: None,
     };
 
     let mut config = call_config();

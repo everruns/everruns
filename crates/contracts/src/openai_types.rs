@@ -52,6 +52,10 @@ pub(crate) struct OpenAiRequest {
     /// Structured output: `{type: "json_schema", json_schema: {name, schema, strict}}`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) response_format: Option<Value>,
+    /// Cache-routing key for hosts that take one; see
+    /// `OpenAIProtocolChatDriver::with_prompt_cache_key`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) prompt_cache_key: Option<String>,
 }
 
 impl OpenAiRequest {

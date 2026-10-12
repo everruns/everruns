@@ -11,6 +11,16 @@ use crate::engine::execution::ExecutionContext;
 use crate::engine::tool_types::ToolDefinition;
 use crate::engine::typed_id::SessionId;
 
+/// Claude on OpenRouter with the auto strategy: the request carries a
+/// top-level `cache_control` (see the OpenRouter request extension).
+fn openrouter_claude_auto(
+    config: &crate::engine::driver_registry::LlmCallConfig,
+    cfg: &crate::engine::driver_registry::PromptCacheConfig,
+) -> bool {
+    config.model.starts_with("anthropic/")
+        && cfg.strategy == everruns_contracts::driver_registry::PromptCacheStrategy::Auto
+}
+
 pub(super) fn build_request_options(
     config: &crate::engine::driver_registry::LlmCallConfig,
     provider: &str,
@@ -39,6 +49,11 @@ pub(super) fn build_request_options(
                     .to_string(),
                 ),
                 "anthropic" => Some("cache_control".to_string()),
+                "mistral" => Some("prompt_cache_key".to_string()),
+                // Automatic caching via top-level `cache_control` (auto only).
+                "openrouter" if openrouter_claude_auto(config, cfg) => {
+                    Some("cache_control".to_string())
+                }
                 "gemini" => Some(
                     if cfg.gemini_cached_content.is_some() {
                         "cached_content"
@@ -51,6 +66,9 @@ pub(super) fn build_request_options(
             },
             retention: match provider {
                 "anthropic" => Some(cfg.retention.anthropic_ttl().unwrap_or("5m").to_string()),
+                "openrouter" if openrouter_claude_auto(config, cfg) => {
+                    Some(cfg.retention.anthropic_ttl().unwrap_or("5m").to_string())
+                }
                 "openai"
                     if everruns_contracts::openai_compat::supports_cache_options(&config.model) =>
                 {
