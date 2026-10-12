@@ -163,10 +163,15 @@ fn command_backed_routes_match_the_read_only_query_toolset() {
         assert_eq!(class, Some(classify_command(desc)), "{name}");
         if class == Some(RouteAccess::Never) {
             assert!(
-                routes::ROUTES.iter().any(|(m, p, access)| {
-                    *access == RouteAccess::Never
-                        && route_key(m, p) == route_key(meta.method, meta.path)
-                }),
+                // A command route may sit in either table: `classify_command`
+                // reads both through `TABLE`.
+                routes::ROUTES
+                    .iter()
+                    .chain(routes::UNDOCUMENTED_ROUTES)
+                    .any(|(m, p, access)| {
+                        *access == RouteAccess::Never
+                            && route_key(m, p) == route_key(meta.method, meta.path)
+                    }),
                 "{name} is Never without a table row"
             );
             continue;
