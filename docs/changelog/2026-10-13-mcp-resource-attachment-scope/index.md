@@ -1,7 +1,7 @@
 ---
 title: "MCP resource reads enforce conversation attachments"
 description: "Resource listing and reading retain the conversation's attached-server policy when the runtime binds a request to its current input message."
-date: 2026-10-12
+date: 2026-10-13
 kind: fix
 significance: notable
 products: [platform, framework, cloud]
