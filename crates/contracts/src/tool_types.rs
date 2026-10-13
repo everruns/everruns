@@ -798,6 +798,36 @@ impl ConnectionRequired {
     }
 }
 
+impl ConnectionRequired {
+    /// The error text a blocked call carries.
+    ///
+    /// A call that stopped on a missing connection did not run, so it is
+    /// reported as a failure: the model must not read it as a result, and the
+    /// timeline shows it as not run. The in-chat connect card is keyed on the
+    /// separate `connection_required` field, not on this text.
+    pub fn blocked_message(&self) -> String {
+        let provider = &self.provider;
+        let who = match self.subject {
+            Some(ConnectionRequiredSubject::Agent) => {
+                format!("An admin has to connect the agent's {provider} account")
+            }
+            Some(ConnectionRequiredSubject::User) => {
+                format!("The person has to connect their {provider} account")
+            }
+            None => format!("The person has to connect {provider}"),
+        };
+        let at = self
+            .setup_url
+            .as_deref()
+            .map(|url| format!(" at {url}"))
+            .unwrap_or_default();
+        format!(
+            "This tool did not run: its {provider} connection is not set up. {who}{at}, \
+             then try again."
+        )
+    }
+}
+
 impl From<String> for ConnectionRequired {
     fn from(provider: String) -> Self {
         Self::provider_only(provider)

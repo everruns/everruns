@@ -11,7 +11,7 @@
 //   resources and save as they go, as they did when they were tabs.
 
 import { Check, Loader2, X, Zap } from "lucide-react";
-import { useAgentNameAvailability } from "@/hooks";
+import { useAgentNameAvailability, useAgentTriggers } from "@/hooks";
 import { AgentAvatarField } from "@/components/agents/agent-avatar-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -123,6 +123,15 @@ interface AgentSettingsSheetProps {
   onDraftChange: <T>(apply: (value: T) => void) => (value: T) => void;
 }
 
+/** Loads the agent's triggers only when the sandbox section is open. */
+function AgentSandboxPolicyEditor({
+  agentId,
+  ...props
+}: { agentId: string } & Omit<Parameters<typeof SandboxPolicyEditor>[0], "hasTriggers">) {
+  const { data: triggers = [] } = useAgentTriggers(agentId);
+  return <SandboxPolicyEditor {...props} hasTriggers={triggers.length > 0} />;
+}
+
 export function AgentSettingsSheet({
   section,
   onOpenChange,
@@ -190,7 +199,8 @@ export function AgentSettingsSheet({
                     </p>
                   </div>
                 ) : (
-                  <SandboxPolicyEditor
+                  <AgentSandboxPolicyEditor
+                    agentId={agent.id}
                     value={draft.sandboxPolicy}
                     onChange={onDraftChange(draft.setSandboxPolicy)}
                     disabled={readOnly}
