@@ -25,8 +25,10 @@ token that creates them is the only real variable, and it decides whether the
 customer clicks consent once or once per agent.
 
 That design shipped in #3830 and #602 against a customer-supplied configuration
-token. The remaining upgrade — a manager app, which removes the per-agent
-consent — is blocked on Slack enrolling us, and is the only open item here.
+token. The manager app's org-level consent is built behind deployment
+configuration (EVE-1102) and stays dormant until Slack enables manager app
+support for our app; removing the per-agent consent on top of it
+(`managed_apps:install`) is the remaining open item.
 
 ## The constraint everything hangs on
 
@@ -130,6 +132,21 @@ the customer pasting one they generated in their own workspace, or from a manage
 grant once Slack enrolls us. Everything downstream — org-scoped encrypted token
 storage, rotation, `apps.manifest.create`, the OAuth callback — is identical.
 Building behind that seam is what stopped the enrollment question from blocking.
+
+**The manager grant is the second token source, built ahead of enrollment.**
+A deployment with `SLACK_MANAGER_APP_CLIENT_ID`/`_SECRET` offers "Connect with
+Slack": one OAuth consent with `user_scope=app_configurations:read,write` and an
+empty bot `scope`, whose user token becomes the same `org_slack_connections` row
+a pasted token does, marked `grant_kind = manager_app`. That kind only decides
+refresh: a manager grant is a rotating OAuth user token, refreshed through
+`oauth.v2.access` with the manager app's client pair, not `tooling.tokens.rotate`.
+It was safe to build before Step 1's install question is answered because it
+does not depend on the answer: per-agent consent is unchanged, and
+`managed_apps:install` is deliberately not requested until we know what Slack
+does with it. The consent callback is unauthenticated, so the organization
+travels in an encrypted, expiring state (TM-SLACK-014). A grant without write
+scope or without token rotation is refused, not stored. The consent returns to
+Settings > Slack workspaces, not to the channel editor that may have started it.
 
 **The customer-supplied token path ships regardless of enrollment.** It is not a
 stopgap. It is the only path before enrollment, the required fallback after it
@@ -299,7 +316,8 @@ reverse-engineering.
 - `crates/server/src/channels/slack/provisioning/mod.rs` — `configure`, the two early returns above, the provisioner, and the supervised `slack_token_rotation` sweep
 - `crates/server/src/domains/agent_channels/record/slack_provisioning.rs` — the `SlackAppProvisioner` trait and its unavailable default
 - `crates/server/src/storage/org_slack_connections.rs` — per-workspace connection storage; migrations `145`, `146` and `159`
-- `crates/server/src/channels/slack/install.rs` — install and connection routes, and their deliberately different auth
+- `crates/server/src/channels/slack/install.rs` — install and connection routes, and their deliberately different auth, including the manager app consent and callback
+- `crates/server/migrations/20261013113828_org_slack_connection_grant_kind.sql` — which token source a connection came from
 - `crates/server/src/channels/slack/events/manifest.rs` — manifest generation and the endpoint URLs it declares
 - `apps/ui/src/components/apps/channel-form.tsx` — the setup states the capability drives, and the workspace choice
 - `apps/ui/src/components/slack/slack-workspaces.tsx` — the connect wizard and token-shape check; the settings page lives at `apps/ui/src/app/(main)/settings/slack/`

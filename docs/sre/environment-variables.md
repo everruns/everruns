@@ -24,6 +24,7 @@ a working default; each row links to the section that documents it.
 | [`SERVER_GRPC_ADDRESS`](#server_grpc_address), [`SERVER_GRPC_BIND_ADDR`](#server_grpc_bind_addr), [`WORKER_GRPC_CONNECT_TIMEOUT`](#worker_grpc_connect_timeout), [`WORKER_GRPC_TLS_*`](#worker_grpc_tls_cert) | API or workers | No | Plain gRPC on `127.0.0.1:9001` / `0.0.0.0:9001`. |
 | [`DEFAULT_*_API_KEY`](#default-api-keys-development-convenience) | API | No | Providers need keys configured in Models > Providers. |
 | [`UTILITY_*`](#system-model-keys) | API and workers | No | Analyze, Health, and model-backed guardrail checks are unavailable or skipped. |
+| [`SLACK_MANAGER_APP_CLIENT_ID`](#slack-manager-app), [`SLACK_MANAGER_APP_CLIENT_SECRET`](#slack-manager-app) | API | No | Organizations connect Slack workspaces by pasting a configuration token. |
 | [`EMAIL_PROVIDER`](#system-email-delivery), [`RESEND_*`](#system-email-delivery) | API | When sending email | Email delivery is disabled. |
 | [`RATE_LIMIT_API_REQUESTS_PER_MINUTE`](#other-server-variables), [`TRUSTED_PROXY_HOPS`](#other-server-variables), [`EXPECTED_INSTANCES`](#other-server-variables), [`EVENT_RETENTION_DAYS`](#other-server-variables), [`SSE_*`](#sse-streaming-configuration) | API | No | 1200 requests per minute, one trusted proxy, one instance, no event archiving, default SSE limits. |
 | [`OTEL_*`](#opentelemetry-configuration), [`EVERRUNS_TRACE_CONVENTIONS`](#everruns_trace_conventions), [`BRAINTRUST_*`](#braintrust-integration) | API and workers | No | Tracing and Braintrust export are off. |
@@ -505,6 +506,23 @@ Agents can also be given the TypeSafe capability directly, which is a
 **separate** credential: a per-user connection configured in Settings >
 Connections, never this deployment key. See
 [TypeSafe](/integrations/typesafe/) and [Guardrails](/capabilities/guardrails/).
+
+## Slack Manager App
+
+With a Slack manager app configured, an organization administrator connects a Slack workspace by approving it once in Slack, instead of pasting an app configuration token. Everruns then creates each Agent's Slack app in that workspace through the approval.
+
+| Variable | Description |
+|----------|-------------|
+| `SLACK_MANAGER_APP_CLIENT_ID` | Client ID of your Slack manager app. |
+| `SLACK_MANAGER_APP_CLIENT_SECRET` | Client secret of the same app. |
+
+Set both, or neither; one alone is ignored with a warning. The feature also needs `SECRETS_ENCRYPTION_KEY`. Configure the Slack app as follows:
+
+- User token scopes `app_configurations:read` and `app_configurations:write`; no bot scopes.
+- Redirect URL `<API base URL>/v1/slack/workspaces/oauth/callback`, for example `https://app.example.com/api/v1/slack/workspaces/oauth/callback`.
+- Token rotation turned on. Everruns refuses a grant that does not expire.
+
+Slack only lets an app request the `app_configurations` scopes once it has enabled manager app support for that app. Until then, leave these unset: the configuration token path works without them and stays available beside the approval.
 
 ## System Email Delivery
 

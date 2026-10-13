@@ -14,14 +14,16 @@ impl Database {
             r#"
             INSERT INTO org_slack_connections (
                 org_id, team_id, team_name, access_token_encrypted,
-                refresh_token_encrypted, access_token_expires_at, state, token_generation
+                refresh_token_encrypted, access_token_expires_at, state, token_generation,
+                grant_kind
             )
-            VALUES ($1, $2, $3, $4, $5, $6, 'connected', 1)
+            VALUES ($1, $2, $3, $4, $5, $6, 'connected', 1, $7)
             ON CONFLICT (org_id, team_id) DO UPDATE SET
                 team_name = COALESCE(EXCLUDED.team_name, org_slack_connections.team_name),
                 access_token_encrypted = EXCLUDED.access_token_encrypted,
                 refresh_token_encrypted = EXCLUDED.refresh_token_encrypted,
                 access_token_expires_at = EXCLUDED.access_token_expires_at,
+                grant_kind = EXCLUDED.grant_kind,
                 state = 'connected',
                 token_generation = org_slack_connections.token_generation + 1
             RETURNING *
@@ -33,6 +35,7 @@ impl Database {
         .bind(input.access_token_encrypted)
         .bind(input.refresh_token_encrypted)
         .bind(input.access_token_expires_at)
+        .bind(input.grant_kind.as_str())
         .fetch_one(&self.pool)
         .await?)
     }
