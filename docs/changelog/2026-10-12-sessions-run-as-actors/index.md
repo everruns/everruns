@@ -6,6 +6,7 @@ kind: improvement
 significance: major
 products: [platform, cloud, framework]
 surfaces: [api, code, operations]
+release: "0.48.0"
 links:
   docs: [/explanation/durable-execution/, /framework/upgrade-notes/]
   prs: [everruns/everruns#4485, everruns/everruns#4510, everruns/everruns#4512, everruns/everruns#4517, everruns/everruns#4530, everruns/everruns#4537, everruns/everruns#4608, everruns/everruns#4629]

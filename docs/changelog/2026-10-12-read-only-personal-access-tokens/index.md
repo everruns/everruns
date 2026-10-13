@@ -6,6 +6,7 @@ kind: feature
 significance: notable
 products: [platform, cloud, cli]
 surfaces: [ui, api, cli]
+release: "0.48.0"
 links:
   docs: [/features/ui/#token-access, /features/cli/#configure]
   prs: [everruns/everruns#4659, everruns/everruns#4626, everruns/everruns#4623, everruns/everruns#4613, everruns/everruns#4598, everruns/everruns#4583]

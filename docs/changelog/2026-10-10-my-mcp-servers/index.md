@@ -6,6 +6,7 @@ kind: feature
 significance: major
 products: [platform, cloud]
 surfaces: [ui, api, agent]
+release: "0.48.0"
 links:
   docs: [/features/user-mcp-servers/, /capabilities/user-mcp-servers/]
   prs: [everruns/everruns#4295, everruns/everruns#4315, everruns/everruns#4343, everruns/everruns#4345, everruns/everruns#4381, everruns/everruns#4383, everruns/everruns#4496]

@@ -25,8 +25,10 @@ This specification defines the release process for Everruns. The process is desi
 
 The release PR also carries `release-card.yml`, a concise presentation of facts already recorded in the
 changelog. CI renders the card through the docs image toolchain for review. At tag time the Release workflow
-regenerates the PNG from the trusted commit and attaches it to the GitHub Release. The card is presentation
-metadata, not a second release-notes source: it cannot introduce claims absent from `CHANGELOG.md`.
+regenerates the PNG from the trusted commit, attaches it to the GitHub Release, and opens the Release body with
+the copy committed in the release's changelog entry. The card is presentation metadata, not a second
+release-notes source: it cannot introduce claims absent from `CHANGELOG.md`. The user reviews the highlights
+and the rendered card before the release PR merges.
 
 Each release also publishes a release entry in the public changelog, with the card, and links the
 changelog entries of the features it carries from its `CHANGELOG.md` highlights; feature entries

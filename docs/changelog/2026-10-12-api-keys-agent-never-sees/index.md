@@ -6,6 +6,7 @@ kind: feature
 significance: notable
 products: [platform, cloud]
 surfaces: [ui, api]
+release: "0.48.0"
 links:
   docs: [/capabilities/bashkit-shell/#api-keys-the-agent-never-sees, /capabilities/session-storage/]
   prs: [everruns/everruns#4609]

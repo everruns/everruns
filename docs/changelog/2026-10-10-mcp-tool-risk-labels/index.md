@@ -6,6 +6,7 @@ kind: feature
 significance: notable
 products: [platform, cloud, cli]
 surfaces: [ui, api, cli]
+release: "0.48.0"
 links:
   docs: [/features/mcp/#which-tools-ask-before-they-run, /reference/cli/mcp-servers/]
   prs: [everruns/everruns#4475, everruns/everruns#4498]

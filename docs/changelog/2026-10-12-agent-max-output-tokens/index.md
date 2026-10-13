@@ -6,6 +6,7 @@ kind: feature
 significance: minor
 products: [platform, cloud]
 surfaces: [ui, api, cli]
+release: "0.48.0"
 links:
   docs: [/providers/openrouter/]
 ---
