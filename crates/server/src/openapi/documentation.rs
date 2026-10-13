@@ -394,7 +394,8 @@ fn is_method(method: &str) -> bool {
 /// Longest summary that still makes a page title under 70 characters with
 /// the docs site's ` | Everruns` suffix. The summary titles the endpoint's
 /// reference page; the rest belongs in the description.
-pub(crate) const MAX_SUMMARY: usize = 58;
+#[cfg(test)]
+const MAX_SUMMARY: usize = 58;
 
 /// Splits a summary into its title (no `METHOD /path - ` prefix, first
 /// sentence, no final period) and the full text without the prefix.
