@@ -24,14 +24,17 @@ when the Sandbox does not hold such a file, the read falls back to the Session's
 1. Open **Sandbox Templates** and select **New Sandbox Template**.
 2. Give it a stable name and display name.
 3. Select Bashkit or an available managed provider: Daytona, E2B, or Modal (when enabled).
-4. For a managed provider, choose where its credential comes from:
-   - **Person starting the Session** uses that user's connection. A Session started by a trigger
-     or a channel has no user, so it uses the organization's provider account instead, when the
-     organization has exactly one for that provider. With none or several, the Session fails to
-     start and names the problem; pick **Organization provider account** to choose one.
-   - **This Agent** uses the Agent Virtual User's connection.
-   - **Organization provider account** uses one account managed by an organization admin under
-     **Sandboxes → Provider Accounts**.
+4. For a managed provider, choose its **Provider account**: whose connection the Sandbox uses,
+   and so whose provider account pays. Each choice is labelled with the provider, for example
+   **Daytona · Personal**:
+   - **Personal** uses the connection of the person starting the Session. A Session started by a
+     trigger or a channel has no user, so it uses the organization's provider account instead,
+     when the organization has exactly one for that provider. With none or several, the Session
+     fails to start and names the problem; pick **Organization account** to choose one.
+   - **This Agent** uses the Agent Virtual User's connection for every Session.
+   - **Organization account** uses one shared account managed by an organization admin under
+     **Sandboxes → Provider accounts**. When the organization has none for the provider, the
+     picker links there to add one.
 5. Configure durability, lifecycle, and bootstrap options, then save.
 
 Editing a Sandbox Template creates a new immutable revision. Existing Sessions keep the revision
