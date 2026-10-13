@@ -8,7 +8,7 @@ products: [platform, cloud, framework]
 surfaces: [api]
 links:
   docs: [/explanation/agentic-loop/]
-  prs: []
+  prs: [everruns/everruns#4702]
 ---
 
 When a provider stream breaks after the model has written part of its answer, and before it has
