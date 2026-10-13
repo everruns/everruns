@@ -1,0 +1,39 @@
+---
+import { Code } from "@astrojs/starlight/components";
+import type { ApiOperation } from "../lib/api-reference";
+import { responseExample } from "../lib/api-reference";
+interface Props { operation: ApiOperation; snippets: { items: { id: string; label: string; lang: string; content: string }[]; defaultId: string } | undefined }
+const { operation, snippets } = Astro.props;
+const responses = Object.entries(operation.operation.responses ?? {}) as [string, any][];
+---
+<aside class="api-samples" aria-label="Request and response examples">
+  {snippets && <div class="api-sample-set" data-api-samples>
+    <div class="api-code-tabs" role="group" aria-label="Request language">
+      {snippets.items.map((sample, index) => <button type="button" data-api-sample={index} aria-pressed={sample.id === snippets.defaultId}>{sample.label}</button>)}
+    </div>
+    {snippets.items.map((sample, index) => <div data-api-sample-panel={index} hidden={sample.id !== snippets.defaultId}><span class="api-code-label">Request</span><Code code={sample.content} lang={sample.lang as any} /></div>)}
+    <noscript><p>Additional language examples require JavaScript. The default request example is available above.</p></noscript>
+  </div>}
+  <div class="api-sample-set api-response-samples" data-api-samples>
+    <div class="api-code-tabs" role="group" aria-label="Response status">
+      {responses.map(([status], index) => <button type="button" data-api-sample={index} aria-pressed={index === 0}>{status}</button>)}
+    </div>
+    {responses.map(([status, response], index) => {
+      const example = responseExample(response, status);
+      return <div data-api-sample-panel={index} hidden={index !== 0}>
+        <span class="api-code-label">{status} · {response.description}</span>
+        {example !== undefined ? <Code code={JSON.stringify(example, null, 2)} lang="json" /> : <p class="api-no-example">{response.content?.["text/event-stream"] ? "Server-Sent Events stream. See the streaming guide for framing and reconnection." : "No response body example is declared for this status."}</p>}
+      </div>;
+    })}
+  </div>
+</aside>
+<script>
+  for (const set of document.querySelectorAll<HTMLElement>("[data-api-samples]")) {
+    for (const button of set.querySelectorAll<HTMLButtonElement>("[data-api-sample]")) {
+      button.addEventListener("click", () => {
+        for (const tab of set.querySelectorAll<HTMLButtonElement>("[data-api-sample]")) tab.setAttribute("aria-pressed", String(tab === button));
+        for (const panel of set.querySelectorAll<HTMLElement>("[data-api-sample-panel]")) panel.hidden = panel.dataset.apiSamplePanel !== button.dataset.apiSample;
+      });
+    }
+  }
+</script>

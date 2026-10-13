@@ -312,10 +312,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List ingress channels owned by an Agent. */
+    /**
+     * List agent channels
+     * @description List ingress channels owned by an Agent.
+     */
     get: operations["list_agent_channels"];
     put?: never;
-    /** @description Create an ingress channel owned by an Agent. */
+    /**
+     * Create agent channel
+     * @description Create an ingress channel owned by an Agent.
+     */
     post: operations["create_agent_channel"];
     delete?: never;
     options?: never;
@@ -330,15 +336,24 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get one ingress channel owned by an Agent. */
+    /**
+     * Get agent channel
+     * @description Get one ingress channel owned by an Agent.
+     */
     get: operations["get_agent_channel"];
     put?: never;
     post?: never;
-    /** @description Delete an ingress channel owned by an Agent. */
+    /**
+     * Delete agent channel
+     * @description Delete an ingress channel owned by an Agent.
+     */
     delete: operations["delete_agent_channel"];
     options?: never;
     head?: never;
-    /** @description Update an ingress channel owned by an Agent. */
+    /**
+     * Update agent channel
+     * @description Update an ingress channel owned by an Agent.
+     */
     patch: operations["update_agent_channel"];
     trace?: never;
   };
@@ -349,10 +364,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List the agent keys of an agent's API channel. Secrets are never returned. */
+    /**
+     * List agent keys
+     * @description List the agent keys of an agent's API channel. Secrets are never returned.
+     */
     get: operations["list_agent_keys"];
     put?: never;
-    /** @description Create an agent key for an agent's API channel. The secret is in this response only. */
+    /**
+     * Create agent key
+     * @description Create an agent key for an agent's API channel. The secret is in this response only.
+     */
     post: operations["create_agent_key"];
     delete?: never;
     options?: never;
@@ -369,7 +390,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Revoke an agent key. It never works again, including a secret still in its rotation overlap. */
+    /**
+     * Revoke agent key
+     * @description Revoke an agent key. It never works again, including a secret still in its rotation overlap.
+     */
     post: operations["revoke_agent_key"];
     delete?: never;
     options?: never;
@@ -386,7 +410,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Replace an agent key's secret, keeping its id. The new secret is in this response only; the old one keeps working for the overlap. */
+    /**
+     * Rotate agent key
+     * @description Replace an agent key's secret, keeping its id. The new secret is in this response only; the old one keeps working for the overlap.
+     */
     post: operations["rotate_agent_key"];
     delete?: never;
     options?: never;
@@ -403,7 +430,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Publish an Agent channel so it can accept ingress traffic. */
+    /**
+     * Publish agent channel
+     * @description Publish an Agent channel so it can accept ingress traffic.
+     */
     post: operations["publish_agent_channel"];
     delete?: never;
     options?: never;
@@ -420,7 +450,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Run a published Agent schedule channel now. */
+    /**
+     * Trigger agent channel
+     * @description Run a published Agent schedule channel now.
+     */
     post: operations["trigger_agent_channel"];
     delete?: never;
     options?: never;
@@ -437,7 +470,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Unpublish an Agent channel so it no longer accepts ingress traffic. */
+    /**
+     * Unpublish agent channel
+     * @description Unpublish an Agent channel so it no longer accepts ingress traffic.
+     */
     post: operations["unpublish_agent_channel"];
     delete?: never;
     options?: never;
@@ -454,7 +490,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Call an agent's voice channel. Starts a new session for the call, or continues an existing session of the agent. */
+    /**
+     * Create channel call
+     * @description Call an agent's voice channel. Starts a new session for the call, or continues an existing session of the agent.
+     */
     post: operations["create_channel_call"];
     delete?: never;
     options?: never;
@@ -490,10 +529,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List write-only MCP credential bindings for an agent. Responses contain metadata and configuration status, never credential values. */
+    /**
+     * List credentials
+     * @description List write-only MCP credential bindings for an agent. Responses contain metadata and configuration status, never credential values.
+     */
     get: operations["list_credentials"];
     put?: never;
-    /** @description Declare a write-only credential binding for one MCP tool parameter. The secret value is provisioned separately. */
+    /**
+     * Create credential binding
+     * @description Declare a write-only credential binding for one MCP tool parameter. The secret value is provisioned separately.
+     */
     post: operations["create_credential_binding"];
     delete?: never;
     options?: never;
@@ -509,10 +554,16 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** @description Encrypt and replace the write-only value for an agent credential binding. */
+    /**
+     * Set credential value
+     * @description Encrypt and replace the write-only value for an agent credential binding.
+     */
     put: operations["set_credential_value"];
     post?: never;
-    /** @description Revoke an agent credential binding and permanently remove its encrypted value. */
+    /**
+     * Delete credential binding
+     * @description Revoke an agent credential binding and permanently remove its encrypted value.
+     */
     delete: operations["delete_credential_binding"];
     options?: never;
     head?: never;
@@ -527,12 +578,14 @@ export interface paths {
       cookie?: never;
     };
     /**
+     * List agent endpoints
      * @deprecated
      * @description List ingress channels owned by an Agent.
      */
     get: operations["list_agent_endpoints"];
     put?: never;
     /**
+     * Create agent endpoint
      * @deprecated
      * @description Create an ingress channel owned by an Agent.
      */
@@ -551,6 +604,7 @@ export interface paths {
       cookie?: never;
     };
     /**
+     * Get agent endpoint
      * @deprecated
      * @description Get one ingress channel owned by an Agent.
      */
@@ -558,6 +612,7 @@ export interface paths {
     put?: never;
     post?: never;
     /**
+     * Delete agent endpoint
      * @deprecated
      * @description Delete an ingress channel owned by an Agent.
      */
@@ -565,6 +620,7 @@ export interface paths {
     options?: never;
     head?: never;
     /**
+     * Update agent endpoint
      * @deprecated
      * @description Update an ingress channel owned by an Agent.
      */
@@ -581,6 +637,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Publish agent endpoint
      * @deprecated
      * @description Publish an Agent channel so it can accept ingress traffic.
      */
@@ -601,6 +658,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Trigger agent endpoint
      * @deprecated
      * @description Run a published Agent schedule channel now.
      */
@@ -621,6 +679,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Unpublish agent endpoint
      * @deprecated
      * @description Unpublish an Agent channel so it no longer accepts ingress traffic.
      */
@@ -641,6 +700,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Create endpoint call
      * @deprecated
      * @description Call an agent's voice channel. Starts a new session for the call, or continues an existing session of the agent.
      */
@@ -796,7 +856,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Lists the effective MCP attachments after capability, harness, and agent layers are merged. Connection state and permitted actions are resolved for the current caller. */
+    /**
+     * List agent mcp attachments
+     * @description Lists the effective MCP attachments after capability, harness, and agent layers are merged. Connection state and permitted actions are resolved for the current caller.
+     */
     get: operations["list_agent_mcp_attachments"];
     put?: never;
     post?: never;
@@ -816,7 +879,10 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    /** @description Revokes the current caller's user connection or the virtual user's shared service connection for an effective MCP attachment. The attachment configuration remains unchanged. */
+    /**
+     * Revoke agent mcp connection
+     * @description Revokes the current caller's user connection or the virtual user's shared service connection for an effective MCP attachment. The attachment configuration remains unchanged.
+     */
     delete: operations["revoke_agent_mcp_connection"];
     options?: never;
     head?: never;
@@ -830,10 +896,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List an agent's saved scripts with their bodies. Set include_archived=true to also return archived scripts. */
+    /**
+     * List agent scripts
+     * @description List an agent's saved scripts with their bodies. Set include_archived=true to also return archived scripts.
+     */
     get: operations["list_agent_scripts"];
     put?: never;
-    /** @description Save a new script for an agent. The name must be unique among the agent's active scripts. */
+    /**
+     * Create agent script
+     * @description Save a new script for an agent. The name must be unique among the agent's active scripts.
+     */
     post: operations["create_agent_script"];
     delete?: never;
     options?: never;
@@ -848,15 +920,24 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get one saved script, including its body and input schema. */
+    /**
+     * Get agent script
+     * @description Get one saved script, including its body and input schema.
+     */
     get: operations["get_agent_script"];
     put?: never;
     post?: never;
-    /** @description Archive a saved script. It is hidden from the agent and its name becomes free again. */
+    /**
+     * Delete agent script
+     * @description Archive a saved script. It is hidden from the agent and its name becomes free again.
+     */
     delete: operations["delete_agent_script"];
     options?: never;
     head?: never;
-    /** @description Update a saved script's description, input schema or body. Omitted fields stay unchanged. */
+    /**
+     * Update agent script
+     * @description Update a saved script's description, input schema or body. Omitted fields stay unchanged.
+     */
     patch: operations["update_agent_script"];
     trace?: never;
   };
@@ -884,7 +965,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List an agent's triggers. Set include_archived=true to also return archived triggers. */
+    /**
+     * List agent triggers
+     * @description List an agent's triggers. Set include_archived=true to also return archived triggers.
+     */
     get: operations["list_agent_triggers"];
     put?: never;
     /** POST /v1/agents/{agent_id}/triggers */
@@ -921,7 +1005,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List recent events delivered to an agent trigger, newest first, with what happened to each: dispatched, filtered, duplicate or failed. */
+    /**
+     * List agent trigger deliveries
+     * @description List recent events delivered to an agent trigger, newest first, with what happened to each: dispatched, filtered, duplicate or failed.
+     */
     get: operations["list_agent_trigger_deliveries"];
     put?: never;
     post?: never;
@@ -938,7 +1025,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List the ten most recent durable execution outcomes for an agent trigger. */
+    /**
+     * List agent trigger runs
+     * @description List the ten most recent durable execution outcomes for an agent trigger.
+     */
     get: operations["list_agent_trigger_runs"];
     put?: never;
     post?: never;
@@ -990,6 +1080,7 @@ export interface paths {
       cookie?: never;
     };
     /**
+     * List apps
      * @deprecated
      * @description List archival App records. This endpoint is read-only and deprecated.
      */
@@ -1010,6 +1101,7 @@ export interface paths {
       cookie?: never;
     };
     /**
+     * Get app
      * @deprecated
      * @description Get an archival App record. This endpoint is read-only and deprecated.
      */
@@ -1087,7 +1179,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Invoke a webhook channel for a published App. The body is forwarded to the agent as a message. */
+    /**
+     * Invoke webhook legacy
+     * @description Invoke a webhook channel for a published App. The body is forwarded to the agent as a message.
+     */
     post: operations["invoke_webhook_legacy"];
     delete?: never;
     options?: never;
@@ -1383,7 +1478,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Agent card of an api channel: what a caller needs to start talking to the agent. */
+    /**
+     * Get agent card
+     * @description Agent card of an api channel: what a caller needs to start talking to the agent.
+     */
     get: operations["agent_api_get_card"];
     put?: never;
     post?: never;
@@ -1402,7 +1500,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Invoke a published A2A endpoint with JSON-RPC 2.0. Authentication follows the endpoint channel configuration. */
+    /**
+     * Invoke a2a channel
+     * @description Invoke a published A2A endpoint with JSON-RPC 2.0. Authentication follows the endpoint channel configuration.
+     */
     post: operations["invoke_a2a_channel"];
     delete?: never;
     options?: never;
@@ -1417,7 +1518,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get the public Agent Card for a published A2A endpoint. */
+    /**
+     * Agent card channel
+     * @description Get the public Agent Card for a published A2A endpoint.
+     */
     get: operations["agent_card_channel"];
     put?: never;
     post?: never;
@@ -1436,7 +1540,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Send a message to a published FCP endpoint. Authenticate with Authorization: Bearer or X-Everruns-FCP-Token when the endpoint requires a token. */
+    /**
+     * Message channel
+     * @description Send a message to a published FCP endpoint. Authenticate with Authorization: Bearer or X-Everruns-FCP-Token when the endpoint requires a token.
+     */
     post: operations["message_channel"];
     delete?: never;
     options?: never;
@@ -1453,7 +1560,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Exchange verified channel authentication for a bounded runtime credential. */
+    /** Create a runtime token */
     post: operations["exchange"];
     delete?: never;
     options?: never;
@@ -1468,10 +1575,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description The calling key's sessions on an api channel, most recently active first. */
+    /**
+     * List sessions
+     * @description The calling key's sessions on an api channel, most recently active first.
+     */
     get: operations["agent_api_list_sessions"];
     put?: never;
-    /** @description Start a session on an api channel. The session starts idle; send a message to start a turn. */
+    /**
+     * Start a session
+     * @description Start a session on an api channel. The session starts idle; send a message to start a turn.
+     */
     post: operations["agent_api_create_session"];
     delete?: never;
     options?: never;
@@ -1486,7 +1599,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description One of the caller's sessions on an api channel, with the questions and approvals it waits on. */
+    /**
+     * Get a session
+     * @description One of the caller's sessions on an api channel, with the questions and approvals it waits on.
+     */
     get: operations["agent_api_get_session"];
     put?: never;
     post?: never;
@@ -1505,7 +1621,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Cancel the running turn of one of the caller's sessions. */
+    /**
+     * Cancel a turn
+     * @description Cancel the running turn of one of the caller's sessions.
+     */
     post: operations["agent_api_cancel"];
     delete?: never;
     options?: never;
@@ -1520,7 +1639,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description A session's events, oldest first, as the channel's visibility allows. */
+    /**
+     * Read events
+     * @description A session's events, oldest first, as the channel's visibility allows.
+     */
     get: operations["agent_api_list_events"];
     put?: never;
     post?: never;
@@ -1539,7 +1661,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Send a user message to one of the caller's sessions: starts a turn, or steers the running one. */
+    /**
+     * Send a message
+     * @description Send a user message to one of the caller's sessions: starts a turn, or steers the running one.
+     */
     post: operations["agent_api_send_message"];
     delete?: never;
     options?: never;
@@ -1556,7 +1681,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Answer the question set the agent asked with `ask_user`, and resume the turn. */
+    /**
+     * Answer questions
+     * @description Answer the question set the agent asked with `ask_user`, and resume the turn.
+     */
     post: operations["agent_api_answer_questions"];
     delete?: never;
     options?: never;
@@ -1571,7 +1699,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Follow a session's events live, as the channel's visibility allows. Same framing as `/v1/sessions/{id}/sse`: `connected`, `id:` on durable events (resume with `since_id`), a heartbeat, and `disconnecting` before the server cycles the connection. */
+    /**
+     * Stream events
+     * @description Follow a session's events live, as the channel's visibility allows. Same framing as `/v1/sessions/{id}/sse`: `connected`, `id:` on durable events (resume with `since_id`), a heartbeat, and `disconnecting` before the server cycles the connection.
+     */
     get: operations["agent_api_stream_events"];
     put?: never;
     post?: never;
@@ -1590,7 +1721,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`. */
+    /**
+     * Approve tool calls
+     * @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`.
+     */
     post: operations["agent_api_submit_tool_approvals"];
     delete?: never;
     options?: never;
@@ -1607,7 +1741,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Invoke a published webhook endpoint. Authenticate with its channel token in Authorization: Bearer or X-Everruns-Webhook-Token. */
+    /**
+     * Invoke webhook channel
+     * @description Invoke a published webhook endpoint. Authenticate with its channel token in Authorization: Bearer or X-Everruns-Webhook-Token.
+     */
     post: operations["invoke_webhook_channel"];
     delete?: never;
     options?: never;
@@ -2217,6 +2354,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Invoke a2a endpoint
      * @deprecated
      * @description Invoke a published A2A endpoint with JSON-RPC 2.0. Authentication follows the endpoint channel configuration.
      */
@@ -2235,6 +2373,7 @@ export interface paths {
       cookie?: never;
     };
     /**
+     * Agent card endpoint
      * @deprecated
      * @description Get the public Agent Card for a published A2A endpoint.
      */
@@ -2257,6 +2396,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Message endpoint
      * @deprecated
      * @description Send a message to a published FCP endpoint. Authenticate with Authorization: Bearer or X-Everruns-FCP-Token when the endpoint requires a token.
      */
@@ -2277,6 +2417,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Start a session
      * @deprecated
      * @description Start a session on an api channel. The session starts idle; send a message to start a turn.
      */
@@ -2295,6 +2436,7 @@ export interface paths {
       cookie?: never;
     };
     /**
+     * Get a session
      * @deprecated
      * @description One of the caller's sessions on an api channel, with the questions and approvals it waits on.
      */
@@ -2317,6 +2459,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Cancel a turn
      * @deprecated
      * @description Cancel the running turn of one of the caller's sessions.
      */
@@ -2337,6 +2480,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Send a message
      * @deprecated
      * @description Send a user message to one of the caller's sessions: starts a turn, or steers the running one.
      */
@@ -2357,6 +2501,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Answer questions
      * @deprecated
      * @description Answer the question set the agent asked with `ask_user`, and resume the turn.
      */
@@ -2375,6 +2520,7 @@ export interface paths {
       cookie?: never;
     };
     /**
+     * Stream events
      * @deprecated
      * @description Follow a session's events live, as the channel's visibility allows. Same framing as `/v1/sessions/{id}/sse`: `connected`, `id:` on durable events (resume with `since_id`), a heartbeat, and `disconnecting` before the server cycles the connection.
      */
@@ -2397,6 +2543,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Approve tool calls
      * @deprecated
      * @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`.
      */
@@ -2417,6 +2564,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Invoke webhook endpoint
      * @deprecated
      * @description Invoke a published webhook endpoint. Authenticate with its channel token in Authorization: Bearer or X-Everruns-Webhook-Token.
      */
@@ -2437,7 +2585,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Exchange verified channel authentication for a bounded runtime credential.
+     * Create a runtime token
      * @deprecated
      */
     post: operations["exchange_legacy"];
@@ -3181,10 +3329,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List knowledge bases. */
+    /**
+     * List kbs
+     * @description List knowledge bases.
+     */
     get: operations["list_kbs"];
     put?: never;
-    /** @description Create a new knowledge base. */
+    /**
+     * Create kb
+     * @description Create a new knowledge base.
+     */
     post: operations["create_kb"];
     delete?: never;
     options?: never;
@@ -3199,15 +3353,24 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get a knowledge base by ID. */
+    /**
+     * Get kb
+     * @description Get a knowledge base by ID.
+     */
     get: operations["get_kb"];
     put?: never;
     post?: never;
-    /** @description Delete a knowledge base. */
+    /**
+     * Delete kb
+     * @description Delete a knowledge base.
+     */
     delete: operations["delete_kb"];
     options?: never;
     head?: never;
-    /** @description Update a knowledge base. Only provided fields are modified. */
+    /**
+     * Update kb
+     * @description Update a knowledge base. Only provided fields are modified.
+     */
     patch: operations["update_kb"];
     trace?: never;
   };
@@ -3218,10 +3381,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List knowledge base entries. */
+    /**
+     * List entries
+     * @description List knowledge base entries.
+     */
     get: operations["list_entries"];
     put?: never;
-    /** @description Create a new knowledge base entry. */
+    /**
+     * Create entry
+     * @description Create a new knowledge base entry.
+     */
     post: operations["create_entry"];
     delete?: never;
     options?: never;
@@ -3236,15 +3405,24 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get a knowledge base entry by ID. */
+    /**
+     * Get entry
+     * @description Get a knowledge base entry by ID.
+     */
     get: operations["get_entry"];
     put?: never;
     post?: never;
-    /** @description Delete a knowledge base entry. */
+    /**
+     * Delete entry
+     * @description Delete a knowledge base entry.
+     */
     delete: operations["delete_entry"];
     options?: never;
     head?: never;
-    /** @description Update a knowledge base entry. Only provided fields are modified. */
+    /**
+     * Update entry
+     * @description Update a knowledge base entry. Only provided fields are modified.
+     */
     patch: operations["update_entry"];
     trace?: never;
   };
@@ -3255,7 +3433,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Export a knowledge base as an Open Knowledge Format (OKF) bundle (a gzipped tarball of markdown files with YAML frontmatter). */
+    /**
+     * Export okf
+     * @description Export a knowledge base as an Open Knowledge Format (OKF) bundle (a gzipped tarball of markdown files with YAML frontmatter).
+     */
     get: operations["export_okf"];
     put?: never;
     post?: never;
@@ -3274,7 +3455,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Import an Open Knowledge Format (OKF) bundle into a knowledge base. Idempotent: re-importing converges entries without duplicates. */
+    /**
+     * Import okf
+     * @description Import an Open Knowledge Format (OKF) bundle into a knowledge base. Idempotent: re-importing converges entries without duplicates.
+     */
     post: operations["import_okf"];
     delete?: never;
     options?: never;
@@ -3289,10 +3473,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List knowledge indexes. */
+    /**
+     * List indexes
+     * @description List knowledge indexes.
+     */
     get: operations["list_indexes"];
     put?: never;
-    /** @description Create a new knowledge index. */
+    /**
+     * Create index
+     * @description Create a new knowledge index.
+     */
     post: operations["create_index"];
     delete?: never;
     options?: never;
@@ -3307,15 +3497,24 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get a knowledge index by ID. */
+    /**
+     * Get index
+     * @description Get a knowledge index by ID.
+     */
     get: operations["get_index"];
     put?: never;
     post?: never;
-    /** @description Delete a knowledge index. */
+    /**
+     * Delete index
+     * @description Delete a knowledge index.
+     */
     delete: operations["delete_index"];
     options?: never;
     head?: never;
-    /** @description Update a knowledge index. Only provided fields are modified. */
+    /**
+     * Update index
+     * @description Update a knowledge index. Only provided fields are modified.
+     */
     patch: operations["update_index"];
     trace?: never;
   };
@@ -3326,7 +3525,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List documents inside a knowledge index. */
+    /**
+     * List documents
+     * @description List documents inside a knowledge index.
+     */
     get: operations["list_documents"];
     put?: never;
     post?: never;
@@ -3345,7 +3547,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Enqueue a manual sync of a knowledge index. */
+    /**
+     * Sync index
+     * @description Enqueue a manual sync of a knowledge index.
+     */
     post: operations["sync_index"];
     delete?: never;
     options?: never;
@@ -3378,7 +3583,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List a cursor-paginated MCP server catalog with active-agent usage counts for the selected organization. */
+    /**
+     * List mcp server catalog
+     * @description List a cursor-paginated MCP server catalog with active-agent usage counts for the selected organization.
+     */
     get: operations["list_mcp_server_catalog"];
     put?: never;
     post?: never;
@@ -3519,7 +3727,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get the bounded active-agent impact summary used before archiving an MCP server preset. */
+    /**
+     * Get mcp server usage
+     * @description Get the bounded active-agent impact summary used before archiving an MCP server preset.
+     */
     get: operations["get_mcp_server_usage"];
     put?: never;
     post?: never;
@@ -3536,7 +3747,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List actionable organization invitations addressed to the authenticated user's verified email. */
+    /**
+     * List my invitations
+     * @description List actionable organization invitations addressed to the authenticated user's verified email.
+     */
     get: operations["list_my_invitations"];
     put?: never;
     post?: never;
@@ -3555,7 +3769,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Accept an actionable organization invitation addressed to the authenticated user's verified email. */
+    /**
+     * Accept my invitation
+     * @description Accept an actionable organization invitation addressed to the authenticated user's verified email.
+     */
     post: operations["accept_my_invitation"];
     delete?: never;
     options?: never;
@@ -3570,10 +3787,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List workspace memories. */
+    /**
+     * List memories
+     * @description List workspace memories.
+     */
     get: operations["list_memories"];
     put?: never;
-    /** @description Create a new workspace memory. */
+    /**
+     * Create memory
+     * @description Create a new workspace memory.
+     */
     post: operations["create_memory"];
     delete?: never;
     options?: never;
@@ -3588,15 +3811,24 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get a workspace memory by ID. */
+    /**
+     * Get memory
+     * @description Get a workspace memory by ID.
+     */
     get: operations["get_memory"];
     put?: never;
     post?: never;
-    /** @description Delete a workspace memory. */
+    /**
+     * Delete memory
+     * @description Delete a workspace memory.
+     */
     delete: operations["delete_memory"];
     options?: never;
     head?: never;
-    /** @description Update a workspace memory. Only provided fields are modified. */
+    /**
+     * Update memory
+     * @description Update a workspace memory. Only provided fields are modified.
+     */
     patch: operations["update_memory"];
     trace?: never;
   };
@@ -3607,7 +3839,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List immediate children of the Memory root. */
+    /**
+     * List root
+     * @description List immediate children of the Memory root.
+     */
     get: operations["list_root"];
     put?: never;
     post?: never;
@@ -3624,7 +3859,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Download raw bytes of a Memory file. */
+    /**
+     * Download action
+     * @description Download raw bytes of a Memory file.
+     */
     get: operations["download_action"];
     put?: never;
     post?: never;
@@ -3643,7 +3881,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Search Memory files by regex. */
+    /**
+     * Grep action
+     * @description Search Memory files by regex.
+     */
     post: operations["grep_action"];
     delete?: never;
     options?: never;
@@ -3660,7 +3901,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Stat a file or directory inside a Memory. */
+    /**
+     * Stat action
+     * @description Stat a file or directory inside a Memory.
+     */
     post: operations["stat_action"];
     delete?: never;
     options?: never;
@@ -3675,13 +3919,25 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Read a file or list a directory inside a Memory. */
+    /**
+     * Get file
+     * @description Read a file or list a directory inside a Memory.
+     */
     get: operations["get_file_get_v1_memories_memory_id_fs_path"];
-    /** @description Update a file's content. Directories cannot be updated. */
+    /**
+     * Update file
+     * @description Update a file's content. Directories cannot be updated.
+     */
     put: operations["update_file"];
-    /** @description Create a file or directory inside a Memory. */
+    /**
+     * Create file
+     * @description Create a file or directory inside a Memory.
+     */
     post: operations["create_file"];
-    /** @description Delete a file or directory. Pass `recursive=true` to delete non-empty directories. */
+    /**
+     * Delete file
+     * @description Delete a file or directory. Pass `recursive=true` to delete non-empty directories.
+     */
     delete: operations["delete_file_delete_v1_memories_memory_id_fs_path"];
     options?: never;
     head?: never;
@@ -3697,7 +3953,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Trigger a synchronous sync of a memory now. */
+    /**
+     * Sync memory now
+     * @description Trigger a synchronous sync of a memory now.
+     */
     post: operations["sync_memory_now"];
     delete?: never;
     options?: never;
@@ -3712,7 +3971,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List curated and account-scoped profiles visible to the caller, optionally filtered by service or provider. */
+    /**
+     * List model profiles
+     * @description List curated and account-scoped profiles visible to the caller, optionally filtered by service or provider.
+     */
     get: operations["list_model_profiles"];
     put?: never;
     post?: never;
@@ -3729,7 +3991,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Read a stable model profile visible to the caller. Profiles describe behavior independently from provider authentication. */
+    /**
+     * Get model profile
+     * @description Read a stable model profile visible to the caller. Profiles describe behavior independently from provider authentication.
+     */
     get: operations["get_model_profile"];
     put?: never;
     post?: never;
@@ -3780,9 +4045,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get the organization decision default. An unavailable selection remains visible for repair; no selection returns null. */
+    /**
+     * Get default decision model
+     * @description Get the organization decision default. An unavailable selection remains visible for repair; no selection returns null.
+     */
     get: operations["get_default_decision_model"];
-    /** @description Select an enabled, healthy model supporting calibrated noul, choice and score decisions. Omit model_id or set it to null to clear the default. */
+    /**
+     * Set default decision model
+     * @description Select an enabled, healthy model supporting calibrated noul, choice and score decisions. Omit model_id or set it to null to clear the default.
+     */
     put: operations["set_default_decision_model"];
     post?: never;
     delete?: never;
@@ -4098,7 +4369,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List non-secret metadata for organization-owned provider accounts: sandbox provider accounts and web search accounts. */
+    /**
+     * List connections
+     * @description List non-secret metadata for organization-owned provider accounts: sandbox provider accounts and web search accounts.
+     */
     get: operations["list_connections"];
     put?: never;
     post?: never;
@@ -4117,7 +4391,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Create and validate an encrypted organization-owned account for a connector that declares sandbox_provisioning or web_search. */
+    /**
+     * Create connection
+     * @description Create and validate an encrypted organization-owned account for a connector that declares sandbox_provisioning or web_search.
+     */
     post: operations["create_connection"];
     delete?: never;
     options?: never;
@@ -4133,10 +4410,16 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** @description Replace the name and credential for an organization-owned provider account. */
+    /**
+     * Update connection
+     * @description Replace the name and credential for an organization-owned provider account.
+     */
     put: operations["update_connection"];
     post?: never;
-    /** @description Delete an organization-owned provider account when no active sandbox configuration or lease references it. */
+    /**
+     * Delete connection
+     * @description Delete an organization-owned provider account when no active sandbox configuration or lease references it.
+     */
     delete: operations["delete_connection"];
     options?: never;
     head?: never;
@@ -4152,7 +4435,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Revalidate an organization-owned provider credential without returning the secret. */
+    /**
+     * Verify connection
+     * @description Revalidate an organization-owned provider credential without returning the secret.
+     */
     post: operations["verify_connection"];
     delete?: never;
     options?: never;
@@ -4167,10 +4453,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List payment accounts. */
+    /**
+     * List payment accounts
+     * @description List payment accounts.
+     */
     get: operations["list_payment_accounts"];
     put?: never;
-    /** @description Create a new payment account. */
+    /**
+     * Create payment account
+     * @description Create a new payment account.
+     */
     post: operations["create_payment_account"];
     delete?: never;
     options?: never;
@@ -4185,15 +4477,24 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get a payment account by ID. */
+    /**
+     * Get payment account
+     * @description Get a payment account by ID.
+     */
     get: operations["get_payment_account"];
     put?: never;
     post?: never;
-    /** @description Disable a payment account without deleting it. */
+    /**
+     * Disable payment account
+     * @description Disable a payment account without deleting it.
+     */
     delete: operations["disable_payment_account"];
     options?: never;
     head?: never;
-    /** @description Update a payment account. Only provided fields are modified. */
+    /**
+     * Update payment account
+     * @description Update a payment account. Only provided fields are modified.
+     */
     patch: operations["update_payment_account"];
     trace?: never;
   };
@@ -4204,7 +4505,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List recent payment attempts (operator audit view). */
+    /**
+     * List payment attempts
+     * @description List recent payment attempts (operator audit view).
+     */
     get: operations["list_payment_attempts"];
     put?: never;
     post?: never;
@@ -4221,10 +4525,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List payment policies. */
+    /**
+     * List payment policies
+     * @description List payment policies.
+     */
     get: operations["list_payment_policies"];
     put?: never;
-    /** @description Create a new payment policy. */
+    /**
+     * Create payment policy
+     * @description Create a new payment policy.
+     */
     post: operations["create_payment_policy"];
     delete?: never;
     options?: never;
@@ -4239,15 +4549,24 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get a payment policy by ID. */
+    /**
+     * Get payment policy
+     * @description Get a payment policy by ID.
+     */
     get: operations["get_payment_policy"];
     put?: never;
     post?: never;
-    /** @description Disable a payment policy without deleting it. */
+    /**
+     * Disable payment policy
+     * @description Disable a payment policy without deleting it.
+     */
     delete: operations["disable_payment_policy"];
     options?: never;
     head?: never;
-    /** @description Update a payment policy. Only provided fields are modified. */
+    /**
+     * Update payment policy
+     * @description Update a payment policy. Only provided fields are modified.
+     */
     patch: operations["update_payment_policy"];
     trace?: never;
   };
@@ -4588,7 +4907,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Run a reporting projector to refresh derived data (operator action). */
+    /**
+     * Backfill reporting
+     * @description Run a reporting projector to refresh derived data (operator action).
+     */
     post: operations["backfill_reporting"];
     delete?: never;
     options?: never;
@@ -4603,7 +4925,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Return diagnostics for the reporting subsystem (operator view). */
+    /**
+     * Get diagnostics
+     * @description Return diagnostics for the reporting subsystem (operator view).
+     */
     get: operations["get_diagnostics"];
     put?: never;
     post?: never;
@@ -4620,7 +4945,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Return the available reporting datasets and their schemas. */
+    /**
+     * Get catalog
+     * @description Return the available reporting datasets and their schemas.
+     */
     get: operations["get_catalog"];
     put?: never;
     post?: never;
@@ -4639,7 +4967,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Run a reporting projector to refresh derived data (operator action). */
+    /**
+     * Run projector
+     * @description Run a reporting projector to refresh derived data (operator action).
+     */
     post: operations["run_projector"];
     delete?: never;
     options?: never;
@@ -4656,7 +4987,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Run an ad-hoc reporting query against a registered dataset. */
+    /**
+     * Run query
+     * @description Run an ad-hoc reporting query against a registered dataset.
+     */
     post: operations["run_query"];
     delete?: never;
     options?: never;
@@ -4673,7 +5007,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Run an ad-hoc reporting query and stream the result as CSV. */
+    /**
+     * Export query
+     * @description Run an ad-hoc reporting query and stream the result as CSV.
+     */
     post: operations["export_query"];
     delete?: never;
     options?: never;
@@ -4688,10 +5025,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List saved reports. */
+    /**
+     * List saved reports
+     * @description List saved reports.
+     */
     get: operations["list_saved_reports"];
     put?: never;
-    /** @description Create a new saved report. */
+    /**
+     * Create saved report
+     * @description Create a new saved report.
+     */
     post: operations["create_saved_report"];
     delete?: never;
     options?: never;
@@ -4706,15 +5049,24 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get a saved report by ID. */
+    /**
+     * Get saved report
+     * @description Get a saved report by ID.
+     */
     get: operations["get_saved_report"];
     put?: never;
     post?: never;
-    /** @description Delete a saved report. */
+    /**
+     * Delete saved report
+     * @description Delete a saved report.
+     */
     delete: operations["delete_saved_report"];
     options?: never;
     head?: never;
-    /** @description Update a saved report. Only provided fields are modified. */
+    /**
+     * Update saved report
+     * @description Update a saved report. Only provided fields are modified.
+     */
     patch: operations["update_saved_report"];
     trace?: never;
   };
@@ -4727,7 +5079,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Run a previously saved reporting query and stream the result as CSV. */
+    /**
+     * Export saved report
+     * @description Run a previously saved reporting query and stream the result as CSV.
+     */
     post: operations["export_saved_report"];
     delete?: never;
     options?: never;
@@ -4744,7 +5099,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Run a previously saved reporting query and return the result. */
+    /**
+     * Run saved report
+     * @description Run a previously saved reporting query and return the result.
+     */
     post: operations["run_saved_report"];
     delete?: never;
     options?: never;
@@ -4783,7 +5141,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List the Sandbox targets this deployment can offer, with the capabilities each one actually has. */
+    /**
+     * List sandbox targets
+     * @description List the Sandbox targets this deployment can offer, with the capabilities each one actually has.
+     */
     get: operations["list_sandbox_targets"];
     put?: never;
     post?: never;
@@ -4800,10 +5161,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List active reusable Sandbox Templates available to the organization. */
+    /**
+     * List sandbox templates
+     * @description List active reusable Sandbox Templates available to the organization.
+     */
     get: operations["list_sandbox_templates"];
     put?: never;
-    /** @description Create a reusable Sandbox Template and its first immutable revision. */
+    /**
+     * Create sandbox template
+     * @description Create a reusable Sandbox Template and its first immutable revision.
+     */
     post: operations["create_sandbox_template"];
     delete?: never;
     options?: never;
@@ -4818,12 +5185,21 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get one reusable Sandbox Template and its current immutable revision. */
+    /**
+     * Get sandbox template
+     * @description Get one reusable Sandbox Template and its current immutable revision.
+     */
     get: operations["get_sandbox_template"];
-    /** @description Create the next immutable revision of a reusable Sandbox Template. */
+    /**
+     * Revise sandbox template
+     * @description Create the next immutable revision of a reusable Sandbox Template.
+     */
     put: operations["revise_sandbox_template"];
     post?: never;
-    /** @description Archive a user-managed Sandbox Template without changing pinned Sessions. */
+    /**
+     * Archive sandbox template
+     * @description Archive a user-managed Sandbox Template without changing pinned Sessions.
+     */
     delete: operations["archive_sandbox_template"];
     options?: never;
     head?: never;
@@ -4905,7 +5281,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List the web search providers of the active organization: built-in free and model provider search, connected model providers that search natively, connectors that hold search accounts, connected search accounts with status, and the organization's web search defaults. */
+    /**
+     * List search providers
+     * @description List the web search providers of the active organization: built-in free and model provider search, connected model providers that search natively, connectors that hold search accounts, connected search accounts with status, and the organization's web search defaults.
+     */
     get: operations["list_search_providers"];
     put?: never;
     post?: never;
@@ -4924,7 +5303,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Resolve an agent's web search setting and model to the ordered plan its searches follow, with the organization's current defaults. Optionally run a test query against one provider (`free` or `account:<id>`; organization admins only). */
+    /**
+     * Preview search plan
+     * @description Resolve an agent's web search setting and model to the ordered plan its searches follow, with the organization's current defaults. Optionally run a test query against one provider (`free` or `account:<id>`; organization admins only).
+     */
     post: operations["preview_search_plan"];
     delete?: never;
     options?: never;
@@ -5610,10 +5992,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get the primary Sandbox a Session runs in: template, target, containment, and capabilities. */
+    /**
+     * Get session sandbox
+     * @description Get the primary Sandbox a Session runs in: template, target, containment, and capabilities.
+     */
     get: operations["get_session_sandbox"];
     put?: never;
-    /** @description Manage the session sandbox lifecycle (start, stop, reset). */
+    /**
+     * Manage sandbox
+     * @description Manage the session sandbox lifecycle (start, stop, reset).
+     */
     post: operations["manage_sandbox"];
     delete?: never;
     options?: never;
@@ -5726,7 +6114,10 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    /** @description Delete a user-managed encrypted secret from one session. */
+    /**
+     * Delete secret
+     * @description Delete a user-managed encrypted secret from one session.
+     */
     delete: operations["delete_secret"];
     options?: never;
     head?: never;
@@ -5989,7 +6380,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Start a voice call on a session (the chat microphone). Uses the settings of a voice channel of the session's agent. */
+    /**
+     * Create call
+     * @description Start a voice call on a session (the chat microphone). Uses the settings of a voice channel of the session's agent.
+     */
     post: operations["create_call"];
     delete?: never;
     options?: never;
@@ -6006,7 +6400,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description End a voice call. */
+    /**
+     * End call
+     * @description End a voice call.
+     */
     post: operations["end_call"];
     delete?: never;
     options?: never;
@@ -6288,7 +6685,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List the current user's cursor-paginated MCP OAuth connections in the selected organization. */
+    /**
+     * List mcp connections
+     * @description List the current user's cursor-paginated MCP OAuth connections in the selected organization.
+     */
     get: operations["list_mcp_connections"];
     put?: never;
     post?: never;
@@ -6690,10 +7090,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List Workspaces. */
+    /**
+     * List workspaces
+     * @description List Workspaces.
+     */
     get: operations["list_workspaces"];
     put?: never;
-    /** @description Create a Workspace. */
+    /**
+     * Create workspace
+     * @description Create a Workspace.
+     */
     post: operations["create_workspace"];
     delete?: never;
     options?: never;
@@ -6708,15 +7114,24 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get a Workspace by ID. */
+    /**
+     * Get workspace
+     * @description Get a Workspace by ID.
+     */
     get: operations["get_workspace"];
     put?: never;
     post?: never;
-    /** @description Archive a Workspace. */
+    /**
+     * Delete workspace
+     * @description Archive a Workspace.
+     */
     delete: operations["delete_workspace"];
     options?: never;
     head?: never;
-    /** @description Update a Workspace. */
+    /**
+     * Update workspace
+     * @description Update a Workspace.
+     */
     patch: operations["update_workspace"];
     trace?: never;
   };
@@ -11071,6 +11486,11 @@ export interface components {
        * @example virtual_user
        */
       subject_type: string;
+    };
+    /** @description Start an idle session on an Agent API channel. The body may be empty. Send a message to begin a turn. */
+    CreatePlatformAgentSessionRequest: {
+      /** @description Optional title for the session. */
+      title?: string | null;
     };
     /** @description Request body for creating a plugin marketplace. */
     CreatePluginMarketplaceRequest: {
@@ -33735,9 +34155,14 @@ export interface operations {
       cookie?: never;
     };
     /** @description Optional title. May be empty. */
-    requestBody: {
+    requestBody?: {
       content: {
-        "application/json": components["schemas"]["CreateAgentSessionRequest"];
+        /**
+         * @example {
+         *       "title": "Order 42"
+         *     }
+         */
+        "application/json": components["schemas"]["CreatePlatformAgentSessionRequest"];
       };
     };
     responses: {
@@ -36127,9 +36552,14 @@ export interface operations {
       cookie?: never;
     };
     /** @description Optional title. May be empty. */
-    requestBody: {
+    requestBody?: {
       content: {
-        "application/json": components["schemas"]["CreateAgentSessionRequest"];
+        /**
+         * @example {
+         *       "title": "Order 42"
+         *     }
+         */
+        "application/json": components["schemas"]["CreatePlatformAgentSessionRequest"];
       };
     };
     responses: {
