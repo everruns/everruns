@@ -367,6 +367,38 @@ async fn a_cancel_ends_the_running_turn_with_one_terminal_event() {
     assert!(!fixture.store.row(fixture.session_id).cancel_requested);
 }
 
+/// Three renews in a row fail while a tool runs. At a third of the TTL apart
+/// they would span the whole TTL and lose the lease; retried sooner after a
+/// failure, the fourth renew lands inside it and the turn carries on.
+#[tokio::test]
+async fn a_short_renew_outage_does_not_cost_the_turn() {
+    let fixture = Fixture::new(model("Read.", vec![vec![call("c1", "read_inbox")]])).await;
+    fixture.gate.hold_first.store(true, Ordering::SeqCst);
+    let (worker, _) = fixture.worker("w1");
+    fixture.send("Read my inbox.").await;
+    let running = {
+        let worker = worker.clone();
+        tokio::spawn(async move { run_once(&worker).await })
+    };
+    tokio::time::timeout(WAIT, fixture.gate.held.notified())
+        .await
+        .unwrap();
+    fixture.store.fail_renews(3);
+    // Past the lease TTL (3s) while the tool holds.
+    tokio::time::sleep(Duration::from_millis(3500)).await;
+    fixture.gate.release.notify_one();
+    tokio::time::timeout(WAIT, running).await.unwrap().unwrap();
+
+    assert_eq!(fixture.tool_calls(), vec!["read_inbox"]);
+    assert_eq!(fixture.count("turn.completed").await, 1);
+    assert_eq!(fixture.answers().await, vec!["Read."]);
+    assert_eq!(
+        fixture.store.row(fixture.session_id).holder,
+        None,
+        "the turn released its lease"
+    );
+}
+
 #[tokio::test]
 async fn a_lost_lease_stops_the_turn_from_writing() {
     let fixture = Fixture::new(model("Late.", vec![vec![call("c1", "read_inbox")]])).await;

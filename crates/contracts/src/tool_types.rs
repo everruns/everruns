@@ -696,20 +696,16 @@ impl ToolHints {
         self
     }
 
-    /// Returns the effective side-effect class. An explicit class wins;
-    /// otherwise a read-only tool is `Pure` and an idempotent one is
-    /// `Idempotent`, and anything else is `AtMostOnce` (conservative default).
+    /// The effective side-effect class: an explicit class, else `Pure` for a
+    /// read-only tool, `Idempotent` for an idempotent one, else `AtMostOnce`.
     ///
-    /// Decision: the read-only and idempotent hints already promise what the
-    /// classes mean (no state change; the same effect when repeated), so a
-    /// tool that declares them is run again after a crash instead of ending as
-    /// interrupted. MCP servers' `readOnlyHint`/`idempotentHint` count too: a
-    /// server that misstates them can only get its own tool run twice.
+    /// Decision: those hints already promise what the classes mean, so such a
+    /// tool reruns after a crash instead of ending interrupted. MCP hints count
+    /// too: a server that misstates them only gets its own tool run twice.
     pub fn effective_side_effect_class(&self) -> SideEffectClass {
         if let Some(class) = &self.side_effect_class {
-            return class.clone();
-        }
-        if self.readonly == Some(true) {
+            class.clone()
+        } else if self.readonly == Some(true) {
             SideEffectClass::Pure
         } else if self.idempotent == Some(true) {
             SideEffectClass::Idempotent
@@ -1243,33 +1239,23 @@ mod tests {
 
     #[test]
     fn read_only_and_idempotent_hints_imply_a_side_effect_class() {
-        let class = |hints: ToolHints| hints.effective_side_effect_class();
-        assert_eq!(class(ToolHints::default()), SideEffectClass::AtMostOnce);
-        assert_eq!(
-            class(ToolHints::default().with_readonly(true)),
-            SideEffectClass::Pure
-        );
-        assert_eq!(
-            class(ToolHints::default().with_idempotent(true)),
-            SideEffectClass::Idempotent
-        );
-        assert_eq!(
-            class(
-                ToolHints::default()
-                    .with_readonly(false)
-                    .with_idempotent(false)
-            ),
-            SideEffectClass::AtMostOnce
-        );
-        // An explicit class wins over the hints.
-        assert_eq!(
-            class(
-                ToolHints::default()
+        use SideEffectClass::*;
+        let hints = ToolHints::default;
+        for (hints, class) in [
+            (hints(), AtMostOnce),
+            (hints().with_readonly(true), Pure),
+            (hints().with_idempotent(true), Idempotent),
+            (hints().with_readonly(false), AtMostOnce),
+            // An explicit class wins over the hints.
+            (
+                hints()
                     .with_readonly(true)
-                    .with_side_effect_class(SideEffectClass::AtMostOnce)
+                    .with_side_effect_class(Idempotent),
+                Idempotent,
             ),
-            SideEffectClass::AtMostOnce
-        );
+        ] {
+            assert_eq!(hints.effective_side_effect_class(), class);
+        }
     }
 
     #[test]
