@@ -525,7 +525,11 @@ specific decision.
 Recovery is bounded by both attempts and elapsed wall-clock time. Backoff is
 exponential with jitter, honors reasonable provider retry hints, and lower
 driver layers report consumed retries so the reason loop cannot multiply the
-budget. A retry is permitted only before assistant output commits. Act phases
+budget. A retry is permitted only before assistant output commits: a tool
+call commits it, answer text alone does not. A stream that breaks after text is
+retried under the same message id, announced by a repeated
+`output.message.started`, and its `accumulated` starts over; once the
+budget is spent the text so far is kept as the answer. Act phases
 and completed tool results remain outside the retry boundary, preserving
 exactly-once side effects and provider-visible tool-call/output pairing.
 
