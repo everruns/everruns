@@ -25,6 +25,7 @@ Changelog: https://everruns.com/docs/changelog/2026-10-13-everruns-0-48-0/
 
 ### What's Changed
 
+- feat(docs): load the everruns.com Google tag on docs pages ([#4683](https://github.com/everruns/everruns/pull/4683)) by [@chaliy](https://github.com/chaliy)
 - fix(github): verify credential scope before sandbox checkout ([#4684](https://github.com/everruns/everruns/pull/4684)) by [@chaliy](https://github.com/chaliy)
 - feat(core): experimental tool_search mode that keeps found tools' schemas in the result ([#4690](https://github.com/everruns/everruns/pull/4690)) by [@chaliy](https://github.com/chaliy)
 - feat(agents): per-agent max output tokens ([#4672](https://github.com/everruns/everruns/pull/4672)) by [@chaliy](https://github.com/chaliy)
