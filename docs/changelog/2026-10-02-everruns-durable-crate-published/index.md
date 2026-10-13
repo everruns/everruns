@@ -7,6 +7,7 @@ significance: notable
 products: [framework]
 surfaces: [code]
 release: "0.34.1"
+supersededBy: 2026-10-12-framework-durable-turns-removed
 links:
   docs: [/explanation/durable-execution/]
   prs: [everruns/everruns#3994, everruns/everruns#4008]
