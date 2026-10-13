@@ -8,7 +8,7 @@ products: [platform, cloud, framework]
 surfaces: [agent]
 links:
   docs: [/capabilities/tool-call-repair/]
-  prs: []
+  prs: [everruns/everruns#4674]
 ---
 
 Some models write `null` or `"null"` for every optional parameter they mean to
@@ -18,4 +18,4 @@ Repair capability on, an optional parameter whose schema does not accept null
 is now left out of the call, so the first attempt goes through. Required
 parameters, and parameters that accept null, are passed as written.
 
-See [Tool Call Repair](/capabilities/tool-call-repair/).
+See [Tool Call Repair](/capabilities/tool-call-repair/) and [#4674](https://github.com/everruns/everruns/pull/4674).
