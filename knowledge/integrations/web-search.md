@@ -586,6 +586,12 @@ Mockups: `/mnt/project-files/web-search/` in the project thread.
   defaults × model × flags); driver wire tests for each hosted tool, including
   replay after a model switch.
 - Live, key-gated: one real query per account backend and per native driver.
+- Quality: the [web search providers study](../../evals/web-search-providers/README.md)
+  grades every provider's result list for 59 agent-style queries with an LLM
+  judge. First run (2026-10-13): Brave, Parallel and Exa answer 98 to 100% of
+  cases, native 97% at about $14 per 1,000 and 6 s; Ceramic answers 49% and
+  none of the time-sensitive cases; free search is blocked on 45 of 59 from a
+  datacenter IP. Re-run it before choosing or changing a hosted default.
 - Example: a research agent under `examples/` on a real model, run once with
   Automatic on an Anthropic model and once on a model without native search.
 - Manual UI cases for the page, the editor and the chat row.
@@ -606,9 +612,10 @@ Mockups: `/mnt/project-files/web-search/` in the project thread.
 6. SaaS: book native searches on the org ledger for the Everruns LLM provider.
 7. Parallel Search API driver.
 8. yolop adoption after the next platform release.
-9. Cloudflare Web Search accounts (Ceramic, Exa, Linkup). Next, behind a
-   search quality eval: a hosted built-in "Everruns search" on Ceramic through
-   the platform's Cloudflare account, booked on the org ledger.
+9. Cloudflare Web Search accounts (Ceramic, Exa, Linkup), then the search
+   providers eval. Next: a hosted built-in "Everruns search" booked on the org
+   ledger. The eval ruled Ceramic out as its backend (49% answerable); the
+   backend is chosen from Brave, Parallel or Exa.
 
 ## Options not taken
 
