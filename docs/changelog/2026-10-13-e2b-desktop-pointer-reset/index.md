@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [agent]
 links:
   docs: [/capabilities/computer-use/]
-  prs: [everruns/everruns#PRNUM]
+  prs: [everruns/everruns#4715]
 ---
 
 With the experimental `computer_use_desktop` capability, the virtual display on an E2B desktop
