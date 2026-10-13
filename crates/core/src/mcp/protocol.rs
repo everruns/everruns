@@ -177,6 +177,24 @@ pub fn tools_call_body(
     })
 }
 
+/// `_meta` key carrying a call's idempotency key on `tools/call`.
+///
+/// Decision: MCP has no standard key for this, so it uses a custom one under
+/// our reverse-domain prefix, as the spec requires of custom `_meta` keys. A
+/// server or gateway that honors it can drop a repeat of a call it already
+/// ran; one that does not ignores it.
+pub const IDEMPOTENCY_KEY_META_KEY: &str = "io.everruns/idempotency-key";
+
+/// Add the call's idempotency key to a `tools/call` body's `_meta`.
+pub fn with_idempotency_key(mut body: Value, idempotency_key: Option<&str>) -> Value {
+    if let Some(key) = idempotency_key
+        && let Some(meta) = body["params"]["_meta"].as_object_mut()
+    {
+        meta.insert(IDEMPOTENCY_KEY_META_KEY.to_string(), json!(key));
+    }
+    body
+}
+
 /// `tools/call` retry body for a multi round-trip request.
 ///
 /// Echoes `requestState` back verbatim — it is opaque server state that the

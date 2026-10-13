@@ -9,6 +9,21 @@ upgrades across a release that moved or renamed public Rust APIs. Releases
 that need no code changes are not listed. For every release, see the
 [changelog](https://github.com/everruns/everruns/blob/main/CHANGELOG.md).
 
+## 0.49
+
+### MCP calls take an idempotency key
+
+`McpClient::call`, `McpClient::call_as_tool_result` and
+`McpTransport::call_tool` take a new last argument, the call's idempotency
+key, which goes in the request's `_meta` as `io.everruns/idempotency-key`.
+Pass `None` to send none. A custom `McpTransport` adds the parameter; a tool
+reads the current call's key from `ToolContext::idempotency_key`.
+
+```diff
+-client.call(&connection, "search", args).await?;
++client.call(&connection, "search", args, None).await?;
+```
+
 ## 0.48
 
 ### Durable turns option removed

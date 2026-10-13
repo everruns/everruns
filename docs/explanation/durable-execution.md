@@ -52,13 +52,13 @@ The trade-off: no multi-region replication beyond what PostgreSQL itself offers,
 What durable execution gives you:
 
 - **No work lost on crash.** If a worker dies, another worker resumes the turn from its log. A model response already recorded is not requested again, and an answer already recorded is not given twice.
-- **Persisted tool results.** Tool calls are persisted by their result, not their attempt, so a tool whose result was recorded is not re-run. A call cut off before its result was recorded runs again only when that is safe: its tool declares it read-only or idempotent, or the call never started. A call that must run at most once does not start until its `tool.started` event is stored, so a call without one never ran. Any other unfinished call is recorded as interrupted and the model is told its outcome is unknown.
+- **Persisted tool results.** Tool calls are persisted by their result, not their attempt, so a tool whose result was recorded is not re-run. A call cut off before its result was recorded runs again only when that is safe: its tool declares it read-only or idempotent, or the call never started. A call that must run at most once does not start until its `tool.started` event is stored, so a call without one never ran. Any other unfinished call is recorded as interrupted and the model is told its outcome is unknown. Each call also carries an idempotency key that stays the same when it runs again, sent to MCP servers in the request's `_meta` as `io.everruns/idempotency-key`, so a server or gateway that honors it can drop the repeat.
 - **One worker per session.** A session's lease keeps two workers from ever running its turn at once.
 - **Authoritative history.** Reloading a session reads back the same persisted message sequence, which makes traces and exports authoritative.
 
 What it doesn't give you:
 
-- **Idempotence of side effects.** A tool that declares itself idempotent is run again after a crash, so if it POSTs to an external API it must make the repeat harmless, for example with its own idempotency key. A tool that declares nothing is never run twice, but a crash after it acted and before its result was recorded leaves its outcome unknown.
+- **Idempotence of side effects.** A tool that declares itself idempotent is run again after a crash, so if it POSTs to an external API it must make the repeat harmless, for example by forwarding the call's idempotency key (`ToolContext::idempotency_key`). A tool that declares nothing is never run twice, but a crash after it acted and before its result was recorded leaves its outcome unknown.
 - **Real-time latency guarantees.** Persisting every event adds a few milliseconds per write. For agent workloads (already dominated by LLM latency) this is invisible; for hot-loop workloads it would be costly.
 
 ## Durability in the Framework

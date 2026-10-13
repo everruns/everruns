@@ -117,14 +117,13 @@ impl McpTransport for StdioTransport {
         tool_name: &str,
         arguments: Value,
         _credential: Option<&McpCredential>,
+        idempotency_key: Option<&str>,
     ) -> Result<McpToolCallResult> {
-        let result = self
-            .run(
-                connection,
-                "tools/call",
-                json!({ "name": tool_name, "arguments": arguments }),
-            )
-            .await?;
+        let mut params = json!({ "name": tool_name, "arguments": arguments });
+        if let Some(key) = idempotency_key {
+            params["_meta"] = json!({ crate::mcp::protocol::IDEMPOTENCY_KEY_META_KEY: key });
+        }
+        let result = self.run(connection, "tools/call", params).await?;
         let parsed: McpToolCallResult = serde_json::from_value(result)?;
         Ok(parsed)
     }

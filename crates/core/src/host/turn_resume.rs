@@ -383,7 +383,8 @@ pub async fn resume_open_turn<A: RuntimeHostAdapter>(
             org_id: Some(org_id),
             context: ExecutionContext::new(turn.session_id, turn.turn_id, turn.input_message_id)
                 .with_workspace_id(snapshot.workspace_id)
-                .next_exec(),
+                .next_exec()
+                .with_tool_calls_message(turn.final_message_id),
             harness_id: snapshot.harness_id,
             agent_id: snapshot.agent_id,
             tool_calls,
