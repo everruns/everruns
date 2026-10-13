@@ -211,7 +211,12 @@ where the API went, and a yanked version would hide it. The shim's
 so dependents see the move as a compiler warning. Delete the shim in the next
 release and record the move in the changelog. A crate deleted outright, with no
 new home, is **yanked** with the **Yank Crate** workflow so new resolutions stop
-selecting it.
+selecting it. The repository's `CARGO_REGISTRY_TOKEN` carries publish scopes but
+not `yank`: every Yank Crate run so far (0.19.1, `everruns-durable-engine` at
+0.48.0) failed with crates.io 403 "this token does not have the required
+permissions". Until a crate owner adds the `yank` scope to that token, an owner
+yanks by hand with `cargo yank --version <v> <crate>`; record the pending yank
+in the release thread rather than treating the release as blocked.
 
 **The gate.** One check enforces all of this:
 
