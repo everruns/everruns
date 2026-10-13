@@ -23,6 +23,7 @@ Use a channel when an external peer sends a request and waits for a reply. Use a
 | Public Chat | `public_chat` | Visitors to a hosted chat website for one Agent | `/v1/channels/{channel_id}/public-chat` | [Public Chat](#public-chat) |
 | Voice | `voice` | People talking from a browser or app, over WebRTC | `/v1/agents/{agent_id}/channels/{channel_id}/voice/calls` | [Voice](/features/voice/) |
 | Agent API | `api` | Your own code, with an agent key | `/v1/channels/{channel_id}` | [Agent API](#agent-api) |
+| Poppy | `poppy` | People's own agents, over the Personal Agent Protocol | `/v1/channels/{channel_id}/poppy` | [Poppy](/features/poppy/) |
 
 Routes are relative to the API base, for example `https://your-everruns-host/api`. The channel ID in each route is the channel's own ID, not the Agent's.
 
@@ -204,5 +205,6 @@ The old `/v1/e/{channel_id}/…` and `/v1/apps/{app_id}/…` ingress paths remai
 - [Publish an Agent to Slack](/how-to/publish-to-slack/): a step-by-step Slack setup.
 - [A2A](/features/a2a/): inbound A2A channels and outbound delegation.
 - [Voice](/features/voice/): talk to an Agent and hear its answers.
+- [Poppy](/features/poppy/): answer people's personal agents as a company.
 - [Agent Triggers](/features/agent-triggers/): proactive scheduled and event-driven work.
 - [Change History](/features/change-history/): see and restore earlier Agent configurations.
