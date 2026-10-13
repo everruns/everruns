@@ -60,10 +60,11 @@ This trade-off, paying for a database write on every step, is what makes Everrun
 
 ## What happens when the loop "gets stuck"
 
-Three failure modes show up in practice:
+Four failure modes show up in practice:
 
 - **Runaway tool calls.** The model keeps calling tools without converging. Mitigated by the iteration cap. Once the cap is reached the engine stops scheduling tool calls and the turn ends with `turn.completed` (the `iterations` field shows the count), not `turn.failed`.
 - **A tool that hangs.** Tool calls have configurable timeouts. The act phase reports the failure as a tool result so the model can recover on the next reason step.
+- **The provider stream breaks.** A dropped connection, a stall or a provider server error is retried with backoff, also after the model has streamed part of its answer, as long as it has not called a tool. The retry emits `output.message.started` again for the same message and streams the answer from the beginning, so render `accumulated` rather than the sum of deltas.
 - **The model rejects the prompt as too large.** Context [compaction](/advanced/compaction/) runs reactively and the request is retried. The conversation continues with older messages compressed.
 
-In all three cases the session stays usable. You don't lose the conversation; you lose at most one turn.
+In all four cases the session stays usable. You don't lose the conversation; you lose at most one turn.
