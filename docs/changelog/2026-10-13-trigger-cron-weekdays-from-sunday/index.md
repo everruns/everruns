@@ -8,7 +8,7 @@ products: [platform, cloud, framework]
 surfaces: [ui, api, cli]
 links:
   docs: [/features/agent-triggers/]
-  prs: [everruns/everruns#4703, everruns/everruns#PRNUM]
+  prs: [everruns/everruns#4703, everruns/everruns#4708]
 ---
 
 Agent schedule triggers and durable schedules read the weekday field of a
@@ -16,14 +16,10 @@ Agent schedule triggers and durable schedules read the weekday field of a
 `0 18 * * 0` was rejected. Weekdays now count 0-6 from Sunday, with 7 also
 Sunday, the same as session schedules and standard cron.
 
-The fix applies when a trigger or schedule is created or its cron is changed.
-Existing ones keep the days they have been running on; to switch one to the
-standard reading, enter its 5-field cron again. The cron editor now describes
-and previews a stored 7-field expression with the days it actually runs on, so
-an older trigger saved as `0 0 9 * * 1-5 *` reads "Sunday through Thursday"
-rather than "Monday through Friday". See
-[Agent triggers](/features/agent-triggers/).
+Existing triggers keep the days they run on; to switch one, enter its 5-field
+cron again. The cron editor now labels a stored 7-field expression with the
+days it actually runs, so an older `0 0 9 * * 1-5 *` reads "Sunday through
+Thursday". See [Agent triggers](/features/agent-triggers/).
 
 `#[schedule]` crons in an `everruns-serve` app read 5-field weekdays the same
-standard way, so they run on the same days locally and when deployed. See
-[Serve](/framework/serve/).
+way, locally and when deployed. See [Serve](/framework/serve/).
