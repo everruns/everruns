@@ -29761,7 +29761,7 @@
           },
           "id": {
             "type": "string",
-            "description": "`free` or `native`.",
+            "description": "`free`, `native`, or `hosted` (the deployment's own search, when it\noffers one).",
             "example": "free"
           },
           "name": {
@@ -63870,7 +63870,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Automatic order: `native`, search account ids, and `free`, which is\nalways last. Entries left out keep their natural place."
+            "description": "Automatic order: `native`, search account ids, `hosted` (the\ndeployment's own search, when it offers one) and `free`, which is\nalways last. Entries left out keep their natural place."
           },
           "blocked_domains": {
             "type": "array",
