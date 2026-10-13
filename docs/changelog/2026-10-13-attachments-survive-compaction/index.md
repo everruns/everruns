@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui, api, agent]
 links:
   docs: [/features/channels/, /how-to/call-your-agent-from-code/]
-  prs: [everruns/everruns#4636, everruns/everruns#4650, everruns/everruns#4654, everruns/everruns#4661, everruns/everruns#4677, everruns/everruns#4686]
+  prs: [everruns/everruns#4636, everruns/everruns#4650, everruns/everruns#4654, everruns/everruns#4661, everruns/everruns#4677, everruns/everruns#4686, everruns/everruns#4692]
 ---
 
 Files sent to an agent no longer disappear from its view when a long conversation is compacted.
