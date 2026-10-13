@@ -317,6 +317,7 @@ reverse-engineering.
 - `crates/server/src/domains/agent_channels/record/slack_provisioning.rs` — the `SlackAppProvisioner` trait and its unavailable default
 - `crates/server/src/storage/org_slack_connections.rs` — per-workspace connection storage; migrations `145`, `146` and `159`
 - `crates/server/src/channels/slack/install.rs` — install and connection routes, and their deliberately different auth, including the manager app consent and callback
+- `crates/server/src/channels/slack/provisioning/manager_app.rs` — the manager app consent, its sealed state, and grant refresh
 - `crates/server/migrations/20261013113828_org_slack_connection_grant_kind.sql` — which token source a connection came from
 - `crates/server/src/channels/slack/events/manifest.rs` — manifest generation and the endpoint URLs it declares
 - `apps/ui/src/components/apps/channel-form.tsx` — the setup states the capability drives, and the workspace choice
