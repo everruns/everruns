@@ -121,9 +121,13 @@ need to be searched for.";
 /// `Redefine` (the default) puts the full schema on the tool's definition from
 /// the next step, a tool change that costs a cache write on models that cannot
 /// send changes inline. `InResult` never changes the definition: the stub
-/// stays, the model calls from the schema in the search result, and the tool
-/// checks its own arguments. Experimental until an eval shows calls are as
-/// good; see `knowledge/execution/cache-stable-tool-changes.md`.
+/// stays, the model calls from the schema in the search result, and the act
+/// step validates each call against the tool's registered schema, so a bad
+/// call comes back as an argument error naming the problem. Experimental: in
+/// the `evals/tool-search-reveal` study GPT-6 Luna and Mistral Large 4 called
+/// as well as with `Redefine`, while Muse Spark sent every number, boolean and
+/// object as a string and never recovered. See
+/// `knowledge/execution/cache-stable-tool-changes.md`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Reveal {
     #[default]
@@ -672,8 +676,10 @@ impl Tool for ToolSearchTool {
         });
         if !servers.is_empty() {
             result["loading_mcp_servers"] = json!(servers);
+            // A deferred server's tools were not listed at all, so they are
+            // added with their full schemas in either mode.
             result["message"] = json!(
-                "Full schemas loaded. The listed MCP servers' tools are being loaded and are callable on your next step."
+                "The listed MCP servers' tools are being loaded and are callable with their full parameters on your next step."
             );
         }
         ToolExecutionResult::success(result)

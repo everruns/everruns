@@ -446,7 +446,19 @@ Each step is one PR and leaves `main` working.
    schema would make calls fail. Live
    (`test_tool_removal_waits_for_a_cold_cache`, OpenRouter GPT-6 Luna): the
    call after a capability is switched off read 2646 of 2649 cached tokens,
-   0 without the hold.
+   0 without the hold. Only first-party Anthropic and OpenAI count as inline:
+   a gateway serving the same model resolves to the same profile but sends the
+   full tool list.
+   Done for schema-in-result, kept opt-in: `tool_search` config
+   `{"reveal": "in_result"}` keeps the stub listed and the model calls from the
+   search result's schema; the act step validates every call against the
+   registered schema either way. The study (`evals/tool-search-reveal`, 8
+   cases x 3 trials per arm, OpenRouter) found no loss on GPT-6 Luna (24/24
+   correct, 24/24 first try in both arms) or Mistral Large 4 (24/24 correct in
+   both; first try 17/24 redefine, 21/24 in_result), but Muse Spark 1.3 fell
+   from 24/24 to 0/24: against a property-less stub it sends every number,
+   boolean and object as a JSON string and never recovers. A per-model default
+   would need a profile flag; until someone asks, agents opt in.
 
 ## Open questions
 
