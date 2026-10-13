@@ -142,6 +142,7 @@ impl Modify for DocumentationMetadata {
                 };
                 let docs = &value["paths"][path][method];
                 operation.summary = docs["summary"].as_str().map(str::to_owned);
+                operation.description = docs["description"].as_str().map(str::to_owned);
                 operation.tags =
                     Some(serde_json::from_value(docs["tags"].clone()).expect("Operation tags"));
                 if docs.get("security").is_some() {
@@ -275,6 +276,27 @@ fn apply(spec: &mut Value) {
             } else if operation.get("summary").is_none() {
                 operation["summary"] = json!(humanize(&id));
             }
+            // A bare `METHOD /path` summary says nothing the page does not
+            // already show; the operation ID reads better as a title.
+            if operation["summary"].as_str().is_some_and(|summary| {
+                summary.split_once(' ').is_some_and(|(method, rest)| {
+                    is_method(&method.to_lowercase())
+                        && rest.starts_with('/')
+                        && !rest.contains(' ')
+                })
+            }) {
+                operation["summary"] = json!(humanize(&id));
+            }
+            if let Some(summary) = operation["summary"].as_str() {
+                let (title, full) = split_summary(summary);
+                if title != summary {
+                    if full.trim_end_matches('.') != title && operation.get("description").is_none()
+                    {
+                        operation["description"] = json!(full);
+                    }
+                    operation["summary"] = json!(title);
+                }
+            }
 
             if operation["deprecated"] == true {
                 let replacement_path = path
@@ -369,6 +391,39 @@ fn is_method(method: &str) -> bool {
     )
 }
 
+/// Longest summary that still makes a page title under 70 characters with
+/// the docs site's ` | Everruns` suffix. The summary titles the endpoint's
+/// reference page; the rest belongs in the description.
+#[cfg(test)]
+const MAX_SUMMARY: usize = 58;
+
+/// Splits a summary into its title (no `METHOD /path - ` prefix, first
+/// sentence, no final period) and the full text without the prefix.
+fn split_summary(summary: &str) -> (String, String) {
+    let full = summary
+        .split_once(' ')
+        .filter(|(method, rest)| is_method(&method.to_lowercase()) && rest.starts_with('/'))
+        .and_then(|(_, rest)| {
+            rest.split_once(" - ")
+                .or_else(|| rest.split_once(" \u{2014} "))
+                .map(|(_, text)| text)
+        })
+        .unwrap_or(summary)
+        .trim();
+    let end = full
+        .match_indices(". ")
+        .map(|(i, _)| i)
+        .find(|&i| !["e.g", "i.e", "vs"].iter().any(|a| full[..i].ends_with(a)))
+        .unwrap_or(full.len());
+    let title = full[..end].trim_end_matches('.');
+    let mut chars = title.chars();
+    let title = chars
+        .next()
+        .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
+        .unwrap_or_default();
+    (title, full.to_owned())
+}
+
 fn humanize(id: &str) -> String {
     let text = id.replace(['_', '-'], " ");
     let mut chars = text.chars();
@@ -400,6 +455,47 @@ mod tests {
     use super::*;
     use crate::openapi::ApiDoc;
     use utoipa::OpenApi as _;
+
+    #[test]
+    fn summaries_fit_a_page_title() {
+        assert_eq!(
+            split_summary("PUT /v1/agents/{agent_id} - Create or update agent (upsert)"),
+            (
+                "Create or update agent (upsert)".to_owned(),
+                "Create or update agent (upsert)".to_owned()
+            )
+        );
+        assert_eq!(
+            split_summary("Start a run, e.g. a retry. Returns the run."),
+            (
+                "Start a run, e.g. a retry".to_owned(),
+                "Start a run, e.g. a retry. Returns the run.".to_owned()
+            )
+        );
+        let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        assert_eq!(
+            spec["paths"]["/v1/harnesses/{harness_id}"]["get"]["summary"],
+            "Get harness"
+        );
+        let long: Vec<String> = spec["paths"]
+            .as_object()
+            .unwrap()
+            .values()
+            .flat_map(|item| item.as_object().unwrap().iter())
+            .filter(|(method, _)| is_method(method))
+            .filter_map(|(_, op)| {
+                let summary = op["summary"].as_str()?;
+                (summary.chars().count() > MAX_SUMMARY)
+                    .then(|| format!("{}: {summary}", op["operationId"].as_str().unwrap_or("?")))
+            })
+            .collect();
+        assert!(
+            long.is_empty(),
+            "OpenAPI summaries title the API reference pages, keep them to {MAX_SUMMARY} \
+             characters (`summary = \"..\"` on #[command], or a shorter first doc line):\n{}",
+            long.join("\n")
+        );
+    }
 
     #[test]
     fn every_operation_has_public_classification_and_legacy_successors_resolve() {
