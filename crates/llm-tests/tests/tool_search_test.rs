@@ -1032,3 +1032,115 @@ async fn test_prompt_text_added_mid_session_keeps_prompt_cache(
         second.response
     );
 }
+
+/// Weather tools while switched on, none after, as a capability switched off
+/// mid-session would.
+struct SwitchedWeatherCapability(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+#[async_trait::async_trait]
+impl everruns_core::capabilities::Capability for SwitchedWeatherCapability {
+    fn id(&self) -> &str {
+        "test_switched_weather"
+    }
+
+    fn name(&self) -> &str {
+        "Switched weather"
+    }
+
+    fn description(&self) -> &str {
+        "Testing capability: weather tools until switched off."
+    }
+
+    fn tools(&self) -> Vec<Box<dyn everruns_core::tools::Tool>> {
+        if self.0.load(std::sync::atomic::Ordering::SeqCst) {
+            everruns_core::capabilities::Capability::tools(&TestWeatherCapability)
+        } else {
+            Vec::new()
+        }
+    }
+}
+
+/// On models that rewrite `tools` for every change, a removal waits while the
+/// cache is warm: the call after the switch sends the same tools, records no
+/// change, and reads the cached prefix.
+#[rstest]
+#[case::openrouter_gpt6_luna(OPENROUTER_GPT6_LUNA)]
+#[case::gemini_flash(GEMINI_FLASH)]
+#[tokio::test]
+async fn test_tool_removal_waits_for_a_cold_cache(#[case] config: ProviderModelConfig) {
+    let on = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let Some((runner, first)) = live_turn(&config, "What is 21 + 21?", |model| {
+        on.store(true, std::sync::atomic::Ordering::SeqCst);
+        let capability = SwitchedWeatherCapability(on.clone());
+        async move {
+            InMemoryAgenticLoop::builder()
+                .agent_name("Removal Cache Agent")
+                .system_prompt("You are a helpful assistant.".to_string())
+                .model(model)
+                .driver_registry(all_providers_registry())
+                .capability(TestMathCapability)
+                .capability(capability)
+                .capability(ReferenceNotesCapability)
+                .capability(PromptCachingCapability::new())
+                .max_iterations(4)
+                .build()
+                .await
+                .unwrap()
+        }
+    })
+    .await
+    else {
+        return;
+    };
+    assert!(first.success, "Turn should succeed: {:?}", first.error);
+    let generations = |events: Vec<everruns_core::events::Event>| -> Vec<_> {
+        events
+            .into_iter()
+            .filter_map(|event| match event.data {
+                EventData::LlmGeneration(data) => Some(data),
+                _ => None,
+            })
+            .collect()
+    };
+    let before = generations(runner.events_by_type(LLM_GENERATION).await);
+
+    on.store(false, std::sync::atomic::Ordering::SeqCst);
+    let second = runner
+        .run_turn("What is 2 + 3? Answer with the number only.")
+        .await
+        .unwrap();
+    assert!(second.success, "Turn should succeed: {:?}", second.error);
+
+    let all = generations(runner.events_by_type(LLM_GENERATION).await);
+    let after = &all[before.len()];
+    assert!(
+        after.metadata.tool_changes.is_none(),
+        "{}: the removal should wait, recorded {:?}",
+        config.label(),
+        after.metadata.tool_changes
+    );
+    let cache_read = after
+        .metadata
+        .usage
+        .as_ref()
+        .and_then(|usage| usage.cache_read_tokens)
+        .unwrap_or(0);
+    let previous_input = before
+        .last()
+        .and_then(|data| data.metadata.usage.as_ref())
+        .map(|usage| {
+            usage.input_tokens
+                + usage.cache_read_tokens.unwrap_or(0)
+                + usage.cache_creation_tokens.unwrap_or(0)
+        })
+        .unwrap_or(0);
+    eprintln!(
+        "{} cache_read after the removal: {cache_read} of a {previous_input}-token prefix",
+        config.label()
+    );
+    assert!(
+        previous_input >= 2048 && cache_read * 10 >= previous_input * 8,
+        "{}: the call after the removal should read the cached prefix, read {cache_read} of {previous_input}",
+        config.label()
+    );
+}

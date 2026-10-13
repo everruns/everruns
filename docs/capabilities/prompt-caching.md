@@ -62,7 +62,10 @@ Instructions a capability adds when it is switched on mid-session travel the
 same way on those models: the request keeps the first system prompt and sends
 the new instructions in the conversation.
 Other models and endpoints receive the current tool list, which costs one cache
-write per change, as before.
+write per change. A tool that goes away there (a capability switched off, for
+example) stays in the list while the cache is warm and nothing else changes,
+and a call to it is refused; it leaves with the next change, or once the
+session has been idle longer than the cache retention.
 
 ## Retention
 

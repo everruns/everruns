@@ -10,14 +10,14 @@ links:
   docs: [/capabilities/prompt-caching/]
 ---
 
-**For agents:** sessions record their tool list on the first model call and
-each later change in the conversation. On current Claude models through the
-Claude API, and on GPT-6 and GPT-5.6 through the OpenAI API, the request keeps
-that first tool list and sends each change (a tool revealed by tool search, or
+**For agents:** sessions record their first tool list and each later change.
+On current Claude models through the Claude API, and on
+GPT-6 and GPT-5.6 through the OpenAI API, the request keeps that first tool list and sends each change (a tool revealed by tool search, or
 instructions a capability adds mid-session) in the conversation, so the next
 call still reads the cached prompt (see
 [Prompt Caching](/capabilities/prompt-caching/#tool-changes-during-a-session)).
-Other models and endpoints receive the current tool list, as before.
+Elsewhere, a removed tool stays listed until the next change or cache expiry,
+and calls to it are refused.
 
 **In the UI:** a model call in Session Trace lists the tools it added, updated
 or removed. A cache reset is blamed on the tools only when the tools sent to

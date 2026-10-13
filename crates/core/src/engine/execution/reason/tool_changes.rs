@@ -20,6 +20,14 @@
 //! a capability adds later become the change's `note`, so inline requests keep
 //! the epoch's prompt. When a recorded part changes or disappears, no prompt
 //! baseline is offered and drivers send the current prompt.
+//!
+//! On models that cannot carry changes inline, every change rewrites `tools`
+//! and costs a cache write. A removal is the one change nothing needs at once:
+//! while the cache is warm and nothing else changes, it is held. The removed
+//! tool stays in `tools` and is not recorded as removed, and a call to it is
+//! refused like any undeclared tool, because the act step only runs the
+//! agent's current tools. It goes out with the next change that rewrites
+//! `tools` anyway, or once the session has sat idle past the cache lifetime.
 
 // Design of record: knowledge/execution/cache-stable-tool-changes.md.
 use crate::engine::message::{RuntimeMessage, RuntimeMessageRole};
@@ -46,6 +54,56 @@ pub(super) struct ToolChangeReplay {
     system_prompt: Option<String>,
     /// This request's change has no message to ride on.
     unanchored: bool,
+    /// The tool list to send instead of the wanted one, when a removal is
+    /// held: the wanted tools with the held ones kept in their places.
+    held_tools: Option<Vec<ToolDefinition>>,
+}
+
+/// When a removal may wait: the request time and how long the provider keeps
+/// a cached prefix after its last use.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ColdMoment {
+    pub now: chrono::DateTime<chrono::Utc>,
+    pub cache_lifetime: chrono::Duration,
+}
+
+impl ColdMoment {
+    /// For models that rewrite `tools` on every change; `None` for those that
+    /// carry removals inline, where a removal costs nothing.
+    fn for_model(
+        provider: &everruns_contracts::DriverId,
+        model: &str,
+        cache: Option<&everruns_contracts::driver_registry::PromptCacheConfig>,
+    ) -> Option<Self> {
+        use everruns_contracts::DriverId;
+        use everruns_contracts::driver_registry::PromptCacheRetention;
+        use everruns_contracts::model::{
+            INLINE_TOOL_ADDITIONS_PARAMETER, INLINE_TOOL_CHANGES_PARAMETER,
+        };
+        let inline = everruns_contracts::get_model_profile(provider, model).is_some_and(|p| {
+            p.supports_parameter(INLINE_TOOL_CHANGES_PARAMETER)
+                || p.supports_parameter(INLINE_TOOL_ADDITIONS_PARAMETER)
+        });
+        if inline {
+            return None;
+        }
+        // Overstating the lifetime only holds a removal longer; understating
+        // it would release one into a warm cache.
+        let retention = cache.map(|cache| cache.retention).unwrap_or_default();
+        let minutes = match retention {
+            PromptCacheRetention::OneHour => 60,
+            _ if *provider == DriverId::Anthropic || *provider == DriverId::Bedrock => 5,
+            _ => 30,
+        };
+        Some(Self {
+            now: chrono::Utc::now(),
+            cache_lifetime: chrono::Duration::minutes(minutes),
+        })
+    }
+
+    fn warm_since(&self, last_use: Option<chrono::DateTime<chrono::Utc>>) -> bool {
+        last_use.is_some_and(|at| self.now - at < self.cache_lifetime)
+    }
 }
 
 impl ToolChangeReplay {
@@ -82,6 +140,9 @@ impl ToolChangeReplay {
     ) {
         config.tool_baseline = self.baseline_for(sent);
         config.system_prompt_baseline = self.system_prompt_for(sent);
+        if let Some(tools) = &self.held_tools {
+            config.tools.clone_from(tools);
+        }
     }
 
     fn complete(&self, sent: &[Message]) -> bool {
@@ -116,28 +177,67 @@ fn anchor(messages: &[&RuntimeMessage], start: usize, end: usize) -> Option<Mess
         .map(|message| message.id)
 }
 
-/// [`prepare`] for the agent's current tools and system prompt.
+/// The wanted tools with each held one put back after the declared tool it
+/// followed, so the list matches the one sent before the removal.
+fn with_held(
+    declared: &DeclaredTools,
+    wanted: &[ToolDefinition],
+    held: &[String],
+) -> Vec<ToolDefinition> {
+    let mut tools = wanted.to_vec();
+    let mut after: Option<&str> = None;
+    for tool in declared.callable() {
+        let name = tool.name();
+        if held.iter().any(|held| held == name) {
+            let at = after
+                .and_then(|after| tools.iter().position(|t| t.name() == after))
+                .map_or(0, |index| index + 1);
+            tools.insert(at, tool.clone());
+        } else if !wanted.iter().any(|t| t.name() == name) {
+            continue;
+        }
+        after = Some(name);
+    }
+    tools
+}
+
+/// [`prepare_holding`] for the agent's current tools and system prompt.
 pub(super) fn prepare_for(
     messages: &[RuntimeMessage],
-    provider: &str,
+    provider: &everruns_contracts::DriverId,
     model: &str,
     agent: &crate::engine::RuntimeAgent,
 ) -> ToolChangeReplay {
-    prepare(
+    prepare_holding(
         messages,
-        provider,
+        provider.as_str(),
         model,
         &agent.tools,
         &agent.system_prompt,
+        ColdMoment::for_model(provider, model, agent.prompt_cache.as_ref()),
     )
 }
 
+#[cfg(test)]
 pub(super) fn prepare(
     messages: &[RuntimeMessage],
     provider: &str,
     model: &str,
     wanted: &[ToolDefinition],
     system_prompt: &str,
+) -> ToolChangeReplay {
+    prepare_holding(messages, provider, model, wanted, system_prompt, None)
+}
+
+/// Replay the transcript and work out this request's change. With `cold`,
+/// a change that only removes tools waits while the cache is warm.
+pub(super) fn prepare_holding(
+    messages: &[RuntimeMessage],
+    provider: &str,
+    model: &str,
+    wanted: &[ToolDefinition],
+    system_prompt: &str,
+    cold: Option<ColdMoment>,
 ) -> ToolChangeReplay {
     let messages: Vec<_> = messages
         .iter()
@@ -148,10 +248,12 @@ pub(super) fn prepare(
     let mut baseline = None;
     let mut transitions = HashMap::new();
     let mut input_start = 0;
+    let mut last_answer = None;
     for (index, message) in messages.iter().enumerate() {
         if message.role != RuntimeMessageRole::Agent {
             continue;
         }
+        last_answer = Some(message.created_at);
         if !same_model(message, provider, model) {
             declared = None;
             transitions.clear();
@@ -193,11 +295,18 @@ pub(super) fn prepare(
         }
         PromptDiff::Diverged => None,
     };
+    let only_removes = changes.added.is_empty()
+        && changes.redefined.is_empty()
+        && changes.note.is_none()
+        && !changes.removed.is_empty();
+    let held_tools = (only_removes && cold.is_some_and(|cold| cold.warm_since(last_answer)))
+        .then(|| with_held(&declared, wanted, &std::mem::take(&mut changes.removed)));
     if changes.is_empty() {
         return ToolChangeReplay {
             transitions,
             baseline,
             system_prompt,
+            held_tools,
             ..ToolChangeReplay::default()
         };
     }
@@ -213,6 +322,7 @@ pub(super) fn prepare(
         baseline,
         system_prompt,
         unanchored: at.is_none(),
+        held_tools: None,
     }
 }
 
@@ -387,5 +497,92 @@ mod tests {
             replay.baseline_for(&sent).is_some(),
             "tools stay cache-safe"
         );
+    }
+
+    fn after(minutes: i64) -> Option<ColdMoment> {
+        Some(ColdMoment {
+            now: chrono::Utc::now() + chrono::Duration::minutes(minutes),
+            cache_lifetime: chrono::Duration::minutes(5),
+        })
+    }
+
+    fn holding(
+        messages: &mut Vec<RuntimeMessage>,
+        input: &str,
+        wanted: &[ToolDefinition],
+        cold: Option<ColdMoment>,
+    ) -> ToolChangeReplay {
+        messages.push(RuntimeMessage::user(input));
+        let replay = prepare_holding(messages, PROVIDER, MODEL, wanted, PROMPT, cold);
+        messages.push(answer(MODEL, replay.record.as_ref()));
+        replay
+    }
+
+    fn names(tools: &[ToolDefinition]) -> Vec<&str> {
+        tools.iter().map(ToolDefinition::name).collect()
+    }
+
+    #[test]
+    fn a_removal_waits_while_the_cache_is_warm() {
+        let all = [tool("a", "A"), tool("b", "B"), tool("c", "C")];
+        let mut messages = Vec::new();
+        holding(&mut messages, "hi", &all, after(1));
+        let wanted = [tool("a", "A"), tool("c", "C")];
+
+        let replay = holding(&mut messages, "drop b", &wanted, after(1));
+        assert!(replay.record.is_none(), "nothing recorded");
+        assert!(replay.transitions.is_empty());
+        let mut config = everruns_contracts::driver_registry::LlmCallConfig::new(MODEL);
+        config.tools = wanted.to_vec();
+        replay.apply_to(&mut config, &[]);
+        assert_eq!(names(&config.tools), ["a", "b", "c"], "b kept in place");
+
+        // Still warm: still held, nothing recorded.
+        let replay = holding(&mut messages, "next", &wanted, after(2));
+        assert!(replay.record.is_none());
+        assert!(replay.held_tools.is_some());
+
+        // Past the cache lifetime the removal goes out.
+        let replay = holding(&mut messages, "later", &wanted, after(10));
+        assert_eq!(replay.record.expect("released").removed, ["b"]);
+        assert!(replay.held_tools.is_none());
+    }
+
+    #[test]
+    fn a_held_removal_rides_with_the_next_change() {
+        let mut messages = Vec::new();
+        holding(
+            &mut messages,
+            "hi",
+            &[tool("a", "A"), tool("b", "B")],
+            after(1),
+        );
+        holding(&mut messages, "drop b", &[tool("a", "A")], after(1));
+
+        let wanted = [tool("a", "A"), tool("d", "D")];
+        let replay = holding(&mut messages, "reveal d", &wanted, after(1));
+        let record = replay.record.expect("one change");
+        assert_eq!(names(&record.added), ["d"]);
+        assert_eq!(record.removed, ["b"]);
+        assert!(replay.held_tools.is_none(), "tools are rewritten anyway");
+    }
+
+    #[test]
+    fn models_with_inline_changes_never_hold() {
+        use everruns_contracts::DriverId;
+        use everruns_contracts::driver_registry::{PromptCacheConfig, PromptCacheRetention};
+        assert!(ColdMoment::for_model(&DriverId::Anthropic, "claude-sonnet-5-5", None).is_none());
+        assert!(ColdMoment::for_model(&DriverId::OpenAI, "gpt-6.1-sol", None).is_none());
+
+        let fallback = ColdMoment::for_model(&DriverId::Gemini, "gemini-unknown", None)
+            .expect("fallback model holds");
+        assert_eq!(fallback.cache_lifetime, chrono::Duration::minutes(30));
+        let hour = PromptCacheConfig {
+            retention: PromptCacheRetention::OneHour,
+            ..PromptCacheConfig::default()
+        };
+        let held = ColdMoment::for_model(&DriverId::Gemini, "gemini-unknown", Some(&hour))
+            .expect("fallback model holds");
+        assert_eq!(held.cache_lifetime, chrono::Duration::minutes(60));
     }
 }
