@@ -564,7 +564,14 @@ fn test_connection_required_into_tool_result() {
             "daytona"
         ))
     );
-    assert!(tool_result.error.is_none());
+    // A blocked call did not run: it is reported as a failure, so the model
+    // and the timeline never read it as a successful empty result.
+    let error = tool_result
+        .error
+        .as_deref()
+        .expect("blocked call carries an error");
+    assert!(error.contains("did not run"), "{error}");
+    assert!(error.contains("daytona"), "{error}");
 
     // Result JSON contains connection_required key
     let result_json = tool_result.result.unwrap();

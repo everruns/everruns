@@ -221,6 +221,42 @@ pub fn resolve_spec(authored: &SandboxTemplateSpec) -> Result<ResolvedSandboxSpe
     })
 }
 
+/// The organization account a `session_user` template uses when the Session
+/// has no user to hold a provider account.
+///
+/// A trigger, schedule or channel ingress starts its Session without a person,
+/// so "the Session user's account" names nobody. The organization's account for
+/// the provider is the only owner left, and it is used only when it is the one
+/// account for that provider: with several, picking one would silently bill an
+/// arbitrary account, so the template has to name it instead.
+pub(crate) fn sole_organization_account<T>(
+    provider: &str,
+    accounts: impl IntoIterator<Item = T>,
+    provider_of: impl Fn(&T) -> &str,
+) -> Result<T, String> {
+    let mut matching = accounts
+        .into_iter()
+        .filter(|account| provider_of(account) == provider);
+    let first = matching.next();
+    let others = matching.count();
+    match (first, others) {
+        (Some(account), 0) => Ok(account),
+        (None, _) => Err(format!(
+            "This Sandbox Template uses the Session user's {provider} account, but this \
+             session has no user (it was started by a trigger or channel) and the \
+             organization has no {provider} account. Add an organization {provider} \
+             account, or set the template's account to one."
+        )),
+        (Some(_), others) => Err(format!(
+            "This Sandbox Template uses the Session user's {provider} account, but this \
+             session has no user (it was started by a trigger or channel) and the \
+             organization has {} {provider} accounts. Set the template's account to the \
+             one it should use.",
+            others + 1
+        )),
+    }
+}
+
 fn validate_credential_binding(
     target: &crate::domains::sandbox_templates::record::SandboxTargetSpec,
 ) -> Result<(), String> {
@@ -984,6 +1020,26 @@ mod tests {
                 .unwrap_err()
                 .contains("exactly one")
         );
+    }
+
+    #[test]
+    fn userless_session_uses_the_sole_organization_account() {
+        let accounts = vec![("brave_search", 1), ("daytona", 2), ("e2b", 3)];
+        assert_eq!(
+            sole_organization_account("daytona", accounts, |a| a.0).unwrap(),
+            ("daytona", 2)
+        );
+    }
+
+    #[test]
+    fn userless_session_fails_without_exactly_one_organization_account() {
+        let none = sole_organization_account("daytona", vec![("e2b", 1)], |a| a.0).unwrap_err();
+        assert!(none.contains("no daytona account"), "{none}");
+
+        let many =
+            sole_organization_account("daytona", vec![("daytona", 1), ("daytona", 2)], |a| a.0)
+                .unwrap_err();
+        assert!(many.contains("has 2 daytona accounts"), "{many}");
     }
 
     #[test]

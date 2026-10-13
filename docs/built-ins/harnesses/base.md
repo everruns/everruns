@@ -19,7 +19,7 @@ It carries only what every agent needs to run reliably, and adds no workspace, s
 | **Name** | `base` |
 | **Parent** | None |
 | **Capabilities** | Context compaction, error disclosure, tool-call repair, loop detection, parallel tool calls, soft approval |
-| **System Prompt** | "You are a helpful assistant." |
+| **System Prompt** | None. When no harness, agent or session supplies a prompt, the runtime uses "You are a helpful assistant." |
 | **Default Model** | None (inherits from agent or organization) |
 
 Soft approval is guidance, not a permission wall. It adds the approval tools and costs nothing on

@@ -25,7 +25,10 @@ when the Sandbox does not hold such a file, the read falls back to the Session's
 2. Give it a stable name and display name.
 3. Select Bashkit or an available managed provider: Daytona, E2B, or Modal (when enabled).
 4. For a managed provider, choose where its credential comes from:
-   - **Person starting the Session** uses that user's connection.
+   - **Person starting the Session** uses that user's connection. A Session started by a trigger
+     or a channel has no user, so it uses the organization's provider account instead, when the
+     organization has exactly one for that provider. With none or several, the Session fails to
+     start and names the problem; pick **Organization provider account** to choose one.
    - **This Agent** uses the Agent Virtual User's connection.
    - **Organization provider account** uses one account managed by an organization admin under
      **Sandboxes → Provider Accounts**.

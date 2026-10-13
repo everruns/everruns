@@ -368,6 +368,7 @@ function TemplateSpecEditor({
   isDefault,
   targets,
   organizationConnections,
+  hasTriggers,
   disabled,
   onChange,
   onRename,
@@ -380,6 +381,7 @@ function TemplateSpecEditor({
   isDefault: boolean;
   targets: SandboxTargetDescriptor[];
   organizationConnections: OrganizationConnection[];
+  hasTriggers: boolean;
   disabled: boolean;
   onChange: (spec: SandboxTemplateSpec) => void;
   onRename: (name: string) => void;
@@ -531,6 +533,15 @@ function TemplateSpecEditor({
               </Link>
               ; Agent connections belong to its Virtual User.
             </p>
+            {hasTriggers &&
+            (spec.target.credential?.source ?? "session_user") === "session_user" ? (
+              // A trigger starts its session without a person, so the server
+              // falls back to the organization's sole account for the provider.
+              <p className="flex items-start gap-1.5 text-xs text-warning">
+                <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+                Triggered runs have no user account; they use the organization account.
+              </p>
+            ) : null}
           </div>
           {spec.target.credential?.source === "organization" ? (
             <div className="space-y-2">
@@ -746,10 +757,13 @@ export function SandboxPolicyEditor({
   onChange,
   disabled = false,
   definitionMode = false,
+  hasTriggers = false,
 }: {
   value: SandboxPolicy | null;
   onChange: (value: SandboxPolicy | null) => void;
   disabled?: boolean;
+  /** The Agent has triggers, whose sessions start without a person. */
+  hasTriggers?: boolean;
   /** Edit one reusable Sandbox Template definition, not an Agent binding policy. */
   definitionMode?: boolean;
 }) {
@@ -869,6 +883,7 @@ export function SandboxPolicyEditor({
           isDefault={value?.default === name}
           targets={targets}
           organizationConnections={organizationConnections}
+          hasTriggers={hasTriggers}
           disabled={disabled}
           onChange={(next) => update(name, { ...next, template_revision_id: undefined })}
           onRename={(next) => rename(name, next)}

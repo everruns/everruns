@@ -318,6 +318,13 @@ creation replaces the rule with stable owner/account ids in the pinned
 snapshot. Multiple organization accounts for the same provider are therefore
 unambiguous, and fixed Agent policies remain non-overridable by Sessions.
 
+A Session with no user (trigger and channel ingress run as an internal caller)
+has no person for `session_user` to name. Creation then rebinds the snapshot to
+`organization` with the organization's sole account for the provider, and fails
+with an error naming the cause when there are none or several: picking among
+several would silently charge an arbitrary account. The Agent's sandbox editor
+warns about this when the Agent has triggers.
+
 Two consequences worth stating, because they are where the diagram stops being
 symmetric: a `host` or `machine` Sandbox has instances but no checkpoints,
 which is what `durability: none` means; and a `bashkit` Environment has an

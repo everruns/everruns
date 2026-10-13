@@ -80,12 +80,14 @@ const policy = (options: Record<string, unknown> = {}, network?: Network): Sandb
   },
 });
 
-const daytonaPolicy = (): SandboxPolicy => ({
+const daytonaPolicy = (
+  credential?: SandboxTemplateSpec["target"]["credential"],
+): SandboxPolicy => ({
   mode: "fixed",
   default: "daytona",
   templates: {
     daytona: {
-      target: { kind: "managed", provider: "daytona" },
+      target: { kind: "managed", provider: "daytona", ...(credential ? { credential } : {}) },
       durability: "checkpointed",
       lifecycle: { idle_after_seconds: 180, idle_action: "checkpoint_and_stop" },
       bootstrap: { commands: [] },
@@ -193,5 +195,32 @@ describe("SandboxPolicyEditor with a Modal template", () => {
       level: "isolated",
       network: { mode: "allowlist", allowed_hosts: ["pypi.org", "*.pythonhosted.org"] },
     });
+  });
+});
+
+describe("SandboxPolicyEditor for an Agent with triggers", () => {
+  const warning = "Triggered runs have no user account; they use the organization account.";
+
+  it("warns that triggered runs use the organization account", () => {
+    render(<SandboxPolicyEditor value={daytonaPolicy()} onChange={jest.fn()} hasTriggers />);
+
+    expect(screen.getByText(warning)).toBeInTheDocument();
+  });
+
+  it("stays quiet without triggers or with an explicit account", () => {
+    const { unmount } = render(
+      <SandboxPolicyEditor value={daytonaPolicy()} onChange={jest.fn()} />,
+    );
+    expect(screen.queryByText(warning)).not.toBeInTheDocument();
+    unmount();
+
+    render(
+      <SandboxPolicyEditor
+        value={daytonaPolicy({ source: "agent" })}
+        onChange={jest.fn()}
+        hasTriggers
+      />,
+    );
+    expect(screen.queryByText(warning)).not.toBeInTheDocument();
   });
 });
