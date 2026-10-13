@@ -890,7 +890,7 @@ everruns sessions mcp-servers remove --session-id session_01h9 --name github --r
 
 ## sessions messages create
 
-Create a user message in a session and start the next run. The message content is an array of content parts, e.g. --content '[{"type":"text","text":"Tell me a short, family-friendly joke."}]'.
+Create a user message in a session and start the next run. Pass the message as one JSON object whose `content` is an array of content parts (there is no separate --content flag), e.g. --message '{"content":[{"type":"text","text":"Tell me a short, family-friendly joke."}]}'.
 
 ```bash
 everruns sessions messages create [OPTIONS] --message <message> --session-id <session_id>

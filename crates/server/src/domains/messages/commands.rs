@@ -12,7 +12,8 @@ use utoipa::ToSchema;
 pub struct CreateMessage {
     /// Session's prefixed public identifier.
     pub session_id: String,
-    /// The user message: `{"content": [{"type": "text", "text": ...}]}`.
+    /// The user message as one JSON object whose `content` is an array of
+    /// content parts, e.g. `{"content": [{"type": "text", "text": "Hi"}]}`.
     pub message: crate::domains::messages::types::InputMessage,
     /// Active agent participant that should answer this turn instead of the session host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -40,7 +41,7 @@ pub struct CreateMessage {
 #[command(
     name = "create_message",
     category = "messages",
-    description = "Create a user message in a session and start the next run. The message content is an array of content parts, e.g. --content '[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]'.",
+    description = "Create a user message in a session and start the next run. Pass the message as one JSON object whose `content` is an array of content parts (there is no separate --content flag), e.g. --message '{\"content\":[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]}'.",
     method = "POST",
     path = "/v1/sessions/{session_id}/messages",
     policy = crate::domains::sessions::SESSION_MANAGE,
