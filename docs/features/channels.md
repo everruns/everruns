@@ -27,6 +27,16 @@ Use a channel when an external peer sends a request and waits for a reply. Use a
 
 Routes are relative to the API base, for example `https://your-everruns-host/api`. The channel ID in each route is the channel's own ID, not the Agent's.
 
+## Download received files
+
+Files received through Slack, AG-UI and A2A remain available to the Agent in
+its session. Opening a stored file's `/v1/files/{file_id}` URL downloads its
+bytes instead of rendering it on the application's origin. This endpoint uses
+`Content-Disposition: attachment`, `Content-Type: application/octet-stream`
+and `X-Content-Type-Options: nosniff` for every stored file, including PDFs and
+zip archives. File listings retain the original media type. Downloads require
+authentication and membership in the file's organization.
+
 ## Create a channel
 
 1. Open the Agent and select the **Integrations** tab.

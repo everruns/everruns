@@ -219,6 +219,17 @@ each file as bytes or as a URL to download; the host's session port stores it
 | Agent execution API, MCP `session_send_message`, serve | Accept file parts like REST messages. |
 | Webhook, Poppy, voice | Unchanged; they carry no files today. |
 
+### Browser delivery boundary
+
+Attachment types describe what the agent can read; they do not grant browser
+execution on the application's origin. The general
+[files download endpoint](../../crates/server/src/api/files.rs) delivers every
+stored file as an inert download, including existing rows and files from any
+intake surface. Original bytes and media metadata remain available through
+storage and file listings. Authentication, organization scoping and global
+security headers still apply. Active previews use the existing isolated
+[HTML preview boundary](../../crates/server/src/api/session_files.rs).
+
 ### 3. Every attachment carries a label
 
 When a message is turned into a model request, each attachment part becomes a
