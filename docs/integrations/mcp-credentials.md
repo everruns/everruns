@@ -22,9 +22,9 @@ future calls then return a setup-required result with a link back to the
 agent's Credentials settings.
 
 Session Storage has a separate encrypted secret lifecycle for session-local
-workflows. Those secrets do not follow per-invocation sessions, and a model can
-read them with `secret_store get`, so they are not a substitute for an MCP
-credential binding.
+workflows. Those secrets do not follow per-invocation sessions and are not
+injected into MCP tool calls, so they are not a substitute for an MCP credential
+binding.
 
 ## OAuth connections
 

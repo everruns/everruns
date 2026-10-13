@@ -38,5 +38,6 @@ session-scoped encrypted secret without reading the value back.
 - Create/upsert, rotate, list metadata, and delete all succeed.
 - Values are never prefilled or read back and leave client state after each
   submission.
-- Scope copy explains that the value belongs only to this Session, is readable
-  by `secret_store`, and is not the durable credential path for Agent Triggers.
+- Scope copy explains that the value belongs only to this Session and is not
+  the durable credential path for Agent Triggers. The agent cannot read it back
+  (`secret_store get` refuses every name).
