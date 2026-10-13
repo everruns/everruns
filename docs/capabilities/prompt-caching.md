@@ -58,6 +58,9 @@ Terra and Luna through the OpenAI API, the request keeps the first tool list
 and sends each change in the conversation, so the cache survives it. GPT-5.5
 and GPT-5.4 keep the cache when tools are added; a revealed tool there still
 costs one cache write.
+Instructions a capability adds when it is switched on mid-session travel the
+same way on those models: the request keeps the first system prompt and sends
+the new instructions in the conversation.
 Other models and endpoints receive the current tool list, which costs one cache
 write per change, as before.
 

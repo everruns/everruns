@@ -417,6 +417,21 @@ Each step is one PR and leaves `main` working.
    mid-session ride in the change's `note` instead of the system prompt;
    compaction and trimming re-baseline; the infinity-context notice and
    compaction summary stop being folded into top-level `system`.
+   Done: a baseline entry also records the system prompt
+   (`ToolChanges::system_prompt`); later parts (split on blank lines, the
+   `<system-prompt>` wrapper ignored) that a capability adds become the entry's
+   `note`, and inline requests send the epoch's prompt
+   (`LlmCallConfig::system_prompt_baseline`). A part that changes or
+   disappears sends the current prompt, as before. Live
+   (`test_prompt_text_added_mid_session_keeps_prompt_cache`, how-to inserted
+   ahead of 2-4k tokens of capability text): Sonnet 5.5 read 4405 of 4551,
+   GPT-6 Luna 2478 of 2481, and both followed the added text; without the
+   prompt baseline they read 714 and 0. Compaction and trimming needed
+   nothing: a checkpoint cuts the stored entries, so the next request records
+   a new baseline, and a trimmed entry withholds the baseline (fallback). The
+   infinity-context notice already sits after the anchored head, so it stays a
+   mid-conversation message; only the compaction summary folds into `system`,
+   once per compaction, which rewrites the prefix anyway.
 7. **yolop** adopts it (its reveal-gated memory how-to moves into the `note`).
 8. **Fallback experiments**: cold-moment batching, then the schema-in-result
    eval.

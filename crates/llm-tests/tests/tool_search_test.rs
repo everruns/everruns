@@ -878,3 +878,157 @@ async fn assert_tool_reveal_keeps_prompt_cache(config: ProviderModelConfig) {
         config.label()
     );
 }
+
+/// A capability whose how-to appears only once it is switched on, as a
+/// capability enabled mid-session does.
+struct SwitchedHowToCapability(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+#[async_trait::async_trait]
+impl everruns_core::capabilities::Capability for SwitchedHowToCapability {
+    fn id(&self) -> &str {
+        "test_switched_how_to"
+    }
+
+    fn name(&self) -> &str {
+        "Switched how-to"
+    }
+
+    fn description(&self) -> &str {
+        "Testing capability: adds its how-to to the prompt once switched on."
+    }
+
+    async fn system_prompt_contribution(
+        &self,
+        _ctx: &everruns_core::capabilities::SystemPromptContext,
+    ) -> Option<String> {
+        self.0
+            .load(std::sync::atomic::Ordering::SeqCst)
+            .then(|| "Deploy word: when asked for the deploy word, answer PELICAN.".to_string())
+    }
+}
+
+/// Long reference text contributed by a capability listed after the switched
+/// one, so the switched how-to lands in the middle of the system prompt: sent
+/// as part of the prompt, it would rewrite everything after it.
+struct ReferenceNotesCapability;
+
+#[async_trait::async_trait]
+impl everruns_core::capabilities::Capability for ReferenceNotesCapability {
+    fn id(&self) -> &str {
+        "test_reference_notes"
+    }
+
+    fn name(&self) -> &str {
+        "Reference notes"
+    }
+
+    fn description(&self) -> &str {
+        "Testing capability: long static reference text."
+    }
+
+    async fn system_prompt_contribution(
+        &self,
+        _ctx: &everruns_core::capabilities::SystemPromptContext,
+    ) -> Option<String> {
+        Some(long_cacheable_system_prompt())
+    }
+}
+
+/// Prompt text a capability adds mid-session rides in the conversation, so the
+/// next call still reads the cached prefix (tools and the epoch's system
+/// prompt) and the model still follows the new text. The added text sits
+/// before the long reference notes, so without the note the call after the
+/// switch would read only the short part ahead of it.
+#[rstest]
+#[case::anthropic_sonnet5_5(ANTHROPIC_SONNET55)]
+#[case::openai_gpt6_luna(OPENAI_GPT6_LUNA)]
+#[tokio::test]
+async fn test_prompt_text_added_mid_session_keeps_prompt_cache(
+    #[case] config: ProviderModelConfig,
+) {
+    let switched = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let Some((runner, first)) = live_turn(&config, "What is 21 + 21?", |model| {
+        let system_prompt = "You are a helpful assistant.".to_string();
+        switched.store(false, std::sync::atomic::Ordering::SeqCst);
+        let capability = SwitchedHowToCapability(switched.clone());
+        async move {
+            InMemoryAgenticLoop::builder()
+                .agent_name("Prompt Note Cache Agent")
+                .system_prompt(system_prompt)
+                .model(model)
+                .driver_registry(all_providers_registry())
+                .capability(TestMathCapability)
+                .capability(capability)
+                .capability(ReferenceNotesCapability)
+                .capability(PromptCachingCapability::new())
+                .max_iterations(4)
+                .build()
+                .await
+                .unwrap()
+        }
+    })
+    .await
+    else {
+        return;
+    };
+    assert!(first.success, "Turn should succeed: {:?}", first.error);
+
+    switched.store(true, std::sync::atomic::Ordering::SeqCst);
+    let second = runner
+        .run_turn("What is the deploy word? Answer with the word only.")
+        .await
+        .unwrap();
+    assert!(second.success, "Turn should succeed: {:?}", second.error);
+
+    let generations: Vec<_> = runner
+        .events_by_type(LLM_GENERATION)
+        .await
+        .into_iter()
+        .filter_map(|event| match event.data {
+            EventData::LlmGeneration(data) => Some(data),
+            _ => None,
+        })
+        .collect();
+    let noted = generations
+        .iter()
+        .find(|data| {
+            data.metadata
+                .tool_changes
+                .as_ref()
+                .is_some_and(|c| c.note.is_some())
+        })
+        .expect("the call after the switch should record the how-to as a note");
+    let cache_read = noted
+        .metadata
+        .usage
+        .as_ref()
+        .and_then(|usage| usage.cache_read_tokens)
+        .unwrap_or(0);
+    // Everything the previous call sent is the prefix this one can read.
+    let previous_input = generations
+        .iter()
+        .take_while(|data| !std::ptr::eq(*data, noted))
+        .last()
+        .and_then(|data| data.metadata.usage.as_ref())
+        .map(|usage| {
+            usage.input_tokens
+                + usage.cache_read_tokens.unwrap_or(0)
+                + usage.cache_creation_tokens.unwrap_or(0)
+        })
+        .unwrap_or(0);
+    eprintln!(
+        "{} cache_read after the switch: {cache_read} of a {previous_input}-token prefix",
+        config.label()
+    );
+    assert!(
+        previous_input >= 2048 && cache_read * 10 >= previous_input * 9,
+        "{}: the call after the switch should read the cached prefix, read {cache_read} of {previous_input}",
+        config.label()
+    );
+    assert!(
+        second.response.to_uppercase().contains("PELICAN"),
+        "{}: the model should follow the added how-to, said {:?}",
+        config.label(),
+        second.response
+    );
+}
