@@ -25019,6 +25019,7 @@ export interface components {
       display_name?: string | null;
       /** @description Human-readable narration for timeline rendering */
       narration?: string | null;
+      side_effect_class?: components["schemas"]["SideEffectClass"] | null;
       /** @description The tool call being executed */
       tool_call: components["schemas"]["ToolCall"];
       /** @description Stable fingerprint of tool name + normalized arguments. */

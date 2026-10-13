@@ -136,6 +136,7 @@ impl TestRun {
             tool_call_fingerprint: None,
             display_name: None,
             narration: narration.map(str::to_string),
+            side_effect_class: None,
         });
     }
 
