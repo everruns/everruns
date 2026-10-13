@@ -24810,6 +24810,53 @@
   },
   {
     "category": "agents",
+    "cli": "agents github use-everruns-app",
+    "description": "Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first.",
+    "input_schema": {
+      "$defs": {
+        "UseEverrunsAppRequest": {
+          "description": "Which org link to act through.",
+          "properties": {
+            "connection_id": {
+              "description": "Connection id of one of the org's linked installations, from the\nagent's GitHub status (`everruns_app_installations`).",
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "connection_id"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/UseEverrunsAppRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "description": "Agent's prefixed public identifier.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Make an agent act as the shared Everruns App through one org link."
+    },
+    "method": "POST",
+    "name": "use_agent_everruns_app",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/github/everruns-app",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "agents",
     "cli": "agents validate",
     "description": "Validate an agent package and destination dependencies without changing resources.",
     "input_schema": {
