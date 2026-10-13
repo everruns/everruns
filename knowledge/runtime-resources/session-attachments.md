@@ -193,7 +193,10 @@ The channel host's attachment intake
 turns whatever a surface received into stored attachments. A channel hands it
 each file as bytes or as a URL to download; the host's session port stores it
 (the server makes it an org upload, which message creation then copies into
-`/attachments`).
+`/attachments`). Surfaces that are not channels use the same
+`AttachmentIntake` with their own store: the execution API and the MCP tools
+store files as uploads of the caller's org
+([`intake.rs`](../../crates/server/src/domains/messages/intake.rs)).
 
 - **Downloads** go through the host's egress service, scoped to the channel's
   org: `https` only, DNS-pinned, 30 second timeout, at most 3 redirects, the
@@ -214,9 +217,10 @@ each file as bytes or as a URL to download; the host's session port stores it
 | Surface | Change |
 |---|---|
 | Slack (server) | Done: every file in the triggering message is downloaded with the bot token. Remote files (Google Drive and similar) keep their link in the text. Embedded Slack still describes files by name. |
-| AG-UI, Public Chat | Inline binary, image and document input parts go through intake instead of `to_text()`; `imageIds` keeps working. Public Chat uses a stricter default policy. |
-| A2A, PACT | `FilePart` with bytes or URI goes through intake. |
-| Agent execution API, MCP `session_send_message`, serve | Accept file parts like REST messages. |
+| AG-UI, Public Chat | Done: image, audio, video and document parts of the trigger message go through intake (inline data, `data:` URLs, downloads); a provider file handle is described by its id; `imageIds` keeps working. Public Chat uses the default policy; a stricter one is not built. |
+| A2A | Done: 0.3 `file` parts and 1.0 `raw` / `url` parts go through intake. PACT still takes text only. |
+| Agent execution API, MCP `agent_run` / `session_send_message` | Done: a `files` list (base64 `data` or `url` per file) goes through intake. Upload ids are refused on the execution API, since a caller has no upload route and ids are scoped to the org. The card advertises images and files. |
+| serve | Not done: serve sends text only end to end, so files there need its own session storage first. |
 | Webhook, Poppy, voice | Unchanged; they carry no files today. |
 
 ### 3. Every attachment carries a label

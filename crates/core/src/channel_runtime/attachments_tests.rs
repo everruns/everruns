@@ -5,46 +5,18 @@ use async_trait::async_trait;
 use everruns_contracts::runtime::egress::{
     EgressError, EgressResponse, EgressResult, EgressStreamResponse,
 };
-use everruns_contracts::runtime::message_retriever::InputMessage;
 
 use super::*;
-use crate::channel_runtime::{ChannelEventStream, NewChannelSession, SendOutcome};
 
 /// Stores every file it is given as a text part naming it.
 #[derive(Default)]
-struct StorePort {
+struct TextStore {
     stored: Mutex<Vec<ReceivedAttachment>>,
 }
 
 #[async_trait]
-impl ChannelSessionPort for StorePort {
-    async fn create_session(&self, _: NewChannelSession) -> Result<String, ChannelError> {
-        unreachable!()
-    }
-
-    async fn send(
-        &self,
-        _: &ChannelConfig,
-        _: &str,
-        _: InputMessage,
-    ) -> Result<SendOutcome, ChannelError> {
-        unreachable!()
-    }
-
-    async fn events(
-        &self,
-        _: &ChannelConfig,
-        _: &str,
-        _: Option<i64>,
-    ) -> Result<ChannelEventStream, ChannelError> {
-        unreachable!()
-    }
-
-    async fn store_attachment(
-        &self,
-        _: &ChannelConfig,
-        attachment: ReceivedAttachment,
-    ) -> Result<ContentPart, ChannelError> {
+impl AttachmentStore for TextStore {
+    async fn store(&self, attachment: ReceivedAttachment) -> Result<ContentPart, ChannelError> {
         let part = ContentPart::text(format!(
             "stored {} ({})",
             attachment.name, attachment.media_type
@@ -122,14 +94,15 @@ async fn take(
     policy: AttachmentPolicy,
     attachments: &[InboundAttachment],
 ) -> (Vec<String>, Vec<ReceivedAttachment>) {
-    let port = StorePort::default();
-    let intake = Intake {
-        port: &port,
+    let store = TextStore::default();
+    let intake = AttachmentIntake {
+        store: &store,
         egress,
         policy,
+        source: "slack",
     };
     let parts = intake
-        .parts(&ChannelConfig::new("slack"), attachments)
+        .parts(attachments)
         .await
         .into_iter()
         .map(|part| match part {
@@ -137,7 +110,7 @@ async fn take(
             other => panic!("unexpected part {other:?}"),
         })
         .collect();
-    (parts, port.stored.into_inner().unwrap())
+    (parts, store.stored.into_inner().unwrap())
 }
 
 #[tokio::test]

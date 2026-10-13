@@ -34774,7 +34774,7 @@ export interface operations {
       };
       cookie?: never;
     };
-    /** @description `{"message": {"role": "user", "content": [{"type": "text", "text": …}]}}` */
+    /** @description `{"message": {"role": "user", "content": [{"type": "text", "text": …}]}, "files": [MessageFile]}`. Content holds text and image parts; `files` (optional) carries files as base64 `data` or a public https `url`, each kept in the session's `/attachments`. */
     requestBody: {
       content: {
         "application/json": unknown;
@@ -37114,7 +37114,7 @@ export interface operations {
       };
       cookie?: never;
     };
-    /** @description `{"message": {"role": "user", "content": [{"type": "text", "text": …}]}}` */
+    /** @description `{"message": {"role": "user", "content": [{"type": "text", "text": …}]}, "files": [MessageFile]}`. Content holds text and image parts; `files` (optional) carries files as base64 `data` or a public https `url`, each kept in the session's `/attachments`. */
     requestBody: {
       content: {
         "application/json": unknown;

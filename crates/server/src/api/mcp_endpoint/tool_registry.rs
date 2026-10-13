@@ -329,6 +329,7 @@ fn agent_run_tool(protocol_version: &str, org_id_description: &str) -> McpEndpoi
                         "minLength": 1
                     }),
                 ),
+                ("files", super::files::files_schema()),
                 (
                     "title",
                     json!({
@@ -417,6 +418,7 @@ fn session_send_message_tool(
                         "minLength": 1
                     }),
                 ),
+                ("files", super::files::files_schema()),
                 (
                     "organization_id",
                     json!({
