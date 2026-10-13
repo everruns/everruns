@@ -105,6 +105,42 @@ parameter schemas, and on your next step those tools become callable with their 
 parameters. Frequently used tools keep their full schemas and do not need to be \
 searched for.";
 
+/// [`SYSTEM_PROMPT`] for [`Reveal::InResult`]: the listed schema never
+/// changes, so the model calls from the schema the search returned.
+const IN_RESULT_SYSTEM_PROMPT: &str = "Many of your tools are loaded lazily to save context: \
+you can see their names and descriptions, but their parameter schemas are hidden. \
+Before calling a tool whose parameters you have not yet seen, call `tool_search` with a \
+short query describing what you need (for example \"read file\" or \"send email\"). It \
+returns the matching tools with their full JSON parameter schemas. The tool list keeps \
+showing a placeholder schema for those tools; call them with arguments that follow the \
+schema `tool_search` returned. Frequently used tools keep their full schemas and do not \
+need to be searched for.";
+
+/// How a tool found by `tool_search` becomes callable with its parameters.
+///
+/// `Redefine` (the default) puts the full schema on the tool's definition from
+/// the next step, a tool change that costs a cache write on models that cannot
+/// send changes inline. `InResult` never changes the definition: the stub
+/// stays, the model calls from the schema in the search result, and the tool
+/// checks its own arguments. Experimental until an eval shows calls are as
+/// good; see `knowledge/execution/cache-stable-tool-changes.md`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Reveal {
+    #[default]
+    Redefine,
+    InResult,
+}
+
+impl Reveal {
+    fn from_config(config: &Value) -> Option<Self> {
+        match config.get("reveal")?.as_str()? {
+            "redefine" => Some(Self::Redefine),
+            "in_result" => Some(Self::InResult),
+            _ => None,
+        }
+    }
+}
+
 /// Generic Tool Search capability.
 ///
 /// Adding this capability enables client-side deferred tool loading for any
@@ -114,6 +150,7 @@ searched for.";
 pub struct ToolSearchCapability {
     threshold: usize,
     never_defer: Arc<HashSet<String>>,
+    reveal: Reveal,
 }
 
 impl ToolSearchCapability {
@@ -125,7 +162,19 @@ impl ToolSearchCapability {
         Self {
             threshold,
             never_defer: Arc::new(HashSet::new()),
+            reveal: Reveal::default(),
         }
+    }
+
+    /// Choose how found tools become callable (config `reveal`:
+    /// `"redefine"` or `"in_result"` overrides it).
+    pub fn with_reveal(mut self, reveal: Reveal) -> Self {
+        self.reveal = reveal;
+        self
+    }
+
+    fn reveal(&self, config: &Value) -> Reveal {
+        Reveal::from_config(config).unwrap_or(self.reveal)
     }
 
     /// Keep the named tools' full parameter schemas even above the deferral
@@ -170,11 +219,13 @@ impl ToolSearchCapability {
         threshold: usize,
         never_defer: Arc<HashSet<String>>,
         disclosure: ToolDisclosure,
+        reveal: Reveal,
     ) -> Arc<dyn ToolDefinitionHook> {
         Arc::new(DeferSchemaHook {
             threshold,
             never_defer,
             disclosure,
+            reveal,
         })
     }
 }
@@ -185,6 +236,7 @@ impl Default for ToolSearchCapability {
     }
 }
 
+#[async_trait]
 impl Capability for ToolSearchCapability {
     fn id(&self) -> &str {
         TOOL_SEARCH_CAPABILITY_ID
@@ -217,11 +269,36 @@ impl Capability for ToolSearchCapability {
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
-        Some(SYSTEM_PROMPT)
+        Some(match self.reveal {
+            Reveal::Redefine => SYSTEM_PROMPT,
+            Reveal::InResult => IN_RESULT_SYSTEM_PROMPT,
+        })
+    }
+
+    async fn system_prompt_contribution_with_config(
+        &self,
+        _ctx: &SystemPromptContext,
+        config: &Value,
+    ) -> Option<String> {
+        Some(
+            match self.reveal(config) {
+                Reveal::Redefine => SYSTEM_PROMPT,
+                Reveal::InResult => IN_RESULT_SYSTEM_PROMPT,
+            }
+            .to_string(),
+        )
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![Box::new(ToolSearchTool)]
+        vec![Box::new(ToolSearchTool {
+            reveal: self.reveal,
+        })]
+    }
+
+    fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
+        vec![Box::new(ToolSearchTool {
+            reveal: self.reveal(config),
+        })]
     }
 
     fn tool_definition_hooks(&self) -> Vec<Arc<dyn ToolDefinitionHook>> {
@@ -231,6 +308,7 @@ impl Capability for ToolSearchCapability {
             self.threshold,
             self.never_defer.clone(),
             ToolDisclosure::default(),
+            self.reveal,
         )]
     }
 
@@ -243,6 +321,7 @@ impl Capability for ToolSearchCapability {
             threshold,
             never_defer,
             ToolDisclosure::default(),
+            self.reveal(config),
         )]
     }
 
@@ -256,6 +335,7 @@ impl Capability for ToolSearchCapability {
             threshold,
             never_defer,
             ctx.tool_disclosure.clone(),
+            self.reveal(config),
         )]
     }
 }
@@ -280,19 +360,21 @@ pub(crate) struct DeferSchemaHook {
     threshold: usize,
     never_defer: Arc<HashSet<String>>,
     disclosure: ToolDisclosure,
+    reveal: Reveal,
 }
 
 impl DeferSchemaHook {
     /// A tool keeps its full schema when it is the search tool itself, opts out
     /// via `DeferrablePolicy::Never`, is in the embedder's `never_defer`
-    /// allowlist, or has already been revealed via `tool_search` this session.
+    /// allowlist, or has already been revealed via `tool_search` this session
+    /// (unless reveals stay in the search result).
     fn keep_full(&self, tool: &ToolDefinition) -> bool {
         let name = tool.name();
         let revealed = &self.disclosure.revealed;
         name == TOOL_SEARCH_TOOL_NAME
             || matches!(tool.deferrable(), DeferrablePolicy::Never)
             || self.never_defer.contains(name)
-            || revealed.contains(name)
+            || (self.reveal == Reveal::Redefine && revealed.contains(name))
             // A revealed deferred MCP server reveals every tool it lists.
             || revealed
                 .iter()
@@ -357,7 +439,9 @@ fn strip_parameters(tool: ToolDefinition) -> ToolDefinition {
 /// records them as revealed (per session) so the schema hook restores them on
 /// the next pass.
 #[derive(Default)]
-pub struct ToolSearchTool;
+pub struct ToolSearchTool {
+    reveal: Reveal,
+}
 
 impl ToolSearchTool {
     /// Rank `defs` against `query` and return the best matches (full schemas).
@@ -572,11 +656,19 @@ impl Tool for ToolSearchTool {
         // its tools are listed, with full schemas, from the next step on.
         let servers = reveal_deferred_servers(context, &loaded).await;
 
+        let message = match self.reveal {
+            Reveal::Redefine => {
+                "Full schemas loaded; these tools are callable with their full parameters on your next step."
+            }
+            Reveal::InResult => {
+                "Call these tools with arguments that follow the parameters shown here; the tool list keeps a placeholder schema for them."
+            }
+        };
         let mut result = json!({
             "query": query,
             "tools": matches,
             "loaded": loaded,
-            "message": "Full schemas loaded; these tools are callable with their full parameters on your next step.",
+            "message": message,
         });
         if !servers.is_empty() {
             result["loading_mcp_servers"] = json!(servers);
@@ -736,6 +828,7 @@ mod tests {
             threshold,
             never_defer: Arc::new(HashSet::new()),
             disclosure: ToolDisclosure::default(),
+            reveal: Reveal::Redefine,
         }
     }
 
@@ -830,7 +923,7 @@ mod tests {
         let hook = hook(3);
         let mut tools = many_tools(3);
         tools.push(builtin("write_todos", "todos", DeferrablePolicy::Never));
-        tools.push(ToolSearchTool.to_definition());
+        tools.push(ToolSearchTool::default().to_definition());
 
         let out = hook.transform(tools);
 
@@ -921,6 +1014,52 @@ mod tests {
         assert!(
             is_stubbed(after.iter().find(|t| t.name() == "tool_1").unwrap()),
             "unrevealed tools stay deferred"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_in_result_reveal_keeps_the_stub_and_says_so() {
+        let cap = ToolSearchCapability::with_threshold(3);
+        let config = json!({ "reveal": "in_result" });
+        let transcript = search_turn("call_1", json!({ "loaded": ["tool_0"] }));
+        let after = cap.tool_definition_hooks_with_context(&ctx_for(&transcript), &config)[0]
+            .transform(many_tools(5));
+        assert!(
+            is_stubbed(after.iter().find(|t| t.name() == "tool_0").unwrap()),
+            "a found tool keeps its stub, so the tool list never changes"
+        );
+
+        let ctx = ctx_for(&[]);
+        let prompt = cap
+            .system_prompt_contribution_with_config(&ctx, &config)
+            .await
+            .unwrap();
+        assert!(prompt.contains("placeholder schema"));
+        let default = cap
+            .system_prompt_contribution_with_config(&ctx, &json!({}))
+            .await
+            .unwrap();
+        assert_eq!(default, SYSTEM_PROMPT);
+
+        let tool = cap.tools_with_config(&config).remove(0);
+        let mut registry = crate::builtins::tools::ToolRegistry::new();
+        registry.register(MiniTool);
+        let mut tool_ctx = ToolContext::new(uuid::Uuid::new_v4().into());
+        tool_ctx.tool_registry = Some(Arc::new(registry));
+        tool_ctx.visible_tool_names =
+            Some(Arc::new(["read_file".to_string()].into_iter().collect()));
+        let ToolExecutionResult::Success(value) = tool
+            .execute_with_context(json!({ "query": "file" }), &tool_ctx)
+            .await
+        else {
+            panic!("expected success");
+        };
+        assert!(value["tools"][0]["parameters"]["properties"]["path"].is_object());
+        assert!(
+            value["message"]
+                .as_str()
+                .unwrap()
+                .contains("follow the parameters shown here")
         );
     }
 
@@ -1144,7 +1283,7 @@ mod tests {
     #[test]
     fn test_search_excludes_itself() {
         let defs = vec![
-            ToolSearchTool.to_definition(),
+            ToolSearchTool::default().to_definition(),
             builtin("read_file", "Read a file", DeferrablePolicy::Automatic),
         ];
         let results = ToolSearchTool::search(&defs, "tool_search read");
@@ -1155,7 +1294,7 @@ mod tests {
     #[tokio::test]
     async fn test_execute_without_registry_errors() {
         let ctx = ToolContext::new(uuid::Uuid::new_v4().into());
-        let result = ToolSearchTool
+        let result = ToolSearchTool::default()
             .execute_with_context(json!({ "query": "file" }), &ctx)
             .await;
         assert!(matches!(result, ToolExecutionResult::ToolError(_)));
@@ -1188,7 +1327,7 @@ mod tests {
 
         let mut registry = ToolRegistry::new();
         registry.register(MiniTool);
-        registry.register(ToolSearchTool);
+        registry.register(ToolSearchTool::default());
 
         let mut ctx = ToolContext::new(uuid::Uuid::new_v4().into());
         ctx.tool_registry = Some(Arc::new(registry));
@@ -1198,7 +1337,7 @@ mod tests {
                 .collect(),
         ));
 
-        let result = ToolSearchTool
+        let result = ToolSearchTool::default()
             .execute_with_context(json!({ "query": "file" }), &ctx)
             .await;
 
@@ -1334,7 +1473,7 @@ mod tests {
             })
             .collect();
         // Add the search tool itself, as the live capability does.
-        defs.push(ToolSearchTool.to_definition());
+        defs.push(ToolSearchTool::default().to_definition());
 
         // What the driver serializes per tool: name + description + parameters.
         let llm_view = |defs: &[ToolDefinition]| -> usize {
@@ -1420,7 +1559,7 @@ mod tests {
         let mut registry = ToolRegistry::new();
         registry.register(MiniTool);
         registry.register(HiddenTool);
-        registry.register(ToolSearchTool);
+        registry.register(ToolSearchTool::default());
 
         let mut ctx = ToolContext::new(uuid::Uuid::new_v4().into());
         ctx.tool_registry = Some(Arc::new(registry));
@@ -1430,7 +1569,7 @@ mod tests {
                 .collect(),
         ));
 
-        let result = ToolSearchTool
+        let result = ToolSearchTool::default()
             .execute_with_context(json!({ "query": "file" }), &ctx)
             .await;
 
@@ -1441,7 +1580,7 @@ mod tests {
         assert!(tools.iter().any(|t| t["name"] == "read_file"));
         assert!(tools.iter().all(|t| t["name"] != "write_file"));
 
-        let result = ToolSearchTool
+        let result = ToolSearchTool::default()
             .execute_with_context(json!({ "query": "missing" }), &ctx)
             .await;
         let ToolExecutionResult::Success(value) = result else {

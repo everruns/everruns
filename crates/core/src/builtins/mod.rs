@@ -216,7 +216,8 @@ pub use tool_output_persistence::{
     PersistOutputHook, TOOL_OUTPUT_PERSISTENCE_CAPABILITY_ID, ToolOutputPersistenceCapability,
 };
 pub use tool_search::{
-    TOOL_SEARCH_CAPABILITY_ID, TOOL_SEARCH_TOOL_NAME, ToolSearchCapability, ToolSearchTool,
+    Reveal as ToolSearchReveal, TOOL_SEARCH_CAPABILITY_ID, TOOL_SEARCH_TOOL_NAME,
+    ToolSearchCapability, ToolSearchTool,
 };
 pub use usage_limit_auto_continue::{
     AutoContinueConfig, USAGE_LIMIT_AUTO_CONTINUE_CAPABILITY_ID, UsageLimitAutoContinueCapability,
