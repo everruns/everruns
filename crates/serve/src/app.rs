@@ -517,14 +517,13 @@ fn discover(app: &mut AppInner) {
     app.evals = evals;
 }
 
-/// Five-field cron gains a seconds field; six or seven fields pass through.
+/// Five-field cron is standard cron (weekdays 0-6 from Sunday) and goes
+/// through the platform's own conversion, so an app schedule and the hosted
+/// cron entry the manifest creates from it fire on the same days. Six or seven
+/// fields are the `cron` crate's form and pass through.
 pub(crate) fn parse_cron(expr: &str) -> Result<cron::Schedule, cron::error::Error> {
-    let fields = expr.split_whitespace().count();
-    let expr = if fields == 5 {
-        format!("0 {expr}")
-    } else {
-        expr.to_string()
-    };
+    let expr = everruns_contracts::runtime::session_schedule::standard_cron_to_crate_form(expr)
+        .unwrap_or_else(|| expr.to_string());
     cron::Schedule::from_str(&expr)
 }
 
@@ -607,6 +606,30 @@ mod tests {
         assert!(schedule.upcoming(chrono::Utc).next().is_some());
         assert!(parse_cron("0 0 9 * * MON").is_ok());
         assert!(parse_cron("every monday").is_err());
+    }
+
+    /// EVE-1260: a 5-field cron counts weekdays 0-6 from Sunday, as the
+    /// platform's schedules do, not the `cron` crate's 1-7.
+    #[test]
+    fn five_field_cron_weekdays_count_from_sunday_zero() {
+        use chrono::Datelike;
+        let weekdays = |expr: &str| {
+            let schedule = parse_cron(expr).unwrap();
+            let mut days: Vec<_> = schedule
+                .upcoming(chrono::Utc)
+                .take(14)
+                .map(|at| at.weekday())
+                .collect();
+            days.sort_by_key(|day| day.num_days_from_monday());
+            days.dedup();
+            days
+        };
+        use chrono::Weekday::{Fri, Mon, Sun, Thu, Tue, Wed};
+        assert_eq!(weekdays("0 9 * * 1-5"), vec![Mon, Tue, Wed, Thu, Fri]);
+        assert_eq!(weekdays("0 18 * * 0"), vec![Sun]);
+        assert_eq!(weekdays("0 18 * * 7"), vec![Sun]);
+        // Six- and seven-field crons keep the `cron` crate's numbering.
+        assert_eq!(weekdays("0 0 9 * * 2-6 *"), vec![Mon, Tue, Wed, Thu, Fri]);
     }
 
     #[test]

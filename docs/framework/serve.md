@@ -129,7 +129,7 @@ expression or a filter naming an unknown tool.
 | `#[agent]`, `#[agent(default)]`, `#[agent(sub)]` | `fn() -> Agent` | An agent. New sessions use the default one; a subagent becomes an `ask_<name>` tool on the others. |
 | `#[tool]`, `#[tool(needs_approval)]`, `#[tool(needs_approval = \|a: &Args\| …)]` | `async fn([cx: &Cx,] args…) -> Result<T>` | A tool named after the function, described by its doc comment. It also generates an arguments struct (`run_sql` → `RunSql`) with a JSON Schema. |
 | `#[channel]` | `fn() -> impl Into<Channel>` (a driver such as `Slack` or `Webhook`) | `POST /v1/channels/{name}`. Each external thread maps to one session, and replies are delivered back while the turn runs. `agent = "…"` picks the agent. |
-| `#[schedule("0 9 * * MON")]` | `async fn(&Cx) -> Result` | A cron entry. |
+| `#[schedule("0 9 * * MON")]` | `async fn(&Cx) -> Result` | A cron entry. A 5-field cron counts weekdays 0-6 from Sunday (7 is also Sunday), so `0 9 * * 1-5` runs Monday through Friday. |
 | `#[connection]` | `fn() -> T` or `fn() -> Result<T>` | A value tools read with `cx.connection::<T>()`. An `McpServer` connection is attached to every agent. |
 | `#[eval]` | `async fn(&mut EvalCx) -> Result` | A conversation with assertions, run in-process or against a deployment. |
 
