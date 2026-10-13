@@ -898,6 +898,7 @@ impl ServerAppBuilder {
             frontend_url: auth_config.frontend_url.clone(),
             public_chat_enabled: feature_flags.public_chat,
             mcp_event_triggers: mcp_event_triggers.clone(),
+            egress: host_composition.egress_service(),
         });
         let (channel_api_routes, channel_root_routes) = channel_states.into_routes();
         let session_files_state = api::session_files::AppState::new(

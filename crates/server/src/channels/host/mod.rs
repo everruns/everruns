@@ -55,6 +55,23 @@ impl ServerChannels {
         )
     }
 
+    /// Channels that download the files messages link to through `egress`.
+    pub fn with_egress(
+        db: Arc<StorageBackend>,
+        encryption: Option<Arc<EncryptionService>>,
+        sessions: Arc<SessionService>,
+        messages: Arc<MessageService>,
+        egress: Arc<dyn everruns_core::EgressService>,
+    ) -> Self {
+        Self::with_resolver(
+            ServerChannelResolver::new(db.clone(), encryption),
+            db,
+            sessions,
+            messages,
+            Some(egress),
+        )
+    }
+
     /// Channels resolved by `resolver`: one that also runs Slack. With
     /// `egress`, files messages link to (a Slack file) are downloaded through
     /// it and stored; without, they become notes.

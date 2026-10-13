@@ -129,6 +129,18 @@ impl AgUiState {
         }
     }
 
+    /// Download the media parts messages link to through `egress`.
+    pub fn with_egress(mut self, egress: Arc<dyn everruns_core::EgressService>) -> Self {
+        self.channels = crate::channels::host::ServerChannels::with_egress(
+            self.db.clone(),
+            self.encryption.clone(),
+            self.session_service.clone(),
+            self.message_service.clone(),
+            egress,
+        );
+        self
+    }
+
     pub fn with_runtime_auth(mut self, auth: crate::auth::AuthState) -> Self {
         self.runtime_auth = Some(auth);
         self
@@ -476,7 +488,11 @@ pub(crate) async fn run_app_agent_stream(
             .last()
             .ok_or_else(|| bad_request("messages must contain at least one user message"))?;
         match trigger_message {
-            AgUiMessage::User(message) => Some((message.content.to_text(), message.name.clone())),
+            AgUiMessage::User(message) => Some((
+                message.content.to_text(),
+                message.name.clone(),
+                media::media_attachments(&message.content),
+            )),
             _ => return Err(bad_request("the final AG-UI message must have role=user")),
         }
     };
@@ -569,8 +585,16 @@ pub(crate) async fn run_app_agent_stream(
 
     let session_key = session.session.id.to_string();
     let (events, input_message_id, resume_outcome) =
-        if let Some((trigger_content, trigger_name)) = trigger {
+        if let Some((trigger_content, trigger_name, attachments)) = trigger {
             let mut content = vec![ContentPart::text(trigger_content)];
+            content.extend(
+                state
+                    .channels
+                    .host
+                    .attachment_parts(&resolved, &attachments)
+                    .await
+                    .map_err(channel_error)?,
+            );
             content.extend(
                 ag_ui_image_content_parts(&state, &app, req.forwarded_props.as_ref())
                     .await
@@ -1315,5 +1339,6 @@ mod runtime_identity;
 pub(crate) mod capabilities;
 pub(crate) mod frontend_tools;
 pub(crate) mod interrupts;
+mod media;
 use runtime_identity::authorize_ag_ui_request;
 pub(crate) use runtime_identity::{resolve_ingress_identity, runtime_channel_account};
