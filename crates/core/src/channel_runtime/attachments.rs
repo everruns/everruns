@@ -8,8 +8,7 @@
 //! redirects), checks the media type against the bytes, applies the
 //! [`AttachmentPolicy`], and asks the session port to store each file. A file
 //! that cannot be taken becomes a text note in the message, so the agent knows
-//! it was sent; the reason the platform or storage gave goes to the log. See
-//! knowledge/runtime-resources/session-attachments.md.
+//! it was sent; the reason the platform or storage gave goes to the log.
 
 use std::sync::Arc;
 use std::time::Duration;
