@@ -367,14 +367,14 @@ impl Tool for McpProxyTool {
 
 /// Build proxy tools for every MCP-prefixed definition in `definitions`, and
 /// the resource tools when their definitions are present, delegating
-/// execution to `invoker`. Other definitions are ignored.
+/// execution to the turn-scoped `invoker`. Other definitions are ignored.
 ///
 /// Hosts call this when assembling the per-turn `ToolRegistry`, passing the
-/// turn's tool definitions (which already include MCP tools) so no re-discovery
-/// is needed.
+/// turn's tool definitions (which already include MCP tools) and an invoker
+/// scoped to those same definitions so no re-discovery is needed.
 pub fn build_mcp_proxy_tools(
     definitions: &[ToolDefinition],
-    invoker: Arc<dyn McpToolInvoker>,
+    invoker: Arc<ScopedMcpToolInvoker>,
 ) -> Vec<Box<dyn Tool>> {
     definitions
         .iter()
@@ -518,7 +518,10 @@ mod tests {
             result: ok_result(serde_json::json!({"answer":42,"nested":[true,null]})),
         });
         let mut registry = crate::runtime::tools::ToolRegistry::new();
-        for tool in build_mcp_proxy_tools(&definitions, invoker.clone()) {
+        for tool in build_mcp_proxy_tools(
+            &definitions,
+            Arc::new(ScopedMcpToolInvoker::new(&definitions, invoker.clone())),
+        ) {
             registry.register_boxed(tool);
         }
         assert_eq!(registry.len(), 1);
@@ -721,6 +724,29 @@ mod tests {
             serde_json::to_value(&*inner.calls.lock().unwrap()).unwrap(),
             serde_json::json!([allowed])
         );
+    }
+
+    #[test]
+    fn server_scope_configuration_uses_builtin_and_deferred_metadata() {
+        let scoped = ScopedMcpToolInvoker::new(
+            &[
+                mcp_def("mcp_docs__search"),
+                crate::runtime::mcp_deferred::deferred_mcp_server_definition("wiki", None),
+                client_side_mcp_def("mcp_client__search"),
+                mcp_def("read_file"),
+            ],
+            Arc::new(RecordingInvoker {
+                calls: Mutex::new(vec![]),
+                result: ok_result(Value::Null),
+            }),
+        );
+        assert!(scoped.check_server("docs").is_ok());
+        assert!(scoped.check_server("wiki").is_ok());
+        assert_eq!(
+            scoped.check_server("client").unwrap_err().to_string(),
+            "Tool execution error: MCP server 'client' is not attached to this conversation. Attached: docs, wiki"
+        );
+        assert!(scoped.check_server("read_file").is_err());
     }
 
     #[tokio::test]
