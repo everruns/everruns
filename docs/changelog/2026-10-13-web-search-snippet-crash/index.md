@@ -8,7 +8,7 @@ products: [platform, cloud, framework]
 surfaces: [api]
 links:
   docs: [/capabilities/web-search/]
-  prs: [everruns/everruns#PR]
+  prs: [everruns/everruns#4678]
 ---
 
 A [Web Search](/capabilities/web-search/) call through Brave Search or free search could fail
