@@ -6,6 +6,7 @@ kind: fix
 significance: minor
 products: [platform, cloud, framework]
 surfaces: [api]
+release: "0.48.0"
 links:
   docs: [/capabilities/web-search/]
   prs: [everruns/everruns#4678]

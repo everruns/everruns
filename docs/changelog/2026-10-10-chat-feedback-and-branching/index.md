@@ -6,6 +6,7 @@ kind: improvement
 significance: notable
 products: [platform, cloud, cli]
 surfaces: [ui, api, cli]
+release: "0.48.0"
 links:
   docs: [/features/ui/#chat-and-threads]
   prs: [everruns/everruns#4502, everruns/everruns#4494, everruns/everruns#4480]

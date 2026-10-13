@@ -6,6 +6,7 @@ kind: feature
 significance: minor
 products: [platform, cloud]
 surfaces: [ui, api]
+release: "0.48.0"
 links:
   docs: [/capabilities/web-search/, /integrations/cloudflare-web-search/]
   prs: [everruns/everruns#4643]

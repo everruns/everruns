@@ -6,6 +6,7 @@ kind: feature
 significance: major
 products: [platform, cloud]
 surfaces: [ui, api, code]
+release: "0.48.0"
 links:
   docs: [/how-to/call-your-agent-from-code/, /features/agent-api/]
   prs: [everruns/everruns#4438, everruns/everruns#4490, everruns/everruns#4508, everruns/everruns#4511, everruns/everruns#4514, everruns/everruns#4516, everruns/everruns#4527, everruns/everruns#4559]

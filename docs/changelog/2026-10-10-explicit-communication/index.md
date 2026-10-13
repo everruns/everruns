@@ -6,6 +6,7 @@ kind: feature
 significance: notable
 products: [platform, cloud, framework, cli]
 surfaces: [ui, api, code, agent]
+release: "0.48.0"
 links:
   docs: [/features/explicit-communication/]
   prs: [everruns/everruns#4447]

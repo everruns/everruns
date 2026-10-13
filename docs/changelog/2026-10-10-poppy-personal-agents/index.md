@@ -6,6 +6,7 @@ kind: feature
 significance: notable
 products: [platform, cloud]
 surfaces: [agent]
+release: "0.48.0"
 links:
   docs: [/capabilities/poppy-personal-agent/]
   prs: [everruns/everruns#4479, everruns/everruns#4549, everruns/everruns#4558]

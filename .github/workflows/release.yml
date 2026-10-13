@@ -149,9 +149,20 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           TARGET_SHA: ${{ github.sha }}
         run: |
+          set -euo pipefail
+          # The card leads the release body, not only the asset list. It points at the
+          # copy the release PR committed into the public changelog entry, pinned to the
+          # release commit; with no entry yet, it points at the asset uploaded below.
+          CARD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/v$VERSION/release-card-v$VERSION.png"
+          ENTRY_CARD=$(git ls-files "docs/changelog/*-everruns-${VERSION//./-}/card@2x.png" | head -n 1)
+          if [ -n "$ENTRY_CARD" ]; then
+            CARD_URL="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/$TARGET_SHA/$ENTRY_CARD"
+          fi
+          { printf '![Everruns %s release card](%s)\n\n' "$VERSION" "$CARD_URL"; cat release_notes.md; } > release_body.md
+
           gh release create "v$VERSION" \
             --title "v$VERSION" \
-            --notes-file release_notes.md \
+            --notes-file release_body.md \
             --target "$TARGET_SHA" \
             "release-card-v$VERSION.png#Everruns release card"
 

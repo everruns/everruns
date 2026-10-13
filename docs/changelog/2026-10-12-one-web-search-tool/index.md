@@ -6,6 +6,7 @@ kind: feature
 significance: major
 products: [platform, cloud, framework]
 surfaces: [ui, api, code]
+release: "0.48.0"
 links:
   docs: [/capabilities/web-search/]
   prs: [everruns/everruns#4551, everruns/everruns#4584, everruns/everruns#4605, everruns/everruns#4611, everruns/everruns#4614, everruns/everruns#4621]

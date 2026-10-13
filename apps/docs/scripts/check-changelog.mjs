@@ -161,8 +161,11 @@ async function checkEntry(folder) {
     fail(where, `supersededBy ${fm.supersededBy} is not an entry folder`);
   }
 
-  const count = words(body);
-  const [minWords, maxWords] = isRelease ? [20, 400] : [40, 150];
+  // A release's "In the changelog" list is one generated link per entry it carries, so
+  // it grows with the release (51 entries in 0.48.0). The word budget covers the prose only.
+  const counted = isRelease ? body.replace(/^- \[[^\]]*\]\(\/changelog\/[^)]*\)\s*$/gm, "") : body;
+  const count = words(counted);
+  const [minWords, maxWords] = isRelease ? [10, 400] : [40, 150];
   if (count < minWords || count > maxWords) {
     fail(where, `body is ${count} words; keep it ${minWords}-${maxWords}`);
   }
