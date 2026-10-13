@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [agent]
 release: "0.48.0"
 links:
-  docs: [/capabilities/poppy-personal-agent/]
+  docs: [/capabilities/poppy-personal-agent/, /features/poppy/]
   prs: [everruns/everruns#4479, everruns/everruns#4549, everruns/everruns#4558]
 ---
 
@@ -26,7 +26,14 @@ an Everruns agent becomes that personal agent for any company that publishes
 ```
 
 The deployment holds one personal agent identity with pairwise user IDs, and
-keys and session tokens stay in the control plane. A Poppy channel type serves
-the company side of the protocol.
+keys and session tokens stay in the control plane. A `poppy` channel serves the
+company side of [draft 0.1](https://personalagentprotocol.org/docs/spec): any
+personal agent can reach a published agent once the company redirects its
+`/.well-known/poppy.json` to the channel, as described in
+[Personal Agent Protocol (Poppy)](/features/poppy/).
 
 See [Poppy personal agent](/capabilities/poppy-personal-agent/) and [#4479](https://github.com/everruns/everruns/pull/4479), [#4549](https://github.com/everruns/everruns/pull/4549), [#4558](https://github.com/everruns/everruns/pull/4558).
+
+## Update 2026-10-11
+
+Framework apps can be personal agents too. See [Framework apps act as Poppy personal agents](/changelog/2026-10-11-poppy-framework-personal-agents/).
