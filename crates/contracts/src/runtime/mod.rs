@@ -119,8 +119,8 @@ pub use self::capability_mcp_server::{
 pub use self::channel::{
     ChannelAgentSurface, ChannelDeliveryAdapter, ChannelStreamDelivery, ChannelViewContext,
     DeliveryContext as ChannelDeliveryContext, DeliveryResult as ChannelDeliveryResult,
-    InboundAttachment, InboundChannelEvent, OutboundChannelMessage, Participant, SessionBinding,
-    ThreadContext,
+    InboundAttachment, InboundChannelEvent, OutboundChannelMessage, Participant, RemoteCredential,
+    SessionBinding, ThreadContext,
 };
 pub use self::command_host::{
     CommandHost, CommandTurnContext, DisabledCommandHost, SessionCompletion,

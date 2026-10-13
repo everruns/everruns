@@ -51,24 +51,31 @@ impl ServerChannels {
             db,
             sessions,
             messages,
+            None,
         )
     }
 
-    /// Channels resolved by `resolver`: one that also runs Slack.
+    /// Channels resolved by `resolver`: one that also runs Slack. With
+    /// `egress`, files messages link to (a Slack file) are downloaded through
+    /// it and stored; without, they become notes.
     pub fn with_resolver(
         resolver: ServerChannelResolver,
         db: Arc<StorageBackend>,
         sessions: Arc<SessionService>,
         messages: Arc<MessageService>,
+        egress: Option<Arc<dyn everruns_core::EgressService>>,
     ) -> Self {
-        let host = ChannelHost::builder(Arc::new(ServerChannelPort::new(
+        let mut builder = ChannelHost::builder(Arc::new(ServerChannelPort::new(
             db.clone(),
             sessions,
             messages,
         )))
         .store(Arc::new(PgChannelStore::new(db)))
-        .resolver(Arc::new(resolver.clone()))
-        .build();
+        .resolver(Arc::new(resolver.clone()));
+        if let Some(egress) = egress {
+            builder = builder.egress(egress);
+        }
+        let host = builder.build();
         Self { host, resolver }
     }
 }

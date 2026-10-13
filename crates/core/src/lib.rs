@@ -322,8 +322,8 @@ pub use workspace_roots::{
 pub use channel::{
     ChannelAgentSurface, ChannelDeliveryAdapter, ChannelStreamDelivery, ChannelViewContext,
     DeliveryContext as ChannelDeliveryContext, DeliveryResult as ChannelDeliveryResult,
-    InboundAttachment, InboundChannelEvent, OutboundChannelMessage, Participant, SessionBinding,
-    ThreadContext,
+    InboundAttachment, InboundChannelEvent, OutboundChannelMessage, Participant, RemoteCredential,
+    SessionBinding, ThreadContext,
 };
 
 // Narrow subagent-session delegation contract (EVE-839). The full hosted

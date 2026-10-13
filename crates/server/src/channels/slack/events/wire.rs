@@ -113,6 +113,16 @@ pub(crate) struct SlackFile {
     /// URL for private download (requires bot token auth).
     #[serde(default)]
     pub(crate) url_private: Option<String>,
+    /// URL that downloads the file rather than showing it (requires bot token
+    /// auth, `files:read`).
+    #[serde(default)]
+    pub(crate) url_private_download: Option<String>,
+    /// A file hosted elsewhere (Google Drive and similar), with only a link.
+    #[serde(default)]
+    pub(crate) is_external: bool,
+    /// Slack's link to the file.
+    #[serde(default)]
+    pub(crate) permalink: Option<String>,
     /// File size in bytes.
     #[serde(default)]
     pub(crate) size: Option<u64>,

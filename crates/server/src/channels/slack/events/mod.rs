@@ -121,6 +121,9 @@ impl SlackState {
             self.db.clone(),
             self.session_service.clone(),
             self.message_service.clone(),
+            self.org_decisions
+                .as_ref()
+                .map(|decisions| decisions.egress.clone()),
         )));
         self
     }
