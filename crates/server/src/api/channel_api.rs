@@ -51,6 +51,8 @@ pub struct ChannelApiState {
     pub sse_tracker: Arc<SseConnectionTracker>,
     /// Checks runtime tokens minted by `/runtime-auth` for `api` channels.
     pub runtime_auth: Option<crate::auth::AuthState>,
+    /// Downloads files callers send by URL; without it they become notes.
+    pub egress: Option<Arc<dyn everruns_core::EgressService>>,
 }
 
 impl ChannelApiState {
@@ -73,7 +75,13 @@ impl ChannelApiState {
             auth_verifier: ChannelAuthVerifier::new(),
             sse_tracker,
             runtime_auth: None,
+            egress: None,
         }
+    }
+
+    pub fn with_egress(mut self, egress: Arc<dyn everruns_core::EgressService>) -> Self {
+        self.egress = Some(egress);
+        self
     }
 
     pub fn with_runtime_auth(mut self, auth: crate::auth::AuthState) -> Self {

@@ -56,6 +56,19 @@ A channel serves traffic only when all three hold: the channel is live, the Agen
 
 Errors from public channels are sanitized so they do not expose internal state, such as whether a channel exists or why it is offline.
 
+## Files people send
+
+Files sent to a channel reach the Agent the same way on every channel. Each one is stored with the message and copied into the session's `/attachments` folder, where the Agent can open it again later in the conversation, including after compaction.
+
+| Channel | What is taken |
+|---|---|
+| Slack | Files shared in the message, downloaded with the app's bot token. Files linked from external services are described by name. |
+| AG-UI, Public Chat | Image, audio, video and document parts of the user message, inline or by URL. |
+| A2A | File parts, as bytes or a URI. |
+| Agent API | The `files` list of a message, as base64 `data` or a `url` ([Call your agent from code](/how-to/call-your-agent-from-code/#send-files)). |
+
+Files sent by URL are downloaded only from public `https` addresses. A message keeps at most 10 files of up to 25 MB each, and the file's contents decide its type, whatever the sender declared. A file that cannot be taken, for example because it is too large or its download failed, becomes a note in the message, such as `[Attachment report.pdf not received: 31 MB is over the 25 MB limit]`, so the Agent knows it was sent.
+
 ## AG-UI
 
 An AG-UI channel lets a client that speaks the [AG-UI protocol](https://docs.ag-ui.com/) run the Agent and stream its events. The channel accepts AG-UI `RunAgentInput` and streams AG-UI 1.0 events over SSE. Public Chat uses the same protocol.

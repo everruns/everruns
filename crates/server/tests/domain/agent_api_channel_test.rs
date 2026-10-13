@@ -457,6 +457,78 @@ async fn messages_must_be_user_text() {
     .assert_status(StatusCode::BAD_REQUEST);
 }
 
+#[tokio::test]
+async fn files_arrive_as_attachments() {
+    let server = TestServer::in_memory().await;
+    let channel = api_channel(&server, json!({ "visibility": "messages" }), true).await;
+    let key = create_key(&server, &channel, "k").await;
+    let secret = key["secret"].as_str();
+    let base = format!("/v1/channels/{}", channel.channel_id);
+    let card: Value = call(&server, Method::GET, &base, secret, None)
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(
+        card["input"],
+        json!({ "text": true, "images": true, "files": true })
+    );
+    let session: Value = call(
+        &server,
+        Method::POST,
+        &format!("{base}/sessions"),
+        secret,
+        None,
+    )
+    .await
+    .assert_status(StatusCode::CREATED)
+    .json();
+    let session_id = session["id"].as_str().unwrap();
+    let messages = format!("{base}/sessions/{session_id}/messages");
+
+    // Upload ids belong to the org, not the caller: refused.
+    call(
+        &server,
+        Method::POST,
+        &messages,
+        secret,
+        Some(json!({ "message": { "role": "user", "content": [
+            { "type": "file", "file_id": "file_00000000000000000000000000000001" }
+        ] } })),
+    )
+    .await
+    .assert_status(StatusCode::BAD_REQUEST);
+
+    let mut body = text_message("summarize these");
+    body["files"] = json!([
+        { "name": "notes.txt", "media_type": "text/plain", "data": "aGVsbG8=" },
+        { "name": "both.txt", "data": "aGk=", "url": "https://example.com/both.txt" },
+    ]);
+    call(&server, Method::POST, &messages, secret, Some(body))
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    // The caller's event stream shows text only; the stored message holds
+    // the file.
+    let stored: Value = server
+        .get(&format!("/v1/sessions/{session_id}/messages"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let message = stored["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["content"][0]["text"] == "summarize these")
+        .expect("the caller's message");
+    let content = message["content"].as_array().unwrap();
+    assert_eq!(content[1]["type"], "file", "stored file: {content:?}");
+    assert_eq!(content[1]["filename"], "notes.txt");
+    assert_eq!(
+        content[2]["text"],
+        "[Attached file: both.txt (needs exactly one of data and url)]"
+    );
+}
+
 /// Starts no turn: a resumed turn stays parked, so a test sees the state the
 /// answer left behind.
 struct ParkedRunner;

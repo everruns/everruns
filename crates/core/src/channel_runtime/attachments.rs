@@ -6,13 +6,17 @@
 //! The host downloads through its egress service (https only, DNS-pinned, a
 //! credential only to its own host, at most [`MAX_DOWNLOAD_REDIRECTS`]
 //! redirects), checks the media type against the bytes, applies the
-//! [`AttachmentPolicy`], and asks the session port to store each file. A file
-//! that cannot be taken becomes a text note in the message, so the agent knows
-//! it was sent; the reason the platform or storage gave goes to the log.
+//! [`AttachmentPolicy`], and asks an [`AttachmentStore`] to store each file. A
+//! file that cannot be taken becomes a text note in the message, so the agent
+//! knows it was sent; the reason the platform or storage gave goes to the log.
+//!
+//! [`AttachmentIntake`] is public so surfaces that are not channels (the agent
+//! execution API, MCP tools) take files the same way, with their own store.
 
 use std::sync::Arc;
 use std::time::Duration;
 
+use async_trait::async_trait;
 use everruns_contracts::runtime::attachments::verified_media_type;
 use everruns_contracts::url_validation::validate_safe_url;
 use futures::StreamExt;
@@ -21,7 +25,7 @@ use tracing::warn;
 use everruns_contracts::runtime::egress::{EgressRequest, EgressRequestKind, EgressService};
 use everruns_contracts::runtime::message::ContentPart;
 
-use super::{ChannelConfig, ChannelError, ChannelSessionPort, InboundAttachment, RemoteCredential};
+use super::{ChannelError, InboundAttachment, RemoteCredential};
 
 /// Most redirects one download follows.
 pub const MAX_DOWNLOAD_REDIRECTS: usize = 3;
@@ -48,7 +52,7 @@ impl Default for AttachmentPolicy {
 }
 
 /// A file the host received, with its media type checked against the bytes,
-/// for a [`ChannelSessionPort`] to store.
+/// for an [`AttachmentStore`] to store.
 #[derive(Debug, Clone)]
 pub struct ReceivedAttachment {
     pub name: String,
@@ -66,20 +70,30 @@ pub fn not_received_note(name: &str, reason: &str) -> String {
     format!("[Attachment {name} not received: {reason}]")
 }
 
-pub(super) struct Intake<'a> {
-    pub port: &'a dyn ChannelSessionPort,
-    pub egress: Option<Arc<dyn EgressService>>,
-    pub policy: AttachmentPolicy,
+/// Keeps a received file and returns the part that refers to it.
+#[async_trait]
+pub trait AttachmentStore: Send + Sync {
+    /// Store `attachment`. A `BadRequest` reason reaches the agent in the
+    /// note; any other error is logged and the note says it was not stored.
+    async fn store(&self, attachment: ReceivedAttachment) -> Result<ContentPart, ChannelError>;
 }
 
-impl Intake<'_> {
+/// Takes the files of one message: downloads, checks, stores.
+pub struct AttachmentIntake<'a> {
+    /// Where each file is kept.
+    pub store: &'a dyn AttachmentStore,
+    /// Downloads `Remote` files; without it they become notes.
+    pub egress: Option<Arc<dyn EgressService>>,
+    /// Limits per message.
+    pub policy: AttachmentPolicy,
+    /// Names the surface in logs (a channel name, `api`, `mcp`).
+    pub source: &'a str,
+}
+
+impl AttachmentIntake<'_> {
     /// Content parts for a message's files, in order: each a stored
     /// attachment or a note.
-    pub async fn parts(
-        &self,
-        channel: &ChannelConfig,
-        attachments: &[InboundAttachment],
-    ) -> Vec<ContentPart> {
+    pub async fn parts(&self, attachments: &[InboundAttachment]) -> Vec<ContentPart> {
         let mut parts = Vec::new();
         let mut files = 0;
         for attachment in attachments {
@@ -100,7 +114,7 @@ impl Intake<'_> {
                             self.policy.max_files
                         )))
                     } else {
-                        self.take(channel, attachment, &name).await
+                        self.take(attachment, &name).await
                     };
                     parts.push(part.unwrap_or_else(|NotReceived(reason)| {
                         ContentPart::text(not_received_note(&name, &reason))
@@ -113,7 +127,6 @@ impl Intake<'_> {
 
     async fn take(
         &self,
-        channel: &ChannelConfig,
         attachment: &InboundAttachment,
         name: &str,
     ) -> Result<ContentPart, NotReceived> {
@@ -147,16 +160,13 @@ impl Intake<'_> {
             media_type: verified_media_type(declared, &data),
             data,
         };
-        self.port
-            .store_attachment(channel, received)
-            .await
-            .map_err(|error| {
-                warn!(channel = %channel.name, file = %name, %error, "channel: attachment not stored");
-                NotReceived(match error {
-                    ChannelError::BadRequest(reason) => reason,
-                    _ => "it could not be stored".into(),
-                })
+        self.store.store(received).await.map_err(|error| {
+            warn!(source = %self.source, file = %name, %error, "attachment not stored");
+            NotReceived(match error {
+                ChannelError::BadRequest(reason) => reason,
+                _ => "it could not be stored".into(),
             })
+        })
     }
 
     fn check_size(&self, size: u64) -> Result<(), NotReceived> {
@@ -210,7 +220,7 @@ impl Intake<'_> {
                 request = request.header("authorization", credential.authorization.clone());
             }
             let response = egress.send_stream(request).await.map_err(|error| {
-                warn!(host = ?parsed.host_str(), %error, "channel: attachment download failed");
+                warn!(host = ?parsed.host_str(), %error, "attachment download failed");
                 NotReceived("the download failed".into())
             })?;
             if (300..400).contains(&response.status) {
@@ -227,7 +237,7 @@ impl Intake<'_> {
                 continue;
             }
             if !(200..300).contains(&response.status) {
-                warn!(host = ?parsed.host_str(), status = response.status, "channel: attachment download refused");
+                warn!(host = ?parsed.host_str(), status = response.status, "attachment download refused");
                 return Err(NotReceived(format!(
                     "the download failed (HTTP {})",
                     response.status
