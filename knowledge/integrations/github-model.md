@@ -52,7 +52,7 @@ Verified against `origin/main` at `c79edc4` and saas `main`.
 | `github` capability tools | `get_connection_token(session, "github")`: the invoking person's connection when the turn has a person, otherwise the agent's | Whichever of the two above was picked, implicitly | Capability on the agent | `crates/integrations/src/github/` |
 | GitHub MCP preset | `acts as service`: the agent's `github` connection (connection-backed preset). `acts as user`: a separate OAuth grant `mcp_oauth_<server>` through the preset's OAuth client | Agent bot, or the person | Agent MCP sheet | `setup/seed/mcp_servers.rs`, `domains/mcp_servers/connection_backed.rs` |
 | GitHub triggers | Per-agent App webhook only; the shared App has no webhook route | Inbound only | Agent > Integrations > Triggers | `api/github_webhooks.rs`, `domains/agent_triggers/github.rs` |
-| Sandbox git | `daytona_git_clone` writes a full installation token into `/tmp/.git-credentials` in the sandbox; Modal injects the `github` connection at its egress proxy; plain sandbox `bash` gets nothing | Same as tools | Daytona capability, Modal sandbox template | `integrations/src/daytona/tools.rs`, `integrations/src/modal/egress.rs` |
+| Sandbox git | `daytona_git_clone` writes a full installation token into `/tmp/.git-credentials` in the sandbox; Modal injects the `github` connection at its egress proxy; plain sandbox `bash` gets nothing. Since step 1c, `github_checkout_pull_request` fetches one pull request into the managed sandbox with a `contents: read, pull_requests: read` token for that repository, handed over in a file removed after the fetch (TM-GITHUB-007) | Same as tools | Daytona capability, Modal sandbox template, `github` capability with a managed sandbox | `integrations/src/daytona/tools.rs`, `integrations/src/modal/egress.rs`, `integrations/src/github/checkout.rs` |
 | Memory and knowledge index sync | `get_connection_token_for_user(resolved_owner_user_id, "github")` | The owner's shared-App installation | Memory / knowledge index source form | `domains/memory/source_sync.rs`, `domains/knowledge_indexes/source_sync/mod.rs` |
 
 What this costs people:
@@ -300,6 +300,11 @@ Each step is one PR unless noted, and leaves everything working.
    installation is the shared App's, and a row without one is a person's
    token. Every GitHub token mints with the App its kind names, so an agent
    App's installation never falls back to the shared App's key.
+   PR checkout: `github_checkout_pull_request` is the managed-sandbox use: it
+   asks for `contents: read, pull_requests: read` on the pull request's
+   repository and passes the token through the `SandboxWorkspace` tool-context
+   extension (`exec_with_secret_file`), which the worker installs when the
+   session has `session_sandbox`. Pushing from the sandbox stays with step 6.
 2. **GitHub section on the agent page** (D7), name rules and avatar step (D2).
    Coordinate with the Yolop PR Reviewer thread's org picker, which lands first.
    Done: the agent's Integrations tab has a **GitHub** section between Channels
