@@ -8,7 +8,7 @@ products: [platform]
 surfaces: [operations]
 links:
   docs: [/sre/environment-variables/]
-  prs: []
+  prs: [everruns/everruns#4709]
 ---
 
 A self-hosted API started without `SECRETS_ENCRYPTION_KEY` refused the encrypted
