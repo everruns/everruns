@@ -310,8 +310,10 @@ production and DEV_MODE alike; the worker side is
 - **One turn per lease.** The worker folds the log's tail from the latest
   `turn.started`. An open turn is resumed: unfinished calls rerun when their
   tool declares that safe (pure, idempotent, client-side, approval-gated,
-  `ask_user`, or a synthetic person-facing call) and are otherwise settled as
-  `interrupted`; an open turn whose answer is already in the log is completed
+  `ask_user`, or a synthetic person-facing call) or never started, and are
+  otherwise settled as `interrupted`. An at-most-once call does not run until
+  its `tool.started` is stored (the worker's write-behind queue does not hold
+  it), so a log without one proves the call never ran; an open turn whose answer is already in the log is completed
   without another model call. With no open turn, the first unconsumed input
   starts a fresh turn through core's `turn_entry_plan`, the entry step the
   in-process runtime uses. A closed latest turn whose terminal event has no

@@ -187,6 +187,53 @@ async fn a_non_idempotent_call_cut_off_mid_act_is_settled_as_interrupted() {
     fixture.assert_idle();
 }
 
+/// A worker dies while an act's first call runs and before its next call
+/// started: the log has no `tool.started` for that call, which proves it
+/// never ran, so the survivor runs it instead of settling it as interrupted.
+#[tokio::test]
+async fn a_non_idempotent_call_that_never_started_runs_on_resume() {
+    let fixture = Fixture::new(model(
+        "Read and sent.",
+        vec![vec![call("c1", "read_inbox"), call("c2", "send_email")]],
+    ))
+    .await;
+    fixture.gate.hold_first.store(true, Ordering::SeqCst);
+    let (crashing, _) = fixture.worker("w1");
+    fixture.send("Read my inbox, then email the team.").await;
+
+    crash_at(&fixture, &crashing, &fixture.gate.held).await;
+    assert_eq!(fixture.tool_calls(), vec!["read_inbox"]);
+
+    let (survivor, _) = fixture.worker("w2");
+    run_until_idle(&survivor).await;
+    assert_eq!(
+        fixture.tool_calls(),
+        vec!["read_inbox", "read_inbox", "send_email"],
+        "send_email runs once"
+    );
+    // Resume rebuilds each call's idempotency key: the rerun read_inbox
+    // carries its first attempt's key, and the calls' keys differ.
+    let keys = fixture.tool_keys();
+    assert!(keys.iter().all(Option::is_some), "{keys:?}");
+    assert_eq!(keys[0], keys[1]);
+    assert_ne!(keys[1], keys[2]);
+    let completed: Vec<String> = fixture
+        .events()
+        .await
+        .into_iter()
+        .filter(|event| event.event_type == "tool.completed")
+        .map(|event| serde_json::to_string(&event.data).unwrap())
+        .collect();
+    assert_eq!(completed.len(), 2, "{completed:?}");
+    assert!(
+        completed.iter().all(|data| !data.contains("interrupted")),
+        "{completed:?}"
+    );
+    assert_eq!(fixture.count("turn.completed").await, 1);
+    assert_eq!(fixture.answers().await, vec!["Read and sent."]);
+    fixture.assert_idle();
+}
+
 #[tokio::test]
 async fn an_idempotent_call_cut_off_mid_act_runs_again() {
     let fixture = Fixture::new(model("Read.", vec![vec![call("c1", "read_inbox")]])).await;
@@ -324,6 +371,38 @@ async fn a_cancel_ends_the_running_turn_with_one_terminal_event() {
     assert_eq!(run_until_idle(&worker).await, 0);
     fixture.assert_idle();
     assert!(!fixture.store.row(fixture.session_id).cancel_requested);
+}
+
+/// Three renews in a row fail while a tool runs. At a third of the TTL apart
+/// they would span the whole TTL and lose the lease; retried sooner after a
+/// failure, the fourth renew lands inside it and the turn carries on.
+#[tokio::test]
+async fn a_short_renew_outage_does_not_cost_the_turn() {
+    let fixture = Fixture::new(model("Read.", vec![vec![call("c1", "read_inbox")]])).await;
+    fixture.gate.hold_first.store(true, Ordering::SeqCst);
+    let (worker, _) = fixture.worker("w1");
+    fixture.send("Read my inbox.").await;
+    let running = {
+        let worker = worker.clone();
+        tokio::spawn(async move { run_once(&worker).await })
+    };
+    tokio::time::timeout(WAIT, fixture.gate.held.notified())
+        .await
+        .unwrap();
+    fixture.store.fail_renews(3);
+    // Past the lease TTL (3s) while the tool holds.
+    tokio::time::sleep(Duration::from_millis(3500)).await;
+    fixture.gate.release.notify_one();
+    tokio::time::timeout(WAIT, running).await.unwrap().unwrap();
+
+    assert_eq!(fixture.tool_calls(), vec!["read_inbox"]);
+    assert_eq!(fixture.count("turn.completed").await, 1);
+    assert_eq!(fixture.answers().await, vec!["Read."]);
+    assert_eq!(
+        fixture.store.row(fixture.session_id).holder,
+        None,
+        "the turn released its lease"
+    );
 }
 
 #[tokio::test]

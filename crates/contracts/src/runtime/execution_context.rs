@@ -17,6 +17,10 @@ pub struct ExecutionContext {
     /// Workspace used for virtual file operations, when explicitly attached.
     #[serde(default)]
     pub workspace_id: Option<WorkspaceId>,
+    /// The agent message whose tool calls this phase runs (an act phase
+    /// only); it keys each call's idempotency key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_calls_message_id: Option<MessageId>,
 }
 
 impl ExecutionContext {
@@ -28,6 +32,7 @@ impl ExecutionContext {
             input_message_id,
             exec_id: ExecId::new(),
             workspace_id: None,
+            tool_calls_message_id: None,
         }
     }
 
@@ -45,13 +50,57 @@ impl ExecutionContext {
             input_message_id: self.input_message_id,
             exec_id: ExecId::new(),
             workspace_id: self.workspace_id,
+            tool_calls_message_id: None,
         }
+    }
+
+    /// Attach the agent message whose tool calls this act phase runs.
+    pub fn with_tool_calls_message(mut self, message_id: Option<MessageId>) -> Self {
+        self.tool_calls_message_id = message_id;
+        self
+    }
+
+    /// The idempotency key for one tool call of this act phase, passed to
+    /// tools that can honor one (MCP `_meta`); `None` when the phase does not
+    /// know the message holding its calls.
+    ///
+    /// Decision: a UUIDv5 over the session, that message and the call id.
+    /// Provider call ids alone repeat (Gemini numbers them `call_0`, `call_1`
+    /// afresh every step), so a gateway keyed on them would replay an earlier
+    /// call's result for a new one. The message id makes the key unique per
+    /// call, and resume rebuilds the same message id from the log, so a call
+    /// run again after a crash carries the key its first attempt carried.
+    pub fn tool_call_idempotency_key(&self, tool_call_id: &str) -> Option<String> {
+        let message = self.tool_calls_message_id?;
+        let name = format!("{}/{}", message.uuid(), tool_call_id);
+        Some(uuid::Uuid::new_v5(&self.session_id.uuid(), name.as_bytes()).to_string())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tool_call_idempotency_keys_are_stable_and_unique_per_message_and_call() {
+        let context = |message: Option<u128>| {
+            ExecutionContext::new(
+                SessionId::from_seed(1),
+                TurnId::from_seed(2),
+                MessageId::from_seed(3),
+            )
+            .with_tool_calls_message(message.map(MessageId::from_seed))
+        };
+        let key = |message, call| context(message).tool_call_idempotency_key(call);
+        assert_eq!(key(None, "call_0"), None);
+        // Stable across executions (a resumed act gets a new exec id).
+        assert_eq!(key(Some(4), "call_0"), key(Some(4), "call_0"));
+        // A repeated provider call id in a later step gets a new key.
+        assert_ne!(key(Some(4), "call_0"), key(Some(5), "call_0"));
+        assert_ne!(key(Some(4), "call_0"), key(Some(4), "call_1"));
+        // The next phase does not inherit the act's message.
+        assert_eq!(context(Some(4)).next_exec().tool_calls_message_id, None);
+    }
 
     #[test]
     fn next_exec_preserves_lineage_and_workspace_and_changes_execution_id() {

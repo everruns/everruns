@@ -25,8 +25,10 @@ This specification defines the release process for Everruns. The process is desi
 
 The release PR also carries `release-card.yml`, a concise presentation of facts already recorded in the
 changelog. CI renders the card through the docs image toolchain for review. At tag time the Release workflow
-regenerates the PNG from the trusted commit and attaches it to the GitHub Release. The card is presentation
-metadata, not a second release-notes source: it cannot introduce claims absent from `CHANGELOG.md`.
+regenerates the PNG from the trusted commit, attaches it to the GitHub Release, and opens the Release body with
+the copy committed in the release's changelog entry. The card is presentation metadata, not a second
+release-notes source: it cannot introduce claims absent from `CHANGELOG.md`. The user reviews the highlights
+and the rendered card before the release PR merges.
 
 Each release also publishes a release entry in the public changelog, with the card, and links the
 changelog entries of the features it carries from its `CHANGELOG.md` highlights; feature entries
@@ -209,7 +211,12 @@ where the API went, and a yanked version would hide it. The shim's
 so dependents see the move as a compiler warning. Delete the shim in the next
 release and record the move in the changelog. A crate deleted outright, with no
 new home, is **yanked** with the **Yank Crate** workflow so new resolutions stop
-selecting it.
+selecting it. The repository's `CARGO_REGISTRY_TOKEN` carries publish scopes but
+not `yank`: every Yank Crate run so far (0.19.1, `everruns-durable-engine` at
+0.48.0) failed with crates.io 403 "this token does not have the required
+permissions". Until a crate owner adds the `yank` scope to that token, an owner
+yanks by hand with `cargo yank --version <v> <crate>`; record the pending yank
+in the release thread rather than treating the release as blocked.
 
 **The gate.** One check enforces all of this:
 
@@ -320,7 +327,9 @@ build against the new version:
 - `Cargo.lock` - Run `cargo generate-lockfile`
 - `crates/everruns/tests/fixtures/external-consumer/Cargo.lock`,
   `evals/generic/Cargo.lock`, `evals/guardrail-calibration/Cargo.lock`,
-  `evals/platform-capability/Cargo.lock`, `evals/tools-in-shell/Cargo.lock`,
+  `evals/platform-capability/Cargo.lock`, `evals/tool-search-reveal/Cargo.lock`,
+  `evals/tools-in-shell/Cargo.lock`,
+  `evals/web-search-providers/Cargo.lock`,
   `examples/weekend-concierge-host/Cargo.lock` - Run `cargo generate-lockfile` in each
 - `apps/ui/pnpm-lock.yaml` - Run `pnpm install --lockfile-only` in `apps/ui` to regenerate
 - `apps/docs/pnpm-lock.yaml` - Run `pnpm install --lockfile-only` in `apps/docs` to regenerate

@@ -6,6 +6,7 @@ kind: fix
 significance: minor
 products: [platform, cloud, framework]
 surfaces: [api, code]
+release: "0.48.0"
 links:
   docs: [/capabilities/session-schedules/]
   prs: [everruns/everruns#4615]

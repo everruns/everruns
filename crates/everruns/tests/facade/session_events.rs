@@ -404,3 +404,41 @@ async fn turn_handle_cancellation_emits_a_correlated_terminal_event() {
         .collect();
     assert_eq!(user_text, ["hi", "include this"]);
 }
+
+/// A provider stream cut after some text is retried under the same message,
+/// announced by a repeated `OutputStarted`: text collected since the last
+/// start is the answer.
+#[tokio::test]
+async fn a_retried_stream_repeats_output_started() {
+    let agent = Agent::builder()
+        .instructions("You are concise.")
+        .model(Model::simulated("unused"))
+        .build()
+        .expect("valid agent");
+    let session = InMemoryEngine::new().create(agent);
+    let stream = session.events();
+
+    let turn = session
+        .run("go [[llmsim:broken-stream speed=0.001]]")
+        .await
+        .expect("the retry answers");
+    drop(session);
+    let events = drain(stream).await;
+
+    let mut starts = Vec::new();
+    let mut text = String::new();
+    for event in &events {
+        match &event.kind {
+            SessionEventKind::OutputStarted { message_id } => {
+                starts.push(message_id.clone());
+                text.clear();
+            }
+            SessionEventKind::TextDelta { delta } => text.push_str(delta),
+            _ => {}
+        }
+    }
+    assert_eq!(starts.len(), 2, "one start per attempt");
+    assert_eq!(starts[0], starts[1], "the retry keeps the message id");
+    assert_eq!(text, turn.response);
+    assert_eq!(turn.response.split_whitespace().count(), 200);
+}

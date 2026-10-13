@@ -153,6 +153,7 @@ pub fn routes(state: AppState) -> Router {
 
 /// GET /v1/agent-examples — list all available examples
 #[utoipa::path(
+    operation_id = "list_agent_examples",
     get,
     path = "/v1/agent-examples",
     responses(

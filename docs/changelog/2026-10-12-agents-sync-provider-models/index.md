@@ -6,6 +6,7 @@ kind: fix
 significance: minor
 products: [platform, cloud]
 surfaces: [agent]
+release: "0.48.0"
 links:
   docs: [/capabilities/platform/]
   prs: [everruns/everruns#4405]

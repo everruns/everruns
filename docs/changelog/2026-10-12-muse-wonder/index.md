@@ -6,6 +6,7 @@ kind: feature
 significance: major
 products: [platform, cloud, framework]
 surfaces: [ui, api, code]
+release: "0.48.0"
 links:
   docs: [/providers/meta/]
   prs: [everruns/everruns#4637, everruns/everruns#4645]

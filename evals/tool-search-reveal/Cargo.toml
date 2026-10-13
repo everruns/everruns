@@ -1,0 +1,37 @@
+# Standalone workspace: this crate is intentionally detached from the everruns
+# workspace so it does not pull mira-eval into the main build. It path-depends
+# on the local Framework so a run always evaluates the working tree's
+# `tool_search` capability. Build it in place (`cargo build`) or run it via the
+# `mira` host CLI.
+[workspace]
+
+[package]
+name = "everruns-tool-search-reveal-evals"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94.0"
+description = "Mira eval study: call quality of tool_search's `redefine` vs `in_result` reveal modes"
+publish = false
+
+[[bin]]
+name = "tool_search_reveal"
+path = "src/main.rs"
+
+[dependencies]
+mira-eval = "0.4"
+everruns = { path = "../../crates/everruns" }
+everruns-drivers = { path = "../../crates/drivers/drivers", features = ["anthropic", "openai", "openrouter"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
+serde_json = "1"
+regex = "1"
+async-trait = "0.1"
+# Already in the dependency tree through everruns-core; the fake tools use it
+# to validate the arguments they receive against their own schemas.
+jsonschema = { version = "0.58.1", default-features = false }
+
+[dev-dependencies]
+everruns-llmsim = { path = "../../crates/drivers/llmsim" }
+
+# Keep the target small: line tables are enough for a panic backtrace.
+[profile.dev]
+debug = "line-tables-only"

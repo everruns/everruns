@@ -209,6 +209,7 @@ pub struct AgentBuilder {
     network_access: Option<NetworkAccessList>,
     max_iterations: Option<usize>,
     parallel_tool_calls: Option<bool>,
+    max_output_tokens: Option<u32>,
     communication: crate::conversation::Communication,
     tools: Vec<ToolDefinition>,
     mcp_servers: ScopedMcpServers,
@@ -229,6 +230,7 @@ impl AgentBuilder {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            max_output_tokens: None,
             communication: Default::default(),
             tools: Vec::new(),
             mcp_servers: ScopedMcpServers::default(),
@@ -311,6 +313,13 @@ impl AgentBuilder {
         self
     }
 
+    /// Cap each model response at `tokens` output tokens (clamped to the
+    /// model's output limit at turn assembly).
+    pub fn max_output_tokens(mut self, tokens: u32) -> Self {
+        self.max_output_tokens = Some(tokens);
+        self
+    }
+
     /// Set how the agent talks. `Communication::Explicit` keeps its assistant
     /// text as working notes and has it talk through `send_message`.
     pub fn communication(mut self, communication: crate::conversation::Communication) -> Self {
@@ -350,6 +359,7 @@ impl AgentBuilder {
             network_access: self.network_access,
             max_iterations: self.max_iterations,
             parallel_tool_calls: self.parallel_tool_calls,
+            max_output_tokens: self.max_output_tokens,
             communication: self.communication,
             tools: self.tools,
             mcp_servers: self.mcp_servers,

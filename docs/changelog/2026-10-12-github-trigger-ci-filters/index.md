@@ -6,6 +6,7 @@ kind: improvement
 significance: minor
 products: [platform, cloud]
 surfaces: [ui]
+release: "0.48.0"
 links:
   docs: [/features/agent-triggers/]
   prs: [everruns/everruns#4607]

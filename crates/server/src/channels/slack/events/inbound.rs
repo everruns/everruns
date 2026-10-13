@@ -10,7 +10,10 @@ use axum::{
     http::{HeaderMap, StatusCode},
 };
 use everruns_contracts::runtime::channel_driver::ChannelRequest;
-use everruns_core::channel::{InboundAttachment, InboundChannelEvent};
+use everruns_core::channel::{InboundAttachment, InboundChannelEvent, RemoteCredential};
+
+/// The only host Slack's bot token is sent to when downloading a file.
+const SLACK_FILES_HOST: &str = "files.slack.com";
 use std::collections::HashMap;
 
 use crate::api::common::ErrorResponse;
@@ -51,25 +54,37 @@ pub(crate) fn parse_slack_inbound_event(
         },
     };
 
-    // Build attachments from files + legacy attachments
+    // Files are downloaded by the channel host with the bot token, which goes
+    // only to Slack's file host, and stored as attachments. A file hosted
+    // elsewhere (Google Drive) keeps its link.
     let mut attachments = Vec::new();
     for file in &event.files {
-        let mime = file.mimetype.as_deref().unwrap_or("");
         let name = file.name.as_deref().unwrap_or("unnamed file");
-        if SUPPORTED_IMAGE_TYPES.contains(&mime)
-            && let Some(url) = &file.url_private
-            && let Some(url) = validated_image_url(url)
-        {
-            attachments.push(InboundAttachment::Image {
-                url,
-                alt_text: Some(name.to_string()),
-            });
-            continue;
+        let url = file
+            .url_private_download
+            .as_ref()
+            .or(file.url_private.as_ref());
+        match url {
+            Some(url) if !file.is_external && !slack_config.bot_token.is_empty() => {
+                attachments.push(InboundAttachment::Remote {
+                    url: url.clone(),
+                    name: Some(name.to_string()),
+                    media_type: file.mimetype.clone(),
+                    size: file.size,
+                    credential: Some(RemoteCredential::bearer(
+                        SLACK_FILES_HOST,
+                        &slack_config.bot_token,
+                    )),
+                });
+            }
+            _ => attachments.push(InboundAttachment::FileDescription {
+                name: match &file.permalink {
+                    Some(link) if file.is_external => format!("{name} ({link})"),
+                    _ => name.to_string(),
+                },
+                mime_type: file.mimetype.clone(),
+            }),
         }
-        attachments.push(InboundAttachment::FileDescription {
-            name: name.to_string(),
-            mime_type: Some(mime.to_string()),
-        });
     }
     for att in &event.attachments {
         if let Some(url) = &att.image_url

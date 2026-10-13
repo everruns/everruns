@@ -17,7 +17,7 @@ started a run renders an inline run card in the turn that started it.
 
 ## Preconditions
 
-- Server running (`just start-dev`)
+- Canonical stack running (see root `AGENTS.md`)
 - User logged in
 - LLM API keys configured
 - Two chat threads with different transcripts, one bound to an agent that can delegate work

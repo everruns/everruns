@@ -92,6 +92,19 @@ export const agentFormSchema = z.object({
   ),
   /** Conversation starters for a fresh Platform Chat thread. */
   starters: startersSchema.optional(),
+  /** Output token ceiling per model response; empty keeps the provider default. */
+  max_output_tokens: z.preprocess(
+    trimInput,
+    z
+      .string()
+      .refine(
+        (value) =>
+          value === "" ||
+          (/^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 2147483647),
+        "Enter a whole number of at least 1",
+      )
+      .optional(),
+  ),
 });
 
 export const harnessFormSchema = z.object({

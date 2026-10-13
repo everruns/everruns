@@ -1,5 +1,21 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-13
+
+* **Actor-based design: the old turn model is a dismissed option.** Dismissed
+  Options records turns as queued, checkpointed steps (`everruns-durable-engine`,
+  the facade `durable` feature) with why session actors replaced it, and Load
+  Testing's AG-UI latency notes name the actor pickup instead of the deleted turn
+  workflow logs. See [Dismissed Options](project/dismissed-options.md) and
+  [Load Testing](operations/load-testing.md).
+* **Web search providers eval.** `evals/web-search-providers` grades every
+  provider's results for 59 agent-style queries through the shipped drivers.
+  Ceramic answers 49% (none time-sensitive) and is ruled out as the hosted
+  default; Brave, Parallel and Exa answer 98 to 100%. The run also found a
+  panic in the HTML entity decoder Brave and free search share, on text with
+  an `&` a few characters before a multibyte character; fixed. See
+  [Web Search](integrations/web-search.md).
+
 ## 2026-10-12
 
 * **Actor-based design step 7: the per-step turn path is gone.** Platform

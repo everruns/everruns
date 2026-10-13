@@ -17,7 +17,7 @@ pinned chats stay ahead of more recently active unpinned chats.
 
 ## Preconditions
 
-- Server running (`just start-dev`)
+- Canonical stack running (see root `AGENTS.md`)
 - User logged in
 - At least two side chat threads exist for the current user
 

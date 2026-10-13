@@ -169,6 +169,40 @@ fn only_calls_safe_to_run_twice_rerun() {
 }
 
 #[test]
+fn only_calls_with_a_tool_started_may_have_run() {
+    let (turn_id, mut events) = turn_log(&["a", "b"], &[], false);
+    let session_id = events[0].session_id;
+    let context = events[0].context.clone();
+    let started = |id: &str| {
+        Event::new(
+            session_id,
+            context.clone(),
+            crate::events::ToolStartedData {
+                tool_call: call(id),
+                tool_call_fingerprint: None,
+                display_name: None,
+                narration: None,
+                side_effect_class: Some(SideEffectClass::AtMostOnce),
+            },
+        )
+    };
+    events.push(started("a"));
+    let turn = TurnLogFold::from_events(events.clone()).expect("open turn");
+    assert_eq!(turn.turn_id(), turn_id);
+    assert!(turn.may_have_run("a"));
+    assert!(!turn.may_have_run("b"), "no tool.started: it never ran");
+
+    // A later agent message starts a new act: earlier starts no longer count.
+    events.push(Event::new(
+        session_id,
+        context.clone(),
+        OutputMessageCompletedData::new(RuntimeMessage::assistant_with_tools("", vec![call("a")])),
+    ));
+    let turn = TurnLogFold::from_events(events).expect("open turn");
+    assert!(!turn.may_have_run("a"));
+}
+
+#[test]
 fn a_tail_from_the_last_turn_started_folds_like_the_whole_log() {
     let (_, mut events) = turn_log(&["a"], &[], true);
     let (last, later) = turn_log(&["b", "c"], &["b"], false);

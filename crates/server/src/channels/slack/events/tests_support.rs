@@ -101,6 +101,9 @@ pub(crate) fn test_slack_file(
         mimetype: Some(mimetype.to_string()),
         filetype: Some(filetype.to_string()),
         url_private: url.map(String::from),
+        url_private_download: None,
+        is_external: false,
+        permalink: None,
         size: Some(1024),
     }
 }

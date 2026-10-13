@@ -6,6 +6,7 @@ kind: feature
 significance: notable
 products: [framework]
 surfaces: [code, cli, operations]
+release: "0.48.0"
 links:
   docs: [/framework/serve/#keep-the-data-in-a-bucket, /framework/serve/#authentication]
   prs: [everruns/everruns#4515, everruns/everruns#4518, everruns/everruns#4485, everruns/everruns#4648]

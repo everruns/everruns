@@ -106,6 +106,7 @@ export interface AgentPackagePreview {
   channels?: Record<string, { type: string; enabled: boolean; config: unknown }>;
   max_iterations?: number;
   parallel_tool_calls?: boolean;
+  max_output_tokens?: number;
   communication?: Communication | null;
   tools?: { name: string; description: string; parameters: unknown }[];
   network_access?: unknown;

@@ -16,8 +16,8 @@ Verify that an agent maintains context across multiple turns in the same session
 
 ## Preconditions
 
-- API server running locally (`just start-dev`) or a deployed API is available
-- Set `BASE_URL` to the API origin (for example, `http://localhost:9300`)
+- Canonical local stack (see root `AGENTS.md`) or a dedicated test deployment is available
+- Set `BASE_URL` to the selected proxy origin (for example, `http://localhost:27100`); requests below append `/api`
 - For authenticated deployments, configure `curl` with the required authorization and organization headers
 - LLM API keys configured
 

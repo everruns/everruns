@@ -64,7 +64,11 @@ pub fn calculate_next_trigger(
 pub fn normalize_cron_expression(cron_expression: &str) -> Result<String, CommandError> {
     let fields = cron_expression.split_whitespace().collect::<Vec<_>>();
     let normalized = match fields.len() {
-        5 => format!("0 {} *", fields.join(" ")),
+        // Standard cron weekdays (0-6 from Sunday) become day names; see
+        // `standard_cron_to_crate_form`. Seven fields are the `cron` crate's
+        // own form and keep its numbering (1-7 from Sunday).
+        5 => everruns_core::session_schedule::standard_cron_to_crate_form(cron_expression)
+            .expect("five fields"),
         7 => fields.join(" "),
         _ => {
             return Err(CommandError::bad_request(
@@ -91,5 +95,39 @@ pub fn map_store_error(error: StoreError) -> CommandError {
             CommandError::conflict(format!("Schedule limit exceeded: max {limit} schedules"))
         }
         other => CommandError::internal(anyhow!(other)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{Datelike, TimeZone, Weekday};
+
+    fn next_weekday(cron_expression: &str) -> Weekday {
+        let normalized = normalize_cron_expression(cron_expression).expect("valid cron");
+        let schedule = cron::Schedule::from_str(&normalized).expect("crate form parses");
+        // A Monday at noon.
+        let after = Utc.with_ymd_and_hms(2026, 10, 12, 12, 0, 0).unwrap();
+        schedule.after(&after).next().expect("next run").weekday()
+    }
+
+    /// Standard cron counts weekdays 0-6 from Sunday (EVE-1250): `0 18 * * 0`
+    /// was rejected and `0 9 * * 1` fired on Sundays.
+    #[test]
+    fn five_field_weekdays_count_from_sunday_zero() {
+        assert_eq!(next_weekday("0 18 * * 0"), Weekday::Sun);
+        assert_eq!(next_weekday("0 18 * * 7"), Weekday::Sun);
+        assert_eq!(next_weekday("0 9 * * 1"), Weekday::Mon);
+        assert_eq!(next_weekday("0 9 * * 2"), Weekday::Tue);
+        assert_eq!(
+            normalize_cron_expression("0 9 * * 1-5").unwrap(),
+            "0 0 9 * * MON-FRI *"
+        );
+        // Seven fields are the `cron` crate's form and pass through unchanged.
+        assert_eq!(
+            normalize_cron_expression("0 0 9 * * 2-6 *").unwrap(),
+            "0 0 9 * * 2-6 *"
+        );
+        assert!(normalize_cron_expression("0 9 * *").is_err());
     }
 }

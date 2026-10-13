@@ -54,6 +54,20 @@ pub trait McpToolInvoker: Send + Sync {
         self.invoke(tool_call).await.map(|result| (result, None))
     }
 
+    /// [`invoke_recorded`](Self::invoke_recorded) with the call's idempotency
+    /// key, which an invoker that reaches the server sends with the call.
+    /// Invokers that cannot send one drop it.
+    async fn invoke_keyed(
+        &self,
+        tool_call: &ToolCall,
+        _idempotency_key: Option<&str>,
+    ) -> Result<(
+        crate::runtime::tool_types::ToolResult,
+        Option<McpServerActsAs>,
+    )> {
+        self.invoke_recorded(tool_call).await
+    }
+
     /// List one server's tools now, from inside a tool call, by its sanitized
     /// prefix, with the same connection and account a call would use. The
     /// `tools` shell command loads a deferred server this way instead of
@@ -224,6 +238,18 @@ impl McpToolInvoker for ScopedMcpToolInvoker {
         self.inner.invoke_recorded(tool_call).await
     }
 
+    async fn invoke_keyed(
+        &self,
+        tool_call: &ToolCall,
+        idempotency_key: Option<&str>,
+    ) -> Result<(
+        crate::runtime::tool_types::ToolResult,
+        Option<McpServerActsAs>,
+    )> {
+        self.check(&tool_call.name)?;
+        self.inner.invoke_keyed(tool_call, idempotency_key).await
+    }
+
     async fn list_server_tools(
         &self,
         server_prefix: &str,
@@ -283,13 +309,14 @@ impl McpProxyTool {
         tool_call_id: String,
         arguments: Value,
         identity: Option<&McpCallIdentity>,
+        idempotency_key: Option<&str>,
     ) -> ToolExecutionResult {
         let call = ToolCall {
             id: tool_call_id,
             name: self.definition.name.clone(),
             arguments,
         };
-        match self.invoker.invoke_recorded(&call).await {
+        match self.invoker.invoke_keyed(&call, idempotency_key).await {
             Ok((result, acted_as)) => {
                 if let Some(identity) = identity {
                     identity.record(acted_as);
@@ -336,7 +363,7 @@ impl Tool for McpProxyTool {
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {
-        self.invoke(String::new(), arguments, None).await
+        self.invoke(String::new(), arguments, None, None).await
     }
 
     async fn execute_with_context(
@@ -346,6 +373,7 @@ impl Tool for McpProxyTool {
     ) -> ToolExecutionResult {
         let tool_call_id = context.tool_call_id.clone().unwrap_or_default();
         let identity = context.extensions.get::<McpCallIdentity>();
+        let key = context.idempotency_key.as_deref();
         if let Some(id) = context
             .event_context
             .as_ref()
@@ -357,24 +385,24 @@ impl Tool for McpProxyTool {
                 invoker,
             };
             return scoped
-                .invoke(tool_call_id, arguments, identity.as_deref())
+                .invoke(tool_call_id, arguments, identity.as_deref(), key)
                 .await;
         }
-        self.invoke(tool_call_id, arguments, identity.as_deref())
+        self.invoke(tool_call_id, arguments, identity.as_deref(), key)
             .await
     }
 }
 
 /// Build proxy tools for every MCP-prefixed definition in `definitions`, and
 /// the resource tools when their definitions are present, delegating
-/// execution to `invoker`. Other definitions are ignored.
+/// execution to the turn-scoped `invoker`. Other definitions are ignored.
 ///
 /// Hosts call this when assembling the per-turn `ToolRegistry`, passing the
-/// turn's tool definitions (which already include MCP tools) so no re-discovery
-/// is needed.
+/// turn's tool definitions (which already include MCP tools) and an invoker
+/// scoped to those same definitions so no re-discovery is needed.
 pub fn build_mcp_proxy_tools(
     definitions: &[ToolDefinition],
-    invoker: Arc<dyn McpToolInvoker>,
+    invoker: Arc<ScopedMcpToolInvoker>,
 ) -> Vec<Box<dyn Tool>> {
     definitions
         .iter()
@@ -518,7 +546,10 @@ mod tests {
             result: ok_result(serde_json::json!({"answer":42,"nested":[true,null]})),
         });
         let mut registry = crate::runtime::tools::ToolRegistry::new();
-        for tool in build_mcp_proxy_tools(&definitions, invoker.clone()) {
+        for tool in build_mcp_proxy_tools(
+            &definitions,
+            Arc::new(ScopedMcpToolInvoker::new(&definitions, invoker.clone())),
+        ) {
             registry.register_boxed(tool);
         }
         assert_eq!(registry.len(), 1);
@@ -553,6 +584,39 @@ mod tests {
                 {"id":"","name":"mcp_docs__search","arguments":arguments}
             ])
         );
+    }
+
+    /// The proxy hands the call's idempotency key to the invoker, so the MCP
+    /// server receives it; a call without one sends none.
+    #[tokio::test]
+    async fn proxy_passes_the_call_idempotency_key_to_the_invoker() {
+        #[derive(Default)]
+        struct KeyInvoker(Mutex<Vec<Option<String>>>);
+        #[async_trait]
+        impl McpToolInvoker for KeyInvoker {
+            async fn invoke(&self, _: &ToolCall) -> Result<ToolResult> {
+                unreachable!("the proxy invokes with the key")
+            }
+            async fn invoke_keyed(
+                &self,
+                tool_call: &ToolCall,
+                key: Option<&str>,
+            ) -> Result<(ToolResult, Option<McpServerActsAs>)> {
+                self.0.lock().unwrap().push(key.map(str::to_string));
+                Ok((ok_result(serde_json::json!({"id": tool_call.id})), None))
+            }
+        }
+        let invoker = Arc::new(KeyInvoker::default());
+        let tool = McpProxyTool::new(builtin_def("mcp_docs__search"), invoker.clone());
+        let mut context = ToolContext::new(crate::runtime::typed_id::SessionId::from_seed(1));
+        context.tool_call_id = Some("call-1".into());
+        context.idempotency_key = Some("key-1".into());
+        tool.execute_with_context(serde_json::json!({}), &context)
+            .await;
+        context.idempotency_key = None;
+        tool.execute_with_context(serde_json::json!({}), &context)
+            .await;
+        assert_eq!(*invoker.0.lock().unwrap(), vec![Some("key-1".into()), None]);
     }
 
     #[tokio::test]
@@ -721,6 +785,29 @@ mod tests {
             serde_json::to_value(&*inner.calls.lock().unwrap()).unwrap(),
             serde_json::json!([allowed])
         );
+    }
+
+    #[test]
+    fn server_scope_configuration_uses_builtin_and_deferred_metadata() {
+        let scoped = ScopedMcpToolInvoker::new(
+            &[
+                mcp_def("mcp_docs__search"),
+                crate::runtime::mcp_deferred::deferred_mcp_server_definition("wiki", None),
+                client_side_mcp_def("mcp_client__search"),
+                mcp_def("read_file"),
+            ],
+            Arc::new(RecordingInvoker {
+                calls: Mutex::new(vec![]),
+                result: ok_result(Value::Null),
+            }),
+        );
+        assert!(scoped.check_server("docs").is_ok());
+        assert!(scoped.check_server("wiki").is_ok());
+        assert_eq!(
+            scoped.check_server("client").unwrap_err().to_string(),
+            "Tool execution error: MCP server 'client' is not attached to this conversation. Attached: docs, wiki"
+        );
+        assert!(scoped.check_server("read_file").is_err());
     }
 
     #[tokio::test]

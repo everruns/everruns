@@ -92,6 +92,9 @@ impl DbAgentStore {
                         .and_then(|v| serde_json::from_value(v).ok()),
                     max_iterations: max_iterations::from_db(row.max_iterations),
                     parallel_tool_calls: row.parallel_tool_calls,
+                    max_output_tokens: crate::domains::agents::max_output_tokens::from_db(
+                        row.max_output_tokens,
+                    ),
                     communication: everruns_core::conversation::Communication::from_str_opt(
                         &row.communication,
                     )

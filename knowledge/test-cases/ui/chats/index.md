@@ -1,7 +1,5 @@
 # Chats (UI)
 
-* [TC018: Chat - Adopted Threads Workspace](TC018_adopted_threads_workspace.md) - Verify adoption opt-in, permanent Chat, separate conversation context, and background-work lifecycle in the integrated Threads panel.
-
 * [TC001: Chat - Permanent Landing and Fresh Side Draft](TC001_chats_landing_and_new_thread.md) - Verify that landing opens permanent Chat and New chat creates a fresh side conversation only on first send.
 * [TC002: Global Chat - Create Agent via Chat](TC002_create_agent_via_chat.md) - Verify that the global chat agent can create a new agent when asked, using the `manage_agents` platform management tool.
 * [TC003: Global Chat - Create 10 Random Agents](TC003_create_10_random_agents.md) - Verify that the global chat agent can create 10 distinct agents in a single conversation when asked.
@@ -16,6 +14,8 @@
 * [TC012: Chats - Thread Switching and Inline Run Cards](TC012_thread_switching_and_run_cards.md) - Verify that switching threads does not leak transcript state between them, and that a reply which started a run renders an inline run card in the turn that started it.
 * [TC013: Chats - Pin Chat](TC013_pin_chat.md) - Verify that a chat can be pinned or unpinned from both the Chats list and the open thread, and that pinned chats stay ahead of more recently active unpinned chats.
 * [TC014: Chat - Platform Only and Playground Isolation](TC014_harness_bound_chat.md) - Verify that Chat uses the managed Agent exclusively and excludes Playground and other runs from history.
-* [TC017: Chats - Model Resolution Guard](TC017_model_resolution_guard.md) - Verify that Chat does not admit a turn without a resolvable model and can send a later message once an explicit model becomes available.
 * [TC015: Chats - Archive Chat](TC015_archive_chat.md) - Verify that a chat can be archived and restored from both the Chats list and the open thread, that archived chats leave the default list and the sidebar, and that the **Show archived** filter brings them back without...
 * [TC016: Chat - Permanent Conversation](TC016_platform_chat_precreated.md) - Verify that permanent Chat is unique per user and organization and cannot be removed or reassigned.
+* [TC017: Chats - Model Resolution Guard](TC017_model_resolution_guard.md) - Verify that Chat does not admit a turn without a resolvable model and can send a later message once an explicit model becomes available.
+* [TC018: Chat - Adopted Threads Workspace](TC018_adopted_threads_workspace.md) - Verify organization opt-in, permanent Chat, separate thread context, and work lifecycle.
+* [TC019: Chats - Stream Recovery and Cancellation](TC019_stream_reconnect_and_cancel.md) - Verify reconnect and reload recover one conversation without duplicate messages, and cancellation settles before a later turn.

@@ -34,6 +34,7 @@ async fn agent_with_model(
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
     })
     .execute(ctx)

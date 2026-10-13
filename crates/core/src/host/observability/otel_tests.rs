@@ -192,6 +192,7 @@ fn tool_started() -> ToolStartedData {
         tool_call_fingerprint: None,
         display_name: None,
         narration: None,
+        side_effect_class: None,
     }
 }
 

@@ -180,6 +180,16 @@ impl McpExecutor {
         &self,
         tool_call: &ToolCall,
     ) -> Result<(ToolResult, Option<crate::McpServerActsAs>)> {
+        self.execute_mcp_tool_keyed(tool_call, None).await
+    }
+
+    /// [`execute_mcp_tool_recorded`](Self::execute_mcp_tool_recorded) that
+    /// sends the call's idempotency key with it.
+    pub async fn execute_mcp_tool_keyed(
+        &self,
+        tool_call: &ToolCall,
+        idempotency_key: Option<&str>,
+    ) -> Result<(ToolResult, Option<crate::McpServerActsAs>)> {
         let (server_prefix, original_tool_name) = parse_mcp_tool_name(&tool_call.name)
             .ok_or_else(|| anyhow!("Invalid MCP tool name: {}", tool_call.name))?;
 
@@ -266,6 +276,7 @@ impl McpExecutor {
                 tool_call.id.clone(),
                 &original_tool_name,
                 arguments,
+                idempotency_key,
             )
             .await;
         let result = match result {
@@ -562,7 +573,15 @@ impl McpToolInvoker for McpExecutor {
         &self,
         tool_call: &ToolCall,
     ) -> CoreResult<(ToolResult, Option<crate::McpServerActsAs>)> {
-        self.execute_mcp_tool_recorded(tool_call)
+        self.invoke_keyed(tool_call, None).await
+    }
+
+    async fn invoke_keyed(
+        &self,
+        tool_call: &ToolCall,
+        idempotency_key: Option<&str>,
+    ) -> CoreResult<(ToolResult, Option<crate::McpServerActsAs>)> {
+        self.execute_mcp_tool_keyed(tool_call, idempotency_key)
             .await
             .map_err(|e| {
                 tracing::error!(error = %e, "MCP tool execution failed");

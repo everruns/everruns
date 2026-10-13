@@ -16,9 +16,10 @@ Verify that the global chat agent can create 10 distinct agents in a single conv
 
 ## Preconditions
 
-- Server running (`just start-dev`)
+- Canonical stack running (see root `AGENTS.md`)
 - User logged in
 - LLM API keys configured
+- Disposable org with none of the ten requested names present; record the initial agent IDs
 
 ## Test Data
 
@@ -45,9 +46,6 @@ Verify that the global chat agent can create 10 distinct agents in a single conv
 | Each agent active | Each agent has `status: active` |
 | System prompts | Each agent has a system prompt relevant to its name |
 
-## Validation Commands
+## Validation
 
-```bash
-# Assert: 10 agents exist by exact slug (excluding any pre-existing agents)
-curl -s "http://localhost:9300/api/v1/agents" | jq '[.data[] | select(.name | test("^(code-reviewer|data-analyst|writing-editor|math-tutor|devops-helper|security-auditor|api-designer|test-writer|debug-assistant|doc-generator)$"))] | length == 10'
-```
+Record all ten returned agent IDs and compare them with the initial list. Require ten distinct new IDs with the requested names and usable detail links; pre-existing or merely narrated agents cannot satisfy the check. Delete only these recorded test agents after dependent cases finish.
