@@ -1,6 +1,6 @@
 // Verifies the search metadata of every built page: exactly one canonical URL
 // and og:url, both naming the page's own address; one <title>, unique across
-// the site; a meta description of search-snippet length; an og:image that the
+// the site and at most 70 characters; a meta description of search-snippet length; an og:image that the
 // build actually contains; one <h1>; and a noindex 404. A 2026-10-12 audit found
 // 29 API tag pages all titled "Overview", missing social cards and descriptions
 // past 200 characters; this keeps them from coming back.
@@ -18,6 +18,10 @@ const site = docsUrl("/").replace(/\/$/, "");
 // from the OpenAPI spec and are trimmed by src/routeData.ts.
 const MAX_DESCRIPTION = 170;
 const MIN_DESCRIPTION = 50;
+// Titles past ~70 characters are cut in results. API summaries are capped in
+// the server (openapi/documentation.rs) and src/routeData.ts drops the site
+// name from any title that would still run over.
+const MAX_TITLE = 70;
 
 const errors = [];
 const fail = (route, message) => errors.push(`${route}: ${message}`);
@@ -62,6 +66,7 @@ for (const { route, file } of pages(distRoot)) {
   const title = [...html.matchAll(/<title>([^<]*)<\/title>/g)].map((m) => decode(m[1]));
   if (title.length !== 1) fail(route, `${title.length} <title> elements`);
   else titles.set(title[0], [...(titles.get(title[0]) ?? []), route]);
+  if (title[0]?.length > MAX_TITLE) fail(route, `title is ${title[0].length} characters, over ${MAX_TITLE}`);
 
   const description = meta(html, "name", "description");
   if (description.length !== 1) fail(route, `${description.length} meta descriptions`);
