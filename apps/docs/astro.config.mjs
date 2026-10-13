@@ -197,6 +197,11 @@ export default defineConfig({
       favicon: "/favicon.svg",
       head: [
         {
+          tag: "script",
+          attrs: { async: true, src: "https://www.googletagmanager.com/gtag/js?id=AW-18025687982" },
+        },
+        { tag: "script", content: readFileSync(new URL("./src/google-tag.js", import.meta.url), "utf8") },
+        {
           tag: "meta",
           attrs: {
             name: "msvalidate.01",
