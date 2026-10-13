@@ -25,6 +25,8 @@ What the SDKs handle for you:
 
 For a hands-on lesson, see [Build your first agent](/tutorials/building-agents-using-sdk/) or the minimal [Run an Agent](/tutorials/run-an-agent/) notebook.
 
+To call one agent from an application without a personal access token, use the SDKs' `AgentClient` with an agent key instead of the management client. See [Agent API](/features/agent-api/#sdks).
+
 ## Install
 
 <Tabs syncKey="lang">
@@ -160,6 +162,7 @@ through the [REST API](/api/).
 ## Do something
 
 - [Build your first agent](/tutorials/building-agents-using-sdk/) — guided tutorial.
+- [Call your agent from code](/how-to/call-your-agent-from-code/) — `AgentClient` with an agent key.
 - [Stream events with the SDK](/how-to/stream-events/) — common streaming patterns.
 - [Handle errors and cancel turns](/how-to/handle-errors-and-cancellation/) — graceful failure paths.
 - [Orchestrate multi-agent pipelines](/how-to/orchestrate-multi-agent-pipelines/) — chain agents together.
@@ -167,6 +170,7 @@ through the [REST API](/api/).
 ## See also
 
 - [API reference](/api/) — every endpoint, generated from OpenAPI.
+- [Agent API](/features/agent-api/) — the routes `AgentClient` calls.
 - [Event Reference](/event-reference/) — every event type.
 - [GitHub Repository](https://github.com/everruns/sdk) — source code and examples.
 
