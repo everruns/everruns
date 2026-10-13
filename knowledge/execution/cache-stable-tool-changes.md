@@ -434,7 +434,19 @@ Each step is one PR and leaves `main` working.
    once per compaction, which rewrites the prefix anyway.
 7. **yolop** adopts it (its reveal-gated memory how-to moves into the `note`).
 8. **Fallback experiments**: cold-moment batching, then the schema-in-result
-   eval.
+   eval. Done for batching, removals only: on a model with neither inline
+   parameter, a request whose only change is a removal holds it while the
+   last answer is younger than the cache lifetime (the 1h retention, else 5
+   minutes on Anthropic and Bedrock, else 30; overstating only holds longer).
+   The removal is not recorded, the held definitions go back into `tools` in
+   their declared places, and a call to one fails like any undeclared tool
+   because the act step runs only the agent's current tools. It goes out with
+   the next addition, redefinition or note, or after the idle gap; compaction
+   and a model switch re-baseline anyway. Redefinitions are not held: a stale
+   schema would make calls fail. Live
+   (`test_tool_removal_waits_for_a_cold_cache`, OpenRouter GPT-6 Luna): the
+   call after a capability is switched off read 2646 of 2649 cached tokens,
+   0 without the hold.
 
 ## Open questions
 

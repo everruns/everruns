@@ -751,7 +751,7 @@ impl ReasonAtom {
         .filter(|_| native_reasoning_compaction);
         let tool_changes = tool_changes::prepare_for(
             &messages,
-            model_with_provider.provider_type.as_str(),
+            &model_with_provider.provider_type,
             &model_with_provider.model,
             &runtime_agent,
         );
