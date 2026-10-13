@@ -90,6 +90,32 @@ menu, since the tabs carry it on wider screens. Slate tokens and Geist live in
 The Reference tab must remain active for all `/api/` pages, including nested
 OpenAPI-generated routes such as `/api/operations/*` and `/api/operations/tags/*`.
 
+### API reference
+
+The reference leads with the caller-facing Agent API, followed by collapsed
+management domains. Its group landing pages explain what a caller can do;
+operation pages place schemas beside request and response examples. The
+existing operation and tag URLs remain durable. Every new canonical group
+and operation page must be in the sitemap and have a Markdown twin; any
+retired documentation URL needs a permanent redirect through the docs Worker.
+
+Grouping, readable labels, support, audience, availability and migration
+guidance come from the exported OpenAPI document, owned by the
+[documentation modifier](../../crates/server/src/openapi/documentation.rs).
+The renderer must not promote an unclassified operation to supported by
+default. Support describes compatibility; audience describes who the API is
+for, and neither changes authorization. Current public APIs are Preview
+unless explicitly Experimental; Stable is reserved for an announced
+compatibility commitment. Deprecated routes stay discoverable and name a
+successor when one exists; an unannounced removal date must not be invented.
+
+Use the existing schema renderer for references, alternatives, examples,
+callbacks and security requirements. Keep the API navigation focused on the
+reference and preserve the site's Slate styling. Endpoint search loads a
+static index on demand and bounds displayed matches so browsing never becomes
+another full operation dump. The [build verifier](../../apps/docs/scripts/verify-api-reference.mjs)
+checks route, sitemap, Markdown, migration and search coverage.
+
 ### Content Requirements
 
 `docs/` is public product documentation. It must not contain research proposals,

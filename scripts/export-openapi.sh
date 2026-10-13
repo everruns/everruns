@@ -35,6 +35,7 @@ if ! jq -e '.paths | length > 0' "$TEMP_FILE" > /dev/null 2>&1; then
   exit 1
 fi
 
+node scripts/canonicalize-openapi.mjs "$TEMP_FILE"
 mv "$TEMP_FILE" "$OUTPUT_FILE"
 trap - EXIT
 

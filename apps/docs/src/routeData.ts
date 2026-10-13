@@ -17,6 +17,7 @@
 import { docsPath, docsUrl } from "./lib/site";
 import { defineRouteMiddleware } from "@astrojs/starlight/route-data";
 import { productLabel } from "./lib/changelog";
+import { byId } from "./lib/api-reference";
 
 // Matches "GET /v1/foo - Description" or "POST /v1/foo/{id}/bar - Description"
 const methodPathPrefix =
@@ -49,7 +50,8 @@ export const onRequest = defineRouteMiddleware((context) => {
   if (isApiOperation) {
     const cleanTitle = route.entry.data.title.replace(methodPathPrefix, "");
     // A legacy alias shares its successor's summary; keep the two titles apart.
-    const legacy = slug.endsWith("_legacy") && !/legacy/i.test(cleanTitle);
+    const operationId = slug.split("/").pop()!;
+    const legacy = byId.get(operationId)?.deprecated && !/legacy/i.test(cleanTitle);
     updateRouteTitle(route, legacy ? `${cleanTitle.replace(/\.$/, "")} (legacy)` : cleanTitle);
   }
 
@@ -187,11 +189,12 @@ function updateRouteTitle(
   title: string,
 ): void {
   route.entry.data.title = title;
+  const apiContext = route.entry.id.startsWith("api/operations/") && !route.entry.id.startsWith("api/operations/tags/") ? " · API reference" : "";
 
   // Update the <title> head entry.
   const titleEntry = route.head.find((e) => e.tag === "title");
   if (titleEntry) {
-    titleEntry.content = `${title} | Everruns`;
+    titleEntry.content = `${title}${apiContext} | Everruns`;
   }
 
   // Update og:title.
@@ -203,7 +206,7 @@ function updateRouteTitle(
       e.attrs.property === "og:title",
   );
   if (ogTitle?.attrs) {
-    ogTitle.attrs.content = title;
+    ogTitle.attrs.content = `${title}${apiContext}`;
   }
 }
 
@@ -241,6 +244,7 @@ function deriveDescription(slug: string, title: string): string {
 /** "api/operations/tags/knowledge_bases" → "Knowledge Bases"; "mcp-servers" → "MCP Servers". */
 const TAG_WORDS: Record<string, string> = { mcp: "MCP" };
 function tagLabel(slug: string): string {
+  if (slug.endsWith("/mcp_servers")) return "MCP Server Tools";
   return (slug.split("/").pop() ?? "")
     .split(/[-_]/)
     .map((word) => TAG_WORDS[word] ?? word.charAt(0).toUpperCase() + word.slice(1))

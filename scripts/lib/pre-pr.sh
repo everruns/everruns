@@ -104,6 +104,7 @@ echo ""
 echo "8️⃣  Checking OpenAPI spec freshness..."
 TEMP_SPEC=$(mktemp)
 if cargo run --bin export-openapi --release 2>/dev/null > "$TEMP_SPEC"; then
+  node scripts/canonicalize-openapi.mjs "$TEMP_SPEC"
   if diff -q "$PROJECT_ROOT/docs/api/openapi.json" "$TEMP_SPEC" > /dev/null 2>&1; then
     echo "   ✅ OpenAPI spec is up to date"
   else

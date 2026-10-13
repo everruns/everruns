@@ -331,6 +331,7 @@ pub async fn fork_session(
 
 /// GET /v1/sessions - List sessions in organization
 #[utoipa::path(
+    operation_id = "list_platform_sessions",
     get,
     path = "/v1/sessions",
     params(ListSessionsQuery),

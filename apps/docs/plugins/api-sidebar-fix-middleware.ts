@@ -4,9 +4,6 @@
 import { defineRouteMiddleware } from "@astrojs/starlight/route-data";
 import { docsPath } from "../src/lib/site";
 
-// The Reference topic index in the sidebar-topics config array.
-const REFERENCE_TOPIC_INDEX = 4;
-
 export const onRequest = defineRouteMiddleware((context) => {
   const { starlightRoute } = context.locals;
   const slug = starlightRoute.entry?.id;
@@ -17,9 +14,10 @@ export const onRequest = defineRouteMiddleware((context) => {
   if (!topicsData || topicsData.isPageWithTopic) return;
 
   // Find the Reference topic's sidebar group (numbered by index).
+  const referenceIndex = topicsData.topics.findIndex((topic) => topic.link === docsPath("/api/"));
   const referenceGroup = starlightRoute.sidebar.find(
     (item) =>
-      item.type === "group" && item.label === String(REFERENCE_TOPIC_INDEX),
+      item.type === "group" && item.label === String(referenceIndex),
   );
 
   if (referenceGroup?.type === "group") {
