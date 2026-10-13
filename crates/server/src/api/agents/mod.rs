@@ -651,6 +651,10 @@ pub async fn upsert_agent(
                     network_access: req.network_access,
                     max_iterations: req.max_iterations,
                     parallel_tool_calls: req.parallel_tool_calls,
+                    max_output_tokens: req.max_output_tokens.map_or(
+                        crate::storage::UpdateField::Unchanged,
+                        crate::storage::UpdateField::Set,
+                    ),
                     communication: Some(req.communication),
                     status: None,
                 };
@@ -921,6 +925,7 @@ async fn import_from_example(
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
     };
 

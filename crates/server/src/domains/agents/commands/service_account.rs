@@ -43,6 +43,7 @@ pub(super) fn validate_create_limits(req: &CreateAgentRequest) -> Result<(), Com
     {
         return Err(CommandError::bad_request("Input exceeds allowed limits"));
     }
+    crate::domains::agents::max_output_tokens::validate(req.max_output_tokens)?;
     check_platform_chat_content(
         req.intro_markdown.as_deref(),
         req.short_description.as_deref(),
@@ -80,6 +81,7 @@ pub(super) fn validate_update_limits(req: &UpdateAgentRequest) -> Result<(), Com
     {
         return Err(CommandError::bad_request("Input exceeds allowed limits"));
     }
+    crate::domains::agents::max_output_tokens::validate_update(&req.max_output_tokens)?;
     check_platform_chat_content(
         req.intro_markdown.as_ref().and_then(|v| v.as_deref()),
         req.short_description.as_ref().and_then(|v| v.as_deref()),

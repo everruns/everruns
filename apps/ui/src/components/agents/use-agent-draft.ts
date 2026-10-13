@@ -44,6 +44,8 @@ export interface AgentDraftFields {
   default_model_id: string;
   /** `direct` | `explicit`; see `@/lib/agent-communication`. */
   communication: string;
+  /** Output token ceiling as typed; empty means the provider default. */
+  max_output_tokens: string;
 }
 
 const EMPTY_FIELDS: AgentDraftFields = {
@@ -57,6 +59,7 @@ const EMPTY_FIELDS: AgentDraftFields = {
   harness_id: "",
   default_model_id: "",
   communication: DEFAULT_COMMUNICATION,
+  max_output_tokens: "",
 };
 
 /** Fields edited in the Branding sheet; a validation error on one opens it. */
@@ -82,6 +85,7 @@ function fieldsFromAgent(agent: Agent | undefined): AgentDraftFields {
     harness_id: agent.effective_harness?.id || agent.harness_id || "",
     default_model_id: agent.default_model_id || "",
     communication: normalizeCommunication(agent.communication),
+    max_output_tokens: agent.max_output_tokens ? String(agent.max_output_tokens) : "",
   };
 }
 
@@ -143,6 +147,8 @@ export function useAgentDraft(agent: Agent | undefined) {
   const sandboxPolicyChanged =
     sandboxPolicy !== undefined && !same(sandboxPolicy, initialSandboxPolicy);
   const communicationChanged = fields.communication !== initialFields.communication;
+  const maxOutputTokensChanged =
+    fields.max_output_tokens.trim() !== initialFields.max_output_tokens;
   const harnessChanged =
     fieldChanges.harness_id !== undefined && fieldChanges.harness_id !== initialFields.harness_id;
 
@@ -190,6 +196,10 @@ export function useAgentDraft(agent: Agent | undefined) {
         default_model_id: data.default_model_id,
         ...(communicationChanged && {
           communication: normalizeCommunication(fields.communication),
+        }),
+        // Empty clears back to the provider default.
+        ...(maxOutputTokensChanged && {
+          max_output_tokens: data.max_output_tokens ? Number(data.max_output_tokens) : null,
         }),
         ...(capabilitiesChanged && { capabilities: values.capabilities }),
         ...(filesChanged && { initial_files: values.files }),

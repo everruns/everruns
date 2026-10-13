@@ -133,7 +133,6 @@ async fn get_skips_foreign_harness_and_agent_capability_features() {
 
     let other_agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
         service_virtual_user_id: None,
-
         id: None,
         name: "other-agent".to_string(),
         display_name: Some("Other Agent".to_string()),
@@ -154,6 +153,7 @@ async fn get_skips_foreign_harness_and_agent_capability_features() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
     })
     .execute(&other_ctx)
@@ -479,7 +479,6 @@ async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() 
 
     let other_agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
         service_virtual_user_id: None,
-
         id: None,
         name: "other-agent".to_string(),
         display_name: Some("Other Agent".to_string()),
@@ -500,6 +499,7 @@ async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() 
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
     })
     .execute(&other_ctx)
@@ -1414,7 +1414,6 @@ async fn agent_memory_is_visible_across_sessions_of_one_agent() {
 
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
         service_virtual_user_id: None,
-
         id: None,
         name: "memory-agent".to_string(),
         display_name: Some("Memory Agent".to_string()),
@@ -1435,6 +1434,7 @@ async fn agent_memory_is_visible_across_sessions_of_one_agent() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
     })
     .execute(&ctx)

@@ -475,6 +475,7 @@ mod tests {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            max_output_tokens: None,
             communication: Default::default(),
             tools: vec![],
             mcp_servers: Default::default(),

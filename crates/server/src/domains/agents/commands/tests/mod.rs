@@ -127,6 +127,7 @@ fn basic_agent_request(name: &str) -> CreateAgentRequest {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
     }
 }
@@ -155,6 +156,7 @@ fn update_prompt_request(system_prompt: &str) -> UpdateAgentRequest {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: Default::default(),
         communication: None,
     }
 }
@@ -245,6 +247,7 @@ async fn create_and_update_agent_resolve_harness_name_and_id() {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            max_output_tokens: Default::default(),
             communication: None,
         },
     }
@@ -333,6 +336,55 @@ async fn update_agent_updates_parallel_tool_calls() {
     .await
     .expect("agent disables parallel tool calls");
     assert_eq!(updated.parallel_tool_calls, Some(false));
+}
+
+#[tokio::test]
+async fn max_output_tokens_is_validated_stored_and_cleared() {
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db, OrgRole::Owner).await;
+
+    let mut zero = basic_agent_request("max-output-zero");
+    zero.max_output_tokens = Some(0);
+    let err = CreateAgent(zero)
+        .run(&ctx)
+        .await
+        .expect_err("zero is rejected");
+    assert!(err.to_string().contains("max_output_tokens"), "{err}");
+
+    let mut req = basic_agent_request("max-output-agent");
+    req.max_output_tokens = Some(4096);
+    let agent = CreateAgent(req).run(&ctx).await.expect("agent is created");
+    assert_eq!(agent.max_output_tokens, Some(4096));
+    assert_eq!(agent.definition().max_output_tokens, Some(4096));
+
+    let update = |tokens| {
+        let mut req = update_prompt_request("prompt");
+        req.max_output_tokens = tokens;
+        UpdateAgentCmd {
+            id: agent.public_id.to_string(),
+            req,
+        }
+    };
+    let err = update(crate::storage::UpdateField::Set(0))
+        .run(&ctx)
+        .await
+        .expect_err("zero update is rejected");
+    assert!(err.to_string().contains("max_output_tokens"), "{err}");
+    let unchanged = update(crate::storage::UpdateField::Unchanged)
+        .run(&ctx)
+        .await
+        .unwrap();
+    assert_eq!(unchanged.max_output_tokens, Some(4096));
+    let lowered = update(crate::storage::UpdateField::Set(512))
+        .run(&ctx)
+        .await
+        .unwrap();
+    assert_eq!(lowered.max_output_tokens, Some(512));
+    let cleared = update(crate::storage::UpdateField::Clear)
+        .run(&ctx)
+        .await
+        .unwrap();
+    assert_eq!(cleared.max_output_tokens, None);
 }
 
 #[tokio::test]

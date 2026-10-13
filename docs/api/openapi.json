@@ -26576,6 +26576,16 @@
             "example": 50,
             "minimum": 0
           },
+          "max_output_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Ceiling on output tokens per model response, sent to the provider as\n`max_tokens`. Unset keeps the provider default. Clamped to the model's\noutput limit when known. Lower it when a provider rejects calls because\nthe balance can only afford fewer tokens.",
+            "example": 4096,
+            "minimum": 1
+          },
           "mcpServers": {
             "$ref": "#/components/schemas/BTreeMap",
             "description": "Remote MCP servers scoped to this agent and inherited by its sessions."
@@ -32470,6 +32480,16 @@
             "description": "Maximum number of LLM iterations per turn for this agent.",
             "example": 20,
             "minimum": 0
+          },
+          "max_output_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Ceiling on output tokens per model response (sent as `max_tokens`).\nOmit to use the provider default. Must be at least 1; clamped to the\nmodel's output limit when known.",
+            "example": 4096,
+            "minimum": 1
           },
           "mcpServers": {
             "$ref": "#/components/schemas/BTreeMap",
@@ -40676,6 +40696,16 @@
                   "example": 50,
                   "minimum": 0
                 },
+                "max_output_tokens": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int32",
+                  "description": "Ceiling on output tokens per model response, sent to the provider as\n`max_tokens`. Unset keeps the provider default. Clamped to the model's\noutput limit when known. Lower it when a provider rejects calls because\nthe balance can only afford fewer tokens.",
+                  "example": 4096,
+                  "minimum": 1
+                },
                 "mcpServers": {
                   "$ref": "#/components/schemas/BTreeMap",
                   "description": "Remote MCP servers scoped to this agent and inherited by its sessions."
@@ -46039,6 +46069,15 @@
               "null"
             ],
             "description": "Optional tool-loop iteration limit. Omission keeps the host default.",
+            "minimum": 0
+          },
+          "max_output_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Ceiling on output tokens per model response. Omission keeps the provider default.",
             "minimum": 0
           },
           "mcpServers": {
@@ -60955,6 +60994,16 @@
             "example": 20,
             "minimum": 0
           },
+          "max_output_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Ceiling on output tokens per model response (sent as `max_tokens`).\nOmit to leave unchanged; `null` clears it back to the provider default.",
+            "example": 4096,
+            "minimum": 1
+          },
           "mcpServers": {
             "oneOf": [
               {
@@ -64014,6 +64063,16 @@
                 "description": "Maximum number of LLM iterations per turn for this agent.",
                 "example": 50,
                 "minimum": 0
+              },
+              "max_output_tokens": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "description": "Ceiling on output tokens per model response, sent to the provider as\n`max_tokens`. Unset keeps the provider default. Clamped to the model's\noutput limit when known. Lower it when a provider rejects calls because\nthe balance can only afford fewer tokens.",
+                "example": 4096,
+                "minimum": 1
               },
               "mcpServers": {
                 "$ref": "#/components/schemas/BTreeMap",

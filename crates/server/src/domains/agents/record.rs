@@ -229,6 +229,13 @@ pub struct Agent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = true)]
     pub parallel_tool_calls: Option<bool>,
+    /// Ceiling on output tokens per model response, sent to the provider as
+    /// `max_tokens`. Unset keeps the provider default. Clamped to the model's
+    /// output limit when known. Lower it when a provider rejects calls because
+    /// the balance can only afford fewer tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = 4096, minimum = 1)]
+    pub max_output_tokens: Option<u32>,
     /// How the agent talks to people. `direct` (default): its replies are
     /// what it writes. `explicit`: what it writes is private working notes,
     /// and people see only the messages it sends with `send_message`. Applies
@@ -299,6 +306,7 @@ impl Agent {
             network_access: self.network_access.clone(),
             max_iterations: self.max_iterations,
             parallel_tool_calls: self.parallel_tool_calls,
+            max_output_tokens: self.max_output_tokens,
             communication: self.communication,
             tools: self.tools.clone(),
             mcp_servers: self.mcp_servers.clone(),
@@ -406,6 +414,7 @@ mod tests {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            max_output_tokens: None,
             communication: Default::default(),
             sandbox_policy: None,
             tools: vec![],

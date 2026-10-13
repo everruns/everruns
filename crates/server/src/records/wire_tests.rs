@@ -37,6 +37,7 @@ fn test_proto_agent_includes_capability_ids() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: Some(4096),
         communication: Default::default(),
         sandbox_policy: None,
         tools: vec![],
@@ -53,6 +54,8 @@ fn test_proto_agent_includes_capability_ids() {
 
     // Convert to proto
     let proto_agent = schema_agent_to_proto(&agent);
+
+    assert_eq!(proto_agent.max_tokens, Some(4096));
 
     // Verify capability_ids are preserved
     assert!(
@@ -78,6 +81,7 @@ fn test_proto_agent_includes_capability_ids() {
         .collect();
     assert!(cap_ids.contains(&"tools:read_file"));
     assert!(cap_ids.contains(&"tools:write_file"));
+    assert_eq!(schema_agent.max_output_tokens, Some(4096));
 }
 
 #[test]
@@ -111,6 +115,7 @@ fn test_proto_agent_without_capabilities() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
         sandbox_policy: None,
         tools: vec![],
