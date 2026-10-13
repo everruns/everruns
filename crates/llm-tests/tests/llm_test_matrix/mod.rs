@@ -115,6 +115,13 @@ impl ProviderModelConfig {
         self.record_outcome(CELL_MODEL_UNAVAILABLE);
     }
 
+    /// Record this cell as reached-but-unverified (a gateway's shared upstream
+    /// pool for the model stayed rate-limited across every attempt). A method
+    /// for the same macro-hygiene reason as `record_quota`.
+    pub fn record_upstream_rate_limited(&self) {
+        self.record_outcome(CELL_UPSTREAM_RATE_LIMITED);
+    }
+
     /// Append one machine-readable coverage record for this matrix cell to the
     /// file named by `LLM_MATRIX_COVERAGE_FILE`, when that variable is set
     /// (EVE-951). A no-op otherwise, so local runs are unchanged.
@@ -240,6 +247,11 @@ pub const CELL_QUOTA: &str = "quota";
 /// model, so its assertions never ran. A vendor-catalogue condition, not a code
 /// regression — same reporting contract as `CELL_QUOTA`.
 pub const CELL_MODEL_UNAVAILABLE: &str = "model-unavailable";
+
+/// The cell reached the provider, but the gateway's shared upstream capacity
+/// for the model (not our account's own limit) stayed rate-limited through every
+/// attempt, so its assertions never ran. See `is_upstream_shared_pool_rate_limited`.
+pub const CELL_UPSTREAM_RATE_LIMITED: &str = "upstream-rate-limited";
 
 impl std::fmt::Display for ProviderModelConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -426,6 +438,12 @@ pub const FIREWORKS_KIMI_K3: ProviderModelConfig = ProviderModelConfig::new(
 // TODO: Add first-party Mistral Large 4 matrix cases when Mistral makes the
 // model generally available through its own API. Keep the OpenRouter route
 // independently enabled while that availability is pending.
+//
+// Until then this is the only Mistral Large 4 cell, and it runs on OpenRouter's
+// shared (non-BYOK) Mistral capacity. When that pool stays saturated the cell
+// skips as `upstream-rate-limited` rather than failing (see
+// `is_upstream_shared_pool_rate_limited`), so a run summary listing it under
+// "Cells that did not run" means Mistral Large 4 went unverified that run.
 pub const OPENROUTER_MISTRAL_LARGE_4: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::OpenRouter,
     "mistralai/mistral-large-4-0",
@@ -665,6 +683,48 @@ pub fn is_model_unavailable(err: &str) -> bool {
     e.contains("model not available")
 }
 
+// OpenRouter serves non-BYOK traffic for some models from one capacity pool it
+// shares across all of its customers. When the upstream provider throttles that
+// pool, OpenRouter answers HTTP 429 and says so in machine-readable metadata:
+//
+//   "metadata":{"raw":"mistralai/mistral-large-4-0 is temporarily rate-limited
+//   upstream. ...","provider_name":"Mistral","is_byok":false,
+//   "limit_source":"upstream_provider_shared_pool", ...}
+//
+// That is the shape that held `main` red on 7717d560 for over an hour, on
+// `openrouter:mistralai/mistral-large-4-0` only, on every attempt of every
+// re-run. Nothing in our request or our account contributes to it (other
+// customers' traffic drains the pool), so retries and backoff cannot clear it,
+// and failing the matrix reports a vendor capacity event as an everruns
+// regression. It is the same class of false positive as `is_quota_exhausted`
+// and `is_model_unavailable`, so it gets the same treatment: skip loudly and
+// report the cell as unverified coverage, never as run.
+//
+// The match is deliberately narrow, and plain rate limiting stays fatal:
+//   - it needs the 429 status *and* both machine fields. A bare 429, a
+//     "rate limit exceeded" body, or a 429 whose `limit_source` names anything
+//     but `upstream_provider_shared_pool` (our own key or account) is not
+//     matched, so a limit we cause still fails loudly.
+//   - `is_byok:false` is required: with our own provider key the limit would be
+//     ours to fix, not a shared pool.
+//   - it is not a first-attempt skip. `run_live_turn!` retries it with the
+//     transient backoff and skips only if the last attempt still hits it, so a
+//     momentary saturation still verifies the cell.
+//
+// Fields are matched on a copy with whitespace and backslashes removed, because
+// the body reaches us as raw JSON inside a driver message and may be re-escaped
+// by a `Debug`-formatted error chain.
+pub fn is_upstream_shared_pool_rate_limited(err: &str) -> bool {
+    let compact: String = err
+        .to_lowercase()
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '\\')
+        .collect();
+    compact.contains("429")
+        && compact.contains(r#""limit_source":"upstream_provider_shared_pool""#)
+        && compact.contains(r#""is_byok":false"#)
+}
+
 /// Skip the current test (with a loud stderr warning) if `result` failed due to
 /// the provider being out of quota/credits. Otherwise the test proceeds and its
 /// normal assertions run. `result` must expose `success: bool` and
@@ -700,6 +760,17 @@ macro_rules! skip_if_quota {
                         err,
                     );
                     __config.record_model_unavailable();
+                    return;
+                }
+                // Single-shot callers have no retry loop to wait the pool out,
+                // so the shared-pool limit skips here on first sight.
+                if is_upstream_shared_pool_rate_limited(err) {
+                    eprintln!(
+                        "SKIP: {} upstream shared pool rate-limited (not our account): {}",
+                        __config.label(),
+                        err,
+                    );
+                    __config.record_upstream_rate_limited();
                     return;
                 }
             }
@@ -864,7 +935,7 @@ pub fn assert_live_tool_call_contract(result: &TurnResult, expected_tool: &str, 
 ///
 /// Exported via `#[macro_export]` so every test binary that includes this
 /// shared module can use it. `is_quota_exhausted`, `is_transient_transport_error`,
-/// `live_retry_backoff`, and `TurnResult` are referenced unqualified and resolve
+/// `is_upstream_shared_pool_rate_limited`, `live_retry_backoff`, and `TurnResult` are referenced unqualified and resolve
 /// at each call site (the test files already glob-import this module and
 /// `TurnResult`).
 #[macro_export]
@@ -896,6 +967,20 @@ macro_rules! run_live_turn {
                         outcome = None;
                         break;
                     }
+                    // Retried like a transient error below; only a limit that
+                    // outlasts every attempt becomes a skip.
+                    if attempt == $max && is_upstream_shared_pool_rate_limited(err) {
+                        eprintln!(
+                            "SKIP: {} upstream shared pool rate-limited on all {} attempts \
+                             (not our account): {}",
+                            $config.label(),
+                            $max,
+                            err,
+                        );
+                        $config.record_upstream_rate_limited();
+                        outcome = None;
+                        break;
+                    }
                 }
             }
             if ok_fn(&result) {
@@ -903,10 +988,9 @@ macro_rules! run_live_turn {
                 break;
             }
             let transient = !result.success
-                && result
-                    .error
-                    .as_deref()
-                    .is_some_and(is_transient_transport_error);
+                && result.error.as_deref().is_some_and(|e| {
+                    is_transient_transport_error(e) || is_upstream_shared_pool_rate_limited(e)
+                });
             eprintln!(
                 "{}: attempt {attempt}/{} not acceptable \
                  (success={}, transient_transport={}, tool_calls={}, iterations={}, error={:?}, \
@@ -970,7 +1054,8 @@ pub fn all_providers_registry() -> DriverRegistry {
 mod quota_detector_tests {
     use super::{
         LiveToolCallOutcome, assert_live_tool_call_contract, classify_live_tool_call,
-        is_model_unavailable, is_quota_exhausted, is_transient_transport_error, live_retry_backoff,
+        is_model_unavailable, is_quota_exhausted, is_transient_transport_error,
+        is_upstream_shared_pool_rate_limited, live_retry_backoff,
     };
     use everruns_contracts::typed_id::TurnId;
     use everruns_core::turn::TurnStopReason;
@@ -1358,5 +1443,113 @@ mod quota_detector_tests {
         );
         assert!(outcome.is_none(), "caller skips on None");
         assert_eq!(started.elapsed(), Duration::ZERO);
+    }
+
+    /// The exact error the OpenRouter Mistral Large 4 cell failed with on main
+    /// (7717d560), as the driver rendered it into the turn error.
+    const OPENROUTER_SHARED_POOL_429: &str = r#"LLM error: provider 'openrouter': OpenAI Responses API error (429 Too Many Requests): {"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"mistralai/mistral-large-4-0 is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations","provider_name":"Mistral","is_byok":false,"limit_source":"upstream_provider_shared_pool","remedy_hint":"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing","previous_errors":[{"code":429,"message":"Provider returned error","provider_name":"Mistral","raw":"mistralai/mistral-large-4-0 is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations"}]}},"user_id":"user_x"}"#;
+
+    #[test]
+    fn matches_openrouter_shared_pool_rate_limit() {
+        assert!(is_upstream_shared_pool_rate_limited(
+            OPENROUTER_SHARED_POOL_429
+        ));
+        // Re-escaped by a `Debug`-formatted error chain, as the CI log shows it.
+        assert!(is_upstream_shared_pool_rate_limited(&format!(
+            "{OPENROUTER_SHARED_POOL_429:?}"
+        )));
+        // Pretty-printed JSON still matches.
+        assert!(is_upstream_shared_pool_rate_limited(
+            "HTTP 429: {\"is_byok\": false, \"limit_source\": \"upstream_provider_shared_pool\"}"
+        ));
+    }
+
+    #[test]
+    fn shared_pool_detector_keeps_our_own_rate_limits_fatal() {
+        // Not a quota condition either: the existing detector must stay narrow.
+        assert!(!is_quota_exhausted(OPENROUTER_SHARED_POOL_429));
+        // With our own provider key, the limit is ours.
+        assert!(!is_upstream_shared_pool_rate_limited(
+            &OPENROUTER_SHARED_POOL_429.replace("\"is_byok\":false", "\"is_byok\":true")
+        ));
+        // A limit sourced from our key/account is ours.
+        assert!(!is_upstream_shared_pool_rate_limited(
+            &OPENROUTER_SHARED_POOL_429
+                .replace("upstream_provider_shared_pool", "openrouter_key_limit")
+        ));
+        // Both fields are required, not either.
+        assert!(!is_upstream_shared_pool_rate_limited(
+            "429: {\"limit_source\":\"upstream_provider_shared_pool\"}"
+        ));
+        assert!(!is_upstream_shared_pool_rate_limited(
+            "429: {\"is_byok\":false}"
+        ));
+        // Plain rate limiting and the prose alone stay fatal.
+        assert!(!is_upstream_shared_pool_rate_limited(
+            "HTTP 429 Too Many Requests: rate limit exceeded"
+        ));
+        assert!(!is_upstream_shared_pool_rate_limited(
+            "mistralai/mistral-large-4-0 is temporarily rate-limited upstream"
+        ));
+        assert!(!is_upstream_shared_pool_rate_limited(""));
+    }
+
+    /// A shared-pool limit is waited out with the transient backoff first, and
+    /// only becomes a skip when it outlasts every attempt.
+    #[tokio::test(start_paused = true)]
+    async fn shared_pool_rate_limit_retries_then_skips() {
+        use std::cell::Cell;
+        use std::time::Duration;
+        use tokio::time::Instant;
+
+        // Synthetic results against a real config: must not record coverage.
+        let _no_coverage = super::CoverageSuppressed::new();
+        let config = SYNTHETIC;
+        let attempts = Cell::new(0usize);
+        let started = Instant::now();
+
+        let outcome = run_live_turn!(config, 3, |r: &TurnResult| r.success, {
+            attempts.set(attempts.get() + 1);
+            failed_result(OPENROUTER_SHARED_POOL_429)
+        });
+
+        assert_eq!(attempts.get(), 3, "every attempt is spent before skipping");
+        assert!(outcome.is_none(), "caller skips on None");
+        assert_eq!(started.elapsed(), Duration::from_secs(15));
+    }
+
+    /// A pool that drains mid-run still verifies the cell.
+    #[tokio::test(start_paused = true)]
+    async fn shared_pool_rate_limit_recovers_on_retry() {
+        use std::cell::Cell;
+
+        let _no_coverage = super::CoverageSuppressed::new();
+        let config = SYNTHETIC;
+        let attempts = Cell::new(0usize);
+
+        let outcome = run_live_turn!(config, 3, |r: &TurnResult| r.success, {
+            attempts.set(attempts.get() + 1);
+            if attempts.get() == 1 {
+                failed_result(OPENROUTER_SHARED_POOL_429)
+            } else {
+                tool_result(&[], 0, &["stop"], 0)
+            }
+        });
+
+        assert_eq!(attempts.get(), 2);
+        assert!(outcome.is_some_and(|r| r.success));
+    }
+
+    /// A plain 429 is not skipped: the last failure reaches the caller's assert.
+    #[tokio::test(start_paused = true)]
+    async fn plain_rate_limit_is_not_skipped() {
+        let _no_coverage = super::CoverageSuppressed::new();
+        let config = SYNTHETIC;
+
+        let outcome = run_live_turn!(config, 3, |r: &TurnResult| r.success, {
+            failed_result("LLM error: 429 Too Many Requests: rate limit exceeded")
+        });
+
+        assert!(outcome.is_some_and(|r| !r.success));
     }
 }

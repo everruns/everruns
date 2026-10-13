@@ -26,20 +26,22 @@ NO_KEY = "no-key"
 SKIP_LIST = "skip-list"
 QUOTA = "quota"
 MODEL_UNAVAILABLE = "model-unavailable"
+UPSTREAM_RATE_LIMITED = "upstream-rate-limited"
 
 # What a cell is reported as, worst-first. A cell records several times per test
 # (the `is_none()` guard, then once per `run_live_turn!` attempt), so its
 # outcomes are folded by taking the first state in this order that it recorded.
-# `quota` and `model-unavailable` outrank `configured` on purpose: such a cell did
-# reach the provider, but the billing error or the retired model id short-circuits
-# the turn before any assertion runs, so it verified nothing and must not be
-# counted as covered.
-PRECEDENCE = [QUOTA, MODEL_UNAVAILABLE, NO_KEY, SKIP_LIST, CONFIGURED]
+# `quota`, `model-unavailable` and `upstream-rate-limited` outrank `configured` on
+# purpose: such a cell did reach the provider, but the billing error, the retired
+# model id or the exhausted shared upstream pool short-circuits the turn before
+# any assertion runs, so it verified nothing and must not be counted as covered.
+PRECEDENCE = [QUOTA, MODEL_UNAVAILABLE, UPSTREAM_RATE_LIMITED, NO_KEY, SKIP_LIST, CONFIGURED]
 
 VERDICT = {
     CONFIGURED: "ran",
     QUOTA: "skipped — out of quota/credits",
     MODEL_UNAVAILABLE: "skipped — model retired by the provider, repoint this cell",
+    UPSTREAM_RATE_LIMITED: "skipped — gateway shared upstream pool rate-limited (not our account)",
     NO_KEY: "skipped — API key not set",
     SKIP_LIST: "skipped — SKIP_LLM_INTEGRATION_TESTS_PROVIDERS",
 }
