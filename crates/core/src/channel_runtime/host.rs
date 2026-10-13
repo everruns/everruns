@@ -39,13 +39,14 @@ use futures::stream::BoxStream;
 use serde_json::{Value, json};
 use tracing::{debug, warn};
 
+use super::attachments::{AttachmentPolicy, Intake, ReceivedAttachment};
 use super::{
     ChannelDeliveryAdapter, ChannelDriver, ChannelError, ChannelRequest, ChannelResponse,
     ChannelStore, ControlAction, DeliveryEvent, DeliveryOptions, DeliveryStep, DeliveryTarget,
-    Inbound, InboundAttachment, InboundChannelEvent, InboundControl, InboundDecision,
-    InboundMessage, InboundRoute, MemoryChannelStore, PendingDelivery, SessionBinding,
-    TurnDelivery, build_session_routing_tag,
+    Inbound, InboundChannelEvent, InboundControl, InboundDecision, InboundMessage, InboundRoute,
+    MemoryChannelStore, PendingDelivery, SessionBinding, TurnDelivery, build_session_routing_tag,
 };
+use everruns_contracts::runtime::egress::EgressService;
 use everruns_contracts::runtime::events::TOOL_CALL_REQUESTED;
 use everruns_contracts::runtime::message::ContentPart;
 use everruns_contracts::runtime::message_retriever::InputMessage;
@@ -308,6 +309,39 @@ pub trait ChannelSessionPort: Send + Sync {
         Ok(())
     }
 
+    /// Store a file a message brought (see [`ReceivedAttachment`]) and return
+    /// the content part that refers to it. An error becomes a note in the
+    /// message instead; a `BadRequest` reason is shown to the model, so it
+    /// says what was wrong with the file and nothing more. The default keeps
+    /// images inline and declines other files.
+    async fn store_attachment(
+        &self,
+        _channel: &ChannelConfig,
+        attachment: ReceivedAttachment,
+    ) -> Result<ContentPart, ChannelError> {
+        use base64::Engine as _;
+        if attachment.media_type.starts_with("image/") {
+            return Ok(ContentPart::Image(
+                everruns_contracts::runtime::message::ImageContentPart::from_base64(
+                    base64::engine::general_purpose::STANDARD.encode(&attachment.data),
+                    attachment.media_type,
+                ),
+            ));
+        }
+        Err(ChannelError::BadRequest("this host keeps no files".into()))
+    }
+
+    /// The egress a channel's attachment downloads go through: the host's,
+    /// which a host with tenants scopes to the channel's, so the downloads
+    /// are attributed. The default leaves it as it is.
+    fn attachment_egress(
+        &self,
+        _channel: &ChannelConfig,
+        egress: Arc<dyn EgressService>,
+    ) -> Arc<dyn EgressService> {
+        egress
+    }
+
     /// Apply a platform's control event to a session. The default ignores it.
     async fn control(
         &self,
@@ -364,6 +398,8 @@ struct Inner {
     /// This process, as a holder of delivery leases.
     holder: String,
     lease: Duration,
+    egress: Option<Arc<dyn EgressService>>,
+    attachments: AttachmentPolicy,
 }
 
 /// Runs channels against one host's sessions. Cheap to clone.
@@ -380,9 +416,25 @@ pub struct ChannelHostBuilder {
     resolver: Option<Arc<dyn ChannelResolver>>,
     flush_interval: Duration,
     lease: Duration,
+    egress: Option<Arc<dyn EgressService>>,
+    attachments: AttachmentPolicy,
 }
 
 impl ChannelHostBuilder {
+    /// Download files messages link to (a Slack file) through this egress
+    /// service. Without one, such files become notes.
+    pub fn egress(mut self, egress: Arc<dyn EgressService>) -> Self {
+        self.egress = Some(egress);
+        self
+    }
+
+    /// What the host takes from one message. Defaults to
+    /// [`AttachmentPolicy::default`].
+    pub fn attachment_policy(mut self, policy: AttachmentPolicy) -> Self {
+        self.attachments = policy;
+        self
+    }
+
     /// Persist bindings and pending deliveries here. Defaults to memory.
     pub fn store(mut self, store: Arc<dyn ChannelStore>) -> Self {
         self.store = Some(store);
@@ -439,6 +491,8 @@ impl ChannelHostBuilder {
                 flush_interval: self.flush_interval,
                 holder: uuid::Uuid::now_v7().to_string(),
                 lease: self.lease,
+                egress: self.egress,
+                attachments: self.attachments,
             }),
         }
     }
@@ -453,6 +507,8 @@ impl ChannelHost {
             resolver: None,
             flush_interval: DEFAULT_FLUSH_INTERVAL,
             lease: DEFAULT_DELIVERY_LEASE,
+            egress: None,
+            attachments: AttachmentPolicy::default(),
         }
     }
 
@@ -846,7 +902,7 @@ impl ChannelHost {
             }
         };
 
-        let input = input_message(name, &message.event);
+        let input = self.input_message(&channel.config, &message.event).await;
         self.send_and_deliver(channel, driver, &session_id, input, message.reply_to)
             .await?;
         let mut response = ChannelResponse::accepted(&session_id);
@@ -883,6 +939,29 @@ impl ChannelHost {
         })
     }
 
+    /// A platform message as session input: its text, then its attachments,
+    /// each stored or replaced by a note.
+    async fn input_message(
+        &self,
+        channel: &ChannelConfig,
+        event: &InboundChannelEvent,
+    ) -> InputMessage {
+        let mut message = input_text(&channel.name, event);
+        let intake = Intake {
+            port: self.inner.port.as_ref(),
+            egress: self
+                .inner
+                .egress
+                .clone()
+                .map(|egress| self.inner.port.attachment_egress(channel, egress)),
+            policy: self.inner.attachments,
+        };
+        message
+            .content
+            .extend(intake.parts(channel, &event.attachments).await);
+        message
+    }
+
     /// Seed a new session with the conversation's earlier messages. Best
     /// effort: a session without history still answers.
     async fn backfill(
@@ -900,10 +979,11 @@ impl ChannelHost {
                 return;
             }
         };
-        let history = history
-            .iter()
-            .map(|event| input_message(channel.name(), event))
-            .collect();
+        let mut messages = Vec::with_capacity(history.len());
+        for event in &history {
+            messages.push(self.input_message(&channel.config, event).await);
+        }
+        let history = messages;
         if let Err(error) = self
             .inner
             .port
@@ -1220,28 +1300,15 @@ fn binding_key(kind: &str, binding: SessionBinding, route: &InboundRoute) -> Opt
     }
 }
 
-fn input_message(channel: &str, event: &InboundChannelEvent) -> InputMessage {
+/// A platform message's text and metadata, without its attachments.
+fn input_text(channel: &str, event: &InboundChannelEvent) -> InputMessage {
     let mut message = InputMessage::user(event.text.clone());
     for (key, value) in &event.message_metadata {
         message = message.with_metadata(key.clone(), value.clone());
     }
-    let mut message = message
-        .with_metadata("channel", json!(channel))
-        .with_external_actor(event.actor.clone());
-    for attachment in &event.attachments {
-        match attachment {
-            InboundAttachment::Image { url, .. } => {
-                message.content.push(ContentPart::image_url(url.clone()))
-            }
-            InboundAttachment::FileDescription { name, mime_type } => {
-                message.content.push(ContentPart::text(match mime_type {
-                    Some(mime) => format!("[Attached file: {name} ({mime})]"),
-                    None => format!("[Attached file: {name}]"),
-                }))
-            }
-        }
-    }
     message
+        .with_metadata("channel", json!(channel))
+        .with_external_actor(event.actor.clone())
 }
 
 fn title_for(text: &str) -> String {

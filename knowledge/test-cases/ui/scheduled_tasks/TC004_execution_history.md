@@ -1,75 +1,44 @@
 ---
 type: Test Case
-title: "TC004: Execution History"
-description: "Verify that execution history is displayed correctly with proper sorting, status indicators, and navigation."
+title: "TC004: Execution History and Filtering"
+description: "Verify execution history preserves identifiers, terminal outcomes, error details, filtering, and workflow navigation."
 tags:
   - everruns
   - test-case
   - ui
   - scheduled-tasks
 ---
-# TC004: Execution History
+# TC004: Execution History and Filtering
 
 ## Description
 
-Verify that execution history is displayed correctly with proper sorting, status indicators, and navigation.
+Verify execution history preserves identifiers, terminal outcomes, error details, filtering, and workflow navigation.
 
 ## Preconditions
 
-- Schedule exists with multiple past executions (at least 5)
-- Executions include both successful and failed runs
+- Disposable schedule with recorded successful and failed executions, plus pending/running/skipped fixtures where available.
+- Caller has platform access; record expected execution IDs and results from the API.
 
 ## Test Data
 
-| Field | Value |
-|-------|-------|
-| Schedule Name | history-test |
-| Min Executions | 5 |
+| Fixture | Expected |
+| --- | --- |
+| Completed workflow | Workflow link and final duration |
+| Failed execution | Error and terminal outcome |
+| Filter with no matches | Explicit empty state |
 
 ## Steps
 
-1. Navigate to schedule detail page for a schedule with multiple executions
-2. Observe the Executions table
-3. Verify sorting order
-4. Examine a completed execution row
-5. Examine a failed execution row (if present)
-6. Click on a Workflow ID link
-7. Return to schedule detail
-8. Use pagination if more than 10 executions exist
+1. Open the detail, refresh Execution History, and compare its IDs/order against the current API response.
+2. Inspect Status, Scheduled, Started, Completed, Duration, Workflow, and Error columns.
+3. Hover relative timestamps and a truncated error; inspect exact timestamp/error tooltips.
+4. Select Completed and Failed filters, then a status absent from the fixture; inspect requests and rows.
+5. Return to All, open View Workflow, verify its input/output, and return with browser Back.
 
 ## Expected Result
 
-### Table Display
-
-- Executions are sorted by most recent first (descending by scheduled_at)
-- Each row shows:
-  - Scheduled At: formatted datetime
-  - Started At: formatted datetime
-  - Duration: formatted as "Xs" or "Xm Ys"
-  - Status: badge with appropriate color
-    - Running: yellow
-    - Completed: green
-    - Failed: red
-    - Skipped: gray
-  - Workflow ID: clickable link (or Task ID for activity targets)
-  - Error: truncated error message for failed executions
-
-### Status-Specific Behavior
-
-- Completed: Shows green badge, duration is final, has workflow link
-- Failed: Shows red badge, error column populated, may or may not have workflow link
-- Running: Shows yellow badge, duration is live/incrementing
-- Skipped: Shows gray badge, no workflow link, reason in error column
-
-### Navigation
-
-- Clicking Workflow ID navigates to `/durable/workflows/{id}`
-- Workflow detail page shows the execution's input and output
-- Back button returns to schedule detail
-
-### Pagination
-
-- If >10 executions, pagination controls appear
-- "Next" loads older executions
-- "Previous" loads newer executions
-- Page indicator shows "Page X of Y"
+- History agrees with the API; every displayed execution belongs to the selected schedule and filter.
+- Terminal duration is in milliseconds; absent completion/duration/workflow values render as a dash rather than fabricated data.
+- Failed rows expose their error, and a filter with no matches gives a clear empty state.
+- Workflow links resolve to the correct workflow; returning preserves a usable schedule detail.
+- Pagination buttons and live duration counters are not current UI promises. API pagination is covered separately.

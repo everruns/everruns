@@ -5,7 +5,7 @@ use futures::channel::mpsc;
 use serde_json::{Value, json};
 
 use super::*;
-use crate::channel::{DeliveryContext, DeliveryResult, OutboundChannelMessage};
+use crate::channel::{DeliveryContext, DeliveryResult, InboundAttachment, OutboundChannelMessage};
 use everruns_contracts::runtime::events::{OUTPUT_MESSAGE_COMPLETED, TURN_COMPLETED, TURN_STARTED};
 
 /// A session host that records what the channel host asks of it. Tests emit

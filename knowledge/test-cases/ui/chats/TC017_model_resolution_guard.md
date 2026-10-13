@@ -17,7 +17,7 @@ an explicit model becomes available.
 
 ## Preconditions
 
-- Server running (`just start-dev`)
+- Canonical stack running (see root `AGENTS.md`)
 - User logged in
 - A chat thread exists
 - No enabled chat model or resolvable default model exists

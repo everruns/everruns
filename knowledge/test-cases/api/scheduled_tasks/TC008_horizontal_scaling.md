@@ -25,7 +25,7 @@ Verify that multiple scheduler instances can run concurrently without duplicate 
 | Field | Value |
 |-------|-------|
 | Scheduler Instances | 3 |
-| Schedules | 100 (across multiple orgs) |
+| Schedules | 6 disposable global durable schedules |
 | Cron Expression | `* * * * *` (every minute) |
 | Test Duration | 5 minutes |
 
@@ -33,7 +33,7 @@ Verify that multiple scheduler instances can run concurrently without duplicate 
 
 ### Setup
 
-1. Create 100 schedules across 10 organizations
+1. As a platform user, create six disposable global durable schedules with recorded IDs
 2. All schedules use cron `* * * * *`
 
 ### Start Multiple Scheduler Instances
@@ -54,20 +54,20 @@ Verify that multiple scheduler instances can run concurrently without duplicate 
 ### Verify No Duplicate Triggers
 
 9. For each schedule, count executions in the 5-minute window
-10. Each schedule should have exactly 5 executions (one per minute)
-11. No schedule should have 6+ executions (would indicate duplicate trigger)
+10. For each fully observed due timestamp, each schedule should have one execution; exclude partial start/end windows
+11. No `(schedule_id, scheduled_at)` pair should have duplicate execution records
 
 ### Verify Load Distribution
 
 12. Check which instance processed each execution
-13. Verify work is distributed across all 3 instances
+13. Verify healthy instances continue to claim work; identical per-instance counts are not required
 
 ### Instance Failure Recovery
 
 14. Kill scheduler instance 2 (simulate crash)
 15. Wait 2 minutes
 16. Verify schedules continue to be processed by instances 1 and 3
-17. Verify no missed triggers during failover
+17. Verify recovery after the configured claim timeout; inspect due timestamps and catch-up policy before classifying a missed trigger
 
 ### Instance Restart
 
@@ -79,8 +79,8 @@ Verify that multiple scheduler instances can run concurrently without duplicate 
 
 - All 3 instances register in `durable_scheduler_instances`
 - Each schedule gets exactly 1 execution per minute (no duplicates)
-- Work is distributed roughly evenly across instances
-- Instance failure causes no duplicate or missed triggers
+- Healthy instances make progress; exact load equality is not a contract
+- Instance failure recovers within the configured claim timeout and catch-up policy without duplicate records for one due timestamp
 - `SELECT ... FOR UPDATE SKIP LOCKED` prevents concurrent claims
 
 ## Database Verification
@@ -132,3 +132,7 @@ HAVING COUNT(*) != 5;
 | Claim contention rate | < 5% (SKIP LOCKED minimizes contention) |
 | Reclaim events | < 1% of total claims |
 | Load imbalance | < 20% variance between instances |
+
+## Cleanup
+
+Stop only the extra test-owned scheduler processes and delete only the six recorded disposable schedules.

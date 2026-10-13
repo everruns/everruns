@@ -393,44 +393,82 @@ fn test_parse_slack_inbound_event_basic() {
 }
 
 #[test]
-fn test_parse_slack_inbound_event_with_image_files() {
+fn test_parse_slack_inbound_event_downloads_files_with_the_bot_token() {
     let config = test_config(SessionBinding::Thread);
     let mut event = test_event("C123", Some("1234.5678"), None);
-    event.files = vec![test_slack_file(
-        "photo.png",
-        "image/png",
-        "png",
-        Some("https://files.slack.com/photo.png"),
-    )];
+    let mut pdf = test_slack_file(
+        "doc.pdf",
+        "application/pdf",
+        "pdf",
+        Some("https://files.slack.com/files-pri/T1-F1/doc.pdf"),
+    );
+    pdf.url_private_download =
+        Some("https://files.slack.com/files-pri/T1-F1/download/doc.pdf".to_string());
+    event.files = vec![pdf];
 
     let inbound = parse_slack_inbound_event(&event, &config, None);
 
     assert_eq!(inbound.attachments.len(), 1);
     match &inbound.attachments[0] {
-        InboundAttachment::Image { url, alt_text } => {
-            assert_eq!(url, "https://files.slack.com/photo.png");
-            assert_eq!(alt_text.as_deref(), Some("photo.png"));
+        InboundAttachment::Remote {
+            url,
+            name,
+            media_type,
+            size,
+            credential,
+        } => {
+            assert_eq!(
+                url,
+                "https://files.slack.com/files-pri/T1-F1/download/doc.pdf"
+            );
+            assert_eq!(name.as_deref(), Some("doc.pdf"));
+            assert_eq!(media_type.as_deref(), Some("application/pdf"));
+            assert_eq!(*size, Some(1024));
+            let credential = credential.as_ref().expect("bot token credential");
+            assert_eq!(credential.host, "files.slack.com");
+            assert_eq!(
+                credential.authorization,
+                format!("Bearer {}", config.bot_token)
+            );
         }
-        other => panic!("Expected Image attachment, got {:?}", other),
+        other => panic!("Expected Remote attachment, got {:?}", other),
     }
 }
 
 #[test]
-fn test_parse_slack_inbound_event_with_non_image_file() {
+fn test_parse_slack_inbound_event_keeps_external_files_as_links() {
     let config = test_config(SessionBinding::Thread);
     let mut event = test_event("C123", Some("1234.5678"), None);
-    event.files = vec![test_slack_file("doc.pdf", "application/pdf", "pdf", None)];
+    let mut file = test_slack_file(
+        "plan.gdoc",
+        "application/vnd.google-apps.document",
+        "gdoc",
+        Some("https://files.slack.com/plan"),
+    );
+    file.is_external = true;
+    file.permalink = Some("https://docs.google.com/document/d/1".to_string());
+    event.files = vec![
+        file,
+        test_slack_file("doc.pdf", "application/pdf", "pdf", None),
+    ];
 
     let inbound = parse_slack_inbound_event(&event, &config, None);
 
-    assert_eq!(inbound.attachments.len(), 1);
-    match &inbound.attachments[0] {
-        InboundAttachment::FileDescription { name, mime_type } => {
-            assert_eq!(name, "doc.pdf");
-            assert_eq!(mime_type.as_deref(), Some("application/pdf"));
-        }
-        other => panic!("Expected FileDescription, got {:?}", other),
-    }
+    let descriptions: Vec<_> = inbound
+        .attachments
+        .iter()
+        .map(|attachment| match attachment {
+            InboundAttachment::FileDescription { name, .. } => name.as_str(),
+            other => panic!("Expected FileDescription, got {:?}", other),
+        })
+        .collect();
+    assert_eq!(
+        descriptions,
+        [
+            "plan.gdoc (https://docs.google.com/document/d/1)",
+            "doc.pdf"
+        ]
+    );
 }
 
 #[test]
