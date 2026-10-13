@@ -40,6 +40,8 @@ pub struct AttachmentPolicy {
     pub max_files: usize,
     /// Largest file kept, in bytes.
     pub max_bytes: u64,
+    /// Whether files sent as a URL are downloaded; when not, they become notes.
+    pub downloads: bool,
 }
 
 impl Default for AttachmentPolicy {
@@ -47,6 +49,20 @@ impl Default for AttachmentPolicy {
         Self {
             max_files: 10,
             max_bytes: 25 * 1024 * 1024,
+            downloads: true,
+        }
+    }
+}
+
+impl AttachmentPolicy {
+    /// For channels anyone on the internet can reach without signing in
+    /// (Public Chat): 3 files of up to 10 MiB, inline only. An anonymous
+    /// visitor cannot make the host fetch URLs on its behalf.
+    pub fn anonymous() -> Self {
+        Self {
+            max_files: 3,
+            max_bytes: 10 * 1024 * 1024,
+            downloads: false,
         }
     }
 }
@@ -144,6 +160,11 @@ impl AttachmentIntake<'_> {
                 credential,
                 ..
             } => {
+                if !self.policy.downloads {
+                    return Err(NotReceived(
+                        "this channel takes files inline, not as links".into(),
+                    ));
+                }
                 if let Some(size) = size {
                     self.check_size(*size)?;
                 }

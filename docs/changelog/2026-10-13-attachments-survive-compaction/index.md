@@ -23,5 +23,8 @@ MCP tools. A file that cannot be taken becomes a note the agent reads:
 [Attachment report.pdf not received: 31 MB is over the 25 MB limit]
 ```
 
+Public Chat visitors are not signed in, so Public Chat takes at most 3 files of up to 10 MB, sent
+inline rather than as links.
+
 See [Files people send](/features/channels/#files-people-send), and
 [Send files](/how-to/call-your-agent-from-code/#send-files) for the Agent API.

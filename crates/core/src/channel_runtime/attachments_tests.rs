@@ -177,6 +177,7 @@ async fn files_that_cannot_be_taken_become_notes() {
     let policy = AttachmentPolicy {
         max_files: 4,
         max_bytes: 32,
+        downloads: true,
     };
     let (parts, stored) = take(
         Some(egress),
@@ -244,4 +245,37 @@ async fn a_host_without_egress_notes_remote_files() {
         parts,
         ["[Attachment a.pdf not received: this host does not download files]"]
     );
+}
+
+#[tokio::test]
+async fn the_anonymous_policy_takes_inline_files_only() {
+    let egress: Arc<dyn EgressService> =
+        Arc::new(FakeEgress::default().with("https://example.com/a.pdf", 200, &[], b"%PDF-1.7"));
+    let inline = |name: &str| InboundAttachment::Bytes {
+        name: Some(name.into()),
+        media_type: Some("text/plain".into()),
+        data: b"hi".to_vec(),
+    };
+    let (parts, stored) = take(
+        Some(egress),
+        AttachmentPolicy::anonymous(),
+        &[
+            remote("https://example.com/a.pdf", None),
+            inline("b.txt"),
+            inline("c.txt"),
+            inline("d.txt"),
+        ],
+    )
+    .await;
+
+    assert_eq!(
+        parts,
+        [
+            "[Attachment a.pdf not received: this channel takes files inline, not as links]",
+            "stored b.txt (text/plain)",
+            "stored c.txt (text/plain)",
+            "[Attachment d.txt not received: a message keeps at most 3 files]",
+        ]
+    );
+    assert_eq!(stored.len(), 2);
 }
