@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui, api, cli]
 links:
   docs: [/features/agent-triggers/]
-  prs: []
+  prs: [everruns/everruns#4703]
 ---
 
 Agent schedule triggers and durable schedules read the weekday field of a
