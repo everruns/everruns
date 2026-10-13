@@ -87,7 +87,7 @@ Streaming content uses delta events with accumulated state:
 }
 ```
 
-Deltas are batched at ~100ms to reduce volume.
+Deltas are batched at ~100ms to reduce volume. When a provider stream breaks after some text, the runtime retries it under the same `message_id`: it emits `output.message.started` for that message again, and `accumulated` starts over. Render `accumulated`, or clear the text you added up on a repeated `output.message.started`.
 
 ## Forward-compatibility
 
