@@ -23,6 +23,9 @@
 
 mod llm_test_matrix;
 
+#[path = "tool_search_test/gemini_tool_removal_wire.rs"]
+mod gemini_tool_removal_wire;
+
 use everruns_test_support::{TestMathCapability, TestWeatherCapability};
 use llm_test_matrix::*;
 
@@ -1062,7 +1065,8 @@ impl everruns_core::capabilities::Capability for SwitchedWeatherCapability {
 
 /// On models that rewrite `tools` for every change, a removal waits while the
 /// cache is warm: the call after the switch sends the same tools, records no
-/// change, and reads the cached prefix.
+/// change, and remains functional. Cache reads are measured separately from
+/// the deterministic Gemini wire/removed-tool contract in the loopback test.
 #[rstest]
 #[case::openrouter_gpt6_luna(OPENROUTER_GPT6_LUNA)]
 #[case::gemini_flash(GEMINI_FLASH)]
@@ -1111,6 +1115,13 @@ async fn test_tool_removal_waits_for_a_cold_cache(#[case] config: ProviderModelC
         .unwrap();
     assert!(second.success, "Turn should succeed: {:?}", second.error);
 
+    assert_eq!(
+        second.response.trim(),
+        "5",
+        "{}: wrong answer",
+        config.label()
+    );
+
     let all = generations(runner.events_by_type(LLM_GENERATION).await);
     let after = &all[before.len()];
     assert!(
@@ -1123,8 +1134,7 @@ async fn test_tool_removal_waits_for_a_cold_cache(#[case] config: ProviderModelC
         .metadata
         .usage
         .as_ref()
-        .and_then(|usage| usage.cache_read_tokens)
-        .unwrap_or(0);
+        .and_then(|usage| usage.cache_read_tokens);
     let previous_input = before
         .last()
         .and_then(|data| data.metadata.usage.as_ref())
@@ -1135,12 +1145,23 @@ async fn test_tool_removal_waits_for_a_cold_cache(#[case] config: ProviderModelC
         })
         .unwrap_or(0);
     eprintln!(
-        "{} cache_read after the removal: {cache_read} of a {previous_input}-token prefix",
+        "{} cache_read after the removal: {cache_read:?} of a {previous_input}-token prefix",
         config.label()
     );
     assert!(
-        previous_input >= 2048 && cache_read * 10 >= previous_input * 8,
-        "{}: the call after the removal should read the cached prefix, read {cache_read} of {previous_input}",
+        previous_input >= 2048,
+        "{}: expected a cache-eligible prefix, got {previous_input} tokens",
         config.label()
     );
+    // Gemini implicit caching is best effort, even for byte-identical requests:
+    // https://ai.google.dev/gemini-api/docs/generate-content/caching
+    // The loopback test gates our prefix and execution invariants instead.
+    if config.provider_type != everruns_contracts::driver_registry::DriverId::Gemini {
+        let cache_read = cache_read.unwrap_or(0);
+        assert!(
+            cache_read * 10 >= previous_input * 8,
+            "{}: the call after the removal should read the cached prefix, read {cache_read} of {previous_input}",
+            config.label()
+        );
+    }
 }

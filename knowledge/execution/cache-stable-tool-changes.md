@@ -138,6 +138,25 @@ in the first place (see [OpenAI](#openai-responses)). And hosted tool search
 does not make MCP tools that arrive later cheap: they still have to arrive
 through `additional_tools`, not `tools`.
 
+### Gemini implicit-cache contract (2026-10-12, EVE-1258)
+
+Google's [GenerateContent caching contract](https://ai.google.dev/gemini-api/docs/generate-content/caching)
+does not guarantee implicit-cache savings for an individual request. Six
+bounded synthetic calls confirmed that byte-identical requests can report
+no hit or a partial hit below the former 80% live-test gate. An appended
+conversation with unchanged system and tools also reported no hit. These
+probes establish the limit of the metric, not the correctness of every
+runtime request.
+
+The owned correctness contract is preserving the serialized system and tool
+definitions during a held removal while refusing to execute the removed
+tool. The [Gemini loopback contract test](../../crates/llm-tests/tests/tool_search_test/gemini_tool_removal_wire.rs)
+exercises both through the runtime and driver with cache usage omitted. The
+[live removal test](../../crates/llm-tests/tests/tool_search_test.rs) still checks
+successful turns, the arithmetic answer, deferred removal, and cache-eligible
+input size; it reports Gemini cache usage without imposing a per-call hit
+percentage. The existing OpenRouter percentage gate remains.
+
 ## State of the art
 
 | Who | What they do |
@@ -364,7 +383,9 @@ therefore rewrites the system prompt.
   and that the fallback produces exactly today's requests elsewhere.
 - Live `llm-tests` cases per provider asserting the cached share stays above
   90% across a reveal and an MCP attach, which is the gate for setting the
-  profile flag.
+  profile flag. This is a performance adoption bar for inline support, not a
+  guaranteed hit rate for Gemini's best-effort implicit caching in fallback
+  mode; its owned correctness gate is the loopback contract above.
 
 ## Plan
 
