@@ -366,7 +366,8 @@ approvals.
 
 The same client code works against an agent hosted on Everruns: point
 `EVERRUNS_AGENT_URL` at the agent's Agent API channel and use an agent key. See
-[Call your agent from code](/how-to/call-your-agent-from-code/).
+[Call your agent from code](/how-to/call-your-agent-from-code/) and the
+[Agent API](/features/agent-api/) reference.
 
 ## Next steps
 

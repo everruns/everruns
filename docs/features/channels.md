@@ -22,7 +22,7 @@ Use a channel when an external peer sends a request and waits for a reply. Use a
 | FCP | `fcp` | Any HTTP client, text in and text out | `/v1/channels/{channel_id}/fcp` | [FCP](#fcp) |
 | Public Chat | `public_chat` | Visitors to a hosted chat website for one Agent | `/v1/channels/{channel_id}/public-chat` | [Public Chat](#public-chat) |
 | Voice | `voice` | People talking from a browser or app, over WebRTC | `/v1/agents/{agent_id}/channels/{channel_id}/voice/calls` | [Voice](/features/voice/) |
-| Agent API | `api` | Your own code, with an agent key | `/v1/channels/{channel_id}` | [Agent API](#agent-api) |
+| Agent API | `api` | Your own code, with an agent key | `/v1/channels/{channel_id}` | [Agent API](/features/agent-api/) |
 
 Routes are relative to the API base, for example `https://your-everruns-host/api`. The channel ID in each route is the channel's own ID, not the Agent's.
 
@@ -129,58 +129,9 @@ To list the agent in the AgentID directory, use `{API base URL}/v1/agentid/initi
 
 ## Agent API
 
-An `api` channel gives one Agent a base URL that your code calls with an **agent key**. The key reaches only this Agent's session routes, never the management API.
+An Agent API channel gives one Agent a base URL, `/v1/channels/{channel_id}`, that your own code calls with an **agent key** (`evr_ak_…`). A key reaches only this Agent's session routes, never the management API. Callers start sessions, send messages, follow events over SSE, answer questions, approve tool calls and cancel turns, and each caller sees only its own sessions. Channel settings add end users, your own identity provider, browser origins, safe retries and a daily spending limit per caller.
 
-In the console, add an **Agent API** channel on the Agent's Integrations tab, publish it, and create a key under **Agent keys** on the channel page. Through the management API, create the channel with `channel_type: "api"`, publish it, then create a key:
-
-```bash
-curl -X POST "$EVERRUNS_API/v1/agents/$AGENT_ID/channels/$CHANNEL_ID/keys" \
-  -H "Authorization: Bearer $EVERRUNS_API_KEY" -H "Content-Type: application/json" \
-  -d '{"name": "Support backend"}'
-```
-
-The response carries the key's `secret` (`evr_ak_…`) once. Store it then; later reads show only its prefix. Keys belong to the organization rather than to the member who created them. Each key can `rotate` (a new secret, and the old one keeps working for an overlap of up to 168 hours, 24 by default) and `revoke` (both secrets stop working).
-
-Every route below is relative to `/v1/channels/{channel_id}` and takes `Authorization: Bearer evr_ak_…`:
-
-| Method | Path | What it does |
-|---|---|---|
-| GET | `/` | The agent card: name, description, accepted input and credentials |
-| POST | `/sessions` | Start a session (optional `title`) |
-| GET | `/sessions` | This key's sessions, most recently active first |
-| GET | `/sessions/{session_id}` | One session's status, with `pending_questions` and `pending_approvals` while it waits |
-| POST | `/sessions/{session_id}/messages` | Send a user message (text parts); starts a turn or steers the running one |
-| GET | `/sessions/{session_id}/events` | Events after `after_sequence`, oldest first |
-| GET | `/sessions/{session_id}/sse` | Follow events live; resume with `since_id`, or replay from `after_sequence=0` |
-| POST | `/sessions/{session_id}/question-answers` | Answer the agent's `ask_user` question set |
-| POST | `/sessions/{session_id}/tool-approvals` | Allow or reject held-back tool calls, when the channel lets callers decide |
-| POST | `/sessions/{session_id}/cancel` | Cancel the running turn |
-
-A key sees only the sessions it started; any other session answers `404`. Channel config decides what callers see:
-
-- `visibility`: `messages` (user input, final assistant text, turn boundaries, and questions or approvals waiting on the caller), `activity` (default; adds tool start and finish with the channel's `tool_activity_text`, never tool names or arguments) or `full` (the raw events, for callers who own both ends).
-- `errors`: `public` (default; a failed turn says only a public error code) or `detailed`.
-- `session_binding`: `per_user` (default) or `session_per_invocation`; sessions are never shared between keys.
-- `tool_approvals`: `operator` (default; someone with access to the Agent in Everruns decides, and the caller sees only that a call waits) or `caller` (the key holder sees the tool and its arguments and decides).
-- `rate_limit_per_minute`: optional, per caller and client IP.
-- `auth_methods`: your own identity providers whose access tokens the channel accepts besides agent keys, each an `oidc`, `google_oidc` or `oauth2_introspection` method, for example `{"mode": "oidc", "provider": {"type": "oidc", "issuer": "https://login.example.com"}, "requirements": {"audiences": ["api://support-agent"], "scopes": ["agent:invoke"]}}`. Everruns only validates these tokens; it never issues them.
-- `cors_origins`: browser origins, such as `https://app.example.com`, whose pages may call this channel's routes directly. Write each exactly as a browser sends it: `https` (or `http` for `localhost`), no path, no trailing slash, at most 20. Those pages send a runtime token or an `auth_methods` token, never an agent key.
-- `daily_spend_limit_usd`: optional, the most one caller (a key acting as itself, or one end user) may spend on this agent per UTC day. Past it, starting a session or sending a message answers `429` until the next day; reading still works, and a turn already running finishes.
-- `org_members`: `true` lets members of your organization call the agent with their own personal access token (`evr_pat_…`), each as their own end user with their own connections. Off by default.
-
-### End users
-
-A key acts as your application. To act for one of your application's users, create the key with `"permissions": ["end_user"]` and send `End-User: <your user id>` with each request. Sessions then belong to that user: the key acting as itself, or for another user, does not see them, and the agent's per-user connections are that user's. Your users can also call the agent directly with a token from one of the channel's `auth_methods`; each token subject is its own end user.
-
-For a browser or mobile app, never ship the key. Your backend calls `POST /v1/channels/{channel_id}/runtime-auth` with the key and `End-User`, and hands the app the returned 15-minute `access_token`, which works on this channel only and cannot be exchanged for another. End users always get the public error codes. List the app's origin in `cors_origins` so the browser lets it call the channel.
-
-### Safe retries
-
-`POST …/sessions` and `POST …/sessions/{id}/messages` accept an `Idempotency-Key` header, as the command API does. A retry with the same key and the same request within 24 hours returns the first response with `Idempotent-Replayed: true` instead of starting a second session or sending the message twice. The same key on a different request is `422`, and a retry while the first is still running is `409`. Keys belong to the caller, so two applications or two end users never collide; a failed request frees its key.
-
-The stream uses the same framing as the session API's SSE: a `connected` frame, `id:` on durable events, a heartbeat, and `disconnecting` before the server cycles the connection. A question that asks for a credential cannot be answered over this API, only declined; a person completes it in Everruns.
-
-The same routes and shapes are served by a [serve](/framework/serve/) app at `/v1/channels/{agent}`, so one client works against both.
+Add an **Agent API** channel on the Agent's **Integrations** tab, publish it, and create a key in its **Agent keys** card. See [Agent API](/features/agent-api/) for keys, every route, authentication, settings, streaming and errors, and [Call your agent from code](/how-to/call-your-agent-from-code/) for a walkthrough. A [serve](/framework/serve/) app serves the same routes at `/v1/channels/{agent}`.
 
 ## Other transports
 
@@ -204,5 +155,6 @@ The old `/v1/e/{channel_id}/…` and `/v1/apps/{app_id}/…` ingress paths remai
 - [Publish an Agent to Slack](/how-to/publish-to-slack/): a step-by-step Slack setup.
 - [A2A](/features/a2a/): inbound A2A channels and outbound delegation.
 - [Voice](/features/voice/): talk to an Agent and hear its answers.
+- [Agent API](/features/agent-api/): call one Agent from your own code with an agent key.
 - [Agent Triggers](/features/agent-triggers/): proactive scheduled and event-driven work.
 - [Change History](/features/change-history/): see and restore earlier Agent configurations.
