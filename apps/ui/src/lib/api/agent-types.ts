@@ -91,6 +91,8 @@ export interface Agent {
    * only the messages it sends with `send_message`.
    */
   communication?: Communication;
+  /** Ceiling on output tokens per model response; absent means the provider default. */
+  max_output_tokens?: number;
   /** Initial files. Optional: older records and serializers that strip empty arrays may omit this field. */
   initial_files?: InitialFile[];
   /** Tool definitions (including client-side tools), defaults to [] */

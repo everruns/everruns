@@ -6,6 +6,7 @@ kind: improvement
 significance: notable
 products: [platform, cloud]
 surfaces: [ui, agent]
+release: "0.48.0"
 links:
   docs: [/features/harnesses/#built-in-harnesses]
   prs: [everruns/everruns#4484]

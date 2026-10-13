@@ -696,12 +696,22 @@ impl ToolHints {
         self
     }
 
-    /// Returns the effective side-effect class, defaulting to `AtMostOnce`
-    /// when unset (conservative default).
+    /// The effective side-effect class: an explicit class, else `Pure` for a
+    /// read-only tool, `Idempotent` for an idempotent one, else `AtMostOnce`.
+    ///
+    /// Decision: those hints already promise what the classes mean, so such a
+    /// tool reruns after a crash instead of ending interrupted. MCP hints count
+    /// too: a server that misstates them only gets its own tool run twice.
     pub fn effective_side_effect_class(&self) -> SideEffectClass {
-        self.side_effect_class
-            .clone()
-            .unwrap_or(SideEffectClass::AtMostOnce)
+        if let Some(class) = &self.side_effect_class {
+            class.clone()
+        } else if self.readonly == Some(true) {
+            SideEffectClass::Pure
+        } else if self.idempotent == Some(true) {
+            SideEffectClass::Idempotent
+        } else {
+            SideEffectClass::AtMostOnce
+        }
     }
 }
 
@@ -1158,7 +1168,8 @@ mod tests {
             let reader = definition(kind).with_hints(ToolHints::default().with_readonly(true));
             assert_eq!(reader.concurrency_class(), None);
             assert!(!reader.is_cpu_bound());
-            assert_eq!(reader.side_effect_class(), SideEffectClass::AtMostOnce);
+            // A read-only tool is safe to run again.
+            assert_eq!(reader.side_effect_class(), SideEffectClass::Pure);
         }
 
         for value in [false, true] {
@@ -1223,6 +1234,27 @@ mod tests {
                     .effective_side_effect_class(),
                 class
             );
+        }
+    }
+
+    #[test]
+    fn read_only_and_idempotent_hints_imply_a_side_effect_class() {
+        use SideEffectClass::*;
+        let hints = ToolHints::default;
+        for (hints, class) in [
+            (hints(), AtMostOnce),
+            (hints().with_readonly(true), Pure),
+            (hints().with_idempotent(true), Idempotent),
+            (hints().with_readonly(false), AtMostOnce),
+            // An explicit class wins over the hints.
+            (
+                hints()
+                    .with_readonly(true)
+                    .with_side_effect_class(Idempotent),
+                Idempotent,
+            ),
+        ] {
+            assert_eq!(hints.effective_side_effect_class(), class);
         }
     }
 

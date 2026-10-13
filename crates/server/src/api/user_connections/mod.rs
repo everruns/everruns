@@ -413,7 +413,7 @@ pub async fn list_connectors(
 ) -> Json<Vec<ProviderResponse>> {
     list_connectors_for_org(&state, org.org_id).await
 }
-#[utoipa::path(summary = "List providers available to this runtime account and endpoint.", get, path="/v1/connection-providers", responses((status=200,description="Available connection providers",body=Vec<ProviderResponse>)),tag="virtual-users")]
+#[utoipa::path(summary = "List providers available to this runtime", description = "List providers available to this runtime account and endpoint.", get, path="/v1/connection-providers", responses((status=200,description="Available connection providers",body=Vec<ProviderResponse>)),tag="virtual-users")]
 async fn list_runtime_connectors(
     State(state): State<AppState>,
     account: crate::auth::runtime::RuntimeAccount,

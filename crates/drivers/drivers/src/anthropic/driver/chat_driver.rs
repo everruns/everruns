@@ -58,8 +58,14 @@ impl ChatDriver for AnthropicChatDriver {
         // cannot be placed, the request goes out as before (see `tool_changes`).
         let allow_unmatched_tool_results = !prefix_messages.is_empty();
         let convert = |inline: bool| {
+            // Inline mode sends the epoch's system prompt too; prompt text
+            // added since rides in the changes' notes.
+            let sent = everruns_contracts::tool_changes::with_system_prompt(
+                &messages,
+                config.system_prompt_baseline.as_deref().filter(|_| inline),
+            );
             let prepared =
-                layout::keep_later_system_messages_in_place(&messages, &config.model, inline);
+                layout::keep_later_system_messages_in_place(&sent, &config.model, inline);
             let (system, converted) = Self::convert_messages_with_options(
                 &prepared.messages,
                 Some(&prepared),

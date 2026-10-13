@@ -109,6 +109,7 @@ async fn seed_agent(db: &Arc<StorageBackend>) -> (String, everruns_contracts::ty
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            max_output_tokens: None,
             communication: Default::default(),
             environments: None,
             is_built_in: false,
@@ -293,6 +294,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: String::new(),
         environments: None,
         total_input_tokens: 0,
@@ -486,6 +488,40 @@ fn validate_schedule_config_accepts_daily_cron() {
     let normalized = validate_schedule_config("0 9 * * *", "hello").expect("valid daily cron");
     // 5-field input is normalized to 7-field (sec … year).
     assert_eq!(normalized, "0 0 9 * * * *");
+}
+
+/// Weekdays of the next seven runs of a normalized (crate-form) cron, from a
+/// fixed Monday so the result does not depend on today.
+fn weekdays_of(normalized: &str) -> Vec<chrono::Weekday> {
+    use chrono::{Datelike, TimeZone};
+    let schedule = cron::Schedule::from_str(normalized).expect("crate form parses");
+    let monday = chrono::Utc
+        .with_ymd_and_hms(2026, 10, 12, 12, 0, 0)
+        .unwrap();
+    let mut days: Vec<_> = schedule
+        .after(&monday)
+        .take(7)
+        .map(|t| t.weekday())
+        .collect();
+    days.sort_by_key(|day| day.num_days_from_monday());
+    days.dedup();
+    days
+}
+
+/// Standard cron counts weekdays 0-6 from Sunday; the `cron` crate counts 1-7
+/// from Sunday. The documented example `0 9 * * 1-5` fired Sunday-Thursday and
+/// `0 18 * * 0` was rejected (EVE-1250).
+#[test]
+fn validate_schedule_config_reads_five_field_weekdays_from_sunday_zero() {
+    use chrono::Weekday::*;
+    let weekdays = validate_schedule_config("0 9 * * 1-5", "hello").expect("weekday cron");
+    assert_eq!(weekdays_of(&weekdays), vec![Mon, Tue, Wed, Thu, Fri]);
+    let sunday = validate_schedule_config("0 18 * * 0", "hello").expect("Sunday cron");
+    assert_eq!(weekdays_of(&sunday), vec![Sun]);
+    // Seven fields are the crate's own form and keep its numbering.
+    let crate_form = validate_schedule_config("0 0 9 * * 2-6 *", "hello").expect("7-field");
+    assert_eq!(crate_form, "0 0 9 * * 2-6 *");
+    assert_eq!(weekdays_of(&crate_form), vec![Mon, Tue, Wed, Thu, Fri]);
 }
 
 #[test]

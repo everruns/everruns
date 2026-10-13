@@ -1,8 +1,22 @@
 use crate::engine::driver_registry::{LlmCompletionMetadata, LlmStreamError, LlmStreamEvent};
+use crate::engine::event_emitter::EventEmitter;
+use crate::engine::events::EventRequest;
 use crate::engine::llm_retry::{RetryMetadata, is_transient_stream_error};
 use crate::engine::output_guardrail::{ArmedGuardrail, TrippedGuardrail, evaluate_guardrails};
 use everruns_contracts::reasoning::ReasoningContentPart;
 use web_time::Instant;
+
+/// Before a retry that drops streamed text, emit the message's
+/// `output.message.started` again (same id): the client should drop the text
+/// it collected for the message, which matters to one that adds up deltas.
+pub(super) async fn restart(emitter: &dyn EventEmitter, started: &EventRequest, text: &str) {
+    if text.is_empty() {
+        return;
+    }
+    if let Err(error) = emitter.emit(started.clone()).await {
+        tracing::warn!(%error, "ReasonAtom: failed to announce a restarted stream");
+    }
+}
 
 /// Whether a batched delta is due. `last` is `None` until the first emit, so
 /// the first token goes out at once instead of waiting a batch interval
@@ -18,7 +32,18 @@ pub(super) enum StreamReplayState {
     /// Only replay-safe reasoning or metadata has been observed.
     #[default]
     Replayable,
-    /// Final answer text or tool calls have crossed the replay boundary.
+    /// Answer text has streamed, but nothing with an effect: no tool call,
+    /// hosted tool or compaction.
+    ///
+    /// Decision: such an attempt is retried like a replayable one, under the
+    /// same message id, instead of keeping its cut-off text as the answer or
+    /// failing the turn on a stall. Every delta carries the whole text so far,
+    /// so a client that renders `accumulated` replaces the partial text; the
+    /// retry also repeats `output.message.started` (`restart`), and
+    /// the AG-UI projection moves a restarted message to a fresh AG-UI
+    /// message instead of appending to it.
+    Text,
+    /// Tool calls or other effects have crossed the replay boundary.
     Committed,
 }
 
@@ -38,9 +63,14 @@ impl StreamReplayState {
         if matches!(self, Self::Committed) {
             return;
         }
+        if let LlmStreamEvent::TextDelta(delta) = event {
+            if !delta.is_empty() {
+                *self = Self::Text;
+            }
+            return;
+        }
 
         if match event {
-            LlmStreamEvent::TextDelta(delta) => !delta.is_empty(),
             LlmStreamEvent::ToolCalls(calls) => !calls.is_empty(),
             LlmStreamEvent::NativeToolCall(_) => true,
             LlmStreamEvent::ProviderCompactionStarted => true,
@@ -65,7 +95,7 @@ impl StreamReplayState {
         retry_attempts: u32,
         max_retries: u32,
     ) -> bool {
-        matches!(self, Self::Replayable)
+        matches!(self, Self::Replayable | Self::Text)
             && retry_attempts < max_retries
             && is_transient_stream_error(error)
     }
@@ -203,11 +233,21 @@ mod tests {
     }
 
     #[test]
-    fn final_output_commits_attempt_against_replay() {
+    fn answer_text_stays_retryable_until_a_tool_call_commits_it() {
         let stall = LlmStreamError::new("provider stream stall: no tokens for 120s");
 
         let mut text = StreamReplayState::default();
         text.observe(&LlmStreamEvent::TextDelta("answer".to_string()));
+        assert_eq!(text, StreamReplayState::Text);
+        assert!(text.should_retry(&stall, 0, 2));
+        assert!(!text.should_retry(&stall, 2, 2));
+        text.observe(&LlmStreamEvent::ToolCalls(vec![
+            crate::engine::tool_types::ToolCall {
+                id: "call".to_string(),
+                name: "tool".to_string(),
+                arguments: serde_json::json!({}),
+            },
+        ]));
         assert_eq!(text, StreamReplayState::Committed);
         assert!(!text.should_retry(&stall, 0, 2));
 

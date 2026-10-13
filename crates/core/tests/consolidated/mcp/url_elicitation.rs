@@ -170,7 +170,7 @@ async fn consent_retries_the_call_with_the_accept_response() {
     let egress = ElicitingEgress::new(ELICITATION_URL, 1);
     let consent = ScriptedConsent::new(ElicitationAction::Accept);
     let result = client(egress.clone(), Some(consent.clone()))
-        .call(&McpConnection::http("docs", URL), "search", json!({}))
+        .call(&McpConnection::http("docs", URL), "search", json!({}), None)
         .await
         .expect("accepted elicitation should complete the call");
     assert!(!result.is_error);
@@ -206,7 +206,7 @@ async fn a_declined_elicitation_fails_the_call_without_retrying() {
     let egress = ElicitingEgress::new(ELICITATION_URL, 1);
     let consent = ScriptedConsent::new(ElicitationAction::Decline);
     let error = client(egress.clone(), Some(consent))
-        .call(&McpConnection::http("docs", URL), "search", json!({}))
+        .call(&McpConnection::http("docs", URL), "search", json!({}), None)
         .await
         .expect_err("a declined elicitation must fail the call");
     assert!(
@@ -230,7 +230,7 @@ async fn a_declined_elicitation_fails_the_call_without_retrying() {
 async fn a_host_with_no_handler_declares_nothing_and_refuses_the_elicitation() {
     let egress = ElicitingEgress::new(ELICITATION_URL, 1);
     let error = client(egress.clone(), None)
-        .call(&McpConnection::http("docs", URL), "search", json!({}))
+        .call(&McpConnection::http("docs", URL), "search", json!({}), None)
         .await
         .expect_err("a host with no human must not answer an elicitation");
     assert!(
@@ -248,7 +248,7 @@ async fn a_non_https_elicitation_url_never_reaches_the_consent_surface() {
     let egress = ElicitingEgress::new("http://mcp.example.com/connect", 1);
     let consent = ScriptedConsent::new(ElicitationAction::Accept);
     let error = client(egress.clone(), Some(consent.clone()))
-        .call(&McpConnection::http("docs", URL), "search", json!({}))
+        .call(&McpConnection::http("docs", URL), "search", json!({}), None)
         .await
         .expect_err("non-https elicitation URLs must be rejected");
     assert!(
@@ -267,7 +267,7 @@ async fn a_server_that_keeps_eliciting_is_bounded() {
     let egress = ElicitingEgress::new(ELICITATION_URL, usize::MAX);
     let consent = ScriptedConsent::new(ElicitationAction::Accept);
     let error = client(egress.clone(), Some(consent))
-        .call(&McpConnection::http("docs", URL), "search", json!({}))
+        .call(&McpConnection::http("docs", URL), "search", json!({}), None)
         .await
         .expect_err("an endless elicitation loop must terminate");
     assert!(
@@ -438,7 +438,7 @@ async fn a_consent_for_another_domain_is_not_reused() {
     );
 
     let error = client
-        .call(&McpConnection::http("docs", URL), "search", json!({}))
+        .call(&McpConnection::http("docs", URL), "search", json!({}), None)
         .await
         .expect_err("a consent for another domain must not answer this elicitation");
     assert!(

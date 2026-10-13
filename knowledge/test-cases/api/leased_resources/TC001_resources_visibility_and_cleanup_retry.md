@@ -1,54 +1,49 @@
 ---
 type: Test Case
-title: "TC001: Leased Resources - Visibility and Cleanup Retry"
-description: "Verify leased resources appear in the session Resources surface, survive the full-mode persistence path, and transition through durable cleanup retry states without exposing provider secrets in metadata."
+title: "TC001: Leased Resources - Persistence and Cleanup Retry"
+description: "Verify provider leases persist across stack restart and cleanup failures retry through the durable worker without exposing provider secrets in metadata."
 tags:
   - everruns
   - test-case
   - api
   - leased-resources
 ---
-# TC001: Leased Resources - Visibility and Cleanup Retry
+# TC001: Leased Resources - Persistence and Cleanup Retry
 
 ## Description
 
-Verify leased resources appear in the session Resources surface, survive the full-mode persistence path, and transition through durable cleanup retry states without exposing provider secrets in metadata.
+Verify provider leases persist across stack restart and cleanup failures retry through the durable worker without exposing provider secrets in metadata.
 
 ## Preconditions
 
-- Branch includes the leased-resources feature.
-- `just start-dev --no-watch` works locally.
-- `just start-all --no-watch --no-ui` works locally with PostgreSQL.
-- Browserless and Daytona capabilities are registered in the build.
+- Canonical persistent local stack with worker and durable scheduler; no shared production database.
+- Controlled Browserless fixture and a real model/capability run that creates a disposable browser lease.
+- Private test tooling can inspect the exact lease row and force one controlled cleanup failure, then restore success.
 
 ## Test Data
 
-| Name | Value |
+| Field | Value |
 | --- | --- |
-| Harness | Platform Chat harness |
-| Session capability | `browserless` |
-| Resource provider | `browserless` |
-| Resource type | `browser_session` |
-| External ID | `browser-lease-smoke` |
+| Provider/type | Browserless / browser_session |
+| Correlation | Exact returned session, lease, and external resource IDs |
+| Recovery budget | Configured lease expiry, retry deadline, and scheduler poll interval plus 30 seconds |
 
 ## Steps
 
-1. Start dev mode and create a session with the `browserless` capability.
-2. Open the session page and confirm the Resources tab is visible.
-3. Open the Resources tab and confirm the empty state renders when no leases exist.
-4. Stop dev mode.
-5. Start full mode with PostgreSQL and create another session with the `browserless` capability.
-6. Insert a leased resource row for that session with expired `lease_expires_at`, `metadata.ws_endpoint` set to a tokenless reconnect endpoint, and provider/type set to `browserless` / `browser_session`.
-7. Call `GET /v1/sessions/{session_id}/resources` and confirm the inserted resource is returned.
-8. Confirm the API response metadata does not include bearer tokens or provider API keys.
-9. Wait for the durable `leased-resource-cleanup` schedule to run.
-10. Call the resources API again and confirm the resource transitions to `cleanup_failed` with a retry deadline if cleanup cannot complete.
-11. Inspect durable schedule state or worker logs and confirm the cleanup execution is observable.
+1. Run the disposable browser-capable agent and record its actual lease ID. Inspect its stored non-secret metadata.
+2. Restart only this prefix's stack without resetting data. Verify the same lease/session survives.
+3. End or expire the disposable lease and make the controlled cleanup endpoint fail once.
+4. Inspect the exact lease's cleanup-failed state and retry deadline, plus the leased-resource-cleanup schedule execution/log outcome.
+5. Restore provider cleanup and wait within the stated recovery budget; verify the same lease becomes released and its provider resource is gone.
+6. Confirm another active unexpired lease is unchanged, and captured metadata/logs contain no credentials.
 
 ## Expected Result
 
-- The Resources tab is available for sessions whose capabilities expose `leased_resources`.
-- Empty-state UI renders correctly when no leases are present.
-- Full mode persists leased resources and returns them through the session resources API.
-- Cleanup attempts are driven by the durable scheduler and recorded in schedule history/logs.
-- API-visible leased-resource metadata contains only non-secret values.
+- Persistence retains the same lease across restart; it is not fabricated by inserting a row into an unrelated resource registry.
+- Failed cleanup records a retry rather than marking the resource released. A later successful attempt releases exactly the correlated resource.
+- Unexpired leases remain active, and provider credentials are absent from public metadata/evidence.
+- Session resource registry rows and provider lease rows are separate contracts. `/sessions/<id>/resources` and a removed Resources tab do not prove lease persistence or cleanup.
+
+## Source Contract
+
+[Lease service](../../../../crates/server/src/domains/session_resources/leased_resource.rs) and [cleanup worker](../../../../crates/worker/src/leased_resource_cleanup.rs).

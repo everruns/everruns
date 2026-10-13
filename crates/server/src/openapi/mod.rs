@@ -5,6 +5,8 @@
 // and the export-openapi binary (for static spec generation).
 
 mod channel_aliases;
+mod documentation;
+use documentation::DocumentationMetadata;
 
 use crate::api;
 use crate::api::{ListResponse, PaginatedResponse};
@@ -114,7 +116,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
 /// OpenAPI documentation for the Everruns API
 #[derive(OpenApi)]
 #[openapi(
-    modifiers(&SdkMetadata),
+    modifiers(&SdkMetadata, &DocumentationMetadata),
     servers(
         (url = "https://app.everruns.com/api", description = "Production API"),
     ),

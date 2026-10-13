@@ -6,10 +6,6 @@ use crate::api::messages::InputContentPart;
 
 use super::*;
 
-/// Supported image MIME types for Slack file attachments.
-pub(crate) const SUPPORTED_IMAGE_TYPES: &[&str] =
-    &["image/png", "image/jpeg", "image/gif", "image/webp"];
-
 /// Validate and normalize image URLs before forwarding to model backends.
 ///
 /// Security: only allow publicly routable HTTPS URLs to avoid SSRF through

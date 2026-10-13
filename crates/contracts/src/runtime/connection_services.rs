@@ -58,6 +58,8 @@ pub struct McpResolvedCredential {
     pub token: String,
     /// Identity whose grant the token came from.
     pub acted_as: crate::runtime::mcp_server::McpServerActsAs,
+    /// Trusted installation-mint evidence; absent for MCP, personal and legacy tokens.
+    pub github_installation_scope: Option<crate::runtime::GitHubInstallationScope>,
 }
 
 impl std::fmt::Debug for McpResolvedCredential {
@@ -66,6 +68,17 @@ impl std::fmt::Debug for McpResolvedCredential {
             .field("token", &"<redacted>")
             .field("acted_as", &self.acted_as)
             .finish()
+    }
+}
+
+impl McpResolvedCredential {
+    /// A host-side credential with no installation-mint evidence.
+    pub fn unscoped(token: String, acted_as: crate::runtime::mcp_server::McpServerActsAs) -> Self {
+        Self {
+            token,
+            acted_as,
+            github_installation_scope: None,
+        }
     }
 }
 
@@ -212,6 +225,7 @@ pub trait UserConnectionResolver: Send + Sync {
                 return Ok(Some(McpResolvedCredential {
                     token,
                     acted_as: *identity,
+                    github_installation_scope: None,
                 }));
             }
         }
@@ -242,6 +256,9 @@ pub trait UserConnectionResolver: Send + Sync {
     /// Neither identity falls back to the other except under
     /// `user_or_service`, and the returned `acted_as` names the one that
     /// answered. `Ok(None)` means that identity has no GitHub connection.
+    /// Personal tokens cannot be narrowed and carry no installation evidence.
+    /// A sandbox caller must validate `github_installation_scope` before delivery;
+    /// the access request alone does not attest the returned token's scope.
     ///
     /// THREAT[TM-GITHUB-006]: fail-closed by default, like
     /// [`Self::get_mcp_connection_token`]; a resolver that has not opted in

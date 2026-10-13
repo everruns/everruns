@@ -59,6 +59,9 @@ pub(super) struct MemoryActors {
     rows: Mutex<HashMap<SessionId, Row>>,
     line: Mutex<u64>,
     renews: AtomicUsize,
+    /// Renews still to fail with a store error, as during a control-plane
+    /// outage.
+    failing_renews: AtomicUsize,
 }
 
 impl MemoryActors {
@@ -68,6 +71,7 @@ impl MemoryActors {
             rows: Mutex::new(HashMap::new()),
             line: Mutex::new(0),
             renews: AtomicUsize::new(0),
+            failing_renews: AtomicUsize::new(0),
         }
     }
 
@@ -75,6 +79,11 @@ impl MemoryActors {
         let mut line = self.line.lock().unwrap();
         *line += 1;
         *line
+    }
+
+    /// Fail the next `count` renews with a store error.
+    pub(super) fn fail_renews(&self, count: usize) {
+        self.failing_renews.store(count, Ordering::SeqCst);
     }
 
     /// Renews that reached the index, by any holder.
@@ -219,6 +228,15 @@ impl ActorLeaseStore for MemoryActors {
         consumed_seq: i64,
     ) -> Result<Option<ActorRenewal>> {
         self.renews.fetch_add(1, Ordering::SeqCst);
+        if self
+            .failing_renews
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
+                left.checked_sub(1)
+            })
+            .is_ok()
+        {
+            return Err(AgentLoopError::store("control plane unavailable"));
+        }
         let mut rows = self.rows.lock().unwrap();
         // No row at all: the session was deleted (EVE-1235).
         let Some(row) = rows.get_mut(&session_id) else {

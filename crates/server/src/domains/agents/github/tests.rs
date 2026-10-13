@@ -89,6 +89,7 @@ pub(super) async fn seed_agent(db: &Arc<StorageBackend>) -> String {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            max_output_tokens: None,
             communication: Default::default(),
             environments: None,
             is_built_in: false,

@@ -27,6 +27,8 @@ pub(super) struct ChannelDeps {
     pub frontend_url: String,
     pub public_chat_enabled: bool,
     pub mcp_event_triggers: Arc<crate::domains::agent_triggers::McpEventTriggers>,
+    /// Downloads of the files AG-UI and A2A messages link to.
+    pub egress: Arc<dyn everruns_core::EgressService>,
 }
 
 pub(super) struct ChannelStates {
@@ -72,7 +74,8 @@ impl ChannelStates {
             deps.rate_limiter("a2a"),
             a2a_replay_store.clone(),
             deps.frontend_url.clone(),
-        );
+        )
+        .with_egress(deps.egress.clone());
         crate::domains::poppy_agent::configure_public_base_url(&deps.auth.config.base_url);
         let poppy = crate::channels::poppy::PoppyState::new(
             deps.db.clone(),
@@ -100,6 +103,7 @@ impl ChannelStates {
             deps.sse_tracker.clone(),
             deps.rate_limiter("agui"),
         )
+        .with_egress(deps.egress.clone())
         .with_runtime_auth(deps.auth.clone());
         let fcp = crate::channels::fcp::FcpState::new(
             deps.db.clone(),
@@ -119,6 +123,7 @@ impl ChannelStates {
             deps.rate_limiter("public_chat"),
         )
         .with_public_chat_enabled(deps.public_chat_enabled)
+        .with_egress(deps.egress.clone())
         .with_runtime_auth(deps.auth.clone());
         Self {
             webhooks,

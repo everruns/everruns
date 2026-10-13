@@ -131,6 +131,11 @@ pub struct LlmCallConfig {
     /// list and the changes inline; every other driver sends [`Self::tools`],
     /// the tools wanted now. `None` when the changes are incomplete.
     pub tool_baseline: Option<Vec<ToolDefinition>>,
+    /// The system prompt the epoch started with, when the text added to the
+    /// prompt since then rides in the changes' notes. A driver that sends
+    /// [`Self::tool_baseline`] sends this in place of the leading system
+    /// message; every other driver ignores it.
+    pub system_prompt_baseline: Option<String>,
     /// Reasoning effort for models that support it.
     ///
     /// `None` means unset — the provider keeps its default. `Some(None)` is the

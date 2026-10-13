@@ -30,6 +30,16 @@ a production credential into this manual test transcript.
   `visti_send` with a required `channel_key` and records the received request
   without sending an external notification.
 
+## Test Data
+
+| Field | Value |
+| --- | --- |
+| Agent name | `hourly-joke` in a disposable test org |
+| Requested model | Active `gpt-6.1-sol` profile |
+| Schedule | Hourly Agent Trigger |
+| Credential | Disposable value entered only through the secure setup link |
+| Endpoint | Controlled Visti-compatible MCP test endpoint |
+
 ## Steps
 
 1. Open Platform Chat: go to `/chats`, start a **New chat**, and pick the built-in **Platform Chat** harness.
@@ -39,7 +49,7 @@ a production credential into this manual test transcript.
    ```text
    Create an agent named hourly-joke that sends a short dad joke through the
    attached Visti-compatible MCP server. It requires a channel key. Use the
-   active model whose model ID is gpt-5.6-terra and run it hourly using an Agent
+   active model whose model ID is gpt-6.1-sol and run it hourly using an Agent
    Trigger. Show me how to configure the credential securely.
    ```
 
@@ -52,7 +62,7 @@ a production credential into this manual test transcript.
    - discovers exact command names and follows their `bash_usage`; it does not
      probe builtins with `--help`, shell inventory, or guessed flags such as
      `--model_id` on `create_agent`;
-   - uses `query` to resolve `gpt-5.6-terra` and inspect existing resources;
+   - uses `query` to resolve `gpt-6.1-sol` and inspect existing resources;
    - uses `execute` for the requested creates and chains dependent returned IDs
      with `jq` rather than manually converting resource identifiers;
    - queries the final Agent and Trigger state before answering.
@@ -60,7 +70,7 @@ a production credential into this manual test transcript.
      secrets, or Session Schedule tools.
 
 5. Open the returned Agent link and verify its `default_model_id` points to the
-   model whose provider model ID is `gpt-5.6-terra`.
+   model whose provider model ID is `gpt-6.1-sol`.
 
 6. Open the returned Trigger link and verify it targets the new Agent and uses
    an hourly schedule.
@@ -90,7 +100,7 @@ a production credential into this manual test transcript.
 
 ## Negative paths
 
-- If `gpt-5.6-terra` is absent or inactive, Platform Chat reports that fact and
+- If `gpt-6.1-sol` is absent or inactive, Platform Chat reports that fact and
   does not silently choose another model.
 - If the caller cannot assign a requested high-risk capability, `execute`
   returns a permission error and no elevated Agent is created.

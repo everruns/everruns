@@ -544,6 +544,7 @@ pub async fn http_call_tool(
         server_name,
         tool_name,
         &arguments,
+        None,
         InputHandlers {
             url: elicitation,
             form: None,
@@ -599,6 +600,7 @@ async fn resolve_input_required(
     server_name: &str,
     tool_name: &str,
     arguments: &Value,
+    idempotency_key: Option<&str>,
     handlers: InputHandlers<'_>,
     text: String,
 ) -> Result<String> {
@@ -623,14 +625,18 @@ async fn resolve_input_required(
         );
         // A distinct id per attempt: MRTR treats every retry as an independent
         // request.
-        let body = serde_json::to_vec(&protocol::tools_call_retry_body(
-            round as i64 + 2,
-            tool_name,
-            arguments,
-            &negotiated.version,
-            capabilities,
-            input_required.request_state.as_deref(),
-            &input_responses,
+        // The retry is the same call, so it carries the same key.
+        let body = serde_json::to_vec(&protocol::with_idempotency_key(
+            protocol::tools_call_retry_body(
+                round as i64 + 2,
+                tool_name,
+                arguments,
+                &negotiated.version,
+                capabilities,
+                input_required.request_state.as_deref(),
+                &input_responses,
+            ),
+            idempotency_key,
         ))?;
         let response = send_op(
             egress,
@@ -1144,6 +1150,7 @@ impl McpTransport for HttpTransport {
         tool_name: &str,
         arguments: Value,
         credential: Option<&McpCredential>,
+        idempotency_key: Option<&str>,
     ) -> Result<McpToolCallResult> {
         let (url, headers) = Self::http_parts(connection)?;
         let cache_key = NegotiationCacheKey::new(connection, url, headers, credential);
@@ -1157,7 +1164,12 @@ impl McpTransport for HttpTransport {
             connection.protocol_mode,
             "tools/call",
             Some(tool_name),
-            &|version| protocol::tools_call_body(1, tool_name, &arguments, version, capabilities),
+            &|version| {
+                protocol::with_idempotency_key(
+                    protocol::tools_call_body(1, tool_name, &arguments, version, capabilities),
+                    idempotency_key,
+                )
+            },
             cached,
             CALL_TIMEOUT,
         )
@@ -1172,6 +1184,7 @@ impl McpTransport for HttpTransport {
             &connection.name,
             tool_name,
             &arguments,
+            idempotency_key,
             self.handlers(connection),
             text,
         )

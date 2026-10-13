@@ -16,8 +16,8 @@ Verify that an active turn can be cancelled and the session returns to idle stat
 
 ## Preconditions
 
-- API server running locally (`just start-dev`) or a deployed API is available
-- Set `BASE_URL` to the API origin (for example, `http://localhost:9300`)
+- Canonical local stack (see root `AGENTS.md`) or a dedicated test deployment is available
+- Set `BASE_URL` to the selected proxy origin (for example, `http://localhost:27100`); requests below append `/api`
 - For authenticated deployments, configure `curl` with the required authorization and organization headers
 - LLM API keys configured
 
@@ -62,12 +62,12 @@ Verify that an active turn can be cancelled and the session returns to idle stat
      }'
    ```
 
-4. While session is active, cancel the turn:
+4. Record the event cursor, then wait (at most 30 seconds) until this session reports an active turn. If it already completed, use a new disposable turn; cancelling an idle session does not satisfy this case. Cancel the active turn:
    ```bash
    curl -s -X POST "${BASE_URL}/api/v1/sessions/{session_id}/cancel"
    ```
 
-5. Wait briefly, then check session status:
+5. Poll for at most 30 seconds, then check session status:
    ```bash
    curl -s "${BASE_URL}/api/v1/sessions/{session_id}"
    ```
@@ -80,3 +80,7 @@ Verify that an active turn can be cancelled and the session returns to idle stat
 | Step 5: session `status` | `"idle"` |
 | Events contain cancellation | `turn.cancelled` event |
 | Events contain lifecycle settle | `session.idled` event emitted after `turn.cancelled` |
+
+## Recovery and Event Correlation
+
+Inspect only events after the recorded cursor for the cancelled turn: require `turn.cancelled` followed by `session.idled`. Send a short follow-up in the same session and require one completed turn with its response. Reload and verify the cancelled turn did not resume or duplicate work.

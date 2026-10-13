@@ -6,6 +6,7 @@ kind: improvement
 significance: minor
 products: [platform, cloud, framework]
 surfaces: [ui, api]
+release: "0.48.0"
 links:
   docs: [/event-reference/, /features/events/]
   prs: [everruns/everruns#4410]

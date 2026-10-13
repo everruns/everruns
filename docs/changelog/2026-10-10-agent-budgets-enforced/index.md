@@ -6,6 +6,7 @@ kind: fix
 significance: notable
 products: [platform, cloud, framework]
 surfaces: [agent, api]
+release: "0.48.0"
 links:
   docs: [/advanced/budgets/]
   prs: [everruns/everruns#4477]

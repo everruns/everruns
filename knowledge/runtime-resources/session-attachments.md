@@ -188,25 +188,32 @@ the shell.
 
 ### 2. One intake path for every surface
 
-A core `AttachmentIntake` in the channel runtime turns whatever a surface
-received into stored attachments plus reference parts. Its input is bytes, a
-`data:` URL, or a URL with an optional channel fetcher.
+The channel host's attachment intake
+([`attachments.rs`](../../crates/core/src/channel_runtime/attachments.rs))
+turns whatever a surface received into stored attachments. A channel hands it
+each file as bytes or as a URL to download; the host's session port stores it
+(the server makes it an org upload, which message creation then copies into
+`/attachments`).
 
-- **Channel fetchers** download files that need the channel's own credential,
-  such as Slack `url_private` with the bot token (`files:read` scope).
-- **Public URLs** are fetched by Everruns, not handed to the provider:
-  `https` only, through the existing safe-URL validation, 30 second timeout.
-- **Policy** per channel with defaults: 25 MiB per file, 10 files per message,
-  allowed media types. The media type is checked against the bytes; a file
-  whose bytes contradict a declared image or PDF type is stored as
-  `application/octet-stream` and sent as a label only.
-- **Failures become notes.** A file that cannot be stored becomes a text part
+- **Downloads** go through the host's egress service, scoped to the channel's
+  org: `https` only, DNS-pinned, 30 second timeout, at most 3 redirects, the
+  body counted while it streams. A channel credential (Slack's bot token for
+  `url_private_download`, which needs `files:read`) is sent only to its own
+  host, never to wherever a redirect points.
+- **Policy**: 25 MiB per file and 10 files per message by default
+  (`AttachmentPolicy`, set per host; per-channel policy and Public Chat's
+  stricter one come with those surfaces). The media type is checked against
+  the bytes: a declared image, PDF or zip type the bytes contradict is stored
+  as `application/octet-stream` and sent as a label only.
+- **Failures become notes.** A file that cannot be taken becomes a text part
   such as `[Attachment report.pdf not received: 40 MB is over the 25 MB
   limit]`. Operators see the underlying error in logs.
+- A host without egress or file storage (Framework defaults) keeps images
+  inline and notes other files.
 
 | Surface | Change |
 |---|---|
-| Slack (server and embedded) | Every file in the triggering message goes through the Slack fetcher. Remote files (Google Drive and similar) keep their link in the text. |
+| Slack (server) | Done: every file in the triggering message is downloaded with the bot token. Remote files (Google Drive and similar) keep their link in the text. Embedded Slack still describes files by name. |
 | AG-UI, Public Chat | Inline binary, image and document input parts go through intake instead of `to_text()`; `imageIds` keeps working. Public Chat uses a stricter default policy. |
 | A2A, PACT | `FilePart` with bytes or URI goes through intake. |
 | Agent execution API, MCP `session_send_message`, serve | Accept file parts like REST messages. |

@@ -409,6 +409,7 @@ pub fn plan_after_reason(
                     input_message_id: state.input_message_id,
                     exec_id: ExecId::new(),
                     workspace_id: facts.workspace_id,
+                    tool_calls_message_id: reason_result.output_message_id,
                 },
                 harness_id: state.harness_id,
                 agent_id: state.agent_id,

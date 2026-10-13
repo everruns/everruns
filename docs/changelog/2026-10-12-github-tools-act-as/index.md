@@ -6,6 +6,7 @@ kind: improvement
 significance: minor
 products: [platform, cloud]
 surfaces: [agent]
+release: "0.48.0"
 links:
   docs: [/capabilities/github/]
   prs: [everruns/everruns#4604, everruns/everruns#4651]

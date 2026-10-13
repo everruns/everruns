@@ -6,6 +6,7 @@ kind: breaking
 significance: minor
 products: [platform, cloud]
 surfaces: [agent, operations]
+release: "0.48.0"
 links:
   docs: [/features/change-history/#reasons]
   prs: [everruns/everruns#4271, everruns/everruns#4552]

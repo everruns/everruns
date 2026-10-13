@@ -6,6 +6,7 @@ kind: fix
 significance: notable
 products: [platform, cloud]
 surfaces: [agent]
+release: "0.48.0"
 links:
   docs: [/capabilities/sql-database/]
   prs: [everruns/everruns#4553]

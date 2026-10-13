@@ -380,6 +380,7 @@ everruns agents upsert [OPTIONS] --name <name> --system-prompt <system_prompt> [
 | `--initial-files <INITIAL_FILES>` | Starter files copied into each new session for this agent. |
 | `--intro-markdown <INTRO_MARKDOWN>` | Markdown intro shown as an intro box on a fresh Platform Chat thread. Images are allowed. |
 | `--max-iterations <MAX_ITERATIONS>` | Maximum number of LLM iterations per turn for this agent. |
+| `--max-output-tokens <MAX_OUTPUT_TOKENS>` | Ceiling on output tokens per model response (sent as `max_tokens`). Omit to use the provider ... |
 | `--mcpServers <MCPSERVERS>` |  |
 | `--name <NAME>` | Required. Name, unique per org. |
 | `--network-access <NETWORK_ACCESS>` |  |

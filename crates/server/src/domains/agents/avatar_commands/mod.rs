@@ -235,6 +235,7 @@ pub struct SetAgentAvatarRequest {
     name = "set_agent_avatar",
     category = "agents",
     description = "Set an agent's avatar from a curated preset (preset_id, see list_avatar_presets) or an image (image_base64: PNG, JPEG, GIF or WebP, at least 64x64, at most 1 MB). Replaces the previous avatar and updates the icon of the agent's one-click Slack apps.",
+    summary = "Set an agent's avatar from a preset or an image",
     method = "POST",
     path = "/v1/agents/{agent_id}/avatar/set",
     policy = AGENT_MANAGE,

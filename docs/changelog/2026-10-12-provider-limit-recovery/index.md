@@ -6,6 +6,7 @@ kind: improvement
 significance: notable
 products: [platform, cloud, framework]
 surfaces: [ui, api]
+release: "0.48.0"
 links:
   docs: [/how-to/handle-errors-and-cancellation/]
 ---

@@ -62,6 +62,7 @@ impl UserConnectionResolver for Recording {
         Ok(Some(everruns_contracts::runtime::McpResolvedCredential {
             token: TOKEN.to_string(),
             acted_as: access.acts_as,
+            github_installation_scope: None,
         }))
     }
     async fn get_sandbox_connection_token(
@@ -184,7 +185,10 @@ async fn lookups_run_through_the_servers_resolver() {
     )
     .await
     .unwrap();
-    assert_eq!(github, json!({"token": TOKEN, "acted_as": "service"}));
+    assert_eq!(
+        github,
+        json!({"token": TOKEN, "acted_as": "service", "github_installation_scope": null})
+    );
     let sandbox = run(
         &ctx,
         "worker_get_sandbox_connection_token",

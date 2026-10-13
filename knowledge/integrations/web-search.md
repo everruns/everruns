@@ -192,8 +192,9 @@ one key, and falls back to the organization's first Brave account.
 Organization defaults (a `web_search_defaults` column on `organization_settings`):
 
 - default provider (same choices except "Organization default"; new orgs get Automatic)
-- Automatic order: native, then accounts in the order the admin sets, then free
-  search, which is always last and cannot be removed
+- Automatic order: native, then accounts in the order the admin sets, then
+  the deployment's own search when the host offers one, then free search,
+  which is always last and cannot be removed
 - allow model provider search (on by default)
 - on failure: fall back to the next provider in the plan, or stop. The
   default is to fall back, and **free search is the default last fallback of
@@ -225,6 +226,20 @@ Resolution happens live: each turn decides whether native applies to the model
 running it (that is what makes Automatic follow a mid-session model switch), and
 each function call resolves the rest of the plan from the current agent setting
 and organization defaults.
+
+### The deployment's own search
+
+A host can offer one search provider it pays for to every organization, with
+no key to connect (on app.everruns.com, "Everruns search"). The host hands
+over any `SearchDriver` configured with its own key; the platform runs it
+under the stable plan id `hosted`, which is also its Automatic order entry
+and what the host's billing counts in each search's recorded attempts, so the
+backend can change without touching saved orders or past bookings. The
+backend's raw exchanges are dropped because they belong to the host's account,
+not the tenant. Unless the order places it, it sits after the organization's
+own accounts and before free search: an organization that connected a key
+wants that key used. See
+[`hosted.rs`](../../crates/integrations/src/web_search/hosted.rs).
 
 ### Why native comes first in Automatic
 
@@ -586,6 +601,12 @@ Mockups: `/mnt/project-files/web-search/` in the project thread.
   defaults × model × flags); driver wire tests for each hosted tool, including
   replay after a model switch.
 - Live, key-gated: one real query per account backend and per native driver.
+- Quality: the [web search providers study](../../evals/web-search-providers/README.md)
+  grades every provider's result list for 59 agent-style queries with an LLM
+  judge. First run (2026-10-13): Brave, Parallel and Exa answer 98 to 100% of
+  cases, native 97% at about $14 per 1,000 and 6 s; Ceramic answers 49% and
+  none of the time-sensitive cases; free search is blocked on 45 of 59 from a
+  datacenter IP. Re-run it before choosing or changing a hosted default.
 - Example: a research agent under `examples/` on a real model, run once with
   Automatic on an Anthropic model and once on a model without native search.
 - Manual UI cases for the page, the editor and the chat row.
@@ -606,9 +627,10 @@ Mockups: `/mnt/project-files/web-search/` in the project thread.
 6. SaaS: book native searches on the org ledger for the Everruns LLM provider.
 7. Parallel Search API driver.
 8. yolop adoption after the next platform release.
-9. Cloudflare Web Search accounts (Ceramic, Exa, Linkup). Next, behind a
-   search quality eval: a hosted built-in "Everruns search" on Ceramic through
-   the platform's Cloudflare account, booked on the org ledger.
+9. Cloudflare Web Search accounts (Ceramic, Exa, Linkup), then the search
+   providers eval. The eval ruled Ceramic out as the hosted backend (49%
+   answerable). Then the deployment's own search slot (`hosted`), and in SaaS
+   "Everruns search" on Brave, booked on the org ledger (chosen 2026-10-13).
 
 ## Options not taken
 

@@ -1,0 +1,33 @@
+---
+import { allGroups, groupOperations, groupHref, operationTitle, type ApiOperation } from "../lib/api-reference";
+import { docsPath } from "../lib/site";
+interface Props { currentGroup: string; operation?: ApiOperation }
+const { currentGroup, operation } = Astro.props;
+const topics = Astro.locals.starlightSidebarTopics?.topics ?? [];
+---
+<div class="api-sidebar">
+  <nav class="api-doc-topics" aria-label="Documentation sections">{topics.map(topic => <a href={topic.link}>{topic.label}</a>)}</nav>
+  <a class="api-kicker" href={docsPath("/api/")}>API reference</a>
+  <label class="api-search">Find an endpoint<input type="search" placeholder="Search endpoints…" data-api-search /></label>
+  <nav aria-label="API groups">
+    {allGroups.map(group => {
+      const ops = groupOperations(group.id);
+      return <div class="api-nav-group">
+        <a class:list={["api-group-link", { active: currentGroup === group.id }]} href={groupHref(group.id)} aria-current={currentGroup === group.id ? "true" : undefined}>
+          <span>{group.name}</span><span class="api-count" data-api-public-count={ops.filter(o => o.docs.audience !== "internal").length} data-api-total-count={ops.length}>{ops.filter(o => o.docs.audience !== "internal").length}</span>
+        </a>
+        {group.id === currentGroup && operation?.docs.group === "agent-api" && group.id !== "deprecated" && <div class="api-nav-operations">
+          {ops.map(op => <a class:list={{ active: op.id === operation.id }} href={op.href} aria-current={op.id === operation.id ? "page" : undefined}><span class="api-method" data-method={op.method}>{op.method}</span><span>{operationTitle(op)}</span></a>)}
+        </div>}
+      </div>;
+    })}
+  </nav>
+  <div class="api-sidebar-footer">
+    <a href={groupHref("agent-api") + "#support"}>Support & compatibility</a>
+    <label><input type="checkbox" data-api-internal /> Show internal APIs</label>
+    <a href={docsPath("/api/openapi.json")}>Download OpenAPI ↓</a>
+    <a href={docsPath("/event-reference/")}>Event reference</a>
+    <a href={docsPath("/reference/cli/")}>CLI reference</a>
+    <details><summary>Reference catalogs</summary><div class="api-other-references"><a href={docsPath("/built-ins/")}>Harnesses</a><a href={docsPath("/capabilities/")}>Capabilities</a><a href={docsPath("/integrations/")}>Integrations</a></div></details>
+  </div>
+</div>

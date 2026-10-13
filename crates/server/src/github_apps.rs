@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use crate::github_installation_token::InstallationToken;
 use crate::storage::EncryptionService;
 
 /// Connection provider an agent App's installation is stored under.
@@ -555,10 +556,18 @@ impl GitHubAppApi {
         installation_id: i64,
         scope: &TokenScope,
     ) -> Result<String> {
-        #[derive(Deserialize)]
-        struct Token {
-            token: String,
-        }
+        Ok(self
+            .mint_scoped_installation_credential(credentials, installation_id, scope)
+            .await?
+            .token)
+    }
+
+    pub(crate) async fn mint_scoped_installation_credential(
+        &self,
+        credentials: &AppCredentials,
+        installation_id: i64,
+        scope: &TokenScope,
+    ) -> Result<InstallationToken> {
         let jwt = Self::app_jwt(credentials)?;
         let response = self
             .request(
@@ -570,8 +579,7 @@ impl GitHubAppApi {
             .send()
             .await
             .context("GitHub installation token request failed")?;
-        let token: Token = read_json(response, "minting installation token").await?;
-        Ok(token.token)
+        read_json(response, "minting installation token").await
     }
 
     /// Repositories an installation can access (up to 300).

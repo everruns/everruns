@@ -20,7 +20,7 @@ accounts — signup is the explicit `/signup` path (TC001).
 ## Preconditions
 
 - `AUTH_MODE=full`
-- `AUTH_JWT_SECRET=MJ5SiIlm9mTmiVJV8O2NLrxnuEZDFuO/iXkjVXGqWD0=`
+- Private test-only JWT secret configured through the local environment
 - `AUTH_DISABLE_PASSWORD=false`
 - An account exists for `testuser@example.com` (created via TC001)
 
