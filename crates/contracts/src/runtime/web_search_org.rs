@@ -47,6 +47,10 @@ pub const NATIVE_WEB_SEARCH_PRICE_NOTE: &str =
 /// Entry names in the Automatic order besides account ids.
 pub const AUTOMATIC_NATIVE: &str = "native";
 pub const AUTOMATIC_FREE: &str = "free";
+/// The deployment's own search, when the host offers one (on
+/// app.everruns.com, Everruns search). A host without one skips the entry,
+/// the way a model without search skips `native`.
+pub const AUTOMATIC_HOSTED: &str = "hosted";
 
 /// A driver registered outside this crate (an external driver id) whose
 /// provider runs native search, declared with `inventory::submit!` so the
@@ -232,7 +236,8 @@ pub struct WebSearchDefaults {
     /// The search account when `provider` is `account`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account_id: Option<Uuid>,
-    /// Automatic order: `native`, search account ids, and `free`, which is
+    /// Automatic order: `native`, search account ids, `hosted` (the
+    /// deployment's own search, when it offers one) and `free`, which is
     /// always last. Entries left out keep their natural place.
     #[serde(default = "default_automatic_order")]
     pub automatic_order: Vec<String>,
@@ -327,7 +332,7 @@ impl WebSearchDefaults {
                 ));
             }
             match entry.as_str() {
-                AUTOMATIC_NATIVE => {}
+                AUTOMATIC_NATIVE | AUTOMATIC_HOSTED => {}
                 AUTOMATIC_FREE if index == last => {}
                 AUTOMATIC_FREE => {
                     return Err(
@@ -337,8 +342,8 @@ impl WebSearchDefaults {
                 other => {
                     let id = Uuid::parse_str(other).map_err(|_| {
                         format!(
-                            "web_search_defaults.automatic_order entries are native, free or a \
-                             search account id, got {other:?}"
+                            "web_search_defaults.automatic_order entries are native, hosted, free \
+                             or a search account id, got {other:?}"
                         )
                     })?;
                     if !account_ids.contains(&id) {
@@ -479,6 +484,21 @@ mod tests {
             [account.to_string(), "native".into(), "free".into()]
         );
         assert_eq!(defaults.blocked_domains, ["pinterest.com"]);
+    }
+
+    #[test]
+    fn the_automatic_order_may_place_the_hosted_search() {
+        let account = id(7);
+        let defaults = WebSearchDefaults {
+            automatic_order: vec!["hosted".into(), account.to_string()],
+            ..WebSearchDefaults::default()
+        }
+        .validated(&[account])
+        .unwrap();
+        assert_eq!(
+            defaults.automatic_order,
+            ["hosted".to_string(), account.to_string(), "free".into()]
+        );
     }
 
     #[test]

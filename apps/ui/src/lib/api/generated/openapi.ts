@@ -9286,7 +9286,8 @@ export interface components {
     BuiltInSearchProvider: {
       description: string;
       /**
-       * @description `free` or `native`.
+       * @description `free`, `native`, or `hosted` (the deployment's own search, when it
+       *     offers one).
        * @example free
        */
       id: string;
@@ -28206,7 +28207,8 @@ export interface components {
        */
       allow_native?: boolean;
       /**
-       * @description Automatic order: `native`, search account ids, and `free`, which is
+       * @description Automatic order: `native`, search account ids, `hosted` (the
+       *     deployment's own search, when it offers one) and `free`, which is
        *     always last. Entries left out keep their natural place.
        */
       automatic_order?: string[];

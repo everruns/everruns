@@ -176,6 +176,7 @@ pub struct ServerAppBuilder {
     host_composition: Option<HostComposition>,
     built_in_harnesses: Option<Vec<crate::domains::harnesses::record::BuiltInHarnessDefinition>>,
     connector_registry: Option<everruns_contracts::connector::ConnectorRegistry>,
+    hosted_web_search: Option<everruns_integrations::web_search::HostedWebSearch>,
     email_sender: Option<Arc<dyn crate::records::email::EmailSender>>,
     slack_app_provisioner: Option<
         Arc<dyn crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner>,
@@ -200,6 +201,7 @@ impl ServerAppBuilder {
             host_composition: None,
             built_in_harnesses: None,
             connector_registry: None,
+            hosted_web_search: None,
             email_sender: None,
             slack_app_provisioner: None,
             extra_routes: Vec::new(),
@@ -236,6 +238,16 @@ impl ServerAppBuilder {
     /// Replace the default OSS runtime surface with an explicit platform definition.
     pub fn host_composition(mut self, host_composition: HostComposition) -> Self {
         self.host_composition = Some(host_composition);
+        self
+    }
+
+    /// List the deployment's own search in the Web search catalog and plan preview; the
+    /// worker offers it through `WebSearchCapability::and_hosted`.
+    pub fn hosted_web_search(
+        mut self,
+        hosted: everruns_integrations::web_search::HostedWebSearch,
+    ) -> Self {
+        self.hosted_web_search = Some(hosted);
         self
     }
 
@@ -815,7 +827,8 @@ impl ServerAppBuilder {
             encryption.clone(),
             auth_state.clone(),
             connector_registry.clone(),
-        );
+        )
+        .with_hosted_web_search(self.hosted_web_search.clone());
         let eval_run_ctx = Arc::new(crate::domains::evals::runner::EvalRunContext {
             db: db.clone(),
             session_service: Arc::new(
