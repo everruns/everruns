@@ -107,8 +107,9 @@ runtime.
   comes back, the host asks the engine (`Session::interrupted_turn`) for a
   turn the old process cut off, and resumes it
   (`Session::resume_interrupted_turn`): calls that waited on a person run
-  again and park again under the same tool call ids, idempotent calls run
-  again, and every other call is recorded as interrupted, never re-run. Boot
+  again and park again under the same tool call ids, idempotent calls and
+  calls with no `tool.started` in the log run again, and every other call is
+  recorded as interrupted, never re-run. Boot
   resumes, in the background, every session active within the last 7 days,
   so a cut-off turn carries on without a client reading it first; older
   sessions resume when next read. The runtime passes the model no deny note.

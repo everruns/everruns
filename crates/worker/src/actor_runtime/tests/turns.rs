@@ -187,6 +187,47 @@ async fn a_non_idempotent_call_cut_off_mid_act_is_settled_as_interrupted() {
     fixture.assert_idle();
 }
 
+/// A worker dies while an act's first call runs and before its next call
+/// started: the log has no `tool.started` for that call, which proves it
+/// never ran, so the survivor runs it instead of settling it as interrupted.
+#[tokio::test]
+async fn a_non_idempotent_call_that_never_started_runs_on_resume() {
+    let fixture = Fixture::new(model(
+        "Read and sent.",
+        vec![vec![call("c1", "read_inbox"), call("c2", "send_email")]],
+    ))
+    .await;
+    fixture.gate.hold_first.store(true, Ordering::SeqCst);
+    let (crashing, _) = fixture.worker("w1");
+    fixture.send("Read my inbox, then email the team.").await;
+
+    crash_at(&fixture, &crashing, &fixture.gate.held).await;
+    assert_eq!(fixture.tool_calls(), vec!["read_inbox"]);
+
+    let (survivor, _) = fixture.worker("w2");
+    run_until_idle(&survivor).await;
+    assert_eq!(
+        fixture.tool_calls(),
+        vec!["read_inbox", "read_inbox", "send_email"],
+        "send_email runs once"
+    );
+    let completed: Vec<String> = fixture
+        .events()
+        .await
+        .into_iter()
+        .filter(|event| event.event_type == "tool.completed")
+        .map(|event| serde_json::to_string(&event.data).unwrap())
+        .collect();
+    assert_eq!(completed.len(), 2, "{completed:?}");
+    assert!(
+        completed.iter().all(|data| !data.contains("interrupted")),
+        "{completed:?}"
+    );
+    assert_eq!(fixture.count("turn.completed").await, 1);
+    assert_eq!(fixture.answers().await, vec!["Read and sent."]);
+    fixture.assert_idle();
+}
+
 #[tokio::test]
 async fn an_idempotent_call_cut_off_mid_act_runs_again() {
     let fixture = Fixture::new(model("Read.", vec![vec![call("c1", "read_inbox")]])).await;

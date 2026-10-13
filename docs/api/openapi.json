@@ -59004,6 +59004,17 @@
             ],
             "description": "Human-readable narration for timeline rendering"
           },
+          "side_effect_class": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SideEffectClass",
+                "description": "How many times the call may safely run, from its tool's definition;\n`None` when the tool is unknown. A host stores the `tool.started` of\nan `AtMostOnce` call before the tool runs, so a log without it proves\nthe call never ran and resume may run it."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "tool_call": {
             "$ref": "#/components/schemas/ToolCall",
             "description": "The tool call being executed"

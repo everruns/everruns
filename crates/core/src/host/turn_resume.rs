@@ -18,13 +18,22 @@
 //! reason. Hosts therefore need no separate parked-turn store to continue it.
 //!
 //! Decision: what happens to an unfinished call follows what its tool
-//! declares, because the log cannot tell a call that waited from one that
-//! was running. A call is run again when that is safe: the tool is `Pure` or
-//! `Idempotent`, it never ran here (client-side, approval-gated, `ask_user`),
-//! or the host says it waits on a person ([`WaitsOnPerson`]). Every other call
-//! is settled as `interrupted`, so the model learns its outcome is unknown and
-//! nothing runs twice that should run at most once. A turn cut off outside
-//! its act (in a reason, or between steps) reasons again from the log.
+//! declares and whether the log shows it started. A call is run again when
+//! that is safe: the tool is `Pure` or `Idempotent`, it never ran here
+//! (client-side, approval-gated, `ask_user`), the host says it waits on a
+//! person ([`WaitsOnPerson`]), or the log has no `tool.started` for it. Every
+//! other call is settled as `interrupted`, so the model learns its outcome is
+//! unknown and nothing runs twice that should run at most once. A turn cut
+//! off outside its act (in a reason, or between steps) reasons again from the
+//! log.
+//!
+//! Decision: a missing `tool.started` proves the call never ran because the
+//! act does not run an `AtMostOnce` call until that event is stored (hosts
+//! store it before `emit` returns; the worker does not queue it). Logs written
+//! before that rule queued the event, so a call cut off within milliseconds of
+//! its start on an older worker could read as never started. That needs a
+//! crash in that window during the upgrade itself, and workers drain on
+//! shutdown, so no log-format marker guards it.
 //!
 //! Decision: the tool each call is looked up in is the surface a reason on
 //! this host would hand its act now (the reason's MCP and host-augmented
@@ -87,6 +96,8 @@ pub struct OpenTurn {
     calls: Vec<ToolCall>,
     /// Calls with a `tool.completed`.
     settled: HashSet<String>,
+    /// Calls with a `tool.started`: they may have run.
+    started: HashSet<String>,
     /// The latest agent message made no tool calls: the turn has its answer
     /// and only its end is missing.
     answered: bool,
@@ -123,6 +134,12 @@ impl OpenTurn {
     /// twice.
     pub fn is_answered(&self) -> bool {
         self.answered
+    }
+
+    /// Whether the log shows `call_id` started, so it may have run. A call
+    /// without a `tool.started` never ran; see the module notes.
+    pub fn may_have_run(&self, call_id: &str) -> bool {
+        self.started.contains(call_id)
     }
 
     /// The calls of the turn's latest agent message without a recorded
@@ -179,6 +196,7 @@ impl TurnLogFold {
                     final_message_id: None,
                     calls: Vec::new(),
                     settled: HashSet::new(),
+                    started: HashSet::new(),
                     answered: false,
                 });
                 return;
@@ -220,6 +238,10 @@ impl TurnLogFold {
                     .collect();
                 turn.answered = turn.calls.is_empty();
                 turn.settled.clear();
+                turn.started.clear();
+            }
+            EventData::ToolStarted(data) => {
+                turn.started.insert(data.tool_call.id);
             }
             EventData::ToolCompleted(data) => {
                 if !data.success {
@@ -260,15 +282,16 @@ async fn decide<A: RuntimeHostAdapter>(
     let context =
         reason_turn_context(adapter, org_id, turn.session_id, turn.input_message_id).await?;
     let (rerun, not_rerun) = unfinished.into_iter().partition(|call| {
-        reruns(
-            call,
-            context
-                .runtime_agent
-                .tools
-                .iter()
-                .find(|tool| tool.name() == call.name),
-            waits_on_person,
-        )
+        !turn.may_have_run(&call.id)
+            || reruns(
+                call,
+                context
+                    .runtime_agent
+                    .tools
+                    .iter()
+                    .find(|tool| tool.name() == call.name),
+                waits_on_person,
+            )
     });
     Ok(Some(ResumeDecision {
         turn,

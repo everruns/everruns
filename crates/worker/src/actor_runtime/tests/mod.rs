@@ -71,7 +71,11 @@ impl Tool for GatedTool {
         json!({ "type": "object", "properties": {} })
     }
     fn hints(&self) -> ToolHints {
-        ToolHints::default().with_side_effect_class(self.class.clone())
+        // One class: a batch runs its calls in order, so a test can hold the
+        // first while the next has not started.
+        ToolHints::default()
+            .with_side_effect_class(self.class.clone())
+            .with_concurrency_class("actor_test")
     }
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         self.gate.calls.lock().unwrap().push(self.name.to_string());
