@@ -30,7 +30,7 @@ jobs:
       fail-fast: false
       matrix:
         arm: [before-actors, after-actors]
-        rep: [1, 2]
+        rep: [3]
         include:
           - arm: before-actors
             ref: 7c48799f78d38bbfd3d759f88cb7d3c23e214daf
@@ -43,6 +43,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ matrix.ref }}
+
+      - uses: actions/checkout@v7
+        with:
+          path: probe
 
       - name: Start PostgreSQL with pg_stat_statements
         run: |
@@ -64,9 +68,6 @@ jobs:
           shared-key: server-turn-latency-bench
           save-if: false
 
-      - name: Build turn_latency
-        run: cargo bench -p everruns-server --bench turn_latency --no-run
-
       - name: Database counters before
         run: |
           docker exec bench-postgres psql -U everruns -d everruns_test -Atc \
@@ -86,3 +87,7 @@ jobs:
             "select 'after', xact_commit, xact_rollback, tup_inserted, tup_updated from pg_stat_database where datname='everruns_test'"
           docker exec bench-postgres psql -U everruns -d everruns_test -Atc "select 'wal', wal_records, wal_sync, wal_sync_time from pg_stat_wal" || true
           cat "$RUNNER_TEMP/summary.jsonl" || true
+          for f in gaps.sql gaps_c1.sql slowturns.sql byturn.sql; do
+            echo "== $f"
+            docker exec -i bench-postgres psql -U everruns -d everruns_test < "probe/.github/eve-1262/$f" || true
+          done
