@@ -313,6 +313,50 @@ pub enum InboundAttachment {
         name: String,
         mime_type: Option<String>,
     },
+    /// File bytes the platform delivered with the message. The host stores
+    /// them as an attachment.
+    Bytes {
+        name: Option<String>,
+        media_type: Option<String>,
+        data: Vec<u8>,
+    },
+    /// A file the host downloads and stores as an attachment, such as a Slack
+    /// file behind the bot token.
+    Remote {
+        url: String,
+        name: Option<String>,
+        media_type: Option<String>,
+        /// Size the platform reported, to skip a download over the limit.
+        size: Option<u64>,
+        credential: Option<RemoteCredential>,
+    },
+}
+
+/// An `Authorization` header a [`InboundAttachment::Remote`] download sends,
+/// only to `host`.
+#[derive(Clone)]
+pub struct RemoteCredential {
+    /// The only host the header is sent to, such as `files.slack.com`.
+    pub host: String,
+    pub authorization: String,
+}
+
+impl RemoteCredential {
+    pub fn bearer(host: impl Into<String>, token: &str) -> Self {
+        Self {
+            host: host.into(),
+            authorization: format!("Bearer {token}"),
+        }
+    }
+}
+
+impl std::fmt::Debug for RemoteCredential {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RemoteCredential")
+            .field("host", &self.host)
+            .field("authorization", &"[redacted]")
+            .finish()
+    }
 }
 
 // ============================================

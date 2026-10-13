@@ -66,7 +66,7 @@ Cloud and container sandbox environments for isolated code execution.
 
 | Capability | ID | Tools |
 |---|---|---|
-| Managed Environment | `session_sandbox` | 6 |
+| Managed Environment | `session_sandbox` | 8 |
 | [Sandbox Fleet](/capabilities/sandbox-fleet/) | `sandbox_fleet` | 8 |
 | [Daytona](/capabilities/daytona/) | `daytona` | 10 |
 | [E2B](/capabilities/e2b/) | `e2b` | 6 |
@@ -125,7 +125,7 @@ External-service capabilities and blueprint-backed workflows.
 
 | Capability | ID | Tools |
 |---|---|---|
-| [GitHub](/capabilities/github/) | `github` | 5 (6 with `allow_pull_requests`) |
+| [GitHub](/capabilities/github/) | `github` | 6 (7 with `allow_pull_requests`) |
 | [GitHub Scout](/capabilities/github-scout/) | `github_scout` | 0 |
 | [Slack](/capabilities/slack/) | `slack` | 4 |
 | Cursor | `cursor` | 9 |

@@ -24,14 +24,22 @@ here that walks that path.
 | State-machine scenario (machine.ts) | Case |
 |---|---|
 | Brand-new user creates an account → verify link → authenticated | `TC001_user_signup.md`, `TC006_email_verification_flow.md` |
-| Verified user signs in / signs out | `TC002_signout_after_signin.md`, `TC003_login_signout_flow.md` |
+| Verified user signs in / signs out | `TC002_signout_after_signin.md` |
 | Failed login (wrong/unknown credentials) | `TC004_failed_login_random_user.md` |
 | Verified user who forgot their password recovers | `TC005_password_reset_flow.md` |
 | Unverified user verifies (pending / resend / wrong-address / expired) | `TC006_email_verification_flow.md` |
 | OAuth rejection categories land on the login door, never a dead end | `TC007_oauth_error_paths.md` |
 | **Closed traps + gated-verify recovery** (no path silently no-ops) | `TC008_reachability_dead_end_recovery.md` |
+| Invitation resumes after signup/verification | `TC009_invited_user_signup_resume.md` |
 | Protected route delegates login to a trusted remote origin | `TC010_external_login_origin.md` |
 
 Account states referenced across the suite (see `machine.ts`):
 **S0** `none` · **S1** `local_unverified` · **S2** `local_verified` ·
 **S3** `oauth_only`.
+
+Additional session and availability acceptance paths beyond the reachability model:
+
+| Runtime boundary | Case |
+| --- | --- |
+| Idle access cookie, refresh-only reload, overlapping renewal, expired refresh | [TC011](TC011_session_refresh_and_expiry.md) |
+| Config/user outage, retry, failed logout and cache isolation | [TC012](TC012_auth_outage_and_logout_failure.md) |

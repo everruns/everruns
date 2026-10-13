@@ -27,8 +27,8 @@ use everruns_contracts::runtime::web_search::{
 };
 use everruns_core::OrgRole;
 use everruns_integrations::web_search::{
-    FreeSearchDriver, PlanEntry, PlanInputs, PlanStep, WebSearchConfig, account_search_driver,
-    resolve_plan, run_plan,
+    FreeSearchDriver, HOSTED_SEARCH_ID, PlanEntry, PlanInputs, PlanStep, WebSearchConfig,
+    account_search_driver, resolve_plan, run_plan,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -51,7 +51,8 @@ pub fn routes(state: AppState) -> Router {
 /// A provider that needs no setup.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct BuiltInSearchProvider {
-    /// `free` or `native`.
+    /// `free`, `native`, or `hosted` (the deployment's own search, when it
+    /// offers one).
     #[schema(example = "free")]
     pub id: String,
     pub name: String,
@@ -271,7 +272,7 @@ pub async fn list_search_providers(
             icon: connector.icon().to_string(),
         })
         .collect();
-    let automatic = automatic_ids(&settings);
+    let automatic = automatic_ids(&settings, state.hosted_web_search.is_some());
     let accounts = rows
         .into_iter()
         .map(|row| SearchAccountSummary {
@@ -291,23 +292,37 @@ pub async fn list_search_providers(
             connected_at: row.created_at,
         })
         .collect();
+    let hosted = state
+        .hosted_web_search
+        .as_ref()
+        .map(|hosted| BuiltInSearchProvider {
+            id: HOSTED_SEARCH_ID.into(),
+            name: hosted.name().into(),
+            description: hosted.description().into(),
+            price_note: hosted.price_note().map(str::to_string),
+        });
     Ok(Json(SearchProviderCatalog {
-        built_in: vec![
-            BuiltInSearchProvider {
-                id: "free".into(),
-                name: "Free search".into(),
-                description: "Keyless best-effort web search (DuckDuckGo, then Mojeek). The last \
+        built_in: hosted
+            .into_iter()
+            .chain([
+                BuiltInSearchProvider {
+                    id: "free".into(),
+                    name: "Free search".into(),
+                    description:
+                        "Keyless best-effort web search (DuckDuckGo, then Mojeek). The last \
                               fallback of every plan."
-                    .into(),
-                price_note: None,
-            },
-            BuiltInSearchProvider {
-                id: "native".into(),
-                name: "Model provider search".into(),
-                description: "The search of the model running the turn, when it has one.".into(),
-                price_note: Some(NATIVE_WEB_SEARCH_PRICE_NOTE.into()),
-            },
-        ],
+                            .into(),
+                    price_note: None,
+                },
+                BuiltInSearchProvider {
+                    id: "native".into(),
+                    name: "Model provider search".into(),
+                    description: "The search of the model running the turn, when it has one."
+                        .into(),
+                    price_note: Some(NATIVE_WEB_SEARCH_PRICE_NOTE.into()),
+                },
+            ])
+            .collect(),
         native_providers,
         connectors,
         accounts,
@@ -316,7 +331,7 @@ pub async fn list_search_providers(
 }
 
 /// Plan ids of the Automatic order for a model with native search.
-fn automatic_ids(settings: &WebSearchOrgSettings) -> Vec<String> {
+fn automatic_ids(settings: &WebSearchOrgSettings, hosted: bool) -> Vec<String> {
     let config = WebSearchConfig {
         provider: SearchProviderSetting::Auto,
         fallback: Some(SearchFallbackMode::Next),
@@ -328,6 +343,7 @@ fn automatic_ids(settings: &WebSearchOrgSettings) -> Vec<String> {
         model_has_native: true,
         brave_key: false,
         parallel_key: false,
+        hosted,
     })
     .ids()
 }
@@ -398,6 +414,7 @@ pub async fn preview_search_plan(
         model_has_native: model_native,
         brave_key: false,
         parallel_key: false,
+        hosted: state.hosted_web_search.is_some(),
     });
     let ready = |id: Uuid| {
         rows.iter()
@@ -436,6 +453,20 @@ pub async fn preview_search_plan(
                 note: (!ready(*id))
                     .then(|| "The search account is not connected in this organization".into()),
                 price_note: None,
+            },
+            PlanEntry::Hosted => SearchPlanStep {
+                id: entry.id(),
+                label: state
+                    .hosted_web_search
+                    .as_ref()
+                    .map_or("Hosted search", |hosted| hosted.name())
+                    .into(),
+                available: state.hosted_web_search.is_some(),
+                note: None,
+                price_note: state
+                    .hosted_web_search
+                    .as_ref()
+                    .and_then(|hosted| hosted.price_note().map(str::to_string)),
             },
             PlanEntry::Free => SearchPlanStep {
                 id: entry.id(),

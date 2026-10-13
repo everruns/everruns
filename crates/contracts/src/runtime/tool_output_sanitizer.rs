@@ -251,6 +251,13 @@ pub fn clean_exec_output(text: &str) -> String {
 /// Default line limit for read_file (industry standard: 2000 lines).
 pub const READ_FILE_DEFAULT_LIMIT: usize = 2000;
 
+/// `read_many_files` bounds, shared by every file system that offers it.
+pub const READ_FILE_BATCH_MAX_PATHS: usize = 10;
+pub const READ_FILE_BATCH_MAX_PATH_BYTES: usize = 4 * 1024;
+/// Headroom below the runtime's 64 KiB hard tool-result limit so the ordered
+/// envelope and any per-path errors remain intact.
+pub const READ_FILE_BATCH_MAX_OUTPUT_BYTES: usize = 60 * 1024;
+
 /// Hard byte cap for read_file (50 KB safety net for pathological cases like minified files).
 pub const READ_FILE_HARD_BYTE_CAP: usize = 50 * 1024;
 

@@ -24,19 +24,20 @@ Verify that login fails when invalid credentials are provided in admin authentic
 
 | Field    | Value                       |
 |----------|-----------------------------|
-| Email    | nonexistent@example.com     |
+| Email variants | Configured admin email, unknown email |
 | Password | wrong-password              |
 
 ## Steps
 
 1. Navigate to the login page
-2. Enter email: `nonexistent@example.com`
-3. Enter password: `wrong-password`
-4. Click the login button
+2. Enter the configured admin email with the wrong password; repeat with `nonexistent@example.com`
+3. Click **Continue with email**
+4. Enter password: `wrong-password`
+5. Click **Continue**
 
 ## Expected Result
 
 - Login fails
 - User is not authenticated
-- An appropriate error message is displayed (e.g., "Invalid credentials")
+- Both variants show the same generic credential failure, without revealing account existence
 - User remains on the login page

@@ -584,6 +584,16 @@ pub async fn collect_capabilities_with_configs(
     let mut delegation_targets: Vec<DelegationTargetProvider> = Vec::new();
 
     let superseded = superseded_capability_ids(capability_configs, registry);
+    let sandbox_owns_files = capability_configs
+        .iter()
+        .filter(|config| !superseded.contains(config.capability_id()))
+        .filter_map(|config| registry.get(config.capability_id()))
+        .any(|capability| {
+            capability.status().is_active()
+                && capability
+                    .features()
+                    .contains(&sandbox_file_tools::MANAGED_SANDBOX_FEATURE)
+        });
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_id();
         if superseded.contains(cap_id) {
@@ -662,10 +672,24 @@ pub async fn collect_capabilities_with_configs(
             let delegation_target =
                 effective.delegation_target_with_config(cap_config.config_value());
 
+            // A managed sandbox owns every file tool name; see sandbox_file_tools.
+            let yields_files =
+                sandbox_owns_files && sandbox_file_tools::yields_file_tools(&effective.features());
+            let keeps_tool =
+                |name: &str| !(yields_files && sandbox_file_tools::is_session_file_tool(name));
+
+            let mut capability_tools = effective.tools_with_config(cap_config.config_value());
+            let tool_count = capability_tools.len();
+            capability_tools.retain(|tool| keeps_tool(tool.name()));
+            // A capability left with no tools has nothing of its own to describe:
+            // its prompt and definition hooks would steer the sandbox's tools.
+            let all_tools_yielded = tool_count > 0 && capability_tools.is_empty();
+
             // Collect dynamic system prompt contribution (config-aware, may read from filesystem)
-            if let Some(contribution) = effective
-                .system_prompt_contribution_with_config(ctx, cap_config.config_value())
-                .await
+            if !all_tools_yielded
+                && let Some(contribution) = effective
+                    .system_prompt_contribution_with_config(ctx, cap_config.config_value())
+                    .await
             {
                 system_prompt_attributions.push(SystemPromptAttribution {
                     capability_id: cap_id.to_string(),
@@ -701,13 +725,15 @@ pub async fn collect_capabilities_with_configs(
             }
 
             // Collect tools and hooks (config-aware: capabilities can adapt based on per-agent config)
-            tools.extend(effective.tools_with_config(cap_config.config_value()));
+            tools.extend(capability_tools);
             if let Some(target) = delegation_target {
                 delegation_targets.push(target);
             }
-            tool_definition_hooks.extend(
-                effective.tool_definition_hooks_with_context(ctx, cap_config.config_value()),
-            );
+            if !all_tools_yielded {
+                tool_definition_hooks.extend(
+                    effective.tool_definition_hooks_with_context(ctx, cap_config.config_value()),
+                );
+            }
             tool_call_hooks.extend(effective.tool_call_hooks());
             // Route this capability's `narrate()` through the hook channel.
             narration_hooks.push(Arc::new(CapabilityNarrationHook(capability.clone())));
@@ -717,6 +743,9 @@ pub async fn collect_capabilities_with_configs(
             // Collect tool definitions, propagating capability category if not already set
             let cap_category = effective.category();
             for def in effective.tool_definitions_with_config(cap_config.config_value()) {
+                if !keeps_tool(def.name()) {
+                    continue;
+                }
                 let def = match (def.category(), cap_category) {
                     (None, Some(cat)) => def.with_category(cat),
                     _ => def,
@@ -834,6 +863,11 @@ pub async fn collect_capabilities_with_configs(
 
     // Sort message filter providers by priority (lower = earlier)
     message_filter_providers.sort_by_key(|(p, _)| p.priority());
+
+    // The registry runs the last tool registered under a name; the model must
+    // see exactly that one.
+    let tools = sandbox_file_tools::dedupe_tools(tools);
+    let tool_definitions = sandbox_file_tools::dedupe_definitions(tool_definitions);
 
     CollectedCapabilities {
         system_prompt_parts,

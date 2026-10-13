@@ -26,7 +26,11 @@ Verify that built-in harnesses are provisioned for the new organisation by navig
 
 ## Expected Result
 
-- Dashboard loads without errors
-- Harnesses page shows at least three built-in harnesses with names: `base`, `generic`, `platform-chat`
+- The post-setup application loads without errors
+- Harnesses shows the current built-ins: `base`, `conversation`, `worker`, `bashkit-worker`, and `sandbox-worker`; each links to the corresponding detail. Generic and Worker Base appear only when Show deprecated is enabled.
 - Each harness card shows a "Built-in" badge
 - Each harness card is clickable and links to a detail page
+
+## Test Data
+
+Use the newly created org ID from setup; existing harnesses in another selected org cannot satisfy this case.

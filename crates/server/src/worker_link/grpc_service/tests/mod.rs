@@ -911,6 +911,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
                 max_iterations: None,
                 network_access: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
                 communication: Default::default(),
                 environments: None,
                 is_built_in: false,

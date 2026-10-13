@@ -6,6 +6,7 @@ kind: improvement
 significance: notable
 products: [platform, cloud]
 surfaces: [ui, agent]
+release: "0.48.0"
 links:
   docs: [/capabilities/guardrails/]
   prs: [everruns/everruns#4459, everruns/everruns#4542]

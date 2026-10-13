@@ -749,11 +749,11 @@ impl ReasonAtom {
             checkpoint_reasoning,
         )
         .filter(|_| native_reasoning_compaction);
-        let tool_changes = tool_changes::prepare(
+        let tool_changes = tool_changes::prepare_for(
             &messages,
-            model_with_provider.provider_type.as_str(),
+            &model_with_provider.provider_type,
             &model_with_provider.model,
-            &runtime_agent.tools,
+            &runtime_agent,
         );
 
         // 9. Recover a stream a lost attempt left open (EVE-532): finalize it
@@ -958,7 +958,7 @@ impl ReasonAtom {
             .capture_request(true) // stored on llm.generation (TM-LLM-039)
             .build();
         llm_config.background_call = self.background_call.clone();
-        llm_config.tool_baseline = tool_changes.baseline_for(&llm_messages);
+        tool_changes.apply_to(&mut llm_config, &llm_messages);
         if let Some(replay) = &reasoning_replay {
             llm_config.reasoning_effort = replay.state.baseline;
             llm_config.reasoning_state = Some(replay.state.clone());
@@ -1043,25 +1043,23 @@ impl ReasonAtom {
         // heuristics. Each reasoning iteration reaches this point separately.
         // A restarted stream keeps the id whose started event is stored.
         let output_message_id = resumed_message_id.unwrap_or_else(MessageId::new);
+        let started = EventRequest::new(
+            session_id,
+            streaming_event_context.clone(),
+            OutputMessageStartedData {
+                reasoning_state: llm_config.reasoning_state.clone(),
+                turn_id: context.turn_id,
+                message_id: output_message_id,
+                model: Some(runtime_agent.model.clone()),
+                iteration: Some(iteration),
+                // Emitted before the LLM call — phase is not yet known, so the
+                // streamed hint starts `None` (treat as assistant text),
+                // except for explicit agents, whose text is always notes.
+                phase: notes_phase,
+            },
+        );
         if resumed_message_id.is_none()
-            && let Err(e) = self
-                .event_emitter
-                .emit(EventRequest::new(
-                    session_id,
-                    streaming_event_context.clone(),
-                    OutputMessageStartedData {
-                        reasoning_state: llm_config.reasoning_state.clone(),
-                        turn_id: context.turn_id,
-                        message_id: output_message_id,
-                        model: Some(runtime_agent.model.clone()),
-                        iteration: Some(iteration),
-                        // Emitted before the LLM call — phase is not yet known, so the
-                        // streamed hint starts `None` (treat as assistant text),
-                        // except for explicit agents, whose text is always notes.
-                        phase: notes_phase,
-                    },
-                ))
-                .await
+            && let Err(e) = self.event_emitter.emit(started.clone()).await
         {
             if llm_config.reasoning_state.is_some() {
                 return Err(e);
@@ -1379,9 +1377,8 @@ impl ReasonAtom {
                         // as an in-stream provider error (everruns-contracts
                         // classifies this message as transient) instead of
                         // failing the turn immediately. Retrying re-issues the
-                        // same request with no artificial history messages; a
-                        // stall after partial output is not retried, and repeated
-                        // stalls stay bounded by retry_config.max_retries.
+                        // same request; a stall after text alone is retried too,
+                        // all bounded by retry_config.max_retries.
                         let stall_error =
                             crate::engine::driver_registry::LlmStreamError::new(format!(
                                 "provider stream stall: no tokens for {}s",
@@ -1428,6 +1425,7 @@ impl ReasonAtom {
                             );
                             stream_retry_metadata.record_retry(wait_duration, None);
                             everruns_contracts::rt::sleep(wait_duration).await;
+                            stream_state::restart(&self.event_emitter, &started, &text).await;
                             continue 'stream_attempt;
                         }
                         compaction_lifecycle
@@ -1744,12 +1742,21 @@ impl ReasonAtom {
                         break;
                     }
                     LlmStreamEvent::Error(err) => {
-                        // If we already collected valid tool calls or text before
-                        // the error arrived, treat it as a partial success. This
-                        // handles OpenAI Responses API behaviour where a trailing
-                        // server_error can follow fully-streamed function calls.
+                        // Keep tool calls (a trailing server_error can follow them) as
+                        // a partial success, and text once no retry is left.
+                        let can_retry = replay_state.should_retry(
+                            &err,
+                            stream_retry_metadata.attempts,
+                            retry_config.max_retries,
+                        );
+                        let retry_wait = can_retry.then(|| {
+                            let proposed =
+                                retry_config.calculate_backoff(stream_retry_metadata.attempts);
+                            reserve_retry_wait(&retry_config, &mut retry_started_at, proposed)
+                        });
                         let has_partial_output = compaction_started_at.is_none()
-                            && (!tool_calls.is_empty() || !text.is_empty());
+                            && (!tool_calls.is_empty()
+                                || !text.is_empty() && !matches!(retry_wait, Some(Some(_))));
 
                         if has_partial_output {
                             tracing::warn!(
@@ -1766,18 +1773,8 @@ impl ReasonAtom {
                             break;
                         }
 
-                        if replay_state.should_retry(
-                            &err,
-                            stream_retry_metadata.attempts,
-                            retry_config.max_retries,
-                        ) {
-                            let proposed_wait =
-                                retry_config.calculate_backoff(stream_retry_metadata.attempts);
-                            let Some(wait_duration) = reserve_retry_wait(
-                                &retry_config,
-                                &mut retry_started_at,
-                                proposed_wait,
-                            ) else {
+                        if let Some(wait) = retry_wait {
+                            let Some(wait_duration) = wait else {
                                 let attempts = stream_retry_metadata.attempts;
                                 generation_outcome::retry_time_exhausted(
                                     &model_with_provider,
@@ -1806,6 +1803,7 @@ impl ReasonAtom {
                             );
                             stream_retry_metadata.record_retry(wait_duration, None);
                             everruns_contracts::rt::sleep(wait_duration).await;
+                            stream_state::restart(&self.event_emitter, &started, &text).await;
                             continue 'stream_attempt;
                         }
 

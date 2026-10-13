@@ -37,8 +37,9 @@ import { FailureIcon } from "./failure-severity";
 const RAW_PREVIEW_BYTES = 2048;
 const INLINE_RESULTS = 3;
 
-function providerKind(provider?: string): "native" | "free" | "account" {
+function providerKind(provider?: string): "native" | "hosted" | "free" | "account" {
   if (provider === "native") return "native";
+  if (provider === "hosted") return "hosted";
   if (provider === "free") return "free";
   return "account";
 }
@@ -249,6 +250,7 @@ function costLabel(details: WebSearchDetails): string {
   if (!details.ok) return "None";
   if (details.provider === "free") return "Free";
   if (details.provider === "native") return "Billed by the model provider";
+  if (details.provider === "hosted") return "Billed by this deployment";
   return `Billed on the ${details.provider_label ?? "account"} key`;
 }
 

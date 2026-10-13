@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 406" fill="none" role="img" aria-labelledby="t d">
+  <title id="t">From a workflow per turn to an actor per session</title>
+  <desc id="d">Before: the API server starts a turn workflow, each step (input, reason, act) is a separate task on the durable queue that any worker may claim, with a checkpoint after every step and steering delivered as signals. After: the API server stores the message and marks the session runnable in one transaction, one worker leases the session and runs the whole turn, appending to the session event log, which is the only turn state; if the worker crashes its lease expires and the next worker resumes from the log.</desc>
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+  </style>
+  <rect width="800" height="406" fill="#FFFFFF"/>
+
+  <!-- BEFORE -->
+  <text x="20" y="30" class="header-text">BEFORE · EACH TURN A WORKFLOW</text>
+
+  <rect x="20" y="45" width="160" height="90" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="100" y="80" text-anchor="middle" class="label">API server</text>
+  <text x="100" y="99" text-anchor="middle" class="sublabel">stores the message</text>
+  <text x="100" y="116" text-anchor="middle" class="mono">starts a workflow</text>
+
+  <rect x="220" y="45" width="160" height="90" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="300" y="80" text-anchor="middle" class="label">Turn workflow</text>
+  <text x="300" y="99" text-anchor="middle" class="sublabel">steering as signals</text>
+  <text x="300" y="116" text-anchor="middle" class="mono">USER_MESSAGE</text>
+
+  <rect x="420" y="45" width="160" height="90" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="500" y="80" text-anchor="middle" class="label">Durable queue</text>
+  <text x="500" y="99" text-anchor="middle" class="sublabel">one task per step</text>
+  <text x="500" y="116" text-anchor="middle" class="mono">input · reason · act</text>
+
+  <rect x="620" y="45" width="160" height="90" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="700" y="80" text-anchor="middle" class="label">Any worker</text>
+  <text x="700" y="99" text-anchor="middle" class="sublabel">claims one step</text>
+  <text x="700" y="116" text-anchor="middle" class="mono">checkpoint after it</text>
+
+  <line x1="180" y1="90" x2="210" y2="90" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="210,85 220,90 210,95" fill="#0A1636"/>
+  <line x1="380" y1="90" x2="410" y2="90" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="410,85 420,90 410,95" fill="#0A1636"/>
+  <line x1="580" y1="90" x2="610" y2="90" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="610,85 620,90 610,95" fill="#0A1636"/>
+
+  <line x1="700" y1="135" x2="700" y2="150" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <rect x="20" y="150" width="760" height="36" fill="#FFFFFF" stroke="#404040" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="400" y="172" text-anchor="middle" class="sublabel">Every step paid a queue round trip and a checkpoint write, and the next step could land on another worker.</text>
+
+  <!-- AFTER -->
+  <text x="20" y="235" class="header-text">AFTER · EACH SESSION AN ACTOR</text>
+
+  <rect x="20" y="250" width="160" height="90" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="100" y="285" text-anchor="middle" class="label">API server</text>
+  <text x="100" y="304" text-anchor="middle" class="sublabel">stores the message</text>
+  <text x="100" y="321" text-anchor="middle" class="mono">+ marks it runnable</text>
+
+  <rect x="220" y="250" width="160" height="90" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="300" y="285" text-anchor="middle" class="label">Session lease</text>
+  <text x="300" y="304" text-anchor="middle" class="sublabel">one holder at a time</text>
+  <text x="300" y="321" text-anchor="middle" class="mono">fence number</text>
+
+  <rect x="420" y="250" width="160" height="90" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="500" y="285" text-anchor="middle" class="label">One worker</text>
+  <text x="500" y="304" text-anchor="middle" class="sublabel">runs the whole turn</text>
+  <text x="500" y="321" text-anchor="middle" class="mono">reason · act · reason</text>
+
+  <rect x="620" y="250" width="160" height="90" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="700" y="285" text-anchor="middle" class="label">Session event log</text>
+  <text x="700" y="304" text-anchor="middle" class="sublabel">the only turn state</text>
+  <text x="700" y="321" text-anchor="middle" class="mono">fenced appends</text>
+
+  <line x1="180" y1="295" x2="210" y2="295" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="210,290 220,295 210,300" fill="#0A1636"/>
+  <line x1="380" y1="295" x2="410" y2="295" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="410,290 420,295 410,300" fill="#0A1636"/>
+  <line x1="580" y1="295" x2="610" y2="295" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="610,290 620,295 610,300" fill="#0A1636"/>
+
+  <line x1="500" y1="340" x2="500" y2="355" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <rect x="20" y="355" width="760" height="36" fill="#FFFFFF" stroke="#404040" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="400" y="377" text-anchor="middle" class="sublabel">If the worker crashes, its lease expires in 10 s and the next worker resumes the turn from the log.</text>
+</svg>

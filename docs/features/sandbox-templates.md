@@ -13,6 +13,12 @@ Sandbox Templates and Harnesses are separate. A Harness defines behavior and may
 policy or let an Agent offer template bindings. A template selects Bashkit, Daytona, or another
 execution target without changing the ordinary shell and file tools the model uses.
 
+With a managed provider, every file tool works on the Sandbox's `/workspace`: `read_file`,
+`read_many_files`, `write_file`, `edit_file`, `glob`, `grep`, and `list_directory`. Tools that only
+exist for the Session's own files, such as `grep_files` and `delete_file`, are not offered. Skills
+under `/workspace/.agents/skills/` and saved tool output under `/workspace/outputs/` stay readable:
+when the Sandbox does not hold such a file, the read falls back to the Session's files.
+
 ## Create a Sandbox Template
 
 1. Open **Sandbox Templates** and select **New Sandbox Template**.

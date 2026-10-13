@@ -30,6 +30,7 @@
 //! assert!(names.contains(&"upsert_github_comment".to_string()));
 //! ```
 
+mod checkout;
 mod client;
 mod fix_pull_requests;
 mod issues;
@@ -46,6 +47,7 @@ use everruns_contracts::runtime::capabilities::{
 use everruns_contracts::runtime::tools::Tool;
 use serde::{Deserialize, Serialize};
 
+use checkout::CheckoutGitHubPullRequestTool;
 use fix_pull_requests::CreateGitHubPullRequestTool;
 use issues::UpsertGitHubIssueTool;
 use pull_requests::{
@@ -141,7 +143,7 @@ impl Capability for GitHubCapability {
     }
 
     fn description(&self) -> &str {
-        "Read GitHub pull requests and their diffs, review them with inline comments, keep one comment per pull request up to date, and file deduplicated issues."
+        "Read GitHub pull requests and their diffs, check them out into the managed sandbox, review them with inline comments, keep one comment per pull request up to date, and file deduplicated issues."
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -168,6 +170,7 @@ impl Capability for GitHubCapability {
         let mut tools: Vec<Box<dyn Tool>> = vec![
             Box::new(GetGitHubPullRequestTool { acts_as }),
             Box::new(GetGitHubPullRequestDiffTool { acts_as }),
+            Box::new(CheckoutGitHubPullRequestTool::acting_as(acts_as)),
             Box::new(UpsertGitHubCommentTool { acts_as }),
             Box::new(SubmitGitHubReviewTool { acts_as }),
             Box::new(UpsertGitHubIssueTool::new(config.private_issues_only).acting_as(acts_as)),
@@ -308,6 +311,7 @@ mod tests {
             vec![
                 "get_github_pull_request",
                 "get_github_pull_request_diff",
+                "github_checkout_pull_request",
                 "upsert_github_comment",
                 "submit_github_pull_request_review",
                 "upsert_github_issue"

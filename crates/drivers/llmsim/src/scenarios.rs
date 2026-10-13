@@ -145,8 +145,12 @@ pub(crate) fn play(
         if cut_after.is_some_and(|cut| emitted >= cut) {
             plan.push((
                 Duration::ZERO,
+                // Worded as a provider server error, so the runtime retries
+                // it the way it retries a real connection cut mid-answer.
                 Ok(LlmStreamEvent::Error(
-                    "llmsim scenario cut the stream".to_string().into(),
+                    "server_error: llmsim scenario cut the stream"
+                        .to_string()
+                        .into(),
                 )),
             ));
             return Some(Ok(play_plan(plan)));

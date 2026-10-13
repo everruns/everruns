@@ -1,7 +1,7 @@
 ---
 type: Test Case
 title: "TC002: Manual Trigger"
-description: "Verify that a schedule can be manually triggered and creates an execution that runs the target workflow."
+description: "Verify confirmation cancellation has no effect and an accepted manual trigger creates one observable execution of the configured workflow."
 tags:
   - everruns
   - test-case
@@ -12,38 +12,31 @@ tags:
 
 ## Description
 
-Verify that a schedule can be manually triggered and creates an execution that runs the target workflow.
+Verify confirmation cancellation has no effect and an accepted manual trigger creates one observable execution of the configured workflow.
 
 ## Preconditions
 
-- Schedule "ping-service" exists and is enabled (from TC001)
-- The target workflow type is registered and functional
+- Disposable paused schedule from TC001; working registered target and worker.
+- Caller has platform-user access. Record schedule ID, existing execution IDs, and input.
 
 ## Test Data
 
 | Field | Value |
-|-------|-------|
-| Schedule Name | ping-service |
+| --- | --- |
+| Input | `{"message":"schedule-proof"}` |
+| Completion budget | 60 seconds for the harmless target |
 
 ## Steps
 
-1. Navigate to Durable > Schedules page
-2. Find "ping-service" in the list
-3. Click on the schedule row to open detail page
-4. Click "Trigger Now" button in the header
-5. Confirm in the confirmation dialog
-6. Observe the Executions table
+1. Open the schedule detail and choose **Trigger**. Cancel the browser confirmation.
+2. Refresh Execution History and verify no new execution or trigger request.
+3. Choose Trigger again and accept. Record the returned execution ID and inspect history.
+4. Use history Refresh until terminal status or the completion budget is reached.
+5. Open View Workflow and verify the configured input and observed result.
 
 ## Expected Result
 
-- Confirmation dialog appears asking "Trigger ping-service now?"
-- After confirmation, success notification appears
-- New execution appears at top of Executions table
-- Execution shows:
-  - Scheduled At: current time
-  - Status: "Running" (yellow badge)
-  - Duration: incrementing counter
-- After a few seconds, status changes to "Completed" (green badge)
-- Workflow ID column is populated with a link
-- Clicking the Workflow ID link navigates to the workflow detail page
-- Workflow detail shows the input `{"message": "health check"}`
+- Cancel performs no mutation. Accept performs one trigger request and produces one execution for this action.
+- The execution may pass through pending/running too quickly to observe; a successful terminal record is sufficient.
+- History records completed status, final duration in milliseconds, and a working workflow link; running duration may be absent.
+- Workflow input matches the schedule. Timeout or failed status is a failure to investigate, not an implicit pass.

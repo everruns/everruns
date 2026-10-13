@@ -236,6 +236,7 @@ async fn create_agent_and_session(
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
                 communication: Default::default(),
                 environments: None,
                 is_built_in: false,

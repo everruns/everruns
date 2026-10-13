@@ -6,6 +6,7 @@ kind: feature
 significance: notable
 products: [platform, cloud, cli]
 surfaces: [operations, cli]
+release: "0.48.0"
 links:
   docs: [/advanced/network-access/, /reference/cli/orgs/]
   prs: [everruns/everruns#4432, everruns/everruns#4437, everruns/everruns#4452, everruns/everruns#4476, everruns/everruns#4534]

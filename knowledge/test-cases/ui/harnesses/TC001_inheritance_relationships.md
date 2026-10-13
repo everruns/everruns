@@ -1,7 +1,7 @@
 ---
 type: Test Case
 title: "TC001: Harness Inheritance Relationships"
-description: "Verify harness cards identify their direct parent, expose deeper ancestry, and distinguish locally declared capabilities from inherited effective configuration in grid and list layouts."
+description: "Verify current harness parent relationships, deeper ancestry, and locally declared capabilities across grid, list, and narrow layouts."
 tags:
   - everruns
   - test-case
@@ -12,39 +12,39 @@ tags:
 
 ## Description
 
-Verify harness cards identify their direct parent, expose deeper ancestry, and distinguish locally
-declared capabilities from inherited effective configuration in grid and list layouts.
+Verify current harness parent relationships, deeper ancestry, and locally declared capabilities across grid, list, and narrow layouts.
 
 ## Preconditions
 
-- DB-backed stack is running with the built-in `base` and `generic` harnesses
-- A custom child of `platform-chat` exists with a long display name and a locally declared capability
+- Canonical stack with current built-in harnesses.
+- An owner-created child of Bashkit Worker with a long display name and a harmless locally declared capability.
 
 ## Test Data
 
-| Harness | Parent | Expected card relationship |
-|---------|--------|----------------------------|
-| Base | None | No inheritance row |
-| Generic | None | No inheritance row |
-| Platform Chat | Generic | `Inherits from Generic` |
-| Long custom child | Platform Chat | `Inherits from Platform Chat`; tooltip shows Generic → Platform Chat → child |
+| Harness | Parent |
+| --- | --- |
+| Base | None |
+| Conversation | Base |
+| Worker | Base |
+| Bashkit Worker | Worker |
+| Sandbox Worker | Worker |
+| Custom child | Bashkit Worker |
 
 ## Steps
 
-1. Open `/harnesses` at desktop width and select grid view.
-2. Verify the built-in and custom cards against the table above.
-3. Focus the custom child's branch icon and inspect the ancestry tooltip.
-4. Verify capability chips are introduced by the label `Declared capabilities`.
-5. Select list view and repeat the relationship checks.
-6. Set the viewport to a mobile width and repeat grid/list checks.
-7. Follow a parent relationship link, then use keyboard navigation to focus the relationship link
-   and branch tooltip trigger.
+1. Open Harnesses in grid view and verify the table's direct parents.
+2. Inspect the custom child's ancestry tooltip; it should show Base → Worker → Bashkit Worker → child.
+3. Inspect locally declared capability chips and compare them with the effective preview.
+4. Switch to list view and repeat; follow the parent link and return.
+5. Repeat at a narrow viewport using keyboard navigation to links and tooltips.
 
 ## Expected Result
 
-- Every non-root card names and links its direct parent; built-in status remains a separate badge.
-- Root cards do not show a redundant root label.
-- Multi-level ancestry is available from the branch tooltip without replacing the direct-parent label.
-- Long names truncate without overflowing and remain available through the link title/tooltip.
-- Capability chips are clearly described as locally declared, not effective inherited capabilities.
-- Grid/list and desktop/mobile layouts remain readable and keyboard-operable.
+- Non-root cards identify and link their immediate parent; Base does not show a false parent.
+- Deeper ancestry is available without replacing the direct-parent label.
+- Declared capabilities are distinguishable from inherited effective configuration.
+- Long names remain readable through accessible labels/tooltips without breaking grid/list or narrow layouts.
+
+## Source Contract
+
+[Canonical harness levels](../../../../crates/server/src/harnesses/levels.rs).

@@ -204,7 +204,12 @@ async fn serves_cache_hints_call_results_and_mrtr() {
         "positive cache hints must serve the second discovery"
     );
     let result = client
-        .call(&connection, "search", json!({"query": "issue"}))
+        .call(
+            &connection,
+            "search",
+            json!({"query": "issue"}),
+            Some("key-1"),
+        )
         .await
         .unwrap();
     assert!(!result.is_error);
@@ -216,6 +221,13 @@ async fn serves_cache_hints_call_results_and_mrtr() {
         .collect();
     assert_eq!(calls.len(), 2);
     assert_eq!(calls[1].body["params"]["requestState"], "opaque");
+    // The call and its input-required retry carry the same idempotency key.
+    for call in &calls {
+        assert_eq!(
+            call.body["params"]["_meta"]["io.everruns/idempotency-key"],
+            "key-1"
+        );
+    }
 }
 
 struct AcceptElicitation;
@@ -257,6 +269,7 @@ async fn serves_url_mode_elicitation_until_the_client_accepts() {
             &connection(&mock, MockMcpProtocolEra::V2026July),
             "connect",
             json!({}),
+            None,
         )
         .await
         .unwrap();
@@ -271,6 +284,12 @@ async fn serves_url_mode_elicitation_until_the_client_accepts() {
     assert_eq!(
         calls[1].body["params"]["inputResponses"]["connect"]["action"],
         "accept"
+    );
+    // No key given, none sent.
+    assert!(
+        calls[0].body["params"]["_meta"]
+            .get("io.everruns/idempotency-key")
+            .is_none()
     );
 }
 

@@ -86,6 +86,7 @@ pub struct SuggestMcpToolLabels {
     name = "suggest_mcp_tool_labels",
     category = "mcp_servers",
     description = "Ask the organization's decision model (or the deployment's decision service when the organization does not select its own) to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.",
+    summary = "Suggest risk labels for an MCP server's unlabeled tools",
     method = "POST",
     path = "/v1/mcp-servers/{id}/tools/suggest-labels",
     policy = MCP_SERVER_MANAGE,

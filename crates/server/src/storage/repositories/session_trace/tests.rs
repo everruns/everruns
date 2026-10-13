@@ -95,6 +95,7 @@ fn turn_events(session: SessionId, prompt: &str, tool_ok: bool) -> Vec<CreateEve
                 tool_call_fingerprint: None,
                 display_name: None,
                 narration: Some("Fetched example.com".to_string()),
+                side_effect_class: None,
             },
         )),
         row(Event::new(session, ctx.clone(), completed)),

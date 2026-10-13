@@ -51,28 +51,16 @@ use std::sync::Arc;
 
 /// Workspace prefix used in file paths
 const WORKSPACE_PREFIX: &str = "/workspace";
-const SESSION_FILE_SYSTEM_TOOL_NAMES: &[&str] = &[
-    "read_file",
-    "read_many_files",
-    "write_file",
-    "edit_file",
-    "glob",
-    "grep",
-    "list_directory",
-    "grep_files",
-    "delete_file",
-    "stat_file",
-];
+// Owned by contracts so collection can hand these names to a managed sandbox.
+use everruns_contracts::runtime::capabilities::SESSION_FILE_TOOL_NAMES as SESSION_FILE_SYSTEM_TOOL_NAMES;
 const MAX_EDIT_DIFF_CHARS: usize = 16_000;
 const LIST_DIRECTORY_DEFAULT_LIMIT: usize = 200;
 const LIST_DIRECTORY_MAX_LIMIT: usize = 1_000;
 const GREP_FILES_DEFAULT_LIMIT: usize = 200;
 const GREP_FILES_MAX_LIMIT: usize = 1_000;
-const READ_FILE_BATCH_MAX_PATHS: usize = 10;
-const READ_FILE_BATCH_MAX_PATH_BYTES: usize = 4 * 1024;
-// Leave headroom below the runtime's 64 KiB hard tool-result limit so the
-// ordered envelope and any per-path errors remain intact.
-const READ_FILE_BATCH_MAX_OUTPUT_BYTES: usize = 60 * 1024;
+use self::tool_output_sanitizer::{
+    READ_FILE_BATCH_MAX_OUTPUT_BYTES, READ_FILE_BATCH_MAX_PATH_BYTES, READ_FILE_BATCH_MAX_PATHS,
+};
 
 fn escape_xml_text(content: &str) -> String {
     content

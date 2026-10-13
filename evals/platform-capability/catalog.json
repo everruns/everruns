@@ -2472,6 +2472,16 @@
             "null"
           ]
         },
+        "max_output_tokens": {
+          "description": "Ceiling on output tokens per model response (sent as `max_tokens`).\nOmit to use the provider default. Must be at least 1; clamped to the\nmodel's output limit when known.",
+          "example": 4096,
+          "format": "int32",
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "mcpServers": {
           "$ref": "#/$defs/BTreeMap",
           "description": "Remote MCP servers scoped to this agent."
@@ -18959,6 +18969,16 @@
                 "null"
               ]
             },
+            "max_output_tokens": {
+              "description": "Ceiling on output tokens per model response (sent as `max_tokens`).\nOmit to leave unchanged; `null` clears it back to the provider default.",
+              "example": 4096,
+              "format": "int32",
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "mcpServers": {
               "oneOf": [
                 {
@@ -23874,6 +23894,16 @@
               "description": "Maximum number of LLM iterations per turn for this agent.",
               "example": 20,
               "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "max_output_tokens": {
+              "description": "Ceiling on output tokens per model response (sent as `max_tokens`).\nOmit to use the provider default. Must be at least 1; clamped to the\nmodel's output limit when known.",
+              "example": 4096,
+              "format": "int32",
+              "minimum": 1,
               "type": [
                 "integer",
                 "null"

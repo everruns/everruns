@@ -239,7 +239,7 @@ async fn get_me(
             ErrorResponse::new("Virtual user not found").into_response(StatusCode::NOT_FOUND)
         })
 }
-#[utoipa::path(summary = "Update the runtime profile without changing management identity or lifecycle.", patch, path = "/v1/virtual-users/me",  request_body = UpdateVirtualUserRequest, responses((status = 200, description = "Success", body = VirtualUser), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "Update the runtime user's profile", description = "Update the runtime profile without changing management identity or lifecycle.", patch, path = "/v1/virtual-users/me",  request_body = UpdateVirtualUserRequest, responses((status = 200, description = "Success", body = VirtualUser), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 async fn update_me(
     org: RuntimeAccount,
     State(state): State<ApiState>,
@@ -419,7 +419,7 @@ fn preference_response(row: crate::storage::VirtualUserPreferenceRow) -> serde_j
     serde_json::json!({"key":row.key,"value":serde_json::from_str::<serde_json::Value>(&row.value).unwrap_or(serde_json::Value::Null),"created_at":row.created_at,"updated_at":row.updated_at})
 }
 
-#[utoipa::path(summary = "List recent sessions associated with the authorized virtual user.", get, path = "/v1/virtual-users/{identity_id}/sessions", params(("identity_id" = String, Path)),  responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "List the virtual user's recent sessions", description = "List recent sessions associated with the authorized virtual user.", get, path = "/v1/virtual-users/{identity_id}/sessions", params(("identity_id" = String, Path)),  responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 async fn list_sessions(
     org: RuntimeAccount,
     State(state): State<ApiState>,

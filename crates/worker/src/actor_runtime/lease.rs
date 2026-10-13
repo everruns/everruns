@@ -257,18 +257,20 @@ impl Lease {
                 Err(error)
             }
             Err(error) => {
-                let stale = self
-                    .last_renewed
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .elapsed()
-                    >= self.ttl;
-                if stale {
+                if self.since_renewed() >= self.ttl {
                     self.lost.send_replace(true);
                 }
                 Err(error)
             }
         }
+    }
+
+    /// Time since the last successful renew (or the lease was taken).
+    pub(crate) fn since_renewed(&self) -> Duration {
+        self.last_renewed
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .elapsed()
     }
 
     /// Give the actor back with the cursor as consumed input.
@@ -423,21 +425,46 @@ impl Lease {
 
 /// Renew `lease` every third of its TTL, or at once when `poke` fires (a
 /// cancel landed), until it is lost or this task is aborted.
+///
+/// Decision: after a failed renew the next one comes after a tenth of the TTL,
+/// not a third. The lease is lost once no renew succeeds for a whole TTL (the
+/// control plane hands the session on then, so the turn must stop by then);
+/// retrying sooner lets a short control-plane blip end inside that window
+/// instead of costing the turn and the model call it was waiting on.
 pub(crate) async fn renew_loop(lease: Arc<Lease>, poke: Arc<Notify>) {
     let period = lease.ttl / 3;
+    let retry = lease.ttl / 10;
+    let mut failing = false;
     loop {
+        let wait = if failing { retry } else { period };
         tokio::select! {
-            _ = tokio::time::sleep(period) => {}
+            _ = tokio::time::sleep(wait) => {}
             _ = poke.notified() => {}
         }
+        let since_renewed = lease.since_renewed();
         match lease.renew().await {
-            Ok(()) => {}
+            Ok(()) => {
+                if failing {
+                    tracing::info!(
+                        session_id = %lease.session_id,
+                        since_renewed_ms = since_renewed.as_millis() as u64,
+                        "Actor lease renewed after failed renews"
+                    );
+                }
+                failing = false;
+            }
             Err(AgentLoopError::SessionNotFound(_)) => {
                 tracing::info!(session_id = %lease.session_id, "Session deleted, stopping turn");
                 return;
             }
             Err(error) => {
-                tracing::warn!(session_id = %lease.session_id, error = %error, "Actor lease renew failed");
+                tracing::warn!(
+                    session_id = %lease.session_id,
+                    since_renewed_ms = since_renewed.as_millis() as u64,
+                    error = %error,
+                    "Actor lease renew failed"
+                );
+                failing = true;
             }
         }
         if lease.is_lost() {

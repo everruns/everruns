@@ -37,16 +37,29 @@ pub const DEFAULT_MAX_SCHEDULES_PER_ORG: i64 = 100;
 pub fn normalize_session_cron(cron_expression: &str) -> Option<String> {
     let fields: Vec<&str> = cron_expression.split_whitespace().collect();
     match fields.len() {
-        // Standard cron counts weekdays 0-6 from Sunday (7 is Sunday too);
-        // the `cron` crate counts 1-7 from Sunday, so name the days instead.
-        5 => Some(format!(
-            "0 {} {} *",
-            fields[..4].join(" "),
-            unix_weekdays_to_names(fields[4])
-        )),
+        5 => standard_cron_to_crate_form(cron_expression),
         6 | 7 => Some(fields.join(" ")),
         _ => None,
     }
+}
+
+/// Rewrite a standard 5-field cron (`min hour dom mon dow`) as the 7-field
+/// form the `cron` crate parses, or `None` when it does not have 5 fields.
+///
+/// Standard cron counts weekdays 0-6 from Sunday (7 is Sunday too); the
+/// `cron` crate counts 1-7 from Sunday, so the weekday numbers become day
+/// names, which mean the same day to both. Every surface that accepts 5-field
+/// cron (session schedules, agent triggers, org schedules) reads it through
+/// here so `1-5` is Monday-Friday everywhere.
+pub fn standard_cron_to_crate_form(cron_expression: &str) -> Option<String> {
+    let fields: Vec<&str> = cron_expression.split_whitespace().collect();
+    let [minute, hour, day, month, weekday] = fields[..] else {
+        return None;
+    };
+    Some(format!(
+        "0 {minute} {hour} {day} {month} {} *",
+        unix_weekdays_to_names(weekday)
+    ))
 }
 
 /// Rewrite a standard-cron weekday field's numbers (0-7, Sunday first) as

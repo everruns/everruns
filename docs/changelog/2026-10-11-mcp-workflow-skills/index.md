@@ -6,6 +6,7 @@ kind: feature
 significance: notable
 products: [platform, cloud]
 surfaces: [agent]
+release: "0.48.0"
 links:
   docs: [/features/mcp/]
   prs: [everruns/everruns#4578]

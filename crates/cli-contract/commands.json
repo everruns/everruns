@@ -864,6 +864,13 @@
         "help": "Maximum number of LLM iterations per turn for this agent."
       },
       {
+        "field": "max_output_tokens",
+        "long": "max-output-tokens",
+        "kind": "integer",
+        "required": false,
+        "help": "Ceiling on output tokens per model response (sent as `max_tokens`). Omit to use the provider ..."
+      },
+      {
         "field": "mcpServers",
         "long": "mcpServers",
         "kind": "json",
@@ -2457,6 +2464,13 @@
         "help": "Maximum number of LLM iterations per turn for this agent."
       },
       {
+        "field": "max_output_tokens",
+        "long": "max-output-tokens",
+        "kind": "integer",
+        "required": false,
+        "help": "Ceiling on output tokens per model response (sent as `max_tokens`). Omit to leave unchanged; ..."
+      },
+      {
         "field": "mcpServers",
         "long": "mcpServers",
         "kind": "json",
@@ -2540,6 +2554,10 @@
       {
         "intent": "Rename an agent, leaving the rest of it alone",
         "command": "everruns agents update agent_01h9 --name triage-v2 --reason 'Rename after the triage split'"
+      },
+      {
+        "intent": "Cap each model response so calls fit a low provider balance",
+        "command": "everruns agents update agent_01h9 --max-output-tokens 4096 --reason 'Provider said it can only afford fewer tokens'"
       }
     ]
   },
@@ -2635,6 +2653,13 @@
         "kind": "integer",
         "required": false,
         "help": "Maximum number of LLM iterations per turn for this agent."
+      },
+      {
+        "field": "max_output_tokens",
+        "long": "max-output-tokens",
+        "kind": "integer",
+        "required": false,
+        "help": "Ceiling on output tokens per model response (sent as `max_tokens`). Omit to use the provider ..."
       },
       {
         "field": "mcpServers",

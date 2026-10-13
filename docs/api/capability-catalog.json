@@ -711,6 +711,7 @@
       "tools": [
         "get_github_pull_request",
         "get_github_pull_request_diff",
+        "github_checkout_pull_request",
         "submit_github_pull_request_review",
         "upsert_github_comment",
         "upsert_github_issue"
@@ -1369,7 +1370,9 @@
         "edit_file",
         "glob",
         "grep",
+        "list_directory",
         "read_file",
+        "read_many_files",
         "write_file"
       ]
     },

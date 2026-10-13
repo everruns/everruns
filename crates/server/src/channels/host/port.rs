@@ -28,6 +28,8 @@
 //! - A platform rename writes the title through the same no-op-suppressing
 //!   event the agent's retitle uses, so the two directions settle instead of
 //!   echoing.
+//! - Files a channel received become org uploads, the same as a chat user's,
+//!   so message creation stages them into `/attachments`.
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -39,7 +41,7 @@ use everruns_contracts::runtime::message_retriever::InputMessage;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::channel_runtime::{
     ChannelConfig, ChannelEventStream, ChannelSessionPort, DeliveryEvent, NewChannelSession,
-    SendOutcome,
+    ReceivedAttachment, SendOutcome,
 };
 use futures::StreamExt;
 
@@ -148,6 +150,39 @@ fn input_parts(content: Vec<ContentPart>) -> Vec<InputContentPart> {
 
 #[async_trait]
 impl ChannelSessionPort for ServerChannelPort {
+    /// A channel file becomes an upload of the channel's org; message creation
+    /// copies it into the session's `/attachments`.
+    async fn store_attachment(
+        &self,
+        channel: &ChannelConfig,
+        attachment: ReceivedAttachment,
+    ) -> Result<ContentPart, ChannelError> {
+        let org_id = scope(channel)?.context.org_id;
+        crate::domains::messages::intake::store_received_attachment(&self.db, org_id, attachment)
+            .await
+    }
+
+    /// Downloads are attributed to the channel's org.
+    fn attachment_egress(
+        &self,
+        channel: &ChannelConfig,
+        egress: Arc<dyn everruns_core::EgressService>,
+    ) -> Arc<dyn everruns_core::EgressService> {
+        let Ok(scope) = scope(channel) else {
+            return egress;
+        };
+        let org_id = everruns_core::org_public_id_from_internal(scope.context.org_id)
+            .parse()
+            .ok();
+        Arc::new(everruns_core::ScopedEgressService::new(
+            egress,
+            everruns_core::EgressScope {
+                org_id,
+                session_id: None,
+            },
+        ))
+    }
+
     async fn create_session(&self, request: NewChannelSession) -> Result<String, ChannelError> {
         let ServerChannelScope {
             context,

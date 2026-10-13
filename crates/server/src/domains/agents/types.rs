@@ -118,6 +118,12 @@ pub struct CreateAgentRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = true)]
     pub parallel_tool_calls: Option<bool>,
+    /// Ceiling on output tokens per model response (sent as `max_tokens`).
+    /// Omit to use the provider default. Must be at least 1; clamped to the
+    /// model's output limit when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = 4096, minimum = 1)]
+    pub max_output_tokens: Option<u32>,
     /// How the agent talks to people. `direct` (default): its replies are
     /// what it writes. `explicit`: what it writes is private working notes,
     /// and people see only the messages it sends with `send_message`.
@@ -238,6 +244,11 @@ pub struct UpdateAgentRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = true)]
     pub parallel_tool_calls: Option<bool>,
+    /// Ceiling on output tokens per model response (sent as `max_tokens`).
+    /// Omit to leave unchanged; `null` clears it back to the provider default.
+    #[serde(default, with = "crate::domains::change_history::update_field")]
+    #[schema(value_type = Option<u32>, example = 4096, minimum = 1)]
+    pub max_output_tokens: crate::storage::UpdateField<u32>,
     /// How the agent talks to people: `direct` or `explicit`. Omit to leave
     /// unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]

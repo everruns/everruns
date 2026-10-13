@@ -34,6 +34,8 @@ pub fn routes(state: ApiState) -> Router {
         .with_state(state)
 }
 
+/// List the session's registered resources
+///
 /// List all resources registered in the session resource registry.
 #[utoipa::path(
     get,

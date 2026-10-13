@@ -1295,7 +1295,7 @@ pub async fn cancel_workflow(
 
 /// GET /v1/durable/tasks - List tasks
 #[utoipa::path(
-    get,
+    get, operation_id = "list_durable_tasks",
     path = "/v1/durable/tasks",
     params(
         ("status" = Option<String>, Query, description = "Filter by status"),
