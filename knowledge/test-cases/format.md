@@ -76,6 +76,14 @@ Each test case file opens with an `# TC###: <Feature> - <Short title>` heading, 
 - **Steps**: Numbered actions to perform
 - **Expected Result**: Success criteria
 
+### Acceptance Quality
+
+Cases must prove observable behavior and persisted state. Record fixture IDs and event cursors so pre-existing records cannot satisfy a run; a success notification or HTTP 200 alone is insufficient. For rejected mutations, re-read the affected fixture and verify no work or partial state was created. Give asynchronous steps a deadline and distinguish already-admitted work from future triggers.
+
+Auth cases specify mode, account verification state, org membership, role/platform status, and credential type. Exclude fallback cookies when testing bearer credentials. Where authorization matters, cover an allowed operation, its denied counterpart, tenant isolation, and unchanged state after denial. Reference the owning source/spec instead of guessing current fields or limits.
+
+A documented case is acceptance coverage, not a passing test result. Label source-derived suspected gaps separately and record runtime evidence only after execution. Retire duplicates or cases for removed behavior; preserve coverage of supported behavior in the target that still owns it.
+
 ### Naming
 
 `TC###_short_description.md`
