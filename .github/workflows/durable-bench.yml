@@ -1,45 +1,18 @@
-# Weekly durable engine benchmarks against the committed baseline.
-#
-# Why weekly: the durable crate changes a few times a month and shared runners
-# are too noisy to compare night to night; a weekly full run catches real
-# regressions without paging anyone over runner jitter. Pull requests get the
-# cheap half instead: the `durable` PostgreSQL shard in ci.yml runs every bench
-# with `--smoke`, so a bench that stops working fails the PR that broke it.
-#
-# Each job writes one JSON line per scenario (`--summary`) and
-# scripts/lib/durable-bench-compare.sh compares them with
-# crates/durable/benches/baseline.jsonl, failing on a throughput drop. To
-# refresh the baseline, download the `durable-bench-*` artifacts of a trusted
-# run and concatenate their summary.jsonl files into baseline.jsonl.
-#
-# The `turn-backends` job benches the framework rather than the engine: the
-# facade's `turn_backends` full run, an engine's sessions on the actor runner
-# (the facade CI job runs only its smoke). Its compare gates only against
-# baseline rows recorded with this job's moniker, so turn_backends_baseline.jsonl keeps the `local` rows
-# from a 4-core container next to the `github-ubuntu-latest` rows it gates on.
-#
-# The `server-turn-latency` job runs `crates/server/benches/turn_latency.rs`:
-# the real server and a gRPC worker in process, one chat turn at a time
-# (HTTP message, worker claims over gRPC, turn.completed), p50/p95 per turn.
-# The bench migrates the database itself. It gates on throughput against
-# turn_latency_baseline.jsonl the same way, and on DB statements per turn
-# (pg_stat_statements), which unlike wall time is steady on shared runners.
+# Temporary A/B experiment for EVE-1262 (never merged): the server turn latency
+# bench before and after the session actor cutover (#4608), on the same day's
+# runners, two runs each.
 name: Durable Benchmarks
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 6 * * 1'
 
 concurrency:
-  group: ${{ github.workflow }}
-  cancel-in-progress: true
+  group: eve-1262-ab
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
-# An explicit `bash` runs steps with `-eo pipefail`; the implicit default is
-# `bash -e`, under which `compare | tee` passes even when the compare fails.
 defaults:
   run:
     shell: bash
@@ -47,138 +20,30 @@ defaults:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
-  BENCH_MONIKER: github-ubuntu-latest
 
 jobs:
-  bench:
-    name: Durable Benchmarks (${{ matrix.store }})
+  server-turn-latency:
+    name: Turn latency ${{ matrix.arm }} run ${{ matrix.rep }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
+        arm: [before-actors, after-actors]
+        rep: [1, 2]
         include:
-          - store: memory
-            benches: concurrent_workers workflow_throughput cold_start_latency
-          - store: postgres
-            benches: db_concurrent_workers db_workflow_throughput db_cold_start_latency
-    services:
-      postgres:
-        image: mirror.gcr.io/library/postgres:17-alpine
-        env:
-          POSTGRES_USER: everruns
-          POSTGRES_PASSWORD: everruns
-          POSTGRES_DB: everruns_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U everruns"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          - arm: before-actors
+            ref: 7c48799f78d38bbfd3d759f88cb7d3c23e214daf
+          - arm: after-actors
+            ref: 3fd200f4cd2d1dc12c7f42f4cded581e2be4f487
     env:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
+      SECRETS_ENCRYPTION_KEY: kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.96.0
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
         with:
-          shared-key: durable-bench
+          ref: ${{ matrix.ref }}
 
-      - name: Install sqlx-cli
-        if: ${{ matrix.store == 'postgres' }}
-        timeout-minutes: 10
-        run: |
-          cargo install cargo-binstall --locked --version 1.24.0
-          cargo binstall sqlx-cli --no-confirm --version '~0.9'
-
-      - name: Run migrations
-        if: ${{ matrix.store == 'postgres' }}
-        run: sqlx migrate run --source crates/server/migrations
-
-      - name: Run benchmarks
-        run: |
-          for bench in ${{ matrix.benches }}; do
-            cargo bench -p everruns-durable --features bench --bench "$bench" -- \
-              --moniker "$BENCH_MONIKER" --summary "$RUNNER_TEMP/summary.jsonl"
-          done
-
-      - name: Compare with baseline
-        run: |
-          # Print the raw lines too, so a baseline refresh can copy them from the log.
-          echo "::group::summary.jsonl"; cat "$RUNNER_TEMP/summary.jsonl"; echo "::endgroup::"
-          # Compare only this job's benches; the baseline holds both stores.
-          jq -c --arg store "${{ matrix.store }}" \
-            'select((.bench | startswith("db_")) == ($store == "postgres"))' \
-            crates/durable/benches/baseline.jsonl > "$RUNNER_TEMP/baseline.jsonl" 2>/dev/null || true
-          bash scripts/lib/durable-bench-compare.sh "$RUNNER_TEMP/summary.jsonl" "$RUNNER_TEMP/baseline.jsonl" \
-            | tee -a "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: durable-bench-${{ matrix.store }}
-          path: |
-            ${{ runner.temp }}/summary.jsonl
-            crates/durable/target/benchmark-reports/
-          if-no-files-found: warn
-
-  turn-backends:
-    name: Turn Backend Benchmarks (actor runner)
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.96.0
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: turn-backends-bench
-
-      - name: Run turn_backends
-        run: |
-          cargo bench -p everruns --bench turn_backends -- \
-            --moniker "$BENCH_MONIKER" --summary "$RUNNER_TEMP/summary.jsonl"
-
-      - name: Compare with baseline
-        run: |
-          echo "::group::summary.jsonl"; cat "$RUNNER_TEMP/summary.jsonl"; echo "::endgroup::"
-          jq -c --arg moniker "$BENCH_MONIKER" 'select(.moniker == $moniker)' \
-            crates/everruns/benches/turn_backends_baseline.jsonl > "$RUNNER_TEMP/baseline.jsonl" 2>/dev/null || true
-          bash scripts/lib/durable-bench-compare.sh "$RUNNER_TEMP/summary.jsonl" "$RUNNER_TEMP/baseline.jsonl" \
-            | tee -a "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: turn-backends-bench
-          path: ${{ runner.temp }}/summary.jsonl
-          if-no-files-found: warn
-
-  server-turn-latency:
-    name: Server Turn Latency (HTTP, gRPC worker, PostgreSQL)
-    runs-on: ubuntu-latest
-    # A release build of the whole server (thin LTO) is most of the time.
-    timeout-minutes: 75
-    env:
-      DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
-    steps:
-      - uses: actions/checkout@v7
-
-      # Not a service container: those cannot pass server flags, and the
-      # bench reads DB statements per turn from pg_stat_statements, which
-      # must be preloaded. `track=all` also counts statements run inside
-      # trigger functions (event inserts fire several), which are a large part
-      # of a turn's database work.
       - name: Start PostgreSQL with pg_stat_statements
         run: |
           docker run -d --name bench-postgres -p 5432:5432 \
@@ -188,7 +53,6 @@ jobs:
             docker exec bench-postgres pg_isready -U everruns -d everruns_test && exit 0
             sleep 1
           done
-          docker logs bench-postgres
           exit 1
 
       - name: Install Rust toolchain
@@ -198,33 +62,27 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: server-turn-latency-bench
+          save-if: false
+
+      - name: Build turn_latency
+        run: cargo bench -p everruns-server --bench turn_latency --no-run
+
+      - name: Database counters before
+        run: |
+          docker exec bench-postgres psql -U everruns -d everruns_test -Atc \
+            "select 'before', xact_commit, xact_rollback, tup_inserted, tup_updated from pg_stat_database where datname='everruns_test'"
+          docker exec bench-postgres psql -U everruns -d everruns_test -Atc "select 'wal', wal_records, wal_sync, wal_sync_time from pg_stat_wal" || true
+          nproc; cat /proc/cpuinfo | grep 'model name' | head -1
 
       - name: Run turn_latency
         run: |
           cargo bench -p everruns-server --bench turn_latency -- \
-            --moniker "$BENCH_MONIKER" --summary "$RUNNER_TEMP/summary.jsonl" --top 15
+            --moniker github-ubuntu-latest --summary "$RUNNER_TEMP/summary.jsonl" --top 25
 
-      - name: Compare with baseline
-        run: |
-          echo "::group::summary.jsonl"; cat "$RUNNER_TEMP/summary.jsonl"; echo "::endgroup::"
-          {
-            echo "### Server turn latency"
-            echo
-            echo "| Scenario | Turns | Turns/s | e2e p50 ms | e2e p95 ms | server p50 ms | server p95 ms | pickup p50 ms | DB stmts/turn | DB ms/turn |"
-            echo "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
-            jq -r '"| \(.scenario) | \(.tasks) | \(.tasks_per_sec) | \(.e2e_p50_ms) | \(.e2e_p95_ms) | \(.server_p50_ms) | \(.server_p95_ms) | \(.s2s_p50_ms) | \(.db_statements_per_turn) | \(.db_ms_per_turn) |"' \
-              "$RUNNER_TEMP/summary.jsonl"
-            echo
-          } | tee -a "$GITHUB_STEP_SUMMARY"
-          jq -c --arg moniker "$BENCH_MONIKER" 'select(.moniker == $moniker)' \
-            crates/server/benches/turn_latency_baseline.jsonl > "$RUNNER_TEMP/baseline.jsonl" 2>/dev/null || true
-          bash scripts/lib/durable-bench-compare.sh "$RUNNER_TEMP/summary.jsonl" "$RUNNER_TEMP/baseline.jsonl" \
-            | tee -a "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload results
+      - name: Database counters after
         if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: server-turn-latency-bench
-          path: ${{ runner.temp }}/summary.jsonl
-          if-no-files-found: warn
+        run: |
+          docker exec bench-postgres psql -U everruns -d everruns_test -Atc \
+            "select 'after', xact_commit, xact_rollback, tup_inserted, tup_updated from pg_stat_database where datname='everruns_test'"
+          docker exec bench-postgres psql -U everruns -d everruns_test -Atc "select 'wal', wal_records, wal_sync, wal_sync_time from pg_stat_wal" || true
+          cat "$RUNNER_TEMP/summary.jsonl" || true
