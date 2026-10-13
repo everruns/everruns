@@ -5,8 +5,9 @@
 //! or the environment of later `bash` calls. It is handed to the sandbox as a
 //! short-lived file (`SandboxWorkspace::exec_with_secret_file`) that a one-shot
 //! credential helper reads during this fetch only, and the remote URL carries
-//! no user info. The token asks for `contents: read` and
-//! `pull_requests: read` on this one repository. THREAT[TM-GITHUB-007].
+//! no user info. Admission requires installation-mint evidence of read-only
+//! access to this one repository and at most one hour remaining. A scope
+//! request alone never authorizes sandbox delivery. THREAT[TM-GITHUB-007].
 
 use async_trait::async_trait;
 use everruns_contracts::runtime::sandbox_workspace::{SandboxWorkspace, SandboxWorkspaceExt};
@@ -18,12 +19,56 @@ use serde_json::{Value, json};
 use crate::github::GitHubActsAs;
 use crate::github::client::GitHubClient;
 use crate::github::fix_pull_requests::is_valid_branch;
-use crate::github::pull_requests::{github_token, target, target_schema};
+use crate::github::pull_requests::{target, target_schema};
+use crate::github::tools::enforce_github_network_access;
+use everruns_contracts::runtime::GitHubAccess;
 
 const WORKSPACE: &str = "/workspace";
 const DEFAULT_DEPTH: u64 = 100;
 const MAX_DEPTH: u64 = 5_000;
 const MAX_ERROR_BYTES: usize = 2_000;
+
+/// Only the trusted resolver can attest installation scope. Session secrets
+/// and personal tokens remain host-side; requested access is not evidence.
+pub(super) async fn checkout_token(
+    context: &ToolContext,
+    acts_as: GitHubActsAs,
+    repo: &str,
+) -> Result<String, ToolExecutionResult> {
+    enforce_github_network_access(context)?;
+    let access = GitHubAccess::new(
+        acts_as.into(),
+        &[("contents", "read"), ("pull_requests", "read")],
+    )
+    .for_repository(repo);
+    if let Some(resolver) = &context.connection_resolver {
+        let credential = resolver
+            .get_github_token(context.session_id, &access)
+            .await
+            .map_err(|_| {
+                ToolExecutionResult::tool_error("Could not verify GitHub checkout credential")
+            })?;
+        if let Some(credential) = credential
+            && !credential.token.trim().is_empty()
+            && access
+                .acts_as
+                .resolution_order()
+                .contains(&credential.acted_as)
+            && credential
+                .github_installation_scope
+                .as_ref()
+                .is_some_and(|scope| scope.permits_checkout(repo, chrono::Utc::now()))
+        {
+            return Ok(credential.token);
+        }
+    }
+    Err(ToolExecutionResult::tool_error(
+        "github_checkout_pull_request requires a verified installation token with read-only access \
+         to this repository and at most one hour remaining. Connect a GitHub App installation; \
+         personal tokens and GITHUB_TOKEN session secrets cannot be delivered to the sandbox. \
+         Use github_get_pull_request or github_get_pull_request_diff for host-side review.",
+    ))
+}
 
 /// Reads the token from the file the sandbox wrapper names, for `get` only.
 /// It is passed with `-c`, so it lives on one git command and nowhere else.
@@ -302,14 +347,7 @@ impl Tool for CheckoutGitHubPullRequestTool {
                  (session_sandbox) capability and run the agent on a Sandbox Worker.",
             );
         };
-        let token = match github_token(
-            context,
-            self.acts_as,
-            &request.repo,
-            &[("contents", "read"), ("pull_requests", "read")],
-        )
-        .await
-        {
+        let token = match checkout_token(context, self.acts_as, &request.repo).await {
             Ok(token) => token,
             Err(e) => return e,
         };

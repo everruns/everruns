@@ -7,6 +7,8 @@
 //! the command reads it through `$EVR_SECRET_FILE`, and a shell `trap`
 //! removes it when the command exits. The checkpoint runs only after that
 //! exec returned, so it never sees the file. THREAT[TM-GITHUB-007].
+//! This is cleanup, not isolation from concurrent same-identity sandbox code;
+//! credential scope admission belongs to the integration before this boundary.
 
 use std::sync::Arc;
 

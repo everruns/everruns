@@ -26,3 +26,12 @@ worked for public repositories.
 `/workspace/app` and returns the commit hashes. The token it uses reads one
 repository, is passed through a temporary file removed after the fetch, and
 never lands in the git config, later shell commands or sandbox checkpoints.
+
+## Update 2026-10-12
+
+Checkout now requires verified installation-token scope from the trusted
+resolver: one repository, read-only permissions, and at most one hour remaining.
+Personal OAuth tokens, session-secret fallbacks and older resolver responses
+without scope evidence are refused. Connect a GitHub App installation for
+checkout; personal-token workflows can still use the host-side pull request
+and diff tools.

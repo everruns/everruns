@@ -76,6 +76,8 @@ impl<T: InternalCommandTransport + 'static> CommandConnectionResolver<T> {
 struct GitHubToken {
     token: String,
     acted_as: McpServerActsAs,
+    #[serde(default)]
+    github_installation_scope: Option<everruns_contracts::runtime::GitHubInstallationScope>,
 }
 
 /// The service API-key connection, as it crosses the wire.
@@ -169,6 +171,7 @@ impl<T: InternalCommandTransport + 'static> UserConnectionResolver
         Ok(token.map(|token| McpResolvedCredential {
             token: token.token,
             acted_as: token.acted_as,
+            github_installation_scope: token.github_installation_scope,
         }))
     }
 
@@ -368,12 +371,33 @@ mod tests {
             .unwrap();
         assert_eq!(credential.token, "ghs_x");
         assert_eq!(credential.acted_as, McpServerActsAs::Service);
+        assert!(
+            credential.github_installation_scope.is_none(),
+            "legacy responses attest no scope"
+        );
         let calls = calls.lock().unwrap();
         assert_eq!(calls[0].0, "worker_get_github_token");
         assert_eq!(calls[0].1["input_message_id"], invocation.to_string());
         assert_eq!(calls[0].1["access"]["acts_as"], "user_or_service");
         assert_eq!(calls[0].1["access"]["repositories"], json!(["acme/app"]));
         assert_eq!(calls[0].1["access"]["permissions"]["issues"], "write");
+    }
+
+    #[test]
+    fn github_wire_response_preserves_installation_evidence() {
+        let value = json!({
+            "token": "dummy-installation-token", "acted_as": "service",
+            "github_installation_scope": {
+                "repositories": ["acme/app"],
+                "permissions": {"contents": "read", "pull_requests": "read"},
+                "expires_at": "2026-10-13T02:00:00Z"
+            }
+        });
+        let token: GitHubToken = serde_json::from_value(value).unwrap();
+        let scope = token.github_installation_scope.unwrap();
+        assert_eq!(scope.repositories, vec!["acme/app"]);
+        assert_eq!(scope.permissions["contents"], "read");
+        assert_eq!(scope.expires_at.timestamp(), 1_791_856_800);
     }
 
     /// `user_or_service` asks for each concrete identity in turn, as the

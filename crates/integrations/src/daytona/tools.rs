@@ -2428,10 +2428,10 @@ mod tests {
             _session_id: SessionId,
             _access: &GitHubAccess,
         ) -> Result<Option<McpResolvedCredential>> {
-            Ok(self.token.clone().map(|token| McpResolvedCredential {
-                token,
-                acted_as: McpServerActsAs::Service,
-            }))
+            Ok(self
+                .token
+                .clone()
+                .map(|token| McpResolvedCredential::unscoped(token, McpServerActsAs::Service)))
         }
     }
 

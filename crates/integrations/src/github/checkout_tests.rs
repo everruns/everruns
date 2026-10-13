@@ -16,9 +16,34 @@ const TOKEN: &str = "ghs_narrowtoken123";
 const HEAD: &str = "1111111111111111111111111111111111111111";
 const BASE: &str = "2222222222222222222222222222222222222222";
 
+#[tokio::test]
+async fn checkout_refuses_unverified_credentials_before_fetch() {
+    let resolver = Arc::new(RecordingResolver {
+        unverified: true,
+        ..Default::default()
+    });
+    let workspace = Arc::new(FakeWorkspace::default());
+    let tool = CheckoutGitHubPullRequestTool {
+        acts_as: GitHubActsAs::Person,
+        api_base: "http://127.0.0.1:1".to_string(),
+    };
+    let result = tool
+        .execute_with_context(
+            json!({"repo": "acme/app", "number": 7}),
+            &context(&resolver, &workspace),
+        )
+        .await;
+    let ToolExecutionResult::ToolError(message) = result else {
+        panic!("{result:?}");
+    };
+    assert!(message.contains("verified installation token"), "{message}");
+    assert!(workspace.calls.lock().unwrap().is_empty());
+}
+
 #[derive(Default)]
 struct RecordingResolver {
     requests: Mutex<Vec<GitHubAccess>>,
+    unverified: bool,
 }
 
 #[async_trait]
@@ -36,6 +61,13 @@ impl UserConnectionResolver for RecordingResolver {
         Ok(Some(McpResolvedCredential {
             token: TOKEN.to_string(),
             acted_as: access.acts_as,
+            github_installation_scope: (!self.unverified).then(|| {
+                everruns_contracts::runtime::GitHubInstallationScope {
+                    repositories: access.repositories.clone(),
+                    permissions: access.permissions.clone(),
+                    expires_at: chrono::Utc::now() + chrono::Duration::minutes(30),
+                }
+            }),
         }))
     }
 }

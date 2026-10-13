@@ -609,6 +609,7 @@ mod tests {
                 everruns_contracts::runtime::McpResolvedCredential {
                     token: token.clone(),
                     acted_as: access.acts_as,
+                    github_installation_scope: None,
                 }
             }))
         }
@@ -695,6 +696,26 @@ mod tests {
         assert_eq!(
             get_github_token(&context, &scout_access()).await.unwrap(),
             "secret-token"
+        );
+    }
+
+    #[tokio::test]
+    async fn checkout_refuses_session_secret_fallback() {
+        let session_id = SessionId::new();
+        let storage = Arc::new(MockStorageStore::new());
+        storage
+            .seed_secret(session_id, GITHUB_TOKEN_SECRET, "dummy-session-token")
+            .await;
+        let context = ToolContext::with_storage_store(session_id, storage);
+        let result = crate::github::checkout::checkout_token(
+            &context,
+            crate::github::GitHubActsAs::Agent,
+            "acme/app",
+        )
+        .await;
+        assert!(
+            matches!(result, Err(ToolExecutionResult::ToolError(message))
+            if message.contains("verified installation token"))
         );
     }
 

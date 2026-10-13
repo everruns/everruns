@@ -51,12 +51,24 @@ It returns `path`, `head_sha`, `base_ref` and `base_sha`; `depth` (default 100)
 sets how much history is fetched. It needs the Managed Sandbox
 (`session_sandbox`) capability on a Sandbox Worker, and says so otherwise.
 
-The sandbox never keeps a GitHub credential. The tool hands a token with
+Checkout requires a GitHub App installation. The trusted resolver must supply
+installation-mint evidence that the token covers exactly this repository,
+grants only **Contents: read**, **Pull requests: read** and GitHub's implicit
+**Metadata: read**, and expires within one hour. Missing evidence, personal
+OAuth tokens and `GITHUB_TOKEN` session-secret fallbacks are refused before any
+credential reaches the sandbox. This also fails closed with older control planes.
+For personal-token workflows, use `github_get_pull_request` and
+`github_get_pull_request_diff` to review on the trusted host, or connect an App
+installation for checkout.
+
+The tool hands the admitted token with
 **Contents: read** and **Pull requests: read** for that one repository to a
 single `git fetch` through a temporary file it removes before returning, so the
 token is not in `.git/config`, in later `bash` commands, or in sandbox
 checkpoints. Plain `git fetch` in `bash` therefore works only for public
 repositories; call the tool again to refresh a checkout.
+Concurrent code in the sandbox can read the temporary file; the enforced
+repository, permission and expiry limits bound this accepted exposure.
 
 ### Reviews without repeats
 

@@ -15,6 +15,10 @@ use everruns_contracts::runtime::{GitHubAccess, McpResolvedCredential};
 use everruns_core::McpServerActsAs;
 
 const PROVIDER: &str = "github";
+type ScopedGitHubToken = (
+    String,
+    Option<everruns_contracts::runtime::GitHubInstallationScope>,
+);
 
 /// Which of the three GitHub identities (D1) a connection is. Derived from the
 /// row rather than stored in its own column: `connection_type` already marks an
@@ -164,13 +168,14 @@ impl DbConnectionResolver {
             let Some(row) = row else {
                 continue;
             };
-            if let Some(token) = self
-                .scoped_github_token(OAuthScope::Session(session), row, &token_scope)
+            if let Some((token, github_installation_scope)) = self
+                .scoped_github_credential(OAuthScope::Session(session), row, &token_scope)
                 .await?
             {
                 return Ok(Some(McpResolvedCredential {
                     token,
                     acted_as: *identity,
+                    github_installation_scope,
                 }));
             }
         }
@@ -206,6 +211,18 @@ impl DbConnectionResolver {
         row: VirtualUserConnectionRow,
         token_scope: &TokenScope,
     ) -> Result<Option<String>> {
+        Ok(self
+            .scoped_github_credential(scope, row, token_scope)
+            .await?
+            .map(|(token, _)| token))
+    }
+
+    async fn scoped_github_credential(
+        &self,
+        scope: OAuthScope,
+        row: VirtualUserConnectionRow,
+        token_scope: &TokenScope,
+    ) -> Result<Option<ScopedGitHubToken>> {
         let installation_id = match (GitHubIdentityKind::of(&row), row.installation_id) {
             (GitHubIdentityKind::Person, _) => {
                 // A stored OAuth token (a person's own login) cannot be
@@ -213,7 +230,10 @@ impl DbConnectionResolver {
                 return row
                     .access_token_encrypted
                     .as_deref()
-                    .map(|value| self.decrypt(value, "connection token"))
+                    .map(|value| {
+                        self.decrypt(value, "connection token")
+                            .map(|token| (token, None))
+                    })
                     .transpose();
             }
             (_, Some(installation_id)) => installation_id,
@@ -223,9 +243,9 @@ impl DbConnectionResolver {
             return Ok(None);
         };
         self.github_apps
-            .mint_scoped_installation_token(&credentials, installation_id, token_scope)
+            .mint_scoped_installation_credential(&credentials, installation_id, token_scope)
             .await
-            .map(Some)
+            .map(|credential| Some(credential.into_credential()))
             .map_err(|e| AgentLoopError::store(format!("Failed to mint GitHub token: {e}")))
     }
 }
