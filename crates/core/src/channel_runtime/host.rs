@@ -701,23 +701,28 @@ impl ChannelHost {
     /// (AG-UI media parts, A2A file parts), through the same intake messaging
     /// channels use: each stored as an attachment or replaced by a note. The
     /// caller adds them to the message it sends.
+    /// `policy` replaces the host's for this message when the surface needs a
+    /// stricter one (Public Chat's anonymous visitors).
     pub async fn attachment_parts<'a>(
         &self,
         channel: impl Into<ChannelRef<'a>>,
         attachments: &[InboundAttachment],
+        policy: Option<AttachmentPolicy>,
     ) -> Result<Vec<ContentPart>, ChannelError> {
         if attachments.is_empty() {
             return Ok(Vec::new());
         }
         let channel = self.channel(channel.into()).await?;
-        Ok(self.intake(&channel.config, attachments).await)
+        Ok(self.intake(&channel.config, attachments, policy).await)
     }
 
-    /// `attachments` through the intake, stored by the port for `channel`.
+    /// `attachments` through the intake, stored by the port for `channel`,
+    /// under `policy` or the host's.
     async fn intake(
         &self,
         channel: &ChannelConfig,
         attachments: &[InboundAttachment],
+        policy: Option<AttachmentPolicy>,
     ) -> Vec<ContentPart> {
         let store = PortStore {
             port: self.inner.port.as_ref(),
@@ -730,7 +735,7 @@ impl ChannelHost {
                 .egress
                 .clone()
                 .map(|egress| self.inner.port.attachment_egress(channel, egress)),
-            policy: self.inner.attachments,
+            policy: policy.unwrap_or(self.inner.attachments),
             source: &channel.name,
         }
         .parts(attachments)
@@ -1003,7 +1008,7 @@ impl ChannelHost {
         let mut message = input_text(&channel.name, event);
         message
             .content
-            .extend(self.intake(channel, &event.attachments).await);
+            .extend(self.intake(channel, &event.attachments, None).await);
         message
     }
 

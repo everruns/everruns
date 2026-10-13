@@ -587,11 +587,15 @@ pub(crate) async fn run_app_agent_stream(
     let (events, input_message_id, resume_outcome) =
         if let Some((trigger_content, trigger_name, attachments)) = trigger {
             let mut content = vec![ContentPart::text(trigger_content)];
+            // Public Chat visitors are anonymous: fewer, smaller files, and no
+            // downloads made on their behalf.
+            let policy = (surface == AgUiSurface::PublicChat)
+                .then(everruns_core::channel_runtime::AttachmentPolicy::anonymous);
             content.extend(
                 state
                     .channels
                     .host
-                    .attachment_parts(&resolved, &attachments)
+                    .attachment_parts(&resolved, &attachments, policy)
                     .await
                     .map_err(channel_error)?,
             );
