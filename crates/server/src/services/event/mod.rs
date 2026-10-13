@@ -333,15 +333,21 @@ impl EventService {
         // resolver reads `agents.virtual_user_id`), so that identity is the
         // actor. Sessions a person starts carry no resident virtual user;
         // requiring one dropped the events of calls that had already run.
-        let identity_id = agent_identity
-            .or(session.virtual_user_id)
-            .context("service MCP event session has no agent identity")?;
-        let acting = self
-            .db
-            .get_principal_by_subject(session.org_id, "virtual_user", identity_id.uuid())
-            .await
-            .context("failed to load acting principal for service MCP event")?
-            .context("acting principal missing for service MCP event")?;
+        let acting = match agent_identity.or(session.virtual_user_id) {
+            Some(identity_id) => Some(
+                self.db
+                    .get_principal_by_subject(session.org_id, "virtual_user", identity_id.uuid())
+                    .await
+                    .context("failed to load acting principal for service MCP event")?
+                    .context("acting principal missing for service MCP event")?,
+            ),
+            // An agent gets its identity when an admin authorizes its first
+            // service grant (or on its first unattended run); until then the
+            // resolver has no service login to use and the call ends in
+            // `connection_required`. Nothing acted as the service, so the
+            // event records no actor rather than being refused (EVE-1251).
+            None => None,
+        };
         let mut metadata = request
             .metadata
             .take()
@@ -352,10 +358,13 @@ impl EventService {
             .or_insert_with(|| serde_json::Value::String(session.owner_principal_id.to_string()));
         // THREAT[TM-OBS-012]: service-tool events derive their actor from the
         // session identity and never accept a caller-supplied acting principal.
-        metadata.insert(
-            "acting_principal_id".to_string(),
-            serde_json::Value::String(acting.id.to_string()),
-        );
+        match acting {
+            Some(acting) => metadata.insert(
+                "acting_principal_id".to_string(),
+                serde_json::Value::String(acting.id.to_string()),
+            ),
+            None => metadata.remove("acting_principal_id"),
+        };
         request.metadata = Some(serde_json::Value::Object(metadata));
         Ok(())
     }
@@ -1380,6 +1389,40 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(acting.subject_id, Some(identity_id.uuid()));
+    }
+
+    /// EVERRUNS-2K/2J: a person chats with an agent whose service grant was
+    /// never authorized, so the agent has no identity yet and the call returns
+    /// `connection_required`. Its events must still persist, with no actor.
+    #[tokio::test]
+    async fn service_mcp_event_without_agent_identity_records_no_actor() {
+        let db = Arc::new(StorageBackend::test_database());
+        let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
+        let agent_id = db
+            .create_test_agent(DEFAULT_ORG_ID, uuid::Uuid::now_v7())
+            .await;
+        let mut input = service_session_input(None);
+        input.agent_id = Some(AgentId::from_uuid(agent_id));
+        let session = db.create_session(input).await.unwrap();
+        let forged_actor = PrincipalId::new();
+
+        let event = event_service
+            .emit(
+                service_tool_event(session.id).with_metadata(serde_json::json!({
+                    "acting_principal_id": forged_actor.to_string()
+                })),
+            )
+            .await
+            .unwrap();
+
+        let metadata = event.metadata.as_ref().unwrap();
+        assert_eq!(metadata.get("acting_principal_id"), None);
+        assert_eq!(
+            metadata
+                .get("initiator_principal_id")
+                .and_then(|value| value.as_str()),
+            Some(session.owner_principal_id.to_string().as_str())
+        );
     }
 
     #[tokio::test]
