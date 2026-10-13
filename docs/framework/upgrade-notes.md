@@ -19,11 +19,9 @@ key, which goes in the request's `_meta` as `io.everruns/idempotency-key`.
 Pass `None` to send none. A custom `McpTransport` adds the parameter; a tool
 reads the current call's key from `ToolContext::idempotency_key`.
 
-```rust
-// Before
-client.call(&connection, "search", args).await?;
-// After
-client.call(&connection, "search", args, None).await?;
+```diff
+-client.call(&connection, "search", args).await?;
++client.call(&connection, "search", args, None).await?;
 ```
 
 ## 0.48
