@@ -9,7 +9,7 @@ import Security from "starlight-openapi/components/security/Security";
 import Callbacks from "starlight-openapi/components/callback/Callbacks";
 import ExternalDocs from "starlight-openapi/components/ExternalDocs";
 import Md from "starlight-openapi/components/Md";
-import { allGroups, apiPage, byId, groupHref, groupOperations, operationTitle, tagName, spec } from "../lib/api-reference";
+import { allGroups, apiPage, byId, groupHref, groupOperations, operations, operationTitle, tagName, spec } from "../lib/api-reference";
 import { docsPath } from "../lib/site";
 import ApiSidebar from "./ApiSidebar.astro";
 import ApiSupport from "./ApiSupport.astro";
@@ -19,7 +19,7 @@ import "../styles/api-reference.css";
 const page = apiPage(Astro.url.pathname);
 const op = page.operation;
 const group = op ? allGroups.find(g => g.id === (op.deprecated ? "deprecated" : op.docs.group))! : page.group!;
-const groupOps = groupOperations(group.id).filter(o => !page.tag || o.tag === page.tag);
+const groupOps = page.tag ? operations.filter(o => o.tag === page.tag) : groupOperations(group.id);
 const route = getSchemaRouteFromPathname(Astro.url.pathname);
 const detail = route?.props.type === "operation" ? route.props : undefined;
 const firstSession = getSchemaRouteFromPathname(docsPath("/api/operations/agent_api_create_session/"));
@@ -72,7 +72,7 @@ const resourceId = (name: string) => `resource-${name.toLowerCase().replace(/[^a
 </div>
 <script>
   import { docsPath } from "../lib/site";
-  type Entry = { title:string; path:string; id:string; method:string; href:string; support:string; audience:string };
+  type Entry = { title:string; path:string; id:string; method:string; href:string; support:string; deprecated:boolean; audience:string };
   const root = document.querySelector<HTMLElement>("[data-api-reference]");
   if (root) {
     const internal = root.querySelector<HTMLInputElement>("[data-api-internal]")!;
@@ -92,7 +92,8 @@ const resourceId = (name: string) => `resource-${name.toLowerCase().replace(/[^a
         });
         const entries = await index;
         if (query !== search.value.trim().toLowerCase()) return;
-        const matches = entries.filter(e => `${e.title} ${e.path} ${e.id}`.toLowerCase().includes(query) && (internal.checked || e.audience !== "internal"));
+        const level = support?.value ?? "all";
+        const matches = entries.filter(e => `${e.title} ${e.path} ${e.id}`.toLowerCase().includes(query) && (internal.checked || e.audience !== "internal") && (level === "all" || e.support === level));
         const container = results.querySelector<HTMLElement>("[data-api-matches]")!;
         container.replaceChildren();
         // A broad search must not recreate the original 500-operation dump.
@@ -103,7 +104,7 @@ const resourceId = (name: string) => `resource-${name.toLowerCase().replace(/[^a
           const title = document.createElement("strong"); title.textContent = entry.title;
           const path = document.createElement("code"); path.textContent = entry.path;
           label.append(title, path);
-          const badge = document.createElement("span"); badge.className = "api-badge"; badge.dataset.support = entry.support; badge.textContent = entry.support.replace(/^./, c => c.toUpperCase());
+          const badge = document.createElement("span"); badge.className = "api-badge"; badge.dataset.support = entry.deprecated ? "deprecated" : entry.support; badge.textContent = entry.deprecated ? "Deprecated" : entry.support.replace(/^./, c => c.toUpperCase());
           link.append(method, label, badge); container.append(link);
         }
         status.textContent = matches.length > 50 ? `Showing 50 of ${matches.length} matches. Refine your search.` : matches.length ? `${matches.length} matching endpoints` : "No matching endpoints.";

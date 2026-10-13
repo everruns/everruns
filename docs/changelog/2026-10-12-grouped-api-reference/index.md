@@ -5,10 +5,9 @@ date: 2026-10-12
 kind: improvement
 significance: notable
 products: [platform, cloud]
-surfaces: [api, code]
+surfaces: [ui, api, code]
 links:
   docs: [/features/agent-api/]
-visual: "Grouped API reference landing page; capture before merge"
 ---
 
 The API reference starts with the [Agent API](/features/agent-api/) and groups
@@ -22,4 +21,7 @@ date stays unannounced.
 
 Search finds endpoints by name, path or operation ID. Existing reference URLs
 remain valid, and group pages appear in the sitemap and as Markdown for agents.
-Grouping, support and migration guidance are generated from OpenAPI.
+Duplicate operation IDs no longer hide distinct endpoints. Grouping, support
+and migration guidance are generated from OpenAPI.
+
+![API reference with Agent API first and grouped endpoints](./api-reference@2x.png)

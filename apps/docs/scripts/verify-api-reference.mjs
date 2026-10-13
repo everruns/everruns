@@ -25,6 +25,9 @@ assert(overview.includes("Call your agent."), "API overview must lead with the A
 assert(overview.indexOf("Agent API</span>") < overview.indexOf("Agents &amp; authoring</span>"), "Agent API must be the first navigation group");
 for (const group of spec["x-tagGroups"]) page(`api/groups/${group["x-slug"]}`);
 page("api/groups/deprecated");
+for (const tag of spec.tags) {
+  if (tag.description || tag.externalDocs) page(`api/operations/tags/${tag.name.toLowerCase().replaceAll(" ", "-")}`);
+}
 
 const ids = new Set(operations.map(op => op.operationId));
 for (const operation of operations) {

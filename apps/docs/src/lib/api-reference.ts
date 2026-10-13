@@ -55,7 +55,9 @@ export function apiPage(pathname: string) {
   if (relative.startsWith("operations/tags/")) {
     const slug = relative.slice("operations/tags/".length);
     const tag = spec.tags.find((t: any) => t.name.toLowerCase().replaceAll(" ", "-") === slug)?.name;
-    return { tag, group: groups.find(g => g.tags.includes(tag)) };
+    const entries = operations.filter(o => o.tag === tag);
+    const group = entries.length && entries.every(o => o.deprecated) ? deprecatedGroup : groups.find(g => g.tags.includes(tag));
+    return { tag, group };
   }
   return { group: allGroups.find(g => g.id === relative.replace(/^groups\//, "")) ?? groups[0], overview: !relative };
 }

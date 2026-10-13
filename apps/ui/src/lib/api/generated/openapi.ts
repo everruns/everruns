@@ -12,7 +12,7 @@ export interface paths {
       cookie?: never;
     };
     /** GET /v1/agent-examples — list all available examples */
-    get: operations["list_examples"];
+    get: operations["list_agent_examples"];
     put?: never;
     post?: never;
     delete?: never;
@@ -2179,7 +2179,7 @@ export interface paths {
       cookie?: never;
     };
     /** GET /v1/durable/tasks - List tasks */
-    get: operations["list_tasks"];
+    get: operations["list_durable_tasks"];
     put?: never;
     /** POST /v1/durable/tasks - Enqueue a standalone task (generic queue) */
     post: operations["enqueue_task"];
@@ -2924,7 +2924,7 @@ export interface paths {
       cookie?: never;
     };
     /** GET /v1/harness-examples — list all available harness examples. */
-    get: operations["list_examples_get_v1_harness_examples"];
+    get: operations["list_examples"];
     put?: never;
     post?: never;
     delete?: never;
@@ -3920,10 +3920,10 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * Get file
+     * Get memory file
      * @description Read a file or list a directory inside a Memory.
      */
-    get: operations["get_file_get_v1_memories_memory_id_fs_path"];
+    get: operations["get_memory_file"];
     /**
      * Update file
      * @description Update a file's content. Directories cannot be updated.
@@ -3935,10 +3935,10 @@ export interface paths {
      */
     post: operations["create_file"];
     /**
-     * Delete file
+     * Delete memory file
      * @description Delete a file or directory. Pass `recursive=true` to delete non-empty directories.
      */
-    delete: operations["delete_file_delete_v1_memories_memory_id_fs_path"];
+    delete: operations["delete_memory_file"];
     options?: never;
     head?: never;
     patch?: never;
@@ -5322,7 +5322,7 @@ export interface paths {
       cookie?: never;
     };
     /** GET /v1/sessions - List sessions in organization */
-    get: operations["list_sessions"];
+    get: operations["list_platform_sessions"];
     put?: never;
     /** POST /v1/sessions - Create a new session */
     post: operations["create_session"];
@@ -6132,7 +6132,7 @@ export interface paths {
       cookie?: never;
     };
     /** List background tasks owned by a session. */
-    get: operations["list_tasks_get_v1_sessions_session_id_tasks"];
+    get: operations["list_tasks"];
     put?: never;
     post?: never;
     delete?: never;
@@ -6879,8 +6879,8 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List connections. */
-    get: operations["list_connections_get_v1_virtual_users_identity_id_connections"];
+    /** List virtual user connections. */
+    get: operations["list_virtual_user_connections"];
     put?: never;
     post?: never;
     delete?: never;
@@ -6900,8 +6900,8 @@ export interface paths {
     put?: never;
     /** Create api key connection. */
     post: operations["create_api_key_connection"];
-    /** Delete connection. */
-    delete: operations["delete_connection_delete_v1_virtual_users_identity_id_connections_provider"];
+    /** Delete a virtual user connection. */
+    delete: operations["delete_virtual_user_connection"];
     options?: never;
     head?: never;
     patch?: never;
@@ -6934,8 +6934,8 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Verify connection. */
-    post: operations["verify_connection_post_v1_virtual_users_identity_id_connections_provider_verify"];
+    /** Verify a virtual user connection. */
+    post: operations["verify_virtual_user_connection"];
     delete?: never;
     options?: never;
     head?: never;
@@ -7074,7 +7074,7 @@ export interface paths {
       cookie?: never;
     };
     /** List recent sessions associated with the authorized virtual user. */
-    get: operations["list_sessions_get_v1_virtual_users_identity_id_sessions"];
+    get: operations["list_sessions"];
     put?: never;
     post?: never;
     delete?: never;
@@ -29917,7 +29917,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-  list_examples: {
+  list_agent_examples: {
     parameters: {
       query?: never;
       header?: never;
@@ -35998,7 +35998,7 @@ export interface operations {
       };
     };
   };
-  list_tasks: {
+  list_durable_tasks: {
     parameters: {
       query?: {
         /** @description Filter by status */
@@ -37943,7 +37943,7 @@ export interface operations {
       };
     };
   };
-  list_examples_get_v1_harness_examples: {
+  list_examples: {
     parameters: {
       query?: never;
       header?: never;
@@ -40689,7 +40689,7 @@ export interface operations {
       };
     };
   };
-  get_file_get_v1_memories_memory_id_fs_path: {
+  get_memory_file: {
     parameters: {
       query?: never;
       header?: never;
@@ -40833,7 +40833,7 @@ export interface operations {
       };
     };
   };
-  delete_file_delete_v1_memories_memory_id_fs_path: {
+  delete_memory_file: {
     parameters: {
       query?: never;
       header?: never;
@@ -44457,7 +44457,7 @@ export interface operations {
       };
     };
   };
-  list_sessions: {
+  list_platform_sessions: {
     parameters: {
       query?: {
         /** @description Exclude the permanent Chat from side-conversation pages. */
@@ -46745,7 +46745,7 @@ export interface operations {
       };
     };
   };
-  list_tasks_get_v1_sessions_session_id_tasks: {
+  list_tasks: {
     parameters: {
       query?: {
         /** @description Filter by state */
@@ -48714,7 +48714,7 @@ export interface operations {
       };
     };
   };
-  list_connections_get_v1_virtual_users_identity_id_connections: {
+  list_virtual_user_connections: {
     parameters: {
       query?: never;
       header?: never;
@@ -48805,7 +48805,7 @@ export interface operations {
       };
     };
   };
-  delete_connection_delete_v1_virtual_users_identity_id_connections_provider: {
+  delete_virtual_user_connection: {
     parameters: {
       query?: never;
       header?: never;
@@ -48916,7 +48916,7 @@ export interface operations {
       };
     };
   };
-  verify_connection_post_v1_virtual_users_identity_id_connections_provider_verify: {
+  verify_virtual_user_connection: {
     parameters: {
       query?: never;
       header?: never;
@@ -49495,7 +49495,7 @@ export interface operations {
       };
     };
   };
-  list_sessions_get_v1_virtual_users_identity_id_sessions: {
+  list_sessions: {
     parameters: {
       query?: never;
       header?: never;

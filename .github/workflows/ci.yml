@@ -2514,7 +2514,10 @@ jobs:
         run: chmod +x ./bin/export-openapi
 
       - name: Generate fresh OpenAPI spec
-        run: ./bin/export-openapi > /tmp/openapi-fresh.json
+        run: |
+          node --test scripts/canonicalize-openapi.test.mjs
+          ./bin/export-openapi > /tmp/openapi-fresh.json
+          node scripts/canonicalize-openapi.mjs /tmp/openapi-fresh.json
 
       - name: Compare with committed spec
         run: |
