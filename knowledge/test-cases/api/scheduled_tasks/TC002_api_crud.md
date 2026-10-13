@@ -16,14 +16,14 @@ Verify all CRUD operations work correctly via the REST API.
 
 ## Preconditions
 
-- API server is running
+- Canonical stack is running; caller has platform-user access and a registered harmless workflow target
 - `curl` or similar HTTP client available
 
 ## Test Data
 
 | Field | Value |
 |-------|-------|
-| API Base URL | http://localhost:9300/api |
+| API Base URL | `API_URL=<selected-proxy-origin>/api` |
 | Schedule Name | api-test-schedule |
 
 ## Steps
@@ -37,10 +37,10 @@ curl -X POST "$API_URL/v1/durable/schedules" \
     "name": "api-test-schedule",
     "description": "Created via API",
     "cron_expression": "0 */6 * * *",
-    "timezone": "America/New_York",
+    "timezone": "UTC",
     "target": {
       "type": "workflow",
-      "workflow_type": "echo",
+      "name": "<registered-workflow-name>",
       "input": {"source": "api-test"}
     },
     "enabled": true,
@@ -56,7 +56,7 @@ curl -X POST "$API_URL/v1/durable/schedules" \
 curl "$API_URL/v1/durable/schedules/$SCHEDULE_ID"
 ```
 
-**Expected**: 200 OK, all fields match creation request
+**Expected**: 200 OK, fields match creation request; five-field cron is normalized to seven fields
 
 ### 3. List Schedules (GET)
 
@@ -77,7 +77,7 @@ curl -X PATCH "$API_URL/v1/durable/schedules/$SCHEDULE_ID" \
   }'
 ```
 
-**Expected**: 200 OK, `description` and `cron_expression` updated, `next_trigger_at` recalculated
+**Expected**: 200 OK, `description` and `cron_expression` updated (normalized to seven fields), `next_trigger_at` recalculated
 
 ### 5. Pause Schedule (POST)
 
@@ -147,4 +147,8 @@ All API operations return expected status codes and response bodies. The schedul
 | POST with invalid cron | 400 Bad Request |
 | GET non-existent ID | 404 Not Found |
 | DELETE non-existent ID | 404 Not Found |
-| PATCH with invalid field | 400 Bad Request |
+| PATCH with invalid cron | 400; previous state unchanged |
+
+## Pagination and Filters
+
+Create three paused fixtures with recorded IDs. List with enabled/target-type filters and explicit offset/limit, and compare returned IDs against the fixture set. List execution history with a status filter and two disjoint offsets; check membership and ordering without assuming `total` is an all-pages count. Delete only the recorded disposable fixtures.

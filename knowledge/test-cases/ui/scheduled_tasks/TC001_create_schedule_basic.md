@@ -1,59 +1,51 @@
 ---
 type: Test Case
-title: "TC001: Create Schedule - Basic Creation"
-description: "Verify that a scheduled task can be created with required fields and appears in the schedules list."
+title: "TC001: Create Schedule - Creation and Validation"
+description: "Verify durable schedule creation, required fields, invalid JSON recovery, and persisted target and enabled state."
 tags:
   - everruns
   - test-case
   - ui
   - scheduled-tasks
 ---
-# TC001: Create Schedule - Basic Creation
+# TC001: Create Schedule - Creation and Validation
 
 ## Description
 
-Verify that a scheduled task can be created with required fields and appears in the schedules list.
+Verify durable schedule creation, required fields, invalid JSON recovery, and persisted target and enabled state.
 
 ## Preconditions
 
-- API server is running in full mode (PostgreSQL)
-- At least one workflow type is registered (e.g., `echo` or `health_check`)
-- User has access to Durable section in UI
+- Canonical persistent stack; caller has platform-user access and worker is running.
+- A harmless registered workflow target is available; use its actual name, not an assumed `echo` registration.
 
 ## Test Data
 
 | Field | Value |
-|-------|-------|
-| Name | ping-service |
-| Description | Health check every 30 minutes |
-| Cron Expression | */30 * * * * |
-| Timezone | UTC |
-| Target Type | workflow |
-| Workflow Type | echo |
-| Input | `{"message": "health check"}` |
-| Enabled | true |
+| --- | --- |
+| Name | `manual-schedule-<run-id>` |
+| Description | Manual creation proof |
+| Cron | `0 */30 * * * * *` |
+| Target type | Workflow |
+| Target name | Actual registered harmless workflow |
+| Input | `{"message":"schedule-proof"}` |
 
 ## Steps
 
-1. Navigate to Durable > Schedules page
-2. Click "Create Schedule" button
-3. Enter Name: "ping-service"
-4. Enter Description: "Health check every 30 minutes"
-5. Enter Cron Expression: "*/30 * * * *"
-6. Verify cron preview shows "Every 30 minutes"
-7. Keep Timezone as "UTC"
-8. Select Target Type: "Workflow"
-9. Select Workflow Type: "echo"
-10. Enter Input JSON: `{"message": "health check"}`
-11. Ensure "Enabled" is checked
-12. Click "Create" button
+1. Open `/durable/schedules` and Create Schedule. Try submitting while required fields are empty; no create request may occur.
+2. Enter the name, description, and cron. Select Workflow and enter the target name.
+3. Enter malformed input JSON and create; inspect the inline error and Network.
+4. Correct the input, turn **Enable schedule immediately** off, and create.
+5. Open the resulting detail and reload. Inspect the create payload and saved target.
+6. Resume the schedule and inspect the next trigger, then pause it for cleanup.
 
 ## Expected Result
 
-- Success notification appears
-- Schedule appears in the schedules list
-- Status column shows "Enabled" (green badge)
-- Cron column shows "*/30 * * * *"
-- Next Run column shows a time within 30 minutes from now
-- Target column shows "workflow: echo"
-- Last Run column shows "-" (never run)
+- Malformed JSON shows an error without a request; correction succeeds without reopening the dialog.
+- Creation persists the exact target type, name, input, and disabled state. The dialog closes and the list contains the returned ID.
+- The paused detail says Paused; Resume changes it to Active and calculates a next trigger.
+- Current UI uses a target-name input and seven-field cron help; it does not expose a timezone picker or natural-language cron preview.
+
+## Cleanup
+
+Delete only the disposable schedule.

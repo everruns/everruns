@@ -16,7 +16,7 @@ After creating agents via global chat, verify they appear correctly in the Agent
 
 ## Preconditions
 
-- Server running (`just start-dev`)
+- Canonical stack running (see root `AGENTS.md`)
 - User logged in
 - 10 agents created via global chat (TC003 completed)
 

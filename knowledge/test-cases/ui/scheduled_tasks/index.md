@@ -1,6 +1,6 @@
 # Scheduled tasks (UI)
 
-* [TC001: Create Schedule - Basic Creation](TC001_create_schedule_basic.md) - Verify that a scheduled task can be created with required fields and appears in the schedules list.
-* [TC002: Manual Trigger](TC002_manual_trigger.md) - Verify that a schedule can be manually triggered and creates an execution that runs the target workflow.
-* [TC003: Pause and Resume Schedule](TC003_pause_resume.md) - Verify that pausing a schedule prevents automatic triggers, and resuming restores normal scheduling.
-* [TC004: Execution History](TC004_execution_history.md) - Verify that execution history is displayed correctly with proper sorting, status indicators, and navigation.
+* [TC001: Create Schedule - Creation and Validation](TC001_create_schedule_basic.md) - Verify durable schedule creation, required fields, invalid JSON recovery, and persisted target and enabled state.
+* [TC002: Manual Trigger](TC002_manual_trigger.md) - Verify confirmation cancellation has no effect and an accepted manual trigger creates one observable execution of the configured workflow.
+* [TC003: Pause and Resume Schedule](TC003_pause_resume.md) - Verify pausing prevents future automatic triggers, resuming restores them, and pause does not cancel executions already admitted.
+* [TC004: Execution History and Filtering](TC004_execution_history.md) - Verify execution history preserves identifiers, terminal outcomes, error details, filtering, and workflow navigation.

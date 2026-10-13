@@ -31,16 +31,17 @@ Verify that an admin user can successfully sign out after logging in when AUTH_M
 
 1. Navigate to the login page
 2. Enter email: `test-admin-1@example.com`
-3. Enter password: `1-admin-test`
-4. Click the login button
-5. Verify user is logged in and on the dashboard
-6. Click on the user avatar/menu in the sidebar
-7. Click the "Sign out" button
+3. Click **Continue with email**
+4. Enter password: `1-admin-test`
+5. Click **Continue**
+6. Verify the user is logged in and on `/chats`
+7. Click on the user avatar/menu in the sidebar
+8. Click the "Sign out" button
 
 ## Expected Result
 
 - User is successfully signed out
-- User session is terminated
+- Browser auth cookies are cleared; the current refresh credential is revoked
 - User is redirected to the login page
 - Attempting to access protected pages redirects to login
 - User avatar/menu is no longer visible in the sidebar
