@@ -216,7 +216,7 @@ store files as uploads of the caller's org
 
 | Surface | Change |
 |---|---|
-| Slack (server) | Done: every file in the triggering message is downloaded with the bot token. Remote files (Google Drive and similar) keep their link in the text. Embedded Slack still describes files by name. |
+| Slack (server) | Done: every file in the triggering message is downloaded with the bot token. Remote files (Google Drive and similar) keep their link in the text. Embedded Slack (Framework) downloads the same way through the runtime egress (`ChannelsBuilder::egress` overrides it); the Framework keeps images inline and notes other files until it has an attachment store. |
 | AG-UI, Public Chat | Done: image, audio, video and document parts of the trigger message go through intake (inline data, `data:` URLs, downloads); a provider file handle is described by its id; `imageIds` keeps working. Public Chat visitors are anonymous, so it takes at most 3 files of up to 10 MiB, inline only: a URL part becomes a note instead of a download made on the visitor's behalf ([`AttachmentPolicy::anonymous`](../../crates/core/src/channel_runtime/attachments.rs)). |
 | A2A | Done: 0.3 `file` parts and 1.0 `raw` / `url` parts go through intake. PACT stays text only: PACT 1.0 §4.1 requires `CONTENT_TYPE_NOT_SUPPORTED` for any part that is not text. |
 | Agent execution API, MCP `agent_run` / `session_send_message` | Done: a `files` list (base64 `data` or `url` per file) goes through intake. Upload ids are refused on the execution API, since a caller has no upload route and ids are scoped to the org. The card advertises images and files. |
