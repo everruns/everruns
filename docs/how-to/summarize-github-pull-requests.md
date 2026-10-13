@@ -30,7 +30,7 @@ create or paste.
 
 1. Open the Agent and select **Integrations**.
 2. In the **GitHub** section, between **Channels** and **Triggers**, open
-   **Connect GitHub** and choose where to create
+   **Create this agent's own GitHub App** and choose where to create
    the App: **Personal account**, an organization your Everruns organization
    already connected to GitHub, or **Another organization…** to type one. The
    App is private, so it can only be installed on the account that owns it.
@@ -52,6 +52,19 @@ GitHub offers no way to set an App's logo for it, so the **GitHub** section
 shows a **Set the avatar** step. Select **Download avatar** to save the Agent's
 avatar (shown when the Agent has one), then **Open App settings** and upload
 it as the logo on GitHub.
+
+### Use the Everruns app instead
+
+When an org admin has linked a GitHub account to the shared Everruns GitHub
+App, the **GitHub** section also offers **Use the Everruns app**. Pick a
+linked account and the Agent acts as the shared App's bot on that
+installation, with no App of its own to create. Its comments then appear as
+the shared bot, not as the Agent, and there is no avatar step.
+
+To link an account, an org admin opens **Settings > Organization**, selects
+**Link** in the **Everruns GitHub App** group, and installs the App on GitHub.
+**Unlink** there removes the account from every Agent that chose it; the App
+stays installed on GitHub.
 
 ## Add a pull request trigger
 
@@ -83,7 +96,9 @@ reason, so you can see why an event did not start a run.
 ## Disconnect
 
 Select **Disconnect** in the **GitHub** section. This uninstalls the App from
-GitHub and removes the Agent's GitHub connection. The App itself stays on your
+GitHub and removes the Agent's GitHub connection. For an Agent using the
+Everruns app, it only removes the Agent's choice; the account stays linked to
+the organization. The App itself stays on your
 GitHub account, so connecting again reuses it; delete it from GitHub's
 **Developer settings** if you no longer want it.
 

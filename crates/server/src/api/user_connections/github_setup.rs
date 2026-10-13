@@ -1,6 +1,10 @@
 // Shared GitHub App connection setup: installation redirect and callback.
 // Decision: the callback links an installation only after a GitHub
 // user-to-server token proves the user can access it (EVE-1193, TM-GITHUB-005).
+// Decision: one callback serves both targets GitHub can return to: a virtual
+// user's own connection and an org admin's link (`mode = organization`,
+// `github_org.rs`). The App has one setup URL, so the pending state, not the
+// URL, says which target the proven installation is stored for.
 
 use super::*;
 
@@ -42,12 +46,13 @@ pub(super) async fn github_authorize_inner(
             )
         })?;
 
-    let service = GitHubAppService::new(config);
+    // THREAT[TM-GITHUB-005]: an agent's service virtual user acts as the
+    // shared App only through an org admin's link (D3), never through a
+    // member attaching an installation directly.
+    refuse_service_target(&state, authority.org_id, authority.target_id).await?;
 
-    // Generate state for CSRF protection
-    let install_state = new_setup_state();
     let pending = PendingOAuthState {
-        state: install_state.clone(),
+        state: new_setup_state(),
         org_id: authority.org_id,
         management_user_id: authority.management_user_id,
         runtime_credential: authority.runtime_credential,
@@ -64,10 +69,19 @@ pub(super) async fn github_authorize_inner(
         code_verifier: String::new(),
         github_installation_id: None,
     };
-    register_pending_setup(&state, &pending).await?;
-    let jar = jar.add(github_setup_cookie(&pending)?);
+    begin_installation(&state, config, jar, pending).await
+}
 
-    let auth_url = service.installation_url(&install_state);
+/// Register `pending` and send the browser to the shared App's install page.
+pub(super) async fn begin_installation(
+    state: &AppState,
+    config: &crate::auth::config::GitHubConnectionConfig,
+    jar: CookieJar,
+    pending: PendingOAuthState,
+) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
+    register_pending_setup(state, &pending).await?;
+    let jar = jar.add(github_setup_cookie(&pending)?);
+    let auth_url = GitHubAppService::new(config).installation_url(&pending.state);
     Ok((jar, Redirect::to(&auth_url.url)))
 }
 
@@ -107,7 +121,13 @@ pub async fn github_callback(
 ) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
     let pending = validate_pending_oauth_state(&jar, "github", query.state.as_deref())?;
     consume_pending_setup(&state, &pending).await?;
-    let auth = callback_authority(&state, &pending, org).await?;
+    let target = if pending.mode == ORG_LINK_MODE {
+        SetupTarget::Org(org_link_authority(&state, &pending, org).await?)
+    } else {
+        let auth = callback_authority(&state, &pending, org).await?;
+        refuse_service_target(&state, auth.org_id, auth.target_id).await?;
+        SetupTarget::VirtualUser(auth)
+    };
     let jar = jar.remove(Cookie::from(oauth_state_cookie_name("github")));
     let config = state
         .auth_config
@@ -178,7 +198,7 @@ pub async fn github_callback(
         })?;
     if !can_access {
         tracing::warn!(
-            user_id = %auth.target_id,
+            target = %target.subject(),
             installation_id,
             "GitHub user cannot access the claimed installation"
         );
@@ -199,6 +219,18 @@ pub async fn github_callback(
                 "GitHub App installation verification failed".to_string(),
             )
         })?;
+
+    let frontend_url = state.auth_config.frontend_url.trim_end_matches('/');
+    let auth = match target {
+        SetupTarget::Org(authority) => {
+            store_org_link(&state, &authority, result).await?;
+            return Ok((
+                jar,
+                Redirect::to(&format!("{}{}", frontend_url, pending.return_to)),
+            ));
+        }
+        SetupTarget::VirtualUser(auth) => auth,
+    };
 
     // Prevent installation hijacking across users: an installation already linked
     // to another user must not be claimable via callback replay/forgery.
@@ -255,9 +287,24 @@ pub async fn github_callback(
             )
         })?;
 
-    let frontend_url = state.auth_config.frontend_url.trim_end_matches('/');
     Ok((
         jar,
         Redirect::to(&format!("{}{}", frontend_url, pending.return_to)),
     ))
+}
+
+/// Where a proven installation is stored.
+enum SetupTarget {
+    VirtualUser(OAuthAuthority),
+    Org(OrgLinkAuthority),
+}
+
+impl SetupTarget {
+    /// The target, for logs: a virtual user id or an org id.
+    fn subject(&self) -> String {
+        match self {
+            Self::VirtualUser(auth) => format!("virtual_user:{}", auth.target_id),
+            Self::Org(authority) => format!("org:{}", authority.org_id),
+        }
+    }
 }

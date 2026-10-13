@@ -459,6 +459,14 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("GET", "/v1/orgs/{org}/feature-flags/platform", Read),
     ("PATCH", "/v1/orgs/{org}/feature-flags/platform", Write),
     ("GET", "/v1/orgs/{org}/feature-flags/settings", Read),
+    // Linking the shared GitHub App is a browser install flow, like connect.
+    ("GET", "/v1/orgs/{org}/github/everruns-app", Read),
+    ("GET", "/v1/orgs/{org}/github/everruns-app/authorize", Never),
+    (
+        "DELETE",
+        "/v1/orgs/{org}/github/everruns-app/{connection_id}",
+        Write,
+    ),
     ("POST", "/v1/orgs/{org}/onboarding/complete", Write),
     ("GET", "/v1/orgs/{org}/organization-connections", Read),
     (

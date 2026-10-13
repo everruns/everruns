@@ -371,7 +371,8 @@ pub fn routes(state: AppState) -> Router {
             get(connection_oauth_callback),
         )
         .route("/v1/connection-callbacks/github", get(github_callback))
-        .with_state(state)
+        .with_state(state.clone())
+        .merge(github_org::routes(state))
 }
 
 // ============================================================================
@@ -1470,7 +1471,9 @@ async fn list_signed_in_catalog_server(
     }
 }
 
+pub(crate) mod github_org;
 mod github_setup;
+use github_org::*;
 use github_setup::*;
 pub(crate) mod runtime_accounts;
 pub use runtime_accounts::ConnectionSetupResponse;

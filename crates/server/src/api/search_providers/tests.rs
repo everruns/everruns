@@ -29,9 +29,10 @@ async fn fixture() -> (AppState, Uuid, Uuid) {
         org_id: DEFAULT_ORG_ID,
         name: name.to_string(),
         provider: provider.to_string(),
-        access_token_encrypted: key,
+        access_token_encrypted: Some(key),
         provider_username: None,
         provider_metadata: None,
+        ..Default::default()
     };
     let team = db
         .create_organization_connection(account(
