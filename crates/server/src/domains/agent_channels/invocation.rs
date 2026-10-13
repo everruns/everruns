@@ -58,7 +58,11 @@ pub const A2A_MESSAGE_ID_METADATA: &str = "a2a_message_id";
 pub(crate) fn normalize_cron_expression(cron_expression: &str) -> Result<String, CommandError> {
     let fields = cron_expression.split_whitespace().collect::<Vec<_>>();
     let normalized = match fields.len() {
-        5 => format!("0 {} *", fields.join(" ")),
+        // Standard cron weekdays (0-6 from Sunday) become day names; see
+        // `standard_cron_to_crate_form`. Seven fields are the `cron` crate's
+        // own form and keep its numbering (1-7 from Sunday).
+        5 => everruns_core::session_schedule::standard_cron_to_crate_form(cron_expression)
+            .expect("five fields"),
         7 => fields.join(" "),
         _ => {
             return Err(CommandError::bad_request(
