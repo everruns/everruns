@@ -769,7 +769,6 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ),
     ("GET", "/v1/virtual-users/{identity_id}/sessions", Read),
     ("GET", "/v1/workspaces", Read),
-    ("POST", "/v1/workspaces", Write),
     ("DELETE", "/v1/workspaces/{workspace_id}", Write),
     ("GET", "/v1/workspaces/{workspace_id}", Read),
     ("PATCH", "/v1/workspaces/{workspace_id}", Write),

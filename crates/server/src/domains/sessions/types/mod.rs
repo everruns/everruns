@@ -11,15 +11,13 @@ use crate::kernel_imports::{
 };
 use crate::storage::UpdateField;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
-use everruns_contracts::typed_id::{
-    AgentId, HarnessId, ModelId, SessionId, VirtualUserId, WorkspaceId,
-};
+use everruns_contracts::typed_id::{AgentId, HarnessId, ModelId, SessionId, VirtualUserId};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 // `CreateSessionRequest` keeps its own file; it shares this module's imports.
 mod create_request;
-pub use create_request::CreateSessionRequest;
+pub use create_request::{CreateSessionRequest, WORKSPACE_ATTACH_RETIRED};
 
 /// Request to fork a session. Every field is
 /// optional; omitted fields inherit the parent session's value. Title defaults

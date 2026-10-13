@@ -28896,62 +28896,6 @@
           "group": "sessions-workspaces",
           "support": "preview"
         }
-      },
-      "post": {
-        "tags": [
-          "workspace"
-        ],
-        "summary": "Create workspace",
-        "description": "Create a Workspace.",
-        "operationId": "create_workspace",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateWorkspaceRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Workspace"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Name conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Everruns Cloud and self-hosted Platform",
-          "group": "sessions-workspaces",
-          "support": "preview"
-        }
       }
     },
     "/v1/workspaces/{workspace_id}": {
@@ -38023,14 +37967,6 @@
             ],
             "description": "Optional resident virtual user used for unattended/background execution.",
             "example": "identity_01933b5a00007000800000000000001"
-          },
-          "workspace_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Attach this session to an existing Workspace (format: `wsp_<32-hex>`)\ninstead of auto-creating a default per-session workspace. The workspace\nmust exist in the caller's org and be `active`. Lets multiple sessions\nshare one working filesystem. Omit for the default 1:1 behavior.",
-            "example": "wsp_01933b5a00007000800000000000001"
           }
         }
       },
@@ -38118,25 +38054,6 @@
           "usage": {
             "$ref": "#/components/schemas/VirtualUserUsage",
             "description": "Runtime purpose; service accounts may be attached to agents."
-          }
-        }
-      },
-      "CreateWorkspaceRequest": {
-        "type": "object",
-        "required": [
-          "name"
-        ],
-        "properties": {
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "example": "Shared workspace for the Q4 research project"
-          },
-          "name": {
-            "type": "string",
-            "example": "team-research"
           }
         }
       },

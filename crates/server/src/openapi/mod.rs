@@ -439,7 +439,6 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         // `/v1/workspaces/{workspace_id}/fs/*` (or the per-session alias
         // when one is needed for ergonomics).
         api::workspaces::list_workspaces,
-        api::workspaces::create_workspace,
         api::workspaces::get_workspace,
         api::workspaces::update_workspace,
         api::workspaces::delete_workspace,
@@ -794,7 +793,6 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::memory::ListMemoriesQuery,
             api::memory::MemoryResponse,
             api::workspaces::WorkspaceResponse,
-            api::workspaces::CreateWorkspaceRequest,
             api::workspaces::UpdateWorkspaceRequest,
             api::workspaces::ListWorkspacesQuery,
             // Workspace virtual filesystem (reuses session_files request/response types).

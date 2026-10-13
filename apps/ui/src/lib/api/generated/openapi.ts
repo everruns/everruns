@@ -7295,11 +7295,7 @@ export interface paths {
      */
     get: operations["list_workspaces"];
     put?: never;
-    /**
-     * Create workspace
-     * @description Create a Workspace.
-     */
-    post: operations["create_workspace"];
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -12015,14 +12011,6 @@ export interface components {
        * @example identity_01933b5a00007000800000000000001
        */
       virtual_user_id?: string | null;
-      /**
-       * @description Attach this session to an existing Workspace (format: `wsp_<32-hex>`)
-       *     instead of auto-creating a default per-session workspace. The workspace
-       *     must exist in the caller's org and be `active`. Lets multiple sessions
-       *     share one working filesystem. Omit for the default 1:1 behavior.
-       * @example wsp_01933b5a00007000800000000000001
-       */
-      workspace_id?: string | null;
     };
     /** @description Request to create a skill from SKILL.md content */
     CreateSkillRequest: {
@@ -12077,12 +12065,6 @@ export interface components {
       timezone?: string | null;
       /** @description Runtime purpose; service accounts may be attached to agents. */
       usage?: components["schemas"]["VirtualUserUsage"];
-    };
-    CreateWorkspaceRequest: {
-      /** @example Shared workspace for the Q4 research project */
-      description?: string | null;
-      /** @example team-research */
-      name: string;
     };
     /** @description Outcome of checking a candidate provider credential. */
     CredentialCheckResult:
@@ -49751,48 +49733,6 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ListResponse_Workspace"];
-        };
-      };
-    };
-  };
-  create_workspace: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["CreateWorkspaceRequest"];
-      };
-    };
-    responses: {
-      /** @description Created */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["Workspace"];
-        };
-      };
-      /** @description Invalid input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Name conflict */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
         };
       };
     };

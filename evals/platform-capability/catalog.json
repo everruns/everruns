@@ -8170,14 +8170,6 @@
             "string",
             "null"
           ]
-        },
-        "workspace_id": {
-          "description": "Attach this session to an existing Workspace (format: `wsp_<32-hex>`)\ninstead of auto-creating a default per-session workspace. The workspace\nmust exist in the caller's org and be `active`. Lets multiple sessions\nshare one working filesystem. Omit for the default 1:1 behavior.",
-          "example": "wsp_01933b5a00007000800000000000001",
-          "type": [
-            "string",
-            "null"
-          ]
         }
       },
       "type": "object"
@@ -8359,36 +8351,6 @@
     "name": "create_virtual_user",
     "output_shape": "unknown",
     "path": "/v1/virtual-users",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
-    "category": "workspaces",
-    "cli": "workspaces create",
-    "description": "Create a new Workspace in the current organization.",
-    "input_schema": {
-      "properties": {
-        "description": {
-          "description": "Optional human-readable description.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "name": {
-          "description": "Human-readable workspace name. Must be unique per org.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "name"
-      ],
-      "type": "object"
-    },
-    "method": "POST",
-    "name": "create_workspace",
-    "output_shape": "unknown",
-    "path": "/v1/workspaces",
     "positional_arg": null,
     "read_only": false
   },

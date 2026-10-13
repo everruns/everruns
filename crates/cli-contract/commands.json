@@ -10313,13 +10313,6 @@
         "kind": "string",
         "required": false,
         "help": "Optional resident virtual user used for unattended/background execution."
-      },
-      {
-        "field": "workspace_id",
-        "long": "workspace-id",
-        "kind": "string",
-        "required": false,
-        "help": "Attach this session to an existing Workspace (format: `wsp_<32-hex>`) instead of auto-creatin..."
       }
     ],
     "examples": [
@@ -13592,38 +13585,6 @@
       {
         "intent": "Change a virtual user's display name",
         "command": "everruns virtual-users update identity_01h9 --name triage-bot --reason 'Match the team naming'"
-      }
-    ]
-  },
-  {
-    "wire_name": "create_workspace",
-    "path": [
-      "workspaces"
-    ],
-    "verb": "create",
-    "description": "Create a new Workspace in the current organization.",
-    "method": "POST",
-    "http_path": "/v1/workspaces",
-    "args": [
-      {
-        "field": "description",
-        "long": "description",
-        "kind": "string",
-        "required": false,
-        "help": "Optional human-readable description."
-      },
-      {
-        "field": "name",
-        "long": "name",
-        "kind": "string",
-        "required": true,
-        "help": "Human-readable workspace name."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Create a workspace to group related sessions and files",
-        "command": "everruns workspaces create --name platform-team --description 'Platform team sandbox work' --reason 'Separate team resources'"
       }
     ]
   },
