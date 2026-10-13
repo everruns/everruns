@@ -6,6 +6,7 @@ kind: breaking
 significance: notable
 products: [platform, cloud]
 surfaces: [api]
+release: "0.48.0"
 links:
   docs: [/how-to/call-your-agent-from-code/, /features/channels/#agent-api]
   prs: [everruns/everruns#4527]

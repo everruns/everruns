@@ -150,6 +150,8 @@ pub struct WorkerGetGitHubToken {
 pub struct WorkerGitHubToken {
     pub token: String,
     pub acted_as: String,
+    #[schema(value_type = Object)]
+    pub github_installation_scope: Option<everruns_contracts::runtime::GitHubInstallationScope>,
 }
 
 impl std::fmt::Debug for WorkerGitHubToken {
@@ -181,6 +183,7 @@ impl Command for WorkerGetGitHubToken {
         Ok(credential.map(|credential| WorkerGitHubToken {
             token: credential.token,
             acted_as: credential.acted_as.to_string(),
+            github_installation_scope: credential.github_installation_scope,
         }))
     }
 }

@@ -49,6 +49,7 @@ async fn calls_tool_over_stdio() {
             "echo",
             json!({ "message": "round-trip" }),
             None,
+            Some("key-1"),
         )
         .await
         .unwrap();

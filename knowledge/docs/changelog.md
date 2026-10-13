@@ -269,7 +269,15 @@ versioned `CHANGELOG.md` links to the public entries it carries.
   `release-card.yml` with the existing `pnpm --dir apps/docs run release-card`
   (2400x1350, already a 2x image) into the entry folder as `card@2x.png`, so
   every past release keeps its card on the site; `release.yml` keeps
-  attaching the same render to the GitHub Release.
+  attaching the same render to the GitHub Release and opens the Release body
+  with the committed `card@2x.png`, pinned to the release commit, so the card
+  shows in the release and not only among its assets.
+- The card is plain like the entries: the headline names the main features,
+  never a slogan, and it holds up to four highlights. Its renderer measures
+  each line's rendered width, because character limits let wide lines run into
+  the next column.
+- The release entry's link list grows with the release, so it is left out of
+  the release body's word budget; the budget covers the prose.
 - Every `Highlights` bullet in `CHANGELOG.md` links its changelog entry, and the
   version section gains a `Changelog` line linking the release entry. The GitHub
   Release body is extracted from that section, so it carries the links too.

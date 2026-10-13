@@ -34,6 +34,8 @@ export interface CreateAgentRequest {
   capabilities?: AgentCapabilityConfig[];
   /** How the agent talks to people; omit for the default (`direct`) or to leave unchanged. */
   communication?: Communication;
+  /** Ceiling on output tokens per model response; omit for the provider default. */
+  max_output_tokens?: number;
   initial_files?: InitialFile[];
   /** Tool definitions (including client-side tools) */
   tools?: ToolDefinition[];
@@ -65,6 +67,8 @@ export interface UpdateAgentRequest {
   capabilities?: AgentCapabilityConfig[];
   /** How the agent talks to people; omit for the default (`direct`) or to leave unchanged. */
   communication?: Communication;
+  /** Output token ceiling per model response; omit to leave unchanged, null clears. */
+  max_output_tokens?: number | null;
   initial_files?: InitialFile[];
   status?: AgentStatus;
   /** Tool definitions (including client-side tools) */

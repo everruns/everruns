@@ -651,6 +651,10 @@ pub async fn upsert_agent(
                     network_access: req.network_access,
                     max_iterations: req.max_iterations,
                     parallel_tool_calls: req.parallel_tool_calls,
+                    max_output_tokens: req.max_output_tokens.map_or(
+                        crate::storage::UpdateField::Unchanged,
+                        crate::storage::UpdateField::Set,
+                    ),
                     communication: Some(req.communication),
                     status: None,
                 };
@@ -921,6 +925,7 @@ async fn import_from_example(
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
     };
 
@@ -932,6 +937,8 @@ async fn import_from_example(
     Ok((StatusCode::CREATED, Json(builder.wrap(agent))))
 }
 
+/// Validate an agent package and its dependencies
+///
 /// Validate an agent package and its destination dependencies without mutation.
 #[utoipa::path(post, path = "/v1/agents/validate", params(ImportAgentQuery), request_body = crate::domains::agents::packages::PackageInput, responses((status = 200, description = "Validation diagnostics", body = serde_json::Value)), tag = "agents")]
 pub async fn validate_agent_package(
@@ -955,6 +962,8 @@ pub async fn validate_agent_package(
     ))
 }
 
+/// Diff an agent package against an existing agent
+///
 /// Generate a semantic diff against an existing agent without mutation.
 #[utoipa::path(post, path = "/v1/agents/diff", params(ImportAgentQuery), request_body = crate::domains::agents::packages::PackageInput, responses((status = 200, description = "Semantic changes", body = serde_json::Value)), tag = "agents")]
 pub async fn diff_agent_package(

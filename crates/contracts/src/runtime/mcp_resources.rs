@@ -14,7 +14,7 @@
 // `resources/list` round trip per server per turn; a server without resources
 // answers "method not found", and the tool says so.
 
-use crate::runtime::mcp_proxy::McpToolInvoker;
+use crate::runtime::mcp_proxy::{McpToolInvoker, ScopedMcpToolInvoker};
 use crate::runtime::mcp_server::{
     McpReadResourceResult, McpResourceContents, McpResourceTemplate, McpResourcesPage, is_mcp_tool,
     sanitize_mcp_server_name,
@@ -79,7 +79,7 @@ pub fn add_mcp_resource_tool_definitions(definitions: &mut Vec<ToolDefinition>) 
 /// Registry tools for every resource tool definition in `definitions`.
 pub fn build_mcp_resource_tools(
     definitions: &[ToolDefinition],
-    invoker: &Arc<dyn McpToolInvoker>,
+    invoker: &Arc<ScopedMcpToolInvoker>,
 ) -> Vec<Box<dyn Tool>> {
     definitions
         .iter()
@@ -201,7 +201,9 @@ pub fn base64_decoded_len(data: &str) -> usize {
 
 struct McpResourceTool {
     definition: BuiltinTool,
-    invoker: Arc<dyn McpToolInvoker>,
+    // THREAT[TM-TOOL-063]: resource tools retain the attachment guard, not
+    // the backend that owns organization-wide connection resolution.
+    invoker: Arc<ScopedMcpToolInvoker>,
 }
 
 impl McpResourceTool {

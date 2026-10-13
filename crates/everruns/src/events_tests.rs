@@ -416,6 +416,7 @@ async fn tool_narration_is_preserved_for_renderers() {
                 tool_call_fingerprint: None,
                 display_name: Some("Knowledge lookup".to_string()),
                 narration: Some("Looking up the answer".to_string()),
+                side_effect_class: None,
             },
         ))
         .await

@@ -18,6 +18,7 @@ fn test_disjoint_prompt_tokens_subtracts_cached_subset() {
 fn bare_call_config() -> LlmCallConfig {
     LlmCallConfig {
         tool_baseline: None,
+        system_prompt_baseline: None,
         model: "claude-opus-4-8".to_string(),
         temperature: None,
         max_tokens: None,

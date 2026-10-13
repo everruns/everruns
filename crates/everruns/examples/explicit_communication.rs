@@ -51,6 +51,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             match event.kind {
                 // For an explicit agent, assistant text is working notes.
+                // A repeated start means the stream restarted: drop its text.
+                SessionEventKind::OutputStarted { .. } => current.clear(),
                 SessionEventKind::TextDelta { delta } => current.push_str(&delta),
                 SessionEventKind::OutputCompleted { .. } => {
                     if !current.trim().is_empty() {

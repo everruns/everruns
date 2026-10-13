@@ -31,6 +31,10 @@ pub trait SandboxWorkspace: Send + Sync {
     /// into the command text, and the file is removed when the command exits,
     /// before the workspace is checkpointed. The variable is set for this one
     /// command only.
+    ///
+    /// Concurrent sandbox code can read the file as the same identity. Callers
+    /// must admit only credentials whose verified scope permits that exposure;
+    /// temporary-file cleanup does not provide credential isolation.
     async fn exec_with_secret_file(
         &self,
         context: &ToolContext,

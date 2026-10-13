@@ -205,6 +205,7 @@ where
     }
     tool_context.bind_to_turn(event_context.clone());
     tool_context.tool_call_id = Some(tool_call_id.to_string());
+    tool_context.idempotency_key = context.tool_call_idempotency_key(tool_call_id);
     // THREAT[TM-TOOL-055]: a tool that dispatches a nested call runs it
     // through this act phase's own chains (EVE-1186).
     tool_context.nested_tool_policy = Some(nested_policy::for_atom(atom));

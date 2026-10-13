@@ -231,6 +231,7 @@ fn test_is_merge_serialization_tool_events() {
         tool_call_fingerprint: None,
         display_name: None,
         narration: None,
+        side_effect_class: None,
     };
     let started_event = Event::new(
         SessionId::new(),
@@ -437,6 +438,7 @@ fn test_tool_started_redacts_arguments_when_configured() {
             tool_call_fingerprint: None,
             display_name: Some("Execute".to_string()),
             narration: Some("Running exec".to_string()),
+            side_effect_class: None,
         }),
     );
 
@@ -478,6 +480,7 @@ fn test_tool_started_includes_labels_when_tool_args_full() {
             tool_call_fingerprint: None,
             display_name: Some("Execute".to_string()),
             narration: Some("Running exec".to_string()),
+            side_effect_class: None,
         }),
     );
 

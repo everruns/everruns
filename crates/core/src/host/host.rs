@@ -1423,14 +1423,16 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
         .mcp_executor(org_id, input.context.session_id, input.agent_id)
         .await
     {
-        let invoker: Arc<dyn crate::McpToolInvoker> = mcp;
+        // THREAT[TM-TOOL-063]: registry and context services share the turn's
+        // attachment guard before any hosted connection can be resolved.
+        let invoker = Arc::new(crate::ScopedMcpToolInvoker::new(
+            &input.tool_definitions,
+            mcp,
+        ));
         for tool in crate::build_mcp_proxy_tools(&input.tool_definitions, invoker.clone()) {
             tool_registry.register_boxed(tool);
         }
-        mcp_invoker = Some(Arc::new(crate::ScopedMcpToolInvoker::new(
-            &input.tool_definitions,
-            invoker,
-        )));
+        mcp_invoker = Some(invoker);
     }
 
     let builtin_tool_registry = Arc::new(tool_registry.clone());

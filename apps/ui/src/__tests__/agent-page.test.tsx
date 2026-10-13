@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { Suspense } from "react";
 import AgentPage from "@/app/(main)/agents/[agentId]/page";
 import type { Agent, Session } from "@/lib/api/types";
@@ -522,7 +522,44 @@ describe("AgentPage edit mode", () => {
     expect(request).not.toHaveProperty("network_access");
     expect(request).not.toHaveProperty("harness_id");
     expect(request).not.toHaveProperty("initial_files");
+    expect(request).not.toHaveProperty("max_output_tokens");
     expect(screen.queryByText("Editing")).not.toBeInTheDocument();
+  });
+
+  it("sends a max output tokens ceiling and clears it back to the provider default", async () => {
+    await renderPage();
+    expect(
+      screen.getByText("Lower this if the provider says it can only afford fewer tokens."),
+    ).toBeInTheDocument();
+
+    const field = screen.getByLabelText("Max output tokens");
+    expect(field).toHaveAttribute("placeholder", "Provider default");
+    fireEvent.change(field, { target: { value: "4096" } });
+    expect(screen.getByText("Editing")).toBeInTheDocument();
+    await save();
+    expect(mockUpdate.mock.calls[0][0].request.max_output_tokens).toBe(4096);
+
+    mockUpdate.mockClear();
+    mockUseAgent.mockReturnValue({
+      data: { ...mockAgent, max_output_tokens: 2048 },
+      isLoading: false,
+    });
+    cleanup();
+    await renderPage();
+    expect(screen.getByLabelText("Max output tokens")).toHaveValue(2048);
+    fireEvent.change(screen.getByLabelText("Max output tokens"), { target: { value: "" } });
+    await save();
+    expect(mockUpdate.mock.calls[0][0].request.max_output_tokens).toBeNull();
+  });
+
+  it("rejects a zero max output tokens ceiling instead of saving", async () => {
+    await renderPage();
+    fireEvent.change(screen.getByLabelText("Max output tokens"), { target: { value: "0" } });
+    await save();
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Max output tokens")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("Enter a whole number of at least 1")).toBeInTheDocument();
   });
 
   it("feeds unsaved prompt text to the checks and applies their fixes", async () => {

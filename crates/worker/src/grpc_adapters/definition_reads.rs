@@ -50,6 +50,7 @@ pub(super) fn proto_agent_to_definition(proto_agent: proto::Agent) -> Result<Age
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: proto_agent.parallel_tool_calls,
+        max_output_tokens: proto_agent.max_tokens.filter(|tokens| *tokens > 0),
         communication: crate::core::conversation::Communication::from_wire(
             proto_agent.communication.as_deref(),
         ),

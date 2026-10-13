@@ -52,6 +52,34 @@ impl AgentCardInput {
         images: false,
         files: false,
     };
+
+    /// Text, images and files.
+    pub const ALL: Self = Self {
+        text: true,
+        images: true,
+        files: true,
+    };
+}
+
+/// A file sent with a message: inline base64 `data`, or a public https `url`
+/// the server downloads. Exactly one of the two. The file is kept in the
+/// session's `/attachments`; a file that cannot be taken becomes a note the
+/// agent reads instead.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MessageFile {
+    /// File name; taken from the URL when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Declared media type. The bytes decide when they disagree.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<String>,
+    /// File bytes, base64.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<String>,
+    /// Public https URL to download the file from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
 }
 
 /// One accepted credential kind. Mirrors the HTTP auth scheme a client sends.

@@ -6,6 +6,7 @@ kind: improvement
 significance: notable
 products: [platform, cloud, framework]
 surfaces: [agent, code]
+release: "0.48.0"
 links:
   docs: [/capabilities/prompt-caching/]
 ---

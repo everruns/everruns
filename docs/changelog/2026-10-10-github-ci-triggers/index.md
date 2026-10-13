@@ -6,6 +6,7 @@ kind: feature
 significance: notable
 products: [platform, cloud]
 surfaces: [ui, api]
+release: "0.48.0"
 links:
   docs: [/features/agent-triggers/, /how-to/summarize-github-pull-requests/]
   prs: [everruns/everruns#4541, everruns/everruns#4546]

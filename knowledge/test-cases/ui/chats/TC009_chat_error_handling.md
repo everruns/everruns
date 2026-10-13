@@ -16,7 +16,7 @@ Verify that global chat handles error cases gracefully: running a nonexistent ag
 
 ## Preconditions
 
-- Server running (`just start-dev`)
+- Canonical stack running (see root `AGENTS.md`)
 - User logged in
 - LLM API keys configured
 

@@ -204,7 +204,9 @@ cancellation, questions and approvals. A session is reachable only under its
 own agent's URL. This is the API an Everruns agent exposes through an API
 channel, so code written against one agent works against either host.
 Every SDK's `AgentClient` calls this API; see the
-[tutorial](/framework/serve-tutorial/#6-call-it-from-code).
+[tutorial](/framework/serve-tutorial/#6-call-it-from-code). The
+[Agent API](/features/agent-api/) reference documents the routes and shapes,
+and [what differs on serve](/features/agent-api/#the-same-api-on-serve).
 
 ### Authentication
 

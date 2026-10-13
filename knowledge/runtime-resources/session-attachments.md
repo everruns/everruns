@@ -188,28 +188,39 @@ the shell.
 
 ### 2. One intake path for every surface
 
-A core `AttachmentIntake` in the channel runtime turns whatever a surface
-received into stored attachments plus reference parts. Its input is bytes, a
-`data:` URL, or a URL with an optional channel fetcher.
+The channel host's attachment intake
+([`attachments.rs`](../../crates/core/src/channel_runtime/attachments.rs))
+turns whatever a surface received into stored attachments. A channel hands it
+each file as bytes or as a URL to download; the host's session port stores it
+(the server makes it an org upload, which message creation then copies into
+`/attachments`). Surfaces that are not channels use the same
+`AttachmentIntake` with their own store: the execution API and the MCP tools
+store files as uploads of the caller's org
+([`intake.rs`](../../crates/server/src/domains/messages/intake.rs)).
 
-- **Channel fetchers** download files that need the channel's own credential,
-  such as Slack `url_private` with the bot token (`files:read` scope).
-- **Public URLs** are fetched by Everruns, not handed to the provider:
-  `https` only, through the existing safe-URL validation, 30 second timeout.
-- **Policy** per channel with defaults: 25 MiB per file, 10 files per message,
-  allowed media types. The media type is checked against the bytes; a file
-  whose bytes contradict a declared image or PDF type is stored as
-  `application/octet-stream` and sent as a label only.
-- **Failures become notes.** A file that cannot be stored becomes a text part
+- **Downloads** go through the host's egress service, scoped to the channel's
+  org: `https` only, DNS-pinned, 30 second timeout, at most 3 redirects, the
+  body counted while it streams. A channel credential (Slack's bot token for
+  `url_private_download`, which needs `files:read`) is sent only to its own
+  host, never to wherever a redirect points.
+- **Policy**: 25 MiB per file and 10 files per message by default
+  (`AttachmentPolicy`, set per host; per-channel policy and Public Chat's
+  stricter one come with those surfaces). The media type is checked against
+  the bytes: a declared image, PDF or zip type the bytes contradict is stored
+  as `application/octet-stream` and sent as a label only.
+- **Failures become notes.** A file that cannot be taken becomes a text part
   such as `[Attachment report.pdf not received: 40 MB is over the 25 MB
   limit]`. Operators see the underlying error in logs.
+- A host without egress or file storage (Framework defaults) keeps images
+  inline and notes other files.
 
 | Surface | Change |
 |---|---|
-| Slack (server and embedded) | Every file in the triggering message goes through the Slack fetcher. Remote files (Google Drive and similar) keep their link in the text. |
-| AG-UI, Public Chat | Inline binary, image and document input parts go through intake instead of `to_text()`; `imageIds` keeps working. Public Chat uses a stricter default policy. |
-| A2A, PACT | `FilePart` with bytes or URI goes through intake. |
-| Agent execution API, MCP `session_send_message`, serve | Accept file parts like REST messages. |
+| Slack (server) | Done: every file in the triggering message is downloaded with the bot token. Remote files (Google Drive and similar) keep their link in the text. Embedded Slack still describes files by name. |
+| AG-UI, Public Chat | Done: image, audio, video and document parts of the trigger message go through intake (inline data, `data:` URLs, downloads); a provider file handle is described by its id; `imageIds` keeps working. Public Chat uses the default policy; a stricter one is not built. |
+| A2A | Done: 0.3 `file` parts and 1.0 `raw` / `url` parts go through intake. PACT still takes text only. |
+| Agent execution API, MCP `agent_run` / `session_send_message` | Done: a `files` list (base64 `data` or `url` per file) goes through intake. Upload ids are refused on the execution API, since a caller has no upload route and ids are scoped to the org. The card advertises images and files. |
+| serve | Not done: serve sends text only end to end, so files there need its own session storage first. |
 | Webhook, Poppy, voice | Unchanged; they carry no files today. |
 
 ### 3. Every attachment carries a label

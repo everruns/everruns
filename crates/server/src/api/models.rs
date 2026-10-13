@@ -272,6 +272,8 @@ pub async fn model_config(
     Json(ResourceConfigResponse { policies })
 }
 
+/// Get the default model for a new draft
+///
 /// Resolve the default for empty drafts without persisting a session.
 #[utoipa::path(get, path = "/v1/models/default", responses(
     (status = 200, description = "Effective organization default, or null when unavailable", body = Option<ModelWithProvider>),

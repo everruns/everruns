@@ -26,12 +26,16 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use crate::github_installation_token::InstallationToken;
 use crate::storage::EncryptionService;
 
 /// Connection provider an agent App's installation is stored under.
 pub const GITHUB_PROVIDER: &str = "github";
 /// Connection type of an agent App's installation.
 pub const GITHUB_APP_CONNECTION_TYPE: &str = "github_app";
+/// Connection type of a shared Everruns App installation an org admin linked,
+/// on the org's link row and on every agent row that chose it (D3).
+pub const EVERRUNS_APP_CONNECTION_TYPE: &str = "everruns_app";
 
 /// How long a started connect flow stays valid.
 const SETUP_STATE_TTL_SECONDS: i64 = 60 * 60;
@@ -552,10 +556,18 @@ impl GitHubAppApi {
         installation_id: i64,
         scope: &TokenScope,
     ) -> Result<String> {
-        #[derive(Deserialize)]
-        struct Token {
-            token: String,
-        }
+        Ok(self
+            .mint_scoped_installation_credential(credentials, installation_id, scope)
+            .await?
+            .token)
+    }
+
+    pub(crate) async fn mint_scoped_installation_credential(
+        &self,
+        credentials: &AppCredentials,
+        installation_id: i64,
+        scope: &TokenScope,
+    ) -> Result<InstallationToken> {
         let jwt = Self::app_jwt(credentials)?;
         let response = self
             .request(
@@ -567,8 +579,7 @@ impl GitHubAppApi {
             .send()
             .await
             .context("GitHub installation token request failed")?;
-        let token: Token = read_json(response, "minting installation token").await?;
-        Ok(token.token)
+        read_json(response, "minting installation token").await
     }
 
     /// Repositories an installation can access (up to 300).
@@ -638,6 +649,9 @@ pub struct GitHubAppContext {
     pub api_base_url: String,
     /// Public UI origin; where the browser returns when a flow ends.
     pub frontend_url: String,
+    /// Slug of the deployment's shared Everruns App (`GITHUB_APP_SLUG`), when
+    /// one is configured. An agent acting as it shows up as `<slug>[bot]`.
+    pub shared_app_slug: Option<String>,
 }
 
 impl GitHubAppContext {
@@ -648,14 +662,20 @@ impl GitHubAppContext {
                 api: GitHubAppApi::new(GitHubEndpoints::from_env()),
                 api_base_url: crate::auth::AuthConfig::api_base_url_from_env(),
                 frontend_url: crate::auth::AuthConfig::frontend_url_from_env(),
+                shared_app_slug: None,
             });
         DEFAULT.clone()
     }
 
-    /// The same client with the public URLs of one auth config.
-    pub fn with_public_urls(mut self, api_base_url: &str, frontend_url: &str) -> Self {
-        self.api_base_url = api_base_url.to_string();
-        self.frontend_url = frontend_url.to_string();
+    /// The same client with the public URLs and shared App of one auth config.
+    pub fn with_auth_config(mut self, config: &crate::auth::AuthConfig) -> Self {
+        self.api_base_url = config.base_url.clone();
+        self.frontend_url = config.frontend_url.clone();
+        self.shared_app_slug = config
+            .github_connection
+            .as_ref()
+            .map(|shared| shared.app_slug.clone())
+            .filter(|slug| !slug.is_empty());
         self
     }
 }

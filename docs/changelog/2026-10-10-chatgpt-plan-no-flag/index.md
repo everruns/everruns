@@ -6,6 +6,7 @@ kind: improvement
 significance: notable
 products: [platform, cloud]
 surfaces: [ui]
+release: "0.48.0"
 links:
   docs: [/features/chatgpt/]
   prs: [everruns/everruns#4329, everruns/everruns#4547]

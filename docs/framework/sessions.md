@@ -327,8 +327,9 @@ without an end. After resuming, `resumed.interrupted_turn()` reports such a
 turn and the tool calls it had not finished, and
 `resumed.resume_interrupted_turn()` continues it in the same turn. A call runs
 again only when that is safe: it waited on a person, which asks the approver
-or `ask_user` responder again under the same tool call id, or its tool is
-marked `FunctionTool::idempotent()`. Any other unfinished call is recorded as
+or `ask_user` responder again under the same tool call id, its tool is
+marked `FunctionTool::idempotent()`, or it never started (the log has no
+`tool.started` for it). Any other unfinished call is recorded as
 interrupted (listed in `not_rerun`), so the model learns its outcome is
 unknown and nothing runs twice. A turn cut off between steps reasons again.
 

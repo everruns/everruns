@@ -1,60 +1,59 @@
 # UI test cases
 
-* [Admin login](admin_login/) - 3 manual UI cases.
-* [Agent avatars](agent_avatars/) - 1 manual UI case.
-* [Agent chat](agent_chat/) - 2 manual UI cases.
-* [Agent checks](agent_checks/) - 2 manual UI cases.
-* [Agent credentials](agent_credentials/) - 1 manual UI case.
-* [Virtual users](agent_identities/) - 3 manual UI cases.
-* [Agent integrations](agent_integrations/) - 2 manual UI cases.
-* [Agent packages](agent_packages/) - 1 manual UI case.
-* [Agent MCP attachments](agent_mcp_attachments/) - 1 manual UI case.
-* [Agent triggers](agent_triggers/) - 1 manual UI case.
-* [ARD discovery](ard_discovery/) - 1 manual UI case.
-* [Ask user](ask_user/) - 3 manual UI cases.
-* [Capabilities](capabilities/) - 2 manual UI cases.
-* [Chat commands](chat_commands/) - 1 manual UI case.
-* [Chats](chats/) - 17 manual UI cases.
-* [Container sandbox](container_sandbox/) - 1 manual UI case.
-* [Cross org resolution](cross_org_resolution/) - 1 manual UI case.
-* [Cursor connection](cursor_connection/) - 1 manual UI case.
-* [TypeSafe connection](typesafe_connection/) - 1 manual UI case.
-* [Daytona connection](daytona_connection/) - 1 manual UI case.
-* [Deno connection](deno_connection/) - 1 manual UI case.
-* [Modal connection](modal_connection/) - 1 manual UI case.
-* [Durable operations](durable_operations/) - 4 manual UI cases.
-* [Entity identity](entity_identity/) - 1 manual UI case.
-* [Evals](evals/) - 7 manual UI cases.
-* [Features](features/) - 1 manual UI case.
-* [Full auth](full_auth/) - 11 manual UI cases.
-* [Global search](global_search/) - 1 manual UI case.
-* [Harnesses](harnesses/) - 2 manual UI cases.
-* [Images](images/) - 6 manual UI cases.
-* [Knowledge indexes](knowledge_indexes/) - 3 manual UI cases.
-* [Machine payments](machine_payments/) - 2 manual UI cases.
-* [MCP servers](mcp_servers/) - 10 manual UI cases.
-* [Memory](memory/) - 7 manual UI cases.
-* [Models](models/) - 2 manual UI cases.
-* [Navigation icons](navigation_icons/) - 1 manual UI case.
-* [Navigation prefetch](navigation_prefetch/) - 1 manual UI case.
-* [Observers](observers/) - 1 manual UI case.
-* [Org creation](org_creation/) - 6 manual UI cases.
-* [Organization settings](organization_settings/) - 1 manual UI case.
-* [Page layout](page_layout/) - 2 manual UI cases.
-* [Personal access tokens](personal_access_tokens/) - 1 manual UI case.
-* [Playground](playground/) - 1 manual UI case.
-* [Plugins](plugins/) - 3 manual UI cases.
-* [Sandbox provider accounts](sandbox_provider_accounts/) - 1 manual UI case.
-* [Reports](reports/) - 1 manual UI case.
-* [Scheduled tasks](scheduled_tasks/) - 4 manual UI cases.
-* [Session participants](session_participants/) - 2 manual UI cases.
-* [Session sandbox](session_sandbox/) - 1 manual UI case.
-* [Session cost](session_cost/) - 1 manual UI case.
-* [Session files](session_files/) - 1 manual UI case.
-* [Session storage](session_storage/) - 1 manual UI case.
-* [Session work](session_work/) - 1 manual UI case.
-* [Sessions](sessions/) - 2 manual UI cases.
-* [Sidebar footer](sidebar_footer/) - 1 manual UI case.
-* [Skills](skills/) - 1 manual UI case.
-* [Tag editor](tag_editor/) - 1 manual UI case.
-* [Webmcp](webmcp/) - 1 manual UI case.
+* [Admin login](admin_login/) - Manual UI cases.
+* [Agent avatars](agent_avatars/) - Manual UI cases.
+* [Agent chat](agent_chat/) - Manual UI cases.
+* [Agent checks](agent_checks/) - Manual UI cases.
+* [Agent credentials](agent_credentials/) - Manual UI cases.
+* [Virtual users](agent_identities/) - Manual UI cases.
+* [Agent integrations](agent_integrations/) - Manual UI cases.
+* [Agent packages](agent_packages/) - Manual UI cases.
+* [Agent MCP attachments](agent_mcp_attachments/) - Manual UI cases.
+* [Agent triggers](agent_triggers/) - Manual UI cases.
+* [ARD discovery](ard_discovery/) - Manual UI cases.
+* [Ask user](ask_user/) - Manual UI cases.
+* [Capabilities](capabilities/) - Manual UI cases.
+* [Chat commands](chat_commands/) - Manual UI cases.
+* [Chats](chats/) - Manual UI cases.
+* [Container sandbox](container_sandbox/) - Manual UI cases.
+* [Cross org resolution](cross_org_resolution/) - Manual UI cases.
+* [Cursor connection](cursor_connection/) - Manual UI cases.
+* [TypeSafe connection](typesafe_connection/) - Manual UI cases.
+* [Daytona connection](daytona_connection/) - Manual UI cases.
+* [Deno connection](deno_connection/) - Manual UI cases.
+* [Modal connection](modal_connection/) - Manual UI cases.
+* [Durable operations](durable_operations/) - Manual UI cases.
+* [Entity identity](entity_identity/) - Manual UI cases.
+* [Evals](evals/) - Manual UI cases.
+* [Features](features/) - Manual UI cases.
+* [Full auth](full_auth/) - Manual UI cases.
+* [Global search](global_search/) - Manual UI cases.
+* [Harnesses](harnesses/) - Manual UI cases.
+* [Images](images/) - Manual UI cases.
+* [Knowledge indexes](knowledge_indexes/) - Manual UI cases.
+* [Machine payments](machine_payments/) - Manual UI cases.
+* [MCP servers](mcp_servers/) - Manual UI cases.
+* [Memory](memory/) - Manual UI cases.
+* [Models](models/) - Manual UI cases.
+* [Navigation icons](navigation_icons/) - Manual UI cases.
+* [Navigation prefetch](navigation_prefetch/) - Manual UI cases.
+* [Observers](observers/) - Manual UI cases.
+* [Org creation](org_creation/) - Manual UI cases.
+* [Organization settings](organization_settings/) - Manual UI cases.
+* [Page layout](page_layout/) - Manual UI cases.
+* [Personal access tokens](personal_access_tokens/) - Manual UI cases.
+* [Playground](playground/) - Manual UI cases.
+* [Plugins](plugins/) - Manual UI cases.
+* [Sandbox provider accounts](sandbox_provider_accounts/) - Manual UI cases.
+* [Reports](reports/) - Manual UI cases.
+* [Scheduled tasks](scheduled_tasks/) - Manual UI cases.
+* [Session participants](session_participants/) - Manual UI cases.
+* [Session sandbox](session_sandbox/) - Manual UI cases.
+* [Session cost](session_cost/) - Manual UI cases.
+* [Session files](session_files/) - Manual UI cases.
+* [Session work](session_work/) - Manual UI cases.
+* [Sessions](sessions/) - Manual UI cases.
+* [Sidebar footer](sidebar_footer/) - Manual UI cases.
+* [Skills](skills/) - Manual UI cases.
+* [Tag editor](tag_editor/) - Manual UI cases.
+* [Webmcp](webmcp/) - Manual UI cases.

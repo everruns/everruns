@@ -19,12 +19,17 @@
 use everruns_contracts::runtime::channel::*;
 
 mod approval;
+mod attachments;
 mod delivery;
 mod host;
 mod progress;
 mod store;
 
 pub use approval::{REQUEST_APPROVAL_TOOL, approval_prompt};
+pub use attachments::{
+    AttachmentIntake, AttachmentPolicy, AttachmentStore, DOWNLOAD_TIMEOUT, MAX_DOWNLOAD_REDIRECTS,
+    ReceivedAttachment, not_received_note,
+};
 
 pub use delivery::{
     DeliveryEvent, DeliveryOptions, DeliveryStep, STREAM_FLUSH_CHARS, TurnDelivery,

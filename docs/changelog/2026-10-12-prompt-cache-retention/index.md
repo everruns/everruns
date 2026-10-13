@@ -6,6 +6,7 @@ kind: improvement
 significance: minor
 products: [platform, cloud, framework]
 surfaces: [agent, code]
+release: "0.48.0"
 links:
   docs: [/capabilities/prompt-caching/]
   prs: [everruns/everruns#4593]

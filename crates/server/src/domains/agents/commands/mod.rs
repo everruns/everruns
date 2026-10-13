@@ -170,6 +170,9 @@ impl Command for CreateAgent {
                     .map(|na| serde_json::to_value(na).unwrap_or_default()),
                 max_iterations: max_iterations::to_db(req.max_iterations)?,
                 parallel_tool_calls: req.parallel_tool_calls,
+                max_output_tokens: crate::domains::agents::max_output_tokens::to_db(
+                    req.max_output_tokens,
+                ),
                 communication: req.communication,
                 environments: sandbox_templates::to_json(req.sandbox_policy.as_ref()),
                 // Built-in agents come from the platform definition via org
@@ -203,6 +206,9 @@ impl Command for CreateAgent {
                     .map(|na| serde_json::to_value(na).unwrap_or_default()),
                 max_iterations: max_iterations::to_db(req.max_iterations)?,
                 parallel_tool_calls: req.parallel_tool_calls,
+                max_output_tokens: crate::domains::agents::max_output_tokens::to_db(
+                    req.max_output_tokens,
+                ),
                 communication: req.communication,
                 environments: sandbox_templates::to_json(req.sandbox_policy.as_ref()),
                 // Built-in agents come from the platform definition via org
@@ -346,7 +352,7 @@ pub struct UpdateAgentCmd {
     path = "/v1/agents/{id}",
     policy = AGENT_MANAGE,
     positional = "id",
-    cli = CliRoute::new(&["agents"], "update").with_args(&[CliArg::new("id").at(1), CliArg::new("harness_name").short('H').long("harness"), CliArg::new("tag").short('t'),]).with_examples(&[CliExample::new("Rename an agent, leaving the rest of it alone", "everruns agents update agent_01h9 --name triage-v2 --reason 'Rename after the triage split'",)]),
+    cli = CliRoute::new(&["agents"], "update").with_args(&[CliArg::new("id").at(1), CliArg::new("harness_name").short('H').long("harness"), CliArg::new("tag").short('t'),]).with_examples(&[CliExample::new("Rename an agent, leaving the rest of it alone", "everruns agents update agent_01h9 --name triage-v2 --reason 'Rename after the triage split'",), CliExample::new("Cap each model response so calls fit a low provider balance", "everruns agents update agent_01h9 --max-output-tokens 4096 --reason 'Provider said it can only afford fewer tokens'",)]),
 )]
 impl Command for UpdateAgentCmd {
     type Output = Agent;
@@ -503,6 +509,9 @@ impl Command for UpdateAgentCmd {
                 .network_access
                 .map(|na| Some(serde_json::to_value(na).unwrap_or_default())),
             parallel_tool_calls: req.parallel_tool_calls.map(Some),
+            max_output_tokens: crate::domains::agents::max_output_tokens::update_to_db(
+                req.max_output_tokens,
+            ),
             communication: req.communication,
             environments: sandbox_templates::update_to_json(req.sandbox_policy),
             ..Default::default()
@@ -686,6 +695,9 @@ impl Command for UpsertAgent {
             mcp_servers: serde_json::to_value(&req.mcp_servers).unwrap_or_default(),
             max_iterations: max_iterations::to_db(req.max_iterations)?,
             parallel_tool_calls: req.parallel_tool_calls,
+            max_output_tokens: crate::domains::agents::max_output_tokens::to_db(
+                req.max_output_tokens,
+            ),
             communication: req.communication,
             environments: sandbox_templates::to_json(req.sandbox_policy.as_ref()),
             network_access: req
@@ -778,6 +790,7 @@ impl Command for CopyAgent {
             network_access: None,
             max_iterations: source.max_iterations,
             parallel_tool_calls: source.parallel_tool_calls,
+            max_output_tokens: source.max_output_tokens,
             communication: source.communication,
         };
 

@@ -16,7 +16,7 @@ Verify that global chat supports multi-turn conversation for agent management: c
 
 ## Preconditions
 
-- Server running (`just start-dev`)
+- Canonical stack running (see root `AGENTS.md`)
 - User logged in
 - LLM API keys configured
 

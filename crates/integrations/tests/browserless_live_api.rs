@@ -93,6 +93,51 @@ async fn live_function() {
 }
 
 // ============================================================================
+// Connection verify live tests
+// ============================================================================
+
+#[tokio::test]
+async fn live_connection_validate_accepts_valid_token() {
+    use everruns_contracts::connector::Connector;
+    let connector = everruns_integrations::browserless::connection::BrowserlessConnector;
+    connector
+        .validate(&api_token())
+        .await
+        .expect("A valid token should pass both the REST and CDP probes");
+}
+
+#[tokio::test]
+async fn live_connection_validate_rejects_bogus_token() {
+    use everruns_contracts::connector::Connector;
+    let connector = everruns_integrations::browserless::connection::BrowserlessConnector;
+    let err = connector
+        .validate("not-a-real-browserless-token")
+        .await
+        .expect_err("A bogus token should be rejected");
+    assert!(err.contains("Invalid API token"), "{err}");
+}
+
+#[tokio::test]
+async fn live_cdp_path_plain_get_status_is_classified_as_accepted() {
+    // Pins the Browserless behavior the verify probe relies on (EVERRUNS-2R):
+    // a valid token on GET /chromium yields 400 or 404 (WS-only route), never 401/403.
+    let status = reqwest::Client::new()
+        .get(format!(
+            "https://production-sfo.browserless.io/chromium?token={}",
+            api_token()
+        ))
+        .send()
+        .await
+        .expect("CDP path should be reachable")
+        .status()
+        .as_u16();
+    assert!(
+        matches!(status, 400 | 404),
+        "unexpected GET /chromium status {status}"
+    );
+}
+
+// ============================================================================
 // CDP session live tests
 // ============================================================================
 

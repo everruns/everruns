@@ -6,6 +6,7 @@ kind: improvement
 significance: minor
 products: [platform, cloud, cli]
 surfaces: [ui, api, cli]
+release: "0.48.0"
 links:
   docs: [/how-to/summarize-github-pull-requests/]
   prs: [everruns/everruns#4579, everruns/everruns#4592]

@@ -588,6 +588,7 @@ async fn seed_agent(ctx: &Ctx, name: &str) -> AgentId {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
                 communication: Default::default(),
                 environments: None,
                 is_built_in: false,
@@ -808,6 +809,8 @@ const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
     // github_apps table, never the agents row; same ground as a credential.
     "connect_agent_github",
     "disconnect_agent_github",
+    // Choosing the org-linked Everruns App writes the same identity connection.
+    "use_agent_everruns_app",
     // Operational probe. Runs the agent to report health; changes no definition.
     "trigger_agent_health_check",
     // Produces an analysis report. Non-read-only only because it spends utility

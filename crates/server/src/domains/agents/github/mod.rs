@@ -25,9 +25,9 @@ use crate::domains::common::*;
 use crate::domains::virtual_users::VIRTUAL_USER_MANAGE;
 use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
 use crate::github_apps::{
-    GITHUB_APP_CONNECTION_TYPE, GITHUB_PROVIDER, GitHubAppApi, GitHubAppContext, ManifestInput,
-    SetupState, app_credentials, app_settings_url, build_manifest, default_app_name, install_url,
-    manifest_form_action, missing_permissions,
+    EVERRUNS_APP_CONNECTION_TYPE, GITHUB_APP_CONNECTION_TYPE, GITHUB_PROVIDER, GitHubAppApi,
+    GitHubAppContext, ManifestInput, SetupState, app_credentials, app_settings_url, build_manifest,
+    default_app_name, install_url, manifest_form_action, missing_permissions,
 };
 use crate::kernel_imports::contracts::typed_id::VirtualUserId;
 use crate::storage::connection_resolver::GitHubIdentityKind;
@@ -42,7 +42,8 @@ use crate::storage::{AgentRow, EncryptionService, StorageBackend};
 pub struct AgentGitHubStatus {
     /// The agent's identity, once it has one; disconnect goes through it.
     pub identity_id: Option<String>,
-    /// An installation is bound, so tools and triggers work.
+    /// An installation is bound, so tools and triggers work: the agent's own
+    /// App's, or a shared Everruns App installation the agent chose.
     pub connected: bool,
     /// The App exists. Without `connected` it was never installed, or its
     /// installation was removed.
@@ -52,8 +53,9 @@ pub struct AgentGitHubStatus {
     /// Which GitHub identity the agent acts as: `agent_app` (its own App) or
     /// `everruns_app` (the shared Everruns App). `None` before either exists.
     pub kind: Option<String>,
-    /// The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`.
-    /// Known for an agent's own App; `None` otherwise.
+    /// The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`, or the
+    /// shared App's (`everruns[bot]`) when the agent chose it and the
+    /// deployment names its slug; `None` otherwise.
     pub bot_login: Option<String>,
     /// The App's settings page on GitHub, where its logo is uploaded
     /// (GitHub has no API for that). `None` when the owner's account kind is
@@ -72,6 +74,10 @@ pub struct AgentGitHubStatus {
     /// connections and owners of its other agents' Apps. Organizations first,
     /// then users, then accounts of unknown kind; by login within each.
     pub suggested_owners: Vec<GitHubOwnerSuggestion>,
+    /// Shared Everruns App installations an org admin linked, which this agent
+    /// can choose instead of an App of its own (D3). Empty when none is linked
+    /// or the deployment has no shared App.
+    pub everruns_app_installations: Vec<EverrunsAppInstallation>,
 }
 
 /// A GitHub account a new App could be created in.
@@ -168,12 +174,15 @@ pub(crate) async fn status_for_agent(
     db: &StorageBackend,
     org_id: i64,
     agent: &AgentRow,
-    web_url: &str,
+    github: &GitHubAppContext,
 ) -> Result<AgentGitHubStatus, CommandError> {
+    let web_url = &github.api.endpoints().web_url;
     let suggested_owners = suggested_owners(db, org_id).await?;
+    let everruns_app_installations = choosable_installations(db, github, org_id).await?;
     let Some(identity_id) = agent.virtual_user_id else {
         return Ok(AgentGitHubStatus {
             suggested_owners,
+            everruns_app_installations,
             ..AgentGitHubStatus::default()
         });
     };
@@ -188,8 +197,25 @@ pub(crate) async fn status_for_agent(
         Some(GitHubIdentityKind::EverrunsApp) => Some(EVERRUNS_APP_KIND),
         Some(GitHubIdentityKind::Person) | None => app.as_ref().map(|_| AGENT_APP_KIND),
     };
-    let connection = any_connection.filter(|c| c.connection_type == GITHUB_APP_CONNECTION_TYPE);
+    // Connected means an installation the agent acts through: its own App's,
+    // or a shared App link it chose. A pre-D3 shared App row (`oauth`) on an
+    // agent is reported by kind but not as connected; 3b migrates those.
+    let connection = any_connection.filter(|c| {
+        c.connection_type == GITHUB_APP_CONNECTION_TYPE
+            || c.connection_type == EVERRUNS_APP_CONNECTION_TYPE
+    });
+    let chose_everruns_app = connection
+        .as_ref()
+        .is_some_and(|c| c.connection_type == EVERRUNS_APP_CONNECTION_TYPE);
     let own_app = app.as_ref().filter(|_| kind == Some(AGENT_APP_KIND));
+    let bot_login = match own_app {
+        Some(app) => Some(format!("{}[bot]", app.slug)),
+        None if chose_everruns_app => github
+            .shared_app_slug
+            .as_ref()
+            .map(|slug| format!("{slug}[bot]")),
+        None => None,
+    };
     let app_settings_url = own_app.and_then(|app| {
         let owner = app.owner_login.as_deref()?;
         let owner_kind = suggested_owners
@@ -217,15 +243,19 @@ pub(crate) async fn status_for_agent(
         app_slug: app.as_ref().map(|app| app.slug.clone()),
         app_url: app.as_ref().map(|app| app.html_url.clone()),
         kind: kind.map(str::to_string),
-        bot_login: own_app.map(|app| format!("{}[bot]", app.slug)),
+        bot_login,
         app_settings_url,
+        // Compared with what new agent Apps request; the shared App's
+        // permissions are the deployment's, not the agent's to change.
         missing_permissions: connection
             .as_ref()
+            .filter(|_| !chose_everruns_app)
             .map(|c| missing_permissions(c.scopes.as_deref()))
             .unwrap_or_default(),
         account: connection.and_then(|c| c.provider_username),
         repository_selection,
         suggested_owners,
+        everruns_app_installations,
     })
 }
 
@@ -339,10 +369,13 @@ pub(crate) async fn disconnect_identity(
         .await?;
     let app = db.get_github_app_for_identity(org_id, identity_id).await?;
 
-    if let (Some(app), Some(installation_id)) = (
-        app.as_ref(),
-        connection.as_ref().and_then(|c| c.installation_id),
-    ) {
+    // Only the agent's own App's installation is uninstalled. A shared App
+    // installation belongs to the org link and stays installed on GitHub.
+    let own_installation = connection
+        .as_ref()
+        .filter(|c| GitHubIdentityKind::of(c) == GitHubIdentityKind::AgentApp)
+        .and_then(|c| c.installation_id);
+    if let (Some(app), Some(installation_id)) = (app.as_ref(), own_installation) {
         match app_credentials(encryption, app) {
             Ok(credentials) => {
                 if let Err(err) = github
@@ -394,6 +427,7 @@ pub struct GetAgentGitHub {
     name = "get_agent_github",
     category = "agents",
     description = "Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks.",
+    summary = "Get an agent's GitHub App status",
     method = "GET",
     path = "/v1/agents/{agent_id}/github",
     policy = AGENT_VIEW,
@@ -406,8 +440,7 @@ impl Command for GetAgentGitHub {
 
     async fn execute(self, ctx: &Ctx) -> Result<AgentGitHubStatus, CommandError> {
         let agent = load_agent(ctx, &self.agent_id).await?;
-        let web_url = &ctx.github_apps.api.endpoints().web_url;
-        status_for_agent(&ctx.db, ctx.org_id(), &agent, web_url).await
+        status_for_agent(&ctx.db, ctx.org_id(), &agent, &ctx.github_apps).await
     }
 }
 
@@ -428,6 +461,7 @@ pub struct ConnectAgentGitHub {
     name = "connect_agent_github",
     category = "agents",
     description = "Start connecting an agent to GitHub through its own GitHub App. Returns `install` with a URL to open in a browser when the App exists, or `create_app` when GitHub must first create it, which needs the web UI (Agent > Integrations > Connect GitHub).",
+    summary = "Connect an agent to GitHub through its own App",
     method = "POST",
     path = "/v1/agents/{agent_id}/github/connect",
     policy = VIRTUAL_USER_MANAGE,
@@ -476,6 +510,7 @@ pub struct DisconnectAgentGitHub {
     name = "disconnect_agent_github",
     category = "agents",
     description = "Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. When the App was never installed, forget it instead, so the next connect creates a new one (for example in a GitHub organization).",
+    summary = "Disconnect an agent from GitHub",
     method = "DELETE",
     path = "/v1/agents/{agent_id}/github",
     policy = VIRTUAL_USER_MANAGE,
@@ -506,5 +541,14 @@ impl Command for DisconnectAgentGitHub {
     }
 }
 
+mod everruns_app;
+use everruns_app::choosable_installations;
+pub use everruns_app::{
+    AGENT_GITHUB_IDENTITY_MANAGE, EverrunsAppInstallation, UseAgentEverrunsApp,
+    UseEverrunsAppRequest,
+};
+
+#[cfg(test)]
+mod everruns_app_tests;
 #[cfg(test)]
 mod tests;

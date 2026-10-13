@@ -122,6 +122,7 @@ pub(crate) fn make_tool(
 pub(crate) fn auth_test_config() -> LlmCallConfig {
     LlmCallConfig {
         tool_baseline: None,
+        system_prompt_baseline: None,
         speed: None,
         verbosity: None,
         model: "gpt-5.4".to_string(),
