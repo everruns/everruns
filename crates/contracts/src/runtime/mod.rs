@@ -39,6 +39,7 @@ pub mod execution_features;
 pub mod execution_loading;
 pub mod feature_flag_grade;
 pub mod finalized_tool_calls;
+mod github_credential;
 pub mod harness_definition;
 pub mod hook_executor;
 pub mod image_services;
@@ -182,6 +183,7 @@ pub use self::feature_flag_grade::{FeatureFlagDefinition, FeatureFlagGrade};
 pub use self::finalized_tool_calls::{
     FinalizedToolCallRejection, FinalizedToolCallsContext, FinalizedToolCallsHook,
 };
+pub use self::github_credential::GitHubInstallationScope;
 pub use self::harness_definition::HarnessDefinition;
 pub use self::image_services::{ImageResolver, ResolvedImage};
 pub use self::leased_resource::{

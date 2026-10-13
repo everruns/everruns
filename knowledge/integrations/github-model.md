@@ -304,7 +304,14 @@ Each step is one PR unless noted, and leaves everything working.
    asks for `contents: read, pull_requests: read` on the pull request's
    repository and passes the token through the `SandboxWorkspace` tool-context
    extension (`exec_with_secret_file`), which the worker installs when the
-   session has `session_sandbox`. Pushing from the sandbox stays with step 6.
+   session has `session_sandbox`. Sandbox delivery additionally requires scope
+   evidence from the authenticated installation mint response, preserved across
+   the worker boundary. The checkout admission contract verifies repository,
+   read-only permissions and a remaining lifetime of at most one hour; personal
+   tokens, session-secret fallbacks and legacy responses without evidence are
+   refused. See [admission](../../crates/contracts/src/runtime/github_credential.rs)
+   and [checkout](../../crates/integrations/src/github/checkout.rs).
+   Pushing from the sandbox stays with step 6.
 2. **GitHub section on the agent page** (D7), name rules and avatar step (D2).
    Coordinate with the Yolop PR Reviewer thread's org picker, which lands first.
    Done: the agent's Integrations tab has a **GitHub** section between Channels
