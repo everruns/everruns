@@ -11,6 +11,32 @@ that need no code changes are not listed. For every release, see the
 
 ## 0.48
 
+### Durable turns option removed
+
+The experimental `durable` feature of the `everruns` crate and
+`everruns::durable::Backend` are removed, with no replacement flag. Every
+`Engine` session now runs as an actor that holds the session's lease while a
+turn runs, and durability comes from the session's event log: with
+`LocalConfig` a turn a restart cut off resumes from the log. Drop
+`durable` from the crate's features and the `.backend(durable::Backend::...)`
+call from `Engine::builder()`. See [Sessions](/framework/sessions/#one-process-runs-a-session-at-a-time).
+
+```toml
+# Before
+everruns = { version = "0.47", features = ["durable"] }
+# After
+everruns = { version = "0.48", features = ["local"] }
+```
+
+### Durable crates
+
+- `everruns-durable` no longer has a `workflows` feature: `Workflow`,
+  `Activity`, `WorkflowExecutor`, timers and child workflows are removed. The
+  task queue, event log, schedules, retries, dead letter queue and circuit
+  breakers stay. Remove `features = ["workflows"]`.
+- `everruns-durable-engine` is retired with no new home. Its published
+  versions remain usable.
+
 ### Harness tree
 
 The built-in harnesses form a tree by use case instead of one chain. Base

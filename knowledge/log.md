@@ -2,6 +2,12 @@
 
 ## 2026-10-13
 
+* **Actor-based design: the old turn model is a dismissed option.** Dismissed
+  Options records turns as queued, checkpointed steps (`everruns-durable-engine`,
+  the facade `durable` feature) with why session actors replaced it, and Load
+  Testing's AG-UI latency notes name the actor pickup instead of the deleted turn
+  workflow logs. See [Dismissed Options](project/dismissed-options.md) and
+  [Load Testing](operations/load-testing.md).
 * **Web search providers eval.** `evals/web-search-providers` grades every
   provider's results for 59 agent-style queries through the shipped drivers.
   Ceramic answers 49% (none time-sensitive) and is ruled out as the hosted
