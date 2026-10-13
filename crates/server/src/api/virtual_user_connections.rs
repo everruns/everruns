@@ -28,6 +28,8 @@ pub struct AppState {
     pub encryption: Option<Arc<EncryptionService>>,
     pub auth: AuthState,
     pub connectors: ConnectorRegistry,
+    /// The deployment's own web search, listed by `/v1/search-providers`.
+    pub hosted_web_search: Option<everruns_integrations::web_search::HostedWebSearch>,
 }
 
 impl AppState {
@@ -42,7 +44,16 @@ impl AppState {
             encryption,
             auth,
             connectors,
+            hosted_web_search: None,
         }
+    }
+
+    pub fn with_hosted_web_search(
+        mut self,
+        hosted: Option<everruns_integrations::web_search::HostedWebSearch>,
+    ) -> Self {
+        self.hosted_web_search = hosted;
+        self
     }
 }
 
