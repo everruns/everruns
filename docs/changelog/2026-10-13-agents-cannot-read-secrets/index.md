@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [api]
 links:
   docs: [/capabilities/session-storage/, /capabilities/bashkit-shell/#api-keys-the-agent-never-sees]
-  prs: [everruns/everruns#PR]
+  prs: [everruns/everruns#4676]
 ---
 
 Secrets an agent stores with `secret_store` are now write-only. The agent can
