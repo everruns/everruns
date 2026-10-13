@@ -98,8 +98,17 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             &replaced,
         )
         .then_some(super::tool_changes::InlineToolChanges { hosted_search });
+        // Inline mode sends the epoch's system prompt too; prompt text added
+        // since rides in the changes' notes.
+        let sent = crate::tool_changes::with_system_prompt(
+            &messages,
+            config
+                .system_prompt_baseline
+                .as_deref()
+                .filter(|_| inline_tool_changes.is_some()),
+        );
         let (instructions, transcript_input_items) =
-            Self::build_input_with_changes(&messages, supports_phases, inline_tool_changes);
+            Self::build_input_with_changes(&sent, supports_phases, inline_tool_changes);
         let computer_call_ids = if native_computer.is_some() {
             super::computer::computer_call_ids(&transcript_input_items)
         } else {

@@ -15,13 +15,20 @@
 //! as their tool list and the transitions inline; the others ignore both, since
 //! `tools` still carries the wanted set. The baseline is offered only when every
 //! change of the epoch reaches the request (see [`ToolChangeReplay::baseline_for`]).
+//!
+//! The system prompt is tracked the same way: a baseline records it, and parts
+//! a capability adds later become the change's `note`, so inline requests keep
+//! the epoch's prompt. When a recorded part changes or disappears, no prompt
+//! baseline is offered and drivers send the current prompt.
 
 // Design of record: knowledge/execution/cache-stable-tool-changes.md.
 use crate::engine::message::{RuntimeMessage, RuntimeMessageRole};
 use crate::engine::tool_types::ToolDefinition;
 use crate::engine::typed_id::MessageId;
 use everruns_contracts::driver_registry::Message;
-use everruns_contracts::tool_changes::{DeclaredTools, ToolChanges};
+use everruns_contracts::tool_changes::{
+    DeclaredPrompt, DeclaredTools, PromptDiff, ToolChanges, prompt_note,
+};
 use std::collections::HashMap;
 
 pub(super) const KEY: &str = everruns_contracts::tool_changes::METADATA_KEY;
@@ -34,6 +41,9 @@ pub(super) struct ToolChangeReplay {
     pub record: Option<ToolChanges>,
     /// Tools fixed at the start of the epoch.
     baseline: Option<Vec<ToolDefinition>>,
+    /// System prompt fixed at the start of the epoch, when everything added to
+    /// it since is in the recorded notes.
+    system_prompt: Option<String>,
     /// This request's change has no message to ride on.
     unanchored: bool,
 }
@@ -51,10 +61,32 @@ impl ToolChangeReplay {
     /// its message) would leave the model unaware of a tool, so drivers then
     /// get no baseline and send the wanted set as before.
     pub(super) fn baseline_for(&self, sent: &[Message]) -> Option<Vec<ToolDefinition>> {
-        let carried = sent.iter().filter(|m| m.tool_changes.is_some()).count();
-        (!self.unanchored && carried == self.transitions.len())
-            .then(|| self.baseline.clone())
+        self.complete(sent).then(|| self.baseline.clone()).flatten()
+    }
+
+    /// The epoch's system prompt, offered on the same condition as
+    /// [`Self::baseline_for`]: a note dropped from the request would leave the
+    /// model without the text it carries.
+    pub(super) fn system_prompt_for(&self, sent: &[Message]) -> Option<String> {
+        self.complete(sent)
+            .then(|| self.system_prompt.clone())
             .flatten()
+    }
+
+    /// Offer the epoch's tools and system prompt to the drivers that send
+    /// changes inline.
+    pub(super) fn apply_to(
+        &self,
+        config: &mut everruns_contracts::driver_registry::LlmCallConfig,
+        sent: &[Message],
+    ) {
+        config.tool_baseline = self.baseline_for(sent);
+        config.system_prompt_baseline = self.system_prompt_for(sent);
+    }
+
+    fn complete(&self, sent: &[Message]) -> bool {
+        let carried = sent.iter().filter(|m| m.tool_changes.is_some()).count();
+        !self.unanchored && carried == self.transitions.len()
     }
 }
 
@@ -84,17 +116,35 @@ fn anchor(messages: &[&RuntimeMessage], start: usize, end: usize) -> Option<Mess
         .map(|message| message.id)
 }
 
+/// [`prepare`] for the agent's current tools and system prompt.
+pub(super) fn prepare_for(
+    messages: &[RuntimeMessage],
+    provider: &str,
+    model: &str,
+    agent: &crate::engine::RuntimeAgent,
+) -> ToolChangeReplay {
+    prepare(
+        messages,
+        provider,
+        model,
+        &agent.tools,
+        &agent.system_prompt,
+    )
+}
+
 pub(super) fn prepare(
     messages: &[RuntimeMessage],
     provider: &str,
     model: &str,
     wanted: &[ToolDefinition],
+    system_prompt: &str,
 ) -> ToolChangeReplay {
     let messages: Vec<_> = messages
         .iter()
         .filter(|message| !super::is_error_placeholder_message(message))
         .collect();
     let mut declared: Option<DeclaredTools> = None;
+    let mut prompt = DeclaredPrompt::default();
     let mut baseline = None;
     let mut transitions = HashMap::new();
     let mut input_start = 0;
@@ -113,6 +163,7 @@ pub(super) fn prepare(
             }
             if let Some(declared) = declared.as_mut() {
                 declared.apply(&changes);
+                prompt.apply(&changes);
                 if !changes.is_empty()
                     && let Some(at) = anchor(&messages, input_start, index)
                 {
@@ -125,16 +176,28 @@ pub(super) fn prepare(
 
     let Some(declared) = declared else {
         return ToolChangeReplay {
-            record: Some(ToolChanges::baseline(wanted.to_vec())),
+            record: Some(ToolChanges::baseline_with_prompt(
+                wanted.to_vec(),
+                system_prompt,
+            )),
             baseline: Some(wanted.to_vec()),
+            system_prompt: Some(system_prompt.to_string()),
             ..ToolChangeReplay::default()
         };
     };
-    let changes = declared.diff(wanted);
+    let mut changes = declared.diff(wanted);
+    let system_prompt = match prompt.diff(system_prompt) {
+        PromptDiff::Added(parts) => {
+            changes.note = prompt_note(&parts);
+            prompt.baseline().map(str::to_string)
+        }
+        PromptDiff::Diverged => None,
+    };
     if changes.is_empty() {
         return ToolChangeReplay {
             transitions,
             baseline,
+            system_prompt,
             ..ToolChangeReplay::default()
         };
     }
@@ -148,6 +211,7 @@ pub(super) fn prepare(
         transitions,
         record: Some(changes),
         baseline,
+        system_prompt,
         unanchored: at.is_none(),
     }
 }
@@ -159,6 +223,7 @@ mod tests {
 
     const PROVIDER: &str = "anthropic";
     const MODEL: &str = "claude-sonnet-5-5";
+    const PROMPT: &str = "base";
 
     fn tool(name: &str, description: &str) -> ToolDefinition {
         ToolDefinition::function(name, description, json!({"type": "object"}))
@@ -184,7 +249,7 @@ mod tests {
         wanted: &[ToolDefinition],
     ) -> ToolChangeReplay {
         messages.push(RuntimeMessage::user(input));
-        let replay = prepare(messages, PROVIDER, MODEL, wanted);
+        let replay = prepare(messages, PROVIDER, MODEL, wanted, PROMPT);
         messages.push(answer(MODEL, replay.record.as_ref()));
         replay
     }
@@ -268,7 +333,7 @@ mod tests {
 
         // A change with no message to ride on (no input since the last
         // answer) cannot be sent inline either.
-        let replay = prepare(&messages, PROVIDER, MODEL, &[tool("a", "A")]);
+        let replay = prepare(&messages, PROVIDER, MODEL, &[tool("a", "A")], PROMPT);
         assert!(replay.record.is_some());
         assert!(replay.baseline_for(&sent(true)).is_none());
     }
@@ -278,5 +343,49 @@ mod tests {
         let mut messages = vec![RuntimeMessage::user("old"), answer(MODEL, None)];
         let replay = step(&mut messages, "new", &[tool("a", "A")]);
         assert!(replay.record.expect("baseline").baseline.is_some());
+    }
+
+    #[test]
+    fn prompt_text_added_mid_session_rides_in_a_note() {
+        use everruns_contracts::driver_registry::MessageRole;
+        let tools = [tool("a", "A")];
+        let mut messages = vec![RuntimeMessage::user("hi")];
+        let replay = prepare(&messages, PROVIDER, MODEL, &tools, "base");
+        assert_eq!(
+            replay.record.as_ref().unwrap().system_prompt.as_deref(),
+            Some("base")
+        );
+        messages.push(answer(MODEL, replay.record.as_ref()));
+
+        // A capability switched on adds its how-to to the prompt.
+        messages.push(RuntimeMessage::user("deploy"));
+        let replay = prepare(&messages, PROVIDER, MODEL, &tools, "base\n\ndeploy how-to");
+        let record = replay.record.clone().expect("note recorded");
+        assert_eq!(record.note.as_deref(), Some("deploy how-to"));
+        let mut input = Message::text(MessageRole::User, "deploy");
+        input.tool_changes = Some(record.clone());
+        let sent = vec![Message::text(MessageRole::User, "hi"), input];
+        assert_eq!(replay.system_prompt_for(&sent).as_deref(), Some("base"));
+        messages.push(answer(MODEL, Some(&record)));
+
+        // Recorded once: the next request adds nothing and keeps the prompt.
+        messages.push(RuntimeMessage::user("next"));
+        let replay = prepare(&messages, PROVIDER, MODEL, &tools, "base\n\ndeploy how-to");
+        assert!(replay.record.is_none());
+        assert_eq!(replay.system_prompt_for(&sent).as_deref(), Some("base"));
+
+        // A part that changes cannot ride in a note: send the current prompt.
+        let replay = prepare(
+            &messages,
+            PROVIDER,
+            MODEL,
+            &tools,
+            "base v2\n\ndeploy how-to",
+        );
+        assert!(replay.system_prompt_for(&sent).is_none());
+        assert!(
+            replay.baseline_for(&sent).is_some(),
+            "tools stay cache-safe"
+        );
     }
 }

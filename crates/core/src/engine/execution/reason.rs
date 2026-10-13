@@ -749,11 +749,11 @@ impl ReasonAtom {
             checkpoint_reasoning,
         )
         .filter(|_| native_reasoning_compaction);
-        let tool_changes = tool_changes::prepare(
+        let tool_changes = tool_changes::prepare_for(
             &messages,
             model_with_provider.provider_type.as_str(),
             &model_with_provider.model,
-            &runtime_agent.tools,
+            &runtime_agent,
         );
 
         // 9. Recover a stream a lost attempt left open (EVE-532): finalize it
@@ -958,7 +958,7 @@ impl ReasonAtom {
             .capture_request(true) // stored on llm.generation (TM-LLM-039)
             .build();
         llm_config.background_call = self.background_call.clone();
-        llm_config.tool_baseline = tool_changes.baseline_for(&llm_messages);
+        tool_changes.apply_to(&mut llm_config, &llm_messages);
         if let Some(replay) = &reasoning_replay {
             llm_config.reasoning_effort = replay.state.baseline;
             llm_config.reasoning_state = Some(replay.state.clone());
