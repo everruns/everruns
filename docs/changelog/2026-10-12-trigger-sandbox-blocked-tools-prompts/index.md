@@ -11,9 +11,14 @@ links:
 ---
 
 A session started by a trigger has no user, so a Daytona or E2B template set to
-**Person starting the Session** failed to start. It now uses the organization's
+the **Personal** provider account failed to start. It now uses the organization's
 provider account when there is exactly one, as described in
 [Sandbox Templates](/features/sandbox-templates/).
+
+The **Provider account** picker now says in plain words whose connection each
+choice uses and who pays, labels every account with its provider, such as
+**Daytona · Personal** or **Daytona · Reviews**, and links to **Provider
+accounts** when the organization has no account for that provider yet.
 
 A tool call stopped by a missing connection now fails instead of returning an
 empty success, so the agent reads that it did not run:

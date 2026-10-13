@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { SandboxPolicyEditor } from "@/components/agents/sandbox-policy-editor";
+import type { OrganizationConnection } from "@/lib/api/organization-connections";
 import type { SandboxPolicy, SandboxTargetDescriptor, SandboxTemplateSpec } from "@/lib/api/types";
 
 const capabilities = {
@@ -58,11 +59,17 @@ const targets: SandboxTargetDescriptor[] = [
   },
 ];
 
+let organizationConnections: OrganizationConnection[] = [];
+
 jest.mock("@/hooks", () => ({
   useSandboxTargets: () => ({ data: { items: targets }, isLoading: false, error: null }),
   useSandboxTemplates: () => ({ data: [] }),
-  useOrganizationConnections: () => ({ data: [] }),
+  useOrganizationConnections: () => ({ data: organizationConnections }),
 }));
+
+afterEach(() => {
+  organizationConnections = [];
+});
 
 type Network = NonNullable<NonNullable<SandboxTemplateSpec["containment"]>["network"]>;
 
@@ -222,5 +229,88 @@ describe("SandboxPolicyEditor for an Agent with triggers", () => {
       />,
     );
     expect(screen.queryByText(warning)).not.toBeInTheDocument();
+  });
+});
+
+describe("SandboxPolicyEditor provider account picker", () => {
+  const account = (id: string, name: string, provider: string): OrganizationConnection => ({
+    id,
+    name,
+    provider,
+    connected_at: "2026-10-01T00:00:00Z",
+    updated_at: "2026-10-01T00:00:00Z",
+  });
+
+  it("labels the selected account with the provider and says who pays", () => {
+    render(<SandboxPolicyEditor value={daytonaPolicy()} onChange={jest.fn()} />);
+
+    expect(screen.getByLabelText("Provider account")).toHaveTextContent("Daytona · Personal");
+    expect(
+      screen.getByText(
+        "Each person who starts a Session uses their own Daytona connection, and their account pays.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("describes Agent and organization accounts in plain words", () => {
+    const { unmount } = render(
+      <SandboxPolicyEditor value={daytonaPolicy({ source: "agent" })} onChange={jest.fn()} />,
+    );
+    expect(screen.getByLabelText("Provider account")).toHaveTextContent("Daytona · This Agent");
+    expect(
+      screen.getByText(
+        "Uses the Daytona connection on this Agent's Virtual User; that account pays for every Session.",
+      ),
+    ).toBeInTheDocument();
+    unmount();
+
+    render(
+      <SandboxPolicyEditor
+        value={daytonaPolicy({ source: "organization" })}
+        onChange={jest.fn()}
+      />,
+    );
+    expect(screen.getByLabelText("Provider account")).toHaveTextContent(
+      "Daytona · Organization account",
+    );
+    expect(
+      screen.getByText("A shared organization Daytona account pays, whoever starts the Session."),
+    ).toBeInTheDocument();
+  });
+
+  it("names organization accounts after their provider", () => {
+    organizationConnections = [
+      account("acc-1", "Reviews", "daytona"),
+      account("acc-2", "Data team", "modal"),
+    ];
+    render(
+      <SandboxPolicyEditor
+        value={daytonaPolicy({ source: "organization", connection_id: "acc-1" })}
+        onChange={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText("Organization account")).toHaveTextContent("Daytona · Reviews");
+    expect(screen.queryByText(/has no Daytona account yet/)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Manage organization provider accounts" }),
+    ).toHaveAttribute("href", "/sandboxes/accounts");
+  });
+
+  it("links to Provider accounts when the organization has none for the provider", () => {
+    organizationConnections = [account("acc-2", "Data team", "modal")];
+    render(
+      <SandboxPolicyEditor
+        value={daytonaPolicy({ source: "organization" })}
+        onChange={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/This organization has no Daytona account yet/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Add a Daytona account" })).toHaveAttribute(
+      "href",
+      "/sandboxes/accounts",
+    );
+    expect(screen.queryByRole("combobox", { name: "Organization account" })).toBeNull();
   });
 });
