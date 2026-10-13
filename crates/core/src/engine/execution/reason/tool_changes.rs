@@ -80,10 +80,14 @@ impl ColdMoment {
         use everruns_contracts::model::{
             INLINE_TOOL_ADDITIONS_PARAMETER, INLINE_TOOL_CHANGES_PARAMETER,
         };
-        let inline = everruns_contracts::get_model_profile(provider, model).is_some_and(|p| {
-            p.supports_parameter(INLINE_TOOL_CHANGES_PARAMETER)
-                || p.supports_parameter(INLINE_TOOL_ADDITIONS_PARAMETER)
-        });
+        // Only the first-party Claude and OpenAI drivers send changes inline;
+        // a gateway serving the same model resolves to the same profile.
+        let first_party = *provider == DriverId::Anthropic || *provider == DriverId::OpenAI;
+        let inline = first_party
+            && everruns_contracts::get_model_profile(provider, model).is_some_and(|p| {
+                p.supports_parameter(INLINE_TOOL_CHANGES_PARAMETER)
+                    || p.supports_parameter(INLINE_TOOL_ADDITIONS_PARAMETER)
+            });
         if inline {
             return None;
         }
@@ -573,6 +577,11 @@ mod tests {
         use everruns_contracts::driver_registry::{PromptCacheConfig, PromptCacheRetention};
         assert!(ColdMoment::for_model(&DriverId::Anthropic, "claude-sonnet-5-5", None).is_none());
         assert!(ColdMoment::for_model(&DriverId::OpenAI, "gpt-6.1-sol", None).is_none());
+        assert!(
+            ColdMoment::for_model(&DriverId::OpenRouter, "anthropic/claude-sonnet-5-5", None)
+                .is_some(),
+            "a gateway sends the full tool list even for a model with inline changes"
+        );
 
         let fallback = ColdMoment::for_model(&DriverId::Gemini, "gemini-unknown", None)
             .expect("fallback model holds");
