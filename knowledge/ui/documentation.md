@@ -351,9 +351,15 @@ costs the reader twice.
 
 Page titles (rendered as `<title>Title | Everruns</title>`) must not exceed 70 characters total.
 
-- Starlight appends ` | Everruns` (12 chars), so page titles must be ≤57 chars
-- For API pages, route middleware strips the `METHOD /path - ` prefix from OpenAPI summaries to shorten titles
-- When writing OpenAPI `summary` doc comments in Rust, the description after the `METHOD /path - ` prefix should be ≤57 chars
+- Starlight appends ` | Everruns` (12 chars), so page titles should be ≤57 chars;
+  `routeData.ts` drops the suffix from a title that would still run over, and
+  `verify-seo.mjs` fails the build on any title over 70
+- API pages are titled by the OpenAPI summary, which the server keeps to ≤58
+  chars (`MAX_SUMMARY` in `crates/server/src/openapi/documentation.rs`, enforced
+  by its test). The server strips a `METHOD /path - ` prefix, takes the first
+  sentence, and moves the full text into the operation description, which the
+  page shows as its lede. A `#[command]` whose first sentence is still too long
+  sets `summary = "..."`; a hand-written handler puts a short first doc line
 
 A title is the page's name, not a keyword string. Prefer the name a reader would say out loud
 ("Daytona"), not the search phrase it might match ("Daytona Cloud Sandbox Capability for Agents").

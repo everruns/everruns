@@ -136,6 +136,13 @@ export const onRequest = defineRouteMiddleware((context) => {
     // astro.config.mjs (which describes the fallback card) no longer fits.
     setOgMeta(route, "og:image:alt", route.entry.data.title);
   }
+
+  // Search results cut titles at ~70 characters; past that the site name is
+  // what gets cut, so leave it off rather than showing half of it.
+  const titleEntry = route.head.find((e) => e.tag === "title");
+  if (titleEntry?.content && titleEntry.content.length > 70 && titleEntry.content.endsWith(" | Everruns")) {
+    titleEntry.content = titleEntry.content.slice(0, -" | Everruns".length);
+  }
 });
 
 /**
@@ -189,7 +196,10 @@ function updateRouteTitle(
   title: string,
 ): void {
   route.entry.data.title = title;
-  const apiContext = route.entry.id.startsWith("api/operations/") && !route.entry.id.startsWith("api/operations/tags/") ? " · API reference" : "";
+  // The API context goes in only where the title stays within ~70
+  // characters; the OpenAPI summaries are capped to fit " | Everruns".
+  const isOperation = route.entry.id.startsWith("api/operations/") && !route.entry.id.startsWith("api/operations/tags/");
+  const apiContext = isOperation && `${title} · API reference | Everruns`.length <= 70 ? " · API reference" : "";
 
   // Update the <title> head entry.
   const titleEntry = route.head.find((e) => e.tag === "title");
@@ -293,7 +303,10 @@ function addChangelogHead(
     const label = ["yolop", "bashkit", "mira", "sdk"].includes(first) ? productLabel(first) : "";
     if (label && !visible.toLowerCase().includes(label.toLowerCase())) {
       const titleEntry = route.head.find((e) => e.tag === "title");
-      if (titleEntry) titleEntry.content = `${visible} · ${label} changelog | Everruns`;
+      // Keep the <title> within ~70 characters: drop "changelog", then the
+      // site name, before dropping the product.
+      const titles = [`${visible} · ${label} changelog | Everruns`, `${label}: ${visible} | Everruns`];
+      if (titleEntry) titleEntry.content = titles.find((t) => t.length <= 70) ?? `${label}: ${visible}`;
       const ogTitle = route.head.find(
         (e) => e.tag === "meta" && e.attrs && "property" in e.attrs && e.attrs.property === "og:title",
       );
