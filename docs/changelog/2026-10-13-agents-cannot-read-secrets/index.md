@@ -11,13 +11,42 @@ links:
   prs: [everruns/everruns#4676]
 ---
 
-Secrets an agent stores with `secret_store` are now write-only. The agent can
-set, list and delete them, but `secret_store get` refuses every name, so a key
-no longer reaches the transcript, tool events, traces or the workspace.
+Secrets an agent stores with [`secret_store`](/capabilities/session-storage/)
+are now write-only. The agent can set, list and delete them, but `get` refuses
+every name, so a key no longer reaches the transcript, tool events, traces or
+the workspace.
+
+Before, a `secret_store` call like this returned the value:
+
+```json
+{
+  "operation": "get",
+  "name": "OPENAI_API_KEY"
+}
+```
+
+```json
+{
+  "operation": "get",
+  "name": "OPENAI_API_KEY",
+  "value": "sk-...",
+  "found": true
+}
+```
+
+Now the same call fails with a tool error for every name, stored or not:
+
+```text
+Secret values are write-only: no tool can read one back. ...
+```
 
 Capabilities that need a key, such as GitHub, Brave Search and the sandboxes,
 keep working: they read their own secret on the server. An agent that read a
 key to put it in a curl command should use a bound secret instead: add it as an
-**HTTP API** credential on the agent's **Credentials** tab and send `$NAME` in
-the auth header. See
-[Bashkit Shell](/capabilities/bashkit-shell/#api-keys-the-agent-never-sees).
+**HTTP API** credential on the agent's **Credentials** tab and send it from the
+shell, as described in
+[Bashkit Shell](/capabilities/bashkit-shell/#api-keys-the-agent-never-sees):
+
+```bash
+curl -sS https://api.example.com/v1/items -H "Authorization: Bearer $API_KEY"
+```
