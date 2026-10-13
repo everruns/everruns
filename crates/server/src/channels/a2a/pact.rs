@@ -476,6 +476,7 @@ async fn send_message(
             channel_id: caller.auth.channel_public_id.to_string(),
             params: serde_json::from_slice(&body).unwrap_or(Value::Null),
             text: message.text,
+            files: Vec::new(),
             message_id: Some(message.message_id.clone()),
             task_id: Uuid::now_v7().to_string(),
             context_id: message.context_id,

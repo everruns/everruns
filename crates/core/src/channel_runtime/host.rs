@@ -43,8 +43,9 @@ use super::attachments::{AttachmentPolicy, Intake, ReceivedAttachment};
 use super::{
     ChannelDeliveryAdapter, ChannelDriver, ChannelError, ChannelRequest, ChannelResponse,
     ChannelStore, ControlAction, DeliveryEvent, DeliveryOptions, DeliveryStep, DeliveryTarget,
-    Inbound, InboundChannelEvent, InboundControl, InboundDecision, InboundMessage, InboundRoute,
-    MemoryChannelStore, PendingDelivery, SessionBinding, TurnDelivery, build_session_routing_tag,
+    Inbound, InboundAttachment, InboundChannelEvent, InboundControl, InboundDecision,
+    InboundMessage, InboundRoute, MemoryChannelStore, PendingDelivery, SessionBinding,
+    TurnDelivery, build_session_routing_tag,
 };
 use everruns_contracts::runtime::egress::EgressService;
 use everruns_contracts::runtime::events::TOOL_CALL_REQUESTED;
@@ -683,6 +684,37 @@ impl ChannelHost {
         self.bind_created(&channel, key, created).await
     }
 
+    /// Content parts for files a streaming channel received with a message
+    /// (AG-UI media parts, A2A file parts), through the same intake messaging
+    /// channels use: each stored as an attachment or replaced by a note. The
+    /// caller adds them to the message it sends.
+    pub async fn attachment_parts<'a>(
+        &self,
+        channel: impl Into<ChannelRef<'a>>,
+        attachments: &[InboundAttachment],
+    ) -> Result<Vec<ContentPart>, ChannelError> {
+        if attachments.is_empty() {
+            return Ok(Vec::new());
+        }
+        let channel = self.channel(channel.into()).await?;
+        Ok(self
+            .intake(&channel.config)
+            .parts(&channel.config, attachments)
+            .await)
+    }
+
+    fn intake(&self, channel: &ChannelConfig) -> Intake<'_> {
+        Intake {
+            port: self.inner.port.as_ref(),
+            egress: self
+                .inner
+                .egress
+                .clone()
+                .map(|egress| self.inner.port.attachment_egress(channel, egress)),
+            policy: self.inner.attachments,
+        }
+    }
+
     /// A new session of streaming channel `channel` that no conversation key
     /// finds again: a one-off exchange, or one the caller continues by the
     /// session id it hands out (an A2A context). `title` names it.
@@ -947,18 +979,11 @@ impl ChannelHost {
         event: &InboundChannelEvent,
     ) -> InputMessage {
         let mut message = input_text(&channel.name, event);
-        let intake = Intake {
-            port: self.inner.port.as_ref(),
-            egress: self
-                .inner
-                .egress
-                .clone()
-                .map(|egress| self.inner.port.attachment_egress(channel, egress)),
-            policy: self.inner.attachments,
-        };
-        message
-            .content
-            .extend(intake.parts(channel, &event.attachments).await);
+        message.content.extend(
+            self.intake(channel)
+                .parts(channel, &event.attachments)
+                .await,
+        );
         message
     }
 
