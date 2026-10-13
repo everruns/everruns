@@ -101,16 +101,24 @@ impl McpClient {
             .await
     }
 
-    /// Execute a tool via `tools/call`, returning the raw MCP result.
+    /// Execute a tool via `tools/call`, returning the raw MCP result. The
+    /// idempotency key, when given, goes in the request's `_meta`.
     pub async fn call(
         &self,
         connection: &McpConnection,
         tool_name: &str,
         arguments: Value,
+        idempotency_key: Option<&str>,
     ) -> Result<McpToolCallResult> {
         let credential = self.credential(connection).await?;
         self.transport_for(connection)
-            .call_tool(connection, tool_name, arguments, credential.as_ref())
+            .call_tool(
+                connection,
+                tool_name,
+                arguments,
+                credential.as_ref(),
+                idempotency_key,
+            )
             .await
     }
 
@@ -177,8 +185,11 @@ impl McpClient {
         tool_call_id: impl Into<String>,
         tool_name: &str,
         arguments: Value,
+        idempotency_key: Option<&str>,
     ) -> Result<ToolResult> {
-        let result = self.call(connection, tool_name, arguments).await?;
+        let result = self
+            .call(connection, tool_name, arguments, idempotency_key)
+            .await?;
         let (json_result, images) = map_tool_call_result(&result);
         Ok(tool_result(tool_call_id.into(), json_result, images))
     }

@@ -211,6 +211,12 @@ async fn a_non_idempotent_call_that_never_started_runs_on_resume() {
         vec!["read_inbox", "read_inbox", "send_email"],
         "send_email runs once"
     );
+    // Resume rebuilds each call's idempotency key: the rerun read_inbox
+    // carries its first attempt's key, and the calls' keys differ.
+    let keys = fixture.tool_keys();
+    assert!(keys.iter().all(Option::is_some), "{keys:?}");
+    assert_eq!(keys[0], keys[1]);
+    assert_ne!(keys[1], keys[2]);
     let completed: Vec<String> = fixture
         .events()
         .await

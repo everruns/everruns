@@ -489,7 +489,7 @@ async fn parsed_auth_modes_reach_provider_and_sse_transport() {
         connection.auth_mode = config.auth_mode;
         connection.oauth_provider_id = config.oauth_provider_id;
         let result = client
-            .call(&connection, "echo", json!({"message":"hello"}))
+            .call(&connection, "echo", json!({"message":"hello"}), None)
             .await
             .unwrap();
         assert_eq!(

@@ -37,6 +37,7 @@ use crate::host::{
     AcceptedTurnInput, AgentBuilder, HarnessBuilder, InProcessRuntime, OpenTurn,
     RuntimeHostAdapter, SessionBuilder, TurnDrive, TurnLogFold,
 };
+use everruns_contracts::runtime::ToolContext;
 use store::MemoryActors;
 
 const ORG_ID: i64 = 1;
@@ -47,6 +48,8 @@ const WAIT: Duration = Duration::from_secs(10);
 #[derive(Default)]
 struct ToolGate {
     calls: Mutex<Vec<String>>,
+    /// Each call's idempotency key, in call order.
+    keys: Mutex<Vec<Option<String>>>,
     /// Hold the first call of any gated tool until `release`.
     hold_first: AtomicBool,
     held: Notify,
@@ -77,8 +80,20 @@ impl Tool for GatedTool {
             .with_side_effect_class(self.class.clone())
             .with_concurrency_class("actor_test")
     }
+    fn requires_context(&self) -> bool {
+        true
+    }
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        unreachable!("the act runs tools with a context")
+    }
+    async fn execute_with_context(
+        &self,
+        _arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
         self.gate.calls.lock().unwrap().push(self.name.to_string());
+        let key = context.idempotency_key.clone();
+        self.gate.keys.lock().unwrap().push(key);
         if self.gate.hold_first.swap(false, Ordering::SeqCst) {
             self.gate.held.notify_one();
             self.gate.release.notified().await;
@@ -474,6 +489,10 @@ impl Fixture {
 
     fn tool_calls(&self) -> Vec<String> {
         self.gate.calls.lock().unwrap().clone()
+    }
+
+    fn tool_keys(&self) -> Vec<Option<String>> {
+        self.gate.keys.lock().unwrap().clone()
     }
 
     /// The session has nothing to run and nobody holds it.
