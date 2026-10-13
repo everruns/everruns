@@ -64,6 +64,9 @@ impl GrpcWorkerAdapters {
         host_composition: HostComposition,
     ) -> Result<Self> {
         let client = GrpcClient::connect(grpc_address).await?;
+        // Without checkpoint encryption on the control plane, run turns
+        // without the checkpoint stores rather than fail each one (EVE-1261).
+        client.probe_checkpoint_stores().await;
         Ok(Self {
             client,
             host_composition,
@@ -584,20 +587,28 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         Arc::new(GrpcAdapter::new_org_scoped(self.client.clone(), org_id))
     }
 
+    // These three stores need checkpoint encryption on the control plane;
+    // without it they are absent, as on the in-process worker (EVE-1261).
     fn native_async_store(
         &self,
     ) -> Option<Arc<dyn crate::core::native_async_store::NativeAsyncStore>> {
-        Some(Arc::new(GrpcAdapter::new(self.client.clone())))
+        self.client
+            .checkpoint_stores_available()
+            .then(|| Arc::new(GrpcAdapter::new(self.client.clone())) as _)
     }
 
     fn agents_api_store(&self) -> Option<Arc<dyn crate::core::agents_api_store::AgentsApiStore>> {
-        Some(Arc::new(GrpcAdapter::new(self.client.clone())))
+        self.client
+            .checkpoint_stores_available()
+            .then(|| Arc::new(GrpcAdapter::new(self.client.clone())) as _)
     }
 
     fn compaction_checkpoint_store(
         &self,
     ) -> Option<Arc<dyn crate::core::CompactionCheckpointStore>> {
-        Some(Arc::new(GrpcAdapter::new(self.client.clone())))
+        self.client
+            .checkpoint_stores_available()
+            .then(|| Arc::new(GrpcAdapter::new(self.client.clone())) as _)
     }
 
     fn storage_store(

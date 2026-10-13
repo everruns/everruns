@@ -14,7 +14,7 @@ a working default; each row links to the section that documents it.
 | [`DATABASE_URL`](#database_url) | API | Yes, unless `DEV_MODE=true` | Startup fails. Dev mode ignores it and starts its own temporary PostgreSQL. |
 | [`AUTH_MODE`](#other-server-variables) | API | Yes, unless the grade is `dev` | Startup fails: unset means `none`, which is allowed only at `dev` grade. |
 | [`WORKER_GRPC_AUTH_TOKEN`](#worker_grpc_auth_token) | API and workers (same value) | Yes, unless `DEV_MODE=true` | The API fails to start its gRPC server; workers cannot authenticate. |
-| [`SECRETS_ENCRYPTION_KEY`](#llm-provider-api-keys) | API | Recommended | The API starts, but cannot store provider keys or other encrypted values. |
+| [`SECRETS_ENCRYPTION_KEY`](#llm-provider-api-keys) | API | Recommended | The API starts, but cannot store provider keys or other encrypted values. Turns still run, in-process and on remote workers, without durable compaction checkpoints, native async tool journals, or the OpenAI Agents API runtime. |
 | [`DEV_MODE`](#dev_mode), [`DEPLOYMENT_GRADE`](#deployment_grade) | API and workers | No | Production behavior (`prod` grade). |
 | [`PUBLIC_APP_URL`](#public_app_url), [`AUTH_LOGIN_ORIGIN`](#auth_login_origin), [`API_PREFIX`](#api_prefix), [`CORS_ALLOWED_ORIGINS`](#cors_allowed_origins), [`HTTP_ADDR`](#http_addr) | API | No | `http://localhost:9300`, same-origin login, `/api`, CORS off, `0.0.0.0:9000`. |
 | [`DATABASE_UNPOOLED_URL`](#database_unpooled_url), [`DATABASE_POOL_MAX`](#other-server-variables), [`DATABASE_POOL_MIN`](#other-server-variables) | API | No | Listeners reuse `DATABASE_URL`; pool of 5 to 50 connections. |

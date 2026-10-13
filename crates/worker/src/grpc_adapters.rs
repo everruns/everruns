@@ -42,8 +42,10 @@ use tonic::transport::Channel;
 use uuid::Uuid;
 
 use crate::grpc_durable_store::GrpcClientAuth;
+mod checkpoint_availability;
 mod event_batch;
 mod shared_client;
+use checkpoint_availability::{CheckpointAvailability, is_encryption_not_configured};
 pub use shared_client::SharedClient;
 mod definition_reads;
 use definition_reads::proto_agent_to_definition;
@@ -100,6 +102,7 @@ async fn fetch_image_from_url(url: &str, media_type: &str) -> Result<ResolvedIma
 #[derive(Clone)]
 pub struct GrpcClient {
     pub(crate) inner: SharedClient,
+    checkpoints: Arc<CheckpointAvailability>,
 }
 
 /// Max gRPC message size (16MB)
@@ -128,6 +131,7 @@ impl GrpcClient {
 
         Ok(Self {
             inner: SharedClient::new(client),
+            checkpoints: CheckpointAvailability::new(),
         })
     }
 
@@ -139,6 +143,7 @@ impl GrpcClient {
             .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
         Self {
             inner: SharedClient::new(client),
+            checkpoints: CheckpointAvailability::new(),
         }
     }
 
@@ -1148,9 +1153,17 @@ impl crate::core::CompactionCheckpointStore for GrpcAdapter {
                 provider_type: provider_type.to_string(),
                 model: model.to_string(),
             })
-            .await
-            .map_err(grpc_status_to_error)?
-            .into_inner();
+            .await;
+        let response = match response {
+            Ok(response) => response.into_inner(),
+            // No checkpoint encryption on the control plane: no checkpoint to
+            // resume from, and later turns get no store (EVE-1261).
+            Err(status) if is_encryption_not_configured(&status) => {
+                self.client.checkpoints.mark_unavailable();
+                return Ok(None);
+            }
+            Err(status) => return Err(grpc_status_to_error(status)),
+        };
         response
             .checkpoint
             .map(|checkpoint| {
@@ -1186,7 +1199,7 @@ impl crate::core::CompactionCheckpointStore for GrpcAdapter {
                 }),
             })
             .await
-            .map_err(grpc_status_to_error)?
+            .map_err(|status| self.client.checkpoint_status_to_error(status))?
             .into_inner()
             .installed)
     }
