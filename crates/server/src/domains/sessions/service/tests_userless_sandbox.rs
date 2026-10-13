@@ -49,6 +49,7 @@ async fn userless_session_binds_session_user_template_to_sole_org_account() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
     })
     .execute(&ctx)
