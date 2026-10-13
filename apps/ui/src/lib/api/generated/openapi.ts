@@ -836,7 +836,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first. */
+    /**
+     * Make an agent act as the shared Everruns GitHub App
+     * @description Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first.
+     */
     post: operations["use_agent_everruns_app"];
     delete?: never;
     options?: never;
@@ -4470,7 +4473,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List the organization's links to the shared Everruns GitHub App. */
+    /**
+     * List the org's Everruns GitHub App links
+     * @description List the organization's links to the shared Everruns GitHub App.
+     */
     get: operations["list_links"];
     put?: never;
     post?: never;
@@ -4487,7 +4493,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Start linking a shared Everruns GitHub App installation to the organization. */
+    /**
+     * Link an Everruns GitHub App installation
+     * @description Start linking a shared Everruns GitHub App installation to the organization.
+     */
     get: operations["authorize_link"];
     put?: never;
     post?: never;
@@ -4507,7 +4516,10 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    /** Unlink a shared Everruns GitHub App installation and remove every agent's choice of it. */
+    /**
+     * Unlink an Everruns GitHub App installation
+     * @description Unlink a shared Everruns GitHub App installation and remove every agent's choice of it.
+     */
     delete: operations["unlink"];
     options?: never;
     head?: never;

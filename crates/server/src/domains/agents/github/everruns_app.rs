@@ -104,6 +104,7 @@ pub struct UseAgentEverrunsApp {
 #[command(
     name = "use_agent_everruns_app",
     category = "agents",
+    summary = "Make an agent act as the shared Everruns GitHub App",
     description = "Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first.",
     method = "POST",
     path = "/v1/agents/{agent_id}/github/everruns-app",

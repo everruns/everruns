@@ -85,7 +85,7 @@ fn internal(context: &str, error: impl std::fmt::Display) -> (StatusCode, String
     (StatusCode::INTERNAL_SERVER_ERROR, "Internal error".into())
 }
 
-#[utoipa::path(get, path = "/v1/orgs/{org}/github/everruns-app", summary = "List the organization's links to the shared Everruns GitHub App.", params(("org" = String, Path)), responses((status = 200, body = EverrunsAppLinks), (status = 403, description = "Admin access required")), tag = "organizations")]
+#[utoipa::path(get, path = "/v1/orgs/{org}/github/everruns-app", summary = "List the org's Everruns GitHub App links", description = "List the organization's links to the shared Everruns GitHub App.", params(("org" = String, Path)), responses((status = 200, body = EverrunsAppLinks), (status = 403, description = "Admin access required")), tag = "Organizations")]
 pub(crate) async fn list_links(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
@@ -125,7 +125,7 @@ pub(crate) async fn list_links(
     }))
 }
 
-#[utoipa::path(get, path = "/v1/orgs/{org}/github/everruns-app/authorize", summary = "Start linking a shared Everruns GitHub App installation to the organization.", params(("org" = String, Path), ("return_to" = Option<String>, Query)), responses((status = 303, description = "Redirect to GitHub"), (status = 403, description = "Admin access required")), tag = "organizations")]
+#[utoipa::path(get, path = "/v1/orgs/{org}/github/everruns-app/authorize", summary = "Link an Everruns GitHub App installation", description = "Start linking a shared Everruns GitHub App installation to the organization.", params(("org" = String, Path), ("return_to" = Option<String>, Query)), responses((status = 303, description = "Redirect to GitHub"), (status = 403, description = "Admin access required")), tag = "Organizations")]
 pub(crate) async fn authorize_link(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
@@ -161,7 +161,7 @@ pub(crate) async fn authorize_link(
     begin_installation(&state, config, jar, pending).await
 }
 
-#[utoipa::path(delete, path = "/v1/orgs/{org}/github/everruns-app/{connection_id}", summary = "Unlink a shared Everruns GitHub App installation and remove every agent's choice of it.", params(("org" = String, Path), ("connection_id" = String, Path)), responses((status = 204, description = "Unlinked"), (status = 403, description = "Admin access required"), (status = 404, description = "Link not found")), tag = "organizations")]
+#[utoipa::path(delete, path = "/v1/orgs/{org}/github/everruns-app/{connection_id}", summary = "Unlink an Everruns GitHub App installation", description = "Unlink a shared Everruns GitHub App installation and remove every agent's choice of it.", params(("org" = String, Path), ("connection_id" = String, Path)), responses((status = 204, description = "Unlinked"), (status = 403, description = "Admin access required"), (status = 404, description = "Link not found")), tag = "Organizations")]
 pub(crate) async fn unlink(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,

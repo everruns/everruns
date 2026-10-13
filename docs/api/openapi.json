@@ -3265,7 +3265,8 @@
         "tags": [
           "agents"
         ],
-        "summary": "Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first.",
+        "summary": "Make an agent act as the shared Everruns GitHub App",
+        "description": "Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first.",
         "operationId": "use_agent_everruns_app",
         "parameters": [
           {
@@ -3308,6 +3309,12 @@
           "503": {
             "description": "The shared Everruns App is not configured"
           }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
         }
       }
     },
@@ -18193,9 +18200,10 @@
     "/v1/orgs/{org}/github/everruns-app": {
       "get": {
         "tags": [
-          "organizations"
+          "Organizations"
         ],
-        "summary": "List the organization's links to the shared Everruns GitHub App.",
+        "summary": "List the org's Everruns GitHub App links",
+        "description": "List the organization's links to the shared Everruns GitHub App.",
         "operationId": "list_links",
         "parameters": [
           {
@@ -18220,15 +18228,22 @@
           "403": {
             "description": "Admin access required"
           }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
         }
       }
     },
     "/v1/orgs/{org}/github/everruns-app/authorize": {
       "get": {
         "tags": [
-          "organizations"
+          "Organizations"
         ],
-        "summary": "Start linking a shared Everruns GitHub App installation to the organization.",
+        "summary": "Link an Everruns GitHub App installation",
+        "description": "Start linking a shared Everruns GitHub App installation to the organization.",
         "operationId": "authorize_link",
         "parameters": [
           {
@@ -18255,15 +18270,22 @@
           "403": {
             "description": "Admin access required"
           }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
         }
       }
     },
     "/v1/orgs/{org}/github/everruns-app/{connection_id}": {
       "delete": {
         "tags": [
-          "organizations"
+          "Organizations"
         ],
-        "summary": "Unlink a shared Everruns GitHub App installation and remove every agent's choice of it.",
+        "summary": "Unlink an Everruns GitHub App installation",
+        "description": "Unlink a shared Everruns GitHub App installation and remove every agent's choice of it.",
         "operationId": "unlink",
         "parameters": [
           {
@@ -18293,6 +18315,12 @@
           "404": {
             "description": "Link not found"
           }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
         }
       }
     },
