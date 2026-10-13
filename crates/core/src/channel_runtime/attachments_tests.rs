@@ -54,10 +54,13 @@ impl ChannelSessionPort for StorePort {
     }
 }
 
+/// A canned response: status, headers and body.
+type FakeResponse = (u16, Vec<(String, String)>, Vec<u8>);
+
 /// Answers each URL from a table and records the requests it saw.
 #[derive(Default)]
 struct FakeEgress {
-    responses: BTreeMap<String, (u16, Vec<(String, String)>, Vec<u8>)>,
+    responses: BTreeMap<String, FakeResponse>,
     seen: Mutex<Vec<(String, Option<String>)>>,
 }
 
