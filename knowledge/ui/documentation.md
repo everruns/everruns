@@ -247,7 +247,11 @@ sites build and deploy independently and no request passes through both.
    path, query included, to the same path under https://everruns.com/docs. A
    Worker route rather than a zone redirect rule, because the deploy token
    manages Worker routes and the redirect stays tested in the repo. It stays
-   forever: published crate docs, plugins and old posts link the old host
+   forever: published crate docs, plugins and old posts link the old host.
+   A route fires only on a proxied hostname, so docs.everruns.com keeps a
+   proxied placeholder DNS record (`AAAA 100::`, discard address, added
+   2026-10-13 after the old Pages project and its CNAME were deleted).
+   Deleting that record takes every old link down
 5. `apps/docs/scripts/check-live.mjs` checks every sitemap page and its
    Markdown twin, the agent files, content negotiation and, with `--old`, each
    old URL's redirect. It runs after every deploy and daily
