@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""Affected workspace tests, with reverse dependencies and no credentialed features."""
+import argparse
+import json
+import os
+from pathlib import Path
+import subprocess
+
+# These are the existing offline CI configurations. Live-test features remain
+# opt-in in their credentialed workflows; --all-features is unsafe for them.
+FEATURES = {
+    'everruns-core': ['all'], 'everruns-contracts': ['all'],
+    'everruns-drivers': ['all'], 'everruns-llmsim': ['all'],
+    'everruns': ['all'], 'everruns-docs-snippets': ['all'],
+    'everruns-test-support': ['all'],
+    'everruns-capabilities': ['hosted-integration-catalog', 'environment-capabilities'],
+    'everruns-integrations': ['bashkit', 'brave-search', 'brave-search-hosted', 'browserless',
+        'cursor', 'daytona', 'daytona-test-util', 'docker', 'duckduckgo', 'e2b', 'filesystem',
+        'github', 'lua', 'openai-decisions', 'openai-image', 'openrouter', 'parallel',
+        'typesafe', 'typesafe-hosted', 'web-fetch', 'modal', 'modal-test-util'],
+    'everruns-integrations-experimental': ['deno', 'sprites'],
+}
+
+
+def affected(packages, paths, root):
+    owners = {p['name']: Path(p['manifest_path']).parent.relative_to(root).as_posix() + '/' for p in packages}
+    changed = set()
+    for path in paths:
+        if path.endswith(('.md', '.mdx')):
+            continue
+        if path in ('Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml') or path.startswith('.github/scripts/ci/') or path == '.github/workflows/ci.yml':
+            return set(owners)
+        matches = [(len(folder), name) for name, folder in owners.items() if path.startswith(folder)]
+        if matches:
+            changed.add(max(matches)[1])
+        if path.startswith('skills/'):
+            changed.add('everruns-server')
+    # Include dev dependencies too: downstream tests exercise contracts that
+    # normal compilation alone cannot establish.
+    while True:
+        prior = set(changed)
+        changed.update(p['name'] for p in packages if any(d['name'] in changed for d in p['dependencies']))
+        if prior == changed:
+            return changed
+
+
+def risk_filters(paths):
+    filters = set()
+    if any('/migrations/' in p or '/setup/migrations' in p for p in paths):
+        filters.update(['migration_baseline_test::', 'migration_history_test::'])
+    if any(any(x in p for x in ('/auth', '/permissions', '/policy', '/org_', '/organization', '/principal', '/roles', '/members', '/pat_', '/storage/repositories/')) for p in paths):
+        filters.update(['auth_integration_test::', 'org_isolation_test::', 'command_policy_enforcement_test::', 'pat_scope_coverage_test::'])
+    return sorted(filters)
+
+
+def select(metadata, paths, root):
+    packages = [p for p in metadata['packages'] if p['id'] in metadata['workspace_members']]
+    names = affected(packages, paths, root)
+    groups = {}
+    for package in packages:
+        name = package['name']
+        if name not in names or name == 'everruns-llm-tests':
+            continue
+        targets = package['targets']
+        # Binary-only examples have real-model entry points. Their unit tests
+        # are offline, and cargo test never runs main().
+        if not any('lib' in t['kind'] or 'proc-macro' in t['kind'] or 'bin' in t['kind'] for t in targets):
+            continue
+        group = 'server' if name == 'everruns-server' else 'facade' if name in ('everruns', 'everruns-cli', 'everruns-docs-snippets') else 'runtime' if name in ('everruns-core', 'everruns-capabilities', 'everruns-worker', 'everruns-integrations', 'everruns-integrations-experimental', 'everruns-test-support') else 'foundation'
+        groups.setdefault(group, []).append(name)
+    return {'include': [{'group': group, 'packages': sorted(names), 'risk_filters': risk_filters(paths) if group == 'server' else []} for group, names in sorted(groups.items())]}
+
+
+def commands(selection):
+    packages = selection['packages']
+    command = ['cargo', 'test', '--locked']
+    for name in packages:
+        command += ['-p', name]
+    if packages == ['everruns-server']:
+        command += ['--lib', '--test', 'contracts']
+    features = []
+    for name in packages:
+        if FEATURES.get(name) == ['all']:
+            # Enumerate this package's features rather than enabling every
+            # feature of every other package in the same invocation.
+            metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--no-deps', '--format-version', '1'], text=True))
+            package = next(p for p in metadata['packages'] if p['name'] == name)
+            features += [f'{name}/{f}' for f in package['features']]
+        else:
+            features += [f'{name}/{f}' for f in FEATURES.get(name, [])]
+    if features:
+        command += ['--features', ','.join(features)]
+    # Retain serialization for process-global env/host fixtures. Parallel
+    # private-database unit tests in the server retain their existing default.
+    if packages != ['everruns-server']:
+        command += ['--', '--test-threads=1']
+    yield command
+    if selection.get('risk_filters'):
+        yield ['cargo', 'test', '--locked', '-p', 'everruns-server', '--test', 'domain', '--', *selection['risk_filters'], '--test-threads=1']
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--base')
+    parser.add_argument('--run', action='store_true')
+    args = parser.parse_args()
+    if args.run:
+        for command in commands(json.loads(os.environ['TEST_SELECTION'])):
+            print(' '.join(command), flush=True)
+            subprocess.run(command, check=True)
+        return
+    metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--no-deps', '--format-version', '1'], text=True))
+    root = Path(metadata['workspace_root'])
+    paths = subprocess.check_output(['git', 'diff', '--name-only', args.base, 'HEAD'], text=True).splitlines()
+    matrix = select(metadata, paths, root)
+    with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+        print('matrix=' + json.dumps(matrix, separators=(',', ':')), file=output)
+        print('has_tests=' + str(bool(matrix['include'])).lower(), file=output)
+    print(json.dumps(matrix, indent=2))
+
+
+if __name__ == '__main__':
+    main()

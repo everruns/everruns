@@ -2,6 +2,12 @@
 
 ## 2026-10-14
 
+* **Server-owned PostgreSQL and tiered CI.** Remove the private PostgreSQL utility
+  crate; server storage owns native dev/test support. CI uses focused PR tests,
+  coalesced main batches, nightly feature/provider coverage, and exact-revision
+  release validation. See [CI Build Time](project/ci-build-time.md) and
+  [Embedded PostgreSQL](project/embedded-postgresql.md).
+
 * **Hosted search permits.** Add lazy per-call financial admission with stable
   engine identity, fenced start, sanitized outcome callbacks, replay and a
   bounded journal receipt. Keep billing metadata on the hosted invocation;
