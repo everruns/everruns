@@ -1,7 +1,7 @@
 ---
 title: "Gemini setups prefer Argon and include it in favourites"
 description: "Gemini 4 Argon is the preferred default for new Gemini setups and an enabled favourite in the server model catalogue. Existing defaults stay selected."
-date: 2026-10-13
+date: 2026-10-14
 kind: improvement
 significance: minor
 products: [platform, cloud]
