@@ -564,6 +564,11 @@ impl GeminiChatDriver {
 
 #[async_trait]
 impl ChatDriver for GeminiChatDriver {
+    fn stream_stall_timeout(&self, config: &LlmCallConfig) -> Option<std::time::Duration> {
+        (is_argon(&config.model) && config.max_tokens.is_some_and(|tokens| tokens > 65_536))
+            .then_some(std::time::Duration::from_secs(1_200))
+    }
+
     async fn chat_completion_stream(
         &self,
         endpoint: &everruns_contracts::ProviderEndpoint,

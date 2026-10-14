@@ -54,6 +54,14 @@ async fn long_decode_stops_at_the_requested_budget_and_keeps_the_default_cap() {
         let mut cfg = config("gemini-4-argon");
         cfg.max_tokens = budget;
         cfg.temperature = Some(0.7);
+        assert_eq!(
+            provider(&server)
+                .into_boxed_driver()
+                .stream_stall_timeout(&cfg),
+            budget
+                .filter(|&tokens| tokens > 65_536)
+                .map(|_| std::time::Duration::from_secs(1_200)),
+        );
         let response = provider(&server)
             .chat_completion(vec![Message::text(MessageRole::User, "hi")], &cfg)
             .await

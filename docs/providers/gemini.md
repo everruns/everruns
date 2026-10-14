@@ -57,8 +57,8 @@ Argon supports low, medium, and high thinking levels; minimal maps to low and
 higher efforts map to high. Sampling temperature is omitted. Argon supports
 implicit caching only; do not supply an explicit cached-content resource.
 
-Each Argon HTTP stream permits a 20-minute read timeout. Host-level turn and
-stall limits still apply; configure them for long reasoning tasks. A failed hop
+Long-decode calls default to a 20-minute HTTP read and agent-loop stall timeout.
+Explicit host-level turn and stall limits still apply. A failed hop
 fails the call. A dropped stream resumes only when no output was exposed after
 its last checkpoint; otherwise it fails to prevent duplicate output. Cancelling
 or dropping the stream stops local continuation requests.

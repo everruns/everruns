@@ -14,7 +14,7 @@ pub(super) struct ContinuationRequest {
 
 impl ContinuationRequest {
     async fn next(&mut self, token: String) -> Result<(ByteStream, RetryMetadata)> {
-        // THREAT[TM-DOS-044]: malformed provider progress must not cause an
+        // THREAT[TM-DOS-048]: malformed provider progress must not cause an
         // unbounded request loop. 256 covers the 1M window's 5K checkpoints.
         if self.hops >= 256 || self.request.continuation_token.as_ref() == Some(&token) {
             return Err(AgentLoopError::llm("Gemini continuation made no progress"));
