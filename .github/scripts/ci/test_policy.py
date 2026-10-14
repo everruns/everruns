@@ -68,6 +68,7 @@ class Policy(unittest.TestCase):
 
     def test_security_and_migration_changes_add_contracts(self):
         self.assertIn('auth_integration_test::',focused.risk_filters(['crates/server/src/auth/api_keys.rs']))
+        self.assertIn('org_isolation_test::',focused.risk_filters(['crates/server/src/storage/runtime_identity/mod.rs']))
         self.assertIn('auth_integration_test::',focused.risk_filters(['.github/scripts/ci/focused.py']))
         self.assertIn('migration_history_test::',focused.risk_filters(['crates/server/migrations/20261014000000_test.sql']))
         self.assertEqual(focused.risk_filters(['crates/core/src/engine.rs']),[])
