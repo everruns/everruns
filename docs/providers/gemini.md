@@ -34,6 +34,9 @@ the model profile, falling back to a safe value.
 
 ## Long decode
 
+Gemini 4 Argon is seeded as an enabled favourite. New Gemini setups prefer it
+when choosing an organisation default; existing defaults stay selected.
+
 For `gemini-4-argon`, set `max_tokens` above 65,536 to let a single response
 continue across multiple Gemini API requests. In an agent package, use
 the top-level `max_output_tokens`; the built-in Argon profile permits up to 1,048,576

@@ -59,7 +59,7 @@ const BOOTSTRAP_FAVORITE_LIMIT: usize = 3;
 /// (`platform::PLATFORM_DEFAULT_MODEL_ID`), so a freshly credentialed org lands
 /// on the same model the default org already uses. Families not listed here
 /// keep falling back to the recency order below.
-const PREFERRED_DEFAULT_FAMILIES: &[&str] = &["gpt-6-luna"];
+const PREFERRED_DEFAULT_FAMILIES: &[&str] = &["gpt-6-luna", "gemini-4-argon"];
 
 /// Default-model preference order: the curated pick first, then newest release,
 /// then the model with the fewest missing agent-relevant traits. Lower sorts
