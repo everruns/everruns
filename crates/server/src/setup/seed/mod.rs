@@ -159,7 +159,7 @@ mod seed_ids {
     pub const GEMINI_25_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000601);
     pub const GEMINI_25_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000602);
     pub const GEMINI_20_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000603);
-
+    pub const GEMINI_4_ARGON: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000060b);
     // Bedrock Models (0x700-0x7FF)
     pub const BEDROCK_CLAUDE_OPUS_5_5: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000705);
