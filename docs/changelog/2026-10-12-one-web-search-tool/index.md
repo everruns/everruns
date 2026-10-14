@@ -37,4 +37,11 @@ with every attempt and the raw response a click away. Two search tools on one ag
 }
 ```
 
+**For hosts that pay for search:** the hosted provider can use per-call wallet
+permits. The SDK forwards the engine's stable call identity, starts an owned
+permit before dispatch, and reports a sanitized outcome for settlement. Hosts
+can replay a completed result without paying for another request and repair a
+lost callback from the tool's billing receipt. Cancellation leaves uncertain
+spend for host reconciliation.
+
 See [Web Search](/capabilities/web-search/).
