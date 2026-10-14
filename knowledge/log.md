@@ -2,6 +2,10 @@
 
 ## 2026-10-14
 
+* **Product videos**: Linked the canonical landing-repo recording and publication
+  guide and the dedicated Everruns channel; added the public Slack walkthrough
+  to the existing DM and scheduled-briefing changelog entries.
+
 * **Hosted search permits.** Add lazy per-call financial admission with stable
   engine identity, fenced start, sanitized outcome callbacks, replay and a
   bounded journal receipt. Keep billing metadata on the hosted invocation;
