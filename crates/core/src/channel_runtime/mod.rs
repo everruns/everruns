@@ -27,8 +27,8 @@ mod store;
 
 pub use approval::{REQUEST_APPROVAL_TOOL, approval_prompt};
 pub use attachments::{
-    AttachmentPolicy, DOWNLOAD_TIMEOUT, MAX_DOWNLOAD_REDIRECTS, ReceivedAttachment,
-    not_received_note,
+    AttachmentIntake, AttachmentPolicy, AttachmentStore, DOWNLOAD_TIMEOUT, MAX_DOWNLOAD_REDIRECTS,
+    ReceivedAttachment, not_received_note,
 };
 
 pub use delivery::{

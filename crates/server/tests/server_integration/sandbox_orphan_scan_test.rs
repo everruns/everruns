@@ -252,9 +252,10 @@ async fn orphans_are_stopped_then_deleted_and_tracked_sandboxes_are_kept() {
             org_id: DEFAULT_ORG_ID,
             name: format!("Daytona orphan scan {}", Uuid::new_v4()),
             provider: "daytona".to_string(),
-            access_token_encrypted: vec![1, 2, 3],
+            access_token_encrypted: Some(vec![1, 2, 3]),
             provider_username: None,
             provider_metadata: None,
+            ..Default::default()
         })
         .await
         .expect("create account");

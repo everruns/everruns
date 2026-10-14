@@ -41,6 +41,12 @@ See [file-based agents](/how-to/define-agents-as-files/) for loading, importing 
 | [Host Shell Agent](/framework/examples/host-shell-agent/) | OpenAI `gpt-6.1-sol` | Fixes a failing Rust test suite by compiling and running it through real processes inside a kernel-enforced boundary. |
 | [Foreman](/framework/examples/foreman-agent/) | TypeSafe `jev-latest` over an Everruns session, Codex, or yolop | Supervises a live coding session with nine decision questions per reading, and stops, verifies, or finishes it from a deterministic policy. |
 
+## Talking to other companies' agents
+
+| Example | Provider and model | What it does |
+| --- | --- | --- |
+| [`poppy-personal-agent`](https://github.com/everruns/everruns/tree/main/examples/poppy-personal-agent) | OpenAI `gpt-6.1-sol` | Acts as a person's own agent over the [Personal Agent Protocol](/features/poppy/): finds a company by its domain, asks its agent about an order, and reports the answer. |
+
 ## Serving agents
 
 These run agents as HTTP services with [Serve](/framework/serve/).

@@ -200,12 +200,16 @@ async fn store_avatar(
     Ok(Json(avatar))
 }
 
+/// List curated avatar presets
+///
 /// The public catalog contains presentation metadata only, never agent configuration.
 #[utoipa::path(get, path = "/v1/avatar-presets", responses((status = 200, body = Vec<AvatarPreset>)), security(()), tag = "agents")]
 pub async fn list_avatar_presets() -> Json<Vec<AvatarPreset>> {
     Json(PRESETS.iter().map(|p| p.metadata.clone()).collect())
 }
 
+/// Get a PNG preview of a curated avatar preset
+///
 /// Retrieve a public PNG preview of a curated preset using the agent avatar sizes and shapes.
 #[utoipa::path(get, path = "/v1/avatar-presets/{preset_id}/{variant}",
     params(("preset_id" = String, Path), ("variant" = String, Path)),
@@ -241,6 +245,8 @@ pub async fn get_avatar_preset_variant(Path((id, variant)): Path<(String, String
     }
 }
 
+/// Set an agent's avatar from a curated preset
+///
 /// Replace an agent's avatar with a curated preset, storing fresh immutable image URLs and updating its Slack app icons.
 #[utoipa::path(put, path = "/v1/agents/{agent_id}/avatar/preset",
     params(("agent_id" = String, Path)), request_body = SelectAvatarPreset,
@@ -256,6 +262,8 @@ pub async fn select_avatar_preset(
     store_avatar(&state, &org, &agent, source, variants).await
 }
 
+/// Get the agent's current avatar preset
+///
 /// Return the agent's current curated preset ID, or null for a custom upload or no avatar. Requires permission to manage the agent.
 #[utoipa::path(get, path = "/v1/agents/{agent_id}/avatar/preset", params(("agent_id" = String, Path)),
     responses((status = 200, body = AvatarPresetSelection), (status = 403, body = ErrorResponse), (status = 404, body = ErrorResponse)), tag = "agents")]

@@ -133,9 +133,13 @@ fn only_unrevealed_deferred_servers_are_held_back() {
 async fn calling_the_placeholder_reveals_its_server_without_contacting_it() {
     let storage = Arc::new(MemoryStorage::default());
     let session = SessionId::new();
+    let definitions = [deferred_mcp_server_definition("linear", None)];
     let tools = build_mcp_proxy_tools(
-        &[deferred_mcp_server_definition("linear", None)],
-        Arc::new(PanickingInvoker),
+        &definitions,
+        Arc::new(crate::runtime::mcp_proxy::ScopedMcpToolInvoker::new(
+            &definitions,
+            Arc::new(PanickingInvoker),
+        )),
     );
     assert_eq!(tools.len(), 1);
     let context = ToolContext::with_storage_store(session, storage.clone());

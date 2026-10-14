@@ -23,6 +23,7 @@ Use a channel when an external peer sends a request and waits for a reply. Use a
 | Public Chat | `public_chat` | Visitors to a hosted chat website for one Agent | `/v1/channels/{channel_id}/public-chat` | [Public Chat](#public-chat) |
 | Voice | `voice` | People talking from a browser or app, over WebRTC | `/v1/agents/{agent_id}/channels/{channel_id}/voice/calls` | [Voice](/features/voice/) |
 | Agent API | `api` | Your own code, with an agent key | `/v1/channels/{channel_id}` | [Agent API](/features/agent-api/) |
+| Poppy | `poppy` | People's own agents, over the Personal Agent Protocol | `/v1/channels/{channel_id}/poppy` | [Poppy](/features/poppy/) |
 
 Routes are relative to the API base, for example `https://your-everruns-host/api`. The channel ID in each route is the channel's own ID, not the Agent's.
 
@@ -55,6 +56,20 @@ Publishing and unpublishing require the dangerous Agent permission (Owner by def
 A channel serves traffic only when all three hold: the channel is live, the Agent is active, and the Agent's exposures are not suspended. Suspending exposures from the Agent's **Integrations** tab takes every channel of that Agent offline at once without changing each channel's state.
 
 Errors from public channels are sanitized so they do not expose internal state, such as whether a channel exists or why it is offline.
+
+## Files people send
+
+Files sent to a channel reach the Agent the same way on every channel. Each one is stored with the message and copied into the session's `/attachments` folder, where the Agent can open it again later in the conversation, including after compaction.
+
+| Channel | What is taken |
+|---|---|
+| Slack | Files shared in the message, downloaded with the app's bot token. Files linked from external services are described by name. |
+| AG-UI | Image, audio, video and document parts of the user message, inline or by URL. |
+| Public Chat | The same parts, inline only: at most 3 files of up to 10 MB, since visitors are not signed in. |
+| A2A | File parts, as bytes or a URI. PACT endpoints take text only, as the PACT protocol requires. |
+| Agent API | The `files` list of a message, as base64 `data` or a `url` ([Call your agent from code](/how-to/call-your-agent-from-code/#send-files)). |
+
+Files sent by URL are downloaded only from public `https` addresses. A message keeps at most 10 files of up to 25 MB each, and the file's contents decide its type, whatever the sender declared. A file that cannot be taken, for example because it is too large or its download failed, becomes a note in the message, such as `[Attachment report.pdf not received: 31 MB is over the 25 MB limit]`, so the Agent knows it was sent.
 
 ## AG-UI
 
@@ -156,5 +171,6 @@ The old `/v1/e/{channel_id}/…` and `/v1/apps/{app_id}/…` ingress paths remai
 - [A2A](/features/a2a/): inbound A2A channels and outbound delegation.
 - [Voice](/features/voice/): talk to an Agent and hear its answers.
 - [Agent API](/features/agent-api/): call one Agent from your own code with an agent key.
+- [Poppy](/features/poppy/): answer people's personal agents as a company.
 - [Agent Triggers](/features/agent-triggers/): proactive scheduled and event-driven work.
 - [Change History](/features/change-history/): see and restore earlier Agent configurations.

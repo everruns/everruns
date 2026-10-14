@@ -247,7 +247,11 @@ sites build and deploy independently and no request passes through both.
    path, query included, to the same path under https://everruns.com/docs. A
    Worker route rather than a zone redirect rule, because the deploy token
    manages Worker routes and the redirect stays tested in the repo. It stays
-   forever: published crate docs, plugins and old posts link the old host
+   forever: published crate docs, plugins and old posts link the old host.
+   A route fires only on a proxied hostname, so docs.everruns.com keeps a
+   proxied placeholder DNS record (`AAAA 100::`, discard address, added
+   2026-10-13 after the old Pages project and its CNAME were deleted).
+   Deleting that record takes every old link down
 5. `apps/docs/scripts/check-live.mjs` checks every sitemap page and its
    Markdown twin, the agent files, content negotiation and, with `--old`, each
    old URL's redirect. It runs after every deploy and daily
@@ -347,9 +351,15 @@ costs the reader twice.
 
 Page titles (rendered as `<title>Title | Everruns</title>`) must not exceed 70 characters total.
 
-- Starlight appends ` | Everruns` (12 chars), so page titles must be ≤57 chars
-- For API pages, route middleware strips the `METHOD /path - ` prefix from OpenAPI summaries to shorten titles
-- When writing OpenAPI `summary` doc comments in Rust, the description after the `METHOD /path - ` prefix should be ≤57 chars
+- Starlight appends ` | Everruns` (12 chars), so page titles should be ≤57 chars;
+  `routeData.ts` drops the suffix from a title that would still run over, and
+  `verify-seo.mjs` fails the build on any title over 70
+- API pages are titled by the OpenAPI summary, which the server keeps to ≤58
+  chars (`MAX_SUMMARY` in `crates/server/src/openapi/documentation.rs`, enforced
+  by its test). The server strips a `METHOD /path - ` prefix, takes the first
+  sentence, and moves the full text into the operation description, which the
+  page shows as its lede. A `#[command]` whose first sentence is still too long
+  sets `summary = "..."`; a hand-written handler puts a short first doc line
 
 A title is the page's name, not a keyword string. Prefer the name a reader would say out loud
 ("Daytona"), not the search phrase it might match ("Daytona Cloud Sandbox Capability for Agents").

@@ -174,3 +174,69 @@ async fn bad_requests_and_unknown_channels_are_answered_not_raised() {
         404
     );
 }
+
+/// Serves one file for every download and records the authorization sent.
+struct OneFile(Mutex<Vec<Option<String>>>);
+
+#[async_trait]
+impl everruns_core::EgressService for OneFile {
+    async fn send(
+        &self,
+        _: everruns_core::egress::EgressRequest,
+    ) -> everruns_core::egress::EgressResult<everruns_core::egress::EgressResponse> {
+        unreachable!("downloads stream")
+    }
+
+    async fn send_stream(
+        &self,
+        request: everruns_core::egress::EgressRequest,
+    ) -> everruns_core::egress::EgressResult<everruns_core::egress::EgressStreamResponse> {
+        self.0
+            .lock()
+            .unwrap()
+            .push(request.headers.get("authorization").cloned());
+        let png = b"\x89PNG\r\n\x1a\n rest".to_vec();
+        Ok(everruns_core::egress::EgressStreamResponse {
+            status: 200,
+            headers: Default::default(),
+            body: Box::pin(futures::stream::iter([Ok(png)])),
+        })
+    }
+}
+
+#[tokio::test]
+async fn a_slack_file_is_downloaded_through_the_channels_egress() {
+    let engine = InMemoryEngine::new();
+    let egress = Arc::new(OneFile(Mutex::new(Vec::new())));
+    let channels = Channels::builder(&engine)
+        .channel("slack", Slack::new("xoxb-test", "secret"), agent("ok"))
+        .egress(egress.clone())
+        .build();
+    let file = InboundAttachment::Remote {
+        url: "https://files.slack.com/files-pri/T1-F1/chart.png".into(),
+        name: Some("chart.png".into()),
+        media_type: Some("image/png".into()),
+        size: None,
+        credential: Some(everruns_core::RemoteCredential::bearer(
+            "files.slack.com",
+            "xoxb-test",
+        )),
+    };
+
+    let parts = channels
+        .host()
+        .attachment_parts("slack", &[file], None)
+        .await
+        .unwrap();
+
+    // The Framework keeps images inline; files other than images need a
+    // host that stores them.
+    assert!(
+        matches!(parts.as_slice(), [everruns_core::ContentPart::Image(_)]),
+        "{parts:?}"
+    );
+    assert_eq!(
+        egress.0.lock().unwrap().as_slice(),
+        [Some("Bearer xoxb-test".to_string())]
+    );
+}

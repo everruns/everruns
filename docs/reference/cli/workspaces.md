@@ -12,31 +12,10 @@ Durable working areas holding the files agents work on.
 
 | Command | What it does |
 |---|---|
-| [`workspaces create`](#workspaces-create) | Create a new Workspace in the current organization. |
 | [`workspaces delete`](#workspaces-delete) | Archive a Workspace (soft-delete). |
 | [`workspaces get`](#workspaces-get) | Fetch a Workspace by its public ID. |
 | [`workspaces list`](#workspaces-list) | List Workspaces in the current organization. |
 | [`workspaces update`](#workspaces-update) | Update a Workspace's mutable fields. |
-
-## workspaces create
-
-Create a new Workspace in the current organization.
-
-```bash
-everruns workspaces create [OPTIONS] --name <name>
-```
-
-| Flag | Description |
-|---|---|
-| `--description <DESCRIPTION>` | Optional human-readable description. |
-| `--name <NAME>` | Required. Human-readable workspace name. |
-
-Example:
-
-```bash
-# Create a workspace to group related sessions and files
-everruns workspaces create --name platform-team --description 'Platform team sandbox work' --reason 'Separate team resources'
-```
 
 ## workspaces delete
 

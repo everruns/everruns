@@ -150,11 +150,15 @@ pub struct CreateSessionRequest {
     #[serde(skip)]
     #[schema(ignore)]
     pub fork_up_to_sequence: Option<i32>,
-    /// Attach this session to an existing Workspace (format: `wsp_<32-hex>`)
-    /// instead of auto-creating a default per-session workspace. The workspace
-    /// must exist in the caller's org and be `active`. Lets multiple sessions
-    /// share one working filesystem. Omit for the default 1:1 behavior.
+    /// Retired: attaching a session to an existing Workspace. Every session
+    /// gets its own workspace; attaching let anyone holding the org-wide
+    /// workspace permission point a new session (on any agent) at another
+    /// session's files. Kept only so a request that still sends it is refused
+    /// with a clear error instead of being silently ignored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<String>, example = "wsp_01933b5a00007000800000000000001")]
-    pub workspace_id: Option<WorkspaceId>,
+    #[schema(ignore)]
+    pub workspace_id: Option<serde_json::Value>,
 }
+
+/// Error for a create-session request that still sends `workspace_id`.
+pub const WORKSPACE_ATTACH_RETIRED: &str = "workspace_id is no longer supported: every session gets its own workspace. Copy files between sessions through the Files API instead.";
