@@ -42,8 +42,11 @@ use tonic::transport::Channel;
 use uuid::Uuid;
 
 use crate::grpc_durable_store::GrpcClientAuth;
+mod checkpoint_availability;
+mod compaction_checkpoints;
 mod event_batch;
 mod shared_client;
+use checkpoint_availability::CheckpointAvailability;
 pub use shared_client::SharedClient;
 mod definition_reads;
 use definition_reads::proto_agent_to_definition;
@@ -100,6 +103,7 @@ async fn fetch_image_from_url(url: &str, media_type: &str) -> Result<ResolvedIma
 #[derive(Clone)]
 pub struct GrpcClient {
     pub(crate) inner: SharedClient,
+    checkpoints: Arc<CheckpointAvailability>,
 }
 
 /// Max gRPC message size (16MB)
@@ -128,6 +132,7 @@ impl GrpcClient {
 
         Ok(Self {
             inner: SharedClient::new(client),
+            checkpoints: CheckpointAvailability::new(),
         })
     }
 
@@ -139,6 +144,7 @@ impl GrpcClient {
             .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
         Self {
             inner: SharedClient::new(client),
+            checkpoints: CheckpointAvailability::new(),
         }
     }
 
@@ -1130,90 +1136,6 @@ impl GrpcAdapter {
             .collect::<Result<Vec<_>>>()?;
 
         Ok((messages, total_count, response.source_sequence))
-    }
-}
-
-#[async_trait]
-impl crate::core::CompactionCheckpointStore for GrpcAdapter {
-    async fn get_latest(
-        &self,
-        session_id: SessionId,
-        provider_type: &str,
-        model: &str,
-    ) -> Result<Option<crate::core::CompactionCheckpoint>> {
-        let mut client = self.client.inner.client();
-        let response = client
-            .get_compaction_checkpoint(proto::GetCompactionCheckpointRequest {
-                session_id: Some(uuid_to_proto(session_id.uuid())),
-                provider_type: provider_type.to_string(),
-                model: model.to_string(),
-            })
-            .await
-            .map_err(grpc_status_to_error)?
-            .into_inner();
-        response
-            .checkpoint
-            .map(|checkpoint| {
-                Ok(crate::core::CompactionCheckpoint {
-                    id: proto_uuid_to_uuid(checkpoint.id.as_ref())?,
-                    session_id: proto_uuid_to_uuid(checkpoint.session_id.as_ref())?.into(),
-                    source_sequence: checkpoint.source_sequence,
-                    provider_type: checkpoint.provider_type,
-                    model: checkpoint.model,
-                    format_version: checkpoint.format_version,
-                    payload: serde_json::from_slice(&checkpoint.payload_json).map_err(|error| {
-                        AgentLoopError::store(format!("invalid checkpoint payload: {error}"))
-                    })?,
-                })
-            })
-            .transpose()
-    }
-
-    async fn install(&self, checkpoint: crate::core::CompactionCheckpoint) -> Result<bool> {
-        let mut client = self.client.inner.client();
-        let payload_json = serde_json::to_vec(&checkpoint.payload)
-            .map_err(|error| AgentLoopError::store(error.to_string()))?;
-        Ok(client
-            .install_compaction_checkpoint(proto::InstallCompactionCheckpointRequest {
-                checkpoint: Some(proto::CompactionCheckpoint {
-                    id: Some(uuid_to_proto(checkpoint.id)),
-                    session_id: Some(uuid_to_proto(checkpoint.session_id.uuid())),
-                    source_sequence: checkpoint.source_sequence,
-                    provider_type: checkpoint.provider_type,
-                    model: checkpoint.model,
-                    format_version: checkpoint.format_version,
-                    payload_json,
-                }),
-            })
-            .await
-            .map_err(grpc_status_to_error)?
-            .into_inner()
-            .installed)
-    }
-
-    async fn get_proactive_attempt(
-        &self,
-        session_id: SessionId,
-        provider_type: &str,
-        model: &str,
-    ) -> Result<Option<crate::core::ProactiveCompactionAttempt>> {
-        Ok(self
-            .proactive_compaction_attempts
-            .get(session_id, provider_type, model)
-            .await)
-    }
-
-    async fn record_proactive_attempt(
-        &self,
-        session_id: SessionId,
-        provider_type: &str,
-        model: &str,
-        attempt: crate::core::ProactiveCompactionAttempt,
-    ) -> Result<()> {
-        self.proactive_compaction_attempts
-            .record(session_id, provider_type, model, attempt)
-            .await;
-        Ok(())
     }
 }
 
