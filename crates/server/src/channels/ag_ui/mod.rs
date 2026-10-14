@@ -595,7 +595,7 @@ pub(crate) async fn run_app_agent_stream(
                 state
                     .channels
                     .host
-                    .attachment_parts(&resolved, &attachments, policy)
+                    .attachment_parts(&resolved, None, &attachments, policy)
                     .await
                     .map_err(channel_error)?,
             );

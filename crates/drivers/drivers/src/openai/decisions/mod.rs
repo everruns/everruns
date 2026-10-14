@@ -28,6 +28,7 @@ use everruns_contracts::decisions::{
     DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionRequest,
 };
 use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::llm_error::LlmErrorKind;
 use serde_json::Value;
 
 use self::wire::{
@@ -184,13 +185,17 @@ impl OpenAIDecisionDriver {
                     AgentLoopError::llm("openai decision response is not a decision")
                 });
             }
-            let retryable = status.as_u16() == 429 || status.is_server_error();
+            let error = api_error(status.as_u16(), &text);
+            // A 429 is either throttling, which clears, or an exhausted
+            // account (`insufficient_quota`), which retrying cannot fix.
+            let retryable = (status.as_u16() == 429 || status.is_server_error())
+                && !matches!(&error, AgentLoopError::Llm(e) if e.kind == LlmErrorKind::QuotaExhausted);
             if retryable && attempt < self.max_attempts {
                 self.pause(attempt, retry_after).await;
                 attempt += 1;
                 continue;
             }
-            return Err(api_error(status.as_u16(), &text));
+            return Err(error);
         }
     }
 
@@ -200,9 +205,16 @@ impl OpenAIDecisionDriver {
     }
 }
 
-/// An API failure as an error that never echoes the request.
-fn api_error(status: u16, _text: &str) -> AgentLoopError {
-    AgentLoopError::llm(format!("OpenAI decision provider returned HTTP {status}"))
+/// An API failure as an error that never echoes the request or the body.
+///
+/// The body only classifies it and lends its error code, so a quota
+/// exhaustion (429 `insufficient_quota`) reads apart from throttling.
+fn api_error(status: u16, text: &str) -> AgentLoopError {
+    AgentLoopError::llm_http(
+        status,
+        text,
+        format!("OpenAI decision provider returned HTTP {status}"),
+    )
 }
 
 /// The vendor-side name of the question at `index`.

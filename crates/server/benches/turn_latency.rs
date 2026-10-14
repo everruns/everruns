@@ -70,6 +70,8 @@ use serde_json::{Value, json};
 const TURN_TIMEOUT: Duration = Duration::from_secs(60);
 const TURNS_PER_SESSION: usize = 5;
 const WORKER_TOKEN: &str = "server-turn-latency-bench";
+/// `key_id:base64` of 32 fixed bytes ("everruns-turn-latency-bench-key!").
+const BENCH_ENCRYPTION_KEY: &str = "kek-bench-v1:ZXZlcnJ1bnMtdHVybi1sYXRlbmN5LWJlbmNoLWtleSE=";
 
 struct Options {
     smoke: bool,
@@ -132,6 +134,14 @@ fn main() {
         eprintln!("turn_latency needs DATABASE_URL (a PostgreSQL database it may migrate)");
         std::process::exit(2);
     };
+    // The server and worker log nothing unless asked: with `RUST_LOG` set,
+    // their logs go to stderr, which is how a failed turn shows its cause.
+    if std::env::var_os("RUST_LOG").is_some() {
+        tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .with_writer(std::io::stderr)
+            .init();
+    }
     let http_port = free_port();
     let grpc_port = free_port();
     configure_environment(&database_url);
@@ -164,6 +174,11 @@ fn configure_environment(database_url: &str) {
         std::env::set_var("DEPLOYMENT_GRADE", "dev");
         std::env::set_var("AUTH_MODE", "none");
         std::env::set_var("WORKER_GRPC_AUTH_TOKEN", WORKER_TOKEN);
+        // Deployments set an encryption key, and a gRPC worker's turn reads
+        // and writes encrypted checkpoints through the server: without one
+        // every turn fails with "checkpoint encryption is not configured".
+        // A fixed throwaway key: the bench database holds only llmsim data.
+        std::env::set_var("SECRETS_ENCRYPTION_KEY", BENCH_ENCRYPTION_KEY);
         // Every client here shares 127.0.0.1, so the per-IP API limit (1200
         // requests a minute) trips on event polling once sessions run in
         // parallel. The bench measures turns, not the limiter.

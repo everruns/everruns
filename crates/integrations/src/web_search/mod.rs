@@ -41,7 +41,11 @@ pub use cloudflare_connector::CloudflareWebSearchConnector;
 pub use config::{FallbackMode, ProviderSetting, WebSearchConfig};
 pub use framework::WebSearch;
 pub use free::{FreeSearchDriver, FreeSearchEndpoints};
-pub use hosted::{HOSTED_SEARCH_ID, HostedSearchGate, HostedWebSearch};
+pub use hosted::{
+    HOSTED_SEARCH_ID, HostedSearchAdmission, HostedSearchCall, HostedSearchCompletion,
+    HostedSearchGate, HostedSearchInvocation, HostedSearchPermit, HostedSearchPermitGate,
+    HostedWebSearch,
+};
 pub use parallel::ParallelSearchDriver;
 pub use plan::{
     Attempt, PlanDrivers, PlanEntry, PlanInputs, PlanStep, ResolvedPlan, SearchOutcome, plan_steps,

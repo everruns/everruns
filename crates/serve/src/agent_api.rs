@@ -115,7 +115,8 @@ pub(crate) async fn card(
         name: name.clone(),
         description,
         streaming: true,
-        input: AgentCardInput::TEXT,
+        // Images and other files come in a message's `files`.
+        input: AgentCardInput::ALL,
         // The methods `auth` enforces; empty while the API is open.
         auth: host.auth().map(|auth| auth.card()).unwrap_or_default(),
         conversation_starters: Vec::new(),

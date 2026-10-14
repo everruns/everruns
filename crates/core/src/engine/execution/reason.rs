@@ -1356,9 +1356,7 @@ impl ReasonAtom {
             let mut time_to_first_token_ms: Option<u64> = None;
 
             // EVE-531: stall timeout for stream liveness
-            let stall_timeout = self
-                .provider_stall_timeout
-                .unwrap_or(std::time::Duration::from_secs(120));
+            let stall_timeout = self.stream_stall_timeout(chat_driver.as_ref(), &llm_config);
             let initial_stall_timeout = remaining_retry_time(&retry_config, retry_started_at)
                 .map_or(stall_timeout, |remaining| remaining.min(stall_timeout));
             let mut stall_sleep = Box::pin(everruns_contracts::rt::sleep(initial_stall_timeout));

@@ -157,25 +157,36 @@ fn harden_builder(builder: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
 pub fn shared_streaming_http_client() -> reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT
-        .get_or_init(|| {
-            crate::install_default_crypto_provider();
-            harden_builder(
-                reqwest::Client::builder()
-                    .connect_timeout(HTTP_CONNECT_TIMEOUT)
-                    .read_timeout(HTTP_STREAM_READ_TIMEOUT)
-                    .pool_idle_timeout(HTTP_STREAM_POOL_IDLE_TIMEOUT),
-            )
-            .build()
-            // Fall back to a minimal but still SSRF-hardened client rather than
-            // a bare `Client::new()`, so a builder failure can never silently
-            // drop the redirect/DNS-pinning guard (EVE-623).
-            .unwrap_or_else(|_| {
-                harden_builder(reqwest::Client::builder())
-                    .build()
-                    .unwrap_or_else(|_| reqwest::Client::new())
-            })
-        })
+        .get_or_init(|| streaming_http_client(HTTP_STREAM_READ_TIMEOUT))
         .clone()
+}
+
+/// Gemini long decode permits up to twenty minutes between reads in a hop.
+/// Keeps the same credential-free pooling and SSRF guards as other streams.
+pub fn shared_long_decode_http_client() -> reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT
+        .get_or_init(|| streaming_http_client(Duration::from_secs(1_200)))
+        .clone()
+}
+
+fn streaming_http_client(read_timeout: Duration) -> reqwest::Client {
+    crate::install_default_crypto_provider();
+    harden_builder(
+        reqwest::Client::builder()
+            .connect_timeout(HTTP_CONNECT_TIMEOUT)
+            .read_timeout(read_timeout)
+            .pool_idle_timeout(HTTP_STREAM_POOL_IDLE_TIMEOUT),
+    )
+    .build()
+    // Fall back to a minimal but still SSRF-hardened client rather than
+    // a bare `Client::new()`, so a builder failure can never silently
+    // drop the redirect/DNS-pinning guard (EVE-623).
+    .unwrap_or_else(|_| {
+        harden_builder(reqwest::Client::builder())
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    })
 }
 
 /// Process-wide HTTP client shared by non-streaming request/response drivers
@@ -661,7 +672,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn both_shared_http_clients_refuse_to_follow_redirects() {
+    async fn shared_http_clients_refuse_to_follow_redirects() {
         use wiremock::{
             Mock, MockServer, ResponseTemplate,
             matchers::{method, path},
@@ -676,10 +687,14 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/source"))
             .respond_with(ResponseTemplate::new(302).insert_header("Location", destination.uri()))
-            .expect(2)
+            .expect(3)
             .mount(&source)
             .await;
-        for client in [shared_streaming_http_client(), shared_request_http_client()] {
+        for client in [
+            shared_streaming_http_client(),
+            shared_long_decode_http_client(),
+            shared_request_http_client(),
+        ] {
             let response = client
                 .get(format!("{}/source", source.uri()))
                 .send()

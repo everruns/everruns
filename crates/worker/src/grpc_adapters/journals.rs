@@ -23,7 +23,7 @@ impl GrpcAdapter {
                 checkpoint_json,
             })
             .await
-            .map_err(grpc_status_to_error)?
+            .map_err(|status| self.client.checkpoint_status_to_error(status))?
             .into_inner();
         Ok(response.checkpoint_json)
     }
@@ -114,7 +114,7 @@ impl GrpcAdapter {
                 checkpoint_json,
             })
             .await
-            .map_err(grpc_status_to_error)?
+            .map_err(|status| self.client.checkpoint_status_to_error(status))?
             .into_inner();
         Ok(response.checkpoint_json)
     }

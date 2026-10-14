@@ -153,6 +153,10 @@ impl ChatDriver for ScriptRunDriver {
     fn effective_context_window(&self, model: &str) -> Option<usize> {
         self.model.effective_context_window(model)
     }
+
+    fn stream_stall_timeout(&self, config: &LlmCallConfig) -> Option<std::time::Duration> {
+        self.model.stream_stall_timeout(config)
+    }
 }
 
 #[cfg(test)]

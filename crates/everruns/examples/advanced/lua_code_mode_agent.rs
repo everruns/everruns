@@ -135,7 +135,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .await?;
     println!("Agent: {}", turn.response.trim());
-    assert!(turn.success, "turn should succeed");
+    assert!(turn.success, "turn should succeed: {:?}", turn.error);
 
     // 3. The model never called a math tool directly — only `lua`.
     let messages = runtime.messages(session_id).await?;

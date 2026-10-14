@@ -207,6 +207,19 @@ fn the_display_script_gets_values_as_positional_arguments() {
     assert_eq!(args[3..], [":99", "1024x768", WORK_DIR]);
 }
 
+/// Without `-noreset`, Xvfb regenerates whenever its last client
+/// disconnects: every one-shot xdotool call is that client until the desktop
+/// session connects, so the pointer snapped back to the screen center and a
+/// held button or key was dropped between actions.
+#[test]
+fn the_display_survives_its_last_client_disconnecting() {
+    let xvfb = START_DISPLAY_SCRIPT
+        .lines()
+        .find(|line| line.starts_with("setsid Xvfb"))
+        .expect("the script starts Xvfb");
+    assert!(xvfb.contains(" -noreset "), "{xvfb}");
+}
+
 // ---------------------------------------------------------------------------
 // Screenshot decoding
 // ---------------------------------------------------------------------------

@@ -28,10 +28,13 @@ use crate::hooks::{
 use crate::observers::ObserverDispatcher;
 use crate::{Agent, Harness, SessionEnvironmentError};
 
+mod attach;
 #[cfg(test)]
 mod backend_tests;
 mod interrupted;
 
+pub use attach::AttachError;
+use attach::AttachRequest;
 pub use interrupted::InterruptedTurn;
 use interrupted::ResumedTurn;
 
@@ -573,6 +576,10 @@ enum Command {
     Inspect {
         response: oneshot::Sender<Result<crate::SessionContext, RunError>>,
     },
+    Attach {
+        request: Box<AttachRequest>,
+        response: oneshot::Sender<Result<everruns_core::ContentPart, AttachError>>,
+    },
     Cancel {
         turn_id: TurnId,
         response: oneshot::Sender<bool>,
@@ -701,6 +708,9 @@ impl SessionActor {
                 Command::Inspect { response } => {
                     let result = self.inspect().await;
                     let _ = response.send(result);
+                }
+                Command::Attach { request, response } => {
+                    let _ = response.send(self.attach(request).await);
                 }
                 Command::Cancel { response, .. } => {
                     let _ = response.send(false);
@@ -1009,6 +1019,10 @@ impl SessionActor {
                         }
                         Some(Command::Inspect { response }) => {
                             self.deferred.push_back(Command::Inspect { response });
+                        }
+                        // The runtime is built while a turn runs.
+                        Some(Command::Attach { request, response }) => {
+                            let _ = response.send(self.attach(request).await);
                         }
                         // A running turn is not interrupted, whatever the log says.
                         Some(Command::Interrupted { response }) => {

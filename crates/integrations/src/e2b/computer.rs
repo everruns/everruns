@@ -87,6 +87,11 @@ const TYPE_DELAY_MS: &str = "12";
 /// runs at that size, then an xfce session when the template has one. State,
 /// logs and the marker live in `$3`. Positional arguments only: nothing is
 /// interpolated into the script text.
+///
+/// Decision: `-noreset`. Each xdotool call is a one-shot X client, and until
+/// the xfce session connects (or when the template has none) it is the only
+/// one; by default Xvfb regenerates when its last client leaves, which snaps
+/// the pointer back to the screen center and drops held buttons and keys.
 const START_DISPLAY_SCRIPT: &str = r#"set -u
 display="$1"; size="$2"; dir="$3"
 for tool in Xvfb xdotool; do
@@ -98,7 +103,7 @@ if [ "$(cat "$dir/display" 2>/dev/null)" = "$display $size" ] && DISPLAY="$displ
 fi
 pkill -f "Xvfb $display" >/dev/null 2>&1 || true
 sleep 0.2
-setsid Xvfb "$display" -ac -screen 0 "${size}x24" -dpi 96 -nolisten tcp >"$dir/xvfb.log" 2>&1 </dev/null &
+setsid Xvfb "$display" -ac -screen 0 "${size}x24" -dpi 96 -nolisten tcp -noreset >"$dir/xvfb.log" 2>&1 </dev/null &
 i=0
 until DISPLAY="$display" xdotool getdisplaygeometry >/dev/null 2>&1; do
   i=$((i + 1))

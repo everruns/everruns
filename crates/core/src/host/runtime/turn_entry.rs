@@ -4,6 +4,10 @@
 use super::*;
 use crate::host::turn_loop::turn_entry_plan;
 
+// Kept beside turn entry because `runtime.rs` is at its size limit.
+#[path = "attachments.rs"]
+mod attachments;
+
 impl InProcessRuntime {
     /// Execute one turn for an existing session.
     ///

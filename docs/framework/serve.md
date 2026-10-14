@@ -129,7 +129,7 @@ expression or a filter naming an unknown tool.
 | `#[agent]`, `#[agent(default)]`, `#[agent(sub)]` | `fn() -> Agent` | An agent. New sessions use the default one; a subagent becomes an `ask_<name>` tool on the others. |
 | `#[tool]`, `#[tool(needs_approval)]`, `#[tool(needs_approval = \|a: &Args\| …)]` | `async fn([cx: &Cx,] args…) -> Result<T>` | A tool named after the function, described by its doc comment. It also generates an arguments struct (`run_sql` → `RunSql`) with a JSON Schema. |
 | `#[channel]` | `fn() -> impl Into<Channel>` (a driver such as `Slack` or `Webhook`) | `POST /v1/channels/{name}`. Each external thread maps to one session, and replies are delivered back while the turn runs. `agent = "…"` picks the agent. |
-| `#[schedule("0 9 * * MON")]` | `async fn(&Cx) -> Result` | A cron entry. |
+| `#[schedule("0 9 * * MON")]` | `async fn(&Cx) -> Result` | A cron entry. A 5-field cron counts weekdays 0-6 from Sunday (7 is also Sunday), so `0 9 * * 1-5` runs Monday through Friday. |
 | `#[connection]` | `fn() -> T` or `fn() -> Result<T>` | A value tools read with `cx.connection::<T>()`. An `McpServer` connection is attached to every agent. |
 | `#[eval]` | `async fn(&mut EvalCx) -> Result` | A conversation with assertions, run in-process or against a deployment. |
 
@@ -184,7 +184,10 @@ A serve app speaks a subset of the Everruns server `/v1` API, with the same
 request and response bodies:
 
 - `POST /v1/sessions` and `GET /v1/sessions/{id}`
-- `POST /v1/sessions/{id}/messages`, which also steers an active turn
+- `POST /v1/sessions/{id}/messages`, which also steers an active turn. Its
+  `files` list sends files as base64 `data` or a public `url`, as on the
+  [Agent API](/how-to/call-your-agent-from-code/#send-files); each is kept in
+  the session's `/attachments` folder
 - `POST /v1/sessions/{id}/cancel`
 - `GET /v1/sessions/{id}/sse` (resume with `since_id` or `after_sequence`) and `GET /v1/sessions/{id}/events`
 - `POST /v1/sessions/{id}/question-answers`, for [`ask_user`](/framework/ask-user/) questions

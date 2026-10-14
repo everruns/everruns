@@ -17,6 +17,8 @@
 
 mod actor;
 mod ask_user_lifecycle;
+mod attachment_files;
+pub mod attachment_zip;
 pub mod native_async;
 
 mod backends;
@@ -81,6 +83,7 @@ pub use actor::{
     ActorRunner, DEFAULT_SESSION_LEASE_TTL, InMemorySessionLeases, SessionLease, SessionLeases,
     session_held_elsewhere,
 };
+pub use attachment_files::{SessionAttachmentFiles, stage_attachment};
 pub use backends::{
     HostBackends, RuntimeAgentStore, RuntimeHarnessStore, RuntimeProviderStore,
     RuntimeSessionStore, ScheduleStoreFactory,

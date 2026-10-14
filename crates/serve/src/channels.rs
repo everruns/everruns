@@ -60,7 +60,11 @@ pub(crate) fn build(
     store: Arc<dyn ChannelStore>,
     notices: broadcast::Sender<Notice>,
 ) -> ChannelHost {
-    let mut builder = ChannelHost::builder(Arc::new(ServePort { host: me })).store(store);
+    // Files messages link to (a Slack file) download through the runtime
+    // egress, the one agents' tools use.
+    let mut builder = ChannelHost::builder(Arc::new(ServePort { host: me }))
+        .store(store)
+        .egress(everruns::batteries::runtime_egress_service());
     for entry in &app.inner.channels {
         let (mut config, driver) = entry.channel.clone().into_parts(entry.name);
         config.agent = entry.agent.map(str::to_string);
@@ -173,6 +177,36 @@ impl ChannelSessionPort for ServePort {
             })
             .await
             .map_err(session_error)
+    }
+
+    /// A file goes into the session's own files (`Session::attach`).
+    async fn store_attachment(
+        &self,
+        _channel: &ChannelConfig,
+        session_id: Option<&str>,
+        attachment: everruns::channels::ReceivedAttachment,
+    ) -> Result<everruns::ContentPart, ChannelError> {
+        let Some(session_id) = session_id else {
+            return Err(ChannelError::BadRequest(
+                "files need a conversation to be kept in".into(),
+            ));
+        };
+        let session = self
+            .host()?
+            .session(session_id)
+            .await
+            .map_err(session_error)?;
+        session
+            .attach(
+                attachment.name,
+                Some(&attachment.media_type),
+                attachment.data,
+            )
+            .await
+            .map_err(|error| match error {
+                everruns::AttachError::Refused(reason) => ChannelError::BadRequest(reason),
+                other => ChannelError::Session(other.to_string()),
+            })
     }
 
     async fn send(

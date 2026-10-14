@@ -2,6 +2,96 @@ use super::*;
 use everruns_contracts::driver_registry::ChatDriver;
 use everruns_contracts::tool_types::ToolCall;
 
+#[tokio::test]
+async fn long_decode_resumes_only_at_a_safe_checkpoint_and_bills_committed_usage() {
+    use wiremock::matchers::{body_partial_json, method};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    for (later_output, transport_error) in
+        [(false, false), (false, true), (true, false), (true, true)]
+    {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(body_partial_json(json!({"continuationToken":"checkpoint"})))
+            .respond_with(ResponseTemplate::new(200).insert_header("content-type","text/event-stream").insert_header("Connection","close")
+                .set_body_string("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"last\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":13,\"candidatesTokenCount\":1,\"thoughtsTokenCount\":3}}\n\n"))
+            .expect(if later_output {0} else {1}).mount(&server).await;
+        let checkpoint = json!({"candidates":[{"content":{"parts":[{"text":"first"}]},"continuationToken":"checkpoint"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":1,"thoughtsTokenCount":2}});
+        let tail = if later_output {
+            json!({"candidates":[{"content":{"parts":[{"text":"extra"}]}}]})
+        } else {
+            // Usage after the checkpoint describes work that is not committed
+            // on a dropped stream and must not be charged again on resume.
+            json!({"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":1000,"thoughtsTokenCount":500}})
+        };
+        let mut chunks = vec![Ok(format!("data: {checkpoint}\n\ndata: {tail}\n\n")
+            .into_bytes()
+            .into())];
+        if transport_error {
+            chunks.push(Err(driver_helpers::shared_streaming_http_client()
+                .get("http://[invalid")
+                .build()
+                .unwrap_err()));
+        }
+        let bytes: ByteStream = Box::pin(futures::stream::iter(chunks));
+        let context = ContinuationRequest {
+            driver: GeminiChatDriver::new(),
+            endpoint: everruns_contracts::ProviderEndpoint::from_parts(
+                server.uri(),
+                everruns_contracts::StaticHeaderAuth::new("x-goog-api-key", "synthetic"),
+            ),
+            request: GeminiRequest {
+                contents: vec![GeminiContent {
+                    role: Some("user".into()),
+                    parts: vec![GeminiPart::text("question")],
+                }],
+                system_instruction: None,
+                tools: None,
+                cached_content: None,
+                continuation_token: None,
+                generation_config: Some(GeminiGenerationConfig {
+                    temperature: None,
+                    max_output_tokens: Some(100_000),
+                    thinking_config: None,
+                }),
+            },
+            url: format!(
+                "{}/models/gemini-4-argon:streamGenerateContent?alt=sse",
+                server.uri()
+            ),
+            model: "gemini-4-argon".into(),
+            extra_headers: vec![],
+            hops: 0,
+        };
+        let stream = convert_gemini_stream(
+            bytes,
+            GeminiStreamState {
+                model: "gemini-4-argon".into(),
+                ..Default::default()
+            },
+            Some(context),
+        );
+        let events: Vec<_> = stream.map(|event| event.unwrap()).collect().await;
+        assert!(matches!(&events[0],LlmStreamEvent::TextDelta(text) if text == "first"));
+        if later_output {
+            assert!(matches!(events.last(), Some(LlmStreamEvent::Error(_))));
+            assert!(
+                !events
+                    .iter()
+                    .any(|event| matches!(event, LlmStreamEvent::Done(_)))
+            );
+        } else {
+            assert!(matches!(&events[1],LlmStreamEvent::TextDelta(text) if text == "last"));
+            let Some(LlmStreamEvent::Done(meta)) = events.last() else {
+                panic!("missing completion")
+            };
+            assert_eq!(meta.prompt_tokens, Some(23));
+            assert_eq!(meta.completion_tokens, Some(7));
+            assert_eq!(meta.reasoning_tokens, Some(5));
+        }
+        server.verify().await;
+    }
+}
+
 // ========================================================================
 // Model-not-found detection tests
 // ========================================================================
@@ -128,6 +218,7 @@ async fn collect_wire_chunks(chunks: Vec<Vec<u8>>) -> Vec<Value> {
             model: "model".into(),
             ..Default::default()
         },
+        None,
     );
     let mut events = Vec::new();
     while let Some(event) = stream.next().await {
