@@ -55,6 +55,7 @@ for event, ref, changed, rust, paid_expected, workflow_expected in [
         "needs.changes.outputs.offline": "true" if event in ("schedule", "workflow_dispatch") else "false",
         "needs.changes.outputs.sdk_compat": "false",
         "needs.changes.outputs.docker": "false",
+        "needs.changes.outputs.chaos": "false",
         "needs.changes.outputs.run_ci": "true",
         "needs.changes.outputs.rust": "true" if event in ("schedule", "workflow_dispatch") else rust,
         "needs.changes.outputs.budget_e2e": "",

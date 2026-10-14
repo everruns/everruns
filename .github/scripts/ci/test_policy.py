@@ -25,7 +25,7 @@ plan, focused, tracker, release = map(load, ['plan','focused','track_failures','
 
 def evaluate(expression, values):
     expression = expression.removeprefix('${{').removesuffix('}}').strip()
-    expression = re.sub(r'\b(?:github|needs|steps|matrix)(?:\.[a-zA-Z_][a-zA-Z_0-9]*)+',
+    expression = re.sub(r'\b(?:github|needs|steps|matrix)(?:\.[a-zA-Z_][a-zA-Z_0-9-]*)+',
                         lambda m: repr(values.get(m.group(), '')), expression)
     return bool(eval(expression.replace('&&',' and ').replace('||',' or '), {'__builtins__':{}}, {'always':lambda:True}))
 
@@ -43,6 +43,11 @@ class Policy(unittest.TestCase):
                                    (5,'push',None,'running')]]
         self.assertEqual(plan.successful_base(runs,'now',lambda a,b:True),'good')
         self.assertEqual(plan.successful_base(runs,'now',lambda a,b:False),'')
+
+    def test_release_identity_and_plan_cannot_disagree_on_case(self):
+        self.assertEqual(plan.mode('push',False,'CHORE(RELEASE): PREPARE V1.0.0'),'full')
+        self.assertEqual(plan.mode('pull_request',True,'chore(release): prepare v1.0.0'),'pr')
+        self.assertEqual(plan.mode('workflow_dispatch',True,'ordinary commit'),'full')
 
     def test_empty_bootstrap_and_diverged_history(self):
         self.assertEqual(plan.successful_base([], 'new', lambda a,b:True),'')
@@ -77,13 +82,37 @@ class Policy(unittest.TestCase):
         for name in ['unit-test','integration-test','worker-test','workflow-test','build-binaries','sdk-compat-test','openapi-check','docker-build','msrv','wasm-portability']:
             self.assertFalse(evaluate(self.jobs[name]['if'],values),name)
 
+    def test_focused_tests_restore_main_produced_caches(self):
+        cache=next(s for s in self.jobs['focused-rust']['steps'] if s.get('uses','').startswith('Swatinem/rust-cache@'))
+        self.assertIn('integration-v2',cache['with']['shared-key'])
+        self.assertIn('unit-v2',cache['with']['shared-key'])
+        self.assertIs(cache['with']['save-if'],False)
+        focused_flags=self.jobs['focused-rust']['env']['CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS']
+        for job in ['unit-test','integration-test']:
+            self.assertEqual(self.jobs[job]['env']['CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS'],focused_flags)
+
     def test_api_pr_keeps_compatibility_without_worker_cli_builds(self):
         values=self.values(); values['needs.changes.outputs.sdk_compat']='true'
         for name in ['build-binaries','sdk-compat-test','openapi-check']:
             self.assertTrue(evaluate(self.jobs[name]['if'],values),name)
         self.assertNotIn('build-binaries',self.jobs['openapi-check']['needs'])
         build=next(s for s in self.jobs['build-binaries']['steps'] if s.get('name')=='Build CI binaries')
-        self.assertFalse(evaluate(build['env']['ALL_BINARIES'],values))
+        self.assertFalse(evaluate(build['env']['BUILD_WORKER'],values))
+
+    def test_chaos_uses_shared_binaries_and_only_relevant_prs(self):
+        values=self.values()
+        values['needs.build-binaries.result']='success'
+        self.assertFalse(evaluate(self.jobs['chaos-test']['if'],values))
+        values['needs.changes.outputs.chaos']='true'
+        self.assertTrue(evaluate(self.jobs['chaos-test']['if'],values))
+        self.assertTrue(evaluate(self.jobs['build-binaries']['if'],values))
+        build=next(s for s in self.jobs['build-binaries']['steps'] if s.get('name')=='Build CI binaries')
+        self.assertTrue(evaluate(build['env']['BUILD_WORKER'],values))
+        self.assertFalse(evaluate(build['env']['BUILD_CLI'],values))
+        self.assertIn('chaos-test',self.jobs['ci-success']['needs'])
+        self.assertFalse(any('cargo build' in s.get('run','') for s in self.jobs['chaos-test']['steps']))
+        manual=yaml.safe_load((ROOT/'.github/workflows/chaos.yml').read_text())
+        self.assertNotIn('pull_request',manual.get('on',manual.get(True)))
 
     def test_main_keeps_offline_coverage(self):
         values=self.values('batch')

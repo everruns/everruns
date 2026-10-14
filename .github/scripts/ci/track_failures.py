@@ -127,13 +127,15 @@ def main():
     # Only a successful earlier push batch is a regression baseline. Nightly
     # failures and cancelled/coalesced attempts never advance it.
     history = gh(f'repos/{repository}/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=100')['workflow_runs']
-    earlier = [r for r in history if r['id'] < run['id'] and r['head_sha'] != run['revision']
+    earlier = [r for r in history if r['id'] < run['id']
                and r.get('display_title', '').startswith(('CI batch ', 'CI full '))]
     earlier.sort(key=lambda r:r['id'], reverse=True)
     baseline = next((r['head_sha'] for r in earlier if contains(r['head_sha'],run['revision'])), '')
     candidates = []
+    range_note = 'No successful baseline is available.'
     if baseline:
         comparison = gh(f'repos/{repository}/compare/{baseline}...{run["revision"]}?per_page=100')
+        range_note = f'[Full revision range](https://github.com/{repository}/compare/{baseline}...{run["revision"]}). Candidate list covers the first {len(comparison["commits"])} of {comparison["total_commits"]} commits.'
         for commit in comparison['commits']:
             for pr in gh(f'repos/{repository}/commits/{commit["sha"]}/pulls?per_page=100'):
                 if pr['merged_at']:
@@ -157,7 +159,8 @@ Last successful batch: `{baseline or 'no baseline'}`
 Current revision: `{run['revision']}`
 
 Candidate PRs in the range (suspects, not attribution):
-{chr(10).join(dict.fromkeys(candidates)) or '- No PR range available.'}
+{range_note}
+{chr(10).join(dict.fromkeys(candidates)) or '- No merged PRs in the selected commit range.'}
 
 {'A later green batch contains the failing revision; verification complete.' if action == 'resolved' else 'Investigate the failed check; record cause and fix outside this generated block. A same-revision green rerun still needs human infrastructure triage.'}'''
         description = replace_report(issue['description'] if issue else '', report)

@@ -1,4 +1,5 @@
-# Chaos harness (scripts/chaos/, `just chaos`) at a PR-sized scale.
+# Manual release-profile chaos benchmark. Functional coverage reuses CI binaries
+# in ci.yml on main batches/full validation and harness-specific PRs.
 #
 # Two API servers and three gRPC workers from release binaries, one
 # PostgreSQL, NATS (JetStream) and Valkey, 60 llmsim sessions of mixed turn shapes, and
@@ -22,14 +23,6 @@
 name: Chaos Harness
 
 on:
-  pull_request:
-    paths:
-      - 'crates/server/**'
-      - 'crates/worker/**'
-      - 'crates/core/**'
-      - 'crates/internal-protocol/**'
-      - 'scripts/chaos/**'
-      - '.github/workflows/chaos.yml'
   workflow_dispatch:
     inputs:
       sessions:
