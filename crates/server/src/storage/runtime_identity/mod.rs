@@ -123,14 +123,20 @@ impl StorageBackend {
         };
         {
             let db = self.database();
-            sqlx::query("INSERT INTO virtual_user_bindings (id,org_id,virtual_user_id,provider,realm,subject,management_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (org_id,provider,realm,subject) DO NOTHING")
+            // A default binding also has a unique (org, management user) index.
+            // Arbitrate every index, then read only this verified identity's
+            // winner: a conflict must never select another subject's account.
+            sqlx::query("INSERT INTO virtual_user_bindings (id,org_id,virtual_user_id,provider,realm,subject,management_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING")
                 .bind(binding.id).bind(binding.org_id).bind(binding.virtual_user_id).bind(&binding.provider).bind(&binding.realm).bind(&binding.subject).bind(binding.management_user_id).execute(db.pool()).await?;
         }
         let winner = {
             let db = self.database();
-            sqlx::query_scalar::<_,VirtualUserId>("SELECT virtual_user_id FROM virtual_user_bindings WHERE org_id=$1 AND provider=$2 AND realm=$3 AND subject=$4").bind(binding.org_id).bind(&binding.provider).bind(&binding.realm).bind(&binding.subject).fetch_one(db.pool()).await?
+            sqlx::query_as::<_,VirtualUserBindingRow>("SELECT * FROM virtual_user_bindings WHERE org_id=$1 AND provider=$2 AND realm=$3 AND subject=$4").bind(binding.org_id).bind(&binding.provider).bind(&binding.realm).bind(&binding.subject).fetch_one(db.pool()).await?
         };
-        self.get_virtual_user(input.org_id, winner)
+        if winner.status != "active" {
+            bail!("Identity binding revoked");
+        }
+        self.get_virtual_user(input.org_id, winner.virtual_user_id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Runtime identity unavailable"))
     }

@@ -2008,6 +2008,9 @@ A `poppy` channel serves the Personal Agent Protocol (draft 0.1) at `/v1/channel
 The runtime account is org-scoped and separate from the management account. Verified identity keys
 include org, provider, realm, and subject; unlink retains a tombstone. Runtime JWTs carry a distinct
 audience/type and one endpoint/binding, no management role, and recheck endpoint/account/binding liveness.
+Concurrent first use arbitrates all binding uniqueness constraints, then reads only the exact
+verified identity key and rechecks its active status; another subject's default binding cannot
+be adopted and a revoked winner cannot be returned. See [runtime identity resolution](../../crates/server/src/storage/runtime_identity/mod.rs).
 Private end-user grants require self authority; management profile administration cannot read or write them.
 OAuth setup captures its actor, target, provider and org. A hash-bound server ledger enforces expiry and one-time consumption before rechecking membership or runtime authority.
 A stale refresh or invalid-grant response cannot overwrite or delete a reconnected token.
