@@ -138,6 +138,79 @@ fn unselected() { panic!("filter was lost"); }
             self.assertNotEqual(failed.returncode, 0)
             self.assertIn('selected failure', failed.stdout)
 
+    def test_main_artifacts_preserve_threads_and_survive_transfer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root/'crates/server'
+            (package/'src').mkdir(parents=True); (package/'tests').mkdir()
+            (package/'Cargo.toml').write_text('[package]\nname="everruns-server"\nversion="0.1.0"\nedition="2024"\n[workspace]\n')
+            context = '''
+fn context() {
+    let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    assert_eq!(std::env::current_dir().unwrap(), std::path::Path::new(&manifest));
+    assert_eq!(std::env::var("CARGO_MANIFEST_PATH").unwrap(), format!("{manifest}/Cargo.toml"));
+}
+'''
+            (package/'src/lib.rs').write_text(context+'#[test] fn unit() { context(); }')
+            (package/'tests/contracts.rs').write_text(context+'#[test] fn contract() { context(); }')
+            (package/'tests/server_integration.rs').write_text(context+'''
+#[test] fn serial() {
+    context();
+    assert!(std::env::args().any(|arg| arg == "--test-threads=1"));
+}
+''')
+            (package/'tests/workflow_test.rs').write_text(context+'''
+#[test] fn offline() { context(); }
+#[test] fn paid() { panic!("paid case was not excluded"); }
+''')
+            env = dict(os.environ, CARGO_TARGET_DIR=str(root/'target'))
+            script = str(ROOT/'.github/scripts/ci/libtest.py')
+            subprocess.run(['cargo','generate-lockfile','--offline'],cwd=package,env=env,check=True,capture_output=True)
+            build = ['cargo','test','--locked','-p','everruns-server','--no-run','--message-format=json']
+            artifacts = root/'artifacts.jsonl'
+            subprocess.run(['python3',script,'compile',str(artifacts),'--',*build,
+                            '--lib','--test','contracts','--test','server_integration'],
+                           cwd=package,env=env,check=True,capture_output=True)
+            result = subprocess.run(['python3',script,'run',str(artifacts),'--serial','server_integration'],
+                                    cwd=package,env=env,capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            self.assertEqual(result.stdout.count('1 passed; 0 failed'),3)
+            with artifacts.open('w') as output:
+                subprocess.run([*build,'--test','workflow_test'],cwd=package,env=env,stdout=output,stderr=subprocess.PIPE,check=True)
+            archive = root/'transferred'
+            subprocess.run(['python3',script,'archive-workflow',str(artifacts),str(archive)],
+                           cwd=package,env=env,check=True,capture_output=True)
+            shutil.rmtree(root/'target')
+            (archive/'workflow-tests').chmod(0o644)  # download-artifact drops executable mode.
+            command = ['python3',script,'execute-workflow',str(archive),'--','--test-threads=1','--skip','paid']
+            result = subprocess.run(command,cwd=root,env=env,capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            self.assertIn('1 passed; 0 failed',result.stdout)
+            unfiltered = subprocess.run(command[:-2],cwd=root,env=env,capture_output=True,text=True)
+            self.assertNotEqual(unfiltered.returncode,0)
+            self.assertIn('paid case was not excluded',unfiltered.stdout)
+            with (archive/'workflow-tests').open('ab') as output: output.write(b'changed')
+            changed = subprocess.run(command,cwd=root,env=env,capture_output=True,text=True)
+            self.assertNotEqual(changed.returncode,0)
+            self.assertIn('checksum mismatch',changed.stderr)
+            (package/'src/lib.rs').write_text('fn broken() { missing_ci_fixture_function(); }')
+            broken = subprocess.run(['python3',script,'compile',str(artifacts),'--',*build,'--lib'],
+                                    cwd=package,env=env,capture_output=True,text=True)
+            self.assertNotEqual(broken.returncode,0)
+            self.assertIn('missing_ci_fixture_function',broken.stderr)
+
+    def test_main_compilation_can_overlap_binary_build(self):
+        producer = self.jobs['workflow-test-build']
+        self.assertEqual(producer['needs'], 'changes')
+        self.assertIn('workflow-test-build', self.jobs['workflow-test']['needs'])
+        for tier in ['pr', 'main', 'nightly', 'full']:
+            values = self.values(tier)
+            self.assertEqual(evaluate(producer['if'], values),
+                             evaluate(self.jobs['workflow-test']['if'], values))
+        self.assertFalse(any('cargo test' in s.get('run', '')
+                             for s in self.jobs['workflow-test']['steps']))
+        self.assertIn('workflow-test-build', self.jobs['ci-success']['needs'])
+
     def test_archived_test_executable_receives_cargo_fixture_context(self):
         workflow=yaml.safe_load((ROOT/'.github/workflows/ci-test-archive.yml').read_text())
         step=next(s for s in workflow['jobs']['execute']['steps'] if s.get('name')=='Verify and run the shared executable')
@@ -168,7 +241,7 @@ fn unselected() { panic!("filter was lost"); }
     def test_ordinary_pr_does_not_build_binaries_or_run_broad_matrix(self):
         values=self.values()
         self.assertTrue(evaluate(self.jobs['focused-rust']['if'],values))
-        for name in ['unit-test','integration-test','worker-test','workflow-test','build-binaries','sdk-compat-test','openapi-check','docker-build','msrv','wasm-portability']:
+        for name in ['unit-test','integration-test','worker-test','workflow-test','workflow-test-build','build-binaries','sdk-compat-test','openapi-check','docker-build','msrv','wasm-portability']:
             self.assertFalse(evaluate(self.jobs[name]['if'],values),name)
 
     def test_focused_tests_restore_main_produced_caches(self):
@@ -179,7 +252,7 @@ fn unselected() { panic!("filter was lost"); }
         def cache_environment(job):
             return {key:value for key,value in self.jobs[job].get('env',{}).items()
                     if key.startswith(('CARGO','CC','CFLAGS','CXX','CMAKE','RUST'))}
-        for job in ['unit-test','integration-test']:
+        for job in ['unit-test','integration-test','workflow-test-build']:
             self.assertEqual(cache_environment(job),cache_environment('focused-rust'))
         execution=next(s for s in self.jobs['focused-rust']['steps'] if s.get('name')=='Test affected crates and persistence contracts')
         self.assertEqual(execution['env']['RUST_TEST_THREADS'],'4')
@@ -209,7 +282,7 @@ fn unselected() { panic!("filter was lost"); }
 
     def test_main_keeps_offline_coverage(self):
         values=self.values('batch')
-        for name in ['unit-test','worker-test','integration-test','workflow-test','build-binaries']:
+        for name in ['unit-test','worker-test','integration-test','workflow-test','workflow-test-build','build-binaries']:
             self.assertTrue(evaluate(self.jobs[name]['if'],values),name)
         self.assertFalse(evaluate(self.jobs['live-provider-matrix']['if'],values))
 
