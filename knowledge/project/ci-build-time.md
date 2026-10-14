@@ -92,8 +92,8 @@ durable 9.1m to 2-3m.
 
 - **Invocation count drives build time.** Each `cargo test` invocation pays its own
   codegen and link pass, so CI keeps the count per shard to a minimum: the domain shard
-  runs one invocation, the server shard two because its suites disagree on
-  `--test-threads` and merging them would serialise the lib's 2451 unit tests.
+  runs one invocation. The server shard builds library, contracts and repository
+  artifacts together, then directly executes them with target-specific concurrency.
 - **`Compiling <pkg>` does not mean the crate was rebuilt.** Cargo prints it whenever it
   builds any unit of a package, including a single test binary. Reading those lines as
   rebuilds is what first made this look like a 3x redundant compile.
@@ -118,12 +118,18 @@ durable 9.1m to 2-3m.
   fixtures retain serial execution.
 - **A `--no-run` prebuild does not help.** It was tried and removed: the targets it
   builds are not reused by later `cargo test` steps, so it only adds a wave.
-  Focused server PR tests instead compile all selected targets in one invocation
+  Focused server PR tests and the broad server shard instead compile their selected targets in one invocation
   and execute Cargo's emitted libtest binaries directly, retaining each target's
   filters, package working directory, and manifest environment. This avoids a
   second Cargo build without dropping the authorization contracts. The runner
   reports compilation and per-target execution separately; other affected-crate
   groups retain Cargo execution and their doctests.
+- **Compile workflow tests before binaries are ready.** The workflow suite used to
+  start compiling only after the server/worker build completed. Its libtest producer
+  now runs alongside that build, using the integration dependency cache read-only.
+  Execution downloads the same-run executable, verifies its checksum and supplies
+  Cargo's package context. Provider credentials remain confined to trusted-main
+  execution. See [artifact execution](../../.github/scripts/ci/libtest.py).
 - **One producer per `rust-cache` `shared-key`.** Cache entries are immutable, so the
   first job to finish writes the key. When ten jobs shared one key, a light job could
   store a `target/` shaped for a different workload and every heavy consumer rebuilt on
