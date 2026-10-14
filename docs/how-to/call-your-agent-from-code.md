@@ -57,6 +57,33 @@ curl -N "$EVERRUNS_AGENT_URL/sessions/$SESSION_ID/sse?after_sequence=0" \
 
 A key sees only the sessions it started. What the stream shows is the channel's **visibility**: by default messages plus "a tool ran", never tool names, arguments, or internal errors.
 
+### Send files
+
+A message can carry files in `files`, each as base64 `data` or a public `https` `url` that the server downloads. The Agent finds them in the session's `/attachments` folder. Message `content` holds text and image parts; for anything else use `files`.
+
+```json
+{
+  "message": {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "Check this invoice against order 42."
+      }
+    ]
+  },
+  "files": [
+    {
+      "name": "invoice.pdf",
+      "media_type": "application/pdf",
+      "url": "https://example.com/invoices/42.pdf"
+    }
+  ]
+}
+```
+
+A request body is limited in size, so send large files by `url`. A file that cannot be taken becomes a note the Agent reads instead ([Files people send](/features/channels/#files-people-send)).
+
 ## 3. Retry safely
 
 Send an `Idempotency-Key` header (the SDKs take an `idempotency_key` argument) when you create a session or send a message. A retry with the same key and the same request within 24 hours returns the first response instead of starting a second session or sending the message twice.

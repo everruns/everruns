@@ -38,6 +38,7 @@ export const queryKeys = {
   },
 
   agentGithub: {
+    all: ["agent-github"] as const,
     status: (agentId: string) => ["agent-github", agentId, "status"] as const,
     repositories: (identityId: string) => ["agent-github", identityId, "repositories"] as const,
   },
@@ -198,6 +199,7 @@ export const queryKeys = {
     members: (orgId: string) => ["organization", orgId, "members"] as const,
     invitations: (orgId: string) => ["organization", orgId, "invitations"] as const,
     egressAllowlist: (orgId: string) => ["organization", orgId, "egress-allowlist"] as const,
+    everrunsGithubApp: (orgId: string) => ["organization", orgId, "everruns-github-app"] as const,
   },
 
   invitations: {

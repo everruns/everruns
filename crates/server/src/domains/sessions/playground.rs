@@ -68,7 +68,6 @@ pub async fn bind_creation(
         if req.parent_session_id.is_some()
             || req.forked_from_session_id.is_some()
             || req.budget_root_session_id.is_some()
-            || req.workspace_id.is_some()
         {
             return Err(CommandError::bad_request(
                 "Playground starts with a fresh session and workspace",

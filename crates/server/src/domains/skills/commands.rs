@@ -535,6 +535,7 @@ pub struct ListSkillsUsage {}
     name = "list_skills_usage",
     category = "skills",
     description = "Count agents and harnesses referencing each skill capability.",
+    summary = "Count agents and harnesses using each skill",
     method = "GET",
     path = "/v1/skills/usage",
     policy = SKILL_VIEW,

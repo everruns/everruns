@@ -33,10 +33,11 @@ use crate::domains::agent_triggers::record::{
 use crate::domains::common::{CommandError, Ctx};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
+use crate::github_apps::{EVERRUNS_APP_CONNECTION_TYPE, GITHUB_PROVIDER};
 use crate::storage::AgentRow;
 use crate::storage::GitHubAppRow;
 use crate::storage::StorageBackend;
-use everruns_contracts::typed_id::{AgentId, TriggerId};
+use everruns_contracts::typed_id::{AgentId, TriggerId, VirtualUserId};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -83,10 +84,22 @@ pub(super) async fn create_config(
     req: &CreateAgentTriggerRequest,
 ) -> Result<Value, CommandError> {
     let identity_id = agent.virtual_user_id.ok_or_else(connect_first)?;
-    ctx.db
+    // The agent's own App, or a shared Everruns App link it chose: either has
+    // a webhook that delivers events to this trigger.
+    let has_app = ctx
+        .db
         .get_github_app_for_identity(ctx.org_id(), identity_id)
         .await?
-        .ok_or_else(connect_first)?;
+        .is_some();
+    let chose_everruns_app = || async {
+        ctx.db
+            .get_virtual_user_connection(identity_id, GITHUB_PROVIDER)
+            .await
+            .map(|row| row.is_some_and(|row| row.connection_type == EVERRUNS_APP_CONNECTION_TYPE))
+    };
+    if !has_app && !chose_everruns_app().await? {
+        return Err(connect_first());
+    }
     let config = GitHubTriggerConfig {
         events: normalize_events(req.github_events.clone())?,
         repositories: normalize_repositories(req.repositories.clone())?,
@@ -331,25 +344,74 @@ fn subscribes(config: &GitHubTriggerConfig, event: &str, action: Option<&str>) -
         .any(|subscribed| subscribed == event || *subscribed == with_action)
 }
 
-/// Whether the App's own bot sent this event.
-fn sent_by_app(app: &GitHubAppRow, payload: &Value) -> bool {
-    let bot_login = format!("{}[bot]", app.slug);
+/// Who one verified delivery may reach: the agents in one org whose service
+/// virtual user acts through the App that received it.
+///
+/// Decision: an agent App's webhook reaches the one identity that created the
+/// App; the shared Everruns App's webhook reaches every agent in the linking
+/// org that chose that installation (`everruns_app` rows, D3). Both go through
+/// the same trigger pipeline below.
+#[derive(Debug, Clone)]
+pub struct GitHubDeliveryRecipients {
+    pub org_id: i64,
+    /// The receiving App's bot (`<slug>[bot]`); its own events are dropped so
+    /// an agent's comment never wakes it again. `None` when unknown.
+    pub bot_login: Option<String>,
+    /// Service virtual users whose agents' GitHub triggers are candidates.
+    pub identities: Vec<VirtualUserId>,
+}
+
+impl GitHubDeliveryRecipients {
+    /// A per-agent App's delivery: the identity that created it.
+    pub fn agent_app(app: &GitHubAppRow) -> Self {
+        Self {
+            org_id: app.org_id,
+            bot_login: Some(format!("{}[bot]", app.slug)),
+            identities: vec![app.virtual_user_id],
+        }
+    }
+
+    /// A shared Everruns App delivery for an installation `org_id` links:
+    /// every agent in the org that chose it.
+    pub async fn everruns_app(
+        db: &StorageBackend,
+        org_id: i64,
+        installation_id: i64,
+        app_slug: Option<&str>,
+    ) -> Result<Self, CommandError> {
+        Ok(Self {
+            org_id,
+            bot_login: app_slug.map(|slug| format!("{slug}[bot]")),
+            identities: db
+                .list_everruns_app_identities(org_id, installation_id)
+                .await?,
+        })
+    }
+}
+
+/// Whether the receiving App's own bot sent this event.
+fn sent_by_bot(bot_login: Option<&str>, payload: &Value) -> bool {
+    let Some(bot_login) = bot_login else {
+        return false;
+    };
     payload
         .pointer("/sender/login")
         .and_then(Value::as_str)
-        .is_some_and(|login| login.eq_ignore_ascii_case(&bot_login))
+        .is_some_and(|login| login.eq_ignore_ascii_case(bot_login))
 }
 
-/// Hand one verified delivery to every GitHub trigger of the App's identity.
+/// Hand one verified delivery to every GitHub trigger of the recipients.
 pub async fn dispatch_github_delivery(
     db: &Arc<StorageBackend>,
     session_service: &SessionService,
     message_service: &MessageService,
-    app: &GitHubAppRow,
+    recipients: &GitHubDeliveryRecipients,
     delivery: &GitHubDelivery,
     request_id: Option<String>,
 ) -> Result<Vec<GitHubDispatch>, CommandError> {
-    if sent_by_app(app, &delivery.payload) {
+    if recipients.identities.is_empty()
+        || sent_by_bot(recipients.bot_login.as_deref(), &delivery.payload)
+    {
         return Ok(Vec::new());
     }
     let action = delivery.payload.get("action").and_then(Value::as_str);
@@ -357,7 +419,7 @@ pub async fn dispatch_github_delivery(
     let subject = subject(&github);
 
     let triggers = db
-        .list_agent_triggers(app.org_id, None, false)
+        .list_agent_triggers(recipients.org_id, None, false)
         .await?
         .into_iter()
         .filter(|row| {
@@ -372,7 +434,11 @@ pub async fn dispatch_github_delivery(
             .get_agent(row.org_id, row.agent_id)
             .await?
             .filter(|agent| agent.status == "active" && !agent.exposures_suspended)
-            .filter(|agent| agent.virtual_user_id == Some(app.virtual_user_id))
+            .filter(|agent| {
+                agent
+                    .virtual_user_id
+                    .is_some_and(|id| recipients.identities.contains(&id))
+            })
         else {
             continue;
         };

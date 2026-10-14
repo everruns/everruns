@@ -324,9 +324,10 @@ async fn organization_sets_validated_web_search_defaults() {
         org_id: DEFAULT_ORG_ID,
         name: name.to_string(),
         provider: provider.to_string(),
-        access_token_encrypted: vec![1, 2, 3],
+        access_token_encrypted: Some(vec![1, 2, 3]),
         provider_username: None,
         provider_metadata: None,
+        ..Default::default()
     };
     let brave = db
         .create_organization_connection(account("brave_search", "Team"))

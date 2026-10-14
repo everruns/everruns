@@ -807,13 +807,13 @@ This ensures bash and FileSystem capability share the same file namespace.
 
 - **ID**: `session_storage`
 - **Purpose**: Session-scoped key/value storage and encrypted secret storage
-- **Tools**: `kv_store` (set/get/delete/list), `secret_store` (encrypted, same ops)
+- **Tools**: `kv_store` (set/get/delete/list), `secret_store` (encrypted, write-only: set/delete/list)
 
 ##### Design Decision: Consolidated Tools
 
 Two tools consolidate 8 operations (4 per storage type) to reduce tool count:
 - `kv_store` with `operation` parameter (set/get/delete/list) for key/value storage
-- `secret_store` with `operation` parameter (set/get/delete/list) for encrypted secrets
+- `secret_store` with `operation` parameter (set/delete/list) for encrypted secrets; values are never returned to the model (TM-AGENT-038), capabilities read the secrets they own server-side
 
 ##### Design Decision: Key/Value vs Secrets
 

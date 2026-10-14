@@ -29,6 +29,8 @@ use super::{
 use crate::api::common::ErrorResponse;
 use crate::channels::a2a::signing::A2A_SIGNATURE_HEADER;
 
+/// Get an A2A agent card (legacy app route)
+///
 /// GET /v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json
 #[utoipa::path(
     get,

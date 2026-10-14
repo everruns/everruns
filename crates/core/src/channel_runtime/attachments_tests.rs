@@ -5,46 +5,18 @@ use async_trait::async_trait;
 use everruns_contracts::runtime::egress::{
     EgressError, EgressResponse, EgressResult, EgressStreamResponse,
 };
-use everruns_contracts::runtime::message_retriever::InputMessage;
 
 use super::*;
-use crate::channel_runtime::{ChannelEventStream, NewChannelSession, SendOutcome};
 
 /// Stores every file it is given as a text part naming it.
 #[derive(Default)]
-struct StorePort {
+struct TextStore {
     stored: Mutex<Vec<ReceivedAttachment>>,
 }
 
 #[async_trait]
-impl ChannelSessionPort for StorePort {
-    async fn create_session(&self, _: NewChannelSession) -> Result<String, ChannelError> {
-        unreachable!()
-    }
-
-    async fn send(
-        &self,
-        _: &ChannelConfig,
-        _: &str,
-        _: InputMessage,
-    ) -> Result<SendOutcome, ChannelError> {
-        unreachable!()
-    }
-
-    async fn events(
-        &self,
-        _: &ChannelConfig,
-        _: &str,
-        _: Option<i64>,
-    ) -> Result<ChannelEventStream, ChannelError> {
-        unreachable!()
-    }
-
-    async fn store_attachment(
-        &self,
-        _: &ChannelConfig,
-        attachment: ReceivedAttachment,
-    ) -> Result<ContentPart, ChannelError> {
+impl AttachmentStore for TextStore {
+    async fn store(&self, attachment: ReceivedAttachment) -> Result<ContentPart, ChannelError> {
         let part = ContentPart::text(format!(
             "stored {} ({})",
             attachment.name, attachment.media_type
@@ -122,14 +94,15 @@ async fn take(
     policy: AttachmentPolicy,
     attachments: &[InboundAttachment],
 ) -> (Vec<String>, Vec<ReceivedAttachment>) {
-    let port = StorePort::default();
-    let intake = Intake {
-        port: &port,
+    let store = TextStore::default();
+    let intake = AttachmentIntake {
+        store: &store,
         egress,
         policy,
+        source: "slack",
     };
     let parts = intake
-        .parts(&ChannelConfig::new("slack"), attachments)
+        .parts(attachments)
         .await
         .into_iter()
         .map(|part| match part {
@@ -137,7 +110,7 @@ async fn take(
             other => panic!("unexpected part {other:?}"),
         })
         .collect();
-    (parts, port.stored.into_inner().unwrap())
+    (parts, store.stored.into_inner().unwrap())
 }
 
 #[tokio::test]
@@ -204,6 +177,7 @@ async fn files_that_cannot_be_taken_become_notes() {
     let policy = AttachmentPolicy {
         max_files: 4,
         max_bytes: 32,
+        downloads: true,
     };
     let (parts, stored) = take(
         Some(egress),
@@ -271,4 +245,37 @@ async fn a_host_without_egress_notes_remote_files() {
         parts,
         ["[Attachment a.pdf not received: this host does not download files]"]
     );
+}
+
+#[tokio::test]
+async fn the_anonymous_policy_takes_inline_files_only() {
+    let egress: Arc<dyn EgressService> =
+        Arc::new(FakeEgress::default().with("https://example.com/a.pdf", 200, &[], b"%PDF-1.7"));
+    let inline = |name: &str| InboundAttachment::Bytes {
+        name: Some(name.into()),
+        media_type: Some("text/plain".into()),
+        data: b"hi".to_vec(),
+    };
+    let (parts, stored) = take(
+        Some(egress),
+        AttachmentPolicy::anonymous(),
+        &[
+            remote("https://example.com/a.pdf", None),
+            inline("b.txt"),
+            inline("c.txt"),
+            inline("d.txt"),
+        ],
+    )
+    .await;
+
+    assert_eq!(
+        parts,
+        [
+            "[Attachment a.pdf not received: this channel takes files inline, not as links]",
+            "stored b.txt (text/plain)",
+            "stored c.txt (text/plain)",
+            "[Attachment d.txt not received: a message keeps at most 3 files]",
+        ]
+    );
+    assert_eq!(stored.len(), 2);
 }

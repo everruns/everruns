@@ -168,19 +168,10 @@ impl ChannelSessionPort for ServerChannelPort {
         channel: &ChannelConfig,
         egress: Arc<dyn everruns_core::EgressService>,
     ) -> Arc<dyn everruns_core::EgressService> {
-        let Ok(scope) = scope(channel) else {
-            return egress;
-        };
-        let org_id = everruns_core::org_public_id_from_internal(scope.context.org_id)
-            .parse()
-            .ok();
-        Arc::new(everruns_core::ScopedEgressService::new(
-            egress,
-            everruns_core::EgressScope {
-                org_id,
-                session_id: None,
-            },
-        ))
+        match scope(channel) {
+            Ok(scope) => crate::domains::messages::intake::org_egress(egress, scope.context.org_id),
+            Err(_) => egress,
+        }
     }
 
     async fn create_session(&self, request: NewChannelSession) -> Result<String, ChannelError> {

@@ -36,25 +36,36 @@ async fn reasons_from_rest_and_commands_land_in_history_and_context_holds_its_re
     let server = TestServer::new().await;
 
     // /v1/commands: the reason rides in the envelope.
-    let created: Value = server
+    // A workspace only comes with its session; renaming it is the first change.
+    let session: Value = server
         .post(
-            "/v1/commands/create_workspace",
-            json!({ "params": { "name": unique("history") }, "reason": "a home for support" }),
+            "/v1/sessions",
+            json!({ "harness_id": server.seed_base_harness_id }),
         )
         .await
-        .assert_success()
+        .assert_status(StatusCode::CREATED)
         .json();
-    let id = created["output"]["id"]
+    let id = session["workspace_id"]
         .as_str()
         .expect("workspace id")
         .to_string();
+    server
+        .post(
+            "/v1/commands/update_workspace",
+            json!({
+                "params": { "workspace_id": id, "name": unique("history") },
+                "reason": "a home for support",
+            }),
+        )
+        .await
+        .assert_success();
 
     let history: Value = server
         .get(&format!("/v1/history/{id}"))
         .await
         .assert_success()
         .json();
-    assert_eq!(history[0]["action"], "created");
+    assert_eq!(history[0]["action"], "updated");
     assert_eq!(history[0]["reason"], "a home for support");
     assert_eq!(history[0]["surface"], "commands");
 
@@ -152,7 +163,7 @@ async fn reasons_from_rest_and_commands_land_in_history_and_context_holds_its_re
             "updated",
             "context_updated",
             "context_updated",
-            "created"
+            "updated"
         ]
     );
     assert_eq!(history[1]["reason"], "rename as agreed");
@@ -185,18 +196,20 @@ async fn reasons_from_rest_and_commands_land_in_history_and_context_holds_its_re
 async fn rest_routes_that_skip_commands_still_record_history_and_hold_to_context() {
     let server = TestServer::new().await;
 
-    // POST /v1/workspaces writes storage directly; the header reason still lands.
-    let created: Value = send(
-        &server,
-        Method::POST,
-        "/v1/workspaces",
-        vec![("everruns-change-reason", "rest%20create")],
-        json!({ "name": unique("rest") }),
-    )
-    .await
-    .assert_success()
-    .json();
-    let id = created["id"].as_str().expect("workspace id").to_string();
+    // A workspace exists only as a session's own; the REST routes that rename
+    // and archive it write storage directly, and the header reason still lands.
+    let session: Value = server
+        .post(
+            "/v1/sessions",
+            json!({ "harness_id": server.seed_base_harness_id }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let id = session["workspace_id"]
+        .as_str()
+        .expect("workspace id")
+        .to_string();
 
     server
         .put(
@@ -243,18 +256,10 @@ async fn rest_routes_that_skip_commands_still_record_history_and_hold_to_context
         .iter()
         .map(|entry| entry["command"].as_str().unwrap_or_default())
         .collect();
-    assert_eq!(
-        commands,
-        [
-            "update_workspace",
-            "set_manager_context",
-            "create_workspace"
-        ]
-    );
+    assert_eq!(commands, ["update_workspace", "set_manager_context"]);
     assert_eq!(history[0]["reason"], "acked rename");
     assert_eq!(history[0]["changed_fields"], json!(["name"]));
     assert_eq!(history[0]["surface"], "api");
-    assert_eq!(history[2]["reason"], "rest create");
 
     // Archiving drops the workspace's manager context.
     server

@@ -19,7 +19,7 @@ Organization memories are appropriate for shared references such as runbooks or 
 
 **User memory is private by default.** Only the session owner may access `/memory/user` through user-facing session file APIs. Other users cannot read or mutate the subtree, and file searches redact matches from it. Internal runtime access lets the agent working for the owner read and update that memory.
 
-User memory is not mounted into caller-attached shared workspaces. Everruns waits to expose it there until mounts can be participant-local instead of visible to the entire workspace.
+User memory is never mounted into a workspace that more than one session shares (only sessions created before shared workspaces were retired can have one).
 
 Agent memory is separate from user memory. It is shared by sessions hosted by the same agent, so do not use `/memory/agent` for user-private data. A guest agent's private memory is not merged into a shared session's workspace-wide `/memory/agent` path.
 
