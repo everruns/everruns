@@ -17191,7 +17191,7 @@
         "tags": [
           "monitoring"
         ],
-        "summary": "Get live execution monitoring for the selected, enrolled organization",
+        "summary": "Get organization execution monitoring",
         "operationId": "get_monitoring",
         "responses": {
           "200": {
@@ -17238,7 +17238,7 @@
         "tags": [
           "monitoring"
         ],
-        "summary": "List a bounded page of session actors in the selected organization",
+        "summary": "List organization session actors",
         "operationId": "list_monitoring_actors",
         "parameters": [
           {

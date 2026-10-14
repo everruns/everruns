@@ -420,7 +420,7 @@ pub async fn monitoring_config(
     })
 }
 
-/// Get live execution monitoring for the selected, enrolled organization.
+/// Get organization execution monitoring.
 #[utoipa::path(get, path = "/v1/monitoring", tag = "monitoring",
     responses((status = 200, description = "Organization execution monitoring", body = MonitoringSnapshot),
         (status = 403, description = "Forbidden", body = ErrorResponse), (status = 404, description = "Not enrolled", body = ErrorResponse)))]
@@ -497,7 +497,7 @@ async fn actor_page(
     }))
 }
 
-/// List a bounded page of session actors in the selected organization.
+/// List organization session actors.
 #[utoipa::path(get, path = "/v1/monitoring/actors", tag = "monitoring", params(ActorQuery),
     responses((status = 200, description = "Organization actor page", body = MonitoringActorPage)))]
 pub async fn list_monitoring_actors(

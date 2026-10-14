@@ -4267,7 +4267,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Get live execution monitoring for the selected, enrolled organization */
+    /** Get organization execution monitoring */
     get: operations["get_monitoring"];
     put?: never;
     post?: never;
@@ -4284,7 +4284,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List a bounded page of session actors in the selected organization */
+    /** List organization session actors */
     get: operations["list_monitoring_actors"];
     put?: never;
     post?: never;
