@@ -179,6 +179,15 @@ impl LocalRuntimeBuilder {
             .build()
             .await?;
 
+        // Bind the direct runtime observer, not the observing registry: recovery writes
+        // use the raw registry under their atomic guard and must not recurse through get.
+        if let Some(observer) = runtime.task_wake_observer() {
+            local.task_recovery.set_wake_observer(observer);
+        }
+        // Recover reopened executions only after ordinary runtime wakes are available.
+        local.task_recovery.recover_all().await?;
+        local.task_recovery.start_maintenance();
+
         Ok((runtime, local))
     }
 }

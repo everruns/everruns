@@ -1,0 +1,48 @@
+---
+type: Playbook
+title: Product Video Knowledge
+description: Ownership and discovery of the canonical Everruns product-video guide and published Slack walkthrough.
+tags:
+  - everruns
+  - documentation
+  - video
+---
+
+# Product Video Knowledge
+
+The canonical production knowledge lives in the **private landing repository**:
+[Product Videos](https://github.com/everruns/landing/blob/main/knowledge/content/product-videos.md).
+Its linked
+[product-video skill](https://github.com/everruns/landing/blob/main/.claude/skills/product-video/SKILL.md)
+covers real browser/native-app capture, scene timing, fluid zooms, floating text
+cards, Sarah narration, brand pronunciation, audio mixing, captions, upload and
+verification. Read those before producing the next walkthrough. Repository access
+is required; these links are for maintainers, not public product documentation.
+
+Landing owns the detailed guide because video production serves the website,
+launches and product documentation together. Keep one canonical procedure there;
+update this pointer if its ownership moves. Do not duplicate credentials, private
+account details, raw recordings or capture-specific scripts into OSS knowledge.
+
+The approved public channel is [Everruns @everrunshq](https://www.youtube.com/@everrunshq).
+The reference is
+[Slack integration: Kids Duties agent in Everruns](https://www.youtube.com/watch?v=mbbYFif9juY),
+a public 29-second walkthrough with English Sarah narration/captions. It shows an
+existing configuration and saved run followed by actual Slack messages; the
+original messages remain Ukrainian. It does not claim to create the agent from
+scratch or demonstrate a Slack pane that was disabled in that setup.
+
+The baseline is casual description, a smoothly joined "ever-runs" pronunciation,
+quick eased zooms followed by reading holds, and short navy/gold text cards placed
+clear of the relevant controls. **Improvements and deviations are welcome** when
+they improve clarity or naturalness; the reference is not a rigid template.
+
+Publishing the video is separate from deploying its containing page. At the time
+this guide was written, the new Slack landing page was a local prototype and the
+public integration route redirected to the capability reference. Verify source
+and deployment before describing the landing page as shipped.
+
+For public entries, link the real demo rather than a private recording directory.
+The walkthrough illustrates both
+[Slack DMs and files](../../docs/changelog/2026-10-13-slack-agents-dms-and-files/index.md)
+and [scheduled Slack briefings](../../docs/changelog/2026-10-12-scheduled-turns-post-to-slack/index.md).

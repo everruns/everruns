@@ -77,6 +77,17 @@ impl everruns_core::session_task::TaskExecutor for BackgroundToolTaskExecutor {
         everruns_core::session_task::TASK_KIND_BACKGROUND_TOOL
     }
 
+    fn ownership(
+        &self,
+        task: &everruns_core::session_task::SessionTask,
+    ) -> everruns_core::session_task::TaskOwnership {
+        crate::background_run::background_task_ownership(task)
+    }
+
+    fn local_owner_process(&self, task: &everruns_core::session_task::SessionTask) -> Option<u32> {
+        crate::background_run::background_task_owner_process(task)
+    }
+
     /// Re-attach when `spec["reattachable"]` is true (set at spawn time when
     /// the tool declared `idempotent` or `readonly` hints). Tools without this
     /// flag are still failed as orphaned so side-effecting runs are not doubled.

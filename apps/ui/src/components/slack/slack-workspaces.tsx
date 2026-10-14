@@ -10,6 +10,9 @@
  * - The token connects as soon as a refresh-shaped value is pasted. The access token sits right
  *   above the refresh token on Slack's page and is the obvious thing to copy by mistake, so it is
  *   named specifically rather than reported as a generic rejection after a round trip.
+ * - A deployment with a Slack manager app (EVE-1102) connects by one Slack consent instead, and
+ *   the token steps stay one click away: they are the path when the consent is not available to
+ *   this workspace, and the self-hosted default.
  */
 import { useEffect, useRef, useState } from "react";
 import { CircleAlert, ExternalLink } from "lucide-react";
@@ -17,7 +20,11 @@ import { SlackIcon as Slack } from "@/components/icons/slack-icon";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { connectSlackWorkspace, type SlackWorkspace } from "@/lib/api/agent-channels";
+import {
+  beginSlackManagerConnect,
+  connectSlackWorkspace,
+  type SlackWorkspace,
+} from "@/lib/api/agent-channels";
 
 /** Where Slack's "Your App Configuration Tokens" section lives. */
 export const SLACK_APPS_URL = "https://api.slack.com/apps";
@@ -55,6 +62,82 @@ const SHAPE_MESSAGES: Partial<Record<SlackConfigTokenShape, string>> = {
     "That is the access token (it starts xoxe.xoxp-). Copy the refresh token shown below it on the same page.",
   unknown: "That does not look like a Slack configuration refresh token. It starts xoxe-1-.",
 };
+
+/** Why Slack's consent did not connect a workspace, from the callback's `slack_error`. */
+export function slackConnectFailureMessage(code: string | null): string {
+  switch (code) {
+    case "access_denied":
+      return "The Slack approval was cancelled, so no workspace was connected.";
+    case "missing_scope":
+      return "Slack did not grant permission to create apps. Approve every permission Slack asks for.";
+    case "token_rotation_disabled":
+      return "This deployment's Slack manager app has token rotation turned off. Ask the deployment operator to turn it on.";
+    case null:
+    case "":
+      return "Slack did not connect the workspace. Try again.";
+    default:
+      return `Slack did not connect the workspace (${code}). Try again.`;
+  }
+}
+
+/** Connect (or reconnect) a workspace by Slack consent, falling back to the token steps. */
+export function ConnectSlackWorkspaceChoice({
+  managerApp,
+  reconnect = false,
+  onConnected,
+}: {
+  managerApp: boolean;
+  reconnect?: boolean;
+  onConnected?: (workspace: SlackWorkspace) => void | Promise<unknown>;
+}) {
+  const [useToken, setUseToken] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!managerApp || useToken) {
+    return (
+      <div className="space-y-3">
+        <ConnectSlackWorkspace reconnect={reconnect} onConnected={onConnected} />
+        {managerApp && (
+          <Button type="button" variant="ghost" size="sm" onClick={() => setUseToken(false)}>
+            Connect with Slack instead
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  const start = async () => {
+    setPending(true);
+    setError(null);
+    try {
+      const { authorize_url } = await beginSlackManagerConnect();
+      window.location.assign(authorize_url);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not open Slack.");
+      setPending(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm">
+        Approve Everruns in Slack, picking the workspace you want your agents in. Nothing to copy or
+        paste.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" onClick={() => void start()} disabled={pending}>
+          <Slack className="size-4" />
+          {pending ? "Opening Slack…" : reconnect ? "Reconnect with Slack" : "Connect with Slack"}
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={() => setUseToken(true)}>
+          Use a configuration token instead
+        </Button>
+      </div>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
 
 export function ConnectSlackWorkspace({
   reconnect = false,

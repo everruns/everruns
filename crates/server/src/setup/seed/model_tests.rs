@@ -137,7 +137,7 @@ async fn test_model_seed_detects_display_name_change() {
 /// End-to-end catalog check: after seeding, the current-generation models
 /// must surface for the picker. `claude-sonnet-5-5` (and its 1M twin) is the
 /// enabled favorite Sonnet, `claude-sonnet-5` stays enabled, while the superseded `claude-sonnet-4-6` is
-/// disabled, and the Gemini 3.x models are catalogued. Guards against the
+/// disabled, and Gemini Argon is an enabled favorite. Guards against the
 /// profile registry and seed catalog drifting apart again.
 #[tokio::test]
 async fn test_seed_surfaces_current_gen_models() {
@@ -262,6 +262,11 @@ async fn test_seed_surfaces_current_gen_models() {
         .await
         .unwrap();
     let gemini = by_id(&gemini);
+    assert_eq!(
+        gemini.get("gemini-4-argon"),
+        Some(&(true, true)),
+        "Gemini 4 Argon must be seeded as an enabled favorite"
+    );
     assert!(
         gemini.contains_key("gemini-3.1-pro-preview"),
         "Gemini 3.1 Pro Preview must be catalogued"

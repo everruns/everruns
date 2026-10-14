@@ -5,7 +5,7 @@
 use crate::kernel_imports::{
     contracts::typed_id::ScheduleId,
     contracts::typed_id::SessionId,
-    session_schedule::{MAX_ACTIVE_SCHEDULES_PER_SESSION, SessionSchedule, normalize_session_cron},
+    session_schedule::{MAX_ACTIVE_SCHEDULES_PER_SESSION, SessionSchedule, parse_session_cron},
 };
 use crate::storage::UpdateField;
 use anyhow::{Context, Result, anyhow};
@@ -20,7 +20,7 @@ use crate::storage::{CreateSessionScheduleRow, UpdateSessionScheduleRow};
 /// Compute the next trigger time for a schedule.
 ///
 /// For cron: accepts the standard 5-field form the `create_schedule` tool
-/// documents, read through `normalize_session_cron` (shared with the interval
+/// documents, read through `parse_session_cron` (shared with the interval
 /// gate and the facade's local schedule store, so hosted and embedded
 /// schedules agree on what a cron means), evaluates it in the schedule's IANA
 /// timezone, and finds the next occurrence after now. Every error is a caller
@@ -49,13 +49,7 @@ fn next_cron_occurrence(
     timezone: &str,
     after: DateTime<Utc>,
 ) -> Result<Option<DateTime<Utc>>> {
-    let normalized = normalize_session_cron(cron_expr).ok_or_else(|| {
-        anyhow!(
-            "Invalid cron expression '{cron_expr}': use 5 fields (minute hour day month weekday)"
-        )
-    })?;
-    let schedule = cron::Schedule::from_str(&normalized)
-        .map_err(|e| anyhow!("Invalid cron expression '{}': {}", cron_expr, e))?;
+    let schedule = parse_session_cron(cron_expr).map_err(|error| anyhow!(error))?;
     let tz = if timezone.trim().is_empty() {
         chrono_tz::UTC
     } else {
@@ -308,8 +302,17 @@ mod tests {
     }
 
     #[test]
+    fn canonical_parser_preserves_leap_day_calendar() {
+        let after = Utc.with_ymd_and_hms(2027, 3, 1, 0, 0, 0).unwrap();
+        assert_eq!(
+            next_cron_occurrence("0 9 29 2 *", "UTC", after).unwrap(),
+            Some(Utc.with_ymd_and_hms(2028, 2, 29, 9, 0, 0).unwrap())
+        );
+    }
+
+    #[test]
     fn bad_cron_and_timezone_are_rejected() {
-        let after = Utc::now();
+        let after = Utc.with_ymd_and_hms(2026, 10, 11, 23, 0, 0).unwrap();
         assert!(next_cron_occurrence("every day", "UTC", after).is_err());
         assert!(next_cron_occurrence("0 7 * * *", "Mars/Olympus", after).is_err());
     }

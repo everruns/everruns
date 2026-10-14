@@ -35,7 +35,7 @@ use crate::runtime_provider::ProviderEndpoint;
 use crate::stream_accumulator::StreamToolCallAccumulator;
 use crate::stream_reconnect::connect_sse_with_reconnect;
 use crate::tool_types::{ToolCall, ToolDefinition};
-use crate::user_facing_error::is_provider_quota_message;
+use crate::user_facing_error::{is_provider_quota_message, is_usage_limit_message};
 
 pub fn is_azure_openai_api_url(api_url: &str) -> bool {
     Url::parse(api_url)
@@ -310,7 +310,9 @@ impl OpenAIProtocolChatDriver {
 
                         // Exhausted billing quota is surfaced as a 429 but is not
                         // transient — fail fast instead of burning retries.
-                        if is_provider_quota_message(&error_text) {
+                        if is_provider_quota_message(&error_text)
+                            || is_usage_limit_message(&error_text)
+                        {
                             return RetryDecision::Terminal(
                                 AgentLoopError::llm_kind(
                                     LlmErrorKind::QuotaExhausted,
@@ -516,7 +518,8 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             return Err(error.into_stream_error().into_agent_error());
         }
         let response_model = body.model.clone();
-        let (text, tool_calls, reasoning, finish_reason) = match body.choices.into_iter().next() {
+        let (text, mut tool_calls, reasoning, finish_reason) = match body.choices.into_iter().next()
+        {
             Some(mut choice) => {
                 let (text, thinking) = choice.message.text_and_thinking();
                 // Mirror the streaming path: tool calls whose arguments are not
@@ -542,6 +545,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             }
             None => (String::new(), Vec::new(), None, None),
         };
+        crate::tool_schema_compat::restore_strict_openai_tool_calls(&config.tools, &mut tool_calls);
         let (prompt_tokens, completion_tokens, cached_tokens, reasoning_tokens, cost) = body
             .usage
             .map(|usage| {
@@ -889,7 +893,18 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                 .flat_map(futures::stream::iter),
         );
 
-        Ok(converted_stream)
+        let argument_tools = config.tools.clone();
+        Ok(Box::pin(converted_stream.map(move |event| {
+            event.map(|mut event| {
+                if let LlmStreamEvent::ToolCalls(calls) = &mut event {
+                    crate::tool_schema_compat::restore_strict_openai_tool_calls(
+                        &argument_tools,
+                        calls,
+                    );
+                }
+                event
+            })
+        })))
     }
 
     /// OpenAI-compatible Chat Completions accept the top-level

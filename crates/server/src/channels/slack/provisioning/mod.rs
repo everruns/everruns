@@ -1,4 +1,7 @@
 mod branding;
+mod manager_app;
+
+pub use manager_app::SlackManagerApp;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -12,8 +15,8 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::storage::{
-    EncryptionService, OrgSlackConnectionRow, RotateOrgSlackConnection, StorageBackend,
-    UpsertOrgSlackConnection,
+    EncryptionService, OrgSlackConnectionRow, RotateOrgSlackConnection, SlackGrantKind,
+    StorageBackend, UpsertOrgSlackConnection,
 };
 
 use everruns_integrations::slack_channel::web_api::SLACK_API_BASE;
@@ -51,7 +54,9 @@ pub fn configure(
             connection_manager: None,
         });
     };
-    let manager = Arc::new(SlackApiProvisioner::new(db, encryption)?);
+    let manager = Arc::new(
+        SlackApiProvisioner::new(db, encryption)?.with_manager_app(SlackManagerApp::from_env()),
+    );
     let provisioner: Arc<dyn SlackAppProvisioner> = manager.clone();
     let rotation_manager = manager.clone();
     supervisor.track(
@@ -77,6 +82,7 @@ pub struct SlackApiProvisioner {
     encryption: Arc<EncryptionService>,
     client: reqwest::Client,
     api_base: String,
+    manager_app: Option<SlackManagerApp>,
 }
 
 impl std::fmt::Debug for SlackApiProvisioner {
@@ -96,7 +102,8 @@ impl SlackApiProvisioner {
         Self::with_api_base(db, encryption, SLACK_API_BASE)
     }
 
-    fn with_api_base(
+    /// A provisioner talking to `api_base` instead of Slack. For tests.
+    pub fn with_api_base(
         db: Arc<StorageBackend>,
         encryption: Arc<EncryptionService>,
         api_base: &str,
@@ -109,6 +116,7 @@ impl SlackApiProvisioner {
                 .redirect(reqwest::redirect::Policy::none())
                 .build()?,
             api_base: api_base.trim_end_matches('/').to_string(),
+            manager_app: None,
         })
     }
 
@@ -135,15 +143,16 @@ impl SlackApiProvisioner {
             .clone()
             .filter(|team| !team.is_empty())
             .ok_or_else(|| malformed_response("tooling.tokens.rotate"))?;
-        let team_name = self.workspace_name(&rotated.token).await;
+        let team_name = self.workspace_name(&rotated.access_token).await;
         self.db
             .upsert_org_slack_connection(UpsertOrgSlackConnection {
                 org_id,
                 team_id,
                 team_name,
-                access_token_encrypted: self.encrypt(&rotated.token)?,
+                access_token_encrypted: self.encrypt(&rotated.access_token)?,
                 refresh_token_encrypted: self.encrypt(&rotated.refresh_token)?,
-                access_token_expires_at: rotated.expires_at()?,
+                access_token_expires_at: rotated.expires_at,
+                grant_kind: SlackGrantKind::ConfigToken,
             })
             .await
             .map_err(storage_error)
@@ -308,7 +317,11 @@ impl SlackApiProvisioner {
                 .await;
         };
         let refresh_token = self.decrypt_required(claimed.refresh_token_encrypted.as_deref())?;
-        let rotated = match self.rotate(&refresh_token).await {
+        let refreshed = match claimed.grant_kind() {
+            SlackGrantKind::ConfigToken => self.rotate(&refresh_token).await,
+            SlackGrantKind::ManagerApp => self.refresh_manager_grant(&refresh_token).await,
+        };
+        let rotated = match refreshed {
             Ok(rotated) => rotated,
             Err(SlackProvisioningError::Rejected(code)) if code == "invalid_refresh_token" => {
                 self.mark_reconnect(claimed.id, claimed.token_generation)
@@ -331,9 +344,9 @@ impl SlackApiProvisioner {
                 id: claimed.id,
                 expected_generation: claimed.token_generation,
                 team_id: rotated.team_id.clone().filter(|team| !team.is_empty()),
-                access_token_encrypted: self.encrypt(&rotated.token)?,
+                access_token_encrypted: self.encrypt(&rotated.access_token)?,
                 refresh_token_encrypted: self.encrypt(&rotated.refresh_token)?,
-                access_token_expires_at: rotated.expires_at()?,
+                access_token_expires_at: rotated.expires_at,
             })
             .await
             .map_err(storage_error)?
@@ -406,7 +419,7 @@ impl SlackApiProvisioner {
         Ok(())
     }
 
-    async fn rotate(&self, refresh_token: &str) -> SlackProvisioningResult<RotateResponse> {
+    async fn rotate(&self, refresh_token: &str) -> SlackProvisioningResult<IssuedTokens> {
         // Slack reads `tooling.tokens.rotate` arguments only from a form body:
         // a JSON body is ignored and the call fails with `invalid_arguments`.
         // The method authenticates with the refresh token alone.
@@ -423,7 +436,13 @@ impl SlackApiProvisioner {
         {
             return Err(malformed_response("tooling.tokens.rotate"));
         }
-        Ok(rotated)
+        Ok(IssuedTokens {
+            expires_at: chrono::DateTime::from_timestamp(rotated.exp, 0)
+                .ok_or_else(|| malformed_response("tooling.tokens.rotate"))?,
+            access_token: rotated.token,
+            refresh_token: rotated.refresh_token,
+            team_id: rotated.team_id,
+        })
     }
 
     async fn post(
@@ -496,10 +515,48 @@ struct RotateResponse {
     team_id: Option<String>,
 }
 
-impl RotateResponse {
-    fn expires_at(&self) -> SlackProvisioningResult<chrono::DateTime<chrono::Utc>> {
-        chrono::DateTime::from_timestamp(self.exp, 0)
-            .ok_or_else(|| malformed_response("tooling.tokens.rotate"))
+/// A fresh access/refresh pair, whichever Slack method issued it.
+struct IssuedTokens {
+    access_token: String,
+    refresh_token: String,
+    expires_at: chrono::DateTime<chrono::Utc>,
+    team_id: Option<String>,
+}
+
+impl IssuedTokens {
+    /// Read an OAuth token object (`access_token`, `refresh_token`,
+    /// `expires_in`).
+    ///
+    /// A grant without a refresh token comes from a manager app with token
+    /// rotation off. It is refused with its own code: the connection store
+    /// requires an expiry, and a non-expiring token over every app in the
+    /// workspace is not one to hold.
+    fn from_oauth(value: &serde_json::Value, method: &str) -> SlackProvisioningResult<Self> {
+        let text = |key: &str| {
+            value
+                .get(key)
+                .and_then(serde_json::Value::as_str)
+                .filter(|text| !text.is_empty())
+                .map(str::to_string)
+        };
+        let access_token = text("access_token").ok_or_else(|| malformed_response(method))?;
+        let (Some(refresh_token), Some(expires_in)) = (
+            text("refresh_token"),
+            value.get("expires_in").and_then(serde_json::Value::as_i64),
+        ) else {
+            return Err(SlackProvisioningError::Rejected(
+                "token_rotation_disabled".to_string(),
+            ));
+        };
+        if expires_in <= 0 {
+            return Err(malformed_response(method));
+        }
+        Ok(Self {
+            access_token,
+            refresh_token,
+            expires_at: chrono::Utc::now() + chrono::Duration::seconds(expires_in),
+            team_id: None,
+        })
     }
 }
 
@@ -769,415 +826,4 @@ fn is_auth_error(code: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use wiremock::matchers::{body_string, header, method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
-
-    fn encryption() -> Arc<EncryptionService> {
-        Arc::new(
-            EncryptionService::new("test:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
-                .expect("test encryption"),
-        )
-    }
-
-    pub(super) fn provisioner(server: &MockServer) -> (SlackApiProvisioner, Arc<StorageBackend>) {
-        let db = Arc::new(StorageBackend::test_database());
-        (
-            SlackApiProvisioner::with_api_base(db.clone(), encryption(), &server.uri())
-                .expect("provisioner"),
-            db,
-        )
-    }
-
-    pub(super) fn stored(
-        org_id: i64,
-        team_id: &str,
-        expires_in: chrono::Duration,
-    ) -> UpsertOrgSlackConnection {
-        let encryption = encryption();
-        UpsertOrgSlackConnection {
-            org_id,
-            team_id: team_id.to_string(),
-            team_name: None,
-            access_token_encrypted: encryption.encrypt_string("access").unwrap(),
-            refresh_token_encrypted: encryption.encrypt_string("refresh").unwrap(),
-            access_token_expires_at: chrono::Utc::now() + expires_in,
-        }
-    }
-
-    async fn mount_rotate(server: &MockServer, team_id: &str) {
-        Mock::given(method("POST"))
-            .and(path("/tooling.tokens.rotate"))
-            .and(header("content-type", "application/x-www-form-urlencoded"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "ok": true,
-                "token": "new-access",
-                "refresh_token": "new-refresh",
-                "team_id": team_id,
-                "user_id": "U1",
-                "exp": chrono::Utc::now().timestamp() + 3600
-            })))
-            .mount(server)
-            .await;
-    }
-
-    #[tokio::test]
-    async fn permission_update_preserves_exported_manifest_and_unions_scopes() {
-        let server = MockServer::start().await;
-        let (provisioner, db) = provisioner(&server);
-        db.upsert_org_slack_connection(stored(1, "T1", chrono::Duration::hours(1)))
-            .await
-            .unwrap();
-        let manifest = serde_json::json!({
-            "display_information":{"name":"Customized bot"},
-            "settings":{"event_subscriptions":{"request_url":"https://example.test/events"}},
-            "oauth_config":{"redirect_urls":["https://example.test/callback"],"scopes":{"bot":["chat:write","custom:read"]}}
-        });
-        Mock::given(method("POST"))
-            .and(path("/apps.manifest.export"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(serde_json::json!({"ok":true,"manifest":manifest})),
-            )
-            .expect(1)
-            .mount(&server)
-            .await;
-        Mock::given(method("POST"))
-            .and(path("/apps.manifest.update"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok":true})))
-            .expect(1)
-            .mount(&server)
-            .await;
-        provisioner
-            .update_permissions(1, Some("T1"), "A1", &["chat:write", "reactions:write"])
-            .await
-            .unwrap();
-        let requests = server.received_requests().await.unwrap();
-        let body: serde_json::Value = serde_json::from_slice(&requests[1].body).unwrap();
-        assert_eq!(body["app_id"], "A1");
-        let updated: serde_json::Value =
-            serde_json::from_str(body["manifest"].as_str().unwrap()).unwrap();
-        assert_eq!(
-            updated["display_information"],
-            manifest["display_information"]
-        );
-        assert_eq!(updated["settings"], manifest["settings"]);
-        assert_eq!(
-            updated["oauth_config"]["redirect_urls"],
-            manifest["oauth_config"]["redirect_urls"]
-        );
-        assert_eq!(
-            updated["oauth_config"]["scopes"]["bot"],
-            serde_json::json!(["chat:write", "custom:read", "reactions:write"])
-        );
-    }
-
-    #[tokio::test]
-    async fn app_icon_is_uploaded_as_a_multipart_file_with_the_workspace_token() {
-        let server = MockServer::start().await;
-        let (provisioner, db) = provisioner(&server);
-        db.upsert_org_slack_connection(stored(1, "T1", chrono::Duration::hours(1)))
-            .await
-            .unwrap();
-        Mock::given(method("POST"))
-            .and(path("/apps.icon.set"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok":true})))
-            .expect(1)
-            .mount(&server)
-            .await;
-        provisioner
-            .set_app_icon(1, Some("T1"), "A1", b"\x89PNG-bytes".to_vec())
-            .await
-            .unwrap();
-        let requests = server.received_requests().await.unwrap();
-        let request = &requests[0];
-        let content_type = request
-            .headers
-            .get("content-type")
-            .unwrap()
-            .to_str()
-            .unwrap();
-        assert!(
-            content_type.starts_with("multipart/form-data"),
-            "{content_type}"
-        );
-        assert!(request.headers.get("authorization").is_some());
-        let body = String::from_utf8_lossy(&request.body);
-        assert!(body.contains("name=\"app_id\""));
-        assert!(body.contains("A1"));
-        assert!(body.contains("name=\"file\"; filename=\"avatar.png\""));
-        assert!(body.contains("PNG-bytes"));
-    }
-
-    #[tokio::test]
-    async fn app_icon_can_be_set_from_a_public_url() {
-        let server = MockServer::start().await;
-        let (provisioner, db) = provisioner(&server);
-        db.upsert_org_slack_connection(stored(1, "T1", chrono::Duration::hours(1)))
-            .await
-            .unwrap();
-        Mock::given(method("POST"))
-            .and(path("/apps.icon.set"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok":true})))
-            .expect(1)
-            .mount(&server)
-            .await;
-        let icon_url = "https://api.example.com/v1/avatars/avatar_1/square-512.png";
-        provisioner
-            .set_app_icon_url(1, Some("T1"), "A1", icon_url)
-            .await
-            .unwrap();
-        let requests = server.received_requests().await.unwrap();
-        let request = &requests[0];
-        let content_type = request
-            .headers
-            .get("content-type")
-            .unwrap()
-            .to_str()
-            .unwrap();
-        assert!(
-            content_type.starts_with("application/json"),
-            "{content_type}"
-        );
-        assert!(request.headers.get("authorization").is_some());
-        let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
-        assert_eq!(body["app_id"], "A1");
-        assert_eq!(body["url"], icon_url);
-    }
-
-    #[tokio::test]
-    async fn malformed_export_fails_without_mutating_manifest() {
-        let server = MockServer::start().await;
-        let (provisioner, db) = provisioner(&server);
-        db.upsert_org_slack_connection(stored(1, "T1", chrono::Duration::hours(1)))
-            .await
-            .unwrap();
-        Mock::given(method("POST"))
-            .and(path("/apps.manifest.export"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(
-                serde_json::json!({"ok":true,"manifest":{"oauth_config":"invalid"}}),
-            ))
-            .expect(1)
-            .mount(&server)
-            .await;
-        assert!(
-            provisioner
-                .update_permissions(1, Some("T1"), "A1", &["reactions:write"])
-                .await
-                .is_err()
-        );
-        assert_eq!(server.received_requests().await.unwrap().len(), 1);
-    }
-
-    #[tokio::test]
-    async fn connecting_records_the_workspace_and_never_stores_plaintext() {
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/tooling.tokens.rotate"))
-            // Slack ignores a JSON body here and answers `invalid_arguments`.
-            .and(header("content-type", "application/x-www-form-urlencoded"))
-            .and(body_string("refresh_token=input-refresh"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "ok": true,
-                "token": "new-access",
-                "refresh_token": "new-refresh",
-                "team_id": "T0123",
-                "user_id": "U1",
-                "exp": chrono::Utc::now().timestamp() + 3600
-            })))
-            .expect(1)
-            .mount(&server)
-            .await;
-        Mock::given(method("POST"))
-            .and(path("/auth.test"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(
-                    serde_json::json!({"ok": true, "team": "Acme", "team_id": "T0123"}),
-                ),
-            )
-            .mount(&server)
-            .await;
-        let (provisioner, _db) = provisioner(&server);
-
-        let row = provisioner.connect(41, "input-refresh").await.unwrap();
-
-        assert_eq!(row.team_id.as_deref(), Some("T0123"));
-        assert_eq!(row.team_name.as_deref(), Some("Acme"));
-        assert!(
-            !row.refresh_token_encrypted
-                .unwrap()
-                .windows(b"new-refresh".len())
-                .any(|part| part == b"new-refresh")
-        );
-    }
-
-    #[tokio::test]
-    async fn a_workspace_name_slack_will_not_reveal_does_not_fail_the_connection() {
-        let server = MockServer::start().await;
-        mount_rotate(&server, "T0123").await;
-        Mock::given(method("POST"))
-            .and(path("/auth.test"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(
-                    serde_json::json!({"ok": false, "error": "not_allowed_token_type"}),
-                ),
-            )
-            .mount(&server)
-            .await;
-        let (provisioner, _db) = provisioner(&server);
-
-        let row = provisioner.connect(41, "input-refresh").await.unwrap();
-
-        assert_eq!(row.team_id.as_deref(), Some("T0123"));
-        assert_eq!(row.team_name, None);
-    }
-
-    #[tokio::test]
-    async fn invalid_refresh_token_marks_the_claimed_generation_for_reconnect() {
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/tooling.tokens.rotate"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(
-                    serde_json::json!({"ok": false, "error": "invalid_refresh_token"}),
-                ),
-            )
-            .expect(1)
-            .mount(&server)
-            .await;
-        let (provisioner, db) = provisioner(&server);
-        let row = db
-            .upsert_org_slack_connection(stored(41, "T1", -chrono::Duration::minutes(1)))
-            .await
-            .unwrap();
-
-        assert!(matches!(
-            provisioner.create_app(41, None, "{}").await,
-            Err(SlackProvisioningError::ReconnectRequired)
-        ));
-        let row = db
-            .get_org_slack_connection(41, row.id)
-            .await
-            .unwrap()
-            .expect("connection retained");
-        assert_eq!(row.state, "reconnect_required");
-        assert!(row.access_token_encrypted.is_none());
-        assert!(row.refresh_token_encrypted.is_none());
-    }
-
-    #[tokio::test]
-    async fn with_several_workspaces_the_caller_must_name_one() {
-        let server = MockServer::start().await;
-        let (provisioner, db) = provisioner(&server);
-        db.upsert_org_slack_connection(stored(41, "T1", chrono::Duration::hours(1)))
-            .await
-            .unwrap();
-        db.upsert_org_slack_connection(stored(41, "T2", chrono::Duration::hours(1)))
-            .await
-            .unwrap();
-
-        assert!(matches!(
-            provisioner.create_app(41, None, "{}").await,
-            Err(SlackProvisioningError::WorkspaceRequired)
-        ));
-        assert!(matches!(
-            provisioner.create_app(41, Some("T9"), "{}").await,
-            Err(SlackProvisioningError::WorkspaceNotConnected)
-        ));
-    }
-
-    #[tokio::test]
-    async fn app_creation_encodes_the_generated_yaml_as_json_for_slack() {
-        let server = MockServer::start().await;
-        let manifest = crate::channels::slack::events::build_manifest_yaml(
-            "Support Agent",
-            "Support Agent",
-            Some("Answers questions"),
-            "https://example.com/api/v1/channels/test/slack/events",
-            "https://example.com/api/v1/channels/test/slack/interactivity",
-            "https://example.com/api/v1/channels/test/slack/oauth/callback",
-            true,
-            &[],
-        );
-        let expected: serde_json::Value = serde_yaml::from_str(&manifest).unwrap();
-        Mock::given(method("POST"))
-            .and(path("/apps.manifest.create"))
-            .and(wiremock::matchers::body_json(serde_json::json!({
-                "manifest": serde_json::to_string(&expected).unwrap()
-            })))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "ok": true,
-                "app_id": "A1",
-                "credentials": {
-                    "client_id": "c1",
-                    "client_secret": "s1",
-                    "signing_secret": "g1"
-                }
-            })))
-            .expect(1)
-            .mount(&server)
-            .await;
-        let (provisioner, db) = provisioner(&server);
-        db.upsert_org_slack_connection(stored(41, "T1", chrono::Duration::hours(1)))
-            .await
-            .unwrap();
-
-        let created = provisioner
-            .create_app(41, Some("T1"), &manifest)
-            .await
-            .unwrap();
-        assert_eq!(created.app_id, "A1");
-    }
-
-    #[tokio::test]
-    async fn an_app_is_created_with_the_named_workspaces_token() {
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/apps.manifest.create"))
-            .and(wiremock::matchers::header(
-                "authorization",
-                "Bearer access-T2",
-            ))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "ok": true,
-                "app_id": "A2",
-                "credentials": {
-                    "client_id": "c2",
-                    "client_secret": "s2",
-                    "signing_secret": "g2"
-                }
-            })))
-            .expect(1)
-            .mount(&server)
-            .await;
-        let (provisioner, db) = provisioner(&server);
-        let encryption = encryption();
-        for team in ["T1", "T2"] {
-            db.upsert_org_slack_connection(UpsertOrgSlackConnection {
-                access_token_encrypted: encryption
-                    .encrypt_string(&format!("access-{team}"))
-                    .unwrap(),
-                ..stored(41, team, chrono::Duration::hours(1))
-            })
-            .await
-            .unwrap();
-        }
-
-        let created = provisioner.create_app(41, Some("T2"), "{}").await.unwrap();
-
-        assert_eq!(created.app_id, "A2");
-    }
-
-    #[tokio::test]
-    async fn connection_status_is_scoped_to_the_requested_organization() {
-        let server = MockServer::start().await;
-        let (provisioner, db) = provisioner(&server);
-        db.upsert_org_slack_connection(stored(41, "T1", chrono::Duration::hours(1)))
-            .await
-            .unwrap();
-
-        assert!(provisioner.connection_status(41).await.unwrap().connected);
-        assert!(!provisioner.connection_status(42).await.unwrap().connected);
-    }
-}
+mod tests;

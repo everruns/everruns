@@ -36,6 +36,18 @@ For a deployment that keeps local state:
   `engine.resume(session_id)`. See
   [Resume after a process restart](/framework/sessions/#resume-after-a-process-restart).
 
+## Advanced local hosts
+
+Hosts built with `everruns::local::LocalRuntimeBuilder` reconcile orphaned background
+executions after constructing their runtime and start periodic maintenance. Recovery
+requires executor evidence that ownership is lost. A missing owner process leaves the
+execution outcome unverified; interrupted commands are never replayed.
+
+When composing `LocalBackends` directly, retain its recovery-wrapped task registry,
+bind `task_recovery` to the runtime's task wake observer, then call `recover_all`
+and `start_maintenance`. Recovery wakes are delivered at least once across crashes;
+a durable observer must deduplicate by session, task ID and terminal attempt.
+
 ## Pass secrets through the environment
 
 Each provider type reads its key with `from_env`: `OpenAI::from_env()` reads

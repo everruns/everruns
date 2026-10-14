@@ -34,6 +34,7 @@ use uuid::Uuid;
 /// `TOOL_CACHE_TTL` (#2131) so both paths revalidate on the same cadence.
 pub(crate) const TOOL_CACHE_TTL: Duration = Duration::from_secs(3600);
 
+// THREAT[TM-DOS-031]: Bound retained discovery catalogs and failed attachment entries.
 /// Maximum cached scoped MCP server discoveries retained by one runtime.
 const MAX_CACHE_ENTRIES: usize = 1024;
 
@@ -43,13 +44,20 @@ const MAX_TOOLS_PER_ENTRY: usize = 256;
 /// Maximum serialized size retained for one scoped MCP server discovery.
 const MAX_ENTRY_BYTES: usize = 1024 * 1024;
 
-/// Identifies one server's cache entry: `(session, sanitized server name)`.
-type CacheKey = (Uuid, String);
+/// Identifies one attachment: session, sanitized name, and configuration digest.
+pub(crate) type CacheKey = (Uuid, String, [u8; 32]);
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum DiscoveryFailure {
+    Authentication,
+    Transient,
+}
 
 struct CacheEntry {
     tools: Vec<ToolDefinition>,
     cached_at: Instant,
     last_used: Instant,
+    failure: Option<DiscoveryFailure>,
 }
 
 /// Counts serialized bytes without retaining them, erroring once the running
@@ -131,14 +139,32 @@ impl McpDiscoveryCache {
     /// changes. Capability-contributed MCP servers may have been added,
     /// removed, or replaced under an existing logical server name.
     pub(crate) fn invalidate_session(&self, session_id: Uuid) {
+        // Retire in-flight refresh identities before clearing entries. Their
+        // completion must not repopulate the cache after a reload.
+        let mut locks = self.locks.map.lock().unwrap_or_else(|e| e.into_inner());
+        locks.retain(|(id, _, _), _| *id != session_id);
         self.entries()
-            .retain(|(cached_session_id, _), _| *cached_session_id != session_id);
+            .retain(|(cached_session_id, _, _), _| *cached_session_id != session_id);
     }
 
     /// Classify the entry for `key` at `now`.
     fn classify(&self, key: &CacheKey, now: Instant) -> Freshness {
         match self.entries().get_mut(key) {
             None => Freshness::Cold,
+            Some(entry) if matches!(entry.failure, Some(DiscoveryFailure::Authentication)) => {
+                entry.last_used = now;
+                Freshness::Fresh(Vec::new())
+            }
+            Some(entry) if matches!(entry.failure, Some(DiscoveryFailure::Transient)) => {
+                entry.last_used = now;
+                if now.duration_since(entry.cached_at) < Duration::from_secs(5) {
+                    Freshness::Fresh(entry.tools.clone())
+                } else if entry.tools.is_empty() {
+                    Freshness::Cold
+                } else {
+                    Freshness::Stale(entry.tools.clone())
+                }
+            }
             Some(entry) if now.duration_since(entry.cached_at) < self.ttl => {
                 entry.last_used = now;
                 Freshness::Fresh(entry.tools.clone())
@@ -162,6 +188,16 @@ impl McpDiscoveryCache {
             return;
         }
 
+        self.store_entry(key, tools, now, None);
+    }
+
+    fn store_entry(
+        &self,
+        key: CacheKey,
+        tools: Vec<ToolDefinition>,
+        now: Instant,
+        failure: Option<DiscoveryFailure>,
+    ) {
         let mut entries = self.entries();
         entries.insert(
             key.clone(),
@@ -169,6 +205,7 @@ impl McpDiscoveryCache {
                 tools,
                 cached_at: now,
                 last_used: now,
+                failure,
             },
         );
         while entries.len() > MAX_CACHE_ENTRIES {
@@ -181,6 +218,35 @@ impl McpDiscoveryCache {
                 break;
             };
             entries.remove(&evict_key);
+        }
+    }
+
+    fn store_refresh(
+        &self,
+        key: CacheKey,
+        lock: &Arc<AsyncMutex<()>>,
+        result: Result<Vec<ToolDefinition>, DiscoveryFailure>,
+    ) {
+        let locks = self.locks.map.lock().unwrap_or_else(|e| e.into_inner());
+        if !locks
+            .get(&key)
+            .is_some_and(|current| Arc::ptr_eq(current, lock))
+        {
+            return;
+        }
+        match result {
+            Ok(tools) => self.store(key, tools, Instant::now()),
+            Err(failure) => {
+                let tools = match failure {
+                    DiscoveryFailure::Authentication => Vec::new(),
+                    DiscoveryFailure::Transient => self
+                        .entries()
+                        .get(&key)
+                        .map(|entry| entry.tools.clone())
+                        .unwrap_or_default(),
+                };
+                self.store_entry(key, tools, Instant::now(), Some(failure));
+            }
         }
     }
 
@@ -207,8 +273,8 @@ impl McpDiscoveryCache {
 
     /// Resolve tools for `key`, applying stale-while-revalidate + single-flight.
     ///
-    /// `refresh` performs the upstream fetch, returning `Some(tools)` on success
-    /// or `None` on failure (the failure is the closure's to log). It may be
+    /// `refresh` performs the upstream fetch, returning `Ok(tools)` on success
+    /// or a classified failure (the failure is the closure's to log). It may be
     /// called from a background task, so it must be `Send + Sync + 'static`.
     pub(crate) async fn resolve<F, Fut>(
         self: &Arc<Self>,
@@ -217,7 +283,7 @@ impl McpDiscoveryCache {
     ) -> Vec<ToolDefinition>
     where
         F: Fn() -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Option<Vec<ToolDefinition>>> + Send + 'static,
+        Fut: Future<Output = Result<Vec<ToolDefinition>, DiscoveryFailure>> + Send + 'static,
     {
         match self.classify(&key, Instant::now()) {
             Freshness::Fresh(tools) => tools,
@@ -240,46 +306,46 @@ impl McpDiscoveryCache {
     ) -> Vec<ToolDefinition>
     where
         F: Fn() -> Fut,
-        Fut: Future<Output = Option<Vec<ToolDefinition>>>,
+        Fut: Future<Output = Result<Vec<ToolDefinition>, DiscoveryFailure>>,
     {
         let lock = self.locks.lock_for(&key);
-        let _guard = lock.lock_owned().await;
+        let _guard = lock.clone().lock_owned().await;
 
         if let Freshness::Fresh(tools) = self.classify(&key, Instant::now()) {
             return tools;
         }
 
-        match refresh().await {
-            Some(tools) => {
-                self.store(key, tools.clone(), Instant::now());
-                tools
-            }
-            None => match self.classify(&key, Instant::now()) {
+        let result = refresh().await;
+        let tools = match &result {
+            Ok(tools) => tools.clone(),
+            Err(DiscoveryFailure::Authentication) => Vec::new(),
+            Err(DiscoveryFailure::Transient) => match self.classify(&key, Instant::now()) {
                 Freshness::Fresh(tools) | Freshness::Stale(tools) => tools,
                 Freshness::Cold => Vec::new(),
             },
-        }
+        };
+        self.store_refresh(key, &lock, result);
+        tools
     }
 
     /// Background revalidation: deduplicated via `try_lock`, so at most one
     /// refresh runs per key at a time and extra triggers are dropped. The caller
     /// has already been served the stale cache, so a failure is only logged
-    /// (inside `refresh`) and leaves the cache stale for the next turn.
+    /// (inside `refresh`) and enters a bounded cooldown or authentication hold.
     fn spawn_background_refresh<F, Fut>(self: &Arc<Self>, key: CacheKey, refresh: F)
     where
         F: Fn() -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Option<Vec<ToolDefinition>>> + Send + 'static,
+        Fut: Future<Output = Result<Vec<ToolDefinition>, DiscoveryFailure>> + Send + 'static,
     {
         let lock = self.locks.lock_for(&key);
-        let Ok(guard) = lock.try_lock_owned() else {
+        let Ok(guard) = lock.clone().try_lock_owned() else {
             return; // a refresh is already in flight for this key
         };
         let cache = self.clone();
         tokio::spawn(async move {
             let _guard = guard; // held for the refresh duration -> single-flight
-            if let Some(tools) = refresh().await {
-                cache.store(key, tools, Instant::now());
-            }
+            let result = refresh().await;
+            cache.store_refresh(key, &lock, result);
         });
     }
 }
@@ -309,7 +375,7 @@ mod tests {
     }
 
     fn key() -> CacheKey {
-        (Uuid::nil(), "docs".to_string())
+        (Uuid::nil(), "docs".to_string(), [0; 32])
     }
 
     /// A cold key fetches once and is served from cache on the next call.
@@ -324,7 +390,7 @@ mod tests {
                 let calls = calls.clone();
                 async move {
                     calls.fetch_add(1, Ordering::SeqCst);
-                    Some(vec![def("docs__search")])
+                    Ok(vec![def("docs__search")])
                 }
             }
         };
@@ -339,16 +405,20 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
-    /// A cold fetch failure degrades to an empty list without caching.
+    /// Transient failures have a brief cooldown, then can be fetched again.
     #[tokio::test]
-    async fn cold_failure_returns_empty_and_does_not_cache() {
+    async fn transient_failure_returns_empty_with_a_short_cooldown() {
         let cache = Arc::new(McpDiscoveryCache::new());
         let out = cache
-            .resolve(key(), || async { None::<Vec<ToolDefinition>> })
+            .resolve(key(), || async { Err(DiscoveryFailure::Transient) })
             .await;
         assert!(out.is_empty());
         assert!(matches!(
             cache.classify(&key(), Instant::now()),
+            Freshness::Fresh(_)
+        ));
+        assert!(matches!(
+            cache.classify(&key(), Instant::now() + Duration::from_secs(6)),
             Freshness::Cold
         ));
     }
@@ -372,7 +442,7 @@ mod tests {
                             // before the first refresh stores a fresh entry.
                             tokio::task::yield_now().await;
                             calls.fetch_add(1, Ordering::SeqCst);
-                            Some(vec![def("docs__search")])
+                            Ok(vec![def("docs__search")])
                         }
                     })
                     .await
@@ -407,13 +477,13 @@ mod tests {
     fn cache_evicts_least_recently_used_entry_at_capacity() {
         let cache = McpDiscoveryCache::with_ttl(TOOL_CACHE_TTL);
         let base = Instant::now();
-        let first = (Uuid::from_u128(1), "first".to_string());
-        let recent = (Uuid::from_u128(2), "recent".to_string());
+        let first = (Uuid::from_u128(1), "first".to_string(), [0; 32]);
+        let recent = (Uuid::from_u128(2), "recent".to_string(), [0; 32]);
 
         cache.store(first.clone(), vec![def("first")], base);
         for i in 2..=MAX_CACHE_ENTRIES {
             cache.store(
-                (Uuid::from_u128(i as u128), format!("server_{i}")),
+                (Uuid::from_u128(i as u128), format!("server_{i}"), [0; 32]),
                 vec![def("filler")],
                 base + Duration::from_millis(i as u64),
             );
@@ -434,7 +504,7 @@ mod tests {
         ));
         assert!(matches!(
             cache.classify(
-                &(Uuid::from_u128(2), "server_2".to_string()),
+                &(Uuid::from_u128(2), "server_2".to_string(), [0; 32]),
                 base + Duration::from_millis(2_001)
             ),
             Freshness::Cold
@@ -460,7 +530,7 @@ mod tests {
                     let calls = calls.clone();
                     async move {
                         calls.fetch_add(1, Ordering::SeqCst);
-                        Some(vec![def("v2")])
+                        Ok(vec![def("v2")])
                     }
                 }
             })
@@ -483,5 +553,94 @@ mod tests {
         }
         assert!(updated, "background refresh must replace the stale entry");
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+}
+
+#[cfg(test)]
+mod failure_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[tokio::test]
+    async fn auth_failure_is_single_flight_until_invalidated_or_configuration_changes() {
+        let cache = Arc::new(McpDiscoveryCache::new());
+        let key = (Uuid::nil(), "private".into(), [0; 32]);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut workers = Vec::new();
+        for _ in 0..20 {
+            let cache = cache.clone();
+            let key = key.clone();
+            let calls = calls.clone();
+            workers.push(tokio::spawn(async move {
+                cache
+                    .resolve(key, move || {
+                        let calls = calls.clone();
+                        async move {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            tokio::task::yield_now().await;
+                            Err(DiscoveryFailure::Authentication)
+                        }
+                    })
+                    .await
+            }));
+        }
+        for worker in workers {
+            assert!(worker.await.unwrap().is_empty());
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert!(matches!(
+            cache.classify(&key, Instant::now() + TOOL_CACHE_TTL * 2),
+            Freshness::Fresh(_)
+        ));
+        let mut changed = key.clone();
+        changed.2 = [1; 32];
+        assert!(matches!(
+            cache.classify(&changed, Instant::now()),
+            Freshness::Cold
+        ));
+        cache.invalidate_session(key.0);
+        assert!(matches!(
+            cache.classify(&key, Instant::now()),
+            Freshness::Cold
+        ));
+    }
+}
+
+#[cfg(test)]
+mod reload_tests {
+    use super::*;
+    #[tokio::test]
+    async fn invalidation_during_refresh_does_not_restore_old_auth_failure() {
+        let cache = Arc::new(McpDiscoveryCache::new());
+        let key = (Uuid::nil(), "private".into(), [0; 32]);
+        let started = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let pending = {
+            let cache = cache.clone();
+            let key = key.clone();
+            let started = started.clone();
+            let release = release.clone();
+            tokio::spawn(async move {
+                cache
+                    .resolve(key, move || {
+                        let started = started.clone();
+                        let release = release.clone();
+                        async move {
+                            started.notify_one();
+                            release.notified().await;
+                            Err(DiscoveryFailure::Authentication)
+                        }
+                    })
+                    .await
+            })
+        };
+        started.notified().await;
+        cache.invalidate_session(key.0);
+        release.notify_one();
+        pending.await.unwrap();
+        assert!(matches!(
+            cache.classify(&key, Instant::now()),
+            Freshness::Cold
+        ));
     }
 }

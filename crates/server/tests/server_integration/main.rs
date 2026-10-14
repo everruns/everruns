@@ -28,3 +28,4 @@ mod sandbox_fleet_test;
 mod sandbox_orphan_scan_test;
 mod sandbox_state_test;
 mod session_row_fixture;
+mod session_task_recovery_test;

@@ -57,3 +57,13 @@ End-to-end scripted-session coverage (using `llmsim` scripted mode to drive an a
 
 - `knowledge/execution/tool-execution.md`, `spawn_background` runtime contract (artifacts, schedules, signal-on-completion).
 - `knowledge/execution/capabilities.md`, Capability system, registration, dependency resolution.
+
+## Local worker loss
+
+Owned local background-tool futures register a process-scoped execution identity for
+only their active lifetime. The local profile reconciler uses typed ownership checks
+and an atomic observation guard, never a stale heartbeat alone. It fences old attempts
+and never retries their commands automatically. Owner-process disappearance alone does
+not confirm that surviving execution stopped: it produces an unverified failed outcome
+instead of claiming a requested cancellation succeeded. Terminal recovery wakes are
+durable and use normal runtime observation; silent wake policies remain silent.

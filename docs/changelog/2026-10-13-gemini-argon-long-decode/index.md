@@ -5,7 +5,7 @@ date: 2026-10-13
 kind: feature
 significance: notable
 products: [framework, platform, cloud]
-surfaces: [api]
+surfaces: [api, ui]
 links:
   docs: [/providers/gemini/]
 ---
@@ -33,5 +33,8 @@ including thinking and repeated input. Invalid continuation tokens or a failed
 hop fail the call. Cancellation stops local continuation requests.
 
 Argon also gains its built-in model profile and low, medium, and high thinking
-levels. See [Google Gemini](/providers/gemini/) for configuration, host timeouts,
-and recovery limits.
+levels. The server seeds it as an enabled favourite for Google Gemini, so it is
+available in the model picker. New Gemini setups prefer Argon when choosing an
+organisation default; an existing default stays selected. See
+[Google Gemini](/providers/gemini/) for configuration, host timeouts, and recovery
+limits.
