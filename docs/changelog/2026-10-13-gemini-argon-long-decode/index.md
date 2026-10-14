@@ -1,5 +1,5 @@
 ---
-title: "Gemini Argon continues long responses across requests"
+title: "Gemini 4 Argon continues long responses across requests"
 description: "Gemini 4 Argon can continue beyond a single stream, preserving the total output budget and combining text, reasoning, and billed usage across requests."
 date: 2026-10-13
 kind: feature
@@ -8,12 +8,15 @@ products: [framework, platform, cloud]
 surfaces: [api, ui]
 links:
   docs: [/providers/gemini/]
+  prs: [everruns/everruns#4719]
 ---
+
+![Everruns and Google Gemini logos, announcing Gemini 4 Argon long decode](./integration@2x.png)
 
 Everruns now supports long decode on Gemini 4 Argon. Raise the output budget
 above 65,536 tokens to let one model response continue across multiple requests.
-The default stays at 65,536; input, thinking, and output share Google's unified
-context window.
+The default stays at 65,536; input, thinking, and output share the unified
+1,048,576-token context window.
 
 In an agent package:
 
@@ -33,8 +36,10 @@ including thinking and repeated input. Invalid continuation tokens or a failed
 hop fail the call. Cancellation stops local continuation requests.
 
 Argon also gains its built-in model profile and low, medium, and high thinking
-levels. The server seeds it as an enabled favourite for Google Gemini, so it is
-available in the model picker. New Gemini setups prefer Argon when choosing an
-organisation default; an existing default stays selected. See
-[Google Gemini](/providers/gemini/) for configuration, host timeouts, and recovery
-limits.
+levels. See [Google Gemini](/providers/gemini/) for configuration, host timeouts,
+and recovery limits.
+
+## Update 2026-10-14
+
+Argon is also an enabled favourite and the preferred default for new Gemini
+setups. Read the [defaults and favourites update](/changelog/2026-10-14-gemini-argon-default/).
