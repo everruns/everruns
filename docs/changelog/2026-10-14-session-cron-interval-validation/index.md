@@ -1,7 +1,7 @@
 ---
 title: Recurring schedules reject unverified cron intervals
 description: Session schedules now reject invalid cron and insufficient future occurrences at admission, with the same parser used to calculate triggers.
-date: 2026-10-13
+date: 2026-10-14
 kind: fix
 significance: minor
 products: [platform, cloud, framework]
