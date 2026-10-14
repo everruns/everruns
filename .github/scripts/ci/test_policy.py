@@ -138,34 +138,6 @@ fn unselected() { panic!("filter was lost"); }
             self.assertNotEqual(failed.returncode, 0)
             self.assertIn('selected failure', failed.stdout)
 
-    def test_archive_experiment_isolates_cache_and_measures_compression(self):
-        workflow=yaml.safe_load((ROOT/'.github/workflows/ci-test-archive.yml').read_text())
-        compile=workflow['jobs']['compile']; execute=workflow['jobs']['execute']
-        self.assertEqual(compile['strategy']['matrix']['cache'],['dependencies','workspace'])
-        self.assertEqual(execute['strategy']['matrix']['cache'],['dependencies','workspace'])
-        cache=next(s for s in compile['steps'] if s.get('uses','').startswith('Swatinem/rust-cache@'))
-        self.assertIn('${{ matrix.cache }}',cache['with']['shared-key'])
-        self.assertIn('${{ github.sha }}',cache['with']['shared-key'])
-        self.assertEqual(cache['with']['cache-workspace-crates'],"${{ matrix.cache == 'workspace' }}")
-        upload=next(s for s in compile['steps'] if s.get('uses','').startswith('actions/upload-artifact@'))
-        self.assertEqual(upload['with']['compression-level'],0)
-        archive=next(s for s in compile['steps'] if s.get('name')=='Archive only the compiled test executable')
-        with tempfile.TemporaryDirectory() as directory:
-            root=Path(directory); binary=root/'binary'
-            binary.write_bytes(b'fixture payload\n'*1000);binary.chmod(0o755)
-            artifacts=root/'artifacts.jsonl'
-            artifacts.write_text(json.dumps(dict(reason='compiler-artifact',executable=str(binary),profile={'test':True}))+'\n')
-            command=archive['run'].replace('/tmp/test-artifacts.jsonl',str(artifacts))
-            subprocess.run(['bash','-euo','pipefail','-c',command],cwd=root,
-                           env=dict(os.environ,GITHUB_SHA='fixture-sha'),check=True,capture_output=True)
-            report=json.loads((root/'archive-measurements.json').read_text())
-            self.assertEqual(report['revision'],'fixture-sha')
-            self.assertEqual([r['level'] for r in report['gzip']],[1,9])
-            self.assertEqual(report['binary_bytes'],binary.stat().st_size)
-            with tarfile.open(root/'server-tests.tar.gz') as tar:
-                self.assertEqual(tar.extractfile('server-tests').read(),binary.read_bytes())
-            self.assertEqual((root/'server-tests.sha256').read_text().split()[0],hashlib.sha256(binary.read_bytes()).hexdigest())
-
     def test_archived_test_executable_receives_cargo_fixture_context(self):
         workflow=yaml.safe_load((ROOT/'.github/workflows/ci-test-archive.yml').read_text())
         step=next(s for s in workflow['jobs']['execute']['steps'] if s.get('name')=='Verify and run the shared executable')
@@ -362,6 +334,35 @@ fn unselected() { panic!("filter was lost"); }
             for step in job.get('steps',[]):
                 if step.get('uses','').startswith('actions/checkout@'):
                     self.assertEqual(step['with']['ref'],'${{ needs.changes.outputs.revision }}',key)
+
+    def test_archive_experiment_isolates_cache_and_measures_compression(self):
+        workflow=yaml.safe_load((ROOT/'.github/workflows/ci-test-archive.yml').read_text())
+        compile=workflow['jobs']['compile']; execute=workflow['jobs']['execute']
+        self.assertEqual(compile['strategy']['matrix']['cache'],['dependencies','workspace'])
+        self.assertEqual(execute['strategy']['matrix']['cache'],['dependencies','workspace'])
+        cache=next(s for s in compile['steps'] if s.get('uses','').startswith('Swatinem/rust-cache@'))
+        self.assertIn('${{ matrix.cache }}',cache['with']['shared-key'])
+        self.assertIn('${{ github.sha }}',cache['with']['shared-key'])
+        self.assertEqual(cache['with']['cache-workspace-crates'],"${{ matrix.cache == 'workspace' }}")
+        upload=next(s for s in compile['steps'] if s.get('uses','').startswith('actions/upload-artifact@'))
+        self.assertEqual(upload['with']['compression-level'],0)
+        archive=next(s for s in compile['steps'] if s.get('name')=='Archive only the compiled test executable')
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory); binary=root/'binary'
+            binary.write_bytes(b'fixture payload\n'*1000);binary.chmod(0o755)
+            artifacts=root/'artifacts.jsonl'
+            artifacts.write_text(json.dumps(dict(reason='compiler-artifact',executable=str(binary),profile={'test':True}))+'\n')
+            command=archive['run'].replace('/tmp/test-artifacts.jsonl',str(artifacts))
+            subprocess.run(['bash','-euo','pipefail','-c',command],cwd=root,
+                           env=dict(os.environ,GITHUB_SHA='fixture-sha'),check=True,capture_output=True)
+            report=json.loads((root/'archive-measurements.json').read_text())
+            self.assertEqual(report['revision'],'fixture-sha')
+            self.assertEqual([r['level'] for r in report['gzip']],[1,9])
+            self.assertEqual(report['binary_bytes'],binary.stat().st_size)
+            with tarfile.open(root/'server-tests.tar.gz') as tar:
+                self.assertEqual(tar.extractfile('server-tests').read(),binary.read_bytes())
+            self.assertEqual((root/'server-tests.sha256').read_text().split()[0],hashlib.sha256(binary.read_bytes()).hexdigest())
+
 
 
 if __name__=='__main__':
