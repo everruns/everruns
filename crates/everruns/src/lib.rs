@@ -224,8 +224,8 @@ pub use observers::{
 };
 pub use plugin::PluginError;
 pub use session::{
-    CancelError, EnvironmentSessionBuilder, InterruptedTurn, RunError, SendDisposition,
-    SentMessage, Session, Turn, TurnHandle,
+    AttachError, CancelError, EnvironmentSessionBuilder, InterruptedTurn, RunError,
+    SendDisposition, SentMessage, Session, Turn, TurnHandle,
 };
 pub use session_environment::SessionEnvironmentError;
 pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolCallContext, ToolResponse};

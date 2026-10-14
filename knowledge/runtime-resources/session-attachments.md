@@ -172,7 +172,7 @@ never sent to the model, so the agent browses the files with `read_file` or
 the shell.
 
 - **Bomb limits** in
-  [`zip_attachments.rs`](../../crates/server/src/domains/messages/zip_attachments.rs):
+  [`attachment_zip.rs`](../../crates/core/src/host/attachment_zip.rs):
   1,000 files, 100 MiB unpacked, 25 MiB per file, and a 100:1 compression
   ratio, all measured while reading rather than trusted from the archive's
   headers.
@@ -211,16 +211,22 @@ store files as uploads of the caller's org
 - **Failures become notes.** A file that cannot be taken becomes a text part
   such as `[Attachment report.pdf not received: 40 MB is over the 25 MB
   limit]`. Operators see the underlying error in logs.
-- A host without egress or file storage (Framework defaults) keeps images
-  inline and notes other files.
+- **Hosts with no upload store** (the Framework, serve) keep each file in the
+  session's own files instead: `Session::attach` writes it read-only to
+  `/attachments/<id>/<name>` (unpacking a zip next to it) and the message
+  refers to it by id; when a request is built, the file is read back from
+  that path ([`attachment_files.rs`](../../crates/core/src/host/attachment_files.rs)).
+  No index is kept: the path is the record, so the file lasts as long as the
+  session's storage. The channel host tells the store which session a file is
+  for; the server's store ignores it, since its uploads are org-scoped.
 
 | Surface | Change |
 |---|---|
-| Slack (server) | Done: every file in the triggering message is downloaded with the bot token. Remote files (Google Drive and similar) keep their link in the text. Embedded Slack (Framework) downloads the same way through the runtime egress (`ChannelsBuilder::egress` overrides it); the Framework keeps images inline and notes other files until it has an attachment store. |
+| Slack (server) | Done: every file in the triggering message is downloaded with the bot token. Remote files (Google Drive and similar) keep their link in the text. Embedded Slack (Framework) downloads the same way through the runtime egress (`ChannelsBuilder::egress` overrides it); files are kept in the session's own files with `Session::attach`. |
 | AG-UI, Public Chat | Done: image, audio, video and document parts of the trigger message go through intake (inline data, `data:` URLs, downloads); a provider file handle is described by its id; `imageIds` keeps working. Public Chat visitors are anonymous, so it takes at most 3 files of up to 10 MiB, inline only: a URL part becomes a note instead of a download made on the visitor's behalf ([`AttachmentPolicy::anonymous`](../../crates/core/src/channel_runtime/attachments.rs)). |
 | A2A | Done: 0.3 `file` parts and 1.0 `raw` / `url` parts go through intake. PACT stays text only: PACT 1.0 §4.1 requires `CONTENT_TYPE_NOT_SUPPORTED` for any part that is not text. |
 | Agent execution API, MCP `agent_run` / `session_send_message` | Done: a `files` list (base64 `data` or `url` per file) goes through intake. Upload ids are refused on the execution API, since a caller has no upload route and ids are scoped to the org. The card advertises images and files. |
-| serve | Not done: serve sends text only end to end, so files there need its own session storage first. |
+| serve | Done: `POST /v1/sessions/{id}/messages` (and the agent's own `/v1/channels/{agent}/sessions/{id}/messages`) takes the same `files` list as the execution API, through the same intake; each file is kept with `Session::attach`. Channel files (Slack) are kept the same way. The card advertises images and files. |
 | Webhook, Poppy, voice | Unchanged; they carry no files today. |
 
 ### 3. Every attachment carries a label

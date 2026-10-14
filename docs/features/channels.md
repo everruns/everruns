@@ -67,7 +67,7 @@ Files sent to a channel reach the Agent the same way on every channel. Each one 
 | AG-UI | Image, audio, video and document parts of the user message, inline or by URL. |
 | Public Chat | The same parts, inline only: at most 3 files of up to 10 MB, since visitors are not signed in. |
 | A2A | File parts, as bytes or a URI. PACT endpoints take text only, as the PACT protocol requires. |
-| Agent API | The `files` list of a message, as base64 `data` or a `url` ([Call your agent from code](/how-to/call-your-agent-from-code/#send-files)). |
+| Agent API | The `files` list of a message, as base64 `data` or a `url` ([Call your agent from code](/how-to/call-your-agent-from-code/#send-files)). A [serve](/framework/serve/) app takes the same list. |
 
 Files sent by URL are downloaded only from public `https` addresses. A message keeps at most 10 files of up to 25 MB each, and the file's contents decide its type, whatever the sender declared. A file that cannot be taken, for example because it is too large or its download failed, becomes a note in the message, such as `[Attachment report.pdf not received: 31 MB is over the 25 MB limit]`, so the Agent knows it was sent.
 

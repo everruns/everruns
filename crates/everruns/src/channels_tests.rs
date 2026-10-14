@@ -205,13 +205,14 @@ impl everruns_core::EgressService for OneFile {
 }
 
 #[tokio::test]
-async fn a_slack_file_is_downloaded_through_the_channels_egress() {
+async fn a_slack_file_is_downloaded_into_the_sessions_files() {
     let engine = InMemoryEngine::new();
     let egress = Arc::new(OneFile(Mutex::new(Vec::new())));
     let channels = Channels::builder(&engine)
         .channel("slack", Slack::new("xoxb-test", "secret"), agent("ok"))
         .egress(egress.clone())
         .build();
+    let session = engine.create(agent("ok"));
     let file = InboundAttachment::Remote {
         url: "https://files.slack.com/files-pri/T1-F1/chart.png".into(),
         name: Some("chart.png".into()),
@@ -225,14 +226,13 @@ async fn a_slack_file_is_downloaded_through_the_channels_egress() {
 
     let parts = channels
         .host()
-        .attachment_parts("slack", &[file], None)
+        .attachment_parts("slack", Some(&session.id()), &[file], None)
         .await
         .unwrap();
 
-    // The Framework keeps images inline; files other than images need a
-    // host that stores them.
+    // Kept in the session's files and sent by reference.
     assert!(
-        matches!(parts.as_slice(), [everruns_core::ContentPart::Image(_)]),
+        matches!(parts.as_slice(), [everruns_core::ContentPart::ImageFile(_)]),
         "{parts:?}"
     );
     assert_eq!(

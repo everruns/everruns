@@ -79,6 +79,7 @@ mod config;
 mod connection;
 mod cx;
 mod eval;
+mod files;
 mod gateway;
 mod host;
 mod hosting;
