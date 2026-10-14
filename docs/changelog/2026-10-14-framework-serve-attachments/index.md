@@ -8,6 +8,7 @@ products: [framework]
 surfaces: [code, api]
 links:
   docs: [/framework/sessions/#send-files, /framework/serve/#wire-api]
+  prs: [everruns/everruns#4720]
 ---
 
 Files sent to a Framework or serve agent now stay readable for the whole conversation.
