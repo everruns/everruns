@@ -2100,10 +2100,7 @@ export interface ToolCompletedData {
   status: "success" | "error" | "timeout" | "cancelled";
   result?: ContentPart[];
   error?: string;
-  /** Elapsed wall time, distinct from observed worker CPU. */
   duration_ms?: number;
-  /** Worker-thread CPU during executor-future polls only; absent means unknown. */
-  worker_thread_cpu_ns?: number;
   narration?: string;
 }
 

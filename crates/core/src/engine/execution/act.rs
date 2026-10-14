@@ -238,16 +238,6 @@ where
         }
     }
 
-    /// Observe actual thread CPU while polling an invoked executor future.
-    /// The host supplies the clock; portable/custom hosts may leave it absent.
-    pub fn with_thread_cpu_clock(
-        mut self,
-        clock: Option<Arc<dyn super::cpu_time::ThreadCpuClock>>,
-    ) -> Self {
-        self.thread_cpu_clock = clock;
-        self
-    }
-
     /// Replace the complete runtime-owned service snapshot used for every
     /// per-call [`ToolContext`](crate::ToolContext). Production hosts should prefer this over
     /// assembling individual services on the atom.
@@ -1486,44 +1476,9 @@ where
 
         let (result, worker_thread_cpu_ns) = if let Some(pre_hook_result) = pre_hook_result {
             (Ok(pre_hook_result), None)
-        } else if tool_def.is_cpu_bound() {
-            // CPU-bound / non-yielding in-process tools (e.g. the bash
-            // interpreter) get their own task so a long synchronous burst
-            // cannot starve the cooperative polling of I/O-bound tools running
-            // alongside them in this act batch. On the multi-thread runtime the
-            // spawned task can also progress on another worker thread.
-            let executor = self.tool_executor.clone();
-            let call = execution_tool_call.clone();
-            let def = tool_def.clone();
-            let ctx = tool_context.clone();
-            let clock = self.thread_cpu_clock.clone();
-            match AbortOnDropJoinHandle::new(everruns_contracts::rt::spawn(async move {
-                super::cpu_time::observe_cpu(
-                    executor.execute_with_context(&call, &def, &ctx),
-                    clock.as_deref(),
-                )
-                .await
-            }))
-            .await
-            {
-                Ok(result) => result,
-                Err(join_err) => (
-                    Err(crate::engine::error::AgentLoopError::tool(format!(
-                        "tool task failed to complete: {join_err}"
-                    ))),
-                    None,
-                ),
-            }
         } else {
-            super::cpu_time::observe_cpu(
-                self.tool_executor.execute_with_context(
-                    &execution_tool_call,
-                    tool_def,
-                    &tool_context,
-                ),
-                self.thread_cpu_clock.as_deref(),
-            )
-            .await
+            self.invoke_observed(&execution_tool_call, tool_def, &tool_context)
+                .await
         };
 
         match result {
@@ -1791,7 +1746,8 @@ mod start_record;
 
 #[path = "act_abort_on_drop.rs"]
 mod abort_on_drop;
-use abort_on_drop::AbortOnDropJoinHandle;
+#[path = "act_cpu_execution.rs"]
+mod cpu_execution;
 
 #[cfg(test)]
 #[path = "act_tests.rs"]

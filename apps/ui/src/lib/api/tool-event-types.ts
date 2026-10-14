@@ -3,6 +3,8 @@ import type { OpenApiToolCompletedData } from "./schema-types";
 
 declare module "./legacy-api-types" {
   interface ToolCompletedData {
+    /** Scoped worker-thread CPU during executor-future polls; elapsed duration stays separate. */
+    worker_thread_cpu_ns?: OpenApiToolCompletedData["worker_thread_cpu_ns"];
     /**
      * Arguments the tool actually ran with; present only when `pre_tool_use` hooks rewrote the
      * model-authored arguments. A JSON value, or a truncated JSON string when
