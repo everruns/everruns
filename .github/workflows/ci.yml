@@ -294,6 +294,8 @@ jobs:
               - 'scripts/run-shell-tests.sh'
               - 'scripts/docker-release-source.py'
               - 'scripts/test-*.sh'
+              - 'scripts/load-test.py'
+              - 'scripts/test-load-test.py'
               - 'crates/everruns/tests/fixtures/external-consumer/**'
               - 'scripts/check_okf.py'
               # The report generators are covered by scripts/test-*.sh, so a
@@ -1296,7 +1298,7 @@ jobs:
           sudo apt-get update || true
           sudo apt-get install -y lsof netcat-openbsd ripgrep
 
-          CADDY_VERSION="2.9.1"
+          CADDY_VERSION="2.11.4"
           CADDY_TARBALL=""
           CADDY_CHECKSUMS="caddy_${CADDY_VERSION}_checksums.txt"
           CADDY_BASE_URL="https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}"
@@ -1316,6 +1318,12 @@ jobs:
 
       - name: Run repo shell tests
         run: ./scripts/run-shell-tests.sh
+
+      - name: Check simulated load driver
+        run: |
+          python3 -m venv "$RUNNER_TEMP/load-test-checks"
+          "$RUNNER_TEMP/load-test-checks/bin/pip" install httpx==0.28.1
+          "$RUNNER_TEMP/load-test-checks/bin/python" scripts/test-load-test.py
 
   # Live Daytona API tests — only when crates/integrations/src/daytona/** changes and secret exists
   daytona-live-test:

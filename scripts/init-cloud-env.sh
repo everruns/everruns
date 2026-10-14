@@ -12,6 +12,7 @@
 # Run this BEFORE any other commands in a fresh cloud environment.
 
 set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib/caddy-version.sh"
 
 # Colors for output
 RED='\033[0;31m'
@@ -195,7 +196,7 @@ install_doppler() {
 }
 
 install_caddy() {
-    if command -v caddy &> /dev/null; then
+    if caddy_supports_connect_retries; then
         info "caddy already installed: $(caddy version 2>/dev/null)"
         return 0
     fi
@@ -210,13 +211,13 @@ install_caddy() {
         *)       error "Unsupported architecture: $ARCH" ;;
     esac
 
-    CADDY_VERSION="2.9.1"
+    CADDY_VERSION="2.11.4"
     # Caddy publishes sha512, not sha256, in caddy_${CADDY_VERSION}_checksums.txt.
     # ci.yml's shell-test job verifies the same artifact the same way.
     CADDY_SHA512=""
     case "$CADDY_ARCH" in
-        amd64) CADDY_SHA512="0412057ba591c33bdb66034d7f32209619ce635147dac3084c79abcbc118a761145e695199f57c6798d88fab077f2b0d9cb999f52ded904c6d464a4eba202932" ;;
-        arm64) CADDY_SHA512="80b917c2bd8aa0892f1386ff97af9e776067dd8cdc4793238869aca7e13f7280f89d1799a1fef08b49af92dbd86684c3ba7a38b9d44afc55ef2eeb33b49e1cbd" ;;
+        amd64) CADDY_SHA512="8220d1f013b6f27510247b2360c9e0ca9f018feebd82515f07635318b34ff9777ccc8fd0b6e6f2486ce3a33fe389fbb7db12d05baa474f4587509fb4f5ebf1c9" ;;
+        arm64) CADDY_SHA512="d5a7c423853c24a799765e0e8210d5c7c22a8f56ed37a3cae2fb9f58be138853c02b4efd6b59d576e6d8c7c0d30b9c1592deeaa6a536ff69bcca23b8c1ea709c" ;;
         *)     error "Unsupported architecture for checksum verification: $CADDY_ARCH" ;;
     esac
 

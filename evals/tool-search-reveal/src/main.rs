@@ -585,12 +585,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn in_result_keeps_the_stub_in_the_request_tools() {
+    async fn in_result_keeps_the_stub_until_invalid_call_recovery() {
         let (transcript, requests) = scripted("in_result").await;
         check_common(&transcript).await;
         assert!(requests.len() >= 3, "{}", requests.len());
-        for (step, tools) in requests.iter().enumerate() {
+        // Search alone preserves the stub. The engine's invalid-call recovery
+        // reveals the rejected tool's schema on the following request.
+        for (step, tools) in requests[..2].iter().enumerate() {
             assert_eq!(params_of(tools, REFUND), stub(), "step {step}");
+        }
+        for (step, tools) in requests[2..].iter().enumerate() {
+            assert_eq!(
+                params_of(tools, REFUND),
+                registry::schema_of(REFUND).unwrap(),
+                "recovery step {step}"
+            );
+        }
+        for tools in &requests {
+            assert_eq!(params_of(tools, "inventory_reserve_stock"), stub());
         }
         // The search result itself carried the full schema.
         let search = transcript

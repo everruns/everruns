@@ -1,0 +1,15 @@
+{
+  "name": "file-research",
+  "description": "Three local file-research rounds against /load-test/research.md, then a 600-token answer. Seed the session file before playing.",
+  "defaults": { "timing": { "ttft_ms": [800, 1300], "tokens_per_sec": 65 } },
+  "steps": [
+    { "turn": { "type": "mixed", "text": "Let me inspect the research notes.",
+                "calls": [{ "name": "list_directory", "arguments": { "path": "/load-test" } }] } },
+    { "turn": { "type": "tool_calls", "calls": [{ "name": "read_file", "arguments": { "path": "/load-test/research.md" } }] } },
+    { "turn": { "type": "tool_calls", "calls": [
+      { "name": "stat_file", "arguments": { "path": "/load-test/research.md" } },
+      { "name": "read_file", "arguments": { "path": "/load-test/research.md" } }
+    ] } },
+    { "turn": { "type": "assistant", "lorem_tokens": 600 } }
+  ]
+}

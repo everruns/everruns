@@ -19,7 +19,7 @@ case "$cmd" in
 
     # Caddy reverse proxy
     echo "🔀 Reverse proxy:"
-    if ! command -v caddy &> /dev/null; then
+    if ! caddy_supports_connect_retries; then
       echo "  Installing caddy..."
       ARCH=$(uname -m)
       case "$ARCH" in
@@ -34,7 +34,7 @@ case "$cmd" in
           Darwin) CADDY_OS="mac" ;;
           *)      CADDY_OS=$(uname -s | tr '[:upper:]' '[:lower:]') ;;
         esac
-        CADDY_VERSION="2.9.1"
+        CADDY_VERSION="2.11.4"
         CADDY_URL="https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_${CADDY_OS}_${CADDY_ARCH}.tar.gz"
         TEMP_DIR=$(mktemp -d)
         curl -fsSL "$CADDY_URL" -o "$TEMP_DIR/caddy.tar.gz"
