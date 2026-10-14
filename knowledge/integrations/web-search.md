@@ -647,3 +647,23 @@ Mockups: `/mnt/project-files/web-search/` in the project thread.
   effect on running sessions; the per-attempt plan record keeps it debuggable.
 - **Keep Adoption flags on Brave and Parallel.** Rejected (user call,
   2026-10-11): connecting an account is already the opt-in.
+
+## Hosted search permits
+
+A host that pays per search can install a `HostedSearchPermitGate`. The SDK
+forwards the engine's org/session identity and stable call idempotency key,
+acquires only when the hosted step actually runs, then starts its fenced
+permit before dispatch. Missing identity and rejected ownership fail closed.
+Permission-only gates remain distinct from financial reservations.
+
+The per-call `HostedSearchInvocation` owns an opaque billing receipt; billing
+metadata does not belong to every search driver. Answered outcomes settle;
+proven pre-dispatch failures may release; uncertain delivery and cancellation
+need host reconciliation. The SDK bounds backend time, strips host exchanges
+before callbacks, and preserves an answer if settlement is temporarily
+unavailable. A settled host can replay an earlier answer without another
+supplier request. Event details carry the receipt, stable key and a sanitized
+response capped at 64 KiB for repair. Larger responses retain the completion
+fact without a replay body; the host must never re-run paid work to refill it.
+The host owns wallet serialization, callback idempotency, leases, recovery and
+finite retry budgets. A missing event is never proof that dispatch was free.
