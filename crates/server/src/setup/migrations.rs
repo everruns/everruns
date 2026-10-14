@@ -63,8 +63,9 @@ async fn run_without_statement_logging(pool: &PgPool, migrator: &Migrator) -> Re
         .connect()
         .await
         .context("Could not connect to the database to run migrations")?;
+    // `run_direct` for the same higher-ranked `Send` reason as `adopt_locked`.
     let migrated = migrator
-        .run(&mut conn)
+        .run_direct(None, &mut conn, false)
         .await
         .context("Database migration failed - check migration files and database state");
     // Close cleanly either way; a failed close must not mask a failed migration.
