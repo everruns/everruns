@@ -48,7 +48,7 @@ async fn long_decode_stops_at_the_requested_budget_and_keeps_the_default_cap() {
     ] {
         let server = MockServer::start().await;
         Mock::given(method("POST")).respond_with(sse(&[json!({
-            "candidates":[{"content":{"parts":[{"text":"partial"}]},"finishReason":"CONTINUATION","continuationToken":"unused"}],
+            "candidates":[{"content":{"parts":[{"text":"partial"},{"functionCall":{"name":"cut_off","args":{"x":1}}}]},"finishReason":"CONTINUATION","continuationToken":"unused"}],
             "usageMetadata":{"promptTokenCount":10,"thoughtsTokenCount":tokens}
         })])).expect(1).mount(&server).await;
         let mut cfg = config("gemini-4-argon");
@@ -67,6 +67,8 @@ async fn long_decode_stops_at_the_requested_budget_and_keeps_the_default_cap() {
             .await
             .unwrap();
         assert_eq!(response.text, "partial");
+        assert!(response.tool_calls.is_none());
+        assert_eq!(response.metadata.tool_calls_dropped, 1);
         assert_eq!(response.metadata.finish_reason.as_deref(), Some("length"));
         let request = replayed_request(&server)
             .await
@@ -80,7 +82,7 @@ async fn long_decode_stops_at_the_requested_budget_and_keeps_the_default_cap() {
 }
 
 #[tokio::test]
-async fn long_decode_releases_only_the_accepted_final_hops_tools() {
+async fn long_decode_releases_all_hops_tools_only_after_accepted_completion() {
     use serde_json::json;
     use wiremock::matchers::body_partial_json;
     for reason in ["STOP", "SAFETY", "MAX_TOKENS"] {
@@ -89,7 +91,7 @@ async fn long_decode_releases_only_the_accepted_final_hops_tools() {
             .respond_with(sse(&[json!({"candidates":[{"content":{"parts":[{"functionCall":{"name":"accepted","args":{"x":1}}}]},"finishReason":reason}]})]))
             .with_priority(1).expect(1).mount(&server).await;
         Mock::given(method("POST"))
-            .respond_with(sse(&[json!({"candidates":[{"content":{"parts":[{"functionCall":{"name":"unfinished","args":{}}}]},"finishReason":"CONTINUATION","continuationToken":"next"}]})]))
+            .respond_with(sse(&[json!({"candidates":[{"content":{"parts":[{"functionCall":{"name":"first_hop","args":{"first":true}},"thoughtSignature":"signed-first-call"}]},"finishReason":"CONTINUATION","continuationToken":"next"}]})]))
             .with_priority(2).expect(1).mount(&server).await;
         let mut cfg = config("gemini-4-argon");
         cfg.max_tokens = Some(100_000);
@@ -99,9 +101,15 @@ async fn long_decode_releases_only_the_accepted_final_hops_tools() {
             .unwrap();
         if reason == "STOP" {
             let calls = response.tool_calls.unwrap();
-            assert_eq!(calls.len(), 1);
-            assert_eq!(calls[0].name, "accepted");
-            assert_eq!(response.metadata.tool_calls_dropped, 1);
+            assert_eq!(calls.len(), 2);
+            assert_eq!(calls[0].name, "first_hop");
+            assert_eq!(calls[0].arguments, json!({"first":true}));
+            assert_eq!(calls[1].name, "accepted");
+            assert_eq!(
+                response.reasoning[0].bound_tool_call_id.as_deref(),
+                Some(calls[0].id.as_str())
+            );
+            assert_eq!(response.metadata.tool_calls_dropped, 0);
         } else {
             assert!(response.tool_calls.is_none());
             assert_eq!(response.metadata.tool_calls_dropped, 2);

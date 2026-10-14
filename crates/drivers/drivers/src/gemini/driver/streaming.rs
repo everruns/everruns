@@ -36,9 +36,10 @@ impl ContinuationRequest {
 
 pub(super) fn convert_gemini_stream(
     byte_stream: ByteStream,
-    state: GeminiStreamState,
+    mut state: GeminiStreamState,
     continuation: Option<ContinuationRequest>,
 ) -> LlmResponseStream {
+    state.can_continue = continuation.is_some();
     // THREAT[TM-TOOL-038]: decode UTF-8 and SSE framing before parsing provider JSON. Transport chunks
     // may split a character, line or event anywhere.
     let event_stream = byte_stream.eventsource();

@@ -851,6 +851,7 @@ struct GeminiStreamState {
     billed_cache: Option<u32>,
     billed_thoughts: Option<u32>,
     continuation_token: Option<String>,
+    can_continue: bool,
     output_since_checkpoint: bool,
     checkpoint_usage: Option<(u32, u32, Option<u32>, Option<u32>)>,
     calls: StreamToolCallAccumulator,
@@ -978,12 +979,16 @@ impl GeminiStreamState {
                 });
                 // THREAT[TM-TOOL-037]: only an accepted terminal candidate can release pending calls.
                 // The whole frame is processed before yielding any of its events.
-                let calls = self.calls.take_finalized();
-                if reason == "STOP" && !calls.is_empty() {
-                    self.pending.push_back(LlmStreamEvent::ToolCalls(calls));
-                } else {
-                    // Cut off or rejected: discarded, but counted.
-                    self.tool_calls_dropped += u32::try_from(calls.len()).unwrap_or(u32::MAX);
+                // CONTINUATION ends a hop, not the logical response. Hold all
+                // complete calls until that response is accepted or rejected.
+                if reason != "CONTINUATION" || !self.can_continue {
+                    let calls = self.calls.take_finalized();
+                    if reason == "STOP" && !calls.is_empty() {
+                        self.pending.push_back(LlmStreamEvent::ToolCalls(calls));
+                    } else {
+                        // Cut off or rejected: discarded, but counted.
+                        self.tool_calls_dropped += u32::try_from(calls.len()).unwrap_or(u32::MAX);
+                    }
                 }
                 self.provider_finish_reason = Some(reason);
                 break;
@@ -1038,6 +1043,10 @@ impl GeminiStreamState {
         let calls = self.calls.take_finalized();
         if self.finish_reason.is_none() && !calls.is_empty() {
             self.pending.push_back(LlmStreamEvent::ToolCalls(calls));
+        } else {
+            self.tool_calls_dropped = self
+                .tool_calls_dropped
+                .saturating_add(u32::try_from(calls.len()).unwrap_or(u32::MAX));
         }
         self.pending.push_back(LlmStreamEvent::Done(Box::new({
             let mut metadata = LlmCompletionMetadata::default();
