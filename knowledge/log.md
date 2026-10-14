@@ -2,6 +2,9 @@
 
 ## 2026-10-14
 
+* **Slack landing page**: Added the integration overview with English conversation
+  examples, the public demo, Agent-building steps and links to the detailed reference.
+
 * **Server-owned PostgreSQL and tiered CI.** Remove the private PostgreSQL utility
   crate; server storage owns native dev/test support. CI uses focused PR tests,
   coalesced main batches, nightly feature/provider coverage, and exact-revision

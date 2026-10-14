@@ -14,6 +14,15 @@ The Everruns documentation site provides user-facing documentation for operators
 
 ## Requirements
 
+### Integration landing pages
+
+The [Slack landing page](../../docs/integrations/slack.mdx) introduces building
+and publishing an Agent with realistic English examples and the public demo.
+It is distinct from the detailed [Slack reference](../../docs/capabilities/slack.md).
+The integration route is a page, not an alias to the capability reference.
+Examples reconstructed or translated from captures must say so; raw recordings
+and unrelated messages stay out of published assets.
+
 ### Site Structure
 
 1. **Content Location**: `docs/` in the repository root

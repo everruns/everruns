@@ -1,0 +1,455 @@
+.slack-landing {
+  --landing-ink: hsl(var(--primary));
+  --landing-muted: hsl(var(--muted-foreground));
+  --landing-line: hsl(var(--border));
+}
+.slack-landing * {
+  box-sizing: border-box;
+}
+.slack-landing h2 {
+  font-size: 26px;
+  line-height: 1.3;
+  letter-spacing: -0.7px;
+  margin: 0 0 12px;
+}
+.slack-landing h3 {
+  font-size: 16px;
+  line-height: 1.4;
+  margin: 0 0 8px;
+}
+.slack-landing p {
+  margin: 0;
+  color: var(--landing-muted);
+  font-size: 15px;
+  line-height: 1.65;
+}
+.slack-landing a {
+  text-decoration: none;
+}
+.slack-landing a:hover {
+  text-decoration: underline;
+}
+.slack-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 4px 0 24px;
+}
+.slack-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: hsl(var(--card)) !important;
+  background: var(--landing-ink);
+  border: 1px solid var(--landing-ink);
+}
+.slack-link.secondary {
+  background: transparent;
+  color: hsl(var(--foreground)) !important;
+  border-color: var(--landing-line);
+}
+.slack-demo {
+  margin: 24px 0 36px;
+}
+.slack-tabs {
+  display: flex;
+  gap: 22px;
+  border-bottom: 1px solid var(--landing-line);
+  margin-bottom: 12px;
+}
+.slack-tab {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--landing-muted);
+  padding: 10px 0;
+  cursor: pointer;
+}
+.slack-tab[aria-selected="true"] {
+  color: hsl(var(--foreground));
+  font-weight: 600;
+  border-color: #d4a43a;
+}
+.slack-demo-label {
+  font-size: 11px;
+  color: var(--landing-muted);
+  margin-left: auto;
+  align-self: center;
+}
+.slack-caption {
+  font-size: 12px !important;
+  margin-top: 10px !important;
+}
+.slack-features {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 28px 36px;
+  margin-top: 24px;
+}
+.slack-features p {
+  font-size: 14px;
+}
+.slack-feature {
+  border-left: 2px solid #d4a43a;
+  padding-left: 15px;
+}
+.slack-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  margin: 24px 0;
+}
+.slack-step-number {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--landing-muted);
+  margin-bottom: 10px;
+}
+.slack-steps p {
+  font-size: 13px;
+}
+.slack-note {
+  font-size: 13px !important;
+  border-left: 2px solid var(--landing-line);
+  padding-left: 14px;
+  margin: 22px 0 !important;
+}
+.slack-note a {
+  color: hsl(var(--foreground));
+  text-decoration: underline;
+}
+.slack-paths {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 20px;
+}
+.slack-path {
+  display: block;
+  border: 1px solid var(--landing-line);
+  padding: 16px;
+}
+.slack-path strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+.slack-path span {
+  font-size: 13px;
+  color: var(--landing-muted);
+}
+.slack-landing [hidden] {
+  display: none !important;
+}
+@media (max-width: 750px) {
+  .slack-features,
+  .slack-steps,
+  .slack-paths {
+    grid-template-columns: 1fr;
+  }
+  .slack-demo-label {
+    display: none;
+  }
+  .slack-tabs {
+    gap: 20px;
+  }
+  .slack-link {
+    padding: 9px 13px;
+  }
+}
+
+.slack-landing .real-slack {
+  font-family: Arial, Helvetica, sans-serif;
+  color: #1d1c1d;
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  padding: 18px 14px 12px;
+  font-size: 15px;
+  line-height: 1.46;
+  box-shadow: 0 4px 24px #0a163605;
+}
+.slack-landing .real-slack * {
+  box-sizing: border-box;
+  margin: 0;
+}
+.slack-landing .real-slack p {
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.46;
+  color: #1d1c1d;
+  margin: 1px 0 0;
+}
+.slack-landing .real-slack strong {
+  font-weight: 700;
+}
+.slack-landing .real-message {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 9px;
+  margin-bottom: 12px;
+}
+.slack-landing .real-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  object-fit: cover;
+  margin: 0 !important;
+}
+.slack-landing .real-author {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-height: 21px;
+  line-height: 1.4;
+}
+.slack-landing .real-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+.slack-landing .real-author time {
+  font-size: 11px;
+  color: #616061;
+  margin-left: 3px;
+}
+.slack-landing .real-app {
+  display: inline-block;
+  font-size: 10px;
+  line-height: 14px;
+  padding: 0 3px;
+  background: #eee;
+  color: #454545;
+  font-weight: 400;
+}
+.slack-landing .real-replies {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 6px 0 9px;
+  color: #616061;
+  font-size: 13px;
+}
+.slack-landing .real-replies:after {
+  content: "";
+  height: 1px;
+  background: #ddd;
+  flex: 1;
+}
+.slack-landing .real-new {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #e01e5a;
+  font-size: 13px;
+  line-height: 1.15;
+  margin: -5px -14px 7px;
+}
+.slack-landing .real-new:before {
+  content: "";
+  height: 1px;
+  background: #ff8eac;
+  flex: 1;
+}
+.slack-landing .real-new span {
+  padding-right: 10px;
+}
+.slack-landing .real-slack .real-warning {
+  margin-top: 8px;
+}
+.slack-landing .real-slack ul {
+  margin: 0 0 8px;
+  padding-left: 26px;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.46;
+}
+.slack-landing .real-slack li {
+  padding-left: 0;
+}
+.slack-landing .real-link {
+  display: inline;
+  color: #006bb3;
+  background: #e8f5fc;
+  line-height: 1.45;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.slack-landing .real-unfurl {
+  border-left: 3px solid #ddd;
+  padding-left: 13px;
+  margin-top: 5px;
+  max-width: 550px;
+}
+.slack-landing .real-unfurl .real-source {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.slack-landing .real-unfurl .real-unfurl-title {
+  font-size: 15px;
+  color: #006bb3;
+  font-weight: 700;
+  margin: 0 0 1px;
+}
+.slack-landing .real-unfurl .real-unfurl-description {
+  font-size: 15px;
+  line-height: 1.46;
+  margin: 0 0 3px;
+}
+.slack-landing .real-unfurl .real-domain {
+  font-size: 12px;
+  color: #616061;
+  margin: 0 0 6px;
+}
+.slack-landing .stend-preview {
+  width: 360px;
+  max-width: 100%;
+  height: 190px;
+  border-radius: 8px;
+  overflow: hidden;
+  border-top: 3px solid #ed6a36;
+  background: linear-gradient(130deg, #141413 25%, #2f2019 100%);
+  padding: 18px 26px;
+  color: #e8e8e6;
+  position: relative;
+  margin-top: 4px;
+}
+.slack-landing .stend-preview .stend-brand {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #eee;
+  margin-bottom: 29px;
+}
+.slack-landing .stend-preview .stend-brand span {
+  color: #ee642a;
+}
+.slack-landing .stend-preview h3 {
+  color: #e8e8e6;
+  font-size: 23px;
+  line-height: 1.2;
+  font-weight: 700;
+  font-family: inherit;
+  margin: 0 0 5px;
+  letter-spacing: 0.1px;
+}
+.slack-landing .stend-preview p {
+  color: #898783;
+  font-size: 10.5px;
+  line-height: 1.3;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.slack-landing .stend-preview .stend-domain {
+  position: absolute;
+  bottom: 17px;
+  left: 26px;
+  color: #f27439;
+  font-size: 10px;
+}
+.slack-landing .real-briefing {
+  background: #f8f8f8;
+  padding-top: 14px;
+}
+.slack-landing .real-briefing .real-message {
+  margin-bottom: 8px;
+}
+.slack-landing .real-slack .real-greeting {
+  margin-top: 8px;
+}
+.slack-landing .slack-demo-label {
+  font-size: 11px;
+}
+.slack-landing .slack-caption .real-caption-note {
+  display: block;
+  font-size: 11px;
+  margin-top: 2px;
+}
+.slack-landing .real-slack[hidden] {
+  display: none !important;
+}
+@media (max-width: 750px) {
+  .slack-landing .real-slack {
+    padding: 14px 10px;
+    font-size: 14px;
+  }
+  .slack-landing .real-slack p,
+  .slack-landing .real-slack ul,
+  .slack-landing .real-unfurl .real-unfurl-description {
+    font-size: 14px;
+  }
+  .slack-landing .real-message {
+    gap: 8px;
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+  .slack-landing .real-avatar {
+    width: 32px;
+    height: 32px;
+  }
+  .slack-landing .real-name {
+    font-size: 14px;
+  }
+  .slack-landing .real-author {
+    flex-wrap: wrap;
+    gap: 4px;
+    row-gap: 0;
+  }
+  .slack-landing .real-author time {
+    font-size: 10px;
+  }
+  .slack-landing .real-new {
+    margin-left: -10px;
+    margin-right: -10px;
+  }
+  .slack-landing .real-unfurl {
+    padding-left: 10px;
+  }
+  .slack-landing .stend-preview {
+    padding: 18px 16px;
+  }
+  .slack-landing .stend-preview .stend-domain {
+    left: 16px;
+  }
+  .slack-landing .stend-preview h3 {
+    font-size: 22px;
+  }
+  .slack-landing .real-slack ul {
+    padding-left: 21px;
+  }
+  .slack-landing .real-briefing .real-link {
+    font-size: 14px;
+  }
+}
+
+.slack-landing > h2 {
+  border-top: 1px solid var(--landing-line);
+  padding-top: 28px;
+  margin-top: 28px;
+}
+.slack-landing .slack-video {
+  width: 100%;
+  aspect-ratio: 16/9;
+  min-height: 200px;
+  border: 0;
+  margin-top: 18px;
+}
+.slack-landing .slack-demo {
+  display: block;
+}
+.slack-landing .slack-tab:focus-visible {
+  outline: 2px solid #d4a43a;
+  outline-offset: 4px;
+}
+.slack-landing .slack-steps article {
+  margin: 0;
+}
+
+.slack-landing .slack-features > article { margin: 0; }
