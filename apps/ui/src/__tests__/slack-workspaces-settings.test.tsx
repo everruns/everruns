@@ -6,6 +6,9 @@ let mockCapability: SlackInstallCapability;
 let mockWorkspaces: SlackWorkspace[];
 
 jest.mock("@/hooks", () => ({ usePageTitle: jest.fn() }));
+jest.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(window.location.search),
+}));
 
 jest.mock("@/hooks/use-agent-channels", () => ({
   useSlackInstallCapability: () => ({ data: mockCapability, isLoading: false }),
@@ -71,5 +74,45 @@ describe("Slack workspaces settings", () => {
     mockWorkspaces = [];
     render(<SlackWorkspacesPage />);
     expect(screen.getByText(/does not create Slack apps for you/)).toBeInTheDocument();
+  });
+
+  describe("with a Slack manager app", () => {
+    afterEach(() => window.history.replaceState(null, "", "/"));
+
+    it("connects by Slack approval and keeps the token path available", () => {
+      mockCapability = { ...mockCapability, manager_app: true };
+      mockWorkspaces = [];
+      render(<SlackWorkspacesPage />);
+      expect(screen.getByRole("button", { name: /Connect with Slack/ })).toBeInTheDocument();
+      expect(screen.queryByLabelText(/paste it here/)).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Use a configuration token instead" }));
+      expect(screen.getByLabelText(/paste it here/)).toBeInTheDocument();
+    });
+
+    it("reports a completed approval and clears it from the address", () => {
+      mockCapability = { ...mockCapability, manager_app: true };
+      window.history.replaceState(null, "", "/settings/slack?slack_connect=ok");
+      render(<SlackWorkspacesPage />);
+      expect(screen.getByText("Slack workspace connected.")).toBeInTheDocument();
+      expect(window.location.search).toBe("");
+    });
+
+    it("explains why Slack did not connect the workspace", () => {
+      mockCapability = { ...mockCapability, manager_app: true };
+      window.history.replaceState(
+        null,
+        "",
+        "/settings/slack?slack_connect=failed&slack_error=missing_scope",
+      );
+      render(<SlackWorkspacesPage />);
+      expect(screen.getByText(/did not grant permission to create apps/)).toBeInTheDocument();
+    });
+
+    it("marks workspaces connected by approval", () => {
+      mockCapability = { ...mockCapability, manager_app: true };
+      mockWorkspaces = [{ ...workspace("T1", "Acme", "connected"), connected_with: "manager_app" }];
+      render(<SlackWorkspacesPage />);
+      expect(screen.getByText(/with Slack approval/)).toBeInTheDocument();
+    });
   });
 });
