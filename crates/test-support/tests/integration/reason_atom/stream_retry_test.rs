@@ -1,5 +1,126 @@
 use super::*;
 
+struct LongThinkingDriver {
+    idle_timeout: Option<std::time::Duration>,
+}
+
+#[async_trait]
+impl everruns_contracts::driver_registry::ChatDriver for LongThinkingDriver {
+    fn stream_stall_timeout(
+        &self,
+        _config: &everruns_contracts::LlmCallConfig,
+    ) -> Option<std::time::Duration> {
+        self.idle_timeout
+    }
+
+    async fn chat_completion_stream(
+        &self,
+        _endpoint: &everruns_contracts::ProviderEndpoint,
+        _messages: Vec<everruns_contracts::Message>,
+        _config: &everruns_contracts::LlmCallConfig,
+    ) -> everruns_contracts::error::Result<everruns_contracts::LlmResponseStream> {
+        use everruns_contracts::LlmStreamEvent;
+        Ok(Box::pin(stream::unfold(0, |phase| async move {
+            let event = match phase {
+                0 => LlmStreamEvent::TextDelta("before ".into()),
+                1 => {
+                    tokio::time::sleep(std::time::Duration::from_secs(180)).await;
+                    LlmStreamEvent::TextDelta("after".into())
+                }
+                2 => {
+                    let mut metadata = LlmCompletionMetadata::default();
+                    metadata.finish_reason = Some("stop".into());
+                    LlmStreamEvent::Done(Box::new(metadata))
+                }
+                _ => return None,
+            };
+            Some((Ok(event), phase + 1))
+        })))
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn provider_idle_hint_allows_long_thinking_and_preserves_host_deadlines() {
+    use std::time::Duration;
+    for (hint, host_timeout, succeeds) in [
+        (Some(Duration::from_secs(1_200)), None, true),
+        (
+            Some(Duration::from_secs(1_200)),
+            Some(Duration::from_secs(60)),
+            false,
+        ),
+        (None, None, false),
+    ] {
+        let (
+            harness_store,
+            agent_store,
+            session_store,
+            message_retriever,
+            provider_store,
+            harness_id,
+            agent_id,
+            session_id,
+        ) = setup_test_environment().await;
+        message_retriever
+            .seed(
+                session_id.into(),
+                vec![RuntimeMessage::user("Think carefully")],
+            )
+            .await;
+        let mut registry = DriverRegistry::new();
+        registry.register(DriverId::LlmSim, move |_config| {
+            everruns_contracts::Provider::new(
+                "long-thinking",
+                LongThinkingDriver { idle_timeout: hint },
+            )
+            .into_boxed_driver()
+        });
+        let emitter = InMemoryEventEmitter::new();
+        let mut atom = reason_atom_with_stores(
+            harness_store,
+            agent_store,
+            session_store,
+            message_retriever,
+            provider_store,
+            CapabilityRegistry::new(),
+            registry,
+            emitter,
+        )
+        .with_provider_retry_config(everruns_contracts::LlmRetryConfig::no_retry());
+        if let Some(timeout) = host_timeout {
+            atom = atom.with_provider_stall_timeout(timeout);
+        }
+        let result = atom
+            .execute(ReasonInput {
+                context: create_context(session_id),
+                harness_id,
+                agent_id: Some(agent_id.into()),
+                org_id: 0,
+                mcp_tool_definitions: vec![],
+                previous_response_id: None,
+                iteration: 1,
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            result.success, succeeds,
+            "hint={hint:?}, host={host_timeout:?}, error={:?}",
+            result.error
+        );
+        if succeeds {
+            assert_eq!(result.text, "before after");
+        } else {
+            assert!(
+                result
+                    .error
+                    .as_deref()
+                    .unwrap()
+                    .contains("provider stream stall")
+            );
+        }
+    }
+}
+
 /// First attempt streams part of an answer and then breaks; the retry streams
 /// the whole answer.
 #[derive(Clone, Debug)]
