@@ -41,6 +41,13 @@ async fn cluster_owner_fixture() {
 
     pg.create_database("tmpl", None).await.unwrap();
     let mut conn = sqlx::PgConnection::connect(&pg.url("tmpl")).await.unwrap();
+    let locale: (String, String) = sqlx::query_as(
+        "SELECT datcollate, datctype FROM pg_database WHERE datname = current_database()",
+    )
+    .fetch_one(&mut conn)
+    .await
+    .unwrap();
+    assert_eq!(locale, ("C".into(), "C".into()));
     sqlx::raw_sql("CREATE TABLE t (id int PRIMARY KEY); INSERT INTO t VALUES (1)")
         .execute(&mut conn)
         .await

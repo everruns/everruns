@@ -17,6 +17,11 @@ Dev mode and isolated server tests run a native PostgreSQL server through
 It needs no Docker daemon. The same repositories and migrations run as in production;
 there is no separate in-memory implementation of application storage.
 
+A Docker-based fixture such as Testcontainers does not satisfy the native local
+and coding-agent startup contract. The database is temporary, rather than a
+different SQL engine: disposable settings reduce durability costs while retaining
+PostgreSQL behavior instead of relying on partial emulation.
+
 The library owns downloading and verifying binaries, version selection, installation,
 initialization, readiness, and normal shutdown. The private
 [`everruns-pg-embedded` adapter](../../crates/pg-embedded/src/lib.rs) owns only the

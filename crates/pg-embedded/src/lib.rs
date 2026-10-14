@@ -57,6 +57,11 @@ impl EmbeddedPostgres {
                 " TEMPLATE {} STRATEGY FILE_COPY",
                 identifier(template)?
             ));
+        } else {
+            // The library's initializer inherits the host locale. Keep SQL
+            // sorting/case behavior deterministic, as with the former C-locale
+            // cluster, without implementing our own initdb invocation.
+            sql.push_str(" TEMPLATE template0 LC_COLLATE 'C' LC_CTYPE 'C'");
         }
         let mut conn = sqlx::PgConnection::connect(&self.url("postgres")).await?;
         sqlx::raw_sql(sqlx::AssertSqlSafe(sql))
