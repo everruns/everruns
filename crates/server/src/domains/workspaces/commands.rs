@@ -6,12 +6,11 @@
 // registration site.
 
 use super::types::{
-    CreateWorkspaceRequest, ListWorkspacesQuery, UpdateWorkspaceRequest, WorkspaceResponse,
-    workspace_response,
+    ListWorkspacesQuery, UpdateWorkspaceRequest, WorkspaceResponse, workspace_response,
 };
 use super::{WORKSPACE_MANAGE, WORKSPACE_VIEW};
 use crate::domains::common::*;
-use crate::storage::{CreateWorkspaceRow, UpdateWorkspace};
+use crate::storage::UpdateWorkspace;
 use everruns_contracts::typed_id::WorkspaceId;
 use serde::Deserialize;
 use utoipa::ToSchema;
@@ -89,68 +88,6 @@ impl Command for ListWorkspaces {
             )
             .await?;
         Ok(rows.into_iter().map(workspace_response).collect())
-    }
-}
-
-#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
-pub struct CreateWorkspace {
-    /// Human-readable workspace name. Must be unique per org.
-    pub name: String,
-    /// Optional human-readable description.
-    #[serde(default)]
-    pub description: Option<String>,
-}
-
-impl From<CreateWorkspaceRequest> for CreateWorkspace {
-    fn from(request: CreateWorkspaceRequest) -> Self {
-        Self {
-            name: request.name,
-            description: request.description,
-        }
-    }
-}
-
-#[command(
-    name = "create_workspace",
-    category = "workspaces",
-    description = "Create a new Workspace in the current organization.",
-    method = "POST",
-    path = "/v1/workspaces",
-    policy = WORKSPACE_MANAGE,
-    cli = CliRoute::new(&["workspaces"], "create").with_examples(&[CliExample::new("Create a workspace to group related sessions and files", "everruns workspaces create --name platform-team --description 'Platform team sandbox work' --reason 'Separate team resources'")]),
-)]
-impl Command for CreateWorkspace {
-    type Output = WorkspaceResponse;
-
-    fn output_schema() -> serde_json::Value {
-        output_schema_for::<WorkspaceResponse>()
-    }
-
-    async fn execute(self, ctx: &Ctx) -> Result<WorkspaceResponse, CommandError> {
-        let name = validate_name(&self.name)?;
-        let public_id = WorkspaceId::new().to_string();
-        let row = ctx
-            .db
-            .create_workspace(
-                ctx.org_id(),
-                CreateWorkspaceRow {
-                    id: None,
-                    public_id,
-                    name,
-                    description: self.description,
-                    owner_principal_id: None,
-                    resolved_owner_user_id: None,
-                },
-            )
-            .await
-            .map_err(|e| {
-                if e.to_string().contains("already exists") {
-                    CommandError::conflict("Workspace name already exists")
-                } else {
-                    classify_anyhow(e)
-                }
-            })?;
-        Ok(workspace_response(row))
     }
 }
 

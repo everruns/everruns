@@ -22,7 +22,8 @@ use super::config::WebSearchConfig;
 use super::free::FreeSearchDriver;
 use super::http::DirectEgress;
 use super::plan::{
-    PlanDrivers, PlanInputs, ResolvedPlan, SearchOutcome, plan_steps, resolve_plan, run_plan,
+    PlanDrivers, PlanEntry, PlanInputs, ResolvedPlan, SearchOutcome, plan_steps, resolve_plan,
+    run_plan,
 };
 use super::{
     BRAVE_SEARCH_API_KEY, BRAVE_SEARCH_CONNECTION_PROVIDER, PARALLEL_API_KEY,
@@ -48,11 +49,13 @@ struct Arguments {
     topic: SearchTopic,
 }
 
-/// Application-owned keys (Framework, serve), used when the session has none.
+/// Application-owned keys (Framework, serve), used when the session has none,
+/// and the deployment's own search (hosted).
 #[derive(Clone, Default)]
 pub(super) struct AppKeys {
     pub(super) brave: Option<String>,
     pub(super) parallel: Option<String>,
+    pub(super) hosted: Option<super::HostedWebSearch>,
 }
 
 pub(super) struct WebSearchTool {
@@ -191,6 +194,7 @@ impl WebSearchTool {
             model_has_native: false,
             brave_key: brave_key.is_some(),
             parallel_key: parallel_key.is_some(),
+            hosted: self.app_keys.hosted.is_some(),
         });
         if request.limit == 0 {
             request.limit = plan.limit;
@@ -230,6 +234,15 @@ impl WebSearchTool {
             parallel: parallel_key
                 .and_then(|key| self.bases.driver(PARALLEL_CONNECTION_PROVIDER, key, None)),
             accounts,
+            // Only a plan that can reach the hosted search asks its gate.
+            hosted: match &self.app_keys.hosted {
+                Some(hosted) if plan.entries.contains(&PlanEntry::Hosted) => Some(
+                    hosted
+                        .driver_for(context.and_then(|context| context.org_id.as_ref()))
+                        .await,
+                ),
+                _ => None,
+            },
         };
         let steps = plan_steps(&plan, &drivers);
         let search_context = SearchContext {

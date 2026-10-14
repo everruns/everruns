@@ -468,6 +468,7 @@ async fn an_application_parallel_key_answers_the_parallel_setting() {
             AppKeys {
                 brave: None,
                 parallel: Some("app-key".into()),
+                hosted: None,
             },
         )
         .with_parallel_base(server.uri())
@@ -477,4 +478,31 @@ async fn an_application_parallel_key_answers_the_parallel_setting() {
     assert_eq!(details["plan"], json!(["parallel"]));
     assert_eq!(details["provider"], "parallel");
     assert_eq!(details["provider_label"], "Parallel");
+}
+
+#[tokio::test]
+async fn the_hosted_search_answers_automatic_before_free_search() {
+    let server = server(200, DDG_HTML).await;
+    mount_brave(&server).await;
+    let hosted = crate::web_search::HostedWebSearch::new(
+        "Everruns search",
+        "Search included with the deployment",
+        Arc::new(crate::web_search::BraveSearchDriver::with_base_url(
+            "org-brave-key",
+            server.uri(),
+        )),
+    );
+    let mut tool = tool(&server, json!({}));
+    tool.app_keys.hosted = Some(hosted);
+    let (model, details) = split(tool.execute(json!({"query": "tokio"})).await);
+    assert_eq!(details["plan"], json!(["hosted", "free"]));
+    assert_eq!(details["provider"], "hosted");
+    assert_eq!(details["provider_label"], "Everruns search");
+    assert_eq!(model["results"][0]["url"], "https://tokio.rs/");
+    // The backend's raw requests belong to the deployment, not the tenant.
+    assert!(
+        details["attempts"][0]
+            .get("exchanges")
+            .is_none_or(|exchanges| exchanges.as_array().is_some_and(Vec::is_empty))
+    );
 }

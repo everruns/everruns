@@ -192,8 +192,9 @@ one key, and falls back to the organization's first Brave account.
 Organization defaults (a `web_search_defaults` column on `organization_settings`):
 
 - default provider (same choices except "Organization default"; new orgs get Automatic)
-- Automatic order: native, then accounts in the order the admin sets, then free
-  search, which is always last and cannot be removed
+- Automatic order: native, then accounts in the order the admin sets, then
+  the deployment's own search when the host offers one, then free search,
+  which is always last and cannot be removed
 - allow model provider search (on by default)
 - on failure: fall back to the next provider in the plan, or stop. The
   default is to fall back, and **free search is the default last fallback of
@@ -225,6 +226,20 @@ Resolution happens live: each turn decides whether native applies to the model
 running it (that is what makes Automatic follow a mid-session model switch), and
 each function call resolves the rest of the plan from the current agent setting
 and organization defaults.
+
+### The deployment's own search
+
+A host can offer one search provider it pays for to every organization, with
+no key to connect (on app.everruns.com, "Everruns search"). The host hands
+over any `SearchDriver` configured with its own key; the platform runs it
+under the stable plan id `hosted`, which is also its Automatic order entry
+and what the host's billing counts in each search's recorded attempts, so the
+backend can change without touching saved orders or past bookings. The
+backend's raw exchanges are dropped because they belong to the host's account,
+not the tenant. Unless the order places it, it sits after the organization's
+own accounts and before free search: an organization that connected a key
+wants that key used. See
+[`hosted.rs`](../../crates/integrations/src/web_search/hosted.rs).
 
 ### Why native comes first in Automatic
 
@@ -613,9 +628,9 @@ Mockups: `/mnt/project-files/web-search/` in the project thread.
 7. Parallel Search API driver.
 8. yolop adoption after the next platform release.
 9. Cloudflare Web Search accounts (Ceramic, Exa, Linkup), then the search
-   providers eval. Next: a hosted built-in "Everruns search" booked on the org
-   ledger. The eval ruled Ceramic out as its backend (49% answerable); the
-   backend is chosen from Brave, Parallel or Exa.
+   providers eval. The eval ruled Ceramic out as the hosted backend (49%
+   answerable). Then the deployment's own search slot (`hosted`), and in SaaS
+   "Everruns search" on Brave, booked on the org ledger (chosen 2026-10-13).
 
 ## Options not taken
 

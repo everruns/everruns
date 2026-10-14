@@ -20,7 +20,12 @@ import type {
   SearchProviderCatalog,
   SearchTestOutcome,
 } from "@/lib/api/types";
-import { accountLabel, automaticEntries, formatSearchDuration } from "@/lib/web-search";
+import {
+  AUTOMATIC_HOSTED,
+  accountLabel,
+  automaticEntries,
+  formatSearchDuration,
+} from "@/lib/web-search";
 import { cn } from "@/lib/utils";
 import { SearchProviderIcon } from "./search-provider-icon";
 
@@ -164,7 +169,8 @@ export function SearchProvidersTab({
 
   const defaults = catalog.defaults;
   const allowNative = defaults.allow_native !== false;
-  const order = automaticEntries(defaults, catalog.accounts);
+  const hostedBuiltIn = catalog.built_in.find((provider) => provider.id === AUTOMATIC_HOSTED);
+  const order = automaticEntries(defaults, catalog.accounts, hostedBuiltIn);
   const nativeTypes = new Set(catalog.native_providers.map((provider) => provider.provider_type));
   const nativePrice =
     catalog.built_in.find((provider) => provider.id === "native")?.price_note ??
@@ -337,9 +343,15 @@ export function SearchProvidersTab({
                       }
                       try {
                         await remove.mutateAsync(account.id);
-                        onNotice({ kind: "success", text: `${label} disconnected.` });
+                        onNotice({
+                          kind: "success",
+                          text: `${label} disconnected.`,
+                        });
                       } catch {
-                        onNotice({ kind: "error", text: `Could not disconnect ${label}.` });
+                        onNotice({
+                          kind: "error",
+                          text: `Could not disconnect ${label}.`,
+                        });
                       }
                     }}
                   >
@@ -351,6 +363,30 @@ export function SearchProvidersTab({
           />
         );
       })}
+
+      {hostedBuiltIn && (
+        <ProviderCard
+          testId="hosted-search-card"
+          icon={<SearchProviderIcon kind="hosted" className="size-5" />}
+          title={hostedBuiltIn.name}
+          subtitle="Built in · no key"
+          status={<StatusDot tone="ok">Active</StatusDot>}
+          description={hostedBuiltIn.description}
+          facts={[
+            ["Cost", hostedBuiltIn.price_note ?? "Included"],
+            [
+              "Role",
+              <Badge key="role" variant="outline">
+                {(() => {
+                  const position = order.findIndex((entry) => entry.kind === "hosted");
+                  return position >= 0 ? `Automatic #${position + 1}` : "Not in Automatic";
+                })()}
+              </Badge>,
+            ],
+          ]}
+          footer="Always available"
+        />
+      )}
 
       <ProviderCard
         testId="free-search-card"

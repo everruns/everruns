@@ -44,6 +44,7 @@ export function ConnectGitHubButton({
   returnTo,
   size = "sm",
   variant = "outline",
+  label = "Connect GitHub",
 }: {
   agentId: string;
   status: AgentGitHubStatus | undefined;
@@ -51,6 +52,8 @@ export function ConnectGitHubButton({
   returnTo?: string;
   size?: "sm" | "default";
   variant?: "outline" | "default";
+  /** The menu button's text before the App exists. */
+  label?: string;
 }) {
   const connect = useConnectAgentGitHub(agentId, returnTo);
   // "Another organization…" swaps the button for a small input; null hides it.
@@ -136,7 +139,7 @@ export function ConnectGitHubButton({
           className={buttonVariants({ variant, size })}
           disabled={connect.isPending}
         >
-          Connect GitHub <ChevronDown className="size-4" aria-hidden="true" />
+          {label} <ChevronDown className="size-4" aria-hidden="true" />
         </DropdownMenuTrigger>
         <DropdownMenuPositioner align="start">
           <DropdownMenuContent className="w-60">

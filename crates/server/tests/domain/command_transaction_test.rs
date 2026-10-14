@@ -114,16 +114,26 @@ async fn workspace_name(server: &TestServer, public_id: &str) -> Option<String> 
         .unwrap()
 }
 
+/// A workspace named `name`: the one a fresh session owns, renamed. There is no
+/// create command; a workspace only ever comes with its session.
 async fn create_workspace(server: &TestServer, name: &str) -> String {
-    let created: Value = server
+    let session: Value = server
         .post(
-            "/v1/commands/create_workspace",
-            json!({ "params": { "name": name }, "reason": "a place to test in" }),
+            "/v1/sessions",
+            json!({ "harness_id": server.seed_base_harness_id }),
         )
         .await
-        .assert_success()
+        .assert_status(StatusCode::CREATED)
         .json();
-    created["output"]["id"].as_str().unwrap().to_string()
+    let id = session["workspace_id"].as_str().unwrap().to_string();
+    server
+        .post(
+            "/v1/commands/update_workspace",
+            json!({ "params": { "workspace_id": id, "name": name }, "reason": "a place to test in" }),
+        )
+        .await
+        .assert_success();
+    id
 }
 
 #[tokio::test]
@@ -178,13 +188,13 @@ async fn a_failed_history_write_rolls_the_change_back() {
     let name = unique("never");
     let response = command(
         &server,
-        "create_workspace",
+        "create_virtual_user",
         vec![],
         json!({ "params": { "name": name }, "reason": marker }),
     )
     .await;
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
-    let created: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workspaces WHERE name = $1")
+    let created: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM virtual_users WHERE name = $1")
         .bind(&name)
         .fetch_one(&server.pool)
         .await

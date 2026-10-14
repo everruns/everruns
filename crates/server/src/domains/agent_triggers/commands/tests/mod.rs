@@ -22,6 +22,7 @@ use everruns_durable::{PostgresWorkflowEventStore, Schedules};
 use std::sync::{Arc, Mutex};
 
 mod changes_only_tests;
+mod github_everruns_app_tests;
 mod script_target_tests;
 
 // Serializes the env-mutating cap tests.
@@ -1394,7 +1395,7 @@ async fn github_trigger_needs_the_identitys_app_and_routes_its_deliveries() {
             &db,
             &session_service,
             &message_service,
-            &app,
+            &crate::domains::agent_triggers::github::GitHubDeliveryRecipients::agent_app(&app),
             &delivery,
             None,
         )

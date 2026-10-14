@@ -24,6 +24,13 @@
 # The bench migrates the database itself. It gates on throughput against
 # turn_latency_baseline.jsonl the same way, and on DB statements per turn
 # (pg_stat_statements), which unlike wall time is steady on shared runners.
+#
+# Its throughput swings with the runner's CPU: `ubuntu-latest` lands on
+# several CPU generations, and the same commit ran 17.5 to 28.7 turns/s at
+# concurrency 1 across them (EVE-1262, an A/B of the session actor cutover on
+# same-day runners, which found the per-turn steps and their timings
+# unchanged). Summary lines carry `cpu`, and `--top` prints the slowest turns'
+# slow steps, so a gate failure can be told apart from a slow runner.
 name: Durable Benchmarks
 
 on:

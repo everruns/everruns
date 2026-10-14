@@ -33,6 +33,7 @@ pub(crate) mod cards;
 pub(crate) mod discovery;
 pub mod elicitation;
 mod events;
+mod files;
 mod form_elicitation;
 mod resources;
 mod scope;
@@ -357,6 +358,8 @@ pub struct AppState {
     pub mcp_events: Option<Arc<crate::domains::mcp_servers::events::McpEventsService>>,
     /// Provider-domain services; `None` leaves `sync_provider_models` unavailable.
     pub provider_services: Option<ProviderServices>,
+    /// Downloads files sent by URL with `agent_run` / `session_send_message`.
+    pub egress: Arc<dyn everruns_core::EgressService>,
 }
 
 impl AppState {
@@ -385,6 +388,7 @@ impl AppState {
             )),
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
             session_file_service: Arc::new(WorkspaceFileService::new(db.clone())),
+            egress: host_composition.egress_service(),
             session_sandbox_service: None,
             capability_service,
             // Hosted connector catalog (EVE-879): defaults to the OSS
@@ -1288,13 +1292,8 @@ async fn tool_agent_run(
     };
 
     // Send first message via catalog handler
-    let msg_params = json!({
-        "session_id": session_id,
-        "message": {
-            "role": "user",
-            "content": [{"type": "text", "text": message_text}]
-        }
-    });
+    let message = files::user_message(message_text, args, org, state).await?;
+    let msg_params = json!({ "session_id": session_id, "message": message });
     let msg = dispatch_command("create_message", msg_params, org, state).await?;
 
     let mut result = json!({
@@ -1330,13 +1329,8 @@ async fn tool_session_send_message(
         .and_then(|v| v.as_str())
         .ok_or("Missing required parameter: message")?;
 
-    let msg_params = json!({
-        "session_id": session_id,
-        "message": {
-            "role": "user",
-            "content": [{"type": "text", "text": message_text}]
-        }
-    });
+    let message = files::user_message(message_text, args, org, state).await?;
+    let msg_params = json!({ "session_id": session_id, "message": message });
     let msg = dispatch_command("create_message", msg_params, org, state).await?;
 
     // Fetch session to get current status (create_message returns message, not session)
