@@ -836,6 +836,8 @@ pub async fn cancel_turn(
 #[cfg(test)]
 mod tests;
 
+/// Open the current user's platform conversation
+///
 /// Open the current user's permanent platform conversation, creating it only when absent.
 #[utoipa::path(post, path = "/v1/sessions/platform-chat", responses((status = 200, description = "Permanent platform conversation", body = WithUrls<Session>)), tag = "sessions")]
 pub async fn ensure_platform_chat(

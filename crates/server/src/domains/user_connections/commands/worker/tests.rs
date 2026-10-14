@@ -480,9 +480,10 @@ async fn web_search_lookups_answer_only_for_the_orgs_search_accounts() {
         org_id,
         name: format!("{provider} account"),
         provider: provider.to_string(),
-        access_token_encrypted: encryption.encrypt_string(key).unwrap(),
+        access_token_encrypted: Some(encryption.encrypt_string(key).unwrap()),
         provider_username: None,
         provider_metadata: None,
+        ..Default::default()
     };
     let brave = db
         .create_organization_connection(account(DEFAULT_ORG_ID, "brave_search", "brave-key"))

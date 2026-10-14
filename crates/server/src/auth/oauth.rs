@@ -314,6 +314,8 @@ pub struct GitHubInstallationResult {
     pub account_type: Option<String>,
     /// Permissions granted to the installation (e.g. "contents: read")
     pub permissions: String,
+    /// `all` or `selected`, when GitHub reports it.
+    pub repository_selection: Option<String>,
 }
 
 /// GitHub App service for installation-based repo access.
@@ -429,17 +431,7 @@ impl GitHubAppService {
             .await
             .context("Failed to parse installation response")?;
 
-        // Format permissions as human-readable string
-        let permissions = installation
-            .permissions
-            .as_object()
-            .map(|obj| {
-                obj.iter()
-                    .map(|(k, v)| format!("{k}: {}", v.as_str().unwrap_or("unknown")))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            })
-            .unwrap_or_default();
+        let permissions = format_installation_permissions(&installation.permissions);
 
         Ok(GitHubInstallationResult {
             installation_id,
@@ -447,6 +439,7 @@ impl GitHubAppService {
             account_login: installation.account.login,
             account_type: installation.account.account_type,
             permissions,
+            repository_selection: installation.repository_selection,
         })
     }
 
@@ -602,10 +595,26 @@ struct GitHubUserTokenResponse {
     error: Option<String>,
 }
 
+/// A shared App installation's permissions as stored on its connection, e.g.
+/// `contents: read, issues: write`.
+pub fn format_installation_permissions(permissions: &serde_json::Value) -> String {
+    permissions
+        .as_object()
+        .map(|obj| {
+            obj.iter()
+                .map(|(k, v)| format!("{k}: {}", v.as_str().unwrap_or("unknown")))
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default()
+}
+
 #[derive(Debug, Deserialize)]
 struct GitHubInstallation {
     account: GitHubInstallationAccount,
     permissions: serde_json::Value,
+    #[serde(default)]
+    repository_selection: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -662,6 +671,7 @@ mod tests {
             setup_url: "https://everruns.example/api/v1/user/connections/github/callback".into(),
             client_id: Some("Iv1.abc".into()),
             client_secret: None,
+            webhook_secret: None,
             endpoints: Default::default(),
         };
         assert!(

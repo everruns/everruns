@@ -106,8 +106,8 @@ started was refused; it is now the original answer.
 1. Sign-in (device and direct), `poppy:read` / `poppy:write` mapped to the
    agent's tools and checked before a tool runs, `authorization` events,
    Account Tokens with revocation, and Direct Conversations.
-2. Channel setup in the UI, a check that the company's redirect is in place,
-   and public docs.
+2. Channel setup in the UI and a check that the company's redirect is in
+   place. Public docs: [Poppy](https://everruns.com/docs/features/poppy/).
 3. Operations extension, a person at the company joining from the Everruns
    UI, and `everruns-serve` support.
 

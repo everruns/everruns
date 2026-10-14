@@ -166,6 +166,8 @@ pub struct CheckCredentialsRequest {
     pub base_url: Option<String>,
 }
 
+/// Check a provider API key without storing it
+///
 /// Check whether a provider accepts an API key, without storing it
 ///
 /// Used by org setup so a key the provider will reject is caught at entry

@@ -8170,14 +8170,6 @@
             "string",
             "null"
           ]
-        },
-        "workspace_id": {
-          "description": "Attach this session to an existing Workspace (format: `wsp_<32-hex>`)\ninstead of auto-creating a default per-session workspace. The workspace\nmust exist in the caller's org and be `active`. Lets multiple sessions\nshare one working filesystem. Omit for the default 1:1 behavior.",
-          "example": "wsp_01933b5a00007000800000000000001",
-          "type": [
-            "string",
-            "null"
-          ]
         }
       },
       "type": "object"
@@ -8359,36 +8351,6 @@
     "name": "create_virtual_user",
     "output_shape": "unknown",
     "path": "/v1/virtual-users",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
-    "category": "workspaces",
-    "cli": "workspaces create",
-    "description": "Create a new Workspace in the current organization.",
-    "input_schema": {
-      "properties": {
-        "description": {
-          "description": "Optional human-readable description.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "name": {
-          "description": "Human-readable workspace name. Must be unique per org.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "name"
-      ],
-      "type": "object"
-    },
-    "method": "POST",
-    "name": "create_workspace",
-    "output_shape": "unknown",
-    "path": "/v1/workspaces",
     "positional_arg": null,
     "read_only": false
   },
@@ -24835,6 +24797,53 @@
     "name": "upsert_agent_check_rule",
     "output_shape": "unknown",
     "path": "/v1/agents/check-rules/{rule_id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "agents",
+    "cli": "agents github use-everruns-app",
+    "description": "Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first.",
+    "input_schema": {
+      "$defs": {
+        "UseEverrunsAppRequest": {
+          "description": "Which org link to act through.",
+          "properties": {
+            "connection_id": {
+              "description": "Connection id of one of the org's linked installations, from the\nagent's GitHub status (`everruns_app_installations`).",
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "connection_id"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/UseEverrunsAppRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "description": "Agent's prefixed public identifier.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Make an agent act as the shared Everruns App through one org link."
+    },
+    "method": "POST",
+    "name": "use_agent_everruns_app",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/github/everruns-app",
     "positional_arg": null,
     "read_only": false
   },

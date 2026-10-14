@@ -32,12 +32,12 @@ Manage plain-text key/value pairs.
 
 ### `secret_store`
 
-Manage encrypted secrets. Same interface as `kv_store` but values are encrypted at rest.
+Manage encrypted secrets. Values are encrypted at rest and write-only: an agent can store, list and delete secrets, but no tool reads a value back.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `operation` | enum | yes | `set`, `get`, `delete`, or `list` |
-| `name` | string | conditional | Required for `set`, `get`, `delete` |
+| `operation` | enum | yes | `set`, `delete`, or `list` |
+| `name` | string | conditional | Required for `set` and `delete` |
 | `value` | string | conditional | Required for `set` |
 
 ## Notes
@@ -48,7 +48,7 @@ Manage encrypted secrets. Same interface as `kv_store` but values are encrypted 
 - `list` returns keys/names only (not values) for secrets
 - The Storage tab can create, replace, and delete values, but never reads a value back
 - A session secret is available only to that session. It does not follow an Agent Trigger that creates a session per invocation.
-- `secret_store get` exposes the decrypted value to the running model. Do not use session secrets for MCP tool-parameter credentials that must stay out of model context; configure those on the Agent's **Credentials** tab instead.
+- No secret value ever reaches the model. `secret_store get` answers the same refusal for every name. Capabilities that need a key (GitHub, Brave Search, sandboxes and others) read their own secret on the server. A key the agent's shell sends to an HTTP API is a bound secret, described next; an MCP tool-parameter credential goes on the Agent's **Credentials** tab.
 - A **bound secret** (stored with a URL to send it to) is write-only: `secret_store list` shows its name, URL and how to use it, while `get`, `set` and `delete` refuse it. The Bashkit shell uses it as `$NAME` in HTTP requests to that URL; see [Bashkit Shell](/capabilities/bashkit-shell/#api-keys-the-agent-never-sees). To give every session and trigger of an agent the same key, add it as an **HTTP API** credential on the Agent's **Credentials** tab.
 
 ## See Also

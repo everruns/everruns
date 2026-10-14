@@ -107,6 +107,7 @@ impl GitHubAppTokenMinter {
             setup_url: String::new(),
             client_id: None,
             client_secret: None,
+            webhook_secret: None,
             endpoints: Default::default(),
         };
         let service = GitHubAppService::new(&config);

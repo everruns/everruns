@@ -2,6 +2,11 @@
 
 ## 2026-10-13
 
+* **Web search: the deployment's own search.** A host can offer one search
+  provider it pays for to every organization (`HostedWebSearch`), under the
+  plan id `hosted`: in Automatic after the organization's accounts and before
+  free search, movable in the Automatic order, refusable per search through a
+  gate. See [Web Search](integrations/web-search.md).
 * **Actor-based design: the old turn model is a dismissed option.** Dismissed
   Options records turns as queued, checkpointed steps (`everruns-durable-engine`,
   the facade `durable` feature) with why session actors replaced it, and Load

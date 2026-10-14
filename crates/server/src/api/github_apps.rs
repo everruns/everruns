@@ -39,11 +39,11 @@ use super::common::{ErrorResponse, impl_auth_state};
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::agents::github::{
     self as agent_github, BeginConnectRequest, BeginConnectResponse, ConnectAgentGitHub,
-    DisconnectAgentGitHub, GetAgentGitHub,
+    DisconnectAgentGitHub, GetAgentGitHub, UseAgentEverrunsApp,
 };
 use crate::github_apps::{
-    AppCredentials, GITHUB_APP_CONNECTION_TYPE, GITHUB_PROVIDER, GitHubAppContext, SetupState,
-    install_url,
+    AppCredentials, EVERRUNS_APP_CONNECTION_TYPE, GITHUB_APP_CONNECTION_TYPE, GITHUB_PROVIDER,
+    GitHubAppContext, SetupState, install_url,
 };
 use crate::kernel_imports::{Caller, contracts::typed_id::VirtualUserId};
 use crate::storage::CreateVirtualUserConnectionRow;
@@ -66,8 +66,7 @@ impl AppState {
             db: state.db.clone(),
             encryption: state.encryption.clone(),
             auth: state.auth.clone(),
-            github: GitHubAppContext::from_env()
-                .with_public_urls(&state.auth.config.base_url, &state.auth.config.frontend_url),
+            github: GitHubAppContext::from_env().with_auth_config(&state.auth.config),
         }
     }
 
@@ -100,6 +99,7 @@ pub fn agent_routes(state: super::state::ApiState) -> Router {
         .command::<GetAgentGitHub>()
         .command::<ConnectAgentGitHub>()
         .command::<DisconnectAgentGitHub>()
+        .command::<UseAgentEverrunsApp>()
         .with_state(state)
 }
 
@@ -222,22 +222,40 @@ async fn list_repositories(
     Path(identity_id): Path<String>,
 ) -> Result<Json<Vec<RepositoryResponse>>, ApiError> {
     let (identity_id, _) = resolve_identity(&state, &org, &identity_id).await?;
-    let app = state
-        .db
-        .get_github_app_for_identity(org.org_id, identity_id)
-        .await
-        .map_err(|e| internal("Failed to look up GitHub App", e))?
-        .ok_or_else(|| error(StatusCode::NOT_FOUND, "GitHub is not connected"))?;
-    let installation_id = state
+    let not_connected = || error(StatusCode::NOT_FOUND, "GitHub is not connected");
+    let connection = state
         .db
         .get_virtual_user_connection(identity_id, GITHUB_PROVIDER)
         .await
         .map_err(|e| internal("Failed to look up GitHub connection", e))?
-        .and_then(|c| c.installation_id)
-        .ok_or_else(|| error(StatusCode::NOT_FOUND, "GitHub is not connected"))?;
-
-    let credentials =
-        app_credentials(&state, &app).map_err(|e| internal("GitHub App key unavailable", e))?;
+        .ok_or_else(not_connected)?;
+    let installation_id = connection.installation_id.ok_or_else(not_connected)?;
+    // An agent that chose the org's shared App link reads through the
+    // deployment's shared App; any other installation is the agent's own App's.
+    let credentials = if connection.connection_type == EVERRUNS_APP_CONNECTION_TYPE {
+        let shared = state
+            .auth
+            .config
+            .github_connection
+            .as_ref()
+            .ok_or_else(not_connected)?;
+        AppCredentials {
+            app_id: shared
+                .app_id
+                .trim()
+                .parse()
+                .map_err(|e| internal("GITHUB_APP_ID is not a number", e))?,
+            private_key_pem: shared.private_key.replace("\\n", "\n"),
+        }
+    } else {
+        let app = state
+            .db
+            .get_github_app_for_identity(org.org_id, identity_id)
+            .await
+            .map_err(|e| internal("Failed to look up GitHub App", e))?
+            .ok_or_else(not_connected)?;
+        app_credentials(&state, &app).map_err(|e| internal("GitHub App key unavailable", e))?
+    };
     let token = state
         .github
         .api
@@ -567,6 +585,7 @@ mod tests {
                 api,
                 api_base_url: auth.config.base_url.clone(),
                 frontend_url: auth.config.frontend_url.clone(),
+                shared_app_slug: None,
             },
             auth,
         };

@@ -2,6 +2,7 @@
 
 pub(super) mod rows;
 use rows::*;
+pub(super) mod github_everruns_app;
 
 use super::Database;
 use crate::storage::CreateOrganizationConnectionRow;
@@ -191,6 +192,11 @@ impl Database {
     ) -> Result<VirtualUserConnectionRow> {
         let mut tx = self.pool.begin().await?;
         let virtual_user_id = VirtualUserId::from_uuid(uuid::Uuid::new_v4());
+        let owner_name = if input.provider == "github" {
+            format!("Everruns GitHub App: {}", input.name)
+        } else {
+            format!("Sandbox account: {}", input.name)
+        };
         sqlx::query(
             r#"INSERT INTO virtual_users
                 (org_id, id, name, description, status, usage)
@@ -198,30 +204,40 @@ impl Database {
         )
         .bind(input.org_id)
         .bind(virtual_user_id)
-        .bind(format!("Sandbox account: {}", input.name))
+        .bind(owner_name)
         .execute(&mut *tx)
         .await?;
         let row = sqlx::query_as::<_, VirtualUserConnectionRow>(sql!(
             r#"
             INSERT INTO virtual_user_connections
                 (virtual_user_id, provider, connection_type, access_token_encrypted,
-                 owner_scope, name, provider_username, provider_metadata)
-            VALUES ($1, $2, 'api_key', $3, 'organization', $4, $5, $6)
+                 owner_scope, name, provider_username, provider_metadata,
+                 provider_user_id, scopes, installation_id)
+            VALUES ($1, $2, COALESCE($3, 'api_key'), $4, 'organization', $5, $6, $7, $8, $9, $10)
             RETURNING {VirtualUserConnectionRow}
         "#
         ))
         .bind(virtual_user_id)
         .bind(input.provider)
+        .bind(input.connection_type)
         .bind(input.access_token_encrypted)
         .bind(input.name)
         .bind(input.provider_username)
         .bind(input.provider_metadata)
+        .bind(input.provider_user_id)
+        .bind(input.scopes)
+        .bind(input.installation_id)
         .fetch_one(&mut *tx)
         .await?;
         tx.commit().await?;
         Ok(row)
     }
 
+    /// Sandbox and web search accounts. The shared GitHub App's org links share
+    /// this table but have their own accessors (`github_everruns_app.rs`), so
+    /// the generic list, get, update and delete leave `github` rows out: no
+    /// sandbox or search selector offers one, and the generic delete cannot
+    /// orphan the agent rows that point at a link.
     pub async fn list_organization_connections(
         &self,
         org_id: i64,
@@ -232,7 +248,7 @@ impl Database {
             FROM virtual_user_connections
             WHERE virtual_user_id IN (
                 SELECT id FROM virtual_users WHERE org_id = $1 AND usage = 'organization'
-            ) AND owner_scope = 'organization'
+            ) AND owner_scope = 'organization' AND provider <> 'github'
             ORDER BY lower(name), created_at
         "#
         ))
@@ -252,7 +268,7 @@ impl Database {
             FROM virtual_user_connections
             WHERE virtual_user_id IN (
                 SELECT id FROM virtual_users WHERE org_id = $1 AND usage = 'organization'
-            ) AND owner_scope = 'organization' AND id = $2
+            ) AND owner_scope = 'organization' AND provider <> 'github' AND id = $2
             LIMIT 1
         "#
         ))
@@ -278,7 +294,7 @@ impl Database {
                 provider_metadata = $6, updated_at = NOW()
             WHERE c.virtual_user_id IN (
                 SELECT id FROM virtual_users WHERE org_id = $1 AND usage = 'organization'
-            ) AND c.owner_scope = 'organization' AND c.id = $2
+            ) AND c.owner_scope = 'organization' AND c.provider <> 'github' AND c.id = $2
             RETURNING {VirtualUserConnectionRow}
         "#
         ))
@@ -302,7 +318,7 @@ impl Database {
             r#"SELECT c.virtual_user_id FROM virtual_user_connections c
                JOIN virtual_users v ON v.id = c.virtual_user_id
                WHERE c.id = $1 AND v.org_id = $2 AND v.usage = 'organization'
-                 AND c.owner_scope = 'organization' FOR UPDATE"#,
+                 AND c.owner_scope = 'organization' AND c.provider <> 'github' FOR UPDATE"#,
         )
         .bind(connection_id)
         .bind(org_id)

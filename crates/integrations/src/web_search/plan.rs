@@ -15,9 +15,10 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use everruns_contracts::runtime::web_search::{
-    AUTOMATIC_FREE, AUTOMATIC_NATIVE, SearchContext, SearchDriver, SearchExchange, SearchFailure,
-    SearchFailureKind, SearchRequest, SearchResponse, WEB_SEARCH_DEFAULT_RESULTS,
-    WEB_SEARCH_MAX_RESULTS, WEB_SEARCH_RAW_CAP_BYTES, WebSearchOrgSettings,
+    AUTOMATIC_FREE, AUTOMATIC_HOSTED, AUTOMATIC_NATIVE, SearchContext, SearchDriver,
+    SearchExchange, SearchFailure, SearchFailureKind, SearchRequest, SearchResponse,
+    WEB_SEARCH_DEFAULT_RESULTS, WEB_SEARCH_MAX_RESULTS, WEB_SEARCH_RAW_CAP_BYTES,
+    WebSearchOrgSettings,
 };
 use serde::Serialize;
 use uuid::Uuid;
@@ -38,19 +39,22 @@ pub enum PlanEntry {
     Parallel,
     /// One organization search account.
     Account { id: Uuid },
+    /// The deployment's own search, offered without a key.
+    Hosted,
     /// Keyless free search.
     Free,
 }
 
 impl PlanEntry {
     /// Stable id recorded in the plan: `native`, `brave`, `parallel`,
-    /// `account:<id>`, `free`.
+    /// `account:<id>`, `hosted`, `free`.
     pub fn id(&self) -> String {
         match self {
             Self::Native => "native".into(),
             Self::Brave => "brave".into(),
             Self::Parallel => "parallel".into(),
             Self::Account { id } => format!("account:{id}"),
+            Self::Hosted => AUTOMATIC_HOSTED.into(),
             Self::Free => "free".into(),
         }
     }
@@ -70,6 +74,8 @@ pub struct PlanInputs<'a> {
     pub brave_key: bool,
     /// A Parallel key from the session, the user or the application exists.
     pub parallel_key: bool,
+    /// The deployment offers its own search.
+    pub hosted: bool,
 }
 
 /// A plan with the settings it was resolved under.
@@ -150,8 +156,8 @@ pub fn resolve_plan(inputs: PlanInputs<'_>) -> ResolvedPlan {
 
 /// Automatic: the organization's order, with native first and unlisted
 /// accounts after the listed ones unless the order says otherwise, then a
-/// session or application Brave and Parallel keys, then free search, always
-/// last.
+/// session or application Brave and Parallel keys, then the deployment's own
+/// search (unless the order places it), then free search, always last.
 fn automatic(inputs: PlanInputs<'_>, native: bool) -> Vec<PlanEntry> {
     let accounts: Vec<Uuid> = inputs
         .org
@@ -167,7 +173,8 @@ fn automatic(inputs: PlanInputs<'_>, native: bool) -> Vec<PlanEntry> {
     for entry in order {
         match entry.as_str() {
             AUTOMATIC_NATIVE if native => entries.push(PlanEntry::Native),
-            AUTOMATIC_NATIVE | AUTOMATIC_FREE => {}
+            AUTOMATIC_HOSTED if inputs.hosted => entries.push(PlanEntry::Hosted),
+            AUTOMATIC_NATIVE | AUTOMATIC_HOSTED | AUTOMATIC_FREE => {}
             other => {
                 if let Ok(id) = Uuid::parse_str(other)
                     && accounts.contains(&id)
@@ -189,6 +196,9 @@ fn automatic(inputs: PlanInputs<'_>, native: bool) -> Vec<PlanEntry> {
     if inputs.parallel_key {
         entries.push(PlanEntry::Parallel);
     }
+    if inputs.hosted && !entries.contains(&PlanEntry::Hosted) {
+        entries.push(PlanEntry::Hosted);
+    }
     entries.push(PlanEntry::Free);
     entries
 }
@@ -204,6 +214,8 @@ pub struct PlanDrivers {
     /// Organization search accounts this host can search with, by id, with
     /// their connection provider.
     pub accounts: Vec<(Uuid, String, Arc<dyn SearchDriver>)>,
+    /// The deployment's own search, when it offers one.
+    pub hosted: Option<Arc<dyn SearchDriver>>,
 }
 
 impl PlanDrivers {
@@ -272,6 +284,16 @@ pub fn plan_steps(plan: &ResolvedPlan, drivers: &PlanDrivers) -> Vec<PlanStep> {
                 drivers,
                 super::PARALLEL_CONNECTION_PROVIDER,
                 ("parallel", "Parallel"),
+            ),
+            PlanEntry::Hosted => drivers.hosted.clone().map_or_else(
+                || {
+                    PlanStep::unavailable(
+                        AUTOMATIC_HOSTED,
+                        "Hosted search",
+                        "This deployment does not offer its own search",
+                    )
+                },
+                PlanStep::Run,
             ),
             PlanEntry::Account { id } => drivers.account(*id).cloned().map_or_else(
                 || {
@@ -506,6 +528,7 @@ mod tests {
             }),
             parallel: None,
             accounts: Vec::new(),
+            hosted: None,
         }
     }
 
@@ -516,6 +539,7 @@ mod tests {
             model_has_native: false,
             brave_key: drivers.brave.is_some(),
             parallel_key: drivers.parallel.is_some(),
+            hosted: false,
         });
         plan_steps(&resolved, drivers)
     }
@@ -606,6 +630,7 @@ mod tests {
                 model_has_native: native,
                 brave_key,
                 parallel_key: false,
+                hosted: false,
             });
             assert_eq!(
                 resolved.ids(),
@@ -649,6 +674,7 @@ mod tests {
                     model_has_native: true,
                     brave_key: true,
                     parallel_key: false,
+                    hosted: false,
                 });
                 // A plan whose first entry is native only runs it when the org
                 // allows native (a turned-off native entry is recorded, not run).
@@ -664,6 +690,64 @@ mod tests {
     }
 
     #[test]
+    fn hosted_search_sits_before_free_unless_the_order_places_it() {
+        let resolve = |org: Option<&WebSearchOrgSettings>, config: serde_json::Value, hosted| {
+            let config = WebSearchConfig::from_value(&config).unwrap();
+            resolve_plan(PlanInputs {
+                config: &config,
+                org,
+                model_has_native: true,
+                brave_key: true,
+                parallel_key: false,
+                hosted,
+            })
+            .ids()
+        };
+        let (a, b) = (format!("account:{A}"), format!("account:{B}"));
+        let accounts = org(serde_json::json!({}));
+        assert_eq!(
+            resolve(Some(&accounts), serde_json::json!({}), true),
+            ["native", &a, &b, "brave", "hosted", "free"]
+        );
+        let first = org(serde_json::json!({"automatic_order": ["hosted", "native"]}));
+        assert_eq!(
+            resolve(Some(&first), serde_json::json!({}), true)[..2],
+            ["hosted", "native"]
+        );
+        // A deployment without its own search skips the entry.
+        assert!(
+            !resolve(Some(&first), serde_json::json!({}), false).contains(&"hosted".to_string())
+        );
+        assert_eq!(
+            resolve(None, serde_json::json!({}), true),
+            ["native", "brave", "hosted", "free"]
+        );
+        // Only Automatic uses it.
+        assert_eq!(
+            resolve(None, serde_json::json!({"provider": "brave"}), true),
+            ["brave", "free"]
+        );
+    }
+
+    #[test]
+    fn a_hosted_entry_without_a_driver_says_why() {
+        let config = WebSearchConfig::default();
+        let resolved = resolve_plan(PlanInputs {
+            config: &config,
+            org: None,
+            model_has_native: false,
+            brave_key: false,
+            parallel_key: false,
+            hosted: true,
+        });
+        let steps = plan_steps(&resolved, &drivers(None));
+        match &steps[0] {
+            PlanStep::Unavailable { id, .. } => assert_eq!(id, "hosted"),
+            PlanStep::Run(_) => panic!("no hosted driver was given"),
+        }
+    }
+
+    #[test]
     fn limits_and_blocked_domains_come_from_the_org_unless_the_agent_sets_them() {
         let org = org(serde_json::json!({"results_per_search": 3, "blocked_domains": ["x.com"]}));
         let resolve = |config: serde_json::Value| {
@@ -674,6 +758,7 @@ mod tests {
                 model_has_native: false,
                 brave_key: false,
                 parallel_key: false,
+                hosted: false,
             })
         };
         assert_eq!(resolve(serde_json::json!({})).limit, 3);
@@ -697,6 +782,7 @@ mod tests {
             model_has_native: false,
             brave_key: false,
             parallel_key: false,
+            hosted: false,
         });
         // The account exists in the org but this host has no driver for it.
         let steps = plan_steps(&resolved, &drivers(None));
@@ -740,6 +826,7 @@ mod tests {
             model_has_native: true,
             brave_key: false,
             parallel_key: false,
+            hosted: false,
         });
         let PlanStep::Unavailable { failure, .. } = &plan_steps(&resolved, &with_account)[0] else {
             panic!("native never runs at tool time");
