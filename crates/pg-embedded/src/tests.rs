@@ -80,7 +80,7 @@ impl Drop for Owner {
 
 #[test]
 fn owner_exit_stops_postgres_and_removes_private_data() {
-    for kill in [false, true] {
+    for termination in ["exit", "kill", "group"] {
         let work = tempfile::tempdir().unwrap();
         let ready = work.path().join("ready");
         let log = work.path().join("owner.log");
@@ -88,6 +88,7 @@ fn owner_exit_stops_postgres_and_removes_private_data() {
         fs::write(&sentinel, "unrelated data").unwrap();
         let mut owner = Owner(
             Command::new(std::env::current_exe().unwrap())
+                .process_group(0)
                 .args([
                     "--exact",
                     "tests::cluster_owner_fixture",
@@ -122,10 +123,18 @@ fn owner_exit_stops_postgres_and_removes_private_data() {
         let address = SocketAddrV4::new(Ipv4Addr::LOCALHOST, port.parse().unwrap());
         let root = PathBuf::from(root);
         assert!(TcpStream::connect_timeout(&address.into(), Duration::from_millis(250)).is_ok());
-        if kill {
-            owner.0.kill().unwrap();
-        } else {
-            drop(owner.0.stdin.take());
+        match termination {
+            "kill" => owner.0.kill().unwrap(),
+            "group" => {
+                // SAFETY: this test created the child's process group, and
+                // the live child is still its leader. No unrelated process
+                // can join it from another session.
+                assert_eq!(
+                    unsafe { libc::kill(-(owner.0.id() as i32), libc::SIGTERM) },
+                    0
+                );
+            }
+            _ => drop(owner.0.stdin.take()),
         }
         let deadline = Instant::now() + Duration::from_secs(15);
         while owner.0.try_wait().unwrap().is_none() {
@@ -137,7 +146,7 @@ fn owner_exit_stops_postgres_and_removes_private_data() {
         {
             assert!(
                 Instant::now() < deadline,
-                "PostgreSQL survived owner exit (kill={kill}): {}",
+                "PostgreSQL survived owner termination ({termination}): {}",
                 root.display()
             );
             std::thread::sleep(Duration::from_millis(25));

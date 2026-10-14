@@ -12,6 +12,7 @@
 
 use std::collections::HashMap;
 use std::fs;
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::time::Duration;
@@ -132,7 +133,10 @@ impl EmbeddedPostgres {
             .start()
             .await
             .context("start embedded PostgreSQL")?;
-        let cleanup = OwnerCleanup::start(&postgres, root)?;
+        let cleanup = OwnerCleanup::start(&postgres, &root)?;
+        // Keep the directory owned locally until the watcher starts. On an
+        // error, PostgreSQL must stop before TempDir removes its live data.
+        let _ = root.keep();
         tracing::info!(
             port = postgres.settings().port,
             "embedded PostgreSQL started"
@@ -151,12 +155,15 @@ struct OwnerCleanup {
 }
 
 impl OwnerCleanup {
-    fn start(postgres: &PostgreSQL, root: TempDir) -> Result<Self> {
+    fn start(postgres: &PostgreSQL, root: &TempDir) -> Result<Self> {
         // The library owns pg_ctl and its startup/stop protocol. This helper
         // only covers owner termination, which Drop cannot observe. Paths are
         // positional arguments, never interpolated into shell source. Remove
         // data only after shutdown, or after the library already removed it.
         let mut child = Command::new("/bin/sh")
+            // Terminal Ctrl+C and process-group termination must not kill the
+            // watcher alongside its owner before it can stop PostgreSQL.
+            .process_group(0)
             .args([
                 "-c",
                 r#"read -r _ || :
@@ -173,8 +180,6 @@ fi"#,
             .spawn()
             .context("start embedded PostgreSQL owner cleanup")?;
         let input = child.stdin.take().context("open owner cleanup pipe")?;
-        // The helper now owns deletion, including when Rust destructors never run.
-        let _ = root.keep();
         Ok(Self {
             input: Some(input),
             child,
