@@ -5,6 +5,8 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
+import time
 
 # These are the existing offline CI configurations. Live-test features remain
 # opt-in in their credentialed workflows; --all-features is unsafe for them.
@@ -51,7 +53,7 @@ def risk_filters(paths):
         filters.update(['openapi_coverage_test::', 'openapi_descriptions_test::', 'pat_scope_coverage_test::'])
     if any('/migrations/' in p or '/setup/migrations' in p for p in paths):
         filters.update(['migration_baseline_test::', 'migration_history_test::'])
-    if any(any(x in p for x in ('/auth', '/permissions', '/policy', '/org_', '/organization', '/principal', '/roles', '/members', '/pat_', '/storage/repositories/')) for p in paths):
+    if '.github/scripts/ci/focused.py' in paths or any(any(x in p for x in ('/auth', '/permissions', '/policy', '/org_', '/organization', '/principal', '/roles', '/members', '/pat_', '/storage/repositories/')) for p in paths):
         filters.update(['auth_integration_test::', 'org_isolation_test::', 'command_policy_enforcement_test::', 'pat_scope_coverage_test::'])
     if any(p.endswith('/tests/test_harness.rs') or '/tests/test_harness/' in p
            or p.endswith('/storage/test_database.rs') for p in paths):
@@ -103,6 +105,11 @@ def commands(selection):
         command += ['--lib', '--test', 'contracts']
         for target in selection.get('risk_targets', []):
             command += ['--test', target]
+        if selection.get('risk_filters'):
+            command += ['--test', 'domain']
+        # Build the whole selected target graph together. Running cargo again
+        # for domain can rebuild the server's shared dependencies/codegen.
+        command += ['--no-run', '--message-format=json']
     features = []
     for name in packages:
         if FEATURES.get(name) == ['all']:
@@ -120,8 +127,45 @@ def commands(selection):
     if packages != ['everruns-server']:
         command += ['--', '--test-threads=1']
     yield command
+
+
+def run_server(selection, command):
+    metadata = json.loads(subprocess.check_output(
+        ['cargo', 'metadata', '--no-deps', '--format-version', '1'], text=True))
+    package = next(p for p in metadata['packages'] if p['name'] == 'everruns-server')
+    manifest = Path(package['manifest_path']).resolve()
+    library = next(t['name'] for t in package['targets'] if 'lib' in t['kind'])
+    targets = {(library, 'lib'): [], ('contracts', 'test'): []}
+    targets.update({(target, 'test'): [] for target in selection.get('risk_targets', [])})
     if selection.get('risk_filters'):
-        yield ['cargo', 'test', '--locked', '-p', 'everruns-server', '--test', 'domain', '--', *selection['risk_filters'], '--test-threads=1']
+        targets[('domain', 'test')] = [*selection['risk_filters'], '--test-threads=1']
+    executables = {}
+    start = time.monotonic()
+    with subprocess.Popen(command, stdout=subprocess.PIPE, text=True) as process:
+        for line in process.stdout:
+            artifact = json.loads(line)
+            if artifact.get('reason') == 'compiler-message':
+                print(artifact['message'].get('rendered', ''), end='', file=sys.stderr)
+            if (artifact.get('reason') != 'compiler-artifact'
+                    or artifact.get('package_id') != package['id']
+                    or not artifact.get('executable') or not artifact['profile']['test']):
+                continue
+            target = artifact['target']
+            key = (target['name'], target['kind'][0])
+            if key in targets:
+                executables[key] = str(Path(artifact['executable']).resolve())
+        if process.wait():
+            raise subprocess.CalledProcessError(process.returncode, command)
+    print(f'Selected server compilation: {time.monotonic() - start:.2f}s', flush=True)
+    if executables.keys() != targets.keys():
+        raise RuntimeError(f'Missing selected test executables: {targets.keys() - executables.keys()}')
+    # Cargo runs tests in their package directory and supplies manifest context
+    # to fixture readers. Execute its emitted artifacts directly, never rebuild.
+    env = dict(os.environ, CARGO_MANIFEST_DIR=str(manifest.parent), CARGO_MANIFEST_PATH=str(manifest))
+    for key, arguments in targets.items():
+        start = time.monotonic()
+        subprocess.run([executables[key], *arguments], cwd=manifest.parent, env=env, check=True)
+        print(f'Selected server {key[0]} execution: {time.monotonic() - start:.2f}s', flush=True)
 
 
 def main():
@@ -130,9 +174,13 @@ def main():
     parser.add_argument('--run', action='store_true')
     args = parser.parse_args()
     if args.run:
-        for command in commands(json.loads(os.environ['TEST_SELECTION'])):
+        selection = json.loads(os.environ['TEST_SELECTION'])
+        for command in commands(selection):
             print(' '.join(command), flush=True)
-            subprocess.run(command, check=True)
+            if selection['packages'] == ['everruns-server']:
+                run_server(selection, command)
+            else:
+                subprocess.run(command, check=True)
         return
     metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--no-deps', '--format-version', '1'], text=True))
     root = Path(metadata['workspace_root'])

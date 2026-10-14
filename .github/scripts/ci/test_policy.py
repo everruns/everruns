@@ -68,6 +68,7 @@ class Policy(unittest.TestCase):
 
     def test_security_and_migration_changes_add_contracts(self):
         self.assertIn('auth_integration_test::',focused.risk_filters(['crates/server/src/auth/api_keys.rs']))
+        self.assertIn('auth_integration_test::',focused.risk_filters(['.github/scripts/ci/focused.py']))
         self.assertIn('migration_history_test::',focused.risk_filters(['crates/server/migrations/20261014000000_test.sql']))
         self.assertEqual(focused.risk_filters(['crates/core/src/engine.rs']),[])
         for path in ['crates/server/src/api/monitoring/mod.rs', 'crates/server/src/openapi/mod.rs']:
@@ -91,6 +92,50 @@ class Policy(unittest.TestCase):
         for target in targets:self.assertIn(target,command)
         self.assertEqual(focused.real_server_targets(['crates/server/tests/pat_scope_sweep_test.rs']),['pat_scope_sweep_test'])
         self.assertEqual(focused.real_server_targets(['crates/server/src/domains/models/service.rs']),[])
+
+    def test_selected_server_artifacts_run_with_filters_and_cargo_context(self):
+        selection = dict(packages=['everruns-server'], risk_targets=['router'], risk_filters=['picked::'])
+        commands = list(focused.commands(selection))
+        self.assertEqual(len(commands), 1)
+        self.assertIn('--no-run', commands[0])
+        self.assertIn('domain', commands[0])
+        # A real tiny Cargo workspace proves compilation, artifact discovery,
+        # package context, domain filtering, and propagation of libtest failures.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root/'src').mkdir(); (root/'tests').mkdir()
+            (root/'Cargo.toml').write_text('[package]\nname="everruns-server"\nversion="0.1.0"\nedition="2024"\n[workspace]\n')
+            fixture = '''
+#[test]
+fn cargo_context() {
+    let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    assert_eq!(std::env::current_dir().unwrap(), std::path::Path::new(&manifest));
+    assert_eq!(std::env::var("CARGO_MANIFEST_PATH").unwrap(), format!("{manifest}/Cargo.toml"));
+}
+'''
+            (root/'src/lib.rs').write_text(fixture)
+            for target in ['contracts', 'router']:
+                (root/f'tests/{target}.rs').write_text(fixture)
+            (root/'tests/domain.rs').write_text('''
+mod picked {
+    #[test]
+    fn selected() { assert!(std::env::var("FAIL_SELECTED").is_err(), "selected failure"); }
+}
+#[test]
+fn unselected() { panic!("filter was lost"); }
+''')
+            env = dict(os.environ, TEST_SELECTION=json.dumps(selection), CARGO_TARGET_DIR=str(root/'target'))
+            env.pop('CARGO_MANIFEST_DIR', None); env.pop('CARGO_MANIFEST_PATH', None)
+            env.pop('FAIL_SELECTED', None)
+            subprocess.run(['cargo', 'generate-lockfile', '--offline'], cwd=root, env=env, check=True, capture_output=True)
+            command = ['python3', str(ROOT/'.github/scripts/ci/focused.py'), '--run']
+            result = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+            self.assertEqual(result.stdout.count('1 passed; 0 failed'), 4)
+            env['FAIL_SELECTED'] = '1'
+            failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertIn('selected failure', failed.stdout)
 
     def test_archived_test_executable_receives_cargo_fixture_context(self):
         workflow=yaml.safe_load((ROOT/'.github/workflows/ci-test-archive.yml').read_text())
