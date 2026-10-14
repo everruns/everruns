@@ -12,6 +12,10 @@ jobs:
   compile:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        cache: [dependencies, workspace]
     env:
       CARGO_INCREMENTAL: '0'
       CARGO_PROFILE_TEST_DEBUG: line-tables-only
@@ -23,37 +27,75 @@ jobs:
       - name: Prepare linker and disk
         timeout-minutes: 5
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          df -h .
+          for directory in /usr/share/dotnet /usr/local/lib/android /opt/ghc; do
+            start=$SECONDS
+            sudo rm -rf "$directory"
+            echo "Cleanup $directory: $((SECONDS - start))s"
+            df -h .
+          done
           if ! command -v ld.lld >/dev/null 2>&1; then
             sudo apt-get update -qq
             sudo apt-get install -y -qq lld
           fi
       - uses: Swatinem/rust-cache@v2
+        id: rust-cache
         with:
-          shared-key: test-archive-pilot-v1
+          # Separate immutable keys, identical source/toolchain/flags. Run twice
+          # at this same revision to compare misses with exact hits.
+          shared-key: test-archive-pilot-v2-${{ matrix.cache }}-${{ github.sha }}
+          cache-workspace-crates: ${{ matrix.cache == 'workspace' }}
+      - name: Report cache identity
+        env:
+          CACHE_VARIANT: ${{ matrix.cache }}
+          CACHE_HIT: ${{ steps.rust-cache.outputs.cache-hit }}
+        run: echo "Cache variant=$CACHE_VARIANT exact_hit=$CACHE_HIT revision=$GITHUB_SHA"
       - name: Compile the server unit executable once
         run: cargo test --locked -p everruns-server --lib --no-run --message-format=json > /tmp/test-artifacts.jsonl
       - name: Archive only the compiled test executable
         run: |
           python3 - <<'PY'
-          import hashlib,json,pathlib,tarfile
+          import hashlib,json,os,pathlib,tarfile,time,zlib
           artifacts=[json.loads(line) for line in pathlib.Path('/tmp/test-artifacts.jsonl').read_text().splitlines()]
           executables=[pathlib.Path(a['executable']) for a in artifacts if a.get('reason')=='compiler-artifact' and a.get('executable') and a['profile']['test']]
           assert len(executables)==1, executables
           executable=executables[0]
-          with tarfile.open('server-tests.tar.gz','w:gz') as archive:
+          measurements={'revision':os.environ['GITHUB_SHA'],'binary_bytes':executable.stat().st_size,'gzip':[]}
+          # Count streamed output without retaining a second large artifact.
+          for level in (1,9):
+              start=time.monotonic()
+              compressor=zlib.compressobj(level,wbits=31)
+              size=0
+              with executable.open('rb') as source:
+                  for chunk in iter(lambda:source.read(1024*1024),b''):
+                      size+=len(compressor.compress(chunk))
+              size+=len(compressor.flush())
+              measurements['gzip'].append({'level':level,'seconds':round(time.monotonic()-start,3),'bytes':size})
+          start=time.monotonic()
+          with tarfile.open('server-tests.tar.gz','w:gz',compresslevel=1) as archive:
               archive.add(executable,arcname='server-tests')
-          pathlib.Path('server-tests.sha256').write_text(hashlib.sha256(executable.read_bytes()).hexdigest()+'  server-tests\n')
+          measurements['archive_seconds']=round(time.monotonic()-start,3)
+          measurements['archive_bytes']=pathlib.Path('server-tests.tar.gz').stat().st_size
+          with executable.open('rb') as source:
+              checksum=hashlib.file_digest(source,'sha256').hexdigest()
+          pathlib.Path('server-tests.sha256').write_text(checksum+'  server-tests\n')
+          report=json.dumps(measurements,indent=2)
+          pathlib.Path('archive-measurements.json').write_text(report+'\n')
+          print(report)
           PY
       - uses: actions/upload-artifact@v7
         with:
-          name: server-test-archive
+          name: server-test-archive-${{ matrix.cache }}
           path: |
             server-tests.tar.gz
             server-tests.sha256
+            archive-measurements.json
+          # The payload is already gzip-compressed.
+          compression-level: 0
+          if-no-files-found: error
           retention-days: 2
   execute:
-    name: Archived tests (${{ matrix.database }})
+    name: Archived tests (${{ matrix.cache }}, ${{ matrix.database }})
     needs: compile
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -61,6 +103,7 @@ jobs:
       fail-fast: false
       matrix:
         database: [native, durable]
+        cache: [dependencies, workspace]
     services:
       postgres:
         image: ${{ matrix.database == 'durable' && 'mirror.gcr.io/library/postgres:17-alpine' || '' }}
@@ -81,7 +124,7 @@ jobs:
           key: ${{ runner.os }}-pg-embedded-17
       - uses: actions/download-artifact@v8
         with:
-          name: server-test-archive
+          name: server-test-archive-${{ matrix.cache }}
       - name: Select durable external PostgreSQL
         if: matrix.database == 'durable'
         run: echo 'EVERRUNS_TEST_POSTGRES_URL=postgres://everruns:everruns@localhost:5432/postgres' >> "$GITHUB_ENV"

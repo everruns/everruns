@@ -72,7 +72,12 @@ one server libtest executable and runs identical verified bytes on native and du
 PostgreSQL runners. The durable leg also verifies a committed write survives an
 abrupt restart of its disposable PostgreSQL service. Compare its compile/transfer/execute times before adopting it
 on the critical path. Broader workspace artifact caching and larger runners need
-warm-run benchmarks after workload reduction.
+warm-run benchmarks after workload reduction. The pilot compares dependency-only
+and workspace-crate caches with separate revision-scoped keys and identical build
+flags. Run it twice at the same revision, record exact hits/misses and cache sizes,
+and compare gzip speed/size alongside per-directory cleanup timings. Its gzip payload
+is uploaded without a second compression pass. Experiment keys must not become the
+normal CI cache baseline without evidence; account for repository cache pressure.
 
 ## Measured Baseline
 
