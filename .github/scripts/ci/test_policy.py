@@ -62,6 +62,7 @@ class Policy(unittest.TestCase):
         self.assertIn('auth_integration_test::',focused.risk_filters(['crates/server/src/auth/api_keys.rs']))
         self.assertIn('migration_history_test::',focused.risk_filters(['crates/server/migrations/20261014000000_test.sql']))
         self.assertEqual(focused.risk_filters(['crates/core/src/engine.rs']),[])
+        self.assertIn('service_mcp_oauth_lifecycle_test::', focused.risk_filters(['crates/server/tests/test_harness.rs']))
 
     def values(self, tier='pr'):
         return {'needs.changes.outputs.mode':tier,'needs.changes.outputs.run_ci':'true',

@@ -50,6 +50,11 @@ def risk_filters(paths):
         filters.update(['migration_baseline_test::', 'migration_history_test::'])
     if any(any(x in p for x in ('/auth', '/permissions', '/policy', '/org_', '/organization', '/principal', '/roles', '/members', '/pat_', '/storage/repositories/')) for p in paths):
         filters.update(['auth_integration_test::', 'org_isolation_test::', 'command_policy_enforcement_test::', 'pat_scope_coverage_test::'])
+    if any(p.endswith('/tests/test_harness.rs') or '/tests/test_harness/' in p
+           or p.endswith('/storage/test_database.rs') for p in paths):
+        filters.update(['auth_integration_test::', 'org_isolation_test::',
+                        'service_mcp_oauth_lifecycle_test::', 'migration_baseline_test::',
+                        'migration_history_test::'])
     return sorted(filters)
 
 
