@@ -21,7 +21,7 @@ use everruns_contracts::typed_id::{PrincipalId, ScheduleId, SessionId};
 use everruns_core::host::EventLog;
 use everruns_core::session_schedule::{
     DEFAULT_MAX_SCHEDULES_PER_ORG, DEFAULT_MIN_INTERVAL_SECONDS, MAX_ACTIVE_SCHEDULES_PER_SESSION,
-    ScheduleLimitError, SessionSchedule, normalize_session_cron, validate_cron_min_interval_with,
+    ScheduleLimitError, SessionSchedule, parse_session_cron, validate_cron_min_interval_with,
 };
 use everruns_core::session_services::SessionScheduleStore;
 use rusqlite::{OptionalExtension, TransactionBehavior};
@@ -703,11 +703,7 @@ fn next_cron_trigger(schedule: &SessionSchedule, after: DateTime<Utc>) -> Result
         .cron_expression
         .as_deref()
         .ok_or_else(|| AgentLoopError::config("recurring schedule has no cron expression"))?;
-    let normalized = normalize_session_cron(expression)
-        .ok_or_else(|| AgentLoopError::config(format!("invalid cron expression '{expression}'")))?;
-    let cron = cron::Schedule::from_str(&normalized).map_err(|error| {
-        AgentLoopError::config(format!("invalid cron expression '{expression}': {error}"))
-    })?;
+    let cron = parse_session_cron(expression).map_err(AgentLoopError::config)?;
     let timezone = Tz::from_str(&schedule.timezone).map_err(|error| {
         AgentLoopError::config(format!(
             "invalid IANA timezone '{}': {error}",

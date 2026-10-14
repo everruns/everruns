@@ -349,7 +349,7 @@ async fn create_reads_unix_weekdays_and_rejects_bad_input() {
 
     for (cron, timezone, reason) in [
         ("* * * * 0", "UTC", "no more than once every"),
-        ("not a cron", "UTC", "invalid cron expression 'not a cron'"),
+        ("not a cron", "UTC", "Invalid cron expression 'not a cron'"),
         (
             "0 7 * * *",
             "Mars/Base",
@@ -364,6 +364,26 @@ async fn create_reads_unix_weekdays_and_rejects_bad_input() {
             Ok(_) => panic!("{cron} {timezone}: created"),
         }
     }
+}
+
+#[tokio::test]
+async fn rejects_unknown_cron_interval_before_local_storage() {
+    use everruns_core::session_schedule::ScheduleLimitError;
+    let store = store(SqliteDb::open_in_memory().unwrap());
+    let session_id = SessionId::from_seed(9);
+    for expression in ["not a cron", "0 0 0 1 1 * 2000"] {
+        let result = store
+            .create_schedule_enforcing_limits(
+                session_id,
+                "ordinary configuration".into(),
+                Some(expression.into()),
+                None,
+                "UTC".into(),
+            )
+            .await;
+        assert!(matches!(result, Err(ScheduleLimitError::Rejected(_))));
+    }
+    assert!(store.list_schedules(session_id).await.unwrap().is_empty());
 }
 
 #[tokio::test]
