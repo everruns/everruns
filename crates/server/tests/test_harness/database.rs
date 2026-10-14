@@ -4,7 +4,8 @@
 use std::sync::Arc;
 
 use everruns_server::storage::test_database::{
-    TestDatabase, create_database_migrated_before, create_migrated_database, create_test_database,
+    TestDatabase, create_database_migrated_before, create_migrated_database,
+    create_migrated_test_database, create_test_database,
 };
 use everruns_server::storage::{Database, StorageBackend};
 use sqlx::PgPool;
@@ -73,6 +74,12 @@ impl IsolatedDatabase {
 /// PostgreSQL, for tests that must not see each other's rows.
 pub async fn isolated_test_database() -> IsolatedDatabase {
     let (pool, database) = create_test_database();
+    IsolatedDatabase { pool, database }
+}
+
+/// Product-seeded API tests use a private migrated database in both modes.
+pub async fn isolated_postgres_database() -> IsolatedDatabase {
+    let (pool, database) = create_migrated_test_database();
     IsolatedDatabase { pool, database }
 }
 

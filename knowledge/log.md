@@ -2,6 +2,12 @@
 
 ## 2026-10-14
 
+* **Server-owned PostgreSQL and tiered CI.** Remove the private PostgreSQL utility
+  crate; server storage owns native dev/test support. CI uses focused PR tests,
+  coalesced main batches, nightly feature/provider coverage, and exact-revision
+  release validation. See [CI Build Time](project/ci-build-time.md) and
+  [Embedded PostgreSQL](project/embedded-postgresql.md).
+
 * **Product videos**: Linked the canonical landing-repo recording and publication
   guide and the dedicated Everruns channel; added the public Slack walkthrough
   to the existing DM and scheduled-briefing changelog entries.

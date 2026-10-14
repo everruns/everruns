@@ -60,5 +60,8 @@
 
 - `gh pr merge --squash`, manually, only after CI is green and the final sweep is clean. Do not use
   auto-merge — it bypasses the post-green sweep.
-- After merge, watch main CI for the merge commit. A failure there is an active regression: fix or
-  revert promptly.
+- After merge, confirm a coalesced main batch covers the merged SHA (the batch
+  revision may be a later descendant). Follow the tiered post-merge policy in
+  `knowledge/project/shipping.md`: ordinary work need not await every broad job;
+  CI/migration/persistence changes verify the relevant batch result, and releases
+  require exact-revision full validation. Batch failures stay owned in Linear.

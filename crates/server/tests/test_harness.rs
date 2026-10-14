@@ -43,7 +43,7 @@ mod database;
 #[allow(unused_imports)] // each test binary uses a different subset
 pub use database::{
     IsolatedDatabase, create_test_pool, database_migrated_before, get_database_url,
-    isolated_test_database,
+    isolated_postgres_database, isolated_test_database,
 };
 
 pub fn extract_cookie(headers: &HeaderMap, name: &str) -> String {
@@ -100,12 +100,17 @@ pub struct TestServer {
     pub mcp_servers: Arc<McpServerSlot>,
     /// Serves personal agents' Poppy client documents without the network.
     pub poppy_documents: api::channel_auth::ChannelAuthVerifier,
-    /// The private database of an in-memory-mode server; dropping the last
+    /// The private database of this server; dropping the last
     /// handle drops the database.
-    isolated_database: Option<Arc<IsolatedDatabase>>,
+    isolated_database: Arc<IsolatedDatabase>,
 }
 
 impl TestServer {
+    /// Pass this server's private database to subprocess fixtures explicitly.
+    pub fn database_url(&self) -> String {
+        self.isolated_database.url()
+    }
+
     /// Insert a real user and return its id, for tests that need another
     /// person to point a foreign key at (session owners, members).
     pub async fn create_user(&self, label: &str) -> uuid::Uuid {
@@ -598,47 +603,22 @@ impl TestServer {
         permission_resolver: Option<Arc<dyn everruns_core::PermissionResolver>>,
         policy_override: Option<everruns_server::records::FeatureFlagPolicy>,
     ) -> Self {
-        // Create storage backend based on mode
-        let (db, pool, durable_store, isolated_database) = match mode {
-            TestMode::Postgres => {
-                let pool = create_test_pool().await;
-                let db = Arc::new(StorageBackend::from_database(
-                    everruns_server::storage::Database::new(pool.clone()),
-                ));
-                let durable_store: Arc<dyn WorkflowEventStore + Send + Sync> =
-                    Arc::new(PostgresWorkflowEventStore::new(pool.clone()));
-                (db, pool, durable_store, None)
-            }
-            TestMode::InMemory => {
-                // A private database on the embedded cluster, so these tests
-                // need no external PostgreSQL and see no other test's rows.
-                // Durable state lives there too: records reference durable
-                // rows by foreign key (trigger schedules, for one).
-                let database = isolated_test_database().await;
-                let pool = database.pool.clone();
-                let db = Arc::new(database.backend());
-                let durable_store: Arc<dyn WorkflowEventStore + Send + Sync> =
-                    Arc::new(PostgresWorkflowEventStore::new(pool.clone()));
-                (db, pool, durable_store, Some(Arc::new(database)))
-            }
+        // Both modes use real PostgreSQL and own private databases. Only the
+        // unit-fixture rows differ; product seeding remains local to this server.
+        let database = match mode {
+            TestMode::Postgres => isolated_postgres_database().await,
+            TestMode::InMemory => isolated_test_database().await,
         };
+        let pool = database.pool.clone();
+        let db = Arc::new(database.backend());
+        let durable_store: Arc<dyn WorkflowEventStore + Send + Sync> =
+            Arc::new(PostgresWorkflowEventStore::new(pool.clone()));
+        let isolated_database = Arc::new(database);
 
         // Seed default data synchronously (harnesses, agents, providers, etc.)
         let grade = everruns_core::DeploymentGrade::from_env();
         let host_composition = Arc::new(everruns_server::oss_host_composition_for_grade(grade));
         let built_in_harnesses = Arc::new(everruns_server::oss_built_in_harnesses());
-        if matches!(mode, TestMode::Postgres) {
-            // Seeding is idempotent but not safe to race on an empty shared
-            // database: the first server of the process seeds it alone.
-            static FIRST_SEED: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
-            FIRST_SEED
-                .get_or_init(|| async {
-                    seed::seed_all(&db, grade, &seed::SeedAuthContext::default())
-                        .await
-                        .expect("Failed to seed test data");
-                })
-                .await;
-        }
         seed::seed_all(&db, grade, &seed::SeedAuthContext::default())
             .await
             .expect("Failed to seed test data");
@@ -715,18 +695,9 @@ impl TestServer {
         .into_iter()
         .map(|name| (name.to_string(), true))
         .collect();
-        {
-            // Postgres-mode servers share one database, and concurrent
-            // replace-all writes to the same org's flags deadlock each other.
-            static SHARED_FLAGS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-            let _shared = match mode {
-                TestMode::Postgres => Some(SHARED_FLAGS.lock().await),
-                TestMode::InMemory => None,
-            };
-            db.replace_org_feature_flags(everruns_core::DEFAULT_ORG_ID, &org_flag_overrides)
-                .await
-                .expect("seed org feature flags for test org");
-        }
+        db.replace_org_feature_flags(everruns_core::DEFAULT_ORG_ID, &org_flag_overrides)
+            .await
+            .expect("seed org feature flags for test org");
 
         let mut feature_flag_policy = everruns_server::records::FeatureFlagPolicy::from_env(grade);
         for (name, enabled) in &feature_flags.to_map().0 {

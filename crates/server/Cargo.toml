@@ -85,7 +85,8 @@ metrics.workspace = true
 cron = "0.17"
 inventory.workspace = true
 everruns-server-macros = { path = "../server-macros" }
-everruns-pg-embedded = { path = "../pg-embedded" }
+libc = "0.2"
+postgresql_embedded = { version = "0.21", default-features = false, features = ["tokio", "zonky", "tls-rustls-aws-lc-rs"] }
 moka.workspace = true
 zip = { version = "8", default-features = false, features = ["deflate"] }
 urlencoding = "2"

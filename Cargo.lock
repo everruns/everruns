@@ -2934,20 +2934,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-pg-embedded"
-version = "0.48.0"
-dependencies = [
- "anyhow",
- "libc",
- "postgresql_embedded",
- "sqlx",
- "tempfile",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "everruns-poppy-personal-agent"
 version = "0.1.0"
 dependencies = [
@@ -3113,7 +3099,6 @@ dependencies = [
  "everruns-integrations",
  "everruns-internal-protocol",
  "everruns-llmsim",
- "everruns-pg-embedded",
  "everruns-sdk",
  "everruns-server-macros",
  "everruns-test-support",
@@ -3135,12 +3120,14 @@ dependencies = [
  "jsonschema",
  "jsonwebtoken",
  "k256",
+ "libc",
  "metrics",
  "mimalloc",
  "mime_guess",
  "moka",
  "object_store",
  "parking_lot",
+ "postgresql_embedded",
  "prost-types",
  "rand 0.10.3",
  "regex",
