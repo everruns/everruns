@@ -19760,143 +19760,430 @@ export interface components {
        */
       updated_at: string;
     };
+    /** @description Session actor ownership, lease validity, and durable progress cursors. */
     MonitoringActor: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Lease attempts accumulated since the last release.
+       * @example 1
+       */
       attempts_since_release?: number | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description UTC cancellation request timestamp; null when cancellation is not requested.
+       * @example 2026-10-14T12:00:02Z
+       */
       cancel_requested_at?: string | null;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Persisted consumed event cursor; its difference from inbox_seq is not a pending-message count.
+       * @example 39
+       */
       consumed_seq?: number | null;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Monotonic ownership fence; null when no actor row exists.
+       * @example 17
+       */
       fence?: number | null;
+      /**
+       * @description Current recorded holder, or previous holder for an expired lease; null when unleased.
+       * @example worker-01
+       */
       holder?: string | null;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Durable inbox progress cursor; it is not a message count.
+       * @example 42
+       */
       inbox_seq?: number | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description UTC deadline of the recorded lease; null when unleased.
+       * @example 2026-10-14T12:00:10Z
+       */
       lease_expires_at?: string | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Last persisted acquisition or renewal acknowledgement in UTC; null before an acknowledgement or after release.
+       * @example 2026-10-14T12:00:00Z
+       */
       lease_renewed_at?: string | null;
+      /**
+       * @description Observed lease validity: held, expired, or unleased.
+       * @example held
+       */
       lease_state: string;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Positive interval between renewal acknowledgement and expiry in milliseconds; null when unavailable.
+       * @example 10000
+       */
       lease_ttl_ms?: number | null;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Persisted next-input progress cursor.
+       * @example 12
+       */
       next_input_seq?: number | null;
+      /**
+       * @description Public identifier of the owning session's organization.
+       * @example org_00000000000000000000000000000001
+       */
       org_id: string;
+      /**
+       * @description Observed execution state; idle is also possible for a released actor detail.
+       * @example model
+       */
       phase: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description UTC timestamp of the committed observation used to classify the phase.
+       * @example 2026-10-14T12:00:01Z
+       */
       phase_since: string;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Milliseconds awaiting a valid lease; null for held or parked actors.
+       * @example 3000
+       */
       runnable_age_ms?: number | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description UTC timestamp when the actor became runnable; null for parked work.
+       * @example 2026-10-14T11:59:59Z
+       */
       runnable_since?: string | null;
+      /**
+       * @description Canonical session identifier whose actor is being inspected.
+       * @example session_01933b5a000070008000000000000001
+       */
       session_id: string;
+      /**
+       * @description Persisted session lifecycle status.
+       * @example active
+       */
       session_status: string;
     };
+    /** @description Authorized actor inspection with bounded ownership history and trace timing. */
     MonitoringActorDetail: {
+      /** @description Actor observation after validating the owning session's organization. */
       actor: components["schemas"]["MonitoringActor"];
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description UTC observation time for actor ownership and timing.
+       * @example 2026-10-14T12:00:03Z
+       */
       generated_at: string;
+      /** @description Up to 50 newest ownership changes from the retained one-day history. */
       ownership_history: components["schemas"]["MonitoringLeaseEvent"][];
+      /** @description Up to 100 projected steps from the latest turn, newest first; no conversation payloads. */
       steps: components["schemas"]["MonitoringStep"][];
     };
+    /** @description Bounded page of current session actor observations. */
     MonitoringActorPage: {
+      /** @description Up to 200 matching actors, ordered by expired leases and oldest runnable work. */
       actors: components["schemas"]["MonitoringActor"][];
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description UTC observation time for this actor page.
+       * @example 2026-10-14T12:00:03Z
+       */
       generated_at: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Offset for the next page; null when there are no further matching actors.
+       * @example 200
+       */
       next_offset?: number | null;
     };
+    /** @description Bounded execution breakdown for one organization and live lease holder. */
     MonitoringCohort: {
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Sessions in this phase, organization, and holder cohort.
+       * @example 32
+       */
       count: number;
+      /**
+       * @description Public identifier of the organization owning these sessions.
+       * @example org_00000000000000000000000000000001
+       */
       org_id: string;
+      /**
+       * @description Execution state shared by this organization and live holder cohort.
+       * @example model
+       */
       phase: string;
+      /**
+       * @description Live lease holder; null for unleased or expired ownership.
+       * @example worker-01
+       */
       worker_id?: string | null;
     };
+    /** @description Persisted actor ownership transition, excluding renewal noise. */
     MonitoringLeaseEvent: {
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description New lease deadline in UTC; null for a release.
+       * @example 2026-10-14T12:00:10Z
+       */
       expires_at?: string | null;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Ownership fence associated with this transition.
+       * @example 18
+       */
       fence: number;
+      /**
+       * @description Holder acquiring ownership, or the holder relinquishing a released lease.
+       * @example worker-02
+       */
       holder: string;
+      /**
+       * @description Ownership transition: acquired, reacquired, or released; renewals produce no history entry.
+       * @example reacquired
+       */
       kind: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description UTC time of the persisted ownership transition.
+       * @example 2026-10-14T12:00:00Z
+       */
       occurred_at: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Previous lease deadline in UTC, when recorded.
+       * @example 2026-10-14T11:59:59Z
+       */
       previous_expires_at?: string | null;
+      /**
+       * @description Holder preceding acquisition or reacquisition, when recorded.
+       * @example worker-01
+       */
       previous_holder?: string | null;
     };
+    /** @description Valid actor ownership linking an organization to a worker. */
     MonitoringOwnership: {
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Valid actor leases held by this worker within this organization.
+       * @example 32
+       */
       actor_leases: number;
+      /**
+       * @description Public identifier of the sessions' owning organization.
+       * @example org_00000000000000000000000000000001
+       */
       org_id: string;
+      /**
+       * @description Worker currently holding the valid actor leases.
+       * @example worker-01
+       */
       worker_id: string;
     };
+    /** @description Population and age of one committed execution state. */
     MonitoringPhase: {
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Complete number of sessions observed in this execution state.
+       * @example 2800
+       */
       count: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Age of the oldest committed phase observation in milliseconds; may be partial when cohorts are truncated.
+       * @example 3200
+       */
       oldest_ms: number;
+      /**
+       * @description Execution state: runnable, model, tools, waiting, or setup.
+       * @example model
+       */
       phase: string;
     };
+    /** @description Live execution population, ownership, and event-window summary. */
     MonitoringSnapshot: {
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Complete count of actor leases valid at the observation time.
+       * @example 3700
+       */
       actor_leases: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Complete population of live sessions and runnable or held session actors.
+       * @example 5000
+       */
       actors: number;
+      /** @description Bounded phase, organization, and live holder breakdown; consult cohorts_truncated. */
       cohorts: components["schemas"]["MonitoringCohort"][];
+      /**
+       * @description Whether ownership cohort detail exceeded its limit; population and phase counts remain complete.
+       * @example false
+       */
       cohorts_truncated: boolean;
-      /** @description Committed lifecycle event counts in the last window, not lifetime counters. */
+      /**
+       * @description Committed lifecycle event counts in the lookback window, not lifetime totals.
+       * @example {
+       *       "reason.started": 350,
+       *       "tool.started": 240,
+       *       "turn.started": 120
+       *     }
+       */
       events: {
         [key: string]: number;
       };
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Held leases whose deadline has passed, regardless of worker heartbeat.
+       * @example 3
+       */
       expired_leases: number;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description UTC observation time used to classify lease validity and event windows.
+       * @example 2026-10-14T12:00:03Z
+       */
       generated_at: string;
+      /**
+       * @description Acquisition, reacquisition, and release counts in the lookback window; renewals are excluded.
+       * @example {
+       *       "acquired": 120,
+       *       "reacquired": 3,
+       *       "released": 110
+       *     }
+       */
       lease_events: {
         [key: string]: number;
       };
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Age of the oldest work awaiting a valid lease, in milliseconds; null when none is runnable.
+       * @example 3000
+       */
       oldest_runnable_ms?: number | null;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Distinct organizations represented in the current population.
+       * @example 12
+       */
       organizations: number;
+      /** @description Organization-to-worker mapping derived only from valid actor leases. */
       ownership: components["schemas"]["MonitoringOwnership"][];
+      /** @description Complete counts by execution state, with observed phase ages. */
       phases: components["schemas"]["MonitoringPhase"][];
+      /**
+       * @description Monitoring boundary: organization or fleet.
+       * @example fleet
+       */
       scope: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Lookback window for lifecycle and ownership event counts, in seconds.
+       * @example 60
+       */
       window_seconds: number;
+      /** @description Bounded worker observations; global telemetry is redacted for organization callers. */
       workers: components["schemas"]["MonitoringWorker"][];
+      /**
+       * @description Whether worker detail exceeded its limit; population and phase counts remain complete.
+       * @example false
+       */
       workers_truncated: boolean;
     };
+    /** @description Payload-free timing projection of one step in the latest turn. */
     MonitoringStep: {
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Recorded step duration in milliseconds; null until duration is available.
+       * @example 820
+       */
       duration_ms?: number | null;
+      /**
+       * @description Trace-step category, without tool arguments, results, or agent names.
+       * @example tool
+       */
       kind: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description UTC time at which the projected step started.
+       * @example 2026-10-14T12:00:01Z
+       */
       started_at: string;
+      /**
+       * @description Projected execution status of the trace step.
+       * @example completed
+       */
       status: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Projected step ordinal within the turn.
+       * @example 3
+       */
       step_no: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Projected turn ordinal for this trace step.
+       * @example 2
+       */
       turn_no: number;
     };
+    /** @description Scope-aware actor ownership with platform-only worker telemetry. */
     MonitoringWorker: {
+      /**
+       * @description Last reported admission flag; null in organization scope.
+       * @example true
+       */
       accepting_work?: boolean | null;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Valid actor leases in this monitoring scope; not occupied work slots.
+       * @example 32
+       */
       actor_leases: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Reported maximum worker concurrency; null in organization scope.
+       * @example 50
+       */
       capacity?: number | null;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Reported worker activity load, distinct from actor leases; null in organization scope.
+       * @example 8
+       */
       current_load?: number | null;
+      /**
+       * @description Worker identifier recorded by actor ownership or the fleet registry.
+       * @example worker-01
+       */
       id: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Last worker heartbeat in UTC; null in organization scope.
+       * @example 2026-10-14T12:00:00Z
+       */
       last_heartbeat_at?: string | null;
+      /**
+       * @description Leased session counts by execution state within this scope.
+       * @example {
+       *       "model": 20,
+       *       "tools": 12
+       *     }
+       */
       phases: {
         [key: string]: number;
       };
-      /** @description Platform-only heartbeat telemetry; null in organization scope. */
+      /**
+       * @description Fleet-only worker status, including stale heartbeats; null in organization scope.
+       * @example active
+       */
       status?: string | null;
+      /**
+       * @description Registered worker group; null in organization scope.
+       * @example execution
+       */
       worker_group?: string | null;
     };
     /** @description Request to move/rename a file */
@@ -36141,8 +36428,20 @@ export interface operations {
   list_fleet_monitoring_actors: {
     parameters: {
       query?: {
+        /**
+         * @description Zero-based offset for fixed 200-actor pages; maximum 1000000.
+         * @example 0
+         */
         offset?: number;
+        /**
+         * @description Filter by a valid current lease holder, up to 256 UTF-8 bytes.
+         * @example worker-01
+         */
         worker_id?: string;
+        /**
+         * @description Filter by runnable, model, tools, waiting, or setup execution state.
+         * @example model
+         */
         phase?: string;
       };
       header?: never;
@@ -41982,8 +42281,20 @@ export interface operations {
   list_monitoring_actors: {
     parameters: {
       query?: {
+        /**
+         * @description Zero-based offset for fixed 200-actor pages; maximum 1000000.
+         * @example 0
+         */
         offset?: number;
+        /**
+         * @description Filter by a valid current lease holder, up to 256 UTF-8 bytes.
+         * @example worker-01
+         */
         worker_id?: string;
+        /**
+         * @description Filter by runnable, model, tools, waiting, or setup execution state.
+         * @example model
+         */
         phase?: string;
       };
       header?: never;

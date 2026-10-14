@@ -197,39 +197,80 @@ fn positive(value: i64) -> u64 {
     value.max(0) as u64
 }
 
+/// Population and age of one committed execution state.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MonitoringPhase {
+    /// Execution state: runnable, model, tools, waiting, or setup.
+    #[schema(example = "model")]
     pub phase: String,
+    /// Complete number of sessions observed in this execution state.
+    #[schema(example = 2800)]
     pub count: u64,
+    /// Age of the oldest committed phase observation in milliseconds; may be partial when cohorts are truncated.
+    #[schema(example = 3200)]
     pub oldest_ms: u64,
 }
 
+/// Bounded execution breakdown for one organization and live lease holder.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MonitoringCohort {
+    /// Execution state shared by this organization and live holder cohort.
+    #[schema(example = "model")]
     pub phase: String,
+    /// Public identifier of the organization owning these sessions.
+    #[schema(example = "org_00000000000000000000000000000001")]
     pub org_id: String,
+    /// Live lease holder; null for unleased or expired ownership.
+    #[schema(example = "worker-01")]
     pub worker_id: Option<String>,
+    /// Sessions in this phase, organization, and holder cohort.
+    #[schema(example = 32)]
     pub count: u64,
 }
 
+/// Valid actor ownership linking an organization to a worker.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MonitoringOwnership {
+    /// Worker currently holding the valid actor leases.
+    #[schema(example = "worker-01")]
     pub worker_id: String,
+    /// Public identifier of the sessions' owning organization.
+    #[schema(example = "org_00000000000000000000000000000001")]
     pub org_id: String,
+    /// Valid actor leases held by this worker within this organization.
+    #[schema(example = 32)]
     pub actor_leases: u64,
 }
 
+/// Scope-aware actor ownership with platform-only worker telemetry.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MonitoringWorker {
+    /// Worker identifier recorded by actor ownership or the fleet registry.
+    #[schema(example = "worker-01")]
     pub id: String,
+    /// Registered worker group; null in organization scope.
+    #[schema(example = "execution")]
     pub worker_group: Option<String>,
+    /// Valid actor leases in this monitoring scope; not occupied work slots.
+    #[schema(example = 32)]
     pub actor_leases: u64,
+    /// Leased session counts by execution state within this scope.
+    #[schema(example = json!({"model": 20, "tools": 12}))]
     pub phases: BTreeMap<String, u64>,
-    /// Platform-only heartbeat telemetry; null in organization scope.
+    /// Fleet-only worker status, including stale heartbeats; null in organization scope.
+    #[schema(example = "active")]
     pub status: Option<String>,
+    /// Reported worker activity load, distinct from actor leases; null in organization scope.
+    #[schema(example = 8)]
     pub current_load: Option<u64>,
+    /// Reported maximum worker concurrency; null in organization scope.
+    #[schema(example = 50)]
     pub capacity: Option<u64>,
+    /// Last reported admission flag; null in organization scope.
+    #[schema(example = true)]
     pub accepting_work: Option<bool>,
+    /// Last worker heartbeat in UTC; null in organization scope.
+    #[schema(example = "2026-10-14T12:00:00Z")]
     pub last_heartbeat_at: Option<DateTime<Utc>>,
 }
 impl MonitoringWorker {
@@ -248,46 +289,111 @@ impl MonitoringWorker {
     }
 }
 
+/// Live execution population, ownership, and event-window summary.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MonitoringSnapshot {
+    /// UTC observation time used to classify lease validity and event windows.
+    #[schema(example = "2026-10-14T12:00:03Z")]
     pub generated_at: DateTime<Utc>,
+    /// Monitoring boundary: organization or fleet.
+    #[schema(example = "fleet")]
     pub scope: String,
+    /// Lookback window for lifecycle and ownership event counts, in seconds.
+    #[schema(example = 60)]
     pub window_seconds: u32,
+    /// Complete population of live sessions and runnable or held session actors.
+    #[schema(example = 5000)]
     pub actors: u64,
+    /// Distinct organizations represented in the current population.
+    #[schema(example = 12)]
     pub organizations: u64,
+    /// Complete count of actor leases valid at the observation time.
+    #[schema(example = 3700)]
     pub actor_leases: u64,
+    /// Held leases whose deadline has passed, regardless of worker heartbeat.
+    #[schema(example = 3)]
     pub expired_leases: u64,
+    /// Age of the oldest work awaiting a valid lease, in milliseconds; null when none is runnable.
+    #[schema(example = 3000)]
     pub oldest_runnable_ms: Option<u64>,
+    /// Complete counts by execution state, with observed phase ages.
     pub phases: Vec<MonitoringPhase>,
+    /// Bounded phase, organization, and live holder breakdown; consult cohorts_truncated.
     pub cohorts: Vec<MonitoringCohort>,
+    /// Organization-to-worker mapping derived only from valid actor leases.
     pub ownership: Vec<MonitoringOwnership>,
+    /// Bounded worker observations; global telemetry is redacted for organization callers.
     pub workers: Vec<MonitoringWorker>,
-    /// Committed lifecycle event counts in the last window, not lifetime counters.
+    /// Committed lifecycle event counts in the lookback window, not lifetime totals.
+    #[schema(example = json!({"turn.started": 120, "reason.started": 350, "tool.started": 240}))]
     pub events: BTreeMap<String, u64>,
+    /// Acquisition, reacquisition, and release counts in the lookback window; renewals are excluded.
+    #[schema(example = json!({"acquired": 120, "released": 110, "reacquired": 3}))]
     pub lease_events: BTreeMap<String, u64>,
+    /// Whether ownership cohort detail exceeded its limit; population and phase counts remain complete.
+    #[schema(example = false)]
     pub cohorts_truncated: bool,
+    /// Whether worker detail exceeded its limit; population and phase counts remain complete.
+    #[schema(example = false)]
     pub workers_truncated: bool,
 }
 
+/// Session actor ownership, lease validity, and durable progress cursors.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MonitoringActor {
+    /// Canonical session identifier whose actor is being inspected.
+    #[schema(example = "session_01933b5a000070008000000000000001")]
     pub session_id: String,
+    /// Public identifier of the owning session's organization.
+    #[schema(example = "org_00000000000000000000000000000001")]
     pub org_id: String,
+    /// Persisted session lifecycle status.
+    #[schema(example = "active")]
     pub session_status: String,
+    /// Observed execution state; idle is also possible for a released actor detail.
+    #[schema(example = "model")]
     pub phase: String,
+    /// UTC timestamp of the committed observation used to classify the phase.
+    #[schema(example = "2026-10-14T12:00:01Z")]
     pub phase_since: DateTime<Utc>,
+    /// Observed lease validity: held, expired, or unleased.
+    #[schema(example = "held")]
     pub lease_state: String,
+    /// Current recorded holder, or previous holder for an expired lease; null when unleased.
+    #[schema(example = "worker-01")]
     pub holder: Option<String>,
+    /// Monotonic ownership fence; null when no actor row exists.
+    #[schema(example = 17)]
     pub fence: Option<i64>,
+    /// UTC deadline of the recorded lease; null when unleased.
+    #[schema(example = "2026-10-14T12:00:10Z")]
     pub lease_expires_at: Option<DateTime<Utc>>,
+    /// Last persisted acquisition or renewal acknowledgement in UTC; null before an acknowledgement or after release.
+    #[schema(example = "2026-10-14T12:00:00Z")]
     pub lease_renewed_at: Option<DateTime<Utc>>,
+    /// Positive interval between renewal acknowledgement and expiry in milliseconds; null when unavailable.
+    #[schema(example = 10000)]
     pub lease_ttl_ms: Option<u64>,
+    /// UTC timestamp when the actor became runnable; null for parked work.
+    #[schema(example = "2026-10-14T11:59:59Z")]
     pub runnable_since: Option<DateTime<Utc>>,
+    /// Milliseconds awaiting a valid lease; null for held or parked actors.
+    #[schema(example = 3000)]
     pub runnable_age_ms: Option<u64>,
+    /// Durable inbox progress cursor; it is not a message count.
+    #[schema(example = 42)]
     pub inbox_seq: Option<i64>,
+    /// Persisted consumed event cursor; its difference from inbox_seq is not a pending-message count.
+    #[schema(example = 39)]
     pub consumed_seq: Option<i64>,
+    /// Persisted next-input progress cursor.
+    #[schema(example = 12)]
     pub next_input_seq: Option<i64>,
+    /// Lease attempts accumulated since the last release.
+    #[schema(example = 1)]
     pub attempts_since_release: Option<i32>,
+    /// UTC cancellation request timestamp; null when cancellation is not requested.
+    #[schema(example = "2026-10-14T12:00:02Z")]
     pub cancel_requested_at: Option<DateTime<Utc>>,
 }
 impl From<MonitoringActorRow> for MonitoringActor {
@@ -327,43 +433,90 @@ impl From<MonitoringActorRow> for MonitoringActor {
     }
 }
 
+/// Bounded page of current session actor observations.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MonitoringActorPage {
+    /// UTC observation time for this actor page.
+    #[schema(example = "2026-10-14T12:00:03Z")]
     pub generated_at: DateTime<Utc>,
+    /// Up to 200 matching actors, ordered by expired leases and oldest runnable work.
     pub actors: Vec<MonitoringActor>,
+    /// Offset for the next page; null when there are no further matching actors.
+    #[schema(example = 200)]
     pub next_offset: Option<u32>,
 }
+/// Persisted actor ownership transition, excluding renewal noise.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MonitoringLeaseEvent {
+    /// UTC time of the persisted ownership transition.
+    #[schema(example = "2026-10-14T12:00:00Z")]
     pub occurred_at: DateTime<Utc>,
+    /// Ownership transition: acquired, reacquired, or released; renewals produce no history entry.
+    #[schema(example = "reacquired")]
     pub kind: String,
+    /// Holder acquiring ownership, or the holder relinquishing a released lease.
+    #[schema(example = "worker-02")]
     pub holder: String,
+    /// Ownership fence associated with this transition.
+    #[schema(example = 18)]
     pub fence: i64,
+    /// Holder preceding acquisition or reacquisition, when recorded.
+    #[schema(example = "worker-01")]
     pub previous_holder: Option<String>,
+    /// Previous lease deadline in UTC, when recorded.
+    #[schema(example = "2026-10-14T11:59:59Z")]
     pub previous_expires_at: Option<DateTime<Utc>>,
+    /// New lease deadline in UTC; null for a release.
+    #[schema(example = "2026-10-14T12:00:10Z")]
     pub expires_at: Option<DateTime<Utc>>,
 }
+/// Payload-free timing projection of one step in the latest turn.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MonitoringStep {
+    /// Projected turn ordinal for this trace step.
+    #[schema(example = 2)]
     pub turn_no: i32,
+    /// Projected step ordinal within the turn.
+    #[schema(example = 3)]
     pub step_no: i32,
+    /// Trace-step category, without tool arguments, results, or agent names.
+    #[schema(example = "tool")]
     pub kind: String,
+    /// Projected execution status of the trace step.
+    #[schema(example = "completed")]
     pub status: String,
+    /// UTC time at which the projected step started.
+    #[schema(example = "2026-10-14T12:00:01Z")]
     pub started_at: DateTime<Utc>,
+    /// Recorded step duration in milliseconds; null until duration is available.
+    #[schema(example = 820)]
     pub duration_ms: Option<i64>,
 }
+/// Authorized actor inspection with bounded ownership history and trace timing.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MonitoringActorDetail {
+    /// UTC observation time for actor ownership and timing.
+    #[schema(example = "2026-10-14T12:00:03Z")]
     pub generated_at: DateTime<Utc>,
+    /// Actor observation after validating the owning session's organization.
     pub actor: MonitoringActor,
+    /// Up to 50 newest ownership changes from the retained one-day history.
     pub ownership_history: Vec<MonitoringLeaseEvent>,
+    /// Up to 100 projected steps from the latest turn, newest first; no conversation payloads.
     pub steps: Vec<MonitoringStep>,
 }
+/// Validated filters and offset for bounded current-actor pages.
 #[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct ActorQuery {
+    /// Zero-based offset for fixed 200-actor pages; maximum 1000000.
+    #[param(example = 0)]
     pub offset: Option<u32>,
+    /// Filter by a valid current lease holder, up to 256 UTF-8 bytes.
+    #[param(example = "worker-01")]
     pub worker_id: Option<String>,
+    /// Filter by runnable, model, tools, waiting, or setup execution state.
+    #[param(example = "model")]
     pub phase: Option<String>,
 }
 

@@ -46,6 +46,9 @@ def affected(packages, paths, root):
 
 def risk_filters(paths):
     filters = set()
+    if any(p.startswith(('crates/server/src/api/', 'crates/server/src/openapi/')) for p in paths):
+        # Reuse the domain invocation: API shape and prose are public contracts.
+        filters.update(['openapi_coverage_test::', 'openapi_descriptions_test::', 'pat_scope_coverage_test::'])
     if any('/migrations/' in p or '/setup/migrations' in p for p in paths):
         filters.update(['migration_baseline_test::', 'migration_history_test::'])
     if any(any(x in p for x in ('/auth', '/permissions', '/policy', '/org_', '/organization', '/principal', '/roles', '/members', '/pat_', '/storage/repositories/')) for p in paths):
