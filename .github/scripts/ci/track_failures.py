@@ -51,6 +51,8 @@ def decision(issue_state, run, check, contains):
         return 'ignore'
     if check['conclusion'] in ('failure', 'timed_out', 'action_required'):
         return 'failure'
+    if issue_state and issue_state.get('resolved') and check['conclusion'] == 'success':
+        return 'ignore'
     if (issue_state and check['conclusion'] == 'success' and run['conclusion'] == 'success'
             and issue_state['failed_sha'] != run['revision']
             and contains(issue_state['failed_sha'], run['revision'])):
@@ -99,8 +101,8 @@ def main():
     issues, cursor = [], None
     while True:
         page = linear('''query($cursor:String) {
-          issues(first:100, after:$cursor, filter:{team:{key:{eq:"EVE"}}, title:{contains:"CI batch:"}, state:{type:{nin:["completed","canceled"]}}}) {
-            nodes { id description assignee { id name } }
+          issues(first:100, after:$cursor, filter:{team:{key:{eq:"EVE"}}, description:{contains:"<!-- ci-state:"}}) {
+            nodes { id description state { type } assignee { id name } }
             pageInfo { hasNextPage endCursor }
           }
         }''', {'cursor': cursor})['issues']
@@ -108,7 +110,11 @@ def main():
         if not page['pageInfo']['hasNextPage']:
             break
         cursor = page['pageInfo']['endCursor']
-    by_key = {state_from(i['description'])['check']: i for i in issues if state_from(i['description'])}
+    by_key = {}
+    for issue in issues:
+        state = state_from(issue['description'])
+        if state and (state['check'] not in by_key or state['run_id'] > state_from(by_key[state['check']]['description'])['run_id']):
+            by_key[state['check']] = issue
 
     def contains(older, newer):
         comparison = gh(f'repos/{repository}/compare/{older}...{newer}')
@@ -139,7 +145,7 @@ def main():
         action = decision(previous, run, check, contains)
         if action == 'ignore':
             continue
-        state = {'check': key, 'run_id': run['id'], 'failed_sha': run['revision'] if action == 'failure' else previous['failed_sha']}
+        state = {'check': key, 'run_id': run['id'], 'failed_sha': run['revision'] if action == 'failure' else previous['failed_sha'], 'resolved': action == 'resolved'}
         failed_steps = ', '.join(s['name'] for s in check['steps'] if s['conclusion'] in ('failure','timed_out'))
         owner_name = issue['assignee']['name'] if issue and issue.get('assignee') else 'Mykhailo Chalyi'
         report = f'''<!-- ci-state:{json.dumps(state, separators=(',', ':'))} -->
@@ -158,7 +164,7 @@ Candidate PRs in the range (suspects, not attribution):
         if issue:
             linear('''mutation($id:String!, $input:IssueUpdateInput!) {
                 issueUpdate(id:$id,input:$input) { success }
-            }''', {'id': issue['id'], 'input': {'description': description, **({'assigneeId':owner} if not issue.get('assignee') else {}), **({'stateId':done} if action == 'resolved' else {})}})
+            }''', {'id': issue['id'], 'input': {'description': description, **({'assigneeId':owner} if not issue.get('assignee') else {}), **({'stateId':done} if action == 'resolved' else {'stateId':todo} if issue['state']['type'] in ('completed','canceled') else {})}})
         else:
             linear('''mutation($input:IssueCreateInput!) { issueCreate(input:$input) { success issue { identifier } } }''',
                 {'input': {'teamId':team['id'], 'projectId':project, 'assigneeId':owner, 'stateId':todo,

@@ -143,6 +143,10 @@ class Policy(unittest.TestCase):
         self.assertEqual(tracker.decision(state,dict(run,id=9),{'conclusion':'failure'},lambda a,b:True),'ignore')
         self.assertEqual(tracker.decision(state,run,{'conclusion':'skipped'},lambda a,b:True),'ignore')
         self.assertEqual(tracker.decision(None,run,{'conclusion':'failure'},lambda a,b:True),'failure')
+        closed=dict(state,run_id=12,resolved=True)
+        self.assertEqual(tracker.decision(closed,run,{'conclusion':'failure'},lambda a,b:True),'ignore')
+        self.assertEqual(tracker.decision(closed,dict(run,id=13),{'conclusion':'failure'},lambda a,b:True),'failure')
+        self.assertEqual(tracker.decision(closed,dict(run,id=13),{'conclusion':'success'},lambda a,b:True),'ignore')
         self.assertEqual(tracker.check_key('SDK Compat (rust / last_minor / v0.2.1)'),tracker.check_key('SDK Compat (rust / last_minor / v0.3.1)'))
 
     def test_generated_updates_preserve_human_investigation(self):
