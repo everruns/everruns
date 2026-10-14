@@ -2,6 +2,7 @@
 # Common functions for dev scripts
 
 set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/caddy-version.sh"
 
 # Get project root (two levels up from lib/)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,6 +26,9 @@ require_command() {
   if ! command -v "$cmd" &> /dev/null; then
     echo "❌ $cmd not installed. $hint"
     exit 1
+  fi
+  if [ "$cmd" = caddy ]; then
+    require_caddy_connect_retries || exit 1
   fi
 }
 
