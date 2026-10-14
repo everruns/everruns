@@ -87,7 +87,6 @@ export default defineConfig({
     "/integrations/e2b/": "/capabilities/e2b/",
     "/integrations/container-sandbox/": "/capabilities/container-sandbox/",
     "/integrations/browserless/": "/capabilities/browserless/",
-    "/integrations/slack/": "/capabilities/slack/",
     "/framework/supported-providers/": "/framework/models-and-providers/",
     "/framework/custom-providers/": "/framework/models-and-providers/",
     "/framework/model-catalogs/": "/framework/models-and-providers/",
@@ -552,7 +551,7 @@ export default defineConfig({
                       items: [
                         { label: "GitHub", slug: "capabilities/github" },
                         { label: "GitHub Scout", slug: "capabilities/github-scout" },
-                        { label: "Slack", slug: "capabilities/slack" },
+                        { label: "Slack actions", slug: "capabilities/slack" },
                         { label: "User MCP Servers", slug: "capabilities/user-mcp-servers" },
                         { label: "Poppy Personal Agent", slug: "capabilities/poppy-personal-agent" },
                       ],
@@ -603,12 +602,13 @@ export default defineConfig({
                   // Grouped to mirror the category taxonomy in
                   // docs/integrations/index.md. Keep the two in sync when adding
                   // or recategorizing an integration. Vendors with a capability
-                  // page (Daytona, E2B, Browserless, Slack) are listed under
+                  // page (Daytona, E2B, Browserless) are listed under
                   // Capabilities only; the overview links to them. Sidebar
                   // glyphs for each entry live in src/styles/custom.css, keyed
                   // by href.
                   items: [
                     { label: "Overview", slug: "integrations" },
+                    { label: "Messaging", items: [{ label: "Slack", slug: "integrations/slack" }] },
                     {
                       label: "Sandboxes & execution",
                       items: [

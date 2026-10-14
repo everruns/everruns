@@ -1,0 +1,160 @@
+---
+title: Build Agents for Slack
+description: Give your team an Agent with its own tools, instructions, and identity. Work with it in channels, direct messages, or Slack’s dedicated agent pane.
+slug: integrations/slack
+appliesTo: [platform, cloud]
+---
+
+import SlackExamples from "@docs-components/SlackExamples.astro";
+
+<div className="slack-landing">
+
+<div className="slack-actions">
+  <a className="slack-link" href="#build-your-first-slack-agent">
+    Build a Slack Agent <span aria-hidden="true">→</span>
+  </a>
+  <a className="slack-link secondary" href="/how-to/publish-to-slack/">
+    Publish an existing Agent
+  </a>
+</div>
+
+## Watch Kids Duties in Slack
+
+A real Agent setup, its execution trace, and the morning briefing delivered in Slack. English narration and captions; the original Slack messages are Ukrainian.
+
+<iframe
+  className="slack-video"
+  src="https://www.youtube-nocookie.com/embed/mbbYFif9juY?rel=0"
+  title="Slack integration: Kids Duties agent in Everruns"
+  loading="lazy"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+  referrerpolicy="strict-origin-when-cross-origin"
+  allowfullscreen
+></iframe>
+
+<p className="slack-note">
+  <a href="https://www.youtube.com/watch?v=mbbYFif9juY">Watch on YouTube</a>
+</p>
+
+<SlackExamples />
+
+## More than a Slack bot
+
+Build the Agent in Everruns. Give your team a familiar place to use it.
+
+<div className="slack-features">
+  <article className="slack-feature">
+    <h3>Conversations with context</h3>
+    <p>
+      Talk in channels, threads, and DMs. Choose a session per thread, channel,
+      or user.
+    </p>
+  </article>
+  <article className="slack-feature">
+    <h3>Slack’s dedicated agent pane</h3>
+    <p>
+      Enable the Agent surface for streaming replies, working status, and
+      suggested prompts.
+    </p>
+  </article>
+  <article className="slack-feature">
+    <h3>Tools that do the work</h3>
+    <p>
+      Equip Agents with capabilities, skills, and MCP tools for knowledge,
+      research, or operations.
+    </p>
+  </article>
+  <article className="slack-feature">
+    <h3>Actions inside Slack</h3>
+    <p>
+      React, update messages, share files in the thread, and look up users with
+      the Slack capability.
+    </p>
+  </article>
+  <article className="slack-feature">
+    <h3>Human approval in the thread</h3>
+    <p>
+      The requester can approve or decline a proposed action through Slack
+      approval cards.
+    </p>
+  </article>
+  <article className="slack-feature">
+    <h3>Visible task progress</h3>
+    <p>
+      A Tasks message updates as delegated work finishes. Open the session in
+      Everruns for the full record.
+    </p>
+  </article>
+</div>
+
+## Build your first Slack Agent
+
+Start with a job: answering team questions, researching a topic, or preparing an incident handoff.
+
+<div className="slack-steps">
+  <article>
+    <div className="slack-step-number">01 / DEFINE</div>
+    <h3>Create the Agent</h3>
+    <p>
+      Set its name, avatar, instructions, and model. Add capabilities or MCP
+      tools for its job.
+    </p>
+  </article>
+  <article>
+    <div className="slack-step-number">02 / CONNECT</div>
+    <h3>Add Slack</h3>
+    <p>
+      In Integrations, add a Slack channel. Choose a session per thread,
+      channel, or user.
+    </p>
+  </article>
+  <article>
+    <div className="slack-step-number">03 / PUBLISH</div>
+    <h3>Invite your team</h3>
+    <p>
+      Publish the channel, select a connected workspace, choose Add to Slack,
+      and approve the installation. Invite the bot and send a message.
+    </p>
+  </article>
+</div>
+
+<p className="slack-note">
+  An administrator connects the workspace once. Installation may need Slack
+  administrator approval. Self-hosted deployments need public HTTPS.{" "}
+  <a href="/capabilities/slack/#before-you-start">Check setup requirements →</a>
+</p>
+
+<div className="slack-actions">
+  <a className="slack-link" href="/how-to/publish-to-slack/">
+    Follow the setup guide <span aria-hidden="true">→</span>
+  </a>
+  <a className="slack-link secondary" href="/how-to/define-agents-as-files/">
+    Learn about Agent definitions
+  </a>
+</div>
+
+## Make it a Slack Agent
+
+Enable the Agent surface on your Slack channel to give it a dedicated pane alongside channel conversations. Replies stream in the pane; channel threads receive completed messages.
+
+<p className="slack-note">
+  Existing Slack apps need an updated manifest and reinstall to grant the Agent
+  surface permissions.
+</p>
+
+[Configure Slack’s agent pane →](/capabilities/slack/#agent-surface)
+
+## Guides and reference
+
+<div className="slack-paths">
+  <a className="slack-path" href="/how-to/publish-to-slack/">
+    <strong>Publish an Agent →</strong>
+    <span>Connect, install, and verify the first message.</span>
+  </a>
+  <a className="slack-path" href="/capabilities/slack/">
+    <strong>Slack reference →</strong>
+    <span>Scopes, session routing, actions, and troubleshooting.</span>
+  </a>
+</div>
+
+</div>
