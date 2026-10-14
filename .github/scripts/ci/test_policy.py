@@ -87,9 +87,13 @@ class Policy(unittest.TestCase):
         self.assertIn('integration-v2',cache['with']['shared-key'])
         self.assertIn('unit-v2',cache['with']['shared-key'])
         self.assertIs(cache['with']['save-if'],False)
-        focused_flags=self.jobs['focused-rust']['env']['CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS']
+        def cache_environment(job):
+            return {key:value for key,value in self.jobs[job].get('env',{}).items()
+                    if key.startswith(('CARGO','CC','CFLAGS','CXX','CMAKE','RUST'))}
         for job in ['unit-test','integration-test']:
-            self.assertEqual(self.jobs[job]['env']['CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS'],focused_flags)
+            self.assertEqual(cache_environment(job),cache_environment('focused-rust'))
+        execution=next(s for s in self.jobs['focused-rust']['steps'] if s.get('name')=='Test affected crates and persistence contracts')
+        self.assertEqual(execution['env']['RUST_TEST_THREADS'],'4')
 
     def test_api_pr_keeps_compatibility_without_worker_cli_builds(self):
         values=self.values(); values['needs.changes.outputs.sdk_compat']='true'

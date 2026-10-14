@@ -962,7 +962,6 @@ jobs:
       matrix: ${{ fromJson(needs.changes.outputs.matrix) }}
     env:
       CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
-      RUST_TEST_THREADS: '4'
       DEPLOYMENT_GRADE: dev
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
     steps:
@@ -999,6 +998,9 @@ jobs:
 
       - name: Test affected crates and persistence contracts
         env:
+          # rust-cache fingerprints RUST_* variables; execution-only settings
+          # must not split this consumer from its main cache producers.
+          RUST_TEST_THREADS: '4'
           TEST_SELECTION: ${{ toJson(matrix) }}
         run: python3 .github/scripts/ci/focused.py --run
 
