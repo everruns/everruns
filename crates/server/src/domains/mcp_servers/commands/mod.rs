@@ -479,6 +479,7 @@ pub struct CheckMcpServerConnection {
     name = "check_mcp_server_connection",
     category = "mcp_servers",
     description = "Check again whether an OAuth MCP server's sign-in service is reachable, and record the result on the server.",
+    summary = "Re-check an OAuth MCP server's sign-in service",
     method = "POST",
     path = "/v1/mcp-servers/{id}/check-connection",
     policy = MCP_SERVER_MANAGE,

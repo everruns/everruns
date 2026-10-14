@@ -39,7 +39,7 @@ use futures::stream::BoxStream;
 use serde_json::{Value, json};
 use tracing::{debug, warn};
 
-use super::attachments::{AttachmentPolicy, Intake, ReceivedAttachment};
+use super::attachments::{AttachmentIntake, AttachmentPolicy, AttachmentStore, ReceivedAttachment};
 use super::{
     ChannelDeliveryAdapter, ChannelDriver, ChannelError, ChannelRequest, ChannelResponse,
     ChannelStore, ControlAction, DeliveryEvent, DeliveryOptions, DeliveryStep, DeliveryTarget,
@@ -266,6 +266,19 @@ pub enum SendOutcome {
 /// the channel, so a host that lost its in-memory sessions (a restart) can
 /// reopen one with the channel's agent, and a host with tenants reads them
 /// from the channel's scope.
+/// Stores a channel's files through its session port.
+struct PortStore<'a> {
+    port: &'a dyn ChannelSessionPort,
+    channel: &'a ChannelConfig,
+}
+
+#[async_trait]
+impl AttachmentStore for PortStore<'_> {
+    async fn store(&self, attachment: ReceivedAttachment) -> Result<ContentPart, ChannelError> {
+        self.port.store_attachment(self.channel, attachment).await
+    }
+}
+
 #[async_trait]
 pub trait ChannelSessionPort: Send + Sync {
     /// Create a session for a channel's agent. Returns its id.
@@ -688,31 +701,45 @@ impl ChannelHost {
     /// (AG-UI media parts, A2A file parts), through the same intake messaging
     /// channels use: each stored as an attachment or replaced by a note. The
     /// caller adds them to the message it sends.
+    /// `policy` replaces the host's for this message when the surface needs a
+    /// stricter one (Public Chat's anonymous visitors).
     pub async fn attachment_parts<'a>(
         &self,
         channel: impl Into<ChannelRef<'a>>,
         attachments: &[InboundAttachment],
+        policy: Option<AttachmentPolicy>,
     ) -> Result<Vec<ContentPart>, ChannelError> {
         if attachments.is_empty() {
             return Ok(Vec::new());
         }
         let channel = self.channel(channel.into()).await?;
-        Ok(self
-            .intake(&channel.config)
-            .parts(&channel.config, attachments)
-            .await)
+        Ok(self.intake(&channel.config, attachments, policy).await)
     }
 
-    fn intake(&self, channel: &ChannelConfig) -> Intake<'_> {
-        Intake {
+    /// `attachments` through the intake, stored by the port for `channel`,
+    /// under `policy` or the host's.
+    async fn intake(
+        &self,
+        channel: &ChannelConfig,
+        attachments: &[InboundAttachment],
+        policy: Option<AttachmentPolicy>,
+    ) -> Vec<ContentPart> {
+        let store = PortStore {
             port: self.inner.port.as_ref(),
+            channel,
+        };
+        AttachmentIntake {
+            store: &store,
             egress: self
                 .inner
                 .egress
                 .clone()
                 .map(|egress| self.inner.port.attachment_egress(channel, egress)),
-            policy: self.inner.attachments,
+            policy: policy.unwrap_or(self.inner.attachments),
+            source: &channel.name,
         }
+        .parts(attachments)
+        .await
     }
 
     /// A new session of streaming channel `channel` that no conversation key
@@ -979,11 +1006,9 @@ impl ChannelHost {
         event: &InboundChannelEvent,
     ) -> InputMessage {
         let mut message = input_text(&channel.name, event);
-        message.content.extend(
-            self.intake(channel)
-                .parts(channel, &event.attachments)
-                .await,
-        );
+        message
+            .content
+            .extend(self.intake(channel, &event.attachments, None).await);
         message
     }
 

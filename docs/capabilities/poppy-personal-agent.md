@@ -20,6 +20,10 @@ a conversation with its agent, and hand off to a person there. With this
 capability an Everruns agent is that personal agent. Any company that publishes
 `/.well-known/poppy.json` on its domain works, with nothing to register.
 
+This page covers the personal side. To make an Everruns agent the company that
+personal agents talk to, and for how both ends are tested, see
+[Personal Agent Protocol (Poppy)](/features/poppy/).
+
 ## When to enable
 
 - A personal assistant such as Platform Chat, where people ask the agent to

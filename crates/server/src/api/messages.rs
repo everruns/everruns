@@ -410,6 +410,8 @@ pub struct ExportSessionQuery {
     pub cursor: Option<String>,
 }
 
+/// Export session messages as JSONL or ATIF
+///
 /// Export session messages as a JSONL file (default) or as an ATIF trajectory
 ///
 /// Default (`format=jsonl`): all materialized messages (user, agent) as

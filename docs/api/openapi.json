@@ -21,7 +21,8 @@
         "tags": [
           "agent-examples"
         ],
-        "summary": "GET /v1/agent-examples — list all available examples",
+        "summary": "List all available examples",
+        "description": "list all available examples",
         "operationId": "list_agent_examples",
         "responses": {
           "200": {
@@ -51,7 +52,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "GET /v1/agents - List all active agents",
+        "summary": "List all active agents",
         "operationId": "list_agents",
         "parameters": [
           {
@@ -136,7 +137,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "POST /v1/agents - Create a new agent",
+        "summary": "Create a new agent",
         "operationId": "create_agent",
         "requestBody": {
           "content": {
@@ -193,7 +194,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "GET /v1/agents/activity - Org-wide agent and channel activity",
+        "summary": "Org-wide agent and channel activity",
         "operationId": "get_agent_activity",
         "responses": {
           "200": {
@@ -240,7 +241,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "POST /v1/agents/analyze - Run advisory checks against an agent shape",
+        "summary": "Run advisory checks against an agent shape",
         "description": "Runs built-in rules plus on-demand LLM analysis\nand returns merged advisory findings. Requires the system utility LLM\nservice to be configured.",
         "operationId": "analyze_agent",
         "requestBody": {
@@ -308,7 +309,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "GET /v1/agents/check-name",
+        "summary": "Check agent name",
         "description": "Returns whether an agent name is available for use. Optionally excludes\na specific agent ID (for edit forms where the agent's own name is valid).",
         "operationId": "check_agent_name",
         "parameters": [
@@ -379,7 +380,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "GET /v1/agents/config",
+        "summary": "Agent config",
         "operationId": "agent_config",
         "responses": {
           "200": {
@@ -406,7 +407,8 @@
         "tags": [
           "agents"
         ],
-        "summary": "Generate a semantic diff against an existing agent without mutation.",
+        "summary": "Diff an agent package against an existing agent",
+        "description": "Generate a semantic diff against an existing agent without mutation.",
         "operationId": "diff_agent_package",
         "parameters": [
           {
@@ -470,7 +472,8 @@
         "tags": [
           "agents"
         ],
-        "summary": "Revise an agent draft from a conversation with the agent builder. Returns the draft only; nothing is created.",
+        "summary": "Revise an agent draft with the agent builder",
+        "description": "Revise an agent draft from a conversation with the agent builder. Returns the draft only; nothing is created.",
         "operationId": "draft_agent",
         "responses": {
           "200": {
@@ -497,7 +500,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "POST /v1/agents/import - Import agent from file or built-in example",
+        "summary": "Import agent from file or built-in example",
         "description": "Two modes:\n1. **From example** — `POST /v1/agents/import?from-example={name}` (body ignored)\n2. **From package** — text (Markdown/TOML/YAML/JSON), ZIP, or a PackageInput envelope.\n\nPackage mode accepts:\n- Markdown with YAML front matter (if starts with ---)\n- Pure YAML\n- Pure JSON\n- Plain text (treated as instructions; defaults to name agent)\n- TOML and ZIP folders, with complete assets and skill directories\n\nIf the file contains an `id` field and an agent with that ID already exists,\nthe agent is updated (upsert). Returns 201 on create, 200 on update.",
         "operationId": "import_agent",
         "parameters": [
@@ -614,7 +617,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "POST /v1/agents/preview - Preview the final agent shape with capabilities applied",
+        "summary": "Preview the final agent shape with capabilities applied",
         "description": "Returns the merged system prompt and all tools that would be available to the agent.\nThis is useful for previewing what the agent will look like before saving.",
         "operationId": "preview_agent",
         "requestBody": {
@@ -682,7 +685,8 @@
         "tags": [
           "agents"
         ],
-        "summary": "Validate an agent package and its destination dependencies without mutation.",
+        "summary": "Validate an agent package and its dependencies",
+        "description": "Validate an agent package and its destination dependencies without mutation.",
         "operationId": "validate_agent_package",
         "parameters": [
           {
@@ -746,7 +750,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "GET /v1/agents/{agent_id} - Get agent by ID or name",
+        "summary": "Get agent by ID or name",
         "description": "Accepts either an agent ID (e.g. `agent_01933b5a...`) or a\nname (e.g. `customer-support`). Names are resolved within the caller's org.",
         "operationId": "get_agent",
         "parameters": [
@@ -792,7 +796,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "PUT /v1/agents/{agent_id} - Create or update agent (upsert)",
+        "summary": "Create or update agent (upsert)",
         "description": "Accepts either an agent ID (e.g. `agent_01933b5a...`) or a\nname (e.g. `customer-support`). If the agent exists, update it; if not,\ncreate it. Returns 201 on create, 200 on update.",
         "operationId": "upsert_agent",
         "parameters": [
@@ -869,7 +873,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "DELETE /v1/agents/{agent_id} - Archive agent",
+        "summary": "Archive agent",
         "operationId": "delete_agent",
         "parameters": [
           {
@@ -907,7 +911,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "PATCH /v1/agents/{agent_id} - Update agent",
+        "summary": "Update agent",
         "operationId": "update_agent",
         "parameters": [
           {
@@ -985,7 +989,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "PUT /v1/agents/{agent_id}/avatar - Upload the agent's avatar",
+        "summary": "Upload the agent's avatar",
         "description": "Upload an avatar for an agent as multipart field `file` (PNG, JPEG, GIF or WebP, at least 64x64, at most 10 MB). The image is center-cropped to a square and pre-rendered as square and circular PNG presets. Replaces any previous avatar, whose URLs stop resolving. Also sets the icon of the agent's one-click Slack apps.",
         "operationId": "upload_agent_avatar",
         "parameters": [
@@ -1058,7 +1062,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "DELETE /v1/agents/{agent_id}/avatar - Remove the agent's avatar",
+        "summary": "Remove the agent's avatar",
         "operationId": "delete_agent_avatar",
         "parameters": [
           {
@@ -1109,7 +1113,8 @@
         "tags": [
           "agents"
         ],
-        "summary": "Return the agent's current curated preset ID, or null for a custom upload or no avatar. Requires permission to manage the agent.",
+        "summary": "Get the agent's current avatar preset",
+        "description": "Return the agent's current curated preset ID, or null for a custom upload or no avatar. Requires permission to manage the agent.",
         "operationId": "get_avatar_preset_selection",
         "parameters": [
           {
@@ -1161,7 +1166,8 @@
         "tags": [
           "agents"
         ],
-        "summary": "Replace an agent's avatar with a curated preset, storing fresh immutable image URLs and updating its Slack app icons.",
+        "summary": "Set an agent's avatar from a curated preset",
+        "description": "Replace an agent's avatar with a curated preset, storing fresh immutable image URLs and updating its Slack app icons.",
         "operationId": "select_avatar_preset",
         "parameters": [
           {
@@ -1234,7 +1240,8 @@
         "tags": [
           "agents"
         ],
-        "summary": "Set an agent's avatar from a curated preset (preset_id, see list_avatar_presets) or an image (image_base64: PNG, JPEG, GIF or WebP, at least 64x64, at most 1 MB). Replaces the previous avatar and updates the icon of the agent's one-click Slack apps.",
+        "summary": "Set an agent's avatar from a preset or an image",
+        "description": "Set an agent's avatar from a curated preset (preset_id, see list_avatar_presets) or an image (image_base64: PNG, JPEG, GIF or WebP, at least 64x64, at most 1 MB). Replaces the previous avatar and updates the icon of the agent's one-click Slack apps.",
         "operationId": "set_agent_avatar",
         "parameters": [
           {
@@ -2121,7 +2128,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "POST /v1/agents/{agent_id}/copy - Copy an agent",
+        "summary": "Copy an agent",
         "description": "Creates a new agent with the same configuration as the source agent.\nThe new agent's name will be \"{original name} (copy)\".",
         "operationId": "copy_agent",
         "parameters": [
@@ -2972,7 +2979,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "GET /v1/agents/{agent_id}/export - Export agent in Markdown format with YAML front matter",
+        "summary": "Export agent in Markdown format with YAML front matter",
         "operationId": "export_agent",
         "parameters": [
           {
@@ -3028,7 +3035,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "POST /v1/agents/{agent_id}/exposures/resume - Let live endpoints serve again",
+        "summary": "Let live endpoints serve again",
         "operationId": "resume_agent_exposures",
         "parameters": [
           {
@@ -3076,7 +3083,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "POST /v1/agents/{agent_id}/exposures/suspend - Take every endpoint offline",
+        "summary": "Take every endpoint offline",
         "operationId": "suspend_agent_exposures",
         "parameters": [
           {
@@ -3124,7 +3131,8 @@
         "tags": [
           "agents"
         ],
-        "summary": "Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks.",
+        "summary": "Get an agent's GitHub App status",
+        "description": "Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks.",
         "operationId": "get_agent_github",
         "parameters": [
           {
@@ -3163,7 +3171,8 @@
         "tags": [
           "agents"
         ],
-        "summary": "Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. When the App was never installed, forget it instead, so the next connect creates a new one (for example in a GitHub organization).",
+        "summary": "Disconnect an agent from GitHub",
+        "description": "Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. When the App was never installed, forget it instead, so the next connect creates a new one (for example in a GitHub organization).",
         "operationId": "disconnect_agent_github",
         "parameters": [
           {
@@ -3204,7 +3213,8 @@
         "tags": [
           "agents"
         ],
-        "summary": "Start connecting an agent to GitHub through its own GitHub App. Returns `install` with a URL to open in a browser when the App exists, or `create_app` when GitHub must first create it, which needs the web UI (Agent > Integrations > Connect GitHub).",
+        "summary": "Connect an agent to GitHub through its own App",
+        "description": "Start connecting an agent to GitHub through its own GitHub App. Returns `install` with a URL to open in a browser when the App exists, or `create_app` when GitHub must first create it, which needs the web UI (Agent > Integrations > Connect GitHub).",
         "operationId": "connect_agent_github",
         "parameters": [
           {
@@ -3250,12 +3260,70 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/github/everruns-app": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Make an agent act as the shared Everruns GitHub App",
+        "description": "Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first.",
+        "operationId": "use_agent_everruns_app",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UseEverrunsAppRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentGitHubStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent or linked installation not found"
+          },
+          "409": {
+            "description": "The agent has a GitHub App of its own"
+          },
+          "503": {
+            "description": "The shared Everruns App is not configured"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/agents/{agent_id}/health-checks": {
       "get": {
         "tags": [
           "agents"
         ],
-        "summary": "GET /v1/agents/{agent_id}/health-checks - List recent health check runs",
+        "summary": "List recent health check runs",
         "operationId": "list_health_checks",
         "parameters": [
           {
@@ -3304,7 +3372,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "POST /v1/agents/{agent_id}/health-checks - Trigger a behavioral health check",
+        "summary": "Trigger a behavioral health check",
         "operationId": "trigger_health_check",
         "parameters": [
           {
@@ -3362,7 +3430,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "GET /v1/agents/{agent_id}/health-checks/latest - Latest run + stale flag",
+        "summary": "Latest run + stale flag",
         "operationId": "get_latest_health_check",
         "parameters": [
           {
@@ -3410,7 +3478,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "GET /v1/agents/{agent_id}/health-checks/{run_id} - Get a health check run",
+        "summary": "Get a health check run",
         "operationId": "get_health_check",
         "parameters": [
           {
@@ -3931,7 +3999,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "GET /v1/agents/{agent_id}/stats - Get aggregate usage stats for an agent",
+        "summary": "Get aggregate usage stats for an agent",
         "operationId": "get_agent_stats",
         "parameters": [
           {
@@ -4048,7 +4116,7 @@
         "tags": [
           "agent-triggers"
         ],
-        "summary": "POST /v1/agents/{agent_id}/triggers",
+        "summary": "Create agent trigger",
         "operationId": "create_agent_trigger",
         "parameters": [
           {
@@ -4116,7 +4184,7 @@
         "tags": [
           "agent-triggers"
         ],
-        "summary": "GET /v1/agents/{agent_id}/triggers/{trigger_id}",
+        "summary": "Get agent trigger",
         "operationId": "get_agent_trigger",
         "parameters": [
           {
@@ -4171,7 +4239,7 @@
         "tags": [
           "agent-triggers"
         ],
-        "summary": "DELETE /v1/agents/{agent_id}/triggers/{trigger_id}",
+        "summary": "Delete agent trigger",
         "operationId": "delete_agent_trigger",
         "parameters": [
           {
@@ -4431,7 +4499,7 @@
         "tags": [
           "agent-triggers"
         ],
-        "summary": "POST /v1/agents/{agent_id}/triggers/{trigger_id}/trigger",
+        "summary": "Trigger agent trigger",
         "operationId": "trigger_agent_trigger",
         "parameters": [
           {
@@ -4488,7 +4556,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "Permanently delete an archived agent.",
+        "summary": "Permanently delete an archived agent",
         "operationId": "destroy_agent",
         "parameters": [
           {
@@ -4635,7 +4703,7 @@
         "tags": [
           "apps"
         ],
-        "summary": "POST /v1/apps/{app_id}/a2a/{channel_id}",
+        "summary": "Invoke a2a legacy",
         "operationId": "invoke_a2a_legacy",
         "parameters": [
           {
@@ -4713,7 +4781,8 @@
         "tags": [
           "apps"
         ],
-        "summary": "GET /v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json",
+        "summary": "Get an A2A agent card (legacy app route)",
+        "description": "GET /v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json",
         "operationId": "agent_card_legacy",
         "parameters": [
           {
@@ -4763,7 +4832,8 @@
         "tags": [
           "apps"
         ],
-        "summary": "`GET /v1/apps/{app_id}/fcp` — handshake. Always returns the same\ngeneric 404 body for unknown apps so the endpoint cannot be used to\nprobe which app ids are real.",
+        "summary": "`GET /v1/apps/{app_id}/fcp` — handshake",
+        "description": "`GET /v1/apps/{app_id}/fcp` — handshake. Always returns the same\ngeneric 404 body for unknown apps so the endpoint cannot be used to\nprobe which app ids are real.",
         "operationId": "handshake",
         "parameters": [
           {
@@ -4807,7 +4877,7 @@
         "tags": [
           "apps"
         ],
-        "summary": "`POST /v1/apps/{app_id}/fcp` — text-in, text-out.",
+        "summary": "`POST /v1/apps/{app_id}/fcp` — text-in, text-out",
         "operationId": "message_legacy",
         "parameters": [
           {
@@ -4982,7 +5052,8 @@
         "tags": [
           "agents"
         ],
-        "summary": "The public catalog contains presentation metadata only, never agent configuration.",
+        "summary": "List curated avatar presets",
+        "description": "The public catalog contains presentation metadata only, never agent configuration.",
         "operationId": "list_avatar_presets",
         "responses": {
           "200": {
@@ -5014,7 +5085,8 @@
         "tags": [
           "agents"
         ],
-        "summary": "Retrieve a public PNG preview of a curated preset using the agent avatar sizes and shapes.",
+        "summary": "Get a PNG preview of a curated avatar preset",
+        "description": "Retrieve a public PNG preview of a curated preset using the agent avatar sizes and shapes.",
         "operationId": "get_avatar_preset_variant",
         "parameters": [
           {
@@ -5058,7 +5130,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "GET /v1/avatars/{avatar_id}/{variant} - Avatar image",
+        "summary": "Avatar image",
         "description": "Public, immutable avatar image. `variant` is `square-{size}.png` or `circle-{size}.png` for a size in the avatar's `sizes`, or `source.png` for the uploaded square crop.",
         "operationId": "get_avatar_variant",
         "parameters": [
@@ -5108,7 +5180,8 @@
         "tags": [
           "budgets"
         ],
-        "summary": "List budgets. Filter by subject_type and subject_id.",
+        "summary": "List budgets",
+        "description": "List budgets. Filter by subject_type and subject_id.",
         "operationId": "list_budgets",
         "parameters": [
           {
@@ -5156,7 +5229,8 @@
         "tags": [
           "budgets"
         ],
-        "summary": "Create a budget for a subject (session, agent, user, org). Sets a spending cap in the given currency.",
+        "summary": "Create a budget for a subject (session, agent, user, org)",
+        "description": "Create a budget for a subject (session, agent, user, org). Sets a spending cap in the given currency.",
         "operationId": "create_budget",
         "requestBody": {
           "content": {
@@ -5193,7 +5267,7 @@
         "tags": [
           "budgets"
         ],
-        "summary": "Get a single budget by ID.",
+        "summary": "Get a single budget by ID",
         "operationId": "get_budget",
         "parameters": [
           {
@@ -5232,7 +5306,7 @@
         "tags": [
           "budgets"
         ],
-        "summary": "Delete a budget.",
+        "summary": "Delete a budget",
         "operationId": "delete_budget",
         "parameters": [
           {
@@ -5264,7 +5338,7 @@
         "tags": [
           "budgets"
         ],
-        "summary": "Update a budget limit, status, or metadata.",
+        "summary": "Update a budget limit, status, or metadata",
         "operationId": "update_budget",
         "parameters": [
           {
@@ -5315,7 +5389,7 @@
         "tags": [
           "budgets"
         ],
-        "summary": "Check budget status for a session-scoped budget.",
+        "summary": "Check budget status for a session-scoped budget",
         "operationId": "check_budget",
         "parameters": [
           {
@@ -5353,7 +5427,7 @@
         "tags": [
           "budgets"
         ],
-        "summary": "List ledger entries for a budget.",
+        "summary": "List ledger entries for a budget",
         "operationId": "list_budget_ledger",
         "parameters": [
           {
@@ -5414,7 +5488,8 @@
         "tags": [
           "budgets"
         ],
-        "summary": "Add credits to a budget. Reactivates exhausted or paused budgets if balance becomes positive.",
+        "summary": "Add credits to a budget",
+        "description": "Add credits to a budget. Reactivates exhausted or paused budgets if balance becomes positive.",
         "operationId": "top_up_budget",
         "parameters": [
           {
@@ -5465,7 +5540,7 @@
         "tags": [
           "capabilities"
         ],
-        "summary": "GET /v1/capabilities - List available capabilities with pagination",
+        "summary": "List available capabilities with pagination",
         "operationId": "list_capabilities",
         "parameters": [
           {
@@ -5552,7 +5627,7 @@
         "tags": [
           "capabilities"
         ],
-        "summary": "POST /v1/capabilities - Create a persisted declarative capability.",
+        "summary": "Create a persisted declarative capability",
         "operationId": "create_declarative_capability",
         "requestBody": {
           "content": {
@@ -5609,7 +5684,7 @@
         "tags": [
           "capabilities"
         ],
-        "summary": "GET /v1/capabilities/declarative - List persisted declarative resources.",
+        "summary": "List persisted declarative resources",
         "operationId": "list_declarative_capabilities",
         "parameters": [
           {
@@ -5656,7 +5731,7 @@
         "tags": [
           "capabilities"
         ],
-        "summary": "GET /v1/capabilities/declarative/config",
+        "summary": "Declarative capabilities config",
         "operationId": "declarative_capabilities_config",
         "responses": {
           "200": {
@@ -5683,7 +5758,7 @@
         "tags": [
           "capabilities"
         ],
-        "summary": "GET /v1/capabilities/declarative/{capability_id} - Get a declarative resource.",
+        "summary": "Get a declarative resource",
         "operationId": "get_declarative_capability",
         "parameters": [
           {
@@ -5729,7 +5804,7 @@
         "tags": [
           "capabilities"
         ],
-        "summary": "DELETE /v1/capabilities/declarative/{capability_id} - Archive a declarative resource.",
+        "summary": "Archive a declarative resource",
         "operationId": "delete_declarative_capability",
         "parameters": [
           {
@@ -5768,7 +5843,7 @@
         "tags": [
           "capabilities"
         ],
-        "summary": "PATCH /v1/capabilities/declarative/{capability_id} - Update a declarative resource.",
+        "summary": "Update a declarative resource",
         "operationId": "update_declarative_capability",
         "parameters": [
           {
@@ -5836,7 +5911,7 @@
         "tags": [
           "capabilities"
         ],
-        "summary": "POST /v1/capabilities/declarative/{capability_id}/delete - Permanently delete archived resource.",
+        "summary": "Permanently delete archived resource",
         "operationId": "destroy_declarative_capability",
         "parameters": [
           {
@@ -5877,7 +5952,7 @@
         "tags": [
           "capabilities"
         ],
-        "summary": "POST /v1/capabilities/guardrails/dry-run - Evaluate guardrail checks against sample text.",
+        "summary": "Evaluate guardrail checks against sample text",
         "operationId": "dry_run_guardrails",
         "requestBody": {
           "content": {
@@ -5924,7 +5999,7 @@
         "tags": [
           "capabilities"
         ],
-        "summary": "GET /v1/capabilities/guardrails/examples - List adoptable guardrail presets.",
+        "summary": "List adoptable guardrail presets",
         "operationId": "list_guardrail_examples",
         "responses": {
           "200": {
@@ -5951,7 +6026,7 @@
         "tags": [
           "capabilities"
         ],
-        "summary": "GET /v1/capabilities/{capability_id} - Get a specific capability",
+        "summary": "Get a specific capability",
         "operationId": "get_capability",
         "parameters": [
           {
@@ -6851,7 +6926,7 @@
           }
         ],
         "requestBody": {
-          "description": "`{\"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": …}]}}`",
+          "description": "`{\"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": …}]}, \"files\": [MessageFile]}`. Content holds text and image parts; `files` (optional) carries files as base64 `data` or a public https `url`, each kept in the session's `/attachments`.",
           "content": {
             "application/json": {
               "schema": {}
@@ -7352,7 +7427,7 @@
         "tags": [
           "commands"
         ],
-        "summary": "GET /v1/commands - List the command contract",
+        "summary": "List the command contract",
         "operationId": "list_commands",
         "responses": {
           "200": {
@@ -7389,7 +7464,7 @@
         "tags": [
           "commands"
         ],
-        "summary": "POST /v1/commands/{name} - Run one command",
+        "summary": "Run one command",
         "operationId": "execute_command",
         "parameters": [
           {
@@ -7507,7 +7582,8 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "List providers available to this runtime account and endpoint.",
+        "summary": "List providers available to this runtime",
+        "description": "List providers available to this runtime account and endpoint.",
         "operationId": "list_runtime_connectors",
         "responses": {
           "200": {
@@ -7537,7 +7613,7 @@
         "tags": [
           "history"
         ],
-        "summary": "GET /v1/context/{entity_ref} - Read an entity's manager context",
+        "summary": "Read an entity's manager context",
         "operationId": "get_manager_context",
         "parameters": [
           {
@@ -7622,7 +7698,7 @@
         "tags": [
           "history"
         ],
-        "summary": "PUT /v1/context/{entity_ref} - Replace an entity's manager context",
+        "summary": "Replace an entity's manager context",
         "operationId": "set_manager_context",
         "parameters": [
           {
@@ -7727,7 +7803,7 @@
         "tags": [
           "history"
         ],
-        "summary": "DELETE /v1/context/{entity_ref} - Empty an entity's manager context",
+        "summary": "Empty an entity's manager context",
         "operationId": "clear_manager_context",
         "parameters": [
           {
@@ -7814,7 +7890,7 @@
         "tags": [
           "history"
         ],
-        "summary": "POST /v1/context/{entity_ref}/append - Add a paragraph to an entity's manager context",
+        "summary": "Add a paragraph to an entity's manager context",
         "operationId": "append_manager_context",
         "parameters": [
           {
@@ -7911,7 +7987,7 @@
         "tags": [
           "durable"
         ],
-        "summary": "GET /v1/durable/circuit-breakers - List circuit breakers",
+        "summary": "List circuit breakers",
         "operationId": "list_circuit_breakers",
         "responses": {
           "200": {
@@ -7948,7 +8024,7 @@
         "tags": [
           "durable"
         ],
-        "summary": "GET /v1/durable/circuit-breakers/:key - Get a single circuit breaker",
+        "summary": "Get a single circuit breaker",
         "operationId": "get_circuit_breaker",
         "parameters": [
           {
@@ -8004,7 +8080,7 @@
         "tags": [
           "durable"
         ],
-        "summary": "DELETE /v1/durable/circuit-breakers/:key - Delete/reset a circuit breaker",
+        "summary": "Delete/reset a circuit breaker",
         "operationId": "delete_circuit_breaker",
         "parameters": [
           {
@@ -8055,7 +8131,7 @@
         "tags": [
           "durable"
         ],
-        "summary": "POST /v1/durable/circuit-breakers/:key/close - Force close a circuit breaker",
+        "summary": "Force close a circuit breaker",
         "operationId": "force_close_circuit_breaker",
         "parameters": [
           {
@@ -8106,7 +8182,7 @@
         "tags": [
           "durable"
         ],
-        "summary": "POST /v1/durable/circuit-breakers/:key/open - Force open a circuit breaker",
+        "summary": "Force open a circuit breaker",
         "operationId": "force_open_circuit_breaker",
         "parameters": [
           {
@@ -8147,7 +8223,7 @@
         "tags": [
           "durable"
         ],
-        "summary": "GET /v1/durable/config - Durable policy results for UI gating.",
+        "summary": "Durable policy results for UI gating",
         "operationId": "durable_config",
         "responses": {
           "200": {
@@ -8174,7 +8250,7 @@
         "tags": [
           "durable"
         ],
-        "summary": "GET /v1/durable/dlq - List dead letter queue entries",
+        "summary": "List dead letter queue entries",
         "operationId": "list_dlq",
         "parameters": [
           {
@@ -8254,7 +8330,7 @@
         "tags": [
           "durable"
         ],
-        "summary": "POST /v1/durable/dlq/:dlq_id/retry - Retry a DLQ entry",
+        "summary": "Retry a DLQ entry",
         "operationId": "retry_dlq",
         "parameters": [
           {
@@ -8314,7 +8390,7 @@
         "tags": [
           "durable-schedules"
         ],
-        "summary": "GET /v1/durable/executions/:execution_id - Get execution details",
+        "summary": "Get execution details",
         "operationId": "get_execution",
         "parameters": [
           {
@@ -8376,7 +8452,7 @@
         "tags": [
           "durable"
         ],
-        "summary": "GET /v1/durable/health - Get system health",
+        "summary": "Get system health",
         "operationId": "get_health",
         "responses": {
           "200": {
@@ -8413,7 +8489,7 @@
         "tags": [
           "durable"
         ],
-        "summary": "GET /v1/durable/metrics/timeseries - Get metrics time series",
+        "summary": "Get metrics time series",
         "operationId": "get_metrics_timeseries",
         "responses": {
           "200": {
@@ -8440,7 +8516,7 @@
         "tags": [
           "durable-schedules"
         ],
-        "summary": "GET /v1/durable/schedules - List schedules",
+        "summary": "List schedules",
         "operationId": "list_schedules",
         "parameters": [
           {
@@ -8520,7 +8596,7 @@
         "tags": [
           "durable-schedules"
         ],
-        "summary": "POST /v1/durable/schedules - Create a new schedule",
+        "summary": "Create a new schedule",
         "operationId": "create_schedule",
         "requestBody": {
           "content": {
@@ -8590,7 +8666,7 @@
         "tags": [
           "durable-schedules"
         ],
-        "summary": "GET /v1/durable/schedules/:schedule_id - Get schedule details",
+        "summary": "Get schedule details",
         "operationId": "get_schedule",
         "parameters": [
           {
@@ -8650,7 +8726,7 @@
         "tags": [
           "durable-schedules"
         ],
-        "summary": "DELETE /v1/durable/schedules/:schedule_id - Delete schedule",
+        "summary": "Delete schedule",
         "operationId": "delete_schedule",
         "parameters": [
           {
@@ -8703,7 +8779,7 @@
         "tags": [
           "durable-schedules"
         ],
-        "summary": "PATCH /v1/durable/schedules/:schedule_id - Update schedule",
+        "summary": "Update schedule",
         "operationId": "update_schedule",
         "parameters": [
           {
@@ -8785,7 +8861,7 @@
         "tags": [
           "durable-schedules"
         ],
-        "summary": "GET /v1/durable/schedules/:schedule_id/executions - List schedule executions",
+        "summary": "List schedule executions",
         "operationId": "list_schedule_executions",
         "parameters": [
           {
@@ -8878,7 +8954,7 @@
         "tags": [
           "durable-schedules"
         ],
-        "summary": "POST /v1/durable/schedules/:schedule_id/pause - Pause schedule",
+        "summary": "Pause schedule",
         "operationId": "pause_schedule",
         "parameters": [
           {
@@ -8940,7 +9016,7 @@
         "tags": [
           "durable-schedules"
         ],
-        "summary": "POST /v1/durable/schedules/:schedule_id/resume - Resume schedule",
+        "summary": "Resume schedule",
         "operationId": "resume_schedule",
         "parameters": [
           {
@@ -9002,7 +9078,7 @@
         "tags": [
           "durable-schedules"
         ],
-        "summary": "GET /v1/durable/schedules/:schedule_id/stats - Get schedule statistics",
+        "summary": "Get schedule statistics",
         "operationId": "get_schedule_stats",
         "parameters": [
           {
@@ -9064,7 +9140,7 @@
         "tags": [
           "durable-schedules"
         ],
-        "summary": "POST /v1/durable/schedules/:schedule_id/trigger - Manually trigger schedule",
+        "summary": "Manually trigger schedule",
         "operationId": "trigger_schedule",
         "parameters": [
           {
@@ -9126,7 +9202,7 @@
         "tags": [
           "durable"
         ],
-        "summary": "GET /v1/durable/sse - Stream global durable state (SSE)",
+        "summary": "Stream global durable state (SSE)",
         "description": "Establishes a Server-Sent Events (SSE) connection for real-time durable system monitoring.\n\n## Connection Lifecycle Events\n\n- **connected**: Sent immediately when the stream is established.\n- **snapshot**: Sent when system state changes (health, workers, workflows, tasks, DLQ, circuit breakers).\n- **disconnecting**: Sent before the server closes the connection for graceful cycling.\n  Data: `{\"reason\":\"connection_cycle\",\"retry_ms\":1000}`\n\n## Connection Cycling\n\nConnections are automatically cycled every 10 minutes. Before closing, the server sends\na `disconnecting` event so clients can reconnect seamlessly.\n\n## Retry Hints\n\nEach SSE event includes a `retry:` field (in milliseconds) that hints reconnection timing:\n- During active updates: 1000ms\n- During idle periods: increases with backoff up to 20000ms\n- After `disconnecting` event: 1000ms",
         "operationId": "stream_durable_sse",
         "responses": {
@@ -9153,7 +9229,7 @@
         "tags": [
           "durable"
         ],
-        "summary": "GET /v1/durable/tasks - List tasks",
+        "summary": "List tasks",
         "operationId": "list_durable_tasks",
         "parameters": [
           {
@@ -9240,7 +9316,7 @@
         "tags": [
           "durable"
         ],
-        "summary": "POST /v1/durable/tasks - Enqueue a standalone task (generic queue)",
+        "summary": "Enqueue a standalone task (generic queue)",
         "operationId": "enqueue_task",
         "requestBody": {
           "content": {
@@ -9287,7 +9363,7 @@
         "tags": [
           "durable"
         ],
-        "summary": "GET /v1/durable/workers - List workers",
+        "summary": "List workers",
         "operationId": "list_workers",
         "parameters": [
           {
@@ -9344,7 +9420,7 @@
         "tags": [
           "durable"
         ],
-        "summary": "POST /v1/durable/workers/:worker_id/drain - Drain a worker",
+        "summary": "Drain a worker",
         "operationId": "drain_worker",
         "parameters": [
           {
@@ -9385,7 +9461,7 @@
         "tags": [
           "durable"
         ],
-        "summary": "POST /v1/durable/workers/:worker_id/resume - Resume a draining worker",
+        "summary": "Resume a draining worker",
         "operationId": "resume_worker",
         "parameters": [
           {
@@ -9426,7 +9502,7 @@
         "tags": [
           "durable"
         ],
-        "summary": "GET /v1/durable/workflows - List workflows",
+        "summary": "List workflows",
         "operationId": "list_workflows",
         "parameters": [
           {
@@ -9505,7 +9581,7 @@
         "tags": [
           "durable"
         ],
-        "summary": "GET /v1/durable/workflows/:workflow_id - Get workflow details",
+        "summary": "Get workflow details",
         "operationId": "get_workflow",
         "parameters": [
           {
@@ -9564,7 +9640,7 @@
         "tags": [
           "durable"
         ],
-        "summary": "POST /v1/durable/workflows/:workflow_id/cancel - Cancel a workflow",
+        "summary": "Cancel a workflow",
         "operationId": "cancel_workflow",
         "parameters": [
           {
@@ -9616,7 +9692,7 @@
         "tags": [
           "durable"
         ],
-        "summary": "GET /v1/durable/workflows/:workflow_id/events - Get workflow events",
+        "summary": "Get workflow events",
         "operationId": "get_workflow_events",
         "parameters": [
           {
@@ -9675,7 +9751,7 @@
         "tags": [
           "durable"
         ],
-        "summary": "GET /v1/durable/workflows/:workflow_id/sse - Stream workflow state (SSE)",
+        "summary": "Stream workflow state (SSE)",
         "description": "Establishes a Server-Sent Events (SSE) connection for real-time workflow monitoring.\n\n## Connection Lifecycle Events\n\n- **connected**: Sent immediately when the stream is established.\n- **snapshot**: Sent when workflow state or events change.\n- **disconnecting**: Sent before the server closes the connection for graceful cycling.\n  Data: `{\"reason\":\"connection_cycle\",\"retry_ms\":1000}`\n\n## Connection Cycling\n\nConnections are automatically cycled every 10 minutes. Before closing, the server sends\na `disconnecting` event so clients can reconnect seamlessly.\n\n## Retry Hints\n\nEach SSE event includes a `retry:` field (in milliseconds) that hints reconnection timing.",
         "operationId": "stream_workflow_sse",
         "parameters": [
@@ -10246,7 +10322,7 @@
           }
         ],
         "requestBody": {
-          "description": "`{\"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": …}]}}`",
+          "description": "`{\"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": …}]}, \"files\": [MessageFile]}`. Content holds text and image parts; `files` (optional) carries files as base64 `data` or a public https `url`, each kept in the session's `/attachments`.",
           "content": {
             "application/json": {
               "schema": {}
@@ -10826,7 +10902,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "List evals.",
+        "summary": "List evals",
         "operationId": "list_evals",
         "parameters": [
           {
@@ -10871,7 +10947,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "Create a new eval.",
+        "summary": "Create a new eval",
         "operationId": "create_eval",
         "requestBody": {
           "content": {
@@ -10908,7 +10984,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "Import externally-executed eval results.",
+        "summary": "Import externally-executed eval results",
         "operationId": "import_eval_run",
         "requestBody": {
           "content": {
@@ -10945,7 +11021,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "Report whether the caller can import eval results.",
+        "summary": "Report whether the caller can import eval results",
         "operationId": "eval_import_preflight",
         "responses": {
           "200": {
@@ -10972,7 +11048,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "Get a single eval.",
+        "summary": "Get a single eval",
         "operationId": "get_eval",
         "parameters": [
           {
@@ -11011,7 +11087,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "Delete an eval.",
+        "summary": "Delete an eval",
         "operationId": "delete_eval",
         "parameters": [
           {
@@ -11043,7 +11119,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "Update an eval.",
+        "summary": "Update an eval",
         "operationId": "update_eval",
         "parameters": [
           {
@@ -11094,7 +11170,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "Import ATIF trajectories as eval cases.",
+        "summary": "Import ATIF trajectories as eval cases",
         "operationId": "import_atif",
         "parameters": [
           {
@@ -11163,7 +11239,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "List eval cases.",
+        "summary": "List eval cases",
         "operationId": "list_eval_cases",
         "parameters": [
           {
@@ -11199,7 +11275,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "Create an eval case.",
+        "summary": "Create an eval case",
         "operationId": "create_eval_case",
         "parameters": [
           {
@@ -11247,7 +11323,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "Get an eval case.",
+        "summary": "Get an eval case",
         "operationId": "get_eval_case",
         "parameters": [
           {
@@ -11295,7 +11371,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "Delete an eval case.",
+        "summary": "Delete an eval case",
         "operationId": "delete_eval_case",
         "parameters": [
           {
@@ -11336,7 +11412,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "Update an eval case.",
+        "summary": "Update an eval case",
         "operationId": "update_eval_case",
         "parameters": [
           {
@@ -11396,7 +11472,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "List eval runs.",
+        "summary": "List eval runs",
         "operationId": "list_eval_runs",
         "parameters": [
           {
@@ -11432,7 +11508,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "Create an eval run.",
+        "summary": "Create an eval run",
         "operationId": "create_eval_run",
         "parameters": [
           {
@@ -11480,7 +11556,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "Get an eval run.",
+        "summary": "Get an eval run",
         "operationId": "get_eval_run",
         "parameters": [
           {
@@ -11530,7 +11606,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "Export eval run artifacts as NDJSON.",
+        "summary": "Export eval run artifacts as NDJSON",
         "operationId": "export_run_artifacts",
         "parameters": [
           {
@@ -11587,7 +11663,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "Cancel an eval run.",
+        "summary": "Cancel an eval run",
         "operationId": "cancel_eval_run",
         "parameters": [
           {
@@ -11637,7 +11713,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "Start an async dataset export for an eval run.",
+        "summary": "Start an async dataset export for an eval run",
         "description": "The NDJSON is produced by a background job; fetch it once ready via\n`GET .../dataset/{dataset_id}`.",
         "operationId": "export_run_dataset",
         "parameters": [
@@ -11705,7 +11781,8 @@
         "tags": [
           "evals"
         ],
-        "summary": "Fetch an eval-run dataset export handle (status + NDJSON body).",
+        "summary": "Get an eval run's dataset export",
+        "description": "Fetch an eval-run dataset export handle (status + NDJSON body).",
         "operationId": "get_eval_run_dataset",
         "parameters": [
           {
@@ -11764,7 +11841,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "Update scores for one eval result.",
+        "summary": "Update scores for one eval result",
         "operationId": "update_eval_result_scores",
         "parameters": [
           {
@@ -11833,7 +11910,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "Bulk update scores for all results in an eval run.",
+        "summary": "Bulk update scores for all results in an eval run",
         "operationId": "bulk_update_eval_run_scores",
         "parameters": [
           {
@@ -11890,7 +11967,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "Whether an eval run has an active share link.",
+        "summary": "Whether an eval run has an active share link",
         "operationId": "get_eval_run_share",
         "parameters": [
           {
@@ -11935,7 +12012,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "Mint a read-only share link for an eval run.",
+        "summary": "Mint a read-only share link for an eval run",
         "operationId": "create_eval_run_share",
         "parameters": [
           {
@@ -11980,7 +12057,7 @@
         "tags": [
           "evals"
         ],
-        "summary": "Revoke all share links for an eval run.",
+        "summary": "Revoke all share links for an eval run",
         "operationId": "revoke_eval_run_share",
         "parameters": [
           {
@@ -12020,7 +12097,7 @@
         "tags": [
           "Files"
         ],
-        "summary": "List uploaded files, newest first.",
+        "summary": "List uploaded files, newest first",
         "operationId": "list_files",
         "parameters": [
           {
@@ -12063,7 +12140,7 @@
         "tags": [
           "Files"
         ],
-        "summary": "Upload a PDF or zip file as a message attachment.",
+        "summary": "Upload a PDF or zip file as a message attachment",
         "operationId": "upload_file",
         "parameters": [
           {
@@ -12120,7 +12197,7 @@
         "tags": [
           "Files"
         ],
-        "summary": "Download a stored file's bytes.",
+        "summary": "Download a stored file's bytes",
         "operationId": "get_file",
         "parameters": [
           {
@@ -12148,7 +12225,7 @@
         "tags": [
           "Files"
         ],
-        "summary": "Delete a stored file.",
+        "summary": "Delete a stored file",
         "operationId": "delete_file",
         "parameters": [
           {
@@ -12178,7 +12255,8 @@
         "tags": [
           "harness-examples"
         ],
-        "summary": "GET /v1/harness-examples — list all available harness examples.",
+        "summary": "List all available harness examples",
+        "description": "list all available harness examples.",
         "operationId": "list_examples",
         "responses": {
           "200": {
@@ -12208,7 +12286,7 @@
         "tags": [
           "harnesses"
         ],
-        "summary": "GET /v1/harnesses",
+        "summary": "List harnesses",
         "operationId": "list_harnesses",
         "parameters": [
           {
@@ -12265,7 +12343,7 @@
         "tags": [
           "harnesses"
         ],
-        "summary": "POST /v1/harnesses",
+        "summary": "Create harness",
         "operationId": "create_harness",
         "requestBody": {
           "content": {
@@ -12332,7 +12410,7 @@
         "tags": [
           "harnesses"
         ],
-        "summary": "GET /v1/harnesses/check-name",
+        "summary": "Check harness name",
         "description": "Returns whether a harness name is available for use. Optionally excludes\na specific harness ID (for edit forms where the harness's own name is valid).",
         "operationId": "check_harness_name",
         "parameters": [
@@ -12403,7 +12481,7 @@
         "tags": [
           "harnesses"
         ],
-        "summary": "GET /v1/harnesses/config",
+        "summary": "Harness config",
         "description": "Returns which harness policies the caller satisfies.\nUI uses this to show/hide controls (e.g. delete button).",
         "operationId": "harness_config",
         "responses": {
@@ -12431,7 +12509,7 @@
         "tags": [
           "harnesses"
         ],
-        "summary": "POST /v1/harnesses/import - Adopt a harness example as a regular org-owned harness.",
+        "summary": "Adopt a harness example as a regular org-owned harness",
         "description": "Creates a normal harness (`is_built_in = false`) from a code-defined\nexample. The new harness inherits from the org's `generic` harness by\nname — no UUIDs are hardcoded. Capabilities and other config flow through\nthe same validation paths as `POST /v1/harnesses`.\n\nReturns 201 on creation. If the example name collides with an existing\nharness in the org, a random alphanumeric suffix is appended (parity with\nagent example import).",
         "operationId": "import_harness",
         "parameters": [
@@ -12500,7 +12578,7 @@
         "tags": [
           "harnesses"
         ],
-        "summary": "POST /v1/harnesses/preview",
+        "summary": "Preview harness",
         "operationId": "preview_harness",
         "requestBody": {
           "content": {
@@ -12547,7 +12625,7 @@
         "tags": [
           "harnesses"
         ],
-        "summary": "GET /v1/harnesses/{harness_id}",
+        "summary": "Get harness",
         "description": "Accepts either a harness ID (e.g. `harness_01933b5a...`) or a\nname (e.g. `generic`). The virtual name `default` resolves to the org's\nconfigured default harness. Names are resolved within the caller's org.",
         "operationId": "get_harness",
         "parameters": [
@@ -12593,7 +12671,7 @@
         "tags": [
           "harnesses"
         ],
-        "summary": "DELETE /v1/harnesses/{harness_id}",
+        "summary": "Delete harness",
         "operationId": "delete_harness",
         "parameters": [
           {
@@ -12634,7 +12712,7 @@
         "tags": [
           "harnesses"
         ],
-        "summary": "PATCH /v1/harnesses/{harness_id}",
+        "summary": "Update harness",
         "operationId": "update_harness",
         "parameters": [
           {
@@ -12722,7 +12800,7 @@
         "tags": [
           "harnesses"
         ],
-        "summary": "POST /v1/harnesses/{harness_id}/copy - Copy a harness",
+        "summary": "Copy a harness",
         "description": "Creates a new harness with the same configuration as the source harness.\nThe new harness's name will be \"{original name} (copy)\".",
         "operationId": "copy_harness",
         "parameters": [
@@ -12801,7 +12879,7 @@
         "tags": [
           "harnesses"
         ],
-        "summary": "GET /v1/harnesses/{harness_id}/stats - Get aggregate usage stats for a harness",
+        "summary": "Get aggregate usage stats for a harness",
         "operationId": "get_harness_stats",
         "parameters": [
           {
@@ -12869,7 +12947,7 @@
         "tags": [
           "harnesses"
         ],
-        "summary": "Permanently delete an archived harness.",
+        "summary": "Permanently delete an archived harness",
         "operationId": "destroy_harness",
         "parameters": [
           {
@@ -12903,7 +12981,8 @@
         "tags": [
           "health-issues"
         ],
-        "summary": "List pending operational health issues visible to the caller in the current organization.",
+        "summary": "List pending health issues in the organization",
+        "description": "List pending operational health issues visible to the caller in the current organization.",
         "operationId": "list_health_issues",
         "parameters": [
           {
@@ -12978,7 +13057,8 @@
         "tags": [
           "health-issues"
         ],
-        "summary": "Get current issue evidence and recovery guidance in the current organization.",
+        "summary": "Get a health issue with evidence and recovery steps",
+        "description": "Get current issue evidence and recovery guidance in the current organization.",
         "operationId": "get_health_issue",
         "parameters": [
           {
@@ -13024,7 +13104,8 @@
         "tags": [
           "health-issues"
         ],
-        "summary": "Verify current installation permissions without changing provider data; requires agent management access and enforces a check cooldown.",
+        "summary": "Re-check a health issue",
+        "description": "Verify current installation permissions without changing provider data; requires agent management access and enforces a check cooldown.",
         "operationId": "check_health_issue",
         "parameters": [
           {
@@ -13070,7 +13151,8 @@
         "tags": [
           "health-issues"
         ],
-        "summary": "Snooze the authenticated user's reminders for one day while keeping the shared issue pending.",
+        "summary": "Snooze reminders for a health issue for one day",
+        "description": "Snooze the authenticated user's reminders for one day while keeping the shared issue pending.",
         "operationId": "snooze_health_issue",
         "parameters": [
           {
@@ -13107,7 +13189,7 @@
         "tags": [
           "history"
         ],
-        "summary": "GET /v1/history - Changes across the organization",
+        "summary": "Changes across the organization",
         "operationId": "list_org_history",
         "parameters": [
           {
@@ -13226,7 +13308,7 @@
         "tags": [
           "history"
         ],
-        "summary": "GET /v1/history/{entity_ref} - Changes to one entity",
+        "summary": "Changes to one entity",
         "operationId": "list_entity_history",
         "parameters": [
           {
@@ -13325,7 +13407,7 @@
         "tags": [
           "history"
         ],
-        "summary": "GET /v1/history/{entity_ref}/diff - Two revisions compared field by field",
+        "summary": "Two revisions compared field by field",
         "operationId": "diff_entity_revisions",
         "parameters": [
           {
@@ -13405,7 +13487,7 @@
         "tags": [
           "history"
         ],
-        "summary": "POST /v1/history/{entity_ref}/restore - Bring a revision back as a new change",
+        "summary": "Bring a revision back as a new change",
         "operationId": "restore_entity_revision",
         "parameters": [
           {
@@ -13473,7 +13555,7 @@
         "tags": [
           "history"
         ],
-        "summary": "GET /v1/history/{entity_ref}/revisions/{revision} - The entity at one revision",
+        "summary": "The entity at one revision",
         "operationId": "show_entity_revision",
         "parameters": [
           {
@@ -13540,7 +13622,7 @@
         "tags": [
           "images"
         ],
-        "summary": "GET /v1/images - List images",
+        "summary": "List images",
         "operationId": "list_images",
         "parameters": [
           {
@@ -13593,7 +13675,7 @@
         "tags": [
           "images"
         ],
-        "summary": "POST /v1/images - Upload an image",
+        "summary": "Upload an image",
         "operationId": "upload_image",
         "parameters": [
           {
@@ -13648,7 +13730,7 @@
         "tags": [
           "images"
         ],
-        "summary": "GET /v1/images/{image_id} - Get image (returns binary data)",
+        "summary": "Get image (returns binary data)",
         "operationId": "get_image",
         "parameters": [
           {
@@ -13689,7 +13771,7 @@
         "tags": [
           "images"
         ],
-        "summary": "DELETE /v1/images/{image_id} - Delete an image",
+        "summary": "Delete an image",
         "operationId": "delete_image",
         "parameters": [
           {
@@ -13729,7 +13811,7 @@
         "tags": [
           "images"
         ],
-        "summary": "GET /v1/images/{image_id}/thumbnail - Get image thumbnail",
+        "summary": "Get image thumbnail",
         "operationId": "get_thumbnail",
         "parameters": [
           {
@@ -14869,7 +14951,7 @@
         "tags": [
           "mcp-servers"
         ],
-        "summary": "GET /v1/mcp-servers - List all MCP servers",
+        "summary": "List all MCP servers",
         "operationId": "list_mcp_servers",
         "parameters": [
           {
@@ -14923,7 +15005,7 @@
         "tags": [
           "mcp-servers"
         ],
-        "summary": "POST /v1/mcp-servers - Create a new MCP server",
+        "summary": "Create a new MCP server",
         "operationId": "create_mcp_server",
         "requestBody": {
           "content": {
@@ -15066,7 +15148,7 @@
         "tags": [
           "mcp-servers"
         ],
-        "summary": "GET /v1/mcp-servers/config",
+        "summary": "Mcp server config",
         "description": "Returns which MCP server policies the caller satisfies.",
         "operationId": "mcp_server_config",
         "responses": {
@@ -15094,7 +15176,8 @@
         "tags": [
           "mcp_servers"
         ],
-        "summary": "Check again whether an OAuth MCP server's sign-in service is reachable, and record the result on the server.",
+        "summary": "Re-check an OAuth MCP server's sign-in service",
+        "description": "Check again whether an OAuth MCP server's sign-in service is reachable, and record the result on the server.",
         "operationId": "check_mcp_server_connection",
         "parameters": [
           {
@@ -15135,7 +15218,7 @@
         "tags": [
           "mcp_servers"
         ],
-        "summary": "Permanently delete an archived MCP server.",
+        "summary": "Permanently delete an archived MCP server",
         "operationId": "destroy_mcp_server",
         "parameters": [
           {
@@ -15169,7 +15252,8 @@
         "tags": [
           "mcp_servers"
         ],
-        "summary": "List the tools an MCP server offers, with each tool's annotations and saved risk label.",
+        "summary": "List an MCP server's tools with their risk labels",
+        "description": "List the tools an MCP server offers, with each tool's annotations and saved risk label.",
         "operationId": "list_mcp_server_tools",
         "parameters": [
           {
@@ -15213,7 +15297,8 @@
         "tags": [
           "mcp_servers"
         ],
-        "summary": "Ask the organization's decision model (or the deployment's decision service when the organization does not select its own) to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.",
+        "summary": "Suggest risk labels for an MCP server's unlabeled tools",
+        "description": "Ask the organization's decision model (or the deployment's decision service when the organization does not select its own) to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.",
         "operationId": "suggest_mcp_tool_labels",
         "parameters": [
           {
@@ -15260,7 +15345,8 @@
         "tags": [
           "mcp_servers"
         ],
-        "summary": "Set or clear a person's risk label for one MCP server tool. read_only never asks for approval in normal mode, changes always asks, null clears.",
+        "summary": "Set or clear a person's risk label for one MCP server tool",
+        "description": "Set or clear a person's risk label for one MCP server tool. read_only never asks for approval in normal mode, changes always asks, null clears.",
         "operationId": "set_mcp_tool_label",
         "parameters": [
           {
@@ -15310,7 +15396,7 @@
         "tags": [
           "mcp-servers"
         ],
-        "summary": "GET /v1/mcp-servers/{server_id} - Get MCP server by ID",
+        "summary": "Get MCP server by ID",
         "operationId": "get_mcp_server",
         "parameters": [
           {
@@ -15355,7 +15441,7 @@
         "tags": [
           "mcp-servers"
         ],
-        "summary": "DELETE /v1/mcp-servers/{server_id} - Delete MCP server",
+        "summary": "Delete MCP server",
         "operationId": "delete_mcp_server",
         "parameters": [
           {
@@ -15393,7 +15479,7 @@
         "tags": [
           "mcp-servers"
         ],
-        "summary": "PATCH /v1/mcp-servers/{server_id} - Update MCP server",
+        "summary": "Update MCP server",
         "operationId": "update_mcp_server",
         "parameters": [
           {
@@ -16682,7 +16768,7 @@
         "tags": [
           "models"
         ],
-        "summary": "GET /v1/models/config",
+        "summary": "Model config",
         "operationId": "model_config",
         "responses": {
           "200": {
@@ -16787,7 +16873,8 @@
         "tags": [
           "models"
         ],
-        "summary": "Resolve the default for empty drafts without persisting a session.",
+        "summary": "Get the default model for a new draft",
+        "description": "Resolve the default for empty drafts without persisting a session.",
         "operationId": "get_default_model",
         "responses": {
           "200": {
@@ -16962,7 +17049,7 @@
         "tags": [
           "notifications"
         ],
-        "summary": "List notifications for the current user.",
+        "summary": "List notifications for the current user",
         "operationId": "list_notifications",
         "parameters": [
           {
@@ -17001,7 +17088,7 @@
         "tags": [
           "notifications"
         ],
-        "summary": "Mark a notification as viewed.",
+        "summary": "Mark a notification as viewed",
         "operationId": "mark_notification_viewed",
         "parameters": [
           {
@@ -17042,7 +17129,7 @@
         "tags": [
           "observers"
         ],
-        "summary": "List observers.",
+        "summary": "List observers",
         "operationId": "list_observers",
         "parameters": [
           {
@@ -17078,7 +17165,7 @@
         "tags": [
           "observers"
         ],
-        "summary": "Create an observer (online scoring).",
+        "summary": "Create an observer (online scoring)",
         "operationId": "create_observer",
         "requestBody": {
           "content": {
@@ -17115,7 +17202,7 @@
         "tags": [
           "observers"
         ],
-        "summary": "Get a single observer.",
+        "summary": "Get a single observer",
         "operationId": "get_observer",
         "parameters": [
           {
@@ -17154,7 +17241,7 @@
         "tags": [
           "observers"
         ],
-        "summary": "Archive an observer.",
+        "summary": "Archive an observer",
         "operationId": "delete_observer",
         "parameters": [
           {
@@ -17186,7 +17273,7 @@
         "tags": [
           "observers"
         ],
-        "summary": "Update an observer.",
+        "summary": "Update an observer",
         "operationId": "update_observer",
         "parameters": [
           {
@@ -17237,7 +17324,7 @@
         "tags": [
           "observers"
         ],
-        "summary": "List trace scores produced by an observer.",
+        "summary": "List trace scores produced by an observer",
         "operationId": "list_observer_scores",
         "parameters": [
           {
@@ -17304,7 +17391,7 @@
         "tags": [
           "Organizations"
         ],
-        "summary": "GET /v1/orgs - List organizations the current user belongs to",
+        "summary": "List organizations the current user belongs to",
         "operationId": "list_organizations",
         "responses": {
           "200": {
@@ -17337,7 +17424,7 @@
         "tags": [
           "Organizations"
         ],
-        "summary": "POST /v1/orgs - Create a new organization",
+        "summary": "Create a new organization",
         "operationId": "create_organization",
         "requestBody": {
           "content": {
@@ -17392,7 +17479,7 @@
         "tags": [
           "Organizations"
         ],
-        "summary": "GET /v1/orgs/:org - Get organization details",
+        "summary": "Get organization details",
         "operationId": "get_organization",
         "parameters": [
           {
@@ -17446,7 +17533,7 @@
         "tags": [
           "Organizations"
         ],
-        "summary": "PATCH /v1/orgs/:org - Update organization",
+        "summary": "Update organization",
         "operationId": "update_organization",
         "parameters": [
           {
@@ -17512,7 +17599,8 @@
         "tags": [
           "audit_logs"
         ],
-        "summary": "List audit logs for the caller's organization. Supports domain, action, actor, and event-type filters.",
+        "summary": "List audit logs for the caller's organization",
+        "description": "List audit logs for the caller's organization. Supports domain, action, actor, and event-type filters.",
         "operationId": "list_audit_logs",
         "parameters": [
           {
@@ -17607,7 +17695,8 @@
         "tags": [
           "Organizations"
         ],
-        "summary": "Get the organization's outbound allowlist extension: whether a platform administrator granted it, its host patterns, and the deployment's egress policy mode.",
+        "summary": "Get the organization's outbound allowlist extension",
+        "description": "Get the organization's outbound allowlist extension: whether a platform administrator granted it, its host patterns, and the deployment's egress policy mode.",
         "operationId": "get_org_egress_allowlist",
         "parameters": [
           {
@@ -17646,7 +17735,8 @@
         "tags": [
           "Organizations"
         ],
-        "summary": "Replace the organization's outbound allowlist extension. Requires an organization admin and a grant from a platform administrator. Patterns must name public hosts: `example.com`, `*.example.com`, or an `https://example.com/path/` prefix.",
+        "summary": "Replace the organization's outbound allowlist extension",
+        "description": "Replace the organization's outbound allowlist extension. Requires an organization admin and a grant from a platform administrator. Patterns must name public hosts: `example.com`, `*.example.com`, or an `https://example.com/path/` prefix.",
         "operationId": "set_org_egress_allowlist",
         "parameters": [
           {
@@ -17703,7 +17793,8 @@
         "tags": [
           "Organizations"
         ],
-        "summary": "Platform administrators only: allow or stop an organization extending the outbound allowlist (revoking keeps its patterns but stops enforcing them), and give or take back open egress (any public host the deny list allows, reads and writes). Omitted fields keep their value.",
+        "summary": "Grant or revoke an organization's egress extension",
+        "description": "Platform administrators only: allow or stop an organization extending the outbound allowlist (revoking keeps its patterns but stops enforcing them), and give or take back open egress (any public host the deny list allows, reads and writes). Omitted fields keep their value.",
         "operationId": "set_org_egress_allowlist_grant",
         "parameters": [
           {
@@ -17760,7 +17851,8 @@
         "tags": [
           "Organizations"
         ],
-        "summary": "GET /v1/orgs/{org}/feature-flags — effective flags for the organization.",
+        "summary": "Effective flags for the organization",
+        "description": "effective flags for the organization.",
         "operationId": "get_org_feature_flags",
         "parameters": [
           {
@@ -17814,7 +17906,8 @@
         "tags": [
           "Organizations"
         ],
-        "summary": "PATCH /v1/orgs/{org}/feature-flags — update org opt-in (admin only).",
+        "summary": "Update org opt-in (admin only)",
+        "description": "update org opt-in (admin only).",
         "operationId": "update_org_feature_flags",
         "parameters": [
           {
@@ -17900,8 +17993,8 @@
         "tags": [
           "Organizations"
         ],
-        "summary": "GET /v1/orgs/{org}/feature-flags/platform — every flag, including the\nplatform-managed ones, for the operator console.",
-        "description": "Platform users only. The tenant-facing settings route deliberately omits\nthese rows, so this is where an operator sees what a tenant is enrolled in.",
+        "summary": "List every feature flag for the operator console",
+        "description": "GET /v1/orgs/{org}/feature-flags/platform — every flag, including the\nplatform-managed ones, for the operator console.\n\nPlatform users only. The tenant-facing settings route deliberately omits\nthese rows, so this is where an operator sees what a tenant is enrolled in.",
         "operationId": "get_platform_feature_flag_settings",
         "parameters": [
           {
@@ -17965,7 +18058,7 @@
         "tags": [
           "Organizations"
         ],
-        "summary": "PATCH /v1/orgs/{org}/feature-flags/platform — enrol an organization in a\nplatform-managed feature.",
+        "summary": "Enrol an organization in a\nplatform-managed feature",
         "description": "Platform users may enroll internal and adoption features. Tenant admins retain\nadoption authority; production preferences and deployment availability stay\noutside this route. Omitted overrides are unchanged.",
         "operationId": "update_platform_feature_flags",
         "parameters": [
@@ -18052,7 +18145,8 @@
         "tags": [
           "Organizations"
         ],
-        "summary": "GET /v1/orgs/{org}/feature-flags/settings — catalog with system/org/effective state.",
+        "summary": "Catalog with system/org/effective state",
+        "description": "catalog with system/org/effective state.",
         "operationId": "get_org_feature_flag_settings",
         "parameters": [
           {
@@ -18103,12 +18197,139 @@
         }
       }
     },
+    "/v1/orgs/{org}/github/everruns-app": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "List the org's Everruns GitHub App links",
+        "description": "List the organization's links to the shared Everruns GitHub App.",
+        "operationId": "list_links",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EverrunsAppLinks"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin access required"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/orgs/{org}/github/everruns-app/authorize": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Link an Everruns GitHub App installation",
+        "description": "Start linking a shared Everruns GitHub App installation to the organization.",
+        "operationId": "authorize_link",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "return_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "Redirect to GitHub"
+          },
+          "403": {
+            "description": "Admin access required"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/orgs/{org}/github/everruns-app/{connection_id}": {
+      "delete": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Unlink an Everruns GitHub App installation",
+        "description": "Unlink a shared Everruns GitHub App installation and remove every agent's choice of it.",
+        "operationId": "unlink",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Unlinked"
+          },
+          "403": {
+            "description": "Admin access required"
+          },
+          "404": {
+            "description": "Link not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/orgs/{org}/onboarding/complete": {
       "post": {
         "tags": [
           "Organizations"
         ],
-        "summary": "POST /v1/orgs/:org/onboarding/complete - Mark the org's onboarding wizard as\nfinished (or skipped). Idempotent: the timestamp is set only when NULL.",
+        "summary": "Mark the org's onboarding wizard as\nfinished (or skipped)",
         "description": "Authz mirrors the org-scoped mutations above (admin+), but resolves\nmembership/role from the DB rather than the auth token — a brand-new org may\nnot yet appear in the caller's token, and onboarding completion is exactly\nthat just-created case.",
         "operationId": "complete_org_onboarding",
         "parameters": [
@@ -18983,7 +19204,7 @@
         "tags": [
           "plugins"
         ],
-        "summary": "GET /v1/plugin_marketplaces",
+        "summary": "List plugin marketplaces",
         "operationId": "list_plugin_marketplaces",
         "parameters": [
           {
@@ -19025,7 +19246,7 @@
         "tags": [
           "plugins"
         ],
-        "summary": "POST /v1/plugin_marketplaces",
+        "summary": "Create plugin marketplace",
         "operationId": "create_plugin_marketplace",
         "requestBody": {
           "content": {
@@ -19085,7 +19306,7 @@
         "tags": [
           "plugins"
         ],
-        "summary": "GET /v1/plugin_marketplaces/{id}",
+        "summary": "Get plugin marketplace",
         "operationId": "get_plugin_marketplace",
         "parameters": [
           {
@@ -19134,7 +19355,7 @@
         "tags": [
           "plugins"
         ],
-        "summary": "DELETE /v1/plugin_marketplaces/{id}",
+        "summary": "Delete plugin marketplace",
         "operationId": "delete_plugin_marketplace",
         "parameters": [
           {
@@ -19183,7 +19404,7 @@
         "tags": [
           "plugins"
         ],
-        "summary": "PATCH /v1/plugin_marketplaces/{id}",
+        "summary": "Update plugin marketplace",
         "operationId": "update_plugin_marketplace",
         "parameters": [
           {
@@ -19254,7 +19475,7 @@
         "tags": [
           "plugins"
         ],
-        "summary": "GET /v1/plugin_marketplaces/{id}/plugins",
+        "summary": "Get marketplace catalog",
         "operationId": "get_marketplace_catalog",
         "parameters": [
           {
@@ -19315,7 +19536,7 @@
         "tags": [
           "plugins"
         ],
-        "summary": "POST /v1/plugin_marketplaces/{id}/sync",
+        "summary": "Sync plugin marketplace",
         "operationId": "sync_plugin_marketplace",
         "parameters": [
           {
@@ -19376,7 +19597,7 @@
         "tags": [
           "plugins"
         ],
-        "summary": "GET /v1/plugins",
+        "summary": "List plugins",
         "operationId": "list_plugins",
         "parameters": [
           {
@@ -19418,7 +19639,7 @@
         "tags": [
           "plugins"
         ],
-        "summary": "POST /v1/plugins",
+        "summary": "Install plugin",
         "operationId": "install_plugin",
         "requestBody": {
           "content": {
@@ -19478,7 +19699,7 @@
         "tags": [
           "plugins"
         ],
-        "summary": "GET /v1/plugins/{id}",
+        "summary": "Get plugin",
         "operationId": "get_plugin",
         "parameters": [
           {
@@ -19527,7 +19748,7 @@
         "tags": [
           "plugins"
         ],
-        "summary": "DELETE /v1/plugins/{id}",
+        "summary": "Uninstall plugin",
         "operationId": "uninstall_plugin",
         "parameters": [
           {
@@ -19576,7 +19797,7 @@
         "tags": [
           "plugins"
         ],
-        "summary": "PATCH /v1/plugins/{id}",
+        "summary": "Patch installed plugin",
         "operationId": "patch_installed_plugin",
         "parameters": [
           {
@@ -19647,7 +19868,7 @@
         "tags": [
           "plugins"
         ],
-        "summary": "POST /v1/plugins/{id}/update",
+        "summary": "Update plugin",
         "operationId": "update_plugin",
         "parameters": [
           {
@@ -19776,8 +19997,8 @@
         "tags": [
           "providers"
         ],
-        "summary": "Check whether a provider accepts an API key, without storing it",
-        "description": "Used by org setup so a key the provider will reject is caught at entry\ninstead of at the first agent run. Nothing is persisted.",
+        "summary": "Check a provider API key without storing it",
+        "description": "Check whether a provider accepts an API key, without storing it\n\nUsed by org setup so a key the provider will reject is caught at entry\ninstead of at the first agent run. Nothing is persisted.",
         "operationId": "check_credentials",
         "requestBody": {
           "content": {
@@ -19820,7 +20041,7 @@
         "tags": [
           "providers"
         ],
-        "summary": "GET /v1/providers/config",
+        "summary": "Provider config",
         "operationId": "provider_config",
         "responses": {
           "200": {
@@ -20074,7 +20295,7 @@
         "tags": [
           "providers"
         ],
-        "summary": "Read the owner's personal ChatGPT connection.",
+        "summary": "Read the owner's personal ChatGPT connection",
         "description": "Returns connection state and non-secret installation metadata. Another user's\nprovider is hidden even from organization administrators.",
         "operationId": "status",
         "parameters": [
@@ -20120,7 +20341,7 @@
         "tags": [
           "providers"
         ],
-        "summary": "Disconnect the owner's ChatGPT account.",
+        "summary": "Disconnect the owner's ChatGPT account",
         "description": "Cancels pending sign-in and revokes a stored grant before clearing credentials.\nA failed revocation retains credentials so the owner can retry.",
         "operationId": "disconnect",
         "parameters": [
@@ -20166,7 +20387,7 @@
         "tags": [
           "providers"
         ],
-        "summary": "Import a private login-helper document.",
+        "summary": "Import a private login-helper document",
         "description": "Verifies installation, signed identity, nonce, issuing client, and account binding\nbefore persisting credentials. Only the provider's owner may import the document.",
         "operationId": "import",
         "parameters": [
@@ -20222,7 +20443,7 @@
         "tags": [
           "providers"
         ],
-        "summary": "Start a personal ChatGPT sign-in.",
+        "summary": "Start a personal ChatGPT sign-in",
         "description": "Creates a bounded loopback callback listener and returns the authorization URL.\nRequires deployment enablement, organization opt-in, encryption, and exact ownership.",
         "operationId": "login",
         "parameters": [
@@ -21069,7 +21290,7 @@
         "tags": [
           "users"
         ],
-        "summary": "GET /v1/resolve-org — resolve the owning org for a resource id.",
+        "summary": "Resolve the owning org for a resource id",
         "description": "Returns the owning organization only when it is one the authenticated\ncaller already belongs to. For every other case (unknown id, unknown\nprefix, resource belongs to a non-member org) the endpoint returns 404 —\nthis preserves the org-enumeration guarantee: callers cannot use this\nendpoint to probe for the existence of resources outside their own orgs.",
         "operationId": "resolve_org",
         "parameters": [
@@ -21322,7 +21543,8 @@
         "tags": [
           "sandboxes"
         ],
-        "summary": "List the organization's Sandboxes across providers: running, paused, lost and deleted, with filters.",
+        "summary": "List the organization's Sandboxes across providers",
+        "description": "List the organization's Sandboxes across providers: running, paused, lost and deleted, with filters.",
         "operationId": "list_sandboxes",
         "parameters": [
           {
@@ -21434,7 +21656,8 @@
         "tags": [
           "sandboxes"
         ],
-        "summary": "Summarize the organization's Sandboxes: counts by state and provider, recent creations, running time, recoveries and how many need attention.",
+        "summary": "Summarize the organization's Sandboxes",
+        "description": "Summarize the organization's Sandboxes: counts by state and provider, recent creations, running time, recoveries and how many need attention.",
         "operationId": "get_sandbox_fleet_stats",
         "parameters": [
           {
@@ -21526,7 +21749,8 @@
         "tags": [
           "sandboxes"
         ],
-        "summary": "Show when each Sandbox was running, paused or lost over a time window, with how many ran at once.",
+        "summary": "Show Sandbox activity over a time window",
+        "description": "Show when each Sandbox was running, paused or lost over a time window, with how many ran at once.",
         "operationId": "get_sandbox_timeline",
         "parameters": [
           {
@@ -21648,7 +21872,8 @@
         "tags": [
           "sandboxes"
         ],
-        "summary": "Get one Sandbox with its provider resources and full state history.",
+        "summary": "Get a Sandbox with its resources and state history",
+        "description": "Get one Sandbox with its provider resources and full state history.",
         "operationId": "get_sandbox",
         "parameters": [
           {
@@ -21773,7 +21998,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "GET /v1/sessions - List sessions in organization",
+        "summary": "List sessions in organization",
         "operationId": "list_platform_sessions",
         "parameters": [
           {
@@ -21986,7 +22211,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "POST /v1/sessions - Create a new session",
+        "summary": "Create a new session",
         "operationId": "create_session",
         "requestBody": {
           "content": {
@@ -22068,7 +22293,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "GET /v1/sessions/facets - Facet counts and masthead metrics",
+        "summary": "Facet counts and masthead metrics",
         "operationId": "get_session_facets",
         "parameters": [
           {
@@ -22203,7 +22428,8 @@
         "tags": [
           "sessions"
         ],
-        "summary": "Open the current user's permanent platform conversation, creating it only when absent.",
+        "summary": "Open the current user's platform conversation",
+        "description": "Open the current user's permanent platform conversation, creating it only when absent.",
         "operationId": "ensure_platform_chat",
         "responses": {
           "200": {
@@ -22230,7 +22456,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "GET /v1/sessions/stats - Get session counts by status",
+        "summary": "Get session counts by status",
         "operationId": "get_session_stats",
         "responses": {
           "200": {
@@ -22260,7 +22486,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "GET /v1/sessions/{session_id} - Get session",
+        "summary": "Get session",
         "operationId": "get_session",
         "parameters": [
           {
@@ -22305,7 +22531,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "DELETE /v1/sessions/{session_id} - Delete session",
+        "summary": "Delete session",
         "operationId": "delete_session",
         "parameters": [
           {
@@ -22344,7 +22570,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "PATCH /v1/sessions/{session_id} - Update session",
+        "summary": "Update session",
         "operationId": "update_session",
         "parameters": [
           {
@@ -22401,7 +22627,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "PUT /v1/sessions/{session_id}/archive - Archive session",
+        "summary": "Archive session",
         "operationId": "archive_session",
         "parameters": [
           {
@@ -22439,7 +22665,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "DELETE /v1/sessions/{session_id}/archive - Restore an archived session",
+        "summary": "Restore an archived session",
         "operationId": "unarchive_session",
         "parameters": [
           {
@@ -22479,7 +22705,7 @@
         "tags": [
           "budgets"
         ],
-        "summary": "Check all budgets for a session.",
+        "summary": "Check all budgets for a session",
         "operationId": "check_session_budgets",
         "parameters": [
           {
@@ -22517,7 +22743,7 @@
         "tags": [
           "budgets"
         ],
-        "summary": "List all budgets for a session.",
+        "summary": "List all budgets for a session",
         "operationId": "list_session_budgets",
         "parameters": [
           {
@@ -22558,7 +22784,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "POST /v1/sessions/{session_id}/cancel - Cancel current turn",
+        "summary": "Cancel current turn",
         "description": "Cancels the currently running turn in the session. If no turn is running,\nthis is a no-op and returns success (idempotent). When a turn is active:\n1. Cancel the underlying workflow execution\n2. Emit a turn.cancelled event\n3. Insert an agent message indicating the turn was cancelled\n4. Set the session status back to idle",
         "operationId": "cancel_turn",
         "parameters": [
@@ -22624,7 +22850,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "GET /v1/sessions/{session_id}/context-report - Latest context breakdown",
+        "summary": "Latest context breakdown",
         "operationId": "get_session_context_report",
         "parameters": [
           {
@@ -22671,7 +22897,7 @@
         "tags": [
           "session-databases"
         ],
-        "summary": "GET /v1/sessions/{session_id}/databases",
+        "summary": "List databases",
         "operationId": "list_databases",
         "parameters": [
           {
@@ -22710,7 +22936,7 @@
         "tags": [
           "session-databases"
         ],
-        "summary": "POST /v1/sessions/{session_id}/databases",
+        "summary": "Create database",
         "operationId": "create_database",
         "parameters": [
           {
@@ -22767,7 +22993,7 @@
         "tags": [
           "session-databases"
         ],
-        "summary": "GET /v1/sessions/{session_id}/databases/{name}",
+        "summary": "Get database",
         "operationId": "get_database",
         "parameters": [
           {
@@ -22815,7 +23041,7 @@
         "tags": [
           "session-databases"
         ],
-        "summary": "DELETE /v1/sessions/{session_id}/databases/{name}",
+        "summary": "Delete database",
         "operationId": "delete_database",
         "parameters": [
           {
@@ -22858,7 +23084,7 @@
         "tags": [
           "session-databases"
         ],
-        "summary": "GET /v1/sessions/{session_id}/databases/{name}/schema",
+        "summary": "Get schema",
         "operationId": "get_schema",
         "parameters": [
           {
@@ -22908,7 +23134,7 @@
         "tags": [
           "events"
         ],
-        "summary": "GET /v1/sessions/{session_id}/events - List events (JSON)",
+        "summary": "List events (JSON)",
         "description": "Returns events for a session as a JSON array. Supports filtering by event type\nvia `types` (positive: only these types) and `exclude` (negative: remove these types).\nWhen both are provided, `types` narrows first, then `exclude` removes from that set.\nBoth accept only known event types (max 25 per parameter). Unknown types return 400.\n\n## Pagination\n\nSupports backward pagination via `limit` and `before_sequence`:\n- `limit=200` returns the last 200 events (oldest→newest)\n- `limit=200&before_sequence=4500` returns 200 events before sequence 4500\n- When `limit` is provided, the response includes an `X-Total-Count` header\n  with the count of non-delta events for the session\n- Turn boundary snapping: when fetching older pages, the batch boundary\n  snaps to the nearest `turn.started` event to avoid splitting turns\n- Without `limit`, all events are returned (backward compatible)",
         "operationId": "list_events",
         "parameters": [
@@ -23188,7 +23414,8 @@
         "tags": [
           "events"
         ],
-        "summary": "GET /v1/sessions/{session_id}/events/summary - one-shot debug summary",
+        "summary": "One-shot debug summary",
+        "description": "one-shot debug summary",
         "operationId": "events_summary",
         "parameters": [
           {
@@ -23235,8 +23462,8 @@
         "tags": [
           "sessions"
         ],
-        "summary": "Export session messages as a JSONL file (default) or as an ATIF trajectory",
-        "description": "Default (`format=jsonl`): all materialized messages (user, agent) as\nnewline-delimited JSON, one complete JSON object per line; delta events are\nexcluded. `format=atif` returns a single ATIF-v1.7 trajectory JSON document\nfolded from the session's event log; image\ncontent parts are exported as ATIF multimodal ContentParts. When an image\ncannot be materialized (an inline image with neither a URL nor bytes) it is\nflattened to an `\"[image]\"` marker and the response carries an\n`X-Atif-Images-Omitted` header with that count (usually 0 and absent).\nDocuments over the 50 MiB `ATIF_EXPORT_MAX_BYTES` cap are rejected with 413.\nThe response includes `Content-Disposition: attachment` for browser\ndownload.",
+        "summary": "Export session messages as JSONL or ATIF",
+        "description": "Export session messages as a JSONL file (default) or as an ATIF trajectory\n\nDefault (`format=jsonl`): all materialized messages (user, agent) as\nnewline-delimited JSON, one complete JSON object per line; delta events are\nexcluded. `format=atif` returns a single ATIF-v1.7 trajectory JSON document\nfolded from the session's event log; image\ncontent parts are exported as ATIF multimodal ContentParts. When an image\ncannot be materialized (an inline image with neither a URL nor bytes) it is\nflattened to an `\"[image]\"` marker and the response carries an\n`X-Atif-Images-Omitted` header with that count (usually 0 and absent).\nDocuments over the 50 MiB `ATIF_EXPORT_MAX_BYTES` cap are rejected with 413.\nThe response includes `Content-Disposition: attachment` for browser\ndownload.",
         "operationId": "export_session_jsonl",
         "parameters": [
           {
@@ -23319,7 +23546,8 @@
         "tags": [
           "messages"
         ],
-        "summary": "List your good and bad ratings of the messages in a session.",
+        "summary": "List your message ratings in a session",
+        "description": "List your good and bad ratings of the messages in a session.",
         "operationId": "list_message_feedback",
         "parameters": [
           {
@@ -23363,7 +23591,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "POST /v1/sessions/{session_id}/fork - Fork a session into an independent copy",
+        "summary": "Fork a session into an independent copy",
         "operationId": "fork_session",
         "parameters": [
           {
@@ -23440,7 +23668,7 @@
         "tags": [
           "Session Git"
         ],
-        "summary": "POST /v1/sessions/{session_id}/git/branches",
+        "summary": "Create branch",
         "operationId": "create_branch",
         "parameters": [
           {
@@ -23490,7 +23718,7 @@
         "tags": [
           "Session Git"
         ],
-        "summary": "DELETE /v1/sessions/{session_id}/git/branches/{name}",
+        "summary": "Delete branch",
         "operationId": "delete_branch",
         "parameters": [
           {
@@ -23540,7 +23768,7 @@
         "tags": [
           "Session Git"
         ],
-        "summary": "POST /v1/sessions/{session_id}/git/commit",
+        "summary": "Commit",
         "operationId": "commit",
         "parameters": [
           {
@@ -23593,7 +23821,7 @@
         "tags": [
           "Session Git"
         ],
-        "summary": "GET /v1/sessions/{session_id}/git/diff",
+        "summary": "Diff",
         "operationId": "diff",
         "parameters": [
           {
@@ -23655,7 +23883,7 @@
         "tags": [
           "Session Git"
         ],
-        "summary": "GET /v1/sessions/{session_id}/git/log",
+        "summary": "Log",
         "operationId": "log",
         "parameters": [
           {
@@ -23718,7 +23946,7 @@
         "tags": [
           "Session Git"
         ],
-        "summary": "GET /v1/sessions/{session_id}/git/refs",
+        "summary": "List refs",
         "operationId": "list_refs",
         "parameters": [
           {
@@ -23759,7 +23987,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "POST /v1/sessions/{session_id}/mcp-elicitation-consent",
+        "summary": "Submit elicitation consent",
         "description": "Records a user's decision about a URL an MCP server asked them to open, and\nresumes the paused turn.",
         "operationId": "submit_elicitation_consent",
         "parameters": [
@@ -23823,7 +24051,7 @@
         "tags": [
           "session-resources"
         ],
-        "summary": "List the MCP servers added to this chat only.",
+        "summary": "List the MCP servers added to this chat only",
         "description": "Servers a person added with \"this chat only\" join every later turn of this\nsession and no other. Sign-in state is the viewer's own.",
         "operationId": "list_chat_mcp_servers",
         "parameters": [
@@ -23875,7 +24103,8 @@
         "tags": [
           "session-resources"
         ],
-        "summary": "Remove an MCP server added to this chat only. Its tools leave from the next turn.",
+        "summary": "Remove an MCP server added to this chat only",
+        "description": "Remove an MCP server added to this chat only. Its tools leave from the next turn.",
         "operationId": "remove_chat_mcp_server",
         "parameters": [
           {
@@ -23925,7 +24154,7 @@
         "tags": [
           "messages"
         ],
-        "summary": "GET /v1/sessions/{session_id}/messages - List messages (PRIMARY data)",
+        "summary": "List messages (PRIMARY data)",
         "operationId": "list_messages",
         "parameters": [
           {
@@ -23970,7 +24199,7 @@
         "tags": [
           "messages"
         ],
-        "summary": "POST /v1/sessions/{session_id}/messages - Create message (user message triggers workflow)",
+        "summary": "Create message (user message triggers workflow)",
         "operationId": "create_message",
         "parameters": [
           {
@@ -24073,7 +24302,8 @@
         "tags": [
           "messages"
         ],
-        "summary": "Rate one message in a session good or bad, with an optional comment. A null rating clears your rating.",
+        "summary": "Rate a message in a session",
+        "description": "Rate one message in a session good or bad, with an optional comment. A null rating clears your rating.",
         "operationId": "set_message_feedback",
         "parameters": [
           {
@@ -24123,7 +24353,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "GET /v1/sessions/{session_id}/participants - List session participants",
+        "summary": "List session participants",
         "operationId": "list_session_participants",
         "parameters": [
           {
@@ -24171,7 +24401,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "POST /v1/sessions/{session_id}/participants - Add a session participant",
+        "summary": "Add a session participant",
         "operationId": "add_session_participant",
         "parameters": [
           {
@@ -24231,7 +24461,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "DELETE /v1/sessions/{session_id}/participants/{participant_id} - Leave a participant",
+        "summary": "Leave a participant",
         "operationId": "leave_session_participant",
         "parameters": [
           {
@@ -24290,7 +24520,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "PUT /v1/sessions/{session_id}/pin - Pin session for current user",
+        "summary": "Pin session for current user",
         "operationId": "pin_session",
         "parameters": [
           {
@@ -24331,7 +24561,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "DELETE /v1/sessions/{session_id}/pin - Unpin session for current user",
+        "summary": "Unpin session for current user",
         "operationId": "unpin_session",
         "parameters": [
           {
@@ -24374,7 +24604,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "POST /v1/sessions/{session_id}/question-answers",
+        "summary": "Submit question answers",
         "description": "Answers the question set an agent raised with `ask_user`, and resumes the\npaused turn.",
         "operationId": "submit_question_answers",
         "parameters": [
@@ -24435,7 +24665,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "GET /v1/sessions/{session_id}/resolved-model - Resolve the session's active model",
+        "summary": "Resolve the session's active model",
         "operationId": "get_session_resolved_model",
         "parameters": [
           {
@@ -24482,7 +24712,8 @@
         "tags": [
           "session-resources"
         ],
-        "summary": "List all resources registered in the session resource registry.",
+        "summary": "List the session's registered resources",
+        "description": "List all resources registered in the session resource registry.",
         "operationId": "list_resources",
         "responses": {
           "200": {
@@ -24515,7 +24746,7 @@
         "tags": [
           "budgets"
         ],
-        "summary": "Resume all paused session budgets for a session.",
+        "summary": "Resume all paused session budgets for a session",
         "operationId": "resume_session_budgets",
         "parameters": [
           {
@@ -24669,7 +24900,7 @@
         "tags": [
           "events"
         ],
-        "summary": "GET /v1/sessions/{session_id}/sse - Stream events (SSE notifications)",
+        "summary": "Stream events (SSE notifications)",
         "description": "Establishes a Server-Sent Events (SSE) connection for real-time event streaming.\n\n## Connection Lifecycle Events\n\n- **connected**: Sent immediately when the stream is established.\n  Data: `{\"status\":\"connected\"}`\n\n- **disconnecting**: Sent before the server closes the connection for graceful cycling.\n  Data: `{\"reason\":\"connection_cycle\",\"retry_ms\":100}`\n  Clients should reconnect immediately using the `since_id` of the last received event.\n\n## Connection Cycling\n\nConnections are automatically cycled every 5 minutes to prevent stale connections\nthrough proxies and load balancers. Before closing, the server sends a `disconnecting`\nevent so clients can reconnect seamlessly without missing events.\n\n## Retry Hints\n\nEach SSE event includes a `retry:` field (in milliseconds) that hints how long\nclients should wait before reconnecting if the connection is lost:\n- During active streaming: 100ms (fast reconnect)\n- During idle periods: increases with backoff up to 500ms\n- After `disconnecting` event: 100ms (immediate reconnect)\n\n## Resuming Streams\n\nUse the `since_id` query parameter to resume from a specific event. The server\nresolves the event ID to its sequence number and returns all subsequent events\nordered by sequence, ensuring reliable ordering even under concurrent writes.\n\n## Event Type Filtering\n\nUse `types` for positive filtering (only return these types) and `exclude` for\nnegative filtering (remove these types). When both are provided, `types` narrows\nfirst, then `exclude` removes from that set. Both accept only known event types\n(max 25 per parameter). Unknown types return 400.",
         "operationId": "stream_sse",
         "parameters": [
@@ -24774,7 +25005,7 @@
         "tags": [
           "session-storage"
         ],
-        "summary": "GET /v1/sessions/{session_id}/storage/keys - List all key-value pairs",
+        "summary": "List all key-value pairs",
         "operationId": "list_keys",
         "parameters": [
           {
@@ -24818,7 +25049,7 @@
         "tags": [
           "session-storage"
         ],
-        "summary": "GET /v1/sessions/{session_id}/storage/secrets - List all secrets (names only)",
+        "summary": "List all secrets (names only)",
         "operationId": "list_secrets",
         "parameters": [
           {
@@ -24860,7 +25091,7 @@
         "tags": [
           "session-storage"
         ],
-        "summary": "PUT /v1/sessions/{session_id}/storage/secrets - Batch set secrets",
+        "summary": "Batch set secrets",
         "description": "Encrypts and stores multiple secrets in a single request.\nExisting secrets with the same name are overwritten.",
         "operationId": "batch_set_secrets",
         "parameters": [
@@ -24969,7 +25200,7 @@
         "tags": [
           "session-tasks"
         ],
-        "summary": "List background tasks owned by a session.",
+        "summary": "List background tasks owned by a session",
         "operationId": "list_tasks",
         "parameters": [
           {
@@ -25031,7 +25262,7 @@
         "tags": [
           "session-tasks"
         ],
-        "summary": "Get one session task with its recent message thread.",
+        "summary": "Get one session task with its recent message thread",
         "operationId": "get_task",
         "parameters": [
           {
@@ -25101,7 +25332,7 @@
         "tags": [
           "session-tasks"
         ],
-        "summary": "Request cooperative cancellation of a session task.",
+        "summary": "Request cooperative cancellation of a session task",
         "operationId": "cancel_task",
         "parameters": [
           {
@@ -25151,7 +25382,7 @@
         "tags": [
           "session-tasks"
         ],
-        "summary": "Send an inbound message to a session task.",
+        "summary": "Send an inbound message to a session task",
         "operationId": "post_task_message",
         "parameters": [
           {
@@ -25214,7 +25445,7 @@
         "tags": [
           "session-tasks"
         ],
-        "summary": "List per-task push-notification configs.",
+        "summary": "List per-task push-notification configs",
         "operationId": "list_push_configs",
         "parameters": [
           {
@@ -25265,7 +25496,7 @@
         "tags": [
           "session-tasks"
         ],
-        "summary": "Create a per-task push-notification config.",
+        "summary": "Create a per-task push-notification config",
         "operationId": "create_push_config",
         "parameters": [
           {
@@ -25328,7 +25559,7 @@
         "tags": [
           "session-tasks"
         ],
-        "summary": "Delete a per-task push-notification config.",
+        "summary": "Delete a per-task push-notification config",
         "operationId": "delete_push_config",
         "parameters": [
           {
@@ -25380,7 +25611,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "POST /v1/sessions/{session_id}/tool-approvals",
+        "summary": "Submit tool approvals",
         "description": "Records a person's decisions about tool calls an agent's `tool_approval`\ngate held back, and resumes the paused turn.",
         "operationId": "submit_tool_approvals",
         "parameters": [
@@ -25444,7 +25675,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "POST /v1/sessions/{session_id}/tool-results - Submit client-side tool results",
+        "summary": "Submit client-side tool results",
         "description": "Accepts tool results executed by the client and resumes the agent workflow.\nSession must be in `waiting_for_tool_results` status.",
         "operationId": "submit_tool_results",
         "parameters": [
@@ -25505,7 +25736,8 @@
         "tags": [
           "sessions"
         ],
-        "summary": "Summarize a session's trace: turn, step and error totals, a minimap of turn buckets, and the turns that failed.",
+        "summary": "Summarize a session's trace",
+        "description": "Summarize a session's trace: turn, step and error totals, a minimap of turn buckets, and the turns that failed.",
         "operationId": "get_session_trace",
         "parameters": [
           {
@@ -25553,7 +25785,8 @@
         "tags": [
           "sessions"
         ],
-        "summary": "List a page of a session's turns with their steps: model calls, tool calls, approvals, sub-agents and messages, with repeated calls folded into batches.",
+        "summary": "List a page of a session's trace turns",
+        "description": "List a page of a session's turns with their steps: model calls, tool calls, approvals, sub-agents and messages, with repeated calls folded into batches.",
         "operationId": "list_session_trace_turns",
         "parameters": [
           {
@@ -25641,7 +25874,8 @@
         "tags": [
           "sessions"
         ],
-        "summary": "List the raw events of one turn of a session's trace, without deltas; small payloads are inlined.",
+        "summary": "List the raw events of one trace turn",
+        "description": "List the raw events of one turn of a session's trace, without deltas; small payloads are inlined.",
         "operationId": "list_session_trace_turn_events",
         "parameters": [
           {
@@ -25708,7 +25942,8 @@
         "tags": [
           "sessions"
         ],
-        "summary": "Page through the steps of one turn of a session's trace, optionally only the failed ones.",
+        "summary": "List the steps of one trace turn",
+        "description": "Page through the steps of one turn of a session's trace, optionally only the failed ones.",
         "operationId": "list_session_trace_steps",
         "parameters": [
           {
@@ -25794,7 +26029,8 @@
         "tags": [
           "sessions"
         ],
-        "summary": "Read one step of a session's trace in full: tool input and output, the model request and response, and its raw events.",
+        "summary": "Get one step of a session's trace in full",
+        "description": "Read one step of a session's trace in full: tool input and output, the model request and response, and its raw events.",
         "operationId": "get_session_trace_step",
         "parameters": [
           {
@@ -25859,7 +26095,8 @@
         "tags": [
           "sessions"
         ],
-        "summary": "Page through the messages a model call in a session's trace was sent, with each message's full content.",
+        "summary": "List the messages sent in one model call",
+        "description": "Page through the messages a model call in a session's trace was sent, with each message's full content.",
         "operationId": "list_session_trace_request",
         "parameters": [
           {
@@ -26066,7 +26303,8 @@
         "tags": [
           "skills"
         ],
-        "summary": "List all active skills. Use search for name search, include_archived=true to include archived.",
+        "summary": "List all active skills",
+        "description": "List all active skills. Use search for name search, include_archived=true to include archived.",
         "operationId": "list_skills",
         "parameters": [
           {
@@ -26111,7 +26349,7 @@
         "tags": [
           "skills"
         ],
-        "summary": "Create a new skill from SKILL.md content.",
+        "summary": "Create a new skill from SKILL.md content",
         "operationId": "create_skill",
         "requestBody": {
           "content": {
@@ -26168,7 +26406,7 @@
         "tags": [
           "skills"
         ],
-        "summary": "GET /v1/skills/config",
+        "summary": "Skill config",
         "operationId": "skill_config",
         "responses": {
           "200": {
@@ -26195,7 +26433,7 @@
         "tags": [
           "skills"
         ],
-        "summary": "POST /v1/skills/upload - Create skill from ZIP archive",
+        "summary": "Create skill from ZIP archive",
         "operationId": "upload_skill",
         "responses": {
           "201": {
@@ -26252,7 +26490,8 @@
         "tags": [
           "skills"
         ],
-        "summary": "Count agents and harnesses referencing each skill capability.",
+        "summary": "Count agents and harnesses using each skill",
+        "description": "Count agents and harnesses referencing each skill capability.",
         "operationId": "list_skills_usage",
         "responses": {
           "200": {
@@ -26285,7 +26524,7 @@
         "tags": [
           "skills"
         ],
-        "summary": "POST /v1/skills/validate - Validate SKILL.md content",
+        "summary": "Validate SKILL.md content",
         "operationId": "validate_skill",
         "requestBody": {
           "content": {
@@ -26322,7 +26561,7 @@
         "tags": [
           "skills"
         ],
-        "summary": "Get a single skill by ID.",
+        "summary": "Get a single skill by ID",
         "operationId": "get_skill",
         "parameters": [
           {
@@ -26361,7 +26600,8 @@
         "tags": [
           "skills"
         ],
-        "summary": "Archive a skill (soft delete). Can be restored.",
+        "summary": "Archive a skill (soft delete)",
+        "description": "Archive a skill (soft delete). Can be restored.",
         "operationId": "delete_skill",
         "parameters": [
           {
@@ -26393,7 +26633,8 @@
         "tags": [
           "skills"
         ],
-        "summary": "Update a skill. Only provided fields are changed.",
+        "summary": "Update a skill",
+        "description": "Update a skill. Only provided fields are changed.",
         "operationId": "update_skill",
         "parameters": [
           {
@@ -26464,7 +26705,7 @@
         "tags": [
           "skills"
         ],
-        "summary": "Get full skill content (SKILL.md + files).",
+        "summary": "Get full skill content (SKILL.md + files)",
         "operationId": "get_skill_content",
         "parameters": [
           {
@@ -26505,7 +26746,7 @@
         "tags": [
           "skills"
         ],
-        "summary": "Permanently delete an archived skill.",
+        "summary": "Permanently delete an archived skill",
         "operationId": "destroy_skill",
         "parameters": [
           {
@@ -26549,7 +26790,7 @@
         "tags": [
           "task-webhooks"
         ],
-        "summary": "List all task webhooks configured for the organization.",
+        "summary": "List all task webhooks configured for the organization",
         "operationId": "list_webhooks",
         "responses": {
           "200": {
@@ -26594,7 +26835,7 @@
         "tags": [
           "task-webhooks"
         ],
-        "summary": "Create a new task webhook for the organization.",
+        "summary": "Create a new task webhook for the organization",
         "operationId": "create_webhook",
         "requestBody": {
           "content": {
@@ -26661,7 +26902,7 @@
         "tags": [
           "task-webhooks"
         ],
-        "summary": "Get a single task webhook.",
+        "summary": "Get a single task webhook",
         "operationId": "get_webhook",
         "parameters": [
           {
@@ -26727,7 +26968,7 @@
         "tags": [
           "task-webhooks"
         ],
-        "summary": "Delete a task webhook.",
+        "summary": "Delete a task webhook",
         "operationId": "delete_webhook",
         "parameters": [
           {
@@ -26786,7 +27027,7 @@
         "tags": [
           "task-webhooks"
         ],
-        "summary": "Update a task webhook.",
+        "summary": "Update a task webhook",
         "operationId": "update_webhook",
         "parameters": [
           {
@@ -26874,7 +27115,8 @@
         "tags": [
           "session-tasks"
         ],
-        "summary": "List background tasks across every session in the caller's org.",
+        "summary": "List background tasks across the organization",
+        "description": "List background tasks across every session in the caller's org.",
         "operationId": "list_org_tasks",
         "parameters": [
           {
@@ -26953,7 +27195,7 @@
         "tags": [
           "users"
         ],
-        "summary": "List the AI clients you connected to Everruns MCP.",
+        "summary": "List the AI clients you connected to Everruns MCP",
         "description": "External MCP clients (Claude, ChatGPT, Cursor, ...) you approved to act as you on `/mcp`, most recently used first.",
         "operationId": "list_connected_clients",
         "responses": {
@@ -26984,7 +27226,7 @@
         "tags": [
           "users"
         ],
-        "summary": "Disconnect an AI client.",
+        "summary": "Disconnect an AI client",
         "description": "Revokes the grant: the client's refresh tokens are deleted and `/mcp` rejects its access tokens within about 30 seconds. Reconnecting needs a new approval.",
         "operationId": "revoke_connected_client",
         "parameters": [
@@ -27023,7 +27265,8 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "List legacy credentials requiring an explicit organization destination.",
+        "summary": "List legacy credentials awaiting an organization",
+        "description": "List legacy credentials requiring an explicit organization destination.",
         "operationId": "list_pending_connection_migrations",
         "responses": {
           "200": {
@@ -27054,7 +27297,8 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Move one legacy credential into the selected organization without copying it.",
+        "summary": "Move a legacy credential into an organization",
+        "description": "Move one legacy credential into the selected organization without copying it.",
         "operationId": "migrate_pending_connection",
         "parameters": [
           {
@@ -27166,7 +27410,7 @@
         "tags": [
           "users"
         ],
-        "summary": "GET /v1/users - List users in current organization",
+        "summary": "List users in current organization",
         "description": "Lists users that belong to the current organization with optional search filtering.\nTM-TENANT-008: Enforces org isolation to prevent cross-tenant user enumeration.",
         "operationId": "list_users",
         "parameters": [
@@ -27211,7 +27455,7 @@
         "tags": [
           "users"
         ],
-        "summary": "DELETE /v1/users/me - Delete current user's account",
+        "summary": "Delete current user's account",
         "description": "Hard-deletes the user and all associated data (API keys, memberships, tokens).\nThis action is irreversible.",
         "operationId": "delete_account",
         "responses": {
@@ -27247,7 +27491,7 @@
         "tags": [
           "users"
         ],
-        "summary": "PATCH /v1/users/me - Update current user's profile",
+        "summary": "Update current user's profile",
         "operationId": "update_profile",
         "requestBody": {
           "content": {
@@ -27293,7 +27537,7 @@
         "tags": [
           "users"
         ],
-        "summary": "GET /v1/users/me/export - Export current user's data",
+        "summary": "Export current user's data",
         "description": "Returns all user-owned data in a structured JSON format for GDPR compliance.",
         "operationId": "export_user_data",
         "responses": {
@@ -27330,7 +27574,7 @@
         "tags": [
           "users"
         ],
-        "summary": "POST /v1/users/me/switch-org - Switch current organization",
+        "summary": "Switch current organization",
         "description": "Sets a cookie with the selected organization. This org will be used for all\nsubsequent requests (including SSE connections via EventSource).\nThe user must be a member of the requested organization.",
         "operationId": "switch_org",
         "requestBody": {
@@ -27377,7 +27621,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "List virtual users.",
+        "summary": "List virtual users",
         "operationId": "list_virtual_users",
         "parameters": [
           {
@@ -27475,7 +27719,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Create virtual user.",
+        "summary": "Create virtual user",
         "operationId": "create_virtual_user",
         "requestBody": {
           "content": {
@@ -27518,7 +27762,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Read the authenticated consumer runtime account.",
+        "summary": "Read the authenticated consumer runtime account",
         "operationId": "get_me",
         "responses": {
           "200": {
@@ -27549,7 +27793,8 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Update the runtime profile without changing management identity or lifecycle.",
+        "summary": "Update the runtime user's profile",
+        "description": "Update the runtime profile without changing management identity or lifecycle.",
         "operationId": "update_me",
         "requestBody": {
           "content": {
@@ -27592,7 +27837,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Get virtual user.",
+        "summary": "Get virtual user",
         "operationId": "get_virtual_user",
         "parameters": [
           {
@@ -27633,7 +27878,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Delete virtual user.",
+        "summary": "Delete virtual user",
         "operationId": "delete_virtual_user",
         "parameters": [
           {
@@ -27667,7 +27912,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Update virtual user.",
+        "summary": "Update virtual user",
         "operationId": "update_virtual_user",
         "parameters": [
           {
@@ -27720,7 +27965,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "List verified external identity bindings.",
+        "summary": "List verified external identity bindings",
         "operationId": "list_bindings",
         "parameters": [
           {
@@ -27761,7 +28006,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Revoke an external binding and its runtime self authority.",
+        "summary": "Revoke an external binding and its runtime self authority",
         "operationId": "revoke_binding",
         "parameters": [
           {
@@ -27805,7 +28050,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "List virtual user connections.",
+        "summary": "List virtual user connections",
         "operationId": "list_virtual_user_connections",
         "parameters": [
           {
@@ -27854,7 +28099,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Create api key connection.",
+        "summary": "Create api key connection",
         "operationId": "create_api_key_connection",
         "parameters": [
           {
@@ -27916,7 +28161,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Delete a virtual user connection.",
+        "summary": "Delete a virtual user connection",
         "operationId": "delete_virtual_user_connection",
         "parameters": [
           {
@@ -27963,7 +28208,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Start provider setup bound to the authorized virtual user.",
+        "summary": "Start provider setup bound to the authorized virtual user",
         "operationId": "authorize_target_connection",
         "parameters": [
           {
@@ -28005,7 +28250,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Create a target-bound provider setup URL.",
+        "summary": "Create a target-bound provider setup URL",
         "operationId": "start_target_connection",
         "parameters": [
           {
@@ -28063,7 +28308,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Verify a virtual user connection.",
+        "summary": "Verify a virtual user connection",
         "operationId": "verify_virtual_user_connection",
         "parameters": [
           {
@@ -28117,7 +28362,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Destroy virtual user.",
+        "summary": "Destroy virtual user",
         "operationId": "destroy_virtual_user",
         "parameters": [
           {
@@ -28153,7 +28398,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "List the person's own MCP servers.",
+        "summary": "List the person's own MCP servers",
         "operationId": "list_user_mcp_servers",
         "parameters": [
           {
@@ -28195,7 +28440,8 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Add an MCP server for the person, from the catalog or by URL.",
+        "summary": "Add an MCP server for the person",
+        "description": "Add an MCP server for the person, from the catalog or by URL.",
         "operationId": "add_user_mcp_server",
         "parameters": [
           {
@@ -28255,7 +28501,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Read one of the person's MCP servers.",
+        "summary": "Read one of the person's MCP servers",
         "operationId": "get_user_mcp_server",
         "parameters": [
           {
@@ -28308,7 +28554,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Remove one of the person's MCP servers and its sign-in.",
+        "summary": "Remove one of the person's MCP servers and its sign-in",
         "operationId": "remove_user_mcp_server",
         "parameters": [
           {
@@ -28354,7 +28600,8 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Rename, enable, disable, set on-demand loading of, or replace the API key of one of the person's MCP servers.",
+        "summary": "Update one of the person's MCP servers",
+        "description": "Rename, enable, disable, set on-demand loading of, or replace the API key of one of the person's MCP servers.",
         "operationId": "update_user_mcp_server",
         "parameters": [
           {
@@ -28425,7 +28672,8 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "List the tools of one of the person's custom MCP servers, asked live, with their risk labels.",
+        "summary": "List the tools of one of the person's MCP servers",
+        "description": "List the tools of one of the person's custom MCP servers, asked live, with their risk labels.",
         "operationId": "list_user_mcp_server_tools",
         "parameters": [
           {
@@ -28483,7 +28731,8 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Set or clear the person's risk label for one tool of their custom MCP server.",
+        "summary": "Set the person's risk label for an MCP tool",
+        "description": "Set or clear the person's risk label for one tool of their custom MCP server.",
         "operationId": "set_user_mcp_tool_label",
         "parameters": [
           {
@@ -28559,7 +28808,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "List agent-facing preferences.",
+        "summary": "List agent-facing preferences",
         "operationId": "list_preferences",
         "parameters": [
           {
@@ -28600,7 +28849,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Read one agent-facing preference.",
+        "summary": "Read one agent-facing preference",
         "operationId": "get_preference",
         "parameters": [
           {
@@ -28647,7 +28896,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Set a bounded agent-facing preference.",
+        "summary": "Set a bounded agent-facing preference",
         "operationId": "set_preference",
         "parameters": [
           {
@@ -28704,7 +28953,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Delete an agent-facing preference.",
+        "summary": "Delete an agent-facing preference",
         "operationId": "delete_preference",
         "parameters": [
           {
@@ -28748,7 +28997,8 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "List recent sessions associated with the authorized virtual user.",
+        "summary": "List the virtual user's recent sessions",
+        "description": "List recent sessions associated with the authorized virtual user.",
         "operationId": "list_sessions",
         "parameters": [
           {
@@ -28820,62 +29070,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ListResponse_Workspace"
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Everruns Cloud and self-hosted Platform",
-          "group": "sessions-workspaces",
-          "support": "preview"
-        }
-      },
-      "post": {
-        "tags": [
-          "workspace"
-        ],
-        "summary": "Create workspace",
-        "description": "Create a Workspace.",
-        "operationId": "create_workspace",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateWorkspaceRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Workspace"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Name conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -29060,7 +29254,7 @@
         "tags": [
           "workspace-filesystem"
         ],
-        "summary": "GET /v1/workspaces/{workspace_id}/fs - Workspace root listing",
+        "summary": "Workspace root listing",
         "operationId": "get_root",
         "parameters": [
           {
@@ -29113,7 +29307,7 @@
         "tags": [
           "workspace-filesystem"
         ],
-        "summary": "POST /v1/workspaces/{workspace_id}/fs/_/copy - Copy a file",
+        "summary": "Copy a file",
         "operationId": "copy_file",
         "parameters": [
           {
@@ -29173,7 +29367,7 @@
         "tags": [
           "workspace-filesystem"
         ],
-        "summary": "GET /v1/workspaces/{workspace_id}/fs/_/download/{path} - Download raw file bytes",
+        "summary": "Download raw file bytes",
         "operationId": "download_path",
         "parameters": [
           {
@@ -29225,7 +29419,7 @@
         "tags": [
           "workspace-filesystem"
         ],
-        "summary": "POST /v1/workspaces/{workspace_id}/fs/_/grep - Search files",
+        "summary": "Search files",
         "operationId": "grep_files",
         "parameters": [
           {
@@ -29279,7 +29473,7 @@
         "tags": [
           "workspace-filesystem"
         ],
-        "summary": "POST /v1/workspaces/{workspace_id}/fs/_/move - Move/rename a file or directory",
+        "summary": "Move/rename a file or directory",
         "operationId": "move_file",
         "parameters": [
           {
@@ -29339,7 +29533,7 @@
         "tags": [
           "workspace-filesystem"
         ],
-        "summary": "GET /v1/workspaces/{workspace_id}/fs/_/preview/{path} - Sandboxed HTML render",
+        "summary": "Sandboxed HTML render",
         "description": "Serves an HTML file as a `text/html` document carrying a strict `sandbox`\nCSP (TM-WEB-010) so the file viewer can render it — with JavaScript — inside\nan iframe without exposing everruns cookies, storage, the parent DOM, or\ntop-frame navigation. Only `.html`/`.htm` files are eligible; everything else\nreturns 415 (use the download endpoint instead).",
         "operationId": "preview_path",
         "parameters": [
@@ -29395,7 +29589,7 @@
         "tags": [
           "workspace-filesystem"
         ],
-        "summary": "POST /v1/workspaces/{workspace_id}/fs/_/stat - File metadata",
+        "summary": "File metadata",
         "operationId": "stat_file",
         "parameters": [
           {
@@ -29449,7 +29643,7 @@
         "tags": [
           "workspace-filesystem"
         ],
-        "summary": "GET /v1/workspaces/{workspace_id}/fs/{path} - Read file or list directory",
+        "summary": "Read file or list directory",
         "operationId": "get_path",
         "parameters": [
           {
@@ -29509,7 +29703,7 @@
         "tags": [
           "workspace-filesystem"
         ],
-        "summary": "PUT /v1/workspaces/{workspace_id}/fs/{path} - Update file content",
+        "summary": "Update file content",
         "operationId": "update_path",
         "parameters": [
           {
@@ -29573,7 +29767,7 @@
         "tags": [
           "workspace-filesystem"
         ],
-        "summary": "POST /v1/workspaces/{workspace_id}/fs/{path} - Create file or directory",
+        "summary": "Create file or directory",
         "operationId": "create_path",
         "parameters": [
           {
@@ -29637,7 +29831,7 @@
         "tags": [
           "workspace-filesystem"
         ],
-        "summary": "DELETE /v1/workspaces/{workspace_id}/fs/{path} - Delete file or directory",
+        "summary": "Delete file or directory",
         "operationId": "delete_path",
         "parameters": [
           {
@@ -31041,7 +31235,8 @@
           "connected",
           "app_created",
           "missing_permissions",
-          "suggested_owners"
+          "suggested_owners",
+          "everruns_app_installations"
         ],
         "properties": {
           "account": {
@@ -31079,11 +31274,18 @@
               "string",
               "null"
             ],
-            "description": "The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`.\nKnown for an agent's own App; `None` otherwise."
+            "description": "The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`, or the\nshared App's (`everruns[bot]`) when the agent chose it and the\ndeployment names its slug; `None` otherwise."
           },
           "connected": {
             "type": "boolean",
-            "description": "An installation is bound, so tools and triggers work."
+            "description": "An installation is bound, so tools and triggers work: the agent's own\nApp's, or a shared Everruns App installation the agent chose."
+          },
+          "everruns_app_installations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EverrunsAppInstallation"
+            },
+            "description": "Shared Everruns App installations an org admin linked, which this agent\ncan choose instead of an App of its own (D3). Empty when none is linked\nor the deployment has no shared App."
           },
           "identity_id": {
             "type": [
@@ -33218,7 +33420,7 @@
           },
           "id": {
             "type": "string",
-            "description": "`free` or `native`.",
+            "description": "`free`, `native`, or `hosted` (the deployment's own search, when it\noffers one).",
             "example": "free"
           },
           "name": {
@@ -37958,14 +38160,6 @@
             ],
             "description": "Optional resident virtual user used for unattended/background execution.",
             "example": "identity_01933b5a00007000800000000000001"
-          },
-          "workspace_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Attach this session to an existing Workspace (format: `wsp_<32-hex>`)\ninstead of auto-creating a default per-session workspace. The workspace\nmust exist in the caller's org and be `active`. Lets multiple sessions\nshare one working filesystem. Omit for the default 1:1 behavior.",
-            "example": "wsp_01933b5a00007000800000000000001"
           }
         }
       },
@@ -38053,25 +38247,6 @@
           "usage": {
             "$ref": "#/components/schemas/VirtualUserUsage",
             "description": "Runtime purpose; service accounts may be attached to agents."
-          }
-        }
-      },
-      "CreateWorkspaceRequest": {
-        "type": "object",
-        "required": [
-          "name"
-        ],
-        "properties": {
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "example": "Shared workspace for the Q4 research project"
-          },
-          "name": {
-            "type": "string",
-            "example": "team-research"
           }
         }
       },
@@ -40304,6 +40479,118 @@
             "type": "integer",
             "format": "int64",
             "description": "Convenience: count of `turn.started` events."
+          }
+        }
+      },
+      "EverrunsAppInstallation": {
+        "type": "object",
+        "description": "A shared Everruns App installation the org links, as an agent can choose it.",
+        "required": [
+          "connection_id",
+          "account"
+        ],
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "GitHub account the installation is on."
+          },
+          "account_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "GitHub's account type: `User` or `Organization`, when known."
+          },
+          "connection_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The org link's connection id; pass it to choose this installation."
+          },
+          "repository_selection": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`all` or `selected`, when known."
+          }
+        }
+      },
+      "EverrunsAppLink": {
+        "type": "object",
+        "description": "One shared App installation linked to the org.",
+        "required": [
+          "id",
+          "installation_id",
+          "account",
+          "agent_count",
+          "linked_at"
+        ],
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "GitHub account the installation is on.",
+            "example": "acme"
+          },
+          "account_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "GitHub's account type: `User` or `Organization`."
+          },
+          "agent_count": {
+            "type": "integer",
+            "description": "Agents in the org acting through this link.",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Connection id agents choose the link by."
+          },
+          "installation_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "GitHub installation id.",
+            "example": 4242
+          },
+          "linked_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "repository_selection": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`all` or `selected`."
+          }
+        }
+      },
+      "EverrunsAppLinks": {
+        "type": "object",
+        "description": "The org's links to the shared Everruns GitHub App.",
+        "required": [
+          "configured",
+          "installations"
+        ],
+        "properties": {
+          "app_slug": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The shared App's slug; agents that choose it show up as `<slug>[bot]`."
+          },
+          "configured": {
+            "type": "boolean",
+            "description": "The deployment has a shared App; without one nothing can be linked."
+          },
+          "installations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EverrunsAppLink"
+            }
           }
         }
       },
@@ -66488,6 +66775,20 @@
           }
         }
       },
+      "UseEverrunsAppRequest": {
+        "type": "object",
+        "description": "Which org link to act through.",
+        "required": [
+          "connection_id"
+        ],
+        "properties": {
+          "connection_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Connection id of one of the org's linked installations, from the\nagent's GitHub status (`everruns_app_installations`)."
+          }
+        }
+      },
       "User": {
         "type": "object",
         "description": "User response for listing",
@@ -67352,7 +67653,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Automatic order: `native`, search account ids, and `free`, which is\nalways last. Entries left out keep their natural place."
+            "description": "Automatic order: `native`, search account ids, `hosted` (the\ndeployment's own search, when it offers one) and `free`, which is\nalways last. Entries left out keep their natural place."
           },
           "blocked_domains": {
             "type": "array",

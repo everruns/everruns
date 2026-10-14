@@ -58,8 +58,7 @@ pub(crate) fn mcp_ctx(org: &ResolvedOrg, state: &AppState) -> Ctx {
 /// Agent GitHub Apps with this server's public URLs, so a manifest started
 /// over MCP or `/v1/commands` names the same URLs as one started over REST.
 fn github_apps(state: &AppState) -> crate::github_apps::GitHubAppContext {
-    crate::github_apps::GitHubAppContext::from_env()
-        .with_public_urls(&state.auth.config.base_url, &state.auth.config.frontend_url)
+    crate::github_apps::GitHubAppContext::from_env().with_auth_config(&state.auth.config)
 }
 
 /// Attach the provider-domain services `/v1/providers` uses, so provider

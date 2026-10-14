@@ -41,7 +41,14 @@ async fn search_matching_a_deferred_server_reveals_it_and_its_tools() {
     // The turn carries the placeholder only: no tools were listed.
     let placeholder = crate::deferred_mcp_server_definition("linear", Some("Issue tracking"));
     let mut registry = ToolRegistry::new();
-    for tool in crate::build_mcp_proxy_tools(&[placeholder], Arc::new(NeverCalled)) {
+    let definitions = [placeholder];
+    for tool in crate::build_mcp_proxy_tools(
+        &definitions,
+        Arc::new(crate::ScopedMcpToolInvoker::new(
+            &definitions,
+            Arc::new(NeverCalled),
+        )),
+    ) {
         registry.register_boxed(tool);
     }
     let mut ctx = ToolContext::with_storage_store(session, storage.clone());
@@ -106,9 +113,13 @@ async fn ordinary_matches_reveal_no_server() {
     let session = SessionId::new();
     let storage = Arc::new(InMemorySessionStorageStore::new());
     let mut registry = ToolRegistry::new();
+    let definitions = [mcp_tool("mcp_linear__create_issue")];
     for tool in crate::build_mcp_proxy_tools(
-        &[mcp_tool("mcp_linear__create_issue")],
-        Arc::new(NeverCalled),
+        &definitions,
+        Arc::new(crate::ScopedMcpToolInvoker::new(
+            &definitions,
+            Arc::new(NeverCalled),
+        )),
     ) {
         registry.register_boxed(tool);
     }

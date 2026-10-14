@@ -23,7 +23,7 @@ use async_trait::async_trait;
 use everruns_contracts::runtime::channel::{
     ChannelDeliveryAdapter, ChannelDriver, ChannelError, ChannelRequest, ChannelResponse,
     DeliveryContext, DeliveryResult, DeliveryTarget, ExternalActor, Inbound, InboundAttachment,
-    InboundChannelEvent, InboundMessage, OutboundChannelMessage,
+    InboundChannelEvent, InboundMessage, OutboundChannelMessage, RemoteCredential,
 };
 use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};
@@ -36,6 +36,8 @@ pub mod web_api;
 
 const BOT_TOKEN_ENV: &str = "SLACK_BOT_TOKEN";
 const SIGNING_SECRET_ENV: &str = "SLACK_SIGNING_SECRET";
+/// Where Slack serves files; the bot token is sent only here.
+const SLACK_FILES_HOST: &str = "files.slack.com";
 /// Slack's own replay window.
 const MAX_CLOCK_SKEW_SECS: i64 = 5 * 60;
 
@@ -217,20 +219,13 @@ impl ChannelDriver for Slack {
         }
         let thread_ts = event.get("thread_ts").and_then(Value::as_str).unwrap_or(ts);
         let user = field("user");
+        let token = self.token.value().filter(|token| !token.is_empty());
         let attachments = event
             .get("files")
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
-            .filter_map(|file| {
-                Some(InboundAttachment::FileDescription {
-                    name: file.get("name")?.as_str()?.to_string(),
-                    mime_type: file
-                        .get("mimetype")
-                        .and_then(Value::as_str)
-                        .map(str::to_string),
-                })
-            })
+            .map(|file| file_attachment(file, token.as_deref()))
             .collect();
         let routing_metadata = HashMap::from([
             ("channel_id".to_string(), channel.to_string()),
@@ -273,6 +268,36 @@ fn unix_now() -> i64 {
         .map_or(0, |elapsed| {
             i64::try_from(elapsed.as_secs()).unwrap_or(i64::MAX)
         })
+}
+
+/// A file of a message: with a bot token, downloaded from Slack's file host
+/// by the channel host (the token goes only there); a file hosted elsewhere
+/// (Google Drive) or without a token is described by name and its link.
+fn file_attachment(file: &Value, token: Option<&str>) -> InboundAttachment {
+    let text = |name: &str| file.get(name).and_then(Value::as_str);
+    let name = text("name").unwrap_or("unnamed file");
+    let media_type = text("mimetype").map(str::to_string);
+    let external = file
+        .get("is_external")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let url = text("url_private_download").or_else(|| text("url_private"));
+    match (url, token) {
+        (Some(url), Some(token)) if !external => InboundAttachment::Remote {
+            url: url.to_string(),
+            name: Some(name.to_string()),
+            media_type,
+            size: file.get("size").and_then(Value::as_u64),
+            credential: Some(RemoteCredential::bearer(SLACK_FILES_HOST, token)),
+        },
+        _ => InboundAttachment::FileDescription {
+            name: match text("permalink") {
+                Some(link) if external => format!("{name} ({link})"),
+                _ => name.to_string(),
+            },
+            mime_type: media_type,
+        },
+    }
 }
 
 /// Remove `<@U123>` mention tokens and collapse the whitespace around them.
