@@ -1,13 +1,14 @@
 ---
 title: Search model catalogs and test a model from Yolop
 description: "Yolop searches provider catalogs, reports model ping latency and errors, and accepts qualified model references without silently choosing another model."
-date: 2026-10-13
+date: 2026-10-14
 kind: feature
 significance: notable
 products: [yolop]
 surfaces: [cli]
 links:
   docs: ["https://github.com/everruns/yolop#providers-and-models"]
+  prs: [everruns/yolop#852]
 ---
 
 Search a provider's model catalog without leaving Yolop, then send a small ping
