@@ -592,7 +592,7 @@ describe("Sidebar", () => {
   it("hides Durable Execution navigation items by default (collapsed)", () => {
     render(<Sidebar />);
 
-    expect(screen.queryByText("Overview")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Monitoring" })).not.toBeInTheDocument();
     expect(screen.queryByText("Workers")).not.toBeInTheDocument();
     expect(screen.queryByText("Workflows")).not.toBeInTheDocument();
     expect(screen.queryByText("Schedules")).not.toBeInTheDocument();
@@ -604,7 +604,7 @@ describe("Sidebar", () => {
     const toggle = screen.getByRole("button", { name: /durable execution/i });
     fireEvent.click(toggle);
 
-    expect(screen.getByText("Overview")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Monitoring" })).toHaveAttribute("href", "/durable");
     expect(screen.getByText("Workers")).toBeInTheDocument();
     expect(screen.getByText("Workflows")).toBeInTheDocument();
     expect(screen.getByText("Schedules")).toBeInTheDocument();

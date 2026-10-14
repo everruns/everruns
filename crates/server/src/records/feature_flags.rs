@@ -22,6 +22,9 @@ pub use everruns_core::{FeatureFlagDefinition, FeatureFlagGrade};
 /// `docs/api/openapi.json`.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FeatureFlags {
+    /// Organization-scoped live execution monitoring. Adoption opt-in.
+    #[serde(default)]
+    pub monitoring: bool,
     /// Evals (user-facing behavioral evals for agents). Experimental.
     pub evals: bool,
     /// Skills registry management UI. Experimental.
@@ -119,6 +122,12 @@ pub fn is_known_feature_flag(name: &str) -> bool {
 /// One catalog for platform flags, including infrastructure capabilities.
 /// Integration flags live with their integration crates.
 pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
+    FeatureFlagDefinition {
+        name: "monitoring",
+        label: "Monitoring",
+        description: "Monitor live execution, actor leases, and durable progress across your organization.",
+        grade: FeatureFlagGrade::Adoption,
+    },
     FeatureFlagDefinition {
         name: "chat_threads",
         label: "Chat threads",
@@ -314,6 +323,7 @@ impl FeatureFlags {
     /// is irrelevant to JSON consumers.
     pub fn to_map(&self) -> FeatureFlagMap {
         let mut map = BTreeMap::from([
+            ("monitoring".to_string(), self.monitoring),
             ("docker_capability".to_string(), self.docker_capability),
             ("container_sandbox".to_string(), self.container_sandbox),
             ("lua".to_string(), self.lua),
@@ -347,6 +357,7 @@ impl FeatureFlags {
     /// Look up a flag by name (for dynamic/string-based access).
     pub fn is_enabled(&self, flag: &str) -> bool {
         match flag {
+            "monitoring" => self.monitoring,
             "docker_capability" => self.docker_capability,
             "container_sandbox" => self.container_sandbox,
             "lua" => self.lua,
@@ -371,6 +382,7 @@ impl FeatureFlags {
 
     fn set(&mut self, name: &str, enabled: bool) {
         match name {
+            "monitoring" => self.monitoring = enabled,
             "evals" => self.evals = enabled,
             "skills" => self.skills = enabled,
             "memory" => self.memory = enabled,
@@ -454,6 +466,7 @@ impl FeatureFlags {
     #[cfg(test)]
     pub fn all_enabled() -> Self {
         Self {
+            monitoring: true,
             docker_capability: true,
             container_sandbox: true,
             lua: true,

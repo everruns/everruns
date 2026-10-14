@@ -2082,6 +2082,63 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/durable/monitoring": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get platform-wide execution monitoring
+     * @description Get platform-wide execution monitoring. Requires platform-user access.
+     */
+    get: operations["get_fleet_monitoring"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/durable/monitoring/actors": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List a bounded platform-wide page of session actors */
+    get: operations["list_fleet_monitoring_actors"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/durable/monitoring/actors/{session_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Inspect a session actor across organizations
+     * @description Inspect a session actor across organizations. Requires platform-user access.
+     */
+    get: operations["get_fleet_monitoring_actor"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/durable/schedules": {
     parameters: {
       query?: never;
@@ -4201,6 +4258,74 @@ export interface paths {
     head?: never;
     /** Update a model */
     patch: operations["update_model"];
+    trace?: never;
+  };
+  "/v1/monitoring": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get live execution monitoring for the selected, enrolled organization */
+    get: operations["get_monitoring"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/monitoring/actors": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List a bounded page of session actors in the selected organization */
+    get: operations["list_monitoring_actors"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/monitoring/actors/{session_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Inspect an organization actor and its lease history */
+    get: operations["get_monitoring_actor"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/monitoring/config": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Resolve organization monitoring read authority */
+    get: operations["monitoring_config"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   "/v1/notifications": {
@@ -19634,6 +19759,145 @@ export interface components {
        * @example 2026-05-27T15:24:00Z
        */
       updated_at: string;
+    };
+    MonitoringActor: {
+      /** Format: int32 */
+      attempts_since_release?: number | null;
+      /** Format: date-time */
+      cancel_requested_at?: string | null;
+      /** Format: int64 */
+      consumed_seq?: number | null;
+      /** Format: int64 */
+      fence?: number | null;
+      holder?: string | null;
+      /** Format: int64 */
+      inbox_seq?: number | null;
+      /** Format: date-time */
+      lease_expires_at?: string | null;
+      /** Format: date-time */
+      lease_renewed_at?: string | null;
+      lease_state: string;
+      /** Format: int64 */
+      lease_ttl_ms?: number | null;
+      /** Format: int64 */
+      next_input_seq?: number | null;
+      org_id: string;
+      phase: string;
+      /** Format: date-time */
+      phase_since: string;
+      /** Format: int64 */
+      runnable_age_ms?: number | null;
+      /** Format: date-time */
+      runnable_since?: string | null;
+      session_id: string;
+      session_status: string;
+    };
+    MonitoringActorDetail: {
+      actor: components["schemas"]["MonitoringActor"];
+      /** Format: date-time */
+      generated_at: string;
+      ownership_history: components["schemas"]["MonitoringLeaseEvent"][];
+      steps: components["schemas"]["MonitoringStep"][];
+    };
+    MonitoringActorPage: {
+      actors: components["schemas"]["MonitoringActor"][];
+      /** Format: date-time */
+      generated_at: string;
+      /** Format: int32 */
+      next_offset?: number | null;
+    };
+    MonitoringCohort: {
+      /** Format: int64 */
+      count: number;
+      org_id: string;
+      phase: string;
+      worker_id?: string | null;
+    };
+    MonitoringLeaseEvent: {
+      /** Format: date-time */
+      expires_at?: string | null;
+      /** Format: int64 */
+      fence: number;
+      holder: string;
+      kind: string;
+      /** Format: date-time */
+      occurred_at: string;
+      /** Format: date-time */
+      previous_expires_at?: string | null;
+      previous_holder?: string | null;
+    };
+    MonitoringOwnership: {
+      /** Format: int64 */
+      actor_leases: number;
+      org_id: string;
+      worker_id: string;
+    };
+    MonitoringPhase: {
+      /** Format: int64 */
+      count: number;
+      /** Format: int64 */
+      oldest_ms: number;
+      phase: string;
+    };
+    MonitoringSnapshot: {
+      /** Format: int64 */
+      actor_leases: number;
+      /** Format: int64 */
+      actors: number;
+      cohorts: components["schemas"]["MonitoringCohort"][];
+      cohorts_truncated: boolean;
+      /** @description Committed lifecycle event counts in the last window, not lifetime counters. */
+      events: {
+        [key: string]: number;
+      };
+      /** Format: int64 */
+      expired_leases: number;
+      /** Format: date-time */
+      generated_at: string;
+      lease_events: {
+        [key: string]: number;
+      };
+      /** Format: int64 */
+      oldest_runnable_ms?: number | null;
+      /** Format: int64 */
+      organizations: number;
+      ownership: components["schemas"]["MonitoringOwnership"][];
+      phases: components["schemas"]["MonitoringPhase"][];
+      scope: string;
+      /** Format: int32 */
+      window_seconds: number;
+      workers: components["schemas"]["MonitoringWorker"][];
+      workers_truncated: boolean;
+    };
+    MonitoringStep: {
+      /** Format: int64 */
+      duration_ms?: number | null;
+      kind: string;
+      /** Format: date-time */
+      started_at: string;
+      status: string;
+      /** Format: int32 */
+      step_no: number;
+      /** Format: int32 */
+      turn_no: number;
+    };
+    MonitoringWorker: {
+      accepting_work?: boolean | null;
+      /** Format: int64 */
+      actor_leases: number;
+      /** Format: int64 */
+      capacity?: number | null;
+      /** Format: int64 */
+      current_load?: number | null;
+      id: string;
+      /** Format: date-time */
+      last_heartbeat_at?: string | null;
+      phases: {
+        [key: string]: number;
+      };
+      /** @description Platform-only heartbeat telemetry; null in organization scope. */
+      status?: string | null;
+      worker_group?: string | null;
     };
     /** @description Request to move/rename a file */
     MoveFileRequest: {
@@ -35845,6 +36109,91 @@ export interface operations {
       };
     };
   };
+  get_fleet_monitoring: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Platform-wide execution monitoring */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringSnapshot"];
+        };
+      };
+      /** @description Platform access required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_fleet_monitoring_actors: {
+    parameters: {
+      query?: {
+        offset?: number;
+        worker_id?: string;
+        phase?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Platform actor page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringActorPage"];
+        };
+      };
+    };
+  };
+  get_fleet_monitoring_actor: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Platform actor diagnostics */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringActorDetail"];
+        };
+      };
+      /** @description Actor not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   list_schedules: {
     parameters: {
       query?: {
@@ -41589,6 +41938,120 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  get_monitoring: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Organization execution monitoring */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringSnapshot"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not enrolled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_monitoring_actors: {
+    parameters: {
+      query?: {
+        offset?: number;
+        worker_id?: string;
+        phase?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Organization actor page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringActorPage"];
+        };
+      };
+    };
+  };
+  get_monitoring_actor: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Organization actor diagnostics */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringActorDetail"];
+        };
+      };
+      /** @description Actor not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  monitoring_config: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Monitoring authorization */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ResourceConfigResponse"];
+        };
       };
     };
   };

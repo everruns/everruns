@@ -3,6 +3,7 @@
 //! keeps these control-plane loops running.
 
 // Provider-side lifecycle of OpenAI Agents API sessions (EVE-1126)
+pub mod actor_history_retention;
 pub mod agents_api_lifecycle;
 
 // Object-storage blob garbage collector

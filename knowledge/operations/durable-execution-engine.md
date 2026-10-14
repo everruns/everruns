@@ -486,7 +486,11 @@ tasks from the DLQ. Sealed tasks already carry the seal reason and counters via
 
 ### Metrics Dashboard
 
-Real-time metrics on the durable overview page via SSE streaming. Shows last 15 minutes, zero-backfilled. Four chart panels: Workflow Status, Task Status, Throughput, System Load. See `crates/server/src/api/durable.rs` for `MetricsPoint` fields and the ring-buffer collector.
+The durable landing page is [Monitoring](monitoring.md), showing session-actor
+execution, worker ownership, and lease health. Generic queue/workflow metrics
+remain available through the durable metrics API and Prometheus. They describe
+background activities, not platform turn throughput. Source contracts and the
+ring-buffer collector remain in `crates/server/src/api/durable.rs`.
 
 ### System Health Counters
 

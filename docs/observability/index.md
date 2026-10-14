@@ -9,6 +9,10 @@ Everruns emits structured events for every agent turn, model calls, tool invocat
 
 ## Available Integrations
 
+For live execution inside the platform, use [Monitoring](/observability/monitoring/).
+It provides organization-scoped and platform-wide views of execution phases,
+worker ownership, and actor leases.
+
 - [OpenTelemetry](/observability/opentelemetry/), export traces over OTLP to any tracing backend. Spans follow the Gen-AI semantic conventions and the OpenInference conventions at once, so Grafana Tempo, Jaeger, Datadog, Langfuse, and Arize Phoenix all read them.
 - [Braintrust](/observability/braintrust/), LLM observability, evaluation, and trace visualization. Turn traces are grouped by session, with token usage, time-to-first-token, and tool execution times.
 
