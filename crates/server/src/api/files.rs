@@ -1,6 +1,5 @@
 use crate::api::state::ApiState;
 use crate::auth::ResolvedOrg;
-use crate::domains::messages::zip_attachments;
 use crate::storage::CreateFileRow;
 use axum::body::Body;
 use axum::extract::DefaultBodyLimit;
@@ -14,6 +13,7 @@ use axum::{
 use axum_extra::extract::Multipart;
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::FileId;
+use everruns_core::host::attachment_zip as zip_attachments;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 

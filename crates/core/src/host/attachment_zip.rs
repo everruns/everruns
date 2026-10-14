@@ -4,9 +4,9 @@
 //! file storage (`/attachments/<id>/data.zip` → `/attachments/<id>/data/`), so
 //! the agent works with its contents as ordinary read-only files. Unpacking is
 //! all or nothing: the same check rejects a zip at upload, so a stored upload
-//! always unpacks and the label that names the folder is true. See
-//! knowledge/runtime-resources/session-attachments.md.
-//!
+//! always unpacks and the label that names the folder is true.
+
+// Design: knowledge/runtime-resources/session-attachments.md.
 // THREAT[TM-DOS-001, TM-FS-020]: sizes are measured while decompressing, never
 // taken from entry headers, and every limit fails the whole archive. Paths
 // that climb out (`..`, absolute), symlinks and encrypted entries are refused.
@@ -17,11 +17,11 @@ use std::io::{Cursor, Read};
 use everruns_contracts::runtime::attachments::sanitize_file_name;
 
 /// Most files one zip may unpack to.
-pub(crate) const MAX_ZIP_FILES: usize = 1_000;
+pub const MAX_ZIP_FILES: usize = 1_000;
 /// Most bytes one zip may unpack to.
-pub(crate) const MAX_ZIP_UNPACKED_BYTES: usize = 100 * 1024 * 1024;
+pub const MAX_ZIP_UNPACKED_BYTES: usize = 100 * 1024 * 1024;
 /// Largest single file a zip may unpack to.
-pub(crate) const MAX_ZIP_FILE_BYTES: usize = 25 * 1024 * 1024;
+pub const MAX_ZIP_FILE_BYTES: usize = 25 * 1024 * 1024;
 /// Highest unpacked-to-packed ratio, for one entry and for the whole zip.
 const MAX_COMPRESSION_RATIO: usize = 100;
 /// Entries below this size may exceed the ratio (a small run of zeros does).
@@ -32,7 +32,7 @@ const MAX_ZIP_ENTRIES: usize = 2 * MAX_ZIP_FILES;
 const MAX_PATH_DEPTH: usize = 16;
 
 /// Whether `bytes` start like a zip archive with at least one entry.
-pub(crate) fn looks_like_zip(bytes: &[u8]) -> bool {
+pub fn looks_like_zip(bytes: &[u8]) -> bool {
     bytes.starts_with(b"PK\x03\x04")
 }
 
@@ -41,7 +41,7 @@ pub(crate) fn looks_like_zip(bytes: &[u8]) -> bool {
 /// Folders are implied by paths. macOS metadata (`__MACOSX/`, `.DS_Store`)
 /// and symlinks are skipped; anything that breaks a limit or tries to leave
 /// the folder rejects the whole archive.
-pub(crate) fn unpack_zip(bytes: &[u8]) -> Result<BTreeMap<String, Vec<u8>>, String> {
+pub fn unpack_zip(bytes: &[u8]) -> Result<BTreeMap<String, Vec<u8>>, String> {
     let mut archive =
         zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| format!("not a valid zip: {e}"))?;
     if archive.len() > MAX_ZIP_ENTRIES {

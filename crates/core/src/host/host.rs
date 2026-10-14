@@ -1183,12 +1183,22 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         reason_capability_registry.clone(),
         adapter.event_emitter(),
     );
-    if let Some(image_resolver) = adapter.image_resolver(org_id) {
-        atom = atom.with_image_resolver(image_resolver);
-    }
-    if let Some(file_resolver) = adapter.file_resolver(org_id) {
-        atom = atom.with_file_resolver(file_resolver);
-    }
+    // A host without an upload store keeps attachments in the session's own
+    // files; read them back from there.
+    let session_attachments = || {
+        Arc::new(crate::host::SessionAttachmentFiles::for_session(
+            adapter.file_store(org_id),
+            &input.context,
+        ))
+    };
+    atom = match adapter.image_resolver(org_id) {
+        Some(image_resolver) => atom.with_image_resolver(image_resolver),
+        None => atom.with_image_resolver(session_attachments()),
+    };
+    atom = match adapter.file_resolver(org_id) {
+        Some(file_resolver) => atom.with_file_resolver(file_resolver),
+        None => atom.with_file_resolver(session_attachments()),
+    };
     if let Some(timeout) = adapter.provider_stall_timeout() {
         atom = atom.with_provider_stall_timeout(timeout);
     }

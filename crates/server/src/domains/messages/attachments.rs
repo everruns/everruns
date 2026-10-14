@@ -16,10 +16,10 @@ use everruns_contracts::runtime::attachments::{ZIP_MEDIA_TYPE, attachment_path, 
 use everruns_core::ContentPart;
 use uuid::Uuid;
 
-use super::zip_attachments::unpack_zip;
 use crate::domains::session_files::service::{CreateFileInput, WorkspaceFileService};
 use crate::errors::BadRequestError;
 use crate::storage::StorageBackend;
+use everruns_core::host::attachment_zip::unpack_zip;
 
 /// One upload a message references, with the session path it is copied to.
 struct Upload {

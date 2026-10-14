@@ -184,7 +184,10 @@ A serve app speaks a subset of the Everruns server `/v1` API, with the same
 request and response bodies:
 
 - `POST /v1/sessions` and `GET /v1/sessions/{id}`
-- `POST /v1/sessions/{id}/messages`, which also steers an active turn
+- `POST /v1/sessions/{id}/messages`, which also steers an active turn. Its
+  `files` list sends files as base64 `data` or a public `url`, as on the
+  [Agent API](/how-to/call-your-agent-from-code/#send-files); each is kept in
+  the session's `/attachments` folder
 - `POST /v1/sessions/{id}/cancel`
 - `GET /v1/sessions/{id}/sse` (resume with `since_id` or `after_sequence`) and `GET /v1/sessions/{id}/events`
 - `POST /v1/sessions/{id}/question-answers`, for [`ask_user`](/framework/ask-user/) questions

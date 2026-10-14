@@ -155,6 +155,7 @@ impl ChannelSessionPort for ServerChannelPort {
     async fn store_attachment(
         &self,
         channel: &ChannelConfig,
+        _session_id: Option<&str>,
         attachment: ReceivedAttachment,
     ) -> Result<ContentPart, ChannelError> {
         let org_id = scope(channel)?.context.org_id;

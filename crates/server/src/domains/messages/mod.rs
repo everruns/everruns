@@ -9,7 +9,6 @@ pub(crate) mod intake;
 pub mod queries;
 pub mod service;
 pub mod types;
-pub(crate) mod zip_attachments;
 
 pub use commands::*;
 pub use service::*;

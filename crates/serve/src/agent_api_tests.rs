@@ -41,7 +41,7 @@ async fn the_card_names_the_agent_and_its_session_collection() {
     assert_eq!(card["streaming"], true);
     assert_eq!(
         card["input"],
-        json!({ "text": true, "images": false, "files": false })
+        json!({ "text": true, "images": true, "files": true })
     );
     assert_eq!(card["auth"], json!([]));
     assert_eq!(card["links"]["sessions"], "/v1/channels/tester/sessions");
@@ -244,4 +244,48 @@ async fn tool_approvals_take_the_servers_batch_shape() {
         .unwrap();
     assert_eq!(completed["data"]["tool_name"], "guarded");
     assert_eq!(completed["data"]["success"], true);
+}
+
+#[tokio::test]
+async fn files_sent_with_a_message_are_kept_in_the_session() {
+    use base64::Engine as _;
+    let server = serve(Host::new(app(), Mode::Eval, None).unwrap()).await;
+    let session = create(&server, "tester").await;
+    let id = session["id"].as_str().unwrap();
+    let encode = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+
+    // No text: the files are the message.
+    let sent = server
+        .post(
+            &format!("/v1/channels/tester/sessions/{id}/messages"),
+            json!({
+                "message": { "role": "user", "content": [] },
+                "files": [
+                    { "name": "Q3 report.pdf", "data": encode(b"%PDF-1.7 body") },
+                    { "name": "bad.zip", "data": encode(b"PK\x03\x04 not really") },
+                ],
+            }),
+        )
+        .await;
+    assert_eq!(sent.status(), 201);
+    let message: Value = sent.json().await.unwrap();
+    let content = message["content"].as_array().unwrap();
+    assert_eq!(content.len(), 2, "{content:?}");
+    assert_eq!(content[0]["type"], "file");
+    assert_eq!(content[0]["filename"], "Q3 report.pdf");
+    let note = content[1]["text"].as_str().unwrap();
+    assert!(
+        note.contains("bad.zip") && note.contains("cannot be unpacked"),
+        "{note}"
+    );
+
+    let events = server.wait_turns(id, 1).await;
+    let input = events
+        .iter()
+        .find(|e| e["type"] == "input.message")
+        .unwrap();
+    assert_eq!(
+        input["data"]["message"]["content"][0]["filename"],
+        "Q3 report.pdf"
+    );
 }

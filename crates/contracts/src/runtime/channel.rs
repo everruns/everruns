@@ -332,6 +332,44 @@ pub enum InboundAttachment {
     },
 }
 
+impl From<crate::execution_api::MessageFile> for InboundAttachment {
+    /// A caller's file as intake input: its bytes, a download, or a note when
+    /// it carries neither or both, or bytes that are not base64.
+    fn from(file: crate::execution_api::MessageFile) -> Self {
+        use base64::Engine as _;
+        let crate::execution_api::MessageFile {
+            name,
+            media_type,
+            data,
+            url,
+        } = file;
+        let note = |why: &str| InboundAttachment::FileDescription {
+            name: format!("{} ({why})", name.as_deref().unwrap_or("file")),
+            mime_type: media_type.clone(),
+        };
+        match (data, url) {
+            (Some(data), None) => {
+                match base64::engine::general_purpose::STANDARD.decode(data.trim()) {
+                    Ok(data) => InboundAttachment::Bytes {
+                        name,
+                        media_type,
+                        data,
+                    },
+                    Err(_) => note("not valid base64"),
+                }
+            }
+            (None, Some(url)) => InboundAttachment::Remote {
+                url,
+                name,
+                media_type,
+                size: None,
+                credential: None,
+            },
+            _ => note("needs exactly one of data and url"),
+        }
+    }
+}
+
 /// An `Authorization` header a [`InboundAttachment::Remote`] download sends,
 /// only to `host`.
 #[derive(Clone)]

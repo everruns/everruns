@@ -182,7 +182,7 @@ where
         state
             .channels
             .host
-            .attachment_parts(&resolved, &req.files, None)
+            .attachment_parts(&resolved, None, &req.files, None)
             .await
             .map_err(channel_command_error)?,
     );

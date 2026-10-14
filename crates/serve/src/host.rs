@@ -95,8 +95,6 @@ pub(crate) struct TurnOutcome {
 /// A turn accepted by [`Host::send`]; `wait` for its outcome, or drop it and
 /// follow the event stream instead.
 pub(crate) struct PendingTurn {
-    /// Id of the accepted user message.
-    pub message_id: String,
     future: Pin<Box<dyn Future<Output = crate::Result<TurnOutcome>> + Send>>,
 }
 
@@ -619,7 +617,6 @@ impl Host {
         self.track(id, &live, &sent);
         let handle = sent.turn();
         Ok(PendingTurn {
-            message_id: sent.message_id.clone(),
             future: Box::pin(async move {
                 let turn = handle.wait().await?;
                 Ok(TurnOutcome {
