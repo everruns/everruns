@@ -8,13 +8,16 @@ products: [platform, cloud]
 surfaces: [ui, api]
 links:
   docs: [/providers/gemini/]
+  prs: [everruns/everruns#4728]
 ---
 
-Gemini 4 Argon now appears as an enabled favourite in the server's built-in
-Google Gemini model catalogue. Its model profile supplies context limits,
+![Everruns and Google Gemini logos, announcing Argon defaults and favourites](./integration@2x.png)
+
+**In the UI:** Gemini 4 Argon now appears as an enabled favourite in the
+server's built-in Google Gemini model catalogue. Its model profile supplies context limits,
 pricing, and reasoning controls in the model picker.
 
-The favourites API includes Argon:
+**In the API:** the favourites list includes Argon:
 
 ```http
 GET /v1/models?favorites_only=true
