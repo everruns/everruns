@@ -63,8 +63,10 @@ marked stale rather than appearing healthy.
 
 Use `GET /api/v1/monitoring` for an enrolled organization's summary and
 `GET /api/v1/durable/monitoring` for platform-wide monitoring. Both are read-only.
-The adjacent `/actors` endpoints provide bounded, filtered pages and actor
-detail. The [API reference](/api/) owns the request and response contracts.
+Use browser credentials or a full-access personal token; scoped personal tokens
+remain denied. Organization adoption and read permissions still apply, and fleet
+access still requires platform authority. The adjacent `/actors` endpoints provide
+bounded, filtered pages and actor detail. The [API reference](/api/) owns the request and response contracts.
 
 Monitoring complements [OpenTelemetry](/observability/opentelemetry/) and
 [Braintrust](/observability/braintrust/), which provide trace exports and
