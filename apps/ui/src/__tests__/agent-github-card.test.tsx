@@ -21,11 +21,14 @@ const base: api.AgentGitHubStatus = {
   repository_selection: null,
   missing_permissions: [],
   suggested_owners: [],
+  everruns_app_installations: [],
 };
 
-/** Opens the Connect GitHub menu and picks `item`. */
+const CREATE_OWN = "Create this agent's own GitHub App";
+
+/** Opens the create-own-App menu and picks `item`. */
 async function connectVia(item: string) {
-  fireEvent.click(await screen.findByRole("button", { name: "Connect GitHub" }));
+  fireEvent.click(await screen.findByRole("button", { name: CREATE_OWN }));
   fireEvent.click(await screen.findByRole("menuitem", { name: item }));
 }
 
@@ -81,7 +84,7 @@ describe("AgentGitHubCard", () => {
     });
     const submit = jest.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(() => {});
     renderCard();
-    fireEvent.click(await screen.findByRole("button", { name: "Connect GitHub" }));
+    fireEvent.click(await screen.findByRole("button", { name: CREATE_OWN }));
     expect(
       (await screen.findAllByRole("menuitem")).map((item) => item.textContent?.trim()),
     ).toEqual(["Personal account", "acme", "beta-labs", "Another organization…"]);
@@ -179,6 +182,65 @@ describe("AgentGitHubCard", () => {
     });
     renderCard();
     expect(await screen.findByRole("status")).toHaveTextContent("actions:read, checks:read");
+  });
+
+  it("offers only the agent's own App when the org linked no Everruns App account", async () => {
+    mocked.getAgentGitHub.mockResolvedValue(base);
+    renderCard();
+    expect(await screen.findByRole("button", { name: CREATE_OWN })).toBeInTheDocument();
+    expect(screen.getByText("Recommended")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Use the Everruns app" })).not.toBeInTheDocument();
+  });
+
+  it("lets the agent choose an account the org linked to the Everruns App", async () => {
+    mocked.getAgentGitHub.mockResolvedValue({
+      ...base,
+      everruns_app_installations: [
+        {
+          connection_id: "link_1",
+          account: "acme",
+          account_type: "Organization",
+          repository_selection: "all",
+        },
+      ],
+    });
+    mocked.chooseAgentEverrunsApp.mockResolvedValue({
+      ...base,
+      connected: true,
+      identity_id: "ident_1",
+      kind: "everruns_app",
+      bot_login: "everruns[bot]",
+      account: "acme",
+      repository_selection: "all",
+    });
+    renderCard();
+    expect(await screen.findByRole("button", { name: CREATE_OWN })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Use the Everruns app" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "acme" }));
+    await waitFor(() =>
+      expect(mocked.chooseAgentEverrunsApp).toHaveBeenCalledWith("agent_1", "link_1"),
+    );
+    expect(await screen.findByRole("heading", { name: "everruns[bot]" })).toBeInTheDocument();
+    expect(screen.getByText("Everruns App")).toBeInTheDocument();
+    expect(mocked.connectAgentGitHub).not.toHaveBeenCalled();
+  });
+
+  it("does not offer the Everruns App once the agent's own App exists", async () => {
+    mocked.getAgentGitHub.mockResolvedValue({
+      ...base,
+      app_created: true,
+      everruns_app_installations: [
+        {
+          connection_id: "link_1",
+          account: "acme",
+          account_type: null,
+          repository_selection: null,
+        },
+      ],
+    });
+    renderCard();
+    expect(await screen.findByRole("button", { name: "Finish installing" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Use the Everruns app" })).not.toBeInTheDocument();
   });
 
   it("stays quiet when the App has every permission", async () => {
@@ -290,7 +352,7 @@ describe("AgentGitHubSection", () => {
     mocked.getAgentGitHub.mockResolvedValue(base);
     renderSection();
 
-    expect(await screen.findByRole("button", { name: "Connect GitHub" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: CREATE_OWN })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Set the avatar" })).not.toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: /Add pull request trigger/ }),

@@ -195,9 +195,10 @@ async fn sandbox_organization_credentials_keep_the_exact_account_and_tenant() {
                 org_id,
                 name: "Sandbox account".into(),
                 provider: fixture.provider.clone(),
-                access_token_encrypted: fixture.encryption.encrypt_string("org-key").unwrap(),
+                access_token_encrypted: Some(fixture.encryption.encrypt_string("org-key").unwrap()),
                 provider_username: None,
                 provider_metadata: None,
+                ..Default::default()
             })
             .await
             .unwrap();

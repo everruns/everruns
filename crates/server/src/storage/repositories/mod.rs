@@ -34,6 +34,7 @@ pub use budgets::rows::*;
 mod compaction_checkpoints;
 pub use compaction_checkpoints::rows::*;
 mod virtual_user_connections;
+pub use virtual_user_connections::github_everruns_app::EverrunsAppOrgLink;
 pub use virtual_user_connections::rows::*;
 mod virtual_users;
 pub use advisory_locks::ADVISORY_LOCK_WAIT;

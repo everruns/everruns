@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  chooseAgentEverrunsApp,
   connectAgentGitHub,
   disconnectAgentGitHub,
   getAgentGitHub,
@@ -67,5 +68,14 @@ export function useDisconnectAgentGitHub(agentId: string) {
       queryClient.invalidateQueries({
         queryKey: queryKeys.agentGithub.status(agentId),
       }),
+  });
+}
+
+/** Make the agent act as the shared Everruns App through one of the org's links. */
+export function useChooseAgentEverrunsApp(agentId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (connectionId: string) => chooseAgentEverrunsApp(agentId, connectionId),
+    onSuccess: (status) => queryClient.setQueryData(queryKeys.agentGithub.status(agentId), status),
   });
 }

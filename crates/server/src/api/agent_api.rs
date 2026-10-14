@@ -24,7 +24,7 @@ use axum::{
 };
 use everruns_contracts::execution_api::{
     AgentCard, AgentCardAuth, AgentCardInput, AgentCardLinks, CreateAgentSessionRequest,
-    SubmitToolApprovalsRequest, SubmitToolApprovalsResponse,
+    MessageFile, SubmitToolApprovalsRequest, SubmitToolApprovalsResponse,
 };
 use everruns_contracts::typed_id::{EventId, SessionId};
 use everruns_core::builtins::ask_user::{AskUserAnswer, AskUserStatus};
@@ -48,12 +48,13 @@ use super::tool_approvals::{
 };
 use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::domains::agent_channels::api_sessions::{
-    AgentSessionView, ApiAuthError, ApiCaller, create_api_session, project_event,
-    public_event_json, send_api_message, session_is_callers, session_pending_input,
+    AgentSessionView, ApiAuthError, ApiCaller, check_api_message, create_api_session,
+    project_event, public_event_json, send_api_message, session_is_callers, session_pending_input,
     visible_event_types,
 };
 use crate::domains::agent_channels::record::ChannelType;
 use crate::domains::agent_channels::record::api::{AgentApiChannelConfig, ApiToolApprovals};
+use crate::domains::messages::intake::receive_files;
 use crate::domains::messages::types::InputMessage;
 use crate::storage::SessionRow;
 
@@ -254,7 +255,7 @@ pub async fn agent_api_get_card(
         name: auth.context.name.clone(),
         description: auth.context.description.clone(),
         streaming: true,
-        input: AgentCardInput::TEXT,
+        input: AgentCardInput::ALL,
         auth: card_auth(&auth.caller.config),
         conversation_starters: Vec::new(),
         links: AgentCardLinks {
@@ -331,7 +332,7 @@ pub async fn agent_api_get_session(
         ("channel_id" = String, Path, description = "api channel ID"),
         ("session_id" = String, Path, description = "Session ID")
     ),
-    request_body(content = Value, description = "`{\"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": …}]}}`"),
+    request_body(content = Value, description = "`{\"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": …}]}, \"files\": [MessageFile]}`. Content holds text and image parts; `files` (optional) carries files as base64 `data` or a public https `url`, each kept in the session's `/attachments`."),
     responses(
         (status = 201, description = "Message stored", body = Value),
         (status = 400, description = "Invalid body, or the retired api_endpoint body `{\"message\": \"text\"}`", body = ErrorResponse),
@@ -604,10 +605,13 @@ async fn get_session(state: &ChannelApiState, auth: Authorized, session_id: &str
 
 /// Body of `POST …/sessions/{id}/messages`: the `/v1/sessions/{id}/messages`
 /// body. Fields an execution caller may not set (model controls, tags,
-/// participants) are ignored, as serve ignores them.
+/// participants) are ignored, as serve ignores them. `files` carries files
+/// inline or by URL, since an execution caller has no upload route.
 #[derive(Debug, Deserialize)]
 struct SendMessageBody {
     message: InputMessage,
+    #[serde(default)]
+    files: Vec<MessageFile>,
 }
 
 /// `POST …/sessions/{id}/messages` on an api channel.
@@ -651,6 +655,17 @@ async fn send_message_now(
     if let Err(response) = within_spend_limit(state, auth).await {
         return response;
     }
+    if let Err(err) = check_api_message(&body.message, !body.files.is_empty()) {
+        return super::channel_api::command_error_response(err).into_response();
+    }
+    let files = receive_files(
+        &state.db,
+        state.egress.as_ref(),
+        auth.context.org_id,
+        "api",
+        body.files,
+    )
+    .await;
     match send_api_message(
         &state.message_service,
         &auth.context,
@@ -658,6 +673,7 @@ async fn send_message_now(
         &auth.caller,
         session.id,
         body.message,
+        files,
         request_id,
     )
     .await
