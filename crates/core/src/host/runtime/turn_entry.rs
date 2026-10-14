@@ -9,6 +9,17 @@ use crate::host::turn_loop::turn_entry_plan;
 mod attachments;
 
 impl InProcessRuntime {
+    /// Clone the normal task wake observer for an embedder-owned recovery path.
+    ///
+    /// Recovery may update a bare registry under an atomic ownership guard, without
+    /// traversing the observing registry again. Delivering its persisted terminal
+    /// wake here preserves the runtime's wake policy and avoids registry recursion.
+    pub fn task_wake_observer(&self) -> Option<Arc<dyn crate::TaskTransitionObserver>> {
+        self.session_wake_queue
+            .as_ref()
+            .map(|queue| queue.clone() as Arc<dyn crate::TaskTransitionObserver>)
+    }
+
     /// Execute one turn for an existing session.
     ///
     /// The input message is appended as the canonical `input.message` event;

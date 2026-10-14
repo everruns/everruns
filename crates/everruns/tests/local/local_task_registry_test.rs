@@ -3,9 +3,9 @@
 use everruns::local::{LocalSessionTaskRegistry, SqliteDb};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::session_task::{
-    CreateSessionTask, NewTaskMessage, SessionTaskFilter, SessionTaskRegistry, SessionTaskState,
-    SessionTaskUpdate, TASK_KIND_BACKGROUND_TOOL, TASK_KIND_SUBAGENT, TaskInputRequest, TaskLinks,
-    TaskWakePolicy,
+    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
+    SessionTaskState, SessionTaskUpdate, TASK_KIND_BACKGROUND_TOOL, TASK_KIND_SUBAGENT,
+    TaskInputRequest, TaskLinks, TaskWakePolicy, apply_task_update, new_session_task,
 };
 
 fn create_input(session_id: SessionId, kind: &str) -> CreateSessionTask {
@@ -416,4 +416,530 @@ async fn record_message_rejects_stale_attempt() {
         )
         .await;
     assert!(err.is_err(), "stale-attempt message must be rejected");
+}
+
+// The busy handler marks the exact point where a second connection tries to
+// acquire the writer lock. Commit the first writer there, without timing sleeps.
+// A read outside the transaction sees the old snapshot and overwrites it;
+// BEGIN IMMEDIATE waits here before reading and sees the committed snapshot.
+type WriterGate = (
+    std::sync::mpsc::SyncSender<()>,
+    std::sync::mpsc::Receiver<()>,
+);
+
+thread_local! {
+    static WRITER_GATE: std::cell::RefCell<Option<WriterGate>> = const { std::cell::RefCell::new(None) };
+}
+
+fn wait_for_writer_commit(attempt: i32) -> bool {
+    if attempt != 0 {
+        return false;
+    }
+    WRITER_GATE.with(|gate| {
+        let Some((blocked, resume)) = gate.borrow_mut().take() else {
+            return false;
+        };
+        blocked.send(()).is_ok()
+            && resume
+                .recv_timeout(std::time::Duration::from_secs(10))
+                .is_ok()
+    })
+}
+
+fn commit_before_registry_write<F, Fut, T>(
+    worker_db: SqliteDb,
+    writer: &mut everruns::sqlite::Connection,
+    committed: &SessionTask,
+    operation: F,
+) -> T
+where
+    F: FnOnce(LocalSessionTaskRegistry) -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = T>,
+    T: Send + 'static,
+{
+    // Migrate before taking the writer lock so the busy handler observes the
+    // operation under test, not registry construction.
+    let registry = LocalSessionTaskRegistry::new(worker_db.clone()).unwrap();
+    let tx = writer
+        .transaction_with_behavior(everruns::sqlite::TransactionBehavior::Immediate)
+        .unwrap();
+    let mut snapshot = serde_json::to_value(committed).unwrap();
+    snapshot["spec"] = committed.spec.clone();
+    tx.execute(
+        "INSERT INTO local_tasks (id, session_id, kind, state, snapshot)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(id) DO UPDATE SET
+            session_id = excluded.session_id,
+            kind = excluded.kind,
+            state = excluded.state,
+            snapshot = excluded.snapshot",
+        everruns::sqlite::params![
+            committed.id,
+            committed.session_id.to_string(),
+            committed.kind,
+            committed.state.to_string(),
+            serde_json::to_string(&snapshot).unwrap(),
+        ],
+    )
+    .unwrap();
+    let (blocked_tx, blocked_rx) = std::sync::mpsc::sync_channel(1);
+    let (resume_tx, resume_rx) = std::sync::mpsc::sync_channel(1);
+    let worker = std::thread::spawn(move || {
+        WRITER_GATE.with(|gate| *gate.borrow_mut() = Some((blocked_tx, resume_rx)));
+        worker_db
+            .with_conn(|conn| conn.busy_handler(Some(wait_for_writer_commit)))
+            .unwrap();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(operation(registry))
+    });
+    blocked_rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("registry operation must contend with the separate connection's writer lock");
+    tx.commit().unwrap();
+    resume_tx.send(()).unwrap();
+    worker.join().unwrap()
+}
+
+fn independent_registries() -> (
+    tempfile::TempDir,
+    SqliteDb,
+    everruns::sqlite::Connection,
+    LocalSessionTaskRegistry,
+) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("tasks.db");
+    let worker = SqliteDb::open(&path).unwrap();
+    let writer = everruns::sqlite::open(&path).unwrap();
+    let registry = LocalSessionTaskRegistry::new(worker.clone()).unwrap();
+    (dir, worker, writer, registry)
+}
+
+fn assert_same_task(actual: &SessionTask, expected: &SessionTask) {
+    assert_eq!(
+        serde_json::to_value(actual).unwrap(),
+        serde_json::to_value(expected).unwrap()
+    );
+    assert_eq!(actual.spec, expected.spec);
+}
+
+#[test]
+fn concurrent_create_is_session_scoped_and_idempotent() {
+    for same_session in [true, false] {
+        let (_dir, worker, mut writer, registry) = independent_registries();
+        let session_id = SessionId::new();
+        let mut input = create_input(session_id, TASK_KIND_BACKGROUND_TOOL);
+        input.id = Some("task_concurrent_create".into());
+        let mut first_input = input.clone();
+        first_input.session_id = if same_session {
+            session_id
+        } else {
+            SessionId::new()
+        };
+        first_input.state = SessionTaskState::Running;
+        first_input.display_name = "First writer".into();
+        let committed = new_session_task(first_input, chrono::Utc::now());
+        let result =
+            commit_before_registry_write(worker, &mut writer, &committed, move |reg| async move {
+                reg.create(input).await
+            });
+        if same_session {
+            assert_same_task(&result.unwrap(), &committed);
+        } else {
+            assert!(result.is_err(), "another session cannot take over the id");
+        }
+        let stored = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(registry.get(committed.session_id, &committed.id))
+            .unwrap()
+            .unwrap();
+        assert_same_task(&stored, &committed);
+    }
+}
+
+#[tokio::test]
+async fn concurrent_update_observes_attempt_fence() {
+    let (_dir, worker, mut writer, registry) = independent_registries();
+    let session_id = SessionId::new();
+    let mut input = create_input(session_id, TASK_KIND_BACKGROUND_TOOL);
+    input.state = SessionTaskState::Running;
+    let mut committed = registry.create(input).await.unwrap();
+    let expected_attempt = committed.attempt;
+    apply_task_update(
+        &mut committed,
+        SessionTaskUpdate {
+            increment_attempt: true,
+            summary: Some("new attempt".into()),
+            ..Default::default()
+        },
+        chrono::Utc::now(),
+    );
+    let id = committed.id.clone();
+    let updated =
+        commit_before_registry_write(worker, &mut writer, &committed, move |reg| async move {
+            reg.update(
+                session_id,
+                &id,
+                SessionTaskUpdate {
+                    expected_attempt: Some(expected_attempt),
+                    summary: Some("stale executor".into()),
+                    heartbeat_at: Some(chrono::Utc::now()),
+                    ..Default::default()
+                },
+            )
+            .await
+        })
+        .unwrap()
+        .unwrap();
+    assert_same_task(&updated, &committed);
+    assert_same_task(
+        &registry
+            .get(session_id, &committed.id)
+            .await
+            .unwrap()
+            .unwrap(),
+        &committed,
+    );
+}
+
+#[tokio::test]
+async fn concurrent_update_preserves_terminal_record() {
+    let (_dir, worker, mut writer, registry) = independent_registries();
+    let session_id = SessionId::new();
+    let mut input = create_input(session_id, TASK_KIND_BACKGROUND_TOOL);
+    input.state = SessionTaskState::Running;
+    let mut committed = registry.create(input).await.unwrap();
+    apply_task_update(
+        &mut committed,
+        SessionTaskUpdate {
+            state: Some(SessionTaskState::Succeeded),
+            summary: Some("completed successfully".into()),
+            ..Default::default()
+        },
+        chrono::Utc::now(),
+    );
+    let id = committed.id.clone();
+    let updated =
+        commit_before_registry_write(worker, &mut writer, &committed, move |reg| async move {
+            reg.update(
+                session_id,
+                &id,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Failed),
+                    summary: Some("late orphan reaper".into()),
+                    increment_attempt: true,
+                    ..Default::default()
+                },
+            )
+            .await
+        })
+        .unwrap()
+        .unwrap();
+    assert_same_task(&updated, &committed);
+    assert_same_task(
+        &registry
+            .get(session_id, &committed.id)
+            .await
+            .unwrap()
+            .unwrap(),
+        &committed,
+    );
+}
+
+#[tokio::test]
+async fn concurrent_update_preserves_cancel_request() {
+    let (_dir, worker, mut writer, registry) = independent_registries();
+    let session_id = SessionId::new();
+    let mut committed = registry
+        .create(create_input(session_id, TASK_KIND_BACKGROUND_TOOL))
+        .await
+        .unwrap();
+    committed.cancel_requested_at = Some(chrono::Utc::now());
+    committed.updated_at = committed.cancel_requested_at.unwrap();
+    let id = committed.id.clone();
+    let updated =
+        commit_before_registry_write(worker, &mut writer, &committed, move |reg| async move {
+            reg.update(
+                session_id,
+                &id,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Running),
+                    summary: Some("executor heartbeat".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+        })
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated.state, SessionTaskState::Running);
+    assert_eq!(updated.summary.as_deref(), Some("executor heartbeat"));
+    assert_eq!(updated.cancel_requested_at, committed.cancel_requested_at);
+    assert_same_task(
+        &registry
+            .get(session_id, &committed.id)
+            .await
+            .unwrap()
+            .unwrap(),
+        &updated,
+    );
+}
+
+#[tokio::test]
+async fn concurrent_cancel_preserves_completion_and_first_request() {
+    for completed in [false, true] {
+        let (_dir, worker, mut writer, registry) = independent_registries();
+        let session_id = SessionId::new();
+        let mut input = create_input(session_id, TASK_KIND_BACKGROUND_TOOL);
+        input.state = SessionTaskState::Running;
+        let mut committed = registry.create(input).await.unwrap();
+        if completed {
+            apply_task_update(
+                &mut committed,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Succeeded),
+                    summary: Some("finished before cancellation".into()),
+                    ..Default::default()
+                },
+                chrono::Utc::now(),
+            );
+        } else {
+            committed.cancel_requested_at = Some(chrono::Utc::now());
+            committed.updated_at = committed.cancel_requested_at.unwrap();
+        }
+        let id = committed.id.clone();
+        let cancelled =
+            commit_before_registry_write(worker, &mut writer, &committed, move |reg| async move {
+                reg.request_cancel(session_id, &id).await
+            })
+            .unwrap()
+            .unwrap();
+        assert_same_task(&cancelled, &committed);
+        assert_same_task(
+            &registry
+                .get(session_id, &committed.id)
+                .await
+                .unwrap()
+                .unwrap(),
+            &committed,
+        );
+    }
+}
+
+#[tokio::test]
+async fn missing_and_cross_session_writes_preserve_snapshot() {
+    let reg = LocalSessionTaskRegistry::new(SqliteDb::open_in_memory().unwrap()).unwrap();
+    let session_id = SessionId::new();
+    let task = reg
+        .create(create_input(session_id, TASK_KIND_BACKGROUND_TOOL))
+        .await
+        .unwrap();
+    for (session, id) in [
+        (session_id, "missing"),
+        (SessionId::new(), task.id.as_str()),
+    ] {
+        assert!(
+            reg.update(
+                session,
+                id,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Failed),
+                    increment_attempt: true,
+                    ..Default::default()
+                }
+            )
+            .await
+            .unwrap()
+            .is_none()
+        );
+        assert!(reg.request_cancel(session, id).await.unwrap().is_none());
+    }
+    assert_same_task(
+        &reg.get(session_id, &task.id).await.unwrap().unwrap(),
+        &task,
+    );
+}
+
+#[tokio::test]
+async fn concurrent_reply_preserves_cancellation_and_completion() {
+    for completed in [false, true] {
+        let (_dir, worker, mut writer, registry) = independent_registries();
+        let session_id = SessionId::new();
+        let task = registry
+            .create(create_input(session_id, TASK_KIND_SUBAGENT))
+            .await
+            .unwrap();
+        let mut committed = registry
+            .update(
+                session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    input_request: Some(TaskInputRequest {
+                        id: "concurrent_req".into(),
+                        prompt: "Approve?".into(),
+                        expected: None,
+                    }),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        if completed {
+            apply_task_update(
+                &mut committed,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Succeeded),
+                    summary: Some("already finished".into()),
+                    ..Default::default()
+                },
+                chrono::Utc::now(),
+            );
+        } else {
+            committed.cancel_requested_at = Some(chrono::Utc::now());
+            committed.updated_at = committed.cancel_requested_at.unwrap();
+            committed.summary = Some("latest snapshot".into());
+        }
+        let id = committed.id.clone();
+        commit_before_registry_write(worker, &mut writer, &committed, move |reg| async move {
+            reg.record_message(
+                session_id,
+                &id,
+                NewTaskMessage {
+                    direction: everruns_core::session_task::TaskMessageDirection::Inbound,
+                    content: vec![everruns_core::session_task::TaskMessagePart::text("yes")],
+                    in_reply_to: Some("concurrent_req".into()),
+                    expected_attempt: None,
+                },
+            )
+            .await
+        })
+        .unwrap();
+        let stored = registry
+            .get(session_id, &committed.id)
+            .await
+            .unwrap()
+            .unwrap();
+        if completed {
+            assert_same_task(&stored, &committed);
+        } else {
+            assert_eq!(stored.state, SessionTaskState::Running);
+            assert!(stored.input_request.is_none());
+            assert_eq!(stored.cancel_requested_at, committed.cancel_requested_at);
+            assert_eq!(stored.summary, committed.summary);
+        }
+        assert_eq!(
+            registry
+                .list_messages(session_id, &committed.id, None, None)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+}
+
+#[tokio::test]
+async fn concurrent_message_rejects_stale_attempt_without_inserting() {
+    let (_dir, worker, mut writer, registry) = independent_registries();
+    let session_id = SessionId::new();
+    let mut committed = registry
+        .create(create_input(session_id, TASK_KIND_SUBAGENT))
+        .await
+        .unwrap();
+    let expected_attempt = committed.attempt;
+    apply_task_update(
+        &mut committed,
+        SessionTaskUpdate {
+            increment_attempt: true,
+            ..Default::default()
+        },
+        chrono::Utc::now(),
+    );
+    let id = committed.id.clone();
+    let result =
+        commit_before_registry_write(worker, &mut writer, &committed, move |reg| async move {
+            reg.record_message(
+                session_id,
+                &id,
+                NewTaskMessage::outbound_text("stale message")
+                    .with_expected_attempt(expected_attempt),
+            )
+            .await
+        });
+    assert!(result.is_err());
+    assert!(
+        registry
+            .list_messages(session_id, &committed.id, None, None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_same_task(
+        &registry
+            .get(session_id, &committed.id)
+            .await
+            .unwrap()
+            .unwrap(),
+        &committed,
+    );
+}
+
+#[tokio::test]
+async fn message_and_resume_roll_back_together() {
+    let db = SqliteDb::open_in_memory().unwrap();
+    let reg = LocalSessionTaskRegistry::new(db.clone()).unwrap();
+    let session_id = SessionId::new();
+    let task = reg
+        .create(create_input(session_id, TASK_KIND_SUBAGENT))
+        .await
+        .unwrap();
+    let awaiting = reg
+        .update(
+            session_id,
+            &task.id,
+            SessionTaskUpdate {
+                input_request: Some(TaskInputRequest {
+                    id: "rollback_req".into(),
+                    prompt: "Approve?".into(),
+                    expected: None,
+                }),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    db.with_conn(|conn| {
+        conn.execute_batch(
+            "CREATE TRIGGER reject_snapshot BEFORE UPDATE ON local_tasks
+         BEGIN SELECT RAISE(FAIL, 'reject snapshot update'); END;",
+        )
+    })
+    .unwrap();
+    let result = reg
+        .record_message(
+            session_id,
+            &task.id,
+            NewTaskMessage {
+                direction: everruns_core::session_task::TaskMessageDirection::Inbound,
+                content: vec![everruns_core::session_task::TaskMessagePart::text("yes")],
+                in_reply_to: Some("rollback_req".into()),
+                expected_attempt: None,
+            },
+        )
+        .await;
+    assert!(result.is_err());
+    assert!(
+        reg.list_messages(session_id, &task.id, None, None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_same_task(
+        &reg.get(session_id, &task.id).await.unwrap().unwrap(),
+        &awaiting,
+    );
 }

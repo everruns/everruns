@@ -377,6 +377,7 @@ impl DeferSchemaHook {
         name == TOOL_SEARCH_TOOL_NAME
             || matches!(tool.deferrable(), DeferrablePolicy::Never)
             || self.never_defer.contains(name)
+            || self.disclosure.failed.contains(name)
             || (self.reveal == Reveal::Redefine && revealed.contains(name))
             // A revealed deferred MCP server reveals every tool it lists.
             || revealed
@@ -695,15 +696,17 @@ impl Tool for ToolSearchTool {
 pub fn tool_disclosure(messages: &[RuntimeMessage]) -> ToolDisclosure {
     let mut disclosure = ToolDisclosure::default();
     let mut searches = HashSet::new();
+    let mut calls = std::collections::HashMap::new();
     for message in messages {
         match message.role {
             RuntimeMessageRole::Agent => {
                 for part in &message.content {
-                    if let ContentPart::ToolCall(call) = part
-                        && call.name == TOOL_SEARCH_TOOL_NAME
-                    {
-                        searches.insert(call.id.as_str());
-                        disclosure.deferring = true;
+                    if let ContentPart::ToolCall(call) = part {
+                        calls.insert(call.id.as_str(), call.name.as_str());
+                        if call.name == TOOL_SEARCH_TOOL_NAME {
+                            searches.insert(call.id.as_str());
+                            disclosure.deferring = true;
+                        }
                     }
                 }
                 disclosure.deferring |= recorded_stub(message);
@@ -713,6 +716,11 @@ pub fn tool_disclosure(messages: &[RuntimeMessage]) -> ToolDisclosure {
                     let ContentPart::ToolResult(result) = part else {
                         continue;
                     };
+                    if result.error.is_some()
+                        && let Some(name) = calls.get(result.tool_call_id.as_str())
+                    {
+                        disclosure.failed.insert((*name).to_string());
+                    }
                     let Some(result) = result
                         .result
                         .as_ref()

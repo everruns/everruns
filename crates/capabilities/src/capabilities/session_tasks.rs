@@ -116,7 +116,18 @@ async fn load_task(
         .get(context.session_id, task_id)
         .await
         .map_err(ToolExecutionResult::internal_error)?
-        .ok_or_else(|| ToolExecutionResult::tool_error(format!("No task found with id: {task_id}")))
+        .ok_or_else(|| ToolExecutionResult::tool_error(format!("No task found with id: {task_id}. Use list_tasks and copy the returned task ID exactly; background run IDs are separate identifiers.")))
+}
+
+// Diagnostic bodies can occupy the whole provider output budget. Keep lists
+// useful for discovery; get_task and durable artifacts retain the full outcome.
+fn compact_summary(summary: &str) -> String {
+    const MAX_BYTES: usize = 512;
+    if summary.len() <= MAX_BYTES {
+        return summary.to_string();
+    }
+    let end = summary.floor_char_boundary(MAX_BYTES);
+    format!("{} ... (full summary: get_task)", &summary[..end])
 }
 
 /// Compact list entry: enough to decide whether to drill in with get_task.
@@ -128,7 +139,7 @@ fn compact_task_json(task: &SessionTask) -> Value {
         "state": task.state,
         "state_detail": task.state_detail,
         "progress": task.progress,
-        "summary": task.summary,
+        "summary": task.summary.as_deref().map(compact_summary),
         "created_at": task.created_at.to_rfc3339(),
         "finished_at": task.finished_at.map(|t| t.to_rfc3339()),
     })
@@ -302,7 +313,7 @@ impl Tool for GetTaskTool {
             "properties": {
                 "task_id": {
                     "type": "string",
-                    "description": "Task ID (task_*)."
+                    "description": "Exact task ID returned by spawn or list_tasks (task_*). Do not derive it from a background run ID."
                 }
             },
             "required": ["task_id"],
@@ -402,7 +413,7 @@ impl Tool for MessageTaskTool {
             "properties": {
                 "task_id": {
                     "type": "string",
-                    "description": "Task ID (task_*)."
+                    "description": "Exact task ID returned by spawn or list_tasks (task_*). Do not derive it from a background run ID."
                 },
                 "message": {
                     "type": "string",
@@ -542,7 +553,7 @@ impl Tool for CancelTaskTool {
             "properties": {
                 "task_id": {
                     "type": "string",
-                    "description": "Task ID (task_*)."
+                    "description": "Exact task ID returned by spawn or list_tasks (task_*). Do not derive it from a background run ID."
                 }
             },
             "required": ["task_id"],
@@ -660,7 +671,7 @@ impl Tool for WaitTaskTool {
             "properties": {
                 "task_id": {
                     "type": "string",
-                    "description": "Task ID (task_*)."
+                    "description": "Exact task ID returned by spawn or list_tasks (task_*). Do not derive it from a background run ID."
                 },
                 "timeout_seconds": {
                     "type": "integer",
@@ -795,6 +806,13 @@ pub(crate) mod tests {
             let Some(task) = tasks.get_mut(task_id) else {
                 return Ok(None);
             };
+            if update
+                .expected_recovery
+                .as_ref()
+                .is_some_and(|guard| !guard.matches(task))
+            {
+                return Ok(None);
+            }
             apply_task_update(task, update, Utc::now());
             Ok(Some(task.clone()))
         }
@@ -1053,6 +1071,62 @@ pub(crate) mod tests {
         assert!(entry.get("created_at").is_some());
         // Compact entries omit the full spec.
         assert!(entry.get("spec").is_none());
+    }
+
+    #[tokio::test]
+    async fn list_tasks_keeps_ids_readable_when_failure_summaries_are_large() {
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let context = test_context(registry.clone());
+        let summary = "failed validation: ".to_string() + &"diagnostic 測試\n".repeat(1000);
+        let mut ids = Vec::new();
+        for _ in 0..4 {
+            let task = create_task(
+                &registry,
+                &context,
+                TEST_EXECUTOR_KIND,
+                SessionTaskState::Failed,
+            )
+            .await;
+            registry
+                .update(
+                    context.session_id,
+                    &task.id,
+                    SessionTaskUpdate {
+                        summary: Some(summary.clone()),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap();
+            ids.push(task.id);
+        }
+        let ToolExecutionResult::Success(list) = ListTasksTool
+            .execute_with_context(json!({}), &context)
+            .await
+        else {
+            panic!("list should succeed");
+        };
+        assert!(
+            list.to_string().len() < 8192,
+            "compact task metadata must not be crowded out by diagnostics"
+        );
+        for id in ids {
+            let entry = list["tasks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|task| task["id"] == id)
+                .unwrap();
+            assert_eq!(entry["state"], "failed");
+            assert!(entry["summary"].as_str().unwrap().contains("get_task"));
+            let ToolExecutionResult::Success(full) = GetTaskTool
+                .execute_with_context(json!({"task_id": id}), &context)
+                .await
+            else {
+                panic!("get should succeed");
+            };
+            assert_eq!(full["task"]["summary"], summary);
+        }
     }
 
     #[tokio::test]

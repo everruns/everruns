@@ -132,6 +132,8 @@ pub fn is_usage_limit_message(message: &str) -> bool {
         || lower.contains("usage_limit_reached")
         || lower.contains("usage limit reached")
         || lower.contains("usage limit has been reached")
+        || lower.contains("openrouter_free_tier_daily")
+        || lower.contains("free-models-per-day")
 }
 
 /// Extract the absolute reset time (`resets_at`, unix seconds) from a usage-limit
@@ -147,11 +149,23 @@ pub fn parse_usage_limit_reset_at(message: &str) -> Option<i64> {
     let re = RE.get_or_init(|| {
         Regex::new(r#""resets_at"\s*:\s*(?P<resets_at>\d{9,})"#).expect("valid resets_at regex")
     });
-    re.captures(message)?
-        .name("resets_at")?
+    if let Some(reset) = re.captures(message).and_then(|c| c.name("resets_at")) {
+        return reset.as_str().parse::<i64>().ok();
+    }
+    // OpenRouter embeds its absolute reset header in the error metadata in
+    // milliseconds. The usage-limit classifier keeps minute limits transient.
+    static HEADER_RE: OnceLock<Regex> = OnceLock::new();
+    let header_re = HEADER_RE.get_or_init(|| {
+        Regex::new(r#"(?i)"X-RateLimit-Reset"\s*:\s*"?(?P<millis>\d{13,})"#)
+            .expect("valid rate limit reset regex")
+    });
+    header_re
+        .captures(message)?
+        .name("millis")?
         .as_str()
         .parse::<i64>()
         .ok()
+        .map(|millis| millis / 1000)
 }
 
 /// Sentence OpenRouter puts in the human-readable half of an attestation-gate
@@ -1132,6 +1146,27 @@ mod tests {
             no_reset.fallback_message(),
             "You're out of LLM usage limits."
         );
+    }
+
+    #[test]
+    fn daily_usage_limits_preserve_reset_and_leave_minute_limits_transient() {
+        let body = r#"{"error":{"message":"Rate limit exceeded: free-models-per-day-high-balance.","code":429,"metadata":{"limit_source":"openrouter_free_tier_daily","headers":{"X-RateLimit-Reset":"1791849600000"}}}}"#;
+        assert!(is_usage_limit_message(body));
+        assert_eq!(parse_usage_limit_reset_at(body), Some(1791849600));
+        assert_eq!(
+            wire(&classify_runtime_error_message(body, &context())),
+            json!({"code":"provider_usage_limit_reached","fields":{"provider":"provider","model_id":"model","resets_at":1791849600}})
+        );
+        assert!(is_usage_limit_message(
+            "Rate limit exceeded: free-models-per-day."
+        ));
+        for transient in [
+            "Rate limit exceeded: free-models-per-min.",
+            r#"{"error":{"code":429,"message":"Rate limit exceeded","metadata":{"limit_source":"upstream_provider_shared_pool"}}}"#,
+        ] {
+            assert!(!is_usage_limit_message(transient));
+            assert!(crate::llm_retry::is_transient_error_message(transient));
+        }
     }
 
     #[test]

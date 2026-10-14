@@ -18,18 +18,24 @@
 //! every background path goes through one gate.
 
 use std::collections::HashMap;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::background::{BackgroundEventSink, BackgroundOutcome, BackgroundProgress};
+use everruns_core::session_task::{SessionTask, TaskOwnership};
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_hooks::NestedToolPolicy;
 use everruns_core::tools::{Tool, ToolExecutionResult, ToolRegistry, validate_tool_arguments};
 use serde_json::{Value, json};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+
+mod ownership;
+
+pub(crate) use ownership::{background_task_owner_process, background_task_ownership};
+use ownership::{claim_background_task, run_owned_background_task};
 
 /// Maximum active immediate background runs allowed for a single session.
 ///
@@ -570,7 +576,7 @@ impl Tool for SpawnBackgroundTool {
 
         // Create the session task tracking this run (knowledge/runtime-resources/session-tasks.md).
         // task_registry is guaranteed Some above.
-        let (task_id, task_attempt): (Option<String>, i32) = match task_registry
+        let task = match task_registry
             .create(everruns_core::session_task::CreateSessionTask {
                 session_id: context.session_id,
                 id: None,
@@ -592,13 +598,20 @@ impl Tool for SpawnBackgroundTool {
             })
             .await
         {
-            Ok(task) => (Some(task.id), task.attempt),
+            Ok(task) => task,
             Err(e) => {
                 return ToolExecutionResult::internal_error_msg(format!(
                     "Failed to create background run task: {e}"
                 ));
             }
         };
+
+        let task_registration = match claim_background_task(task_registry.as_ref(), &task).await {
+            Ok(registration) => registration,
+            Err(error) => return ToolExecutionResult::internal_error(error),
+        };
+        let task_id = Some(task.id.clone());
+        let task_attempt = task.attempt;
 
         let background_context = context.clone().with_tool_registry(tool_registry.clone());
         let sink = Arc::new(SessionBackgroundSink::new(
@@ -610,6 +623,7 @@ impl Tool for SpawnBackgroundTool {
             result_path.clone(),
             signal_on_completion,
             task_id.clone(),
+            task_attempt,
         ));
         let run_id_for_task = run_id.clone();
         let tool_for_task = tool.clone();
@@ -626,6 +640,7 @@ impl Tool for SpawnBackgroundTool {
 
         tokio::spawn(async move {
             let _background_run_permit = background_run_permit;
+            let _task_registration = task_registration;
             let _ = sink.status("Starting").await;
 
             // Run the tool future inside a select! against a cancel-watch loop
@@ -655,41 +670,14 @@ impl Tool for SpawnBackgroundTool {
                             ))),
                         }
                     };
-                    let watch_fut = async {
-                        loop {
-                            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                            // Send heartbeat with stale-attempt fencing so a
-                            // superseded executor's heartbeats are rejected once
-                            // the reaper increments the attempt counter.
-                            let _ = registry
-                                .update(
-                                    cancel_session_id,
-                                    &task_id_str,
-                                    everruns_core::session_task::SessionTaskUpdate {
-                                        heartbeat_at: Some(chrono::Utc::now()),
-                                        expected_attempt: Some(cancel_task_attempt),
-                                        ..Default::default()
-                                    },
-                                )
-                                .await;
-                            // Check for cooperative cancel intent.
-                            if let Ok(Some(task)) =
-                                registry.get(cancel_session_id, &task_id_str).await
-                                && task.cancel_requested_at.is_some()
-                            {
-                                break;
-                            }
-                        }
-                    };
-                    tokio::select! {
-                        result = tool_fut => result,
-                        () = watch_fut => {
-                            // Cancel was requested; the tool future is dropped.
-                            Err(ToolExecutionResult::ToolError(
-                                BACKGROUND_CANCEL_SENTINEL.to_string(),
-                            ))
-                        }
-                    }
+                    run_owned_background_task(
+                        registry.as_ref(),
+                        cancel_session_id,
+                        &task_id_str,
+                        cancel_task_attempt,
+                        tool_fut,
+                    )
+                    .await
                 }
                 // No registry or no task_id: run without cancel watch (unchanged behaviour).
                 _ => match tool_for_task.as_background_executable() {
@@ -772,6 +760,7 @@ struct SessionBackgroundSink {
     signal_on_completion: bool,
     /// Session task mirroring this run; None when no task registry is wired.
     task_id: Option<String>,
+    task_attempt: i32,
     state: tokio::sync::Mutex<SessionBackgroundState>,
 }
 
@@ -786,6 +775,7 @@ impl SessionBackgroundSink {
         result_path: String,
         signal_on_completion: bool,
         task_id: Option<String>,
+        task_attempt: i32,
     ) -> Self {
         Self {
             context,
@@ -796,6 +786,7 @@ impl SessionBackgroundSink {
             result_path,
             signal_on_completion,
             task_id,
+            task_attempt,
             state: tokio::sync::Mutex::new(SessionBackgroundState {
                 status_text: "Queued".to_string(),
                 ..Default::default()
@@ -804,7 +795,8 @@ impl SessionBackgroundSink {
     }
 
     /// Mirror an update onto the session task (best-effort).
-    async fn mirror_task(&self, update: everruns_core::session_task::SessionTaskUpdate) {
+    async fn mirror_task(&self, mut update: everruns_core::session_task::SessionTaskUpdate) {
+        update.expected_attempt = Some(self.task_attempt);
         let (Some(registry), Some(task_id)) = (&self.context.session_task_registry, &self.task_id)
         else {
             return;
@@ -1194,6 +1186,15 @@ pub async fn reattach_background_run(
     task: &everruns_core::session_task::SessionTask,
     context: &everruns_core::tool_context::ToolContext,
 ) -> everruns_contracts::error::Result<()> {
+    reattach_background_run_with_registry(task, context, Arc::new(ToolRegistry::with_defaults()))
+        .await
+}
+
+async fn reattach_background_run_with_registry(
+    task: &everruns_core::session_task::SessionTask,
+    context: &everruns_core::tool_context::ToolContext,
+    registry: Arc<ToolRegistry>,
+) -> everruns_contracts::error::Result<()> {
     // Fail fast before spawning a tokio task so the reaper can fall back to
     // orphaned-fail rather than leaving the task stuck in Running forever.
     if context.runtime_artifact_file_store().is_none() {
@@ -1222,8 +1223,6 @@ pub async fn reattach_background_run(
         .get("arguments")
         .cloned()
         .unwrap_or_else(|| serde_json::Value::Object(Default::default()));
-
-    let registry = std::sync::Arc::new(ToolRegistry::with_defaults());
 
     let Some(tool) = registry.get(&tool_name).cloned() else {
         return Err(AgentLoopError::tool(format!(
@@ -1268,6 +1267,11 @@ pub async fn reattach_background_run(
     let task_attempt = task.attempt;
     let session_id = task.session_id;
 
+    let task_registry = context.session_task_registry.as_ref().ok_or_else(|| {
+        AgentLoopError::tool("session task registry unavailable; cannot claim background task")
+    })?;
+    let task_registration = claim_background_task(task_registry.as_ref(), task).await?;
+
     let sink_context = context.clone().with_tool_registry(registry);
     let sink = std::sync::Arc::new(SessionBackgroundSink::new(
         sink_context.clone(),
@@ -1278,6 +1282,7 @@ pub async fn reattach_background_run(
         result_path,
         signal_on_completion,
         Some(task_id.clone()),
+        task_attempt,
     ));
 
     let cancel_registry = context.session_task_registry.clone();
@@ -1286,6 +1291,7 @@ pub async fn reattach_background_run(
     tokio::spawn(async move {
         // Hold permits for the duration of the re-attached run.
         let _background_run_permit = background_run_permit;
+        let _task_registration = task_registration;
         let _ = sink.status("Re-attaching").await;
 
         let outcome: std::result::Result<BackgroundOutcome, ToolExecutionResult> =
@@ -1304,33 +1310,14 @@ pub async fn reattach_background_run(
                             ))),
                         }
                     };
-                    let watch_fut = async {
-                        loop {
-                            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                            let _ = registry
-                                .update(
-                                    session_id,
-                                    &task_id_str,
-                                    everruns_core::session_task::SessionTaskUpdate {
-                                        heartbeat_at: Some(chrono::Utc::now()),
-                                        expected_attempt: Some(task_attempt),
-                                        ..Default::default()
-                                    },
-                                )
-                                .await;
-                            if let Ok(Some(t)) = registry.get(session_id, &task_id_str).await
-                                && t.cancel_requested_at.is_some()
-                            {
-                                break;
-                            }
-                        }
-                    };
-                    tokio::select! {
-                        result = tool_fut => result,
-                        () = watch_fut => Err(ToolExecutionResult::ToolError(
-                            BACKGROUND_CANCEL_SENTINEL.to_string(),
-                        )),
-                    }
+                    run_owned_background_task(
+                        registry.as_ref(),
+                        session_id,
+                        &task_id_str,
+                        task_attempt,
+                        tool_fut,
+                    )
+                    .await
                 }
                 _ => match tool.as_background_executable() {
                     Some(bg) => {
@@ -1386,3 +1373,7 @@ mod test_support;
 #[cfg(test)]
 #[path = "background_run_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "background_run/ownership_tests.rs"]
+mod ownership_tests;

@@ -23,6 +23,7 @@ use super::schedule_runner::{
 };
 use super::schedule_store::LocalScheduleStore;
 use super::session_leases::LocalSessionLeases;
+use super::task_recovery::LocalTaskRecovery;
 use super::task_registry::LocalSessionTaskRegistry;
 
 /// The local stores plus ready-to-use `HostBackends`.
@@ -38,8 +39,10 @@ pub struct LocalBackends {
     pub runtime_backends: HostBackends,
     /// Shared SQLite handle backing the local stores.
     pub db: SqliteDb,
-    /// SQLite-backed task registry (also installed on `runtime_backends`).
+    /// Raw SQLite-backed task registry, without observation-time recovery.
     pub task_registry: Arc<LocalSessionTaskRegistry>,
+    /// Recovery service, also installed as the runtime task registry decorator.
+    pub task_recovery: Arc<LocalTaskRecovery>,
     /// Profile used to build the stores.
     pub profile: LocalProfile,
     org_id: i64,
@@ -72,6 +75,7 @@ impl LocalBackends {
         let runtime_backends = crate::batteries::runtime_backends(runtime_backends);
         let org_id = everruns_core::host::in_process_internal_org_id(&profile.org_public_id);
         let task_registry = Arc::new(LocalSessionTaskRegistry::new(db.clone())?);
+        let task_recovery = Arc::new(LocalTaskRecovery::new(db.clone(), task_registry.clone()));
 
         // Ensure the schedule schema exists once up front (propagating any
         // error), so the per-(org) factory on the act path stays cheap and
@@ -92,7 +96,7 @@ impl LocalBackends {
         // Processes sharing this database run a session one at a time.
         let session_leases = Arc::new(LocalSessionLeases::new(db.clone())?);
         let runtime_backends = runtime_backends
-            .with_session_task_registry(task_registry.clone())
+            .with_session_task_registry(task_recovery.clone())
             .with_schedule_store_factory(schedule_factory)
             .with_session_leases(session_leases);
 
@@ -100,6 +104,7 @@ impl LocalBackends {
             runtime_backends,
             db,
             task_registry,
+            task_recovery,
             profile,
             org_id,
         })

@@ -581,12 +581,13 @@ pub use session_resource::{
 // the trait's signature vocabulary — and nothing in the kernel names either:
 // the capability resolves the store as a typed context extension.
 pub use session_task::{
-    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
-    SessionTaskState, SessionTaskUpdate, TASK_KIND_AGENT_HANDOFF, TASK_KIND_BACKGROUND_TOOL,
-    TASK_KIND_EXTERNAL_AG_UI, TASK_KIND_EXTERNAL_AGENT, TASK_KIND_MONITOR, TASK_KIND_SESSION,
-    TASK_KIND_SUBAGENT, TaskArtifact, TaskError, TaskExecutor, TaskExecutorPlugin,
-    TaskInputRequest, TaskLinks, TaskMessage, TaskMessageDirection, TaskMessagePart, TaskProgress,
-    TaskSink, TaskWakePolicy, apply_task_update, find_task_executor,
+    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRecoveryGuard,
+    SessionTaskRegistry, SessionTaskState, SessionTaskUpdate, TASK_KIND_AGENT_HANDOFF,
+    TASK_KIND_BACKGROUND_TOOL, TASK_KIND_EXTERNAL_AG_UI, TASK_KIND_EXTERNAL_AGENT,
+    TASK_KIND_MONITOR, TASK_KIND_SESSION, TASK_KIND_SUBAGENT, TaskArtifact, TaskError,
+    TaskExecutor, TaskExecutorPlugin, TaskInputRequest, TaskLinks, TaskMessage,
+    TaskMessageDirection, TaskMessagePart, TaskOwnership, TaskProgress, TaskSink, TaskWakePolicy,
+    apply_task_update, find_task_executor, recover_orphaned_task,
 };
 pub use skill::{
     ParsedSkillMd, SkillContent, SkillFileEntry, SkillValidationResult, parse_skill_md,
