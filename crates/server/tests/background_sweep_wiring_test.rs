@@ -2,7 +2,9 @@
 //!
 //! This is a dedicated single-test binary because the production builder reads
 //! process environment. The synchronous test installs that environment before
-//! constructing Tokio, so no test or runtime thread can observe partial config.
+//! constructing the server runtime, so no test or runtime thread can observe partial config.
+
+mod test_harness;
 
 use chrono::Utc;
 use everruns_contracts::typed_id::{PrincipalId, SessionId};
@@ -21,19 +23,12 @@ use std::time::{Duration, Instant};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
-fn database_url() -> String {
-    std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-        let port = std::env::var("DB_PORT").unwrap_or_else(|_| "9332".to_string());
-        format!("postgres://everruns:everruns@localhost:{port}/everruns_test")
-    })
-}
-
-fn configure_server_environment() {
+fn configure_server_environment(database_url: &str) {
     // SAFETY: this integration binary contains one synchronous test. It sets
-    // every variable before constructing Tokio, and no sibling test can run in
+    // every variable before constructing the server runtime, and no sibling test can run in
     // this process.
     unsafe {
-        std::env::set_var("DATABASE_URL", database_url());
+        std::env::set_var("DATABASE_URL", database_url);
         std::env::set_var("DATABASE_POOL_MAX", "4");
         std::env::set_var("DATABASE_POOL_MIN", "1");
         std::env::set_var("DATABASE_ACQUIRE_TIMEOUT_SECS", "1");
@@ -232,11 +227,11 @@ async fn wait_for_server_sweeps(
     }
 }
 
-async fn run_background_sweep_regression() {
+async fn run_background_sweep_regression(database_url: &str) {
     let (server, context) = start_real_server().await;
     let observer = sqlx::postgres::PgPoolOptions::new()
         .max_connections(1)
-        .connect(&database_url())
+        .connect(database_url)
         .await
         .expect("connect observer pool");
 
@@ -317,10 +312,11 @@ async fn run_background_sweep_regression() {
 
 #[test]
 fn built_in_background_sweeps_survive_a_saturated_request_pool() {
-    configure_server_environment();
+    let database = test_harness::database_before_server_environment();
+    configure_server_environment(database.url());
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("build Tokio runtime")
-        .block_on(run_background_sweep_regression());
+        .block_on(run_background_sweep_regression(database.url()));
 }

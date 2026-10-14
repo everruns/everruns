@@ -7,6 +7,9 @@ import os
 import subprocess
 import tempfile
 import json
+import hashlib
+import shutil
+import tarfile
 
 import yaml
 
@@ -68,6 +71,41 @@ class Policy(unittest.TestCase):
         self.assertIn('migration_history_test::',focused.risk_filters(['crates/server/migrations/20261014000000_test.sql']))
         self.assertEqual(focused.risk_filters(['crates/core/src/engine.rs']),[])
         self.assertIn('service_mcp_oauth_lifecycle_test::', focused.risk_filters(['crates/server/tests/test_harness.rs']))
+
+    def test_database_backend_changes_run_real_router_fixtures(self):
+        targets=['background_sweep_wiring_test','pat_scope_sweep_test']
+        for path in ['crates/server/src/storage/test_database.rs',
+                     'crates/server/src/storage/embedded_postgres/mod.rs',
+                     'crates/server/tests/test_harness/database.rs']:
+            self.assertEqual(focused.real_server_targets([path]),targets)
+        server=dict(id='server',name='everruns-server',manifest_path='/repo/crates/server/Cargo.toml',dependencies=[],targets=[{'kind':['lib']}])
+        selection=focused.select({'packages':[server],'workspace_members':['server']},
+                                 ['crates/server/src/storage/test_database.rs'],Path('/repo'))['include'][0]
+        self.assertEqual(selection['risk_targets'],targets)
+        command=next(focused.commands(selection))
+        for target in targets:self.assertIn(target,command)
+        self.assertEqual(focused.real_server_targets(['crates/server/tests/pat_scope_sweep_test.rs']),['pat_scope_sweep_test'])
+        self.assertEqual(focused.real_server_targets(['crates/server/src/domains/models/service.rs']),[])
+
+    def test_archived_test_executable_receives_cargo_fixture_context(self):
+        workflow=yaml.safe_load((ROOT/'.github/workflows/ci-test-archive.yml').read_text())
+        step=next(s for s in workflow['jobs']['execute']['steps'] if s.get('name')=='Verify and run the shared executable')
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);(root/'crates/server').mkdir(parents=True)
+            binary=root/'server-tests'
+            binary.write_text('#!/bin/sh\nset -eu\ntest "$PWD" = "$GITHUB_WORKSPACE/crates/server"\ntest "$CARGO_MANIFEST_DIR" = "$PWD"\n')
+            binary.chmod(0o755)
+            with tarfile.open(root/'server-tests.tar.gz','w:gz') as archive:archive.add(binary,arcname='server-tests')
+            (root/'server-tests.sha256').write_text(hashlib.sha256(binary.read_bytes()).hexdigest()+'  server-tests\n')
+            binary.unlink()
+            env=dict(os.environ,GITHUB_WORKSPACE=str(root));env.pop('CARGO_MANIFEST_DIR',None)
+            env.update({key:value.replace('${{ github.workspace }}',str(root)) for key,value in step.get('env',{}).items()})
+            if not shutil.which('sha256sum'):
+                shim=root/'bin';shim.mkdir()
+                (shim/'sha256sum').write_text('#!/bin/sh\nexec shasum -a 256 "$@"\n')
+                (shim/'sha256sum').chmod(0o755)
+                env['PATH']=str(shim)+os.pathsep+env['PATH']
+            subprocess.run(['bash','-euo','pipefail','-c',step['run']],cwd=root,env=env,check=True,capture_output=True)
 
     def values(self, tier='pr'):
         return {'needs.changes.outputs.mode':tier,'needs.changes.outputs.run_ci':'true',

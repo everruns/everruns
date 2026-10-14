@@ -58,6 +58,18 @@ def risk_filters(paths):
     return sorted(filters)
 
 
+def real_server_targets(paths):
+    # These production-router tests configure their own process environment and
+    # bypass TestServer; backend changes must exercise their database setup too.
+    targets = ['background_sweep_wiring_test', 'pat_scope_sweep_test']
+    if any(p.startswith(('crates/server/tests/test_harness',
+                         'crates/server/src/storage/embedded_postgres/'))
+           or p in ('crates/server/src/storage/test_database.rs',
+                    'crates/server/src/setup/storage_init.rs') for p in paths):
+        return targets
+    return [target for target in targets if f'crates/server/tests/{target}.rs' in paths]
+
+
 def select(metadata, paths, root):
     packages = [p for p in metadata['packages'] if p['id'] in metadata['workspace_members']]
     names = affected(packages, paths, root)
@@ -73,7 +85,10 @@ def select(metadata, paths, root):
             continue
         group = 'server' if name == 'everruns-server' else 'facade' if name in ('everruns', 'everruns-cli', 'everruns-docs-snippets') else 'runtime' if name in ('everruns-core', 'everruns-capabilities', 'everruns-worker', 'everruns-integrations', 'everruns-integrations-experimental', 'everruns-test-support') else 'foundation'
         groups.setdefault(group, []).append(name)
-    return {'include': [{'group': group, 'packages': sorted(names), 'risk_filters': risk_filters(paths) if group == 'server' else []} for group, names in sorted(groups.items())]}
+    return {'include': [{'group': group, 'packages': sorted(names),
+                         'risk_filters': risk_filters(paths) if group == 'server' else [],
+                         'risk_targets': real_server_targets(paths) if group == 'server' else []}
+                        for group, names in sorted(groups.items())]}
 
 
 def commands(selection):
@@ -83,6 +98,8 @@ def commands(selection):
         command += ['-p', name]
     if packages == ['everruns-server']:
         command += ['--lib', '--test', 'contracts']
+        for target in selection.get('risk_targets', []):
+            command += ['--test', target]
     features = []
     for name in packages:
         if FEATURES.get(name) == ['all']:

@@ -42,8 +42,8 @@ pub use response::TestResponse;
 mod database;
 #[allow(unused_imports)] // each test binary uses a different subset
 pub use database::{
-    IsolatedDatabase, create_test_pool, database_migrated_before, get_database_url,
-    isolated_postgres_database, isolated_test_database,
+    IsolatedDatabase, create_test_pool, database_before_server_environment,
+    database_migrated_before, get_database_url, isolated_postgres_database, isolated_test_database,
 };
 
 pub fn extract_cookie(headers: &HeaderMap, name: &str) -> String {
