@@ -86,10 +86,14 @@ jobs:
         if: matrix.database == 'durable'
         run: echo 'EVERRUNS_TEST_POSTGRES_URL=postgres://everruns:everruns@localhost:5432/postgres' >> "$GITHUB_ENV"
       - name: Verify and run the shared executable
+        env:
+          # Cargo supplies this variable and package cwd to fixture readers.
+          CARGO_MANIFEST_DIR: ${{ github.workspace }}/crates/server
         run: |
           tar -xzf server-tests.tar.gz
           sha256sum --check server-tests.sha256
-          ./server-tests
+          cd "$CARGO_MANIFEST_DIR"
+          "$GITHUB_WORKSPACE/server-tests"
       - name: Verify the durable service survives a crash
         if: matrix.database == 'durable'
         timeout-minutes: 3

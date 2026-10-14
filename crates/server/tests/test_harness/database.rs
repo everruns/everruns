@@ -83,6 +83,25 @@ pub async fn isolated_postgres_database() -> IsolatedDatabase {
     IsolatedDatabase { pool, database }
 }
 
+/// Prepare a private database before a single-test binary configures process
+/// environment. Join the temporary runtime and close its pool first: creating a
+/// lazy pool outside Tokio would leave a persistent maintenance runtime alive.
+pub fn database_before_server_environment() -> Arc<TestDatabase> {
+    std::thread::spawn(|| {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("build database fixture runtime")
+            .block_on(async {
+                let (pool, database) = create_migrated_test_database();
+                pool.close().await;
+                database
+            })
+    })
+    .join()
+    .expect("prepare database before configuring environment")
+}
+
 /// A database of its own on the embedded cluster, migrated up to but not
 /// including `version`, for tests that convert pre-migration data with that
 /// migration. Slower than [`isolated_test_database`]: it runs the migrations

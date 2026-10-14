@@ -24,6 +24,8 @@ which share the same cache and linker characteristics.
 Pull requests run formatting, linting, repository guards, affected workspace tests,
 and relevant UI/docs checks. The affected set includes reverse Cargo dependencies;
 server persistence, authorization, and migration changes add focused contracts.
+Database-backend changes also exercise production-router fixtures that configure
+their own environment outside the shared API harness.
 Ordinary Rust changes do not build the server/worker/CLI binaries, full PostgreSQL
 shards, SDK cohorts, or Docker images. Public API and packaging inputs retain their
 specific consumers. Chaos functional coverage uses the existing shared CI binaries
