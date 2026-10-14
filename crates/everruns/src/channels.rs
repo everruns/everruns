@@ -144,6 +144,7 @@ pub struct ChannelsBuilder {
     engine: Engine,
     channels: Vec<(String, Channel, Agent)>,
     store: Option<Arc<dyn ChannelStore>>,
+    egress: Option<Arc<dyn everruns_core::EgressService>>,
 }
 
 impl ChannelsBuilder {
@@ -167,6 +168,15 @@ impl ChannelsBuilder {
         self
     }
 
+    /// Download files messages link to (a Slack file) through this egress
+    /// service. Defaults to the Framework's runtime egress
+    /// ([`batteries::runtime_egress_service`](crate::batteries::runtime_egress_service)),
+    /// which stays offline unless a network feature is enabled.
+    pub fn egress(mut self, egress: Arc<dyn everruns_core::EgressService>) -> Self {
+        self.egress = Some(egress);
+        self
+    }
+
     /// Build the channels. Nothing runs until a request is handled.
     pub fn build(self) -> Channels {
         let mut agents = HashMap::new();
@@ -179,7 +189,10 @@ impl ChannelsBuilder {
             engine: self.engine,
             agents,
         });
-        let mut builder = ChannelHost::builder(port);
+        let mut builder = ChannelHost::builder(port).egress(
+            self.egress
+                .unwrap_or_else(crate::batteries::runtime_egress_service),
+        );
         if let Some(store) = self.store {
             builder = builder.store(store);
         }
@@ -205,6 +218,7 @@ impl Channels {
             engine: engine.clone(),
             channels: Vec::new(),
             store: None,
+            egress: None,
         }
     }
 

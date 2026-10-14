@@ -38,6 +38,8 @@ pub struct HealthIssueQuery {
 }
 
 #[utoipa::path(get,path="/v1/health-issues",params(HealthIssueQuery),responses((status=200,body=HealthIssueList),(status=403,body=ErrorResponse)),tag="health-issues")]
+/// List pending health issues in the organization
+///
 /// List pending operational health issues visible to the caller in the current organization.
 pub async fn list_health_issues(
     org: ResolvedOrg,
@@ -55,6 +57,8 @@ pub async fn list_health_issues(
     ))
 }
 #[utoipa::path(get,path="/v1/health-issues/{issue_id}",params(("issue_id"=Uuid,Path)),responses((status=200,body=HealthIssue),(status=404,body=ErrorResponse)),tag="health-issues")]
+/// Get a health issue with evidence and recovery steps
+///
 /// Get current issue evidence and recovery guidance in the current organization.
 pub async fn get_health_issue(
     org: ResolvedOrg,
@@ -66,6 +70,8 @@ pub async fn get_health_issue(
     ))
 }
 #[utoipa::path(post,path="/v1/health-issues/{issue_id}/check",params(("issue_id"=Uuid,Path)),responses((status=200,body=HealthIssue),(status=429,body=ErrorResponse)),tag="health-issues")]
+/// Re-check a health issue
+///
 /// Verify current installation permissions without changing provider data; requires agent management access and enforces a check cooldown.
 pub async fn check_health_issue(
     org: ResolvedOrg,
@@ -77,6 +83,8 @@ pub async fn check_health_issue(
     ))
 }
 #[utoipa::path(post,path="/v1/health-issues/{issue_id}/snooze",params(("issue_id"=Uuid,Path)),responses((status=200,body=HealthIssue)),tag="health-issues")]
+/// Snooze reminders for a health issue for one day
+///
 /// Snooze the authenticated user's reminders for one day while keeping the shared issue pending.
 pub async fn snooze_health_issue(
     org: ResolvedOrg,

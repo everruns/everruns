@@ -194,10 +194,13 @@ impl SessionService {
         source: SessionSource,
         req: CreateSessionRequest,
     ) -> Result<Session> {
-        if req.workspace_id.is_some() && !req.initial_files.is_empty() {
+        // Every ingress path lands here, so the retired attach is refused at the
+        // creation boundary too, not only by the `CreateSession` command.
+        if req.workspace_id.is_some() {
             return Err(BadRequestError::new(
-                "initial_files cannot be applied to an existing file tree; review and update files through the Files API",
-            ).into());
+                crate::domains::sessions::types::WORKSPACE_ATTACH_RETIRED,
+            )
+            .into());
         }
         let org_id = caller.org_id;
         let org_public_id = &caller.org_public_id;
@@ -527,44 +530,6 @@ impl SessionService {
             }
         };
 
-        // Optional attach to an existing shared workspace. When absent, the
-        // storage layer auto-creates a default 1:1 workspace (see
-        // knowledge/runtime-resources/workspace.md, "Default Workspace per Session").
-        let workspace_id = match req.workspace_id {
-            Some(public_id) => {
-                let workspace = self
-                    .db
-                    .get_workspace(org_id, public_id)
-                    .await?
-                    .ok_or_else(|| ResourceNotFoundError::new("Workspace"))?;
-                if workspace.status != "active" {
-                    return Err(BadRequestError::new(format!(
-                        "Workspace {public_id} is {} and cannot accept new sessions",
-                        workspace.status
-                    ))
-                    .into());
-                }
-                // The session's rendered workspace_id is derived from the
-                // internal id, so it only round-trips when id.hex == public_id
-                // suffix. New workspaces pin this at creation, but a workspace
-                // created before that invariant (random internal PK) would make
-                // the session report a workspace_id that 404s against the
-                // workspace API. Reject it with actionable guidance rather than
-                // silently misrendering.
-                if everruns_contracts::typed_id::WorkspaceId::from_uuid(workspace.id).to_string()
-                    != workspace.public_id
-                {
-                    return Err(BadRequestError::new(format!(
-                        "Workspace {public_id} predates the id/public-id invariant \
-                         and cannot be attached; recreate it via POST /v1/workspaces"
-                    ))
-                    .into());
-                }
-                Some(workspace.id)
-            }
-            None => None,
-        };
-
         let requested_goal = req.goal.clone();
         let forked_from_session_id = req.forked_from_session_id;
         let seed = req.seed;
@@ -603,7 +568,8 @@ impl SessionService {
             blueprint_config: None,
             parent_session_id: req.parent_session_id,
             budget_root_session_id: req.budget_root_session_id,
-            workspace_id,
+            // Always a fresh default workspace (see `WORKSPACE_ATTACH_RETIRED`).
+            workspace_id: None,
         };
         let row = self.db.create_session(input).await?;
         if let Some(sandbox) = &resolved_sandbox {
@@ -638,21 +604,17 @@ impl SessionService {
         let scoped_memory = ScopedMemoryContext {
             agent_id,
             harness_id: Some(harness_id),
-            // User memory is private to the resolved user. Do not materialize it
-            // into caller-attached shared workspaces because workspace files are
-            // currently workspace-wide rather than participant-local.
-            user_id: if workspace_id.is_none() && !self.db.is_playground_session(session.id).await?
-            {
-                resolved_owner_user_id
-            } else {
+            // User memory is private to the resolved user; Playground sessions
+            // run as someone else's preview and never receive it.
+            user_id: if self.db.is_playground_session(session.id).await? {
                 None
+            } else {
+                resolved_owner_user_id
             },
         };
 
         // Apply capability mounts (harness + agent + session capabilities) and
-        // address the session's working tree. Key by workspace_id
-        // (not session id) so an attached shared workspace receives mounts; for
-        // the default 1:1 session these are equal.
+        // address the session's working tree, keyed by workspace id.
         self.apply_capability_mounts(
             org_id,
             harness_id.uuid(),
@@ -663,18 +625,15 @@ impl SessionService {
         )
         .await?;
 
-        // Agent/harness files seed a new lineage once. Attaching a session must
-        // never reset an existing tree to the agent's starting snapshot.
-        if workspace_id.is_none() {
-            self.apply_initial_files(
-                org_id,
-                harness_id.uuid(),
-                agent_id.map(|a| a.uuid()),
-                &req.initial_files,
-                session.workspace_id.uuid(),
-            )
-            .await?;
-        }
+        // Agent/harness files seed the session's fresh workspace.
+        self.apply_initial_files(
+            org_id,
+            harness_id.uuid(),
+            agent_id.map(|a| a.uuid()),
+            &req.initial_files,
+            session.workspace_id.uuid(),
+        )
+        .await?;
 
         // Effective capability list (harness + agent + session), resolved once
         // and shared by sandbox auto-start and the session_start hook so the

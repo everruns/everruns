@@ -258,3 +258,64 @@ async fn an_agent_app_installation_never_mints_with_the_shared_app() {
         Some(("ghs_agent".to_string(), McpServerActsAs::Service))
     );
 }
+
+/// An agent that chose the org's shared App link (`everruns_app`, D3) mints
+/// with the deployment's shared key, never with an App of its own, and gets
+/// nothing when the deployment has no shared App configured.
+#[tokio::test]
+async fn an_everruns_app_row_mints_with_the_shared_key_only() {
+    let (fixture, github) = github_setup(ATTENDED).await;
+    let app = fixture
+        .db
+        .get_github_app_for_identity(DEFAULT_ORG_ID, fixture.identity_id)
+        .await
+        .unwrap()
+        .unwrap();
+    fixture.db.delete_github_app(app.id).await.unwrap();
+    fixture
+        .db
+        .upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
+            virtual_user_id: fixture.identity_id,
+            provider: "github".to_string(),
+            connection_type: crate::github_apps::EVERRUNS_APP_CONNECTION_TYPE.to_string(),
+            provider_user_id: None,
+            provider_username: Some("acme".to_string()),
+            access_token_encrypted: None,
+            refresh_token_encrypted: None,
+            scopes: None,
+            expires_at: None,
+            installation_id: Some(PERSON_INSTALLATION),
+            provider_metadata: Some(serde_json::json!({ "org_connection_id": Uuid::now_v7() })),
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        resolve(&fixture, &github, McpServerActsAs::Service).await,
+        Some(("ghs_person".to_string(), McpServerActsAs::Service))
+    );
+
+    let without_shared_app = DbConnectionResolver::with_oauth_refresh(
+        fixture.db.clone(),
+        fixture.encryption.clone(),
+        None,
+        Arc::new(FakeRefreshExchange {
+            calls: AtomicUsize::new(0),
+            delay: StdDuration::ZERO,
+            result: FakeRefreshResult::Success,
+        }),
+    )
+    .with_github_apps_api(crate::github_apps::GitHubAppApi::new(
+        crate::github_apps::GitHubEndpoints {
+            api_url: github.uri(),
+            web_url: "https://github.com".to_string(),
+        },
+    ))
+    .bound_to_input_message(INPUT_MESSAGE);
+    assert!(
+        without_shared_app
+            .get_github_token(fixture.session_id, &access(McpServerActsAs::Service))
+            .await
+            .unwrap()
+            .is_none()
+    );
+}

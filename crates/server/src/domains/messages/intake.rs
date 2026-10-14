@@ -8,13 +8,25 @@
 //! already checked against the bytes by the channel host. A zip must unpack
 //! within the zip limits, as at upload. See
 //! knowledge/runtime-resources/session-attachments.md.
+//!
+//! Surfaces that are not channels (the agent execution API, MCP tools) take
+//! [`MessageFile`]s through the same core intake with [`receive_files`]: the
+//! caller's org stores them and downloads are attributed to it.
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use base64::Engine;
+use everruns_contracts::execution_api::MessageFile;
 use everruns_contracts::runtime::attachments::ZIP_MEDIA_TYPE;
-use everruns_contracts::runtime::channel::ChannelError;
-use everruns_contracts::runtime::message::{ContentPart, FileContentPart, ImageFileContentPart};
-use everruns_core::channel_runtime::ReceivedAttachment;
+use everruns_contracts::runtime::channel::{ChannelError, InboundAttachment};
+use everruns_contracts::runtime::message::{
+    ContentPart, FileContentPart, ImageFileContentPart, InputContentPart,
+};
+use everruns_core::channel_runtime::{
+    AttachmentIntake, AttachmentPolicy, AttachmentStore, ReceivedAttachment,
+};
+use everruns_core::{EgressScope, EgressService, ScopedEgressService};
 
 use super::zip_attachments::unpack_zip;
 use crate::storage::{CreateFileRow, CreateImageRow, StorageBackend};
@@ -80,6 +92,99 @@ pub(crate) async fn store_received_attachment(
     }))
 }
 
+/// Stores files as uploads of one org.
+struct OrgStore<'a> {
+    db: &'a Arc<StorageBackend>,
+    org_id: i64,
+}
+
+#[async_trait]
+impl AttachmentStore for OrgStore<'_> {
+    async fn store(&self, attachment: ReceivedAttachment) -> Result<ContentPart, ChannelError> {
+        store_received_attachment(self.db, self.org_id, attachment).await
+    }
+}
+
+/// `egress` with its requests attributed to org `org_id`.
+pub(crate) fn org_egress(egress: Arc<dyn EgressService>, org_id: i64) -> Arc<dyn EgressService> {
+    let org_id = everruns_core::org_public_id_from_internal(org_id)
+        .parse()
+        .ok();
+    Arc::new(ScopedEgressService::new(
+        egress,
+        EgressScope {
+            org_id,
+            session_id: None,
+        },
+    ))
+}
+
+/// Input parts for `files` sent by a caller of org `org_id`, in order: each
+/// stored as an upload of the org, or a text note saying why not. `source`
+/// names the surface in logs.
+pub(crate) async fn receive_files(
+    db: &Arc<StorageBackend>,
+    egress: Option<&Arc<dyn EgressService>>,
+    org_id: i64,
+    source: &str,
+    files: Vec<MessageFile>,
+) -> Vec<InputContentPart> {
+    if files.is_empty() {
+        return Vec::new();
+    }
+    let attachments: Vec<_> = files.into_iter().map(inbound_attachment).collect();
+    AttachmentIntake {
+        store: &OrgStore { db, org_id },
+        egress: egress.map(|egress| org_egress(egress.clone(), org_id)),
+        policy: AttachmentPolicy::default(),
+        source,
+    }
+    .parts(&attachments)
+    .await
+    .into_iter()
+    .filter_map(|part| match part {
+        ContentPart::Text(text) => Some(InputContentPart::Text(text)),
+        ContentPart::Image(image) => Some(InputContentPart::Image(image)),
+        ContentPart::ImageFile(image) => Some(InputContentPart::ImageFile(image)),
+        ContentPart::File(file) => Some(InputContentPart::File(file)),
+        _ => None,
+    })
+    .collect()
+}
+
+/// A caller's file as intake input: bytes, a download, or a note when it
+/// carries neither or both, or bytes that are not base64.
+fn inbound_attachment(file: MessageFile) -> InboundAttachment {
+    let MessageFile {
+        name,
+        media_type,
+        data,
+        url,
+    } = file;
+    let note = |why: &str| InboundAttachment::FileDescription {
+        name: format!("{} ({why})", name.as_deref().unwrap_or("file")),
+        mime_type: media_type.clone(),
+    };
+    match (data, url) {
+        (Some(data), None) => match base64::engine::general_purpose::STANDARD.decode(data.trim()) {
+            Ok(data) => InboundAttachment::Bytes {
+                name,
+                media_type,
+                data,
+            },
+            Err(_) => note("not valid base64"),
+        },
+        (None, Some(url)) => InboundAttachment::Remote {
+            url,
+            name,
+            media_type,
+            size: None,
+            credential: None,
+        },
+        _ => note("needs exactly one of data and url"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,6 +245,53 @@ mod tests {
         assert!(
             matches!(&error, ChannelError::BadRequest(reason) if reason.starts_with("the zip cannot be unpacked")),
             "got {error:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn caller_files_are_stored_or_noted() {
+        let db = Arc::new(StorageBackend::test_database());
+        let file = |data: Option<&str>, url: Option<&str>| MessageFile {
+            name: Some("notes.txt".into()),
+            media_type: Some("text/plain".into()),
+            data: data.map(str::to_string),
+            url: url.map(str::to_string),
+        };
+
+        let parts = receive_files(
+            &db,
+            None,
+            1,
+            "api",
+            vec![
+                file(Some("aGk="), None),
+                file(None, Some("https://example.com/notes.txt")),
+                file(None, None),
+                file(Some("%%%"), None),
+            ],
+        )
+        .await;
+
+        let InputContentPart::File(stored) = &parts[0] else {
+            panic!("expected a stored file, got {:?}", parts[0]);
+        };
+        let row = db
+            .get_file(1, stored.file_id.uuid())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.data, b"hi");
+        let notes: Vec<_> = parts[1..]
+            .iter()
+            .map(|part| part.as_text().unwrap_or_default().to_string())
+            .collect();
+        assert_eq!(
+            notes,
+            [
+                "[Attachment notes.txt not received: this host does not download files]",
+                "[Attached file: notes.txt (needs exactly one of data and url) (text/plain)]",
+                "[Attached file: notes.txt (not valid base64) (text/plain)]",
+            ]
         );
     }
 }

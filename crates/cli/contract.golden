@@ -31,6 +31,7 @@ agents get	--context-revision --id --reason <id>
 agents github connect	--agent-id! --context-revision --owner-org --reason --return-to
 agents github disconnect	--agent-id! --context-revision --reason
 agents github get	--agent-id! --context-revision --reason
+agents github use-everruns-app	--agent-id! --connection-id! --context-revision --reason
 agents health-checks get	--agent-id! --context-revision --reason --run-id!
 agents health-checks latest get	--agent-id! --context-revision --reason
 agents health-checks list	--agent-id! --context-revision --reason
@@ -340,7 +341,6 @@ virtual-users get	--context-revision --id --reason <id>
 virtual-users list	--context-revision --include-archived --limit --offset --reason --search --usage
 virtual-users update	--avatar-url --context-revision --description --id --locale --name --reason --status --timezone <id>
 whoami
-workspaces create	--context-revision --description --name! --reason
 workspaces delete	--context-revision --reason --workspace-id <workspace_id>
 workspaces get	--context-revision --reason --workspace-id <workspace_id>
 workspaces list	--context-revision --include-archived --reason --search
