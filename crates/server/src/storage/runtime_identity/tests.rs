@@ -12,6 +12,25 @@ fn identity(org: i64, realm: &str, subject: &str) -> VerifiedRuntimeIdentity {
         management_user_id: None,
     }
 }
+
+async fn wait_for_binding_inserts(pool: &sqlx::PgPool, count: i64) {
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let waiting: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM pg_locks WHERE database=(SELECT oid FROM pg_database WHERE datname=current_database()) AND relation='virtual_user_bindings'::regclass AND mode='RowExclusiveLock' AND NOT granted",
+            )
+            .fetch_one(pool)
+            .await
+            .unwrap();
+            if waiting == count {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("requests must reach binding insertion");
+}
 #[tokio::test]
 async fn identity_namespace_is_scoped_by_org_and_verified_realm() {
     let db = StorageBackend::test_database();
@@ -71,6 +90,95 @@ async fn concurrent_first_use_has_one_binding_and_account() {
             .len(),
         1
     );
+}
+#[tokio::test]
+async fn concurrent_default_first_use_has_one_binding_and_account() {
+    let db = Arc::new(StorageBackend::test_database());
+    let pool = db.database().pool();
+    for round in 0..16 {
+        let human = db
+            .create_user(CreateUserRow {
+                email: format!("concurrent-{round}@example.com"),
+                name: "Manager".into(),
+                avatar_url: None,
+                roles: vec![],
+                password_hash: None,
+                email_verified: true,
+                auth_provider: None,
+                auth_provider_id: None,
+                external_id: None,
+            })
+            .await
+            .unwrap()
+            .id;
+        db.add_organization_member(DEFAULT_ORG_ID, human, "member")
+            .await
+            .unwrap();
+
+        // Hold both first-use requests at INSERT, after their absent-row reads.
+        // This lock and the wait query are confined to this test's private DB.
+        let mut blocker = pool.begin().await.unwrap();
+        sqlx::query("LOCK TABLE virtual_user_bindings IN SHARE MODE")
+            .execute(&mut *blocker)
+            .await
+            .unwrap();
+        let tasks: Vec<_> = (0..2)
+            .map(|_| {
+                let db = db.clone();
+                tokio::spawn(async move { db.default_virtual_user(DEFAULT_ORG_ID, human).await })
+            })
+            .collect();
+        wait_for_binding_inserts(pool, 2).await;
+        blocker.commit().await.unwrap();
+        let mut ids = Vec::new();
+        for task in tasks {
+            ids.push(
+                tokio::time::timeout(std::time::Duration::from_secs(10), task)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .expect("concurrent default account resolution must succeed")
+                    .id,
+            );
+        }
+        assert_eq!(ids[0], ids[1]);
+        let bindings = db
+            .list_virtual_user_bindings(DEFAULT_ORG_ID, ids[0])
+            .await
+            .unwrap();
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].management_user_id, Some(human));
+    }
+}
+#[tokio::test]
+async fn first_use_rechecks_revocation_after_losing_binding_insert() {
+    let db = Arc::new(StorageBackend::test_database());
+    let pool = db.database().pool();
+    let mut input = identity(DEFAULT_ORG_ID, "issuer", "revoked-during-first-use");
+    input.name = "Revoked while binding".into();
+    let mut blocker = pool.begin().await.unwrap();
+    sqlx::query("LOCK TABLE virtual_user_bindings IN SHARE MODE")
+        .execute(&mut *blocker)
+        .await
+        .unwrap();
+    let task = {
+        let db = db.clone();
+        let input = input.clone();
+        tokio::spawn(async move { db.resolve_runtime_identity(input).await })
+    };
+    wait_for_binding_inserts(pool, 1).await;
+    // Another request bound and revoked the same account after our absent read.
+    let inserted = sqlx::query("INSERT INTO virtual_user_bindings(org_id,virtual_user_id,provider,realm,subject,status) SELECT org_id,id,$2,$3,$4,'revoked' FROM virtual_users WHERE org_id=$1 AND name=$5")
+        .bind(input.org_id).bind(input.provider).bind(input.realm).bind(input.subject).bind(input.name)
+        .execute(&mut *blocker).await.unwrap();
+    assert_eq!(inserted.rows_affected(), 1);
+    blocker.commit().await.unwrap();
+    let error = tokio::time::timeout(std::time::Duration::from_secs(10), task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(error.to_string(), "Identity binding revoked");
 }
 #[tokio::test]
 async fn unlink_is_a_tombstone_and_cannot_reclaim_state() {
@@ -136,6 +244,13 @@ async fn console_default_requires_current_membership_and_cannot_be_unlinked() {
             .unwrap()
     );
     assert!(db.default_virtual_user(999, human).await.is_err());
+    let mut conflicting_identity = identity(DEFAULT_ORG_ID, "another-issuer", "manager");
+    conflicting_identity.management_user_id = Some(human);
+    assert!(
+        db.resolve_runtime_identity(conflicting_identity)
+            .await
+            .is_err()
+    );
     assert_eq!(
         db.default_virtual_user(DEFAULT_ORG_ID, human)
             .await

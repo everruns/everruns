@@ -53,7 +53,7 @@ def risk_filters(paths):
         filters.update(['openapi_coverage_test::', 'openapi_descriptions_test::', 'pat_scope_coverage_test::'])
     if any('/migrations/' in p or '/setup/migrations' in p for p in paths):
         filters.update(['migration_baseline_test::', 'migration_history_test::'])
-    if '.github/scripts/ci/focused.py' in paths or any(any(x in p for x in ('/auth', '/permissions', '/policy', '/org_', '/organization', '/principal', '/roles', '/members', '/pat_', '/storage/repositories/')) for p in paths):
+    if '.github/scripts/ci/focused.py' in paths or any(any(x in p for x in ('/auth', '/permissions', '/policy', '/org_', '/organization', '/principal', '/roles', '/members', '/pat_', '/storage/repositories/', '/runtime_identity/')) for p in paths):
         filters.update(['auth_integration_test::', 'org_isolation_test::', 'command_policy_enforcement_test::', 'pat_scope_coverage_test::'])
     if any(p.endswith('/tests/test_harness.rs') or '/tests/test_harness/' in p
            or p.endswith('/storage/test_database.rs') for p in paths):
