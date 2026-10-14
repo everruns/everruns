@@ -592,7 +592,11 @@ async fn a_dead_owner_does_not_confirm_cancellation_of_surviving_execution() {
 #[tokio::test]
 async fn inconsistent_attempt_fence_cannot_create_a_recovery_wake() {
     use everruns_contracts::runtime::session_task::SessionTaskRecoveryGuard;
-    let (registry, recovery) = recovery(SqliteDb::in_memory().unwrap(), TaskOwnership::Lost, None);
+    let (registry, recovery) = recovery(
+        SqliteDb::open_in_memory().unwrap(),
+        TaskOwnership::Lost,
+        None,
+    );
     let task = registry
         .create(input(SessionId::new(), KIND, SessionTaskState::Running))
         .await
