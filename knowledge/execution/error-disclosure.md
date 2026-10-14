@@ -54,7 +54,6 @@ minute caps and upstream shared-pool throttles stay transient. Its embedded
 the same reset field used by other usage limits. Chat, Responses, and compaction
 requests stop short retries when the body reports an exhausted usage limit.
 
-
 Provider account attestation gates are a fourth case, `provider_attestation_required`
 (EVE-952). OpenRouter refuses some models with a `403` until the account completes a
 confirmation such as 18+ age verification; by status alone that is indistinguishable
