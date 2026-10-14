@@ -472,7 +472,7 @@ pub fn embeddings_span_name(model: &str) -> String {
 /// Classify an error into the low-cardinality `error.type` the conventions
 /// ask for. An explicit code wins; otherwise a provider HTTP status embedded in
 /// the message (`503`) or a timeout is recognized; everything else is
-/// `_OTHER`, with the full message kept in the span status description.
+/// `_OTHER`. The exporter gates raw status/exception messages on content capture.
 pub fn error_type(code: Option<&str>, message: &str) -> String {
     if let Some(code) = code.map(str::trim).filter(|c| !c.is_empty()) {
         return code.to_string();

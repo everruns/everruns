@@ -52,7 +52,9 @@ pub trait EventListener: Send + Sync {
     async fn on_event(&self, event: &Event);
 
     /// Flush buffered listener state before process shutdown.
-    async fn flush(&self) {}
+    async fn flush(&self) -> Result<(), String> {
+        Ok(())
+    }
 
     /// Optional: Filter which event types this listener cares about.
     ///

@@ -2239,18 +2239,17 @@ impl EventListener for BraintrustListener {
         }
     }
 
-    async fn flush(&self) {
+    async fn flush(&self) -> Result<(), String> {
         self.ensure_delivery_worker();
         let (completion, completed) = oneshot::channel();
-        if self
-            .state
+        self.state
             .sender
             .send(DeliveryMessage::Flush(completion))
             .await
-            .is_ok()
-        {
-            let _ = completed.await;
-        }
+            .map_err(|_| "Braintrust delivery worker stopped".to_string())?;
+        completed
+            .await
+            .map_err(|_| "Braintrust flush was interrupted".to_string())
     }
 
     fn event_types(&self) -> Option<Vec<&'static str>> {
