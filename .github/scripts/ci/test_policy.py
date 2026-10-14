@@ -156,6 +156,35 @@ class Policy(unittest.TestCase):
         self.assertEqual(release.latest_full(runs,'a')['id'],1)
         self.assertIsNone(release.latest_full(runs,'unknown'))
 
+    def test_release_discovery_stops_before_irrelevant_history(self):
+        def run(n,revision='a',event='workflow_dispatch'):
+            return dict(id=n,event=event,display_title='CI full '+revision,head_branch='main',path='.github/workflows/ci.yml')
+        calls=[]
+        def read(endpoint):
+            calls.append(endpoint)
+            if 'event=push' in endpoint:return {'workflow_runs':[run(250,event='push')]}
+            return {'workflow_runs':[run(n,'other') for n in range(200,100,-1)]}
+        self.assertEqual(release.find_full('o/r','a',read)['id'],250)
+        self.assertEqual(len(calls),2)
+
+    def test_release_discovery_finds_later_manual_attempt_on_older_sha(self):
+        calls=[]
+        def run(n,revision='other',event='workflow_dispatch'):
+            return dict(id=n,event=event,display_title='CI full '+revision,head_branch='main',path='.github/workflows/ci.yml')
+        def read(endpoint):
+            calls.append(endpoint)
+            if 'event=push' in endpoint:return {'workflow_runs':[run(50,'a','push')]}
+            if endpoint.endswith('&page=1'):return {'workflow_runs':[run(n) for n in range(200,100,-1)]}
+            return {'workflow_runs':[run(70,'a')]}
+        self.assertEqual(release.find_full('o/r','a',read)['id'],70)
+        self.assertEqual(len(calls),3)
+
+    def test_release_history_budget_fails_closed(self):
+        def read(endpoint):
+            if 'event=push' in endpoint:return {'workflow_runs':[]}
+            return {'workflow_runs':[dict(id=n,event='workflow_dispatch',display_title='unrelated',head_branch='main',path='.github/workflows/ci.yml') for n in range(200,100,-1)]}
+        with self.assertRaises(SystemExit):release.find_full('o/r','a',read)
+
     def test_release_side_effects_follow_exact_revision_gate(self):
         for file,job,target in [('release.yml','release','Create GitHub Release'),('publish-crates.yml','publish','Publish package')]:
             workflow=yaml.safe_load((ROOT/'.github/workflows'/file).read_text());steps=workflow['jobs'][job]['steps']

@@ -15,6 +15,24 @@ def latest_full(runs, revision):
     return max(candidates, key=lambda r: r['id'], default=None)
 
 
+def api(endpoint):
+    return json.loads(subprocess.check_output(['gh', 'api', endpoint], text=True))
+
+
+def find_full(repository, revision, read=api):
+    root = f'repos/{repository}/actions/workflows/ci.yml/runs'
+    runs = read(f'{root}?branch=main&event=push&head_sha={revision}&per_page=100')['workflow_runs']
+    # Normal releases have a matching push run. Only manual runs newer than
+    # the selected candidate can supersede it, so do not scan years of pushes.
+    for page in range(1, 11):
+        manual = read(f'{root}?branch=main&event=workflow_dispatch&per_page=100&page={page}')['workflow_runs']
+        runs += manual
+        candidate = latest_full(runs, revision)
+        if len(manual) < 100 or (candidate and candidate['id'] >= min(r['id'] for r in manual)):
+            return candidate
+    raise SystemExit('Validation history is too old; explicitly run fresh full CI for this revision')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--sha', default=os.environ.get('GITHUB_SHA'))
@@ -26,21 +44,25 @@ def main():
     repository = os.environ['GITHUB_REPOSITORY']
     deadline = time.monotonic() + args.timeout
     dispatched = False
+    run = None
     while time.monotonic() < deadline:
-        pages = json.loads(subprocess.check_output([
-            'gh', 'api', '--paginate', '--slurp',
-            f'repos/{repository}/actions/workflows/ci.yml/runs?branch=main&per_page=100'
-        ], text=True))
-        run = latest_full([r for page in pages for r in page['workflow_runs']], args.sha)
+        if run is None:
+            run = find_full(repository, args.sha)
+        else:
+            run = api(f'repos/{repository}/actions/runs/{run["id"]}')
         if run:
             print(f'Full validation: {run["html_url"]} ({run["status"]}, {run["conclusion"]})', flush=True)
             if run['status'] == 'completed':
-                if run['conclusion'] != 'success':
-                    raise SystemExit('Exact-revision full validation did not pass; inspect and fix before releasing')
-                return
+                # Recheck once at completion so a later explicit full attempt
+                # cannot be hidden behind an older green (or failed) run.
+                run = find_full(repository, args.sha) or run
+                if run['status'] == 'completed':
+                    if run['conclusion'] != 'success':
+                        raise SystemExit('Exact-revision full validation did not pass; inspect and fix before releasing')
+                    return
         elif not dispatched:
-            # workflow_dispatch runs the trusted workflow from main; its jobs
-            # all check out and attest this exact ancestor, even as main moves.
+            # The trusted workflow validates this exact main ancestor even if
+            # the main ref advances before the manual run begins.
             subprocess.run(['gh', 'workflow', 'run', 'ci.yml', '--repo', repository,
                             '--ref', 'main', '-f', 'full=true', '-f', f'revision={args.sha}'], check=True)
             dispatched = True
