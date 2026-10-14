@@ -26,6 +26,277 @@ use futures::StreamExt;
 use wiremock::matchers::{method, path_regex, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+fn sse(frames: &[serde_json::Value]) -> ResponseTemplate {
+    ResponseTemplate::new(200)
+        .insert_header("content-type", "text/event-stream")
+        .insert_header("Connection", "close")
+        .set_body_string(
+            frames
+                .iter()
+                .map(|f| format!("data: {f}\n\n"))
+                .collect::<String>(),
+        )
+}
+
+#[tokio::test]
+async fn long_decode_stops_at_the_requested_budget_and_keeps_the_default_cap() {
+    use serde_json::json;
+    for (budget, tokens, expected) in [
+        (None, 7, 65_536),
+        (Some(65_536), 7, 65_536),
+        (Some(100_000), 100_000, 100_000),
+    ] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST")).respond_with(sse(&[json!({
+            "candidates":[{"content":{"parts":[{"text":"partial"},{"functionCall":{"name":"cut_off","args":{"x":1}}}]},"finishReason":"CONTINUATION","continuationToken":"unused"}],
+            "usageMetadata":{"promptTokenCount":10,"thoughtsTokenCount":tokens}
+        })])).expect(1).mount(&server).await;
+        let mut cfg = config("gemini-4-argon");
+        cfg.max_tokens = budget;
+        cfg.temperature = Some(0.7);
+        assert_eq!(
+            provider(&server)
+                .into_boxed_driver()
+                .stream_stall_timeout(&cfg),
+            budget
+                .filter(|&tokens| tokens > 65_536)
+                .map(|_| std::time::Duration::from_secs(1_200)),
+        );
+        let response = provider(&server)
+            .chat_completion(vec![Message::text(MessageRole::User, "hi")], &cfg)
+            .await
+            .unwrap();
+        assert_eq!(response.text, "partial");
+        assert!(response.tool_calls.is_none());
+        assert_eq!(response.metadata.tool_calls_dropped, 1);
+        assert_eq!(response.metadata.finish_reason.as_deref(), Some("length"));
+        let request = replayed_request(&server)
+            .await
+            .body_json::<serde_json::Value>()
+            .unwrap();
+        assert_eq!(
+            request["generationConfig"],
+            json!({"maxOutputTokens":expected})
+        );
+    }
+}
+
+#[tokio::test]
+async fn long_decode_releases_all_hops_tools_only_after_accepted_completion() {
+    use serde_json::json;
+    use wiremock::matchers::body_partial_json;
+    for reason in ["STOP", "SAFETY", "MAX_TOKENS"] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST")).and(body_partial_json(json!({"continuationToken":"next"})))
+            .respond_with(sse(&[json!({"candidates":[{"content":{"parts":[{"functionCall":{"name":"accepted","args":{"x":1}}}]},"finishReason":reason}]})]))
+            .with_priority(1).expect(1).mount(&server).await;
+        Mock::given(method("POST"))
+            .respond_with(sse(&[json!({"candidates":[{"content":{"parts":[{"functionCall":{"name":"first_hop","args":{"first":true}},"thoughtSignature":"signed-first-call"}]},"finishReason":"CONTINUATION","continuationToken":"next"}]})]))
+            .with_priority(2).expect(1).mount(&server).await;
+        let mut cfg = config("gemini-4-argon");
+        cfg.max_tokens = Some(100_000);
+        let response = provider(&server)
+            .chat_completion(vec![Message::text(MessageRole::User, "hi")], &cfg)
+            .await
+            .unwrap();
+        if reason == "STOP" {
+            let calls = response.tool_calls.unwrap();
+            assert_eq!(calls.len(), 2);
+            assert_eq!(calls[0].name, "first_hop");
+            assert_eq!(calls[0].arguments, json!({"first":true}));
+            assert_eq!(calls[1].name, "accepted");
+            assert_eq!(
+                response.reasoning[0].bound_tool_call_id.as_deref(),
+                Some(calls[0].id.as_str())
+            );
+            assert_eq!(response.metadata.tool_calls_dropped, 0);
+        } else {
+            assert!(response.tool_calls.is_none());
+            assert_eq!(response.metadata.tool_calls_dropped, 2);
+        }
+    }
+}
+
+#[tokio::test]
+async fn dropping_long_decode_stream_prevents_the_next_hop() {
+    use serde_json::json;
+    let server = MockServer::start().await;
+    Mock::given(method("POST")).respond_with(sse(&[json!({"candidates":[{"content":{"parts":[{"text":"first"}]},"finishReason":"CONTINUATION","continuationToken":"next"}]})]))
+        .expect(1).mount(&server).await;
+    let mut cfg = config("gemini-4-argon");
+    cfg.max_tokens = Some(100_000);
+    let mut stream = provider(&server)
+        .chat_completion_stream(vec![Message::text(MessageRole::User, "hi")], &cfg)
+        .await
+        .unwrap();
+    assert!(
+        matches!(stream.next().await.unwrap().unwrap(), LlmStreamEvent::TextDelta(t) if t == "first")
+    );
+    drop(stream);
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn argon_thinking_levels_replace_budgets_without_affecting_older_models() {
+    use everruns_contracts::ReasoningEffort;
+    use serde_json::json;
+    for (effort, expected) in [
+        (None, None),
+        (Some(ReasoningEffort::None), None),
+        (Some(ReasoningEffort::Minimal), Some("low")),
+        (Some(ReasoningEffort::Low), Some("low")),
+        (Some(ReasoningEffort::Medium), Some("medium")),
+        (Some(ReasoningEffort::High), Some("high")),
+        (Some(ReasoningEffort::Xhigh), Some("high")),
+        (Some(ReasoningEffort::Max), Some("high")),
+    ] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(sse(&[json!({"candidates":[{"finishReason":"STOP"}]})]))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let mut cfg = config("gemini-4-argon");
+        cfg.reasoning_effort = effort;
+        provider(&server)
+            .chat_completion(vec![Message::text(MessageRole::User, "hi")], &cfg)
+            .await
+            .unwrap();
+        let request = replayed_request(&server)
+            .await
+            .body_json::<serde_json::Value>()
+            .unwrap();
+        assert_eq!(
+            request["generationConfig"]["thinkingConfig"],
+            expected.map_or(
+                json!(null),
+                |level| json!({"thinkingLevel":level,"includeThoughts":true})
+            )
+        );
+    }
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(sse(&[json!({"candidates":[{"finishReason":"STOP"}]})]))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let mut cfg = config("gemini-2.5-pro");
+    cfg.reasoning_effort = Some(ReasoningEffort::Low);
+    provider(&server)
+        .chat_completion(vec![Message::text(MessageRole::User, "hi")], &cfg)
+        .await
+        .unwrap();
+    assert_eq!(
+        replayed_request(&server)
+            .await
+            .body_json::<serde_json::Value>()
+            .unwrap()["generationConfig"]["thinkingConfig"],
+        json!({"thinkingBudget":1024,"includeThoughts":true})
+    );
+}
+
+#[tokio::test]
+async fn long_decode_merges_hops_and_bills_each_hops_final_usage() {
+    use serde_json::json;
+    use wiremock::matchers::body_partial_json;
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(body_partial_json(json!({"continuationToken":"opaque-one"})))
+        .respond_with(sse(&[
+            json!({"candidates":[{"content":{"parts":[{"text":"answer"}]}}],"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":1,"thoughtsTokenCount":2,"cachedContentTokenCount":80}}),
+            json!({"candidates":[{"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":3,"thoughtsTokenCount":5,"cachedContentTokenCount":90}}),
+        ]))
+        .with_priority(1).expect(1).mount(&server).await;
+    Mock::given(method("POST"))
+        .respond_with(sse(&[
+            json!({"candidates":[{"content":{"parts":[{"text":"thinking","thought":true}]}}],"usageMetadata":{"promptTokenCount":10,"thoughtsTokenCount":2}}),
+            json!({"candidates":[{"finishReason":"CONTINUATION","continuationToken":"opaque-one"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":0,"thoughtsTokenCount":7}}),
+        ]))
+        .with_priority(2).expect(1).mount(&server).await;
+    let mut cfg = config("gemini-4-argon");
+    cfg.max_tokens = Some(100_000);
+    cfg.reasoning_effort = Some(everruns_contracts::ReasoningEffort::High);
+    cfg.extra_headers = vec![("x-test".into(), "preserved".into())];
+    let response = provider(&server)
+        .chat_completion(
+            vec![
+                Message::text(MessageRole::System, "system"),
+                Message::text(MessageRole::User, "question"),
+            ],
+            &cfg,
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.text, "answer");
+    assert_eq!(response.metadata.prompt_tokens, Some(20));
+    assert_eq!(response.metadata.cache_read_tokens, Some(90));
+    assert_eq!(response.metadata.completion_tokens, Some(15));
+    assert_eq!(response.metadata.reasoning_tokens, Some(12));
+    assert_eq!(response.metadata.total_tokens, Some(125));
+    assert_eq!(response.metadata.finish_reason.as_deref(), Some("stop"));
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 2);
+    let original = requests[0].body_json::<serde_json::Value>().unwrap();
+    let mut continued = requests[1].body_json::<serde_json::Value>().unwrap();
+    assert_eq!(
+        continued
+            .as_object_mut()
+            .unwrap()
+            .remove("continuationToken"),
+        Some(json!("opaque-one"))
+    );
+    assert_eq!(continued, original);
+    assert_eq!(
+        original["generationConfig"],
+        json!({"maxOutputTokens":100_000,"thinkingConfig":{"thinkingLevel":"high","includeThoughts":true}})
+    );
+    for request in requests {
+        assert_eq!(request.headers["x-test"], "preserved");
+        assert_eq!(request.headers["x-goog-api-key"], "test-key");
+    }
+}
+
+#[tokio::test]
+async fn long_decode_rejects_missing_or_repeated_tokens_and_later_http_failure() {
+    use serde_json::json;
+    use wiremock::matchers::body_partial_json;
+    for (next, error, requests) in [
+        (None, "continuation token", 1),
+        (
+            Some(sse(&[
+                json!({"candidates":[{"finishReason":"CONTINUATION","continuationToken":"same"}]} ),
+            ])),
+            "progress",
+            2,
+        ),
+        (
+            Some(ResponseTemplate::new(400).set_body_string("invalid continuation")),
+            "400",
+            2,
+        ),
+    ] {
+        let server = MockServer::start().await;
+        if let Some(next) = next {
+            Mock::given(method("POST"))
+                .and(body_partial_json(json!({"continuationToken":"same"})))
+                .respond_with(next)
+                .with_priority(1)
+                .mount(&server)
+                .await;
+        }
+        let token = (requests > 1).then_some("same");
+        Mock::given(method("POST")).respond_with(sse(&[json!({"candidates":[{"content":{"parts":[{"text":"partial"}]},"finishReason":"CONTINUATION","continuationToken":token}]})]))
+            .with_priority(2).mount(&server).await;
+        let mut cfg = config("gemini-4-argon");
+        cfg.max_tokens = Some(100_000);
+        let result = provider(&server)
+            .chat_completion(vec![Message::text(MessageRole::User, "question")], &cfg)
+            .await;
+        assert!(result.unwrap_err().to_string().contains(error));
+        assert_eq!(server.received_requests().await.unwrap().len(), requests);
+    }
+}
+
 fn config(model: &str) -> LlmCallConfig {
     LlmCallConfig::new(model)
 }

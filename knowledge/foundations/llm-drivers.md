@@ -449,6 +449,13 @@ The contract that matters:
   changes behavior; `limit_stream` applies the same bounds for callers that
   consume events themselves. See TM-DOS-039.
 
+The provider protocol owns its expected idle interval: long reasoning or
+continuation can legitimately go quiet longer than a generic chat watchdog
+allows. A driver may recommend a request-specific stall timeout through the
+[driver contract](../../crates/contracts/src/driver_registry.rs). The reason
+phase uses that recommendation only when the host has not set its own deadline;
+explicit host policy always takes precedence.
+
 ### Realtime Voice Driver
 
 Realtime voice does not use `ChatDriver::chat_completion_stream()` because a

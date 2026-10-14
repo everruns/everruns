@@ -296,6 +296,9 @@ pub(crate) struct CreateMessageBody {
     message: InputMessage,
     #[serde(default)]
     metadata: Option<Value>,
+    /// Files sent with the message, as on the server's Agent API.
+    #[serde(default)]
+    files: Vec<everruns::execution_api::MessageFile>,
     /// Accepted for compatibility; serve has no per-message controls.
     #[serde(default)]
     #[allow(dead_code)]
@@ -309,8 +312,17 @@ struct InputMessage {
     content: Vec<Value>,
 }
 
-/// Text of a user message. serve accepts text parts only.
+/// Text of a user message. serve accepts text parts only; files come in
+/// the body's `files`. Empty text is allowed when `files` is not.
 fn message_text(message: &InputMessage) -> Result<String, Failure> {
+    let text = joined_text(message)?;
+    if text.trim().is_empty() {
+        return Err(bad_request("message has no text"));
+    }
+    Ok(text)
+}
+
+fn joined_text(message: &InputMessage) -> Result<String, Failure> {
     if message.role.as_deref().is_some_and(|role| role != "user") {
         return Err(bad_request("only user messages can be created"));
     }
@@ -326,11 +338,7 @@ fn message_text(message: &InputMessage) -> Result<String, Failure> {
             }
         }
     }
-    let text = texts.join("\n");
-    if text.trim().is_empty() {
-        return Err(bad_request("message has no text"));
-    }
-    Ok(text)
+    Ok(texts.join("\n"))
 }
 
 /// `POST /v1/sessions/{id}/messages`: starts a turn when idle, steers the
@@ -340,14 +348,29 @@ pub(crate) async fn create_message(
     Path(id): Path<String>,
     Json(body): Json<CreateMessageBody>,
 ) -> ApiResult<Response> {
-    let text = message_text(&body.message)?;
+    let text = if body.files.is_empty() {
+        message_text(&body.message)?
+    } else {
+        joined_text(&body.message)?
+    };
     host.session_row(&id)?;
-    let sent = host.send(&id, text.clone()).await?;
+    let mut content = Vec::new();
+    if !text.trim().is_empty() {
+        content.push(everruns::ContentPart::text(text));
+    }
+    if !body.files.is_empty() {
+        let session = host.session(&id).await?;
+        content.extend(crate::files::receive(session, body.files).await);
+    }
+    let mut input = everruns::InputMessage::user("");
+    input.content = content;
+    let parts = serde_json::to_value(&input.content)?;
+    let sent = host.send_message(&id, input).await?;
     let mut message = json!({
         "id": sent.message_id,
         "session_id": id,
         "role": "user",
-        "content": [{ "type": "text", "text": text }],
+        "content": parts,
         "created_at": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
     });
     // The canonical `input.message` event carries the message's sequence. It

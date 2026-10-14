@@ -270,12 +270,15 @@ pub enum SendOutcome {
 struct PortStore<'a> {
     port: &'a dyn ChannelSessionPort,
     channel: &'a ChannelConfig,
+    session_id: Option<&'a str>,
 }
 
 #[async_trait]
 impl AttachmentStore for PortStore<'_> {
     async fn store(&self, attachment: ReceivedAttachment) -> Result<ContentPart, ChannelError> {
-        self.port.store_attachment(self.channel, attachment).await
+        self.port
+            .store_attachment(self.channel, self.session_id, attachment)
+            .await
     }
 }
 
@@ -323,14 +326,16 @@ pub trait ChannelSessionPort: Send + Sync {
         Ok(())
     }
 
-    /// Store a file a message brought (see [`ReceivedAttachment`]) and return
-    /// the content part that refers to it. An error becomes a note in the
+    /// Store a file a message brought (see [`ReceivedAttachment`]) for
+    /// `session_id`, when the caller knows the session, and return the
+    /// content part that refers to it. An error becomes a note in the
     /// message instead; a `BadRequest` reason is shown to the model, so it
     /// says what was wrong with the file and nothing more. The default keeps
     /// images inline and declines other files.
     async fn store_attachment(
         &self,
         _channel: &ChannelConfig,
+        _session_id: Option<&str>,
         attachment: ReceivedAttachment,
     ) -> Result<ContentPart, ChannelError> {
         use base64::Engine as _;
@@ -706,6 +711,7 @@ impl ChannelHost {
     pub async fn attachment_parts<'a>(
         &self,
         channel: impl Into<ChannelRef<'a>>,
+        session_id: Option<&str>,
         attachments: &[InboundAttachment],
         policy: Option<AttachmentPolicy>,
     ) -> Result<Vec<ContentPart>, ChannelError> {
@@ -713,7 +719,9 @@ impl ChannelHost {
             return Ok(Vec::new());
         }
         let channel = self.channel(channel.into()).await?;
-        Ok(self.intake(&channel.config, attachments, policy).await)
+        Ok(self
+            .intake(&channel.config, session_id, attachments, policy)
+            .await)
     }
 
     /// `attachments` through the intake, stored by the port for `channel`,
@@ -721,12 +729,14 @@ impl ChannelHost {
     async fn intake(
         &self,
         channel: &ChannelConfig,
+        session_id: Option<&str>,
         attachments: &[InboundAttachment],
         policy: Option<AttachmentPolicy>,
     ) -> Vec<ContentPart> {
         let store = PortStore {
             port: self.inner.port.as_ref(),
             channel,
+            session_id,
         };
         AttachmentIntake {
             store: &store,
@@ -961,7 +971,9 @@ impl ChannelHost {
             }
         };
 
-        let input = self.input_message(&channel.config, &message.event).await;
+        let input = self
+            .input_message(&channel.config, &session_id, &message.event)
+            .await;
         self.send_and_deliver(channel, driver, &session_id, input, message.reply_to)
             .await?;
         let mut response = ChannelResponse::accepted(&session_id);
@@ -1003,12 +1015,14 @@ impl ChannelHost {
     async fn input_message(
         &self,
         channel: &ChannelConfig,
+        session_id: &str,
         event: &InboundChannelEvent,
     ) -> InputMessage {
         let mut message = input_text(&channel.name, event);
-        message
-            .content
-            .extend(self.intake(channel, &event.attachments, None).await);
+        message.content.extend(
+            self.intake(channel, Some(session_id), &event.attachments, None)
+                .await,
+        );
         message
     }
 
@@ -1031,7 +1045,7 @@ impl ChannelHost {
         };
         let mut messages = Vec::with_capacity(history.len());
         for event in &history {
-            messages.push(self.input_message(&channel.config, event).await);
+            messages.push(self.input_message(&channel.config, session_id, event).await);
         }
         let history = messages;
         if let Err(error) = self

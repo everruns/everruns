@@ -59,12 +59,15 @@ pub use everruns_core::channel::{
     DeliveryTarget, ExternalActor, Inbound, InboundAttachment, InboundChannelEvent, InboundControl,
     InboundDecision, InboundMessage, InboundRoute, OutboundChannelMessage, SessionBinding,
 };
+/// File intake, for hosts that take files outside a channel (serve's
+/// message endpoint).
+pub use everruns_core::channel_runtime::{AttachmentIntake, AttachmentPolicy, AttachmentStore};
 /// The shared runtime, for hosts that run their own [`ChannelHost`] over
 /// their own sessions (serve does) instead of [`Channels`].
 pub use everruns_core::channel_runtime::{
     ChannelConfig, ChannelEventStream, ChannelHost, ChannelHostBuilder, ChannelKind, ChannelRef,
     ChannelResolver, ChannelScope, ChannelSessionPort, Conversation, DeliveryEvent,
-    NewChannelSession, ResolvedChannel, SendOutcome, StreamTurn,
+    NewChannelSession, ReceivedAttachment, ResolvedChannel, SendOutcome, StreamTurn,
 };
 pub use everruns_core::channel_runtime::{
     ChannelStore, DEFAULT_DELIVERY_LEASE, DeliveryOptions, MemoryChannelStore, PendingDelivery,
@@ -308,6 +311,32 @@ impl ChannelSessionPort for EnginePort {
             .engine
             .create(self.agent(&request.channel.name)?.clone());
         Ok(session.id())
+    }
+
+    /// A file goes into the session's own files (see [`Session::attach`]).
+    async fn store_attachment(
+        &self,
+        channel: &ChannelConfig,
+        session_id: Option<&str>,
+        attachment: ReceivedAttachment,
+    ) -> Result<everruns_core::ContentPart, ChannelError> {
+        let Some(session_id) = session_id else {
+            return Err(ChannelError::BadRequest(
+                "files need a conversation to be kept in".into(),
+            ));
+        };
+        let session = self.session(&channel.name, session_id).await?;
+        session
+            .attach(
+                attachment.name,
+                Some(&attachment.media_type),
+                attachment.data,
+            )
+            .await
+            .map_err(|error| match error {
+                crate::AttachError::Refused(reason) => ChannelError::BadRequest(reason),
+                other => session_error(other),
+            })
     }
 
     async fn send(

@@ -249,7 +249,7 @@ A session that belongs to another caller or another channel answers `404`, the s
 }
 ```
 
-`auth` always lists `agent_key` and `runtime_token`, then `personal_access_token` when `org_members` is on, then one `oidc` entry per OpenID Connect issuer and `oauth2` for introspection. The Agent accepts text only.
+`auth` always lists `agent_key` and `runtime_token`, then `personal_access_token` when `org_members` is on, then one `oidc` entry per OpenID Connect issuer and `oauth2` for introspection. `input` says the Agent takes text, images and files ([Send files](/how-to/call-your-agent-from-code/#send-files)).
 
 ### Start a session
 
@@ -527,6 +527,7 @@ A [serve](/framework/serve/) app serves the same routes and shapes for each top-
 - **Callers are not separated.** Every authenticated caller reaches every session of the agent, as an operator would. A session is still reachable only under its own agent's base URL.
 - **Public card.** `GET /v1/channels/{agent}` needs no credential; its `auth` list names the accepted methods, and its `links` add the agent's AG-UI and A2A routes.
 - **No channel settings.** Events are not filtered by visibility, the caller answers tool approvals, and there are no spending or rate limits, browser origins or `Idempotency-Key` handling.
+- **Messages.** `content` takes text parts only; send images and other files in `files`, which serve keeps in the session's `/attachments` folder as the server does.
 - **Sessions.** `POST …/sessions` accepts `metadata`, and `GET …/sessions` returns up to `limit` sessions with no `page_token`.
 
 See [Serve](/framework/serve/#one-agents-api) and the [serve tutorial](/framework/serve-tutorial/), which calls an agent with `AgentClient`.

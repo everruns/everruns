@@ -170,7 +170,7 @@ curl -s localhost:3000/v1/channels/support
 ```
 
 ```json
-{"name":"support","description":"Answers questions about orders.","streaming":true,"input":{"text":true,"images":false,"files":false},"auth":[],"links":{"sessions":"/v1/channels/support/sessions"}}
+{"name":"support","description":"Answers questions about orders.","streaming":true,"input":{"text":true,"images":true,"files":true},"auth":[],"links":{"sessions":"/v1/channels/support/sessions"}}
 ```
 
 Start a session, send a message, and follow the session's events:

@@ -3008,6 +3008,7 @@ dependencies = [
  "clap",
  "cron",
  "everruns",
+ "everruns-contracts",
  "everruns-sdk",
  "everruns-serve-macros",
  "futures",

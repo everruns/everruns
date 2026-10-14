@@ -52,5 +52,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  {:>2}. {event_type}", index + 1);
     }
 
+    // A failed turn (bad key, exhausted quota) still returns `Ok` from
+    // `wait`; report it so a caller sees the failure and its reason.
+    if !turn.success {
+        return Err(format!("turn failed: {}", turn.error.unwrap_or_default()).into());
+    }
     Ok(())
 }

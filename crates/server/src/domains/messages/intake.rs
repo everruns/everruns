@@ -16,7 +16,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use base64::Engine;
 use everruns_contracts::execution_api::MessageFile;
 use everruns_contracts::runtime::attachments::ZIP_MEDIA_TYPE;
 use everruns_contracts::runtime::channel::{ChannelError, InboundAttachment};
@@ -28,8 +27,8 @@ use everruns_core::channel_runtime::{
 };
 use everruns_core::{EgressScope, EgressService, ScopedEgressService};
 
-use super::zip_attachments::unpack_zip;
 use crate::storage::{CreateFileRow, CreateImageRow, StorageBackend};
+use everruns_core::host::attachment_zip::unpack_zip;
 
 /// Image types stored as image uploads, which the model sees as images.
 const IMAGE_TYPES: [&str; 4] = ["image/png", "image/jpeg", "image/gif", "image/webp"];
@@ -132,7 +131,7 @@ pub(crate) async fn receive_files(
     if files.is_empty() {
         return Vec::new();
     }
-    let attachments: Vec<_> = files.into_iter().map(inbound_attachment).collect();
+    let attachments: Vec<_> = files.into_iter().map(InboundAttachment::from).collect();
     AttachmentIntake {
         store: &OrgStore { db, org_id },
         egress: egress.map(|egress| org_egress(egress.clone(), org_id)),
@@ -150,39 +149,6 @@ pub(crate) async fn receive_files(
         _ => None,
     })
     .collect()
-}
-
-/// A caller's file as intake input: bytes, a download, or a note when it
-/// carries neither or both, or bytes that are not base64.
-fn inbound_attachment(file: MessageFile) -> InboundAttachment {
-    let MessageFile {
-        name,
-        media_type,
-        data,
-        url,
-    } = file;
-    let note = |why: &str| InboundAttachment::FileDescription {
-        name: format!("{} ({why})", name.as_deref().unwrap_or("file")),
-        mime_type: media_type.clone(),
-    };
-    match (data, url) {
-        (Some(data), None) => match base64::engine::general_purpose::STANDARD.decode(data.trim()) {
-            Ok(data) => InboundAttachment::Bytes {
-                name,
-                media_type,
-                data,
-            },
-            Err(_) => note("not valid base64"),
-        },
-        (None, Some(url)) => InboundAttachment::Remote {
-            url,
-            name,
-            media_type,
-            size: None,
-            credential: None,
-        },
-        _ => note("needs exactly one of data and url"),
-    }
 }
 
 #[cfg(test)]

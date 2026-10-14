@@ -27,6 +27,16 @@ Use a channel when an external peer sends a request and waits for a reply. Use a
 
 Routes are relative to the API base, for example `https://your-everruns-host/api`. The channel ID in each route is the channel's own ID, not the Agent's.
 
+## Download received files
+
+Files received through Slack, AG-UI and A2A remain available to the Agent in
+its session. Opening a stored file's `/v1/files/{file_id}` URL downloads its
+bytes instead of rendering it on the application's origin. This endpoint uses
+`Content-Disposition: attachment`, `Content-Type: application/octet-stream`
+and `X-Content-Type-Options: nosniff` for every stored file, including PDFs and
+zip archives. File listings retain the original media type. Downloads require
+authentication and membership in the file's organization.
+
 ## Create a channel
 
 1. Open the Agent and select the **Integrations** tab.
@@ -67,7 +77,7 @@ Files sent to a channel reach the Agent the same way on every channel. Each one 
 | AG-UI | Image, audio, video and document parts of the user message, inline or by URL. |
 | Public Chat | The same parts, inline only: at most 3 files of up to 10 MB, since visitors are not signed in. |
 | A2A | File parts, as bytes or a URI. PACT endpoints take text only, as the PACT protocol requires. |
-| Agent API | The `files` list of a message, as base64 `data` or a `url` ([Call your agent from code](/how-to/call-your-agent-from-code/#send-files)). |
+| Agent API | The `files` list of a message, as base64 `data` or a `url` ([Call your agent from code](/how-to/call-your-agent-from-code/#send-files)). A [serve](/framework/serve/) app takes the same list. |
 
 Files sent by URL are downloaded only from public `https` addresses. A message keeps at most 10 files of up to 25 MB each, and the file's contents decide its type, whatever the sender declared. A file that cannot be taken, for example because it is too large or its download failed, becomes a note in the message, such as `[Attachment report.pdf not received: 31 MB is over the 25 MB limit]`, so the Agent knows it was sent.
 

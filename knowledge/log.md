@@ -1,5 +1,13 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-14
+
+* **Hosted search permits.** Add lazy per-call financial admission with stable
+  engine identity, fenced start, sanitized outcome callbacks, replay and a
+  bounded journal receipt. Keep billing metadata on the hosted invocation;
+  ordinary provider drivers retain their existing contract. See
+  [Web Search](integrations/web-search.md).
+
 ## 2026-10-13
 
 * **Web search: the deployment's own search.** A host can offer one search

@@ -94,6 +94,31 @@ crash-durable local profile. See
 exact-head resume, isolation, sharing, and lifecycle, and [Events and
 cancellation](/framework/events-and-cancellation/) to observe a turn in flight.
 
+### Send files
+
+`Session::attach` keeps a file in the session's own files at
+`/attachments/<id>/<name>`, read-only, and returns the part that sends it with a
+message. The model gets images and PDFs as content and other files by name and
+path, and can open any of them again with `read_file`, including after
+compaction. A zip is unpacked into a read-only folder next to it.
+
+```rust,no_run
+# async fn demo(session: everruns::Session) -> Result<(), Box<dyn std::error::Error>> {
+use everruns::InputMessage;
+
+let report = session
+    .attach("report.pdf", Some("application/pdf"), std::fs::read("report.pdf")?)
+    .await?;
+let mut message = InputMessage::user("Summarize the attached report.");
+message.content.push(report);
+session.run(message).await?;
+# Ok(())
+# }
+```
+
+The bytes decide the file's type, whatever the caller declared. Embedded
+channels keep the files people send (a Slack file, for example) the same way.
+
 ## History and resume
 
 Every Framework session has a typed `SessionId`. Keep that value when an
