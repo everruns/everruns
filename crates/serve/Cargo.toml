@@ -57,6 +57,7 @@ bedrock = ["everruns/bedrock"]
 [dependencies]
 everruns = { workspace = true, default-features = true, features = ["local", "openai", "openrouter", "mcp", "bashkit", "agent-package-fs", "channel-auth", "channels"] }
 everruns-serve-macros.workspace = true
+everruns-contracts = { workspace = true, features = ["runtime"] }
 a2a = { workspace = true, optional = true }
 a2a-server = { workspace = true, optional = true }
 anyhow.workspace = true
