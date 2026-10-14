@@ -23,10 +23,10 @@ different SQL engine: disposable settings reduce durability costs while retainin
 PostgreSQL behavior instead of relying on partial emulation.
 
 The library owns downloading and verifying binaries, version selection, installation,
-initialization, readiness, and normal shutdown. The private
-[`everruns-pg-embedded` adapter](../../crates/pg-embedded/src/lib.rs) owns only the
+initialization, readiness, and normal shutdown. The server's private
+[storage module](../../crates/server/src/storage/embedded_postgres/mod.rs) owns the
 process-wide instance, local security/performance settings, owner-exit cleanup, and
-creating or dropping template copies. Server-specific schema and fixture ownership
+creating or dropping template copies. Schema and fixture ownership
 stays in [`test_database.rs`](../../crates/server/src/storage/test_database.rs).
 
 ## Why keep a cleanup adapter
@@ -40,7 +40,7 @@ A pipe watcher covers this missing lifecycle boundary: owner termination closes 
 pipe and the helper requests bounded PostgreSQL shutdown before removing its private
 directory. It does not poll process IDs, download binaries, implement readiness, or
 reimplement PostgreSQL startup. See the
-[owner-exit regression tests](../../crates/pg-embedded/src/tests.rs).
+[owner-exit regression tests](../../crates/server/src/storage/embedded_postgres/tests.rs).
 
 ## Execution contract
 
@@ -49,6 +49,16 @@ The library has no subprocess-credential hook. Maintaining a second initializati
 and startup path for root would duplicate the lifecycle this change delegates.
 Privileged environments use a non-root account or the existing external PostgreSQL
 mode. Startup errors explain this choice.
+
+The test harness can explicitly select a disposable external cluster for nightly
+and release coverage. Both configurations use the same migrations, fixture builder,
+and per-test database copies. Per-process template names prevent initialization
+races between test binaries. API test servers each own a migrated database;
+initial product seeding and feature flags no longer coordinate through process-local
+locks over a shared database. Legacy raw-pool migration/repository cases retain
+serialization where they intentionally share a database. This override belongs only to test support; DEV_MODE
+continues to create its own native cluster and ignore external database settings.
+See [test database selection](../../crates/server/src/storage/test_database.rs).
 
 Disposable clusters disable durability for functional tests. They prove actual SQL,
 constraints, transactions, and locking, but do not establish crash persistence.

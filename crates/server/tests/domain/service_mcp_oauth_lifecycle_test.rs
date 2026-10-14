@@ -221,7 +221,11 @@ fn pending_state_value(jar: &CookieJar, provider: &str) -> String {
     pending["state"].as_str().unwrap().to_string()
 }
 
-fn verify_grant_in_separate_process(identity_id: VirtualUserId, provider: &str) {
+fn verify_grant_in_separate_process(
+    identity_id: VirtualUserId,
+    provider: &str,
+    database_url: &str,
+) {
     let output = Command::new(std::env::current_exe().unwrap())
         .arg("--exact")
         // Test names in the merged `domain` binary carry the module prefix.
@@ -232,7 +236,7 @@ fn verify_grant_in_separate_process(identity_id: VirtualUserId, provider: &str) 
         .env("EVE_IDENTITY_ID", identity_id.to_string())
         .env("EVE_IDENTITY_PROVIDER", provider)
         .env("EVE_EXPECTED_ACCESS_TOKEN", "refreshed-access")
-        .env("DATABASE_URL", get_database_url())
+        .env("DATABASE_URL", database_url)
         .output()
         .unwrap();
     assert!(
@@ -489,7 +493,7 @@ async fn service_grant_authorize_call_refresh_and_revoke_uses_shared_postgres() 
         authorization_headers,
         vec!["Bearer refreshed-access", "Bearer refreshed-access"]
     );
-    verify_grant_in_separate_process(identity_id, &provider);
+    verify_grant_in_separate_process(identity_id, &provider, &server.database_url());
 
     assert!(
         db.delete_virtual_user_connection(identity_id, &provider)

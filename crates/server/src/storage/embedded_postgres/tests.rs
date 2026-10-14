@@ -60,7 +60,7 @@ async fn cluster_owner_fixture() {
         .await
         .unwrap();
     assert_eq!(count, 1);
-    pg.drop_database("copy").await.unwrap();
+    drop_database(&pg.url("postgres"), "copy").await.unwrap();
     assert!(conn.ping().await.is_err());
     assert!(sqlx::PgConnection::connect(&pg.url("copy")).await.is_err());
 
@@ -98,7 +98,7 @@ fn owner_exit_stops_postgres_and_removes_private_data() {
                 .process_group(0)
                 .args([
                     "--exact",
-                    "tests::cluster_owner_fixture",
+                    "storage::embedded_postgres::tests::cluster_owner_fixture",
                     "--ignored",
                     "--nocapture",
                 ])

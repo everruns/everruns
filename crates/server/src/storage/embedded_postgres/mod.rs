@@ -24,12 +24,12 @@ use tempfile::TempDir;
 use tokio::sync::OnceCell;
 
 /// PostgreSQL major version used by dev mode and tests.
-pub const MAJOR_VERSION: u64 = 17;
+const MAJOR_VERSION: u64 = 17;
 
 static SHARED: OnceCell<EmbeddedPostgres> = OnceCell::const_new();
 
 /// A real PostgreSQL server with disposable data and durability disabled.
-pub struct EmbeddedPostgres {
+pub(crate) struct EmbeddedPostgres {
     // Fields drop in declaration order: the library stops PostgreSQL before the
     // helper removes the enclosing private directory.
     postgres: PostgreSQL,
@@ -49,39 +49,7 @@ impl EmbeddedPostgres {
 
     /// Create an empty database or a private copy of a disconnected template.
     pub async fn create_database(&self, name: &str, template: Option<&str>) -> Result<()> {
-        let mut sql = format!("CREATE DATABASE {}", identifier(name)?);
-        if let Some(template) = template {
-            // Disposable clusters avoid WAL amplification when copying the
-            // migrated schema for hundreds of isolated tests.
-            sql.push_str(&format!(
-                " TEMPLATE {} STRATEGY FILE_COPY",
-                identifier(template)?
-            ));
-        } else {
-            // The library's initializer inherits the host locale. Keep SQL
-            // sorting/case behavior deterministic, as with the former C-locale
-            // cluster, without implementing our own initdb invocation.
-            sql.push_str(" TEMPLATE template0 LC_COLLATE 'C' LC_CTYPE 'C'");
-        }
-        let mut conn = sqlx::PgConnection::connect(&self.url("postgres")).await?;
-        sqlx::raw_sql(sqlx::AssertSqlSafe(sql))
-            .execute(&mut conn)
-            .await
-            .with_context(|| format!("creating database {name}"))?;
-        conn.close().await?;
-        Ok(())
-    }
-
-    /// Drop a database, disconnecting any remaining test connections.
-    pub async fn drop_database(&self, name: &str) -> Result<()> {
-        let sql = format!("DROP DATABASE IF EXISTS {} WITH (FORCE)", identifier(name)?);
-        let mut conn = sqlx::PgConnection::connect(&self.url("postgres")).await?;
-        sqlx::raw_sql(sqlx::AssertSqlSafe(sql))
-            .execute(&mut conn)
-            .await
-            .with_context(|| format!("dropping database {name}"))?;
-        conn.close().await?;
-        Ok(())
+        create_database(&self.url("postgres"), name, template).await
     }
 
     async fn start() -> Result<Self> {
@@ -151,6 +119,37 @@ impl EmbeddedPostgres {
             _cleanup: cleanup,
         })
     }
+}
+
+/// Database operations also serve isolated tests on an explicitly configured,
+/// disposable external cluster. No lifecycle operation touches that server.
+pub(super) async fn create_database(url: &str, name: &str, template: Option<&str>) -> Result<()> {
+    let mut sql = format!("CREATE DATABASE {}", identifier(name)?);
+    if let Some(template) = template {
+        sql.push_str(&format!(
+            " TEMPLATE {} STRATEGY FILE_COPY",
+            identifier(template)?
+        ));
+    } else {
+        // Keep SQL sorting/case behavior independent of the host locale.
+        sql.push_str(" TEMPLATE template0 LC_COLLATE 'C' LC_CTYPE 'C'");
+    }
+    let mut conn = sqlx::PgConnection::connect(url).await?;
+    sqlx::raw_sql(sqlx::AssertSqlSafe(sql))
+        .execute(&mut conn)
+        .await?;
+    conn.close().await?;
+    Ok(())
+}
+
+pub(super) async fn drop_database(url: &str, name: &str) -> Result<()> {
+    let sql = format!("DROP DATABASE IF EXISTS {} WITH (FORCE)", identifier(name)?);
+    let mut conn = sqlx::PgConnection::connect(url).await?;
+    sqlx::raw_sql(sqlx::AssertSqlSafe(sql))
+        .execute(&mut conn)
+        .await?;
+    conn.close().await?;
+    Ok(())
 }
 
 /// The pipe closes on normal exit, abort, or SIGKILL, without polling the owner.
