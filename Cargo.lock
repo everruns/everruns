@@ -2939,7 +2939,7 @@ version = "0.48.0"
 dependencies = [
  "anyhow",
  "libc",
- "postgresql_archive",
+ "postgresql_embedded",
  "sqlx",
  "tempfile",
  "tokio",
@@ -6169,6 +6169,35 @@ dependencies = [
  "tracing",
  "url",
  "zip",
+]
+
+[[package]]
+name = "postgresql_commands"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "66e1f10f6246287203d57775b1be7a9050c6d3f45c9021853eda3cfee3bf95e9"
+dependencies = [
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "postgresql_embedded"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "87673b35bc80ddcc8eb54072d90290c6d2e3777493fd2d0de46cf2e0d6677fe5"
+dependencies = [
+ "anyhow",
+ "postgresql_archive",
+ "postgresql_commands",
+ "rand 0.10.3",
+ "semver",
+ "sqlx",
+ "target-triple",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "url",
 ]
 
 [[package]]

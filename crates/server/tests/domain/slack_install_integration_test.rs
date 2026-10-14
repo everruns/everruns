@@ -329,3 +329,156 @@ async fn exercise_install(server: test_harness::TestServer) {
         .await
         .assert_status(axum::http::StatusCode::NOT_FOUND);
 }
+
+/// A workspace connects by one Slack consent through the deployment's manager
+/// app, and the callback refuses anything whose state it did not mint (EVE-1102).
+#[tokio::test]
+async fn manager_app_consent_connects_a_workspace_without_a_pasted_token() {
+    use everruns_server::channels::slack::provisioning::{SlackApiProvisioner, SlackManagerApp};
+
+    let server = test_harness::TestServer::new().await;
+    let encryption = server.encryption.clone().expect("test encryption");
+    let config = auth::AuthConfig::default();
+    let backend = auth::BuiltinAuthBackend::new(
+        config.clone(),
+        server.db.clone(),
+        Arc::new(everruns_server::oss_host_composition_for_grade(
+            everruns_core::DeploymentGrade::Dev,
+        )),
+    );
+    let auth = auth::AuthState::new(config, Arc::new(backend)).with_db(server.db.clone());
+    let slack = everruns_server::channels::slack::events::SlackState::new(
+        server.db.clone(),
+        server.encryption.clone(),
+        server.runner.clone(),
+        everruns_server::EventDelivery::in_memory(),
+        "https://example.com/api".into(),
+    );
+    let slack_api = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/oauth.v2.access"))
+        .and(body_string_contains("code=granted"))
+        .and(body_string_contains("client_id=111.222"))
+        .and(body_string_contains(
+            "redirect_uri=https%3A%2F%2Fexample.com%2Fapi%2Fv1%2Fslack%2Fworkspaces%2Foauth%2Fcallback",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "ok": true,
+            "app_id": "AMANAGER",
+            "authed_user": {
+                "id": "U1",
+                "scope": "app_configurations:read,app_configurations:write",
+                "access_token": "xoxe.xoxp-grant",
+                "refresh_token": "xoxe-1-grant",
+                "expires_in": 43200,
+                "token_type": "user"
+            },
+            "team": {"id": "T0123", "name": "Acme"}
+        })))
+        .expect(1)
+        .mount(&slack_api)
+        .await;
+    let manager = Arc::new(
+        SlackApiProvisioner::with_api_base(server.db.clone(), encryption, &slack_api.uri())
+            .unwrap()
+            .with_manager_app(Some(SlackManagerApp {
+                client_id: "111.222".into(),
+                client_secret: "manager-secret".into(),
+            })),
+    );
+    let state = everruns_server::channels::slack::install::SlackInstallState::new(
+        slack,
+        auth,
+        "https://example.com/".into(),
+        SlackProvisioningSetup {
+            provisioner: Some(manager.clone()),
+            connection_manager: Some(manager),
+        },
+    );
+    let router = everruns_server::channels::slack::install::routes(state);
+    let get = |uri: String| Request::builder().uri(uri).body(Body::empty()).unwrap();
+    let json_of = |bytes: axum::body::Bytes| -> Value { serde_json::from_slice(&bytes).unwrap() };
+
+    let capability = router
+        .clone()
+        .oneshot(get("/v1/slack/install".into()))
+        .await
+        .unwrap();
+    let capability = json_of(capability.into_body().collect().await.unwrap().to_bytes());
+    assert_eq!(capability["manager_app"], true);
+    assert_eq!(capability["connected"], false);
+
+    let begin = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/slack/workspaces/oauth")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(begin.status(), axum::http::StatusCode::OK);
+    let body = json_of(begin.into_body().collect().await.unwrap().to_bytes());
+    let consent = url::Url::parse(body["authorize_url"].as_str().unwrap()).unwrap();
+    let params: std::collections::HashMap<_, _> = consent.query_pairs().into_owned().collect();
+    assert_eq!(params["client_id"], "111.222");
+    assert_eq!(params["scope"], "");
+    assert_eq!(
+        params["user_scope"],
+        "app_configurations:read,app_configurations:write"
+    );
+    let sealed = &params["state"];
+
+    let location = |response: axum::response::Response| {
+        response.headers()["location"].to_str().unwrap().to_string()
+    };
+    let settings = "https://example.com/settings/slack";
+    // A state this deployment did not mint reveals nothing, not even Slack's code.
+    let forged = router
+        .clone()
+        .oneshot(get(
+            "/v1/slack/workspaces/oauth/callback?code=granted&state=forged&error=x".into(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(location(forged), format!("{settings}?slack_connect=failed"));
+    let declined = router
+        .clone()
+        .oneshot(get(format!(
+            "/v1/slack/workspaces/oauth/callback?error=access_denied&state={sealed}"
+        )))
+        .await
+        .unwrap();
+    assert_eq!(
+        location(declined),
+        format!("{settings}?slack_connect=failed&slack_error=access_denied")
+    );
+    let connected = router
+        .clone()
+        .oneshot(get(format!(
+            "/v1/slack/workspaces/oauth/callback?code=granted&state={sealed}"
+        )))
+        .await
+        .unwrap();
+    assert_eq!(location(connected), format!("{settings}?slack_connect=ok"));
+
+    let workspaces = router
+        .clone()
+        .oneshot(get("/v1/slack/workspaces".into()))
+        .await
+        .unwrap();
+    let workspaces = json_of(workspaces.into_body().collect().await.unwrap().to_bytes());
+    assert_eq!(workspaces.as_array().unwrap().len(), 1);
+    assert_eq!(workspaces[0]["team_id"], "T0123");
+    assert_eq!(workspaces[0]["team_name"], "Acme");
+    assert_eq!(workspaces[0]["status"], "connected");
+    assert_eq!(workspaces[0]["connected_with"], "manager_app");
+    let capability = router
+        .oneshot(get("/v1/slack/install".into()))
+        .await
+        .unwrap();
+    let capability = json_of(capability.into_body().collect().await.unwrap().to_bytes());
+    assert_eq!(capability["connected"], true);
+}

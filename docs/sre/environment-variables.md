@@ -14,7 +14,7 @@ a working default; each row links to the section that documents it.
 | [`DATABASE_URL`](#database_url) | API | Yes, unless `DEV_MODE=true` | Startup fails. Dev mode ignores it and starts its own temporary PostgreSQL. |
 | [`AUTH_MODE`](#other-server-variables) | API | Yes, unless the grade is `dev` | Startup fails: unset means `none`, which is allowed only at `dev` grade. |
 | [`WORKER_GRPC_AUTH_TOKEN`](#worker_grpc_auth_token) | API and workers (same value) | Yes, unless `DEV_MODE=true` | The API fails to start its gRPC server; workers cannot authenticate. |
-| [`SECRETS_ENCRYPTION_KEY`](#llm-provider-api-keys) | API | Recommended | The API starts, but cannot store provider keys or other encrypted values. |
+| [`SECRETS_ENCRYPTION_KEY`](#llm-provider-api-keys) | API | Recommended | The API starts, but cannot store provider keys or other encrypted values. Turns still run, in-process and on remote workers, without durable compaction checkpoints, native async tool journals, or the OpenAI Agents API runtime. |
 | [`DEV_MODE`](#dev_mode), [`DEPLOYMENT_GRADE`](#deployment_grade) | API and workers | No | Production behavior (`prod` grade). |
 | [`PUBLIC_APP_URL`](#public_app_url), [`AUTH_LOGIN_ORIGIN`](#auth_login_origin), [`API_PREFIX`](#api_prefix), [`CORS_ALLOWED_ORIGINS`](#cors_allowed_origins), [`HTTP_ADDR`](#http_addr) | API | No | `http://localhost:9300`, same-origin login, `/api`, CORS off, `0.0.0.0:9000`. |
 | [`DATABASE_UNPOOLED_URL`](#database_unpooled_url), [`DATABASE_POOL_MAX`](#other-server-variables), [`DATABASE_POOL_MIN`](#other-server-variables) | API | No | Listeners reuse `DATABASE_URL`; pool of 5 to 50 connections. |
@@ -24,6 +24,7 @@ a working default; each row links to the section that documents it.
 | [`SERVER_GRPC_ADDRESS`](#server_grpc_address), [`SERVER_GRPC_BIND_ADDR`](#server_grpc_bind_addr), [`WORKER_GRPC_CONNECT_TIMEOUT`](#worker_grpc_connect_timeout), [`WORKER_GRPC_TLS_*`](#worker_grpc_tls_cert) | API or workers | No | Plain gRPC on `127.0.0.1:9001` / `0.0.0.0:9001`. |
 | [`DEFAULT_*_API_KEY`](#default-api-keys-development-convenience) | API | No | Providers need keys configured in Models > Providers. |
 | [`UTILITY_*`](#system-model-keys) | API and workers | No | Analyze, Health, and model-backed guardrail checks are unavailable or skipped. |
+| [`SLACK_MANAGER_APP_CLIENT_ID`](#slack-manager-app), [`SLACK_MANAGER_APP_CLIENT_SECRET`](#slack-manager-app) | API | No | Organizations connect Slack workspaces by pasting a configuration token. |
 | [`EMAIL_PROVIDER`](#system-email-delivery), [`RESEND_*`](#system-email-delivery) | API | When sending email | Email delivery is disabled. |
 | [`RATE_LIMIT_API_REQUESTS_PER_MINUTE`](#other-server-variables), [`TRUSTED_PROXY_HOPS`](#other-server-variables), [`EXPECTED_INSTANCES`](#other-server-variables), [`EVENT_RETENTION_DAYS`](#other-server-variables), [`SSE_*`](#sse-streaming-configuration) | API | No | 1200 requests per minute, one trusted proxy, one instance, no event archiving, default SSE limits. |
 | [`OTEL_*`](#opentelemetry-configuration), [`EVERRUNS_TRACE_CONVENTIONS`](#everruns_trace_conventions), [`BRAINTRUST_*`](#braintrust-integration) | API and workers | No | Tracing and Braintrust export are off. |
@@ -53,7 +54,8 @@ DEV_MODE=1 ./target/debug/everruns-server
   `~/.cache/everruns/postgres`, or `EVERRUNS_PG_CACHE`), starts a cluster on a free
   loopback port, and runs migrations into a fresh database. `DATABASE_URL` is ignored.
 - Data does not survive a restart. Use `just start-all` for a persistent local database.
-- When run as root, the cluster runs as `nobody`, because PostgreSQL refuses to run as root.
+- Run dev mode as a non-root user. Root callers receive a startup error; use a
+  non-root account or external PostgreSQL with `DEV_MODE=false`.
 - All data is lost when the server stops
 - gRPC server and worker communication are disabled
 - Stale task reclamation is disabled
@@ -505,6 +507,23 @@ Agents can also be given the TypeSafe capability directly, which is a
 **separate** credential: a per-user connection configured in Settings >
 Connections, never this deployment key. See
 [TypeSafe](/integrations/typesafe/) and [Guardrails](/capabilities/guardrails/).
+
+## Slack Manager App
+
+With a Slack manager app configured, an organization administrator connects a Slack workspace by approving it once in Slack, instead of pasting an app configuration token. Everruns then creates each Agent's Slack app in that workspace through the approval.
+
+| Variable | Description |
+|----------|-------------|
+| `SLACK_MANAGER_APP_CLIENT_ID` | Client ID of your Slack manager app. |
+| `SLACK_MANAGER_APP_CLIENT_SECRET` | Client secret of the same app. |
+
+Set both, or neither; one alone is ignored with a warning. The feature also needs `SECRETS_ENCRYPTION_KEY`. Configure the Slack app as follows:
+
+- User token scopes `app_configurations:read` and `app_configurations:write`; no bot scopes.
+- Redirect URL `<API base URL>/v1/slack/workspaces/oauth/callback`, for example `https://app.example.com/api/v1/slack/workspaces/oauth/callback`.
+- Token rotation turned on. Everruns refuses a grant that does not expire.
+
+Slack only lets an app request the `app_configurations` scopes once it has enabled manager app support for that app. Until then, leave these unset: the configuration token path works without them and stays available beside the approval.
 
 ## System Email Delivery
 

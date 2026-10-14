@@ -1,6 +1,19 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-14
+
+* **Hosted search permits.** Add lazy per-call financial admission with stable
+  engine identity, fenced start, sanitized outcome callbacks, replay and a
+  bounded journal receipt. Keep billing metadata on the hosted invocation;
+  ordinary provider drivers retain their existing contract. See
+  [Web Search](integrations/web-search.md).
+
 ## 2026-10-13
+
+* **Embedded PostgreSQL uses the lifecycle library.** Dev mode and tests use
+  `postgresql_embedded`; the local adapter retains process-wide sharing, owner-exit
+  cleanup, and template copies. Embedded callers run as non-root users. See
+  [Embedded PostgreSQL](project/embedded-postgresql.md).
 
 * **Web search: the deployment's own search.** A host can offer one search
   provider it pays for to every organization (`HostedWebSearch`), under the
