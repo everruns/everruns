@@ -70,6 +70,11 @@ class Policy(unittest.TestCase):
         self.assertIn('auth_integration_test::',focused.risk_filters(['crates/server/src/auth/api_keys.rs']))
         self.assertIn('migration_history_test::',focused.risk_filters(['crates/server/migrations/20261014000000_test.sql']))
         self.assertEqual(focused.risk_filters(['crates/core/src/engine.rs']),[])
+        for path in ['crates/server/src/api/monitoring/mod.rs', 'crates/server/src/openapi/mod.rs']:
+            filters = focused.risk_filters([path])
+            for contract in ['openapi_coverage_test::', 'openapi_descriptions_test::', 'pat_scope_coverage_test::']:
+                self.assertIn(contract, filters)
+            self.assertNotIn('auth_integration_test::', filters)
         self.assertIn('service_mcp_oauth_lifecycle_test::', focused.risk_filters(['crates/server/tests/test_harness.rs']))
 
     def test_database_backend_changes_run_real_router_fixtures(self):

@@ -8560,28 +8560,34 @@
           {
             "name": "offset",
             "in": "query",
+            "description": "Zero-based offset for fixed 200-actor pages; maximum 1000000.",
             "required": false,
             "schema": {
               "type": "integer",
               "format": "int32",
               "minimum": 0
-            }
+            },
+            "example": 0
           },
           {
             "name": "worker_id",
             "in": "query",
+            "description": "Filter by a valid current lease holder, up to 256 UTF-8 bytes.",
             "required": false,
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "worker-01"
           },
           {
             "name": "phase",
             "in": "query",
+            "description": "Filter by runnable, model, tools, waiting, or setup execution state.",
             "required": false,
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "model"
           }
         ],
         "responses": {
@@ -17244,28 +17250,34 @@
           {
             "name": "offset",
             "in": "query",
+            "description": "Zero-based offset for fixed 200-actor pages; maximum 1000000.",
             "required": false,
             "schema": {
               "type": "integer",
               "format": "int32",
               "minimum": 0
-            }
+            },
+            "example": 0
           },
           {
             "name": "worker_id",
             "in": "query",
+            "description": "Filter by a valid current lease holder, up to 256 UTF-8 bytes.",
             "required": false,
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "worker-01"
           },
           {
             "name": "phase",
             "in": "query",
+            "description": "Filter by runnable, model, tools, waiting, or setup execution state.",
             "required": false,
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "model"
           }
         ],
         "responses": {
@@ -52076,6 +52088,7 @@
       },
       "MonitoringActor": {
         "type": "object",
+        "description": "Session actor ownership, lease validity, and durable progress cursors.",
         "required": [
           "session_id",
           "org_id",
@@ -52090,58 +52103,76 @@
               "integer",
               "null"
             ],
-            "format": "int32"
+            "format": "int32",
+            "description": "Lease attempts accumulated since the last release.",
+            "example": 1
           },
           "cancel_requested_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "UTC cancellation request timestamp; null when cancellation is not requested.",
+            "example": "2026-10-14T12:00:02Z"
           },
           "consumed_seq": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "Persisted consumed event cursor; its difference from inbox_seq is not a pending-message count.",
+            "example": 39
           },
           "fence": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "Monotonic ownership fence; null when no actor row exists.",
+            "example": 17
           },
           "holder": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Current recorded holder, or previous holder for an expired lease; null when unleased.",
+            "example": "worker-01"
           },
           "inbox_seq": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "Durable inbox progress cursor; it is not a message count.",
+            "example": 42
           },
           "lease_expires_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "UTC deadline of the recorded lease; null when unleased.",
+            "example": "2026-10-14T12:00:10Z"
           },
           "lease_renewed_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Last persisted acquisition or renewal acknowledgement in UTC; null before an acknowledgement or after release.",
+            "example": "2026-10-14T12:00:00Z"
           },
           "lease_state": {
-            "type": "string"
+            "type": "string",
+            "description": "Observed lease validity: held, expired, or unleased.",
+            "example": "held"
           },
           "lease_ttl_ms": {
             "type": [
@@ -52149,6 +52180,8 @@
               "null"
             ],
             "format": "int64",
+            "description": "Positive interval between renewal acknowledgement and expiry in milliseconds; null when unavailable.",
+            "example": 10000,
             "minimum": 0
           },
           "next_input_seq": {
@@ -52156,17 +52189,25 @@
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "Persisted next-input progress cursor.",
+            "example": 12
           },
           "org_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Public identifier of the owning session's organization.",
+            "example": "org_00000000000000000000000000000001"
           },
           "phase": {
-            "type": "string"
+            "type": "string",
+            "description": "Observed execution state; idle is also possible for a released actor detail.",
+            "example": "model"
           },
           "phase_since": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "UTC timestamp of the committed observation used to classify the phase.",
+            "example": "2026-10-14T12:00:01Z"
           },
           "runnable_age_ms": {
             "type": [
@@ -52174,6 +52215,8 @@
               "null"
             ],
             "format": "int64",
+            "description": "Milliseconds awaiting a valid lease; null for held or parked actors.",
+            "example": 3000,
             "minimum": 0
           },
           "runnable_since": {
@@ -52181,18 +52224,25 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "UTC timestamp when the actor became runnable; null for parked work.",
+            "example": "2026-10-14T11:59:59Z"
           },
           "session_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Canonical session identifier whose actor is being inspected.",
+            "example": "session_01933b5a000070008000000000000001"
           },
           "session_status": {
-            "type": "string"
+            "type": "string",
+            "description": "Persisted session lifecycle status.",
+            "example": "active"
           }
         }
       },
       "MonitoringActorDetail": {
         "type": "object",
+        "description": "Authorized actor inspection with bounded ownership history and trace timing.",
         "required": [
           "generated_at",
           "actor",
@@ -52201,28 +52251,34 @@
         ],
         "properties": {
           "actor": {
-            "$ref": "#/components/schemas/MonitoringActor"
+            "$ref": "#/components/schemas/MonitoringActor",
+            "description": "Actor observation after validating the owning session's organization."
           },
           "generated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "UTC observation time for actor ownership and timing.",
+            "example": "2026-10-14T12:00:03Z"
           },
           "ownership_history": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MonitoringLeaseEvent"
-            }
+            },
+            "description": "Up to 50 newest ownership changes from the retained one-day history."
           },
           "steps": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MonitoringStep"
-            }
+            },
+            "description": "Up to 100 projected steps from the latest turn, newest first; no conversation payloads."
           }
         }
       },
       "MonitoringActorPage": {
         "type": "object",
+        "description": "Bounded page of current session actor observations.",
         "required": [
           "generated_at",
           "actors"
@@ -52232,11 +52288,14 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MonitoringActor"
-            }
+            },
+            "description": "Up to 200 matching actors, ordered by expired leases and oldest runnable work."
           },
           "generated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "UTC observation time for this actor page.",
+            "example": "2026-10-14T12:00:03Z"
           },
           "next_offset": {
             "type": [
@@ -52244,12 +52303,15 @@
               "null"
             ],
             "format": "int32",
+            "description": "Offset for the next page; null when there are no further matching actors.",
+            "example": 200,
             "minimum": 0
           }
         }
       },
       "MonitoringCohort": {
         "type": "object",
+        "description": "Bounded execution breakdown for one organization and live lease holder.",
         "required": [
           "phase",
           "org_id",
@@ -52259,24 +52321,33 @@
           "count": {
             "type": "integer",
             "format": "int64",
+            "description": "Sessions in this phase, organization, and holder cohort.",
+            "example": 32,
             "minimum": 0
           },
           "org_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Public identifier of the organization owning these sessions.",
+            "example": "org_00000000000000000000000000000001"
           },
           "phase": {
-            "type": "string"
+            "type": "string",
+            "description": "Execution state shared by this organization and live holder cohort.",
+            "example": "model"
           },
           "worker_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Live lease holder; null for unleased or expired ownership.",
+            "example": "worker-01"
           }
         }
       },
       "MonitoringLeaseEvent": {
         "type": "object",
+        "description": "Persisted actor ownership transition, excluding renewal noise.",
         "required": [
           "occurred_at",
           "kind",
@@ -52289,39 +52360,54 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "New lease deadline in UTC; null for a release.",
+            "example": "2026-10-14T12:00:10Z"
           },
           "fence": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Ownership fence associated with this transition.",
+            "example": 18
           },
           "holder": {
-            "type": "string"
+            "type": "string",
+            "description": "Holder acquiring ownership, or the holder relinquishing a released lease.",
+            "example": "worker-02"
           },
           "kind": {
-            "type": "string"
+            "type": "string",
+            "description": "Ownership transition: acquired, reacquired, or released; renewals produce no history entry.",
+            "example": "reacquired"
           },
           "occurred_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "UTC time of the persisted ownership transition.",
+            "example": "2026-10-14T12:00:00Z"
           },
           "previous_expires_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Previous lease deadline in UTC, when recorded.",
+            "example": "2026-10-14T11:59:59Z"
           },
           "previous_holder": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Holder preceding acquisition or reacquisition, when recorded.",
+            "example": "worker-01"
           }
         }
       },
       "MonitoringOwnership": {
         "type": "object",
+        "description": "Valid actor ownership linking an organization to a worker.",
         "required": [
           "worker_id",
           "org_id",
@@ -52331,18 +52417,25 @@
           "actor_leases": {
             "type": "integer",
             "format": "int64",
+            "description": "Valid actor leases held by this worker within this organization.",
+            "example": 32,
             "minimum": 0
           },
           "org_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Public identifier of the sessions' owning organization.",
+            "example": "org_00000000000000000000000000000001"
           },
           "worker_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Worker currently holding the valid actor leases.",
+            "example": "worker-01"
           }
         }
       },
       "MonitoringPhase": {
         "type": "object",
+        "description": "Population and age of one committed execution state.",
         "required": [
           "phase",
           "count",
@@ -52352,20 +52445,27 @@
           "count": {
             "type": "integer",
             "format": "int64",
+            "description": "Complete number of sessions observed in this execution state.",
+            "example": 2800,
             "minimum": 0
           },
           "oldest_ms": {
             "type": "integer",
             "format": "int64",
+            "description": "Age of the oldest committed phase observation in milliseconds; may be partial when cohorts are truncated.",
+            "example": 3200,
             "minimum": 0
           },
           "phase": {
-            "type": "string"
+            "type": "string",
+            "description": "Execution state: runnable, model, tools, waiting, or setup.",
+            "example": "model"
           }
         }
       },
       "MonitoringSnapshot": {
         "type": "object",
+        "description": "Live execution population, ownership, and event-window summary.",
         "required": [
           "generated_at",
           "scope",
@@ -52387,25 +52487,32 @@
           "actor_leases": {
             "type": "integer",
             "format": "int64",
+            "description": "Complete count of actor leases valid at the observation time.",
+            "example": 3700,
             "minimum": 0
           },
           "actors": {
             "type": "integer",
             "format": "int64",
+            "description": "Complete population of live sessions and runnable or held session actors.",
+            "example": 5000,
             "minimum": 0
           },
           "cohorts": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MonitoringCohort"
-            }
+            },
+            "description": "Bounded phase, organization, and live holder breakdown; consult cohorts_truncated."
           },
           "cohorts_truncated": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether ownership cohort detail exceeded its limit; population and phase counts remain complete.",
+            "example": false
           },
           "events": {
             "type": "object",
-            "description": "Committed lifecycle event counts in the last window, not lifetime counters.",
+            "description": "Committed lifecycle event counts in the lookback window, not lifetime totals.",
             "additionalProperties": {
               "type": "integer",
               "format": "int64",
@@ -52413,19 +52520,29 @@
             },
             "propertyNames": {
               "type": "string"
+            },
+            "example": {
+              "reason.started": 350,
+              "tool.started": 240,
+              "turn.started": 120
             }
           },
           "expired_leases": {
             "type": "integer",
             "format": "int64",
+            "description": "Held leases whose deadline has passed, regardless of worker heartbeat.",
+            "example": 3,
             "minimum": 0
           },
           "generated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "UTC observation time used to classify lease validity and event windows.",
+            "example": "2026-10-14T12:00:03Z"
           },
           "lease_events": {
             "type": "object",
+            "description": "Acquisition, reacquisition, and release counts in the lookback window; renewals are excluded.",
             "additionalProperties": {
               "type": "integer",
               "format": "int64",
@@ -52433,6 +52550,11 @@
             },
             "propertyNames": {
               "type": "string"
+            },
+            "example": {
+              "acquired": 120,
+              "reacquired": 3,
+              "released": 110
             }
           },
           "oldest_runnable_ms": {
@@ -52441,46 +52563,60 @@
               "null"
             ],
             "format": "int64",
+            "description": "Age of the oldest work awaiting a valid lease, in milliseconds; null when none is runnable.",
+            "example": 3000,
             "minimum": 0
           },
           "organizations": {
             "type": "integer",
             "format": "int64",
+            "description": "Distinct organizations represented in the current population.",
+            "example": 12,
             "minimum": 0
           },
           "ownership": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MonitoringOwnership"
-            }
+            },
+            "description": "Organization-to-worker mapping derived only from valid actor leases."
           },
           "phases": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MonitoringPhase"
-            }
+            },
+            "description": "Complete counts by execution state, with observed phase ages."
           },
           "scope": {
-            "type": "string"
+            "type": "string",
+            "description": "Monitoring boundary: organization or fleet.",
+            "example": "fleet"
           },
           "window_seconds": {
             "type": "integer",
             "format": "int32",
+            "description": "Lookback window for lifecycle and ownership event counts, in seconds.",
+            "example": 60,
             "minimum": 0
           },
           "workers": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MonitoringWorker"
-            }
+            },
+            "description": "Bounded worker observations; global telemetry is redacted for organization callers."
           },
           "workers_truncated": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether worker detail exceeded its limit; population and phase counts remain complete.",
+            "example": false
           }
         }
       },
       "MonitoringStep": {
         "type": "object",
+        "description": "Payload-free timing projection of one step in the latest turn.",
         "required": [
           "turn_no",
           "step_no",
@@ -52494,30 +52630,43 @@
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "Recorded step duration in milliseconds; null until duration is available.",
+            "example": 820
           },
           "kind": {
-            "type": "string"
+            "type": "string",
+            "description": "Trace-step category, without tool arguments, results, or agent names.",
+            "example": "tool"
           },
           "started_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "UTC time at which the projected step started.",
+            "example": "2026-10-14T12:00:01Z"
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "description": "Projected execution status of the trace step.",
+            "example": "completed"
           },
           "step_no": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Projected step ordinal within the turn.",
+            "example": 3
           },
           "turn_no": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Projected turn ordinal for this trace step.",
+            "example": 2
           }
         }
       },
       "MonitoringWorker": {
         "type": "object",
+        "description": "Scope-aware actor ownership with platform-only worker telemetry.",
         "required": [
           "id",
           "actor_leases",
@@ -52528,11 +52677,15 @@
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "Last reported admission flag; null in organization scope.",
+            "example": true
           },
           "actor_leases": {
             "type": "integer",
             "format": "int64",
+            "description": "Valid actor leases in this monitoring scope; not occupied work slots.",
+            "example": 32,
             "minimum": 0
           },
           "capacity": {
@@ -52541,6 +52694,8 @@
               "null"
             ],
             "format": "int64",
+            "description": "Reported maximum worker concurrency; null in organization scope.",
+            "example": 50,
             "minimum": 0
           },
           "current_load": {
@@ -52549,20 +52704,27 @@
               "null"
             ],
             "format": "int64",
+            "description": "Reported worker activity load, distinct from actor leases; null in organization scope.",
+            "example": 8,
             "minimum": 0
           },
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Worker identifier recorded by actor ownership or the fleet registry.",
+            "example": "worker-01"
           },
           "last_heartbeat_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Last worker heartbeat in UTC; null in organization scope.",
+            "example": "2026-10-14T12:00:00Z"
           },
           "phases": {
             "type": "object",
+            "description": "Leased session counts by execution state within this scope.",
             "additionalProperties": {
               "type": "integer",
               "format": "int64",
@@ -52570,6 +52732,10 @@
             },
             "propertyNames": {
               "type": "string"
+            },
+            "example": {
+              "model": 20,
+              "tools": 12
             }
           },
           "status": {
@@ -52577,13 +52743,16 @@
               "string",
               "null"
             ],
-            "description": "Platform-only heartbeat telemetry; null in organization scope."
+            "description": "Fleet-only worker status, including stale heartbeats; null in organization scope.",
+            "example": "active"
           },
           "worker_group": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Registered worker group; null in organization scope.",
+            "example": "execution"
           }
         }
       },
