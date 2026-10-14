@@ -27,13 +27,7 @@ jobs:
       - name: Prepare linker and disk
         timeout-minutes: 5
         run: |
-          df -h .
-          for directory in /usr/share/dotnet /usr/local/lib/android /opt/ghc; do
-            start=$SECONDS
-            sudo rm -rf "$directory"
-            echo "Cleanup $directory: $((SECONDS - start))s"
-            df -h .
-          done
+          bash scripts/ci-prepare-disk.sh
           if ! command -v ld.lld >/dev/null 2>&1; then
             sudo apt-get update -qq
             sudo apt-get install -y -qq lld

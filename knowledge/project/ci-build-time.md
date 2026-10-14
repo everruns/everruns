@@ -129,6 +129,14 @@ durable 9.1m to 2-3m.
   second Cargo build without dropping the authorization contracts. The runner
   reports compilation and per-target execution separately; other affected-crate
   groups retain Cargo execution and their doctests.
+- **Measure before deleting installed SDKs.** Two controlled hosted runners began
+  with 85 GiB free, yet Android deletion consumed 76–100 seconds. Focused PR groups
+  and the largest unit-test shards now skip SDK cleanup when at least 50 GiB is
+  available. Smaller images retain their previous cleanup paths, including the
+  extended tooling list for the heaviest shards; the free-space threshold covers
+  cache extraction, build artifacts and temporary linker output together. See
+  [disk preparation](../../scripts/ci-prepare-disk.sh). This avoids trading latency
+  for the earlier disk-exhaustion failure.
 - **One producer per `rust-cache` `shared-key`.** Cache entries are immutable, so the
   first job to finish writes the key. When ten jobs shared one key, a light job could
   store a `target/` shaped for a different workload and every heavy consumer rebuilt on
