@@ -29,6 +29,9 @@
 // Citations: the grounding sources and supports are reported as web citations
 // on `Done`, mapped against the streamed answer text (see `grounding`).
 
+mod streaming;
+use streaming::{ContinuationRequest, convert_gemini_stream};
+
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 use futures::StreamExt;
@@ -470,7 +473,12 @@ impl GeminiChatDriver {
                     .resolve("POST", url, &body)
                     .await
                     .map_err(SendOutcome::Fatal)?;
-                let mut builder = self.client().post(&resolved.url);
+                let client = if is_argon(model) {
+                    driver_helpers::shared_long_decode_http_client()
+                } else {
+                    self.client()
+                };
+                let mut builder = client.post(&resolved.url);
                 let mut headers = resolved.headers;
                 headers.push(("Content-Type".to_string(), "application/json".to_string()));
                 for (name, value) in everruns_contracts::driver_helpers::merge_request_headers(
@@ -562,6 +570,16 @@ impl ChatDriver for GeminiChatDriver {
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
+        if is_argon(&config.model)
+            && config
+                .prompt_cache
+                .as_ref()
+                .is_some_and(|cache| cache.enabled && cache.gemini_cached_content.is_some())
+        {
+            return Err(AgentLoopError::config(
+                "Gemini 4 Argon supports implicit caching only",
+            ));
+        }
         let (system_instruction, contents) = Self::convert_messages(&messages);
 
         let (tools, grounded) = match Self::native_web_search_tool(config) {
@@ -577,19 +595,29 @@ impl ChatDriver for GeminiChatDriver {
             .reasoning_effort
             .filter(everruns_contracts::ReasoningEffort::requests_reasoning)
             .map(|effort| GeminiThinkingConfig {
-                thinking_budget: driver_helpers::thinking_budget::from_effort(effort),
+                thinking_budget: (!is_argon(&config.model))
+                    .then(|| driver_helpers::thinking_budget::from_effort(effort))
+                    .flatten(),
+                thinking_level: is_argon(&config.model).then_some(match effort {
+                    everruns_contracts::ReasoningEffort::Minimal
+                    | everruns_contracts::ReasoningEffort::Low => "low",
+                    everruns_contracts::ReasoningEffort::Medium => "medium",
+                    _ => "high",
+                }),
                 include_thoughts: true,
             });
 
         let mut generation_config = GeminiGenerationConfig {
-            temperature: config.temperature,
+            temperature: config.temperature.filter(|_| !is_argon(&config.model)),
             max_output_tokens: config.max_tokens,
             thinking_config,
         };
 
         // If no max_tokens specified, use model's max output from profile, or 8192 fallback
         if generation_config.max_output_tokens.is_none() {
-            generation_config.max_output_tokens = Some(
+            generation_config.max_output_tokens = Some(if is_argon(&config.model) {
+                65_536
+            } else {
                 everruns_contracts::get_model_profile(
                     &everruns_contracts::DriverId::Gemini,
                     &config.model,
@@ -598,8 +626,8 @@ impl ChatDriver for GeminiChatDriver {
                     p.limits
                         .and_then(|l| u32::try_from(l.output).ok().filter(|&v| v > 0))
                 })
-                .unwrap_or(8_192),
-            );
+                .unwrap_or(8_192)
+            });
         }
 
         let request = GeminiRequest {
@@ -612,6 +640,7 @@ impl ChatDriver for GeminiChatDriver {
                 .as_ref()
                 .filter(|cfg| cfg.enabled)
                 .and_then(|cfg| cfg.gemini_cached_content.clone()),
+            continuation_token: None,
         };
 
         // Establish the byte stream, transparently reconnecting on a transport
@@ -645,7 +674,22 @@ impl ChatDriver for GeminiChatDriver {
             .then(|| serde_json::to_value(&request).ok())
             .flatten();
         Ok(everruns_contracts::driver_helpers::attach_request_body(
-            convert_gemini_stream(byte_stream, state),
+            convert_gemini_stream(
+                byte_stream,
+                state,
+                config
+                    .max_tokens
+                    .filter(|&tokens| tokens > 65_536)
+                    .map(|_| ContinuationRequest {
+                        driver: self.clone(),
+                        endpoint: endpoint.clone(),
+                        request,
+                        url,
+                        model: config.model.clone(),
+                        extra_headers: config.extra_headers.clone(),
+                        hops: 0,
+                    }),
+            ),
             captured_request,
         ))
     }
@@ -785,41 +829,8 @@ impl Default for GeminiChatDriver {
 // SSE Parsing
 // ============================================================================
 
-fn convert_gemini_stream(byte_stream: ByteStream, state: GeminiStreamState) -> LlmResponseStream {
-    // THREAT[TM-TOOL-038]: decode UTF-8 and SSE framing before parsing provider JSON. Transport chunks
-    // may split a character, line or event anywhere.
-    let event_stream = byte_stream.eventsource();
-    Box::pin(futures::stream::unfold(
-        (event_stream, state),
-        |(mut stream, mut state)| async move {
-            loop {
-                if let Some(event) = state.pending.pop_front() {
-                    return Some((Ok(event), (stream, state)));
-                }
-                if state.done {
-                    return None;
-                }
-                match stream.next().await {
-                    Some(Ok(event)) if event.data == "[DONE]" => state.finish(),
-                    Some(Ok(event)) => {
-                        match serde_json::from_str::<GeminiStreamResponse>(&event.data) {
-                            Ok(response) => state.response(response),
-                            Err(error) => {
-                                tracing::debug!(%error, "GeminiDriver: failed to parse SSE event")
-                            }
-                        }
-                    }
-                    Some(Err(error)) => {
-                        state.pending.push_back(LlmStreamEvent::Error(
-                            format!("Stream error: {error}").into(),
-                        ));
-                        state.done = true;
-                    }
-                    None => state.finish(),
-                }
-            }
-        },
-    ))
+fn is_argon(model: &str) -> bool {
+    model.rsplit('/').next() == Some("gemini-4-argon")
 }
 
 #[derive(Default)]
@@ -829,6 +840,14 @@ struct GeminiStreamState {
     input_tokens: u32,
     output_tokens: u32,
     cached_tokens: Option<u32>,
+    thought_tokens: Option<u32>,
+    billed_input: u32,
+    billed_output: u32,
+    billed_cache: Option<u32>,
+    billed_thoughts: Option<u32>,
+    continuation_token: Option<String>,
+    output_since_checkpoint: bool,
+    checkpoint_usage: Option<(u32, u32, Option<u32>, Option<u32>)>,
     calls: StreamToolCallAccumulator,
     call_counter: u32,
     finish_reason: Option<String>,
@@ -862,6 +881,9 @@ impl GeminiStreamState {
             if let Some(tokens) = usage.cached_content_token_count {
                 self.cached_tokens = Some(tokens);
             }
+            if let Some(tokens) = usage.thoughts_token_count {
+                self.thought_tokens = Some(tokens);
+            }
         }
         // Grounding metadata may trail the terminal candidate; read it first.
         if self.grounded {
@@ -880,8 +902,10 @@ impl GeminiStreamState {
             return;
         }
         for candidate in response.candidates.unwrap_or_default() {
+            let checkpoint = candidate.continuation_token;
             if let Some(content) = candidate.content {
                 for part in content.parts {
+                    self.output_since_checkpoint = true;
                     match part {
                         GeminiResponsePart::Text {
                             text,
@@ -927,13 +951,23 @@ impl GeminiStreamState {
                     }
                 }
             }
+            if let Some(token) = checkpoint {
+                self.continuation_token = Some(token);
+                self.output_since_checkpoint = false;
+                self.checkpoint_usage = Some((
+                    self.input_tokens,
+                    self.output_tokens,
+                    self.cached_tokens,
+                    self.thought_tokens,
+                ));
+            }
             if let Some(reason) = candidate
                 .finish_reason
                 .filter(|reason| reason != "FINISH_REASON_UNSPECIFIED")
             {
                 self.finish_reason = Some(match reason.as_str() {
                     "STOP" => "stop".into(),
-                    "MAX_TOKENS" => "length".into(),
+                    "MAX_TOKENS" | "CONTINUATION" => "length".into(),
                     "SAFETY" => "content_filter".into(),
                     _ => reason.to_ascii_lowercase(),
                 });
@@ -995,19 +1029,19 @@ impl GeminiStreamState {
     }
 
     fn finish(&mut self) {
+        self.add_hop_usage();
         let calls = self.calls.take_finalized();
         if self.finish_reason.is_none() && !calls.is_empty() {
             self.pending.push_back(LlmStreamEvent::ToolCalls(calls));
         }
         self.pending.push_back(LlmStreamEvent::Done(Box::new({
             let mut metadata = LlmCompletionMetadata::default();
-            metadata.total_tokens = Some(self.input_tokens + self.output_tokens);
-            metadata.prompt_tokens = Some(disjoint_prompt_tokens(
-                self.input_tokens,
-                self.cached_tokens,
-            ));
-            metadata.completion_tokens = Some(self.output_tokens);
-            metadata.cache_read_tokens = self.cached_tokens;
+            metadata.total_tokens = Some(self.billed_input.saturating_add(self.billed_output));
+            metadata.prompt_tokens =
+                Some(disjoint_prompt_tokens(self.billed_input, self.billed_cache));
+            metadata.completion_tokens = Some(self.billed_output);
+            metadata.cache_read_tokens = self.billed_cache;
+            metadata.reasoning_tokens = self.billed_thoughts;
             metadata.model = Some(self.model.clone());
             metadata.response_model = self.response_model.clone();
             // `None` when no candidate reported a finish reason: kept distinct
@@ -1034,6 +1068,45 @@ impl GeminiStreamState {
             }
             metadata
         })));
+        self.done = true;
+    }
+
+    fn add_hop_usage(&mut self) {
+        self.billed_input = self.billed_input.saturating_add(self.input_tokens);
+        self.billed_output = self
+            .billed_output
+            .saturating_add(self.output_tokens)
+            .saturating_add(self.thought_tokens.unwrap_or(0));
+        for (total, hop) in [
+            (&mut self.billed_cache, self.cached_tokens),
+            (&mut self.billed_thoughts, self.thought_tokens),
+        ] {
+            if let Some(tokens) = hop {
+                *total = Some(total.unwrap_or(0).saturating_add(tokens));
+            }
+        }
+    }
+
+    fn next_hop(&mut self) {
+        self.add_hop_usage();
+        self.input_tokens = 0;
+        self.output_tokens = 0;
+        self.cached_tokens = None;
+        self.thought_tokens = None;
+        self.finish_reason = None;
+        self.provider_finish_reason = None;
+        self.output_since_checkpoint = false;
+        self.checkpoint_usage = None;
+    }
+
+    fn fail(&mut self, error: AgentLoopError) {
+        self.pending.push_back(LlmStreamEvent::Error(
+            everruns_contracts::driver_registry::LlmStreamError::provider(
+                None::<String>,
+                error.http_status(),
+                error.to_string(),
+            ),
+        ));
         self.done = true;
     }
 }
@@ -1066,6 +1139,8 @@ struct GeminiRequest {
     generation_config: Option<GeminiGenerationConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     cached_content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    continuation_token: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1165,6 +1240,8 @@ struct GeminiGenerationConfig {
 struct GeminiThinkingConfig {
     #[serde(rename = "thinkingBudget", skip_serializing_if = "Option::is_none")]
     thinking_budget: Option<u32>,
+    #[serde(rename = "thinkingLevel", skip_serializing_if = "Option::is_none")]
+    thinking_level: Option<&'static str>,
     #[serde(rename = "includeThoughts")]
     include_thoughts: bool,
 }
@@ -1207,6 +1284,8 @@ struct GeminiStreamResponse {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GeminiCandidate {
+    #[serde(default)]
+    continuation_token: Option<String>,
     #[serde(default)]
     content: Option<GeminiResponseContent>,
     #[serde(default)]
@@ -1276,6 +1355,8 @@ impl GeminiPart {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GeminiUsageMetadata {
+    #[serde(default)]
+    thoughts_token_count: Option<u32>,
     #[serde(default)]
     prompt_token_count: Option<u32>,
     #[serde(default)]

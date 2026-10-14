@@ -409,6 +409,7 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["claude-haiku-4-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4"], ModelVendor::Anthropic, ANTHROPIC),
     // Google Gemini
+    md(&["gemini-4-argon"], ModelVendor::Google, GEMINI),
     md(&["gemini-3.1-pro-preview"], ModelVendor::Google, GEMINI),
     md(&["gemini-3.8-flash"], ModelVendor::Google, GEMINI),
     md(&["gemini-3.7-flash"], ModelVendor::Google, GEMINI),
