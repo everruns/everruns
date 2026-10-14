@@ -192,6 +192,7 @@ const NOT_DENIED_BY_THE_EXTRACTOR: &[(&str, &str, &str)] = &[
     ("GET", "/v1/e/{}/slack/oauth/callback", CALLBACK),
     ("GET", "/v1/github/app-manifest/callback", CALLBACK),
     ("GET", "/v1/github/apps/{}/setup", CALLBACK),
+    ("GET", "/v1/slack/workspaces/oauth/callback", CALLBACK),
     ("GET", "/v1/user/connections/github/callback", CALLBACK),
     ("GET", "/v1/user/connections/{}/callback", CALLBACK),
     // Documented but not routed in this configuration.

@@ -323,7 +323,10 @@ async fn retry_waits_for_backoff<H: Harness>(h: H) {
 async fn delayed_tasks_wait_for_their_start_delay<H: Harness>(h: H) {
     let ty = activity_type();
     let w = worker(&h, &ty).await;
-    let later = ActivityOptions::default().with_start_delay(Duration::from_millis(300));
+    // Seconds, not milliseconds: a slow CI runner can spend a few hundred
+    // milliseconds between the enqueue and the first claim, making a short
+    // delay due before the "not due yet" assertion runs.
+    let later = ActivityOptions::default().with_start_delay(Duration::from_secs(3));
     let delayed = enqueue(&h, with_options(task(None, &ty, "later"), later)).await;
     let now = enqueue(&h, task(None, &ty, "now")).await;
 
@@ -332,7 +335,7 @@ async fn delayed_tasks_wait_for_their_start_delay<H: Harness>(h: H) {
         vec![now],
         "the delayed task is not due"
     );
-    tokio::time::sleep(Duration::from_millis(400)).await;
+    tokio::time::sleep(Duration::from_millis(3200)).await;
     assert_eq!(claim(&h, &w, &ty, 2).await, vec![delayed]);
 }
 

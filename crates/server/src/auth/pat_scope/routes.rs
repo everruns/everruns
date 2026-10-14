@@ -869,6 +869,8 @@ pub const UNDOCUMENTED_ROUTES: &[(&str, &str, RouteAccess)] = &[
     ),
     ("GET", "/v1/slack/install", Never),
     ("POST", "/v1/slack/workspaces", Never),
+    ("POST", "/v1/slack/workspaces/oauth", Never),
+    ("GET", "/v1/slack/workspaces/oauth/callback", Never),
     ("POST", "/v1/channels/{channel_id}/slack/install", Never),
     ("POST", "/v1/e/{channel_id}/slack/install", Never),
     (

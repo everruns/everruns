@@ -428,7 +428,9 @@ impl WorkerServiceImpl {
         };
         let pool = self.db.pool();
         let encryption = self.encryption.clone().ok_or_else(|| {
-            Status::failed_precondition("checkpoint encryption is not configured")
+            Status::failed_precondition(
+                everruns_internal_protocol::CHECKPOINT_ENCRYPTION_NOT_CONFIGURED,
+            )
         })?;
         let store = crate::storage::PgNativeAsyncStore::new(pool.clone(), encryption);
         let checkpoint = match operation {
@@ -490,7 +492,9 @@ impl WorkerServiceImpl {
         };
         let pool = self.db.pool();
         let encryption = self.encryption.clone().ok_or_else(|| {
-            Status::failed_precondition("checkpoint encryption is not configured")
+            Status::failed_precondition(
+                everruns_internal_protocol::CHECKPOINT_ENCRYPTION_NOT_CONFIGURED,
+            )
         })?;
         let store = crate::storage::PgAgentsApiStore::new(pool.clone(), encryption);
         let fenced = |_| Status::failed_precondition("agents api journal unavailable or fenced");
@@ -530,7 +534,9 @@ impl WorkerServiceImpl {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?.into();
         let encryption = self.encryption.clone().ok_or_else(|| {
-            Status::failed_precondition("checkpoint encryption is not configured")
+            Status::failed_precondition(
+                everruns_internal_protocol::CHECKPOINT_ENCRYPTION_NOT_CONFIGURED,
+            )
         })?;
         let store = crate::storage::DbCompactionCheckpointStore::new(self.db.clone(), encryption);
         let checkpoint = store
@@ -574,7 +580,9 @@ impl WorkerServiceImpl {
         let payload = serde_json::from_slice(&checkpoint.payload_json)
             .map_err(|error| Status::invalid_argument(error.to_string()))?;
         let encryption = self.encryption.clone().ok_or_else(|| {
-            Status::failed_precondition("checkpoint encryption is not configured")
+            Status::failed_precondition(
+                everruns_internal_protocol::CHECKPOINT_ENCRYPTION_NOT_CONFIGURED,
+            )
         })?;
         let store = crate::storage::DbCompactionCheckpointStore::new(self.db.clone(), encryption);
         let installed = store

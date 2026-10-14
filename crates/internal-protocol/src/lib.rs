@@ -34,6 +34,11 @@ pub use json_wire::{
 };
 pub use proto::worker_service_client::WorkerServiceClient;
 pub use proto::worker_service_server::{WorkerService, WorkerServiceServer};
+
+/// `FailedPrecondition` message the control plane answers checkpoint and
+/// journal RPCs with when it has no `SECRETS_ENCRYPTION_KEY`. Workers match on
+/// it to run without those stores, as the in-process worker does (EVE-1261).
+pub const CHECKPOINT_ENCRYPTION_NOT_CONFIGURED: &str = "checkpoint encryption is not configured";
 // ============================================================================
 // Error types
 // ============================================================================
