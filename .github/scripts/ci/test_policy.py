@@ -408,6 +408,64 @@ fn context() {
                 if step.get('uses','').startswith('actions/checkout@'):
                     self.assertEqual(step['with']['ref'],'${{ needs.changes.outputs.revision }}',key)
 
+    def test_archive_experiment_isolates_cache_and_measures_compression(self):
+        workflow=yaml.safe_load((ROOT/'.github/workflows/ci-test-archive.yml').read_text())
+        compile=workflow['jobs']['compile']; execute=workflow['jobs']['execute']
+        self.assertEqual(compile['strategy']['matrix']['cache'],['dependencies','workspace'])
+        self.assertEqual(execute['strategy']['matrix']['cache'],['dependencies','workspace'])
+        cache=next(s for s in compile['steps'] if s.get('uses','').startswith('Swatinem/rust-cache@'))
+        self.assertIn('${{ matrix.cache }}',cache['with']['shared-key'])
+        self.assertIn('${{ github.sha }}',cache['with']['shared-key'])
+        self.assertEqual(cache['with']['cache-workspace-crates'],"${{ matrix.cache == 'workspace' }}")
+        upload=next(s for s in compile['steps'] if s.get('uses','').startswith('actions/upload-artifact@'))
+        self.assertEqual(upload['with']['compression-level'],0)
+        archive=next(s for s in compile['steps'] if s.get('name')=='Archive only the compiled test executable')
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory); binary=root/'binary'
+            binary.write_bytes(b'fixture payload\n'*1000);binary.chmod(0o755)
+            artifacts=root/'artifacts.jsonl'
+            artifacts.write_text(json.dumps(dict(reason='compiler-artifact',executable=str(binary),profile={'test':True}))+'\n')
+            command=archive['run'].replace('/tmp/test-artifacts.jsonl',str(artifacts))
+            subprocess.run(['bash','-euo','pipefail','-c',command],cwd=root,
+                           env=dict(os.environ,GITHUB_SHA='fixture-sha'),check=True,capture_output=True)
+            report=json.loads((root/'archive-measurements.json').read_text())
+            self.assertEqual(report['revision'],'fixture-sha')
+            self.assertEqual([r['level'] for r in report['gzip']],[1,9])
+            self.assertEqual(report['binary_bytes'],binary.stat().st_size)
+            with tarfile.open(root/'server-tests.tar.gz') as tar:
+                self.assertEqual(tar.extractfile('server-tests').read(),binary.read_bytes())
+            self.assertEqual((root/'server-tests.sha256').read_text().split()[0],hashlib.sha256(binary.read_bytes()).hexdigest())
+
+
+    def test_disk_preparation_keeps_headroom_without_unnecessary_deletion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory); log=root/'cleanup.log'
+            (root/'df').write_text('#!/bin/sh\necho "Filesystem 1024-blocks Used Available Capacity Mounted"\necho "fixture 100000000 1 $FREE_KIB 1% /"\n')
+            (root/'sudo').write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$CLEANUP_LOG"\n')
+            for name in ['df','sudo']:(root/name).chmod(0o755)
+            env=dict(os.environ,PATH=str(root)+os.pathsep+os.environ['PATH'],CLEANUP_LOG=str(log))
+            command=['bash',str(ROOT/'scripts/ci-prepare-disk.sh')]
+            threshold=50*1024*1024
+            for available in [threshold,threshold+1]:
+                result=subprocess.run(command,env=dict(env,FREE_KIB=str(available)),capture_output=True,text=True)
+                self.assertEqual(result.returncode,0,result.stderr)
+                self.assertFalse(log.exists())
+                self.assertIn('Skipping SDK cleanup',result.stdout)
+            subprocess.run(command,env=dict(env,FREE_KIB=str(threshold-1)),check=True,capture_output=True)
+            cleanup=log.read_text()
+            for path in ['/usr/share/dotnet','/usr/local/lib/android','/opt/ghc']:self.assertIn('rm -rf '+path,cleanup)
+            self.assertNotIn('CodeQL',cleanup)
+            log.unlink()
+            subprocess.run([*command,'--extended'],env=dict(env,FREE_KIB='1024'),check=True,capture_output=True)
+            self.assertIn('/opt/hostedtoolcache/CodeQL',log.read_text())
+            log.unlink()
+            invalid=subprocess.run([*command,'/unrelated'],env=dict(env,FREE_KIB='1024'),capture_output=True)
+            self.assertNotEqual(invalid.returncode,0)
+            self.assertFalse(log.exists())
+            unknown=subprocess.run(command,env=dict(env,FREE_KIB='unknown'),capture_output=True)
+            self.assertNotEqual(unknown.returncode,0)
+            self.assertFalse(log.exists())
+
 
 if __name__=='__main__':
     unittest.main()

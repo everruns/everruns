@@ -973,8 +973,7 @@ jobs:
 
       - name: Free space for selected Rust tests
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          df -h /
+          bash scripts/ci-prepare-disk.sh
 
       - uses: dtolnay/rust-toolchain@1.96.0
 
@@ -1038,15 +1037,12 @@ jobs:
       # This job builds the most of any single CI job: provider crates, the full
       # runtime, the CLI, and all integration crates share one target/ dir. Their
       # rlibs plus the linker's temporary output exhausted the runner's disk mid-
-      # link (`ld terminated with signal 7 [Bus error]`, 36 MB free). Reclaim the
-      # ~25 GB of preinstalled tooling this job never uses before building.
+      # link (`ld terminated with signal 7 [Bus error]`, 36 MB free). Reclaim
+      # unused tooling on smaller images; skip deletion when ample space exists.
       - name: Free disk space
         if: matrix.shard == 'facade-cli' || matrix.shard == 'provider-engine'
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-            /opt/hostedtoolcache/CodeQL /usr/local/share/powershell \
-            /usr/local/share/chromium /usr/local/lib/node_modules
-          df -h /
+          bash scripts/ci-prepare-disk.sh --extended
 
       # lld instead of GNU ld. These jobs link many binaries against a large
       # dependency graph -- crates/server alone has 51 integration-test targets,

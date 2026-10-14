@@ -72,7 +72,12 @@ one server libtest executable and runs identical verified bytes on native and du
 PostgreSQL runners. The durable leg also verifies a committed write survives an
 abrupt restart of its disposable PostgreSQL service. Compare its compile/transfer/execute times before adopting it
 on the critical path. Broader workspace artifact caching and larger runners need
-warm-run benchmarks after workload reduction.
+warm-run benchmarks after workload reduction. The pilot compares dependency-only
+and workspace-crate caches with separate revision-scoped keys and identical build
+flags. Run it twice at the same revision, record exact hits/misses and cache sizes,
+and compare gzip speed/size alongside per-directory cleanup timings. Its gzip payload
+is uploaded without a second compression pass. Experiment keys must not become the
+normal CI cache baseline without evidence; account for repository cache pressure.
 
 ## Measured Baseline
 
@@ -144,6 +149,14 @@ durable 9.1m to 2-3m.
   binaries, each linking the whole server crate. CI uses `lld` on the heavy jobs through
   a job-scoped `CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS` rather than a checked-in
   `.cargo/config.toml`, so a checkout without `lld` still builds.
+- **Measure before deleting installed SDKs.** Two controlled hosted runners began
+  with 85 GiB free, yet Android deletion consumed 76–100 seconds. Focused PR groups
+  and the largest unit-test shards now skip SDK cleanup when at least 50 GiB is
+  available. Smaller images retain their previous cleanup paths, including the
+  extended tooling list for the heaviest shards; the free-space threshold covers
+  cache extraction, build artifacts and temporary linker output together. See
+  [disk preparation](../../scripts/ci-prepare-disk.sh). This avoids trading latency
+  for the earlier disk-exhaustion failure.
 
 ## Success Bar
 
