@@ -19,6 +19,15 @@ export interface AgentGitHubStatus {
   missing_permissions: string[];
   /** GitHub accounts this organization already reached, candidates for `owner_org`. */
   suggested_owners: GitHubOwnerSuggestion[];
+  /** Shared Everruns App installations an org admin linked, which this agent may choose. */
+  everruns_app_installations: EverrunsAppInstallation[];
+}
+
+export interface EverrunsAppInstallation {
+  connection_id: string;
+  account: string;
+  account_type: string | null;
+  repository_selection: string | null;
 }
 
 export type AgentGitHubConnectResponse =
@@ -41,6 +50,18 @@ export async function connectAgentGitHub(
 ): Promise<AgentGitHubConnectResponse> {
   return (await api.post<AgentGitHubConnectResponse>(`/v1/agents/${agentId}/github/connect`, body))
     .data;
+}
+
+/** Make the agent act as the shared Everruns App through an org-linked installation. */
+export async function chooseAgentEverrunsApp(
+  agentId: string,
+  connectionId: string,
+): Promise<AgentGitHubStatus> {
+  return (
+    await api.post<AgentGitHubStatus>(`/v1/agents/${agentId}/github/everruns-app`, {
+      connection_id: connectionId,
+    })
+  ).data;
 }
 
 export async function disconnectAgentGitHub(identityId: string): Promise<void> {

@@ -413,6 +413,7 @@ pub fn declared(name: &str) -> Change {
         "set_agent_avatar" => on(K::Agent, Updated, Param("agent_id")),
         "create_agent_credential_binding" => on(K::Agent, Attached, Param("agent_id")),
         "disconnect_agent_github" => on(K::Agent, Detached, Param("agent_id")),
+        "use_agent_everruns_app" => on(K::Agent, Attached, Param("agent_id")),
         "connect_agent_github" => {
             Change::Exempt("starts GitHub's install flow; GitHub's callback records the connection")
         }
@@ -534,7 +535,6 @@ pub fn declared(name: &str) -> Change {
         "sync_plugin_marketplace" => Change::Exempt("a sync run refreshes the catalog"),
 
         // Organization.
-        "create_workspace" => on(K::Workspace, Created, ID),
         "update_workspace" => on(K::Workspace, Updated, ID),
         "delete_workspace" => on(K::Workspace, Deleted, Param("workspace_id")),
 

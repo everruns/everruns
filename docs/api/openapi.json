@@ -3260,6 +3260,64 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/github/everruns-app": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Make an agent act as the shared Everruns GitHub App",
+        "description": "Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first.",
+        "operationId": "use_agent_everruns_app",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UseEverrunsAppRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentGitHubStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent or linked installation not found"
+          },
+          "409": {
+            "description": "The agent has a GitHub App of its own"
+          },
+          "503": {
+            "description": "The shared Everruns App is not configured"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/agents/{agent_id}/health-checks": {
       "get": {
         "tags": [
@@ -6868,7 +6926,7 @@
           }
         ],
         "requestBody": {
-          "description": "`{\"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": …}]}}`",
+          "description": "`{\"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": …}]}, \"files\": [MessageFile]}`. Content holds text and image parts; `files` (optional) carries files as base64 `data` or a public https `url`, each kept in the session's `/attachments`.",
           "content": {
             "application/json": {
               "schema": {}
@@ -10264,7 +10322,7 @@
           }
         ],
         "requestBody": {
-          "description": "`{\"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": …}]}}`",
+          "description": "`{\"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": …}]}, \"files\": [MessageFile]}`. Content holds text and image parts; `files` (optional) carries files as base64 `data` or a public https `url`, each kept in the session's `/attachments`.",
           "content": {
             "application/json": {
               "schema": {}
@@ -18131,6 +18189,133 @@
             "cookieAuth": []
           }
         ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/orgs/{org}/github/everruns-app": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "List the org's Everruns GitHub App links",
+        "description": "List the organization's links to the shared Everruns GitHub App.",
+        "operationId": "list_links",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EverrunsAppLinks"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin access required"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/orgs/{org}/github/everruns-app/authorize": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Link an Everruns GitHub App installation",
+        "description": "Start linking a shared Everruns GitHub App installation to the organization.",
+        "operationId": "authorize_link",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "return_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "Redirect to GitHub"
+          },
+          "403": {
+            "description": "Admin access required"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/orgs/{org}/github/everruns-app/{connection_id}": {
+      "delete": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Unlink an Everruns GitHub App installation",
+        "description": "Unlink a shared Everruns GitHub App installation and remove every agent's choice of it.",
+        "operationId": "unlink",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Unlinked"
+          },
+          "403": {
+            "description": "Admin access required"
+          },
+          "404": {
+            "description": "Link not found"
+          }
+        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
@@ -28896,62 +29081,6 @@
           "group": "sessions-workspaces",
           "support": "preview"
         }
-      },
-      "post": {
-        "tags": [
-          "workspace"
-        ],
-        "summary": "Create workspace",
-        "description": "Create a Workspace.",
-        "operationId": "create_workspace",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateWorkspaceRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Workspace"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Name conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Everruns Cloud and self-hosted Platform",
-          "group": "sessions-workspaces",
-          "support": "preview"
-        }
       }
     },
     "/v1/workspaces/{workspace_id}": {
@@ -31106,7 +31235,8 @@
           "connected",
           "app_created",
           "missing_permissions",
-          "suggested_owners"
+          "suggested_owners",
+          "everruns_app_installations"
         ],
         "properties": {
           "account": {
@@ -31144,11 +31274,18 @@
               "string",
               "null"
             ],
-            "description": "The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`.\nKnown for an agent's own App; `None` otherwise."
+            "description": "The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`, or the\nshared App's (`everruns[bot]`) when the agent chose it and the\ndeployment names its slug; `None` otherwise."
           },
           "connected": {
             "type": "boolean",
-            "description": "An installation is bound, so tools and triggers work."
+            "description": "An installation is bound, so tools and triggers work: the agent's own\nApp's, or a shared Everruns App installation the agent chose."
+          },
+          "everruns_app_installations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EverrunsAppInstallation"
+            },
+            "description": "Shared Everruns App installations an org admin linked, which this agent\ncan choose instead of an App of its own (D3). Empty when none is linked\nor the deployment has no shared App."
           },
           "identity_id": {
             "type": [
@@ -38023,14 +38160,6 @@
             ],
             "description": "Optional resident virtual user used for unattended/background execution.",
             "example": "identity_01933b5a00007000800000000000001"
-          },
-          "workspace_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Attach this session to an existing Workspace (format: `wsp_<32-hex>`)\ninstead of auto-creating a default per-session workspace. The workspace\nmust exist in the caller's org and be `active`. Lets multiple sessions\nshare one working filesystem. Omit for the default 1:1 behavior.",
-            "example": "wsp_01933b5a00007000800000000000001"
           }
         }
       },
@@ -38118,25 +38247,6 @@
           "usage": {
             "$ref": "#/components/schemas/VirtualUserUsage",
             "description": "Runtime purpose; service accounts may be attached to agents."
-          }
-        }
-      },
-      "CreateWorkspaceRequest": {
-        "type": "object",
-        "required": [
-          "name"
-        ],
-        "properties": {
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "example": "Shared workspace for the Q4 research project"
-          },
-          "name": {
-            "type": "string",
-            "example": "team-research"
           }
         }
       },
@@ -40369,6 +40479,118 @@
             "type": "integer",
             "format": "int64",
             "description": "Convenience: count of `turn.started` events."
+          }
+        }
+      },
+      "EverrunsAppInstallation": {
+        "type": "object",
+        "description": "A shared Everruns App installation the org links, as an agent can choose it.",
+        "required": [
+          "connection_id",
+          "account"
+        ],
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "GitHub account the installation is on."
+          },
+          "account_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "GitHub's account type: `User` or `Organization`, when known."
+          },
+          "connection_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The org link's connection id; pass it to choose this installation."
+          },
+          "repository_selection": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`all` or `selected`, when known."
+          }
+        }
+      },
+      "EverrunsAppLink": {
+        "type": "object",
+        "description": "One shared App installation linked to the org.",
+        "required": [
+          "id",
+          "installation_id",
+          "account",
+          "agent_count",
+          "linked_at"
+        ],
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "GitHub account the installation is on.",
+            "example": "acme"
+          },
+          "account_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "GitHub's account type: `User` or `Organization`."
+          },
+          "agent_count": {
+            "type": "integer",
+            "description": "Agents in the org acting through this link.",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Connection id agents choose the link by."
+          },
+          "installation_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "GitHub installation id.",
+            "example": 4242
+          },
+          "linked_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "repository_selection": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`all` or `selected`."
+          }
+        }
+      },
+      "EverrunsAppLinks": {
+        "type": "object",
+        "description": "The org's links to the shared Everruns GitHub App.",
+        "required": [
+          "configured",
+          "installations"
+        ],
+        "properties": {
+          "app_slug": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The shared App's slug; agents that choose it show up as `<slug>[bot]`."
+          },
+          "configured": {
+            "type": "boolean",
+            "description": "The deployment has a shared App; without one nothing can be linked."
+          },
+          "installations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EverrunsAppLink"
+            }
           }
         }
       },
@@ -66550,6 +66772,20 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "UseEverrunsAppRequest": {
+        "type": "object",
+        "description": "Which org link to act through.",
+        "required": [
+          "connection_id"
+        ],
+        "properties": {
+          "connection_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Connection id of one of the org's linked installations, from the\nagent's GitHub status (`everruns_app_installations`)."
           }
         }
       },

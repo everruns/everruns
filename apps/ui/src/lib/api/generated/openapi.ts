@@ -827,6 +827,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/github/everruns-app": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Make an agent act as the shared Everruns GitHub App
+     * @description Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first.
+     */
+    post: operations["use_agent_everruns_app"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/health-checks": {
     parameters: {
       query?: never;
@@ -4446,6 +4466,66 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/orgs/{org}/github/everruns-app": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List the org's Everruns GitHub App links
+     * @description List the organization's links to the shared Everruns GitHub App.
+     */
+    get: operations["list_links"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/orgs/{org}/github/everruns-app/authorize": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Link an Everruns GitHub App installation
+     * @description Start linking a shared Everruns GitHub App installation to the organization.
+     */
+    get: operations["authorize_link"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/orgs/{org}/github/everruns-app/{connection_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Unlink an Everruns GitHub App installation
+     * @description Unlink a shared Everruns GitHub App installation and remove every agent's choice of it.
+     */
+    delete: operations["unlink"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/orgs/{org}/onboarding/complete": {
     parameters: {
       query?: never;
@@ -7295,11 +7375,7 @@ export interface paths {
      */
     get: operations["list_workspaces"];
     put?: never;
-    /**
-     * Create workspace
-     * @description Create a Workspace.
-     */
-    post: operations["create_workspace"];
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -8216,12 +8292,22 @@ export interface components {
       app_slug?: string | null;
       app_url?: string | null;
       /**
-       * @description The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`.
-       *     Known for an agent's own App; `None` otherwise.
+       * @description The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`, or the
+       *     shared App's (`everruns[bot]`) when the agent chose it and the
+       *     deployment names its slug; `None` otherwise.
        */
       bot_login?: string | null;
-      /** @description An installation is bound, so tools and triggers work. */
+      /**
+       * @description An installation is bound, so tools and triggers work: the agent's own
+       *     App's, or a shared Everruns App installation the agent chose.
+       */
       connected: boolean;
+      /**
+       * @description Shared Everruns App installations an org admin linked, which this agent
+       *     can choose instead of an App of its own (D3). Empty when none is linked
+       *     or the deployment has no shared App.
+       */
+      everruns_app_installations: components["schemas"]["EverrunsAppInstallation"][];
       /** @description The agent's identity, once it has one; disconnect goes through it. */
       identity_id?: string | null;
       /**
@@ -12015,14 +12101,6 @@ export interface components {
        * @example identity_01933b5a00007000800000000000001
        */
       virtual_user_id?: string | null;
-      /**
-       * @description Attach this session to an existing Workspace (format: `wsp_<32-hex>`)
-       *     instead of auto-creating a default per-session workspace. The workspace
-       *     must exist in the caller's org and be `active`. Lets multiple sessions
-       *     share one working filesystem. Omit for the default 1:1 behavior.
-       * @example wsp_01933b5a00007000800000000000001
-       */
-      workspace_id?: string | null;
     };
     /** @description Request to create a skill from SKILL.md content */
     CreateSkillRequest: {
@@ -12077,12 +12155,6 @@ export interface components {
       timezone?: string | null;
       /** @description Runtime purpose; service accounts may be attached to agents. */
       usage?: components["schemas"]["VirtualUserUsage"];
-    };
-    CreateWorkspaceRequest: {
-      /** @example Shared workspace for the Q4 research project */
-      description?: string | null;
-      /** @example team-research */
-      name: string;
     };
     /** @description Outcome of checking a candidate provider credential. */
     CredentialCheckResult:
@@ -13344,6 +13416,55 @@ export interface components {
        * @description Convenience: count of `turn.started` events.
        */
       turn_count: number;
+    };
+    /** @description A shared Everruns App installation the org links, as an agent can choose it. */
+    EverrunsAppInstallation: {
+      /** @description GitHub account the installation is on. */
+      account: string;
+      /** @description GitHub's account type: `User` or `Organization`, when known. */
+      account_type?: string | null;
+      /**
+       * Format: uuid
+       * @description The org link's connection id; pass it to choose this installation.
+       */
+      connection_id: string;
+      /** @description `all` or `selected`, when known. */
+      repository_selection?: string | null;
+    };
+    /** @description One shared App installation linked to the org. */
+    EverrunsAppLink: {
+      /**
+       * @description GitHub account the installation is on.
+       * @example acme
+       */
+      account: string;
+      /** @description GitHub's account type: `User` or `Organization`. */
+      account_type?: string | null;
+      /** @description Agents in the org acting through this link. */
+      agent_count: number;
+      /**
+       * Format: uuid
+       * @description Connection id agents choose the link by.
+       */
+      id: string;
+      /**
+       * Format: int64
+       * @description GitHub installation id.
+       * @example 4242
+       */
+      installation_id: number;
+      /** Format: date-time */
+      linked_at: string;
+      /** @description `all` or `selected`. */
+      repository_selection?: string | null;
+    };
+    /** @description The org's links to the shared Everruns GitHub App. */
+    EverrunsAppLinks: {
+      /** @description The shared App's slug; agents that choose it show up as `<slug>[bot]`. */
+      app_slug?: string | null;
+      /** @description The deployment has a shared App; without one nothing can be linked. */
+      configured: boolean;
+      installations: components["schemas"]["EverrunsAppLink"][];
     };
     /**
      * @description Execution phase for assistant messages in multi-step tool-calling flows.
@@ -27763,6 +27884,15 @@ export interface components {
       name?: string | null;
       status?: string | null;
     };
+    /** @description Which org link to act through. */
+    UseEverrunsAppRequest: {
+      /**
+       * Format: uuid
+       * @description Connection id of one of the org's linked installations, from the
+       *     agent's GitHub status (`everruns_app_installations`).
+       */
+      connection_id: string;
+    };
     /** @description User response for listing */
     User: {
       auth_provider?: string | null;
@@ -32189,6 +32319,54 @@ export interface operations {
       };
     };
   };
+  use_agent_everruns_app: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UseEverrunsAppRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentGitHubStatus"];
+        };
+      };
+      /** @description Agent or linked installation not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The agent has a GitHub App of its own */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The shared Everruns App is not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   list_health_checks: {
     parameters: {
       query?: never;
@@ -34596,7 +34774,7 @@ export interface operations {
       };
       cookie?: never;
     };
-    /** @description `{"message": {"role": "user", "content": [{"type": "text", "text": …}]}}` */
+    /** @description `{"message": {"role": "user", "content": [{"type": "text", "text": …}]}, "files": [MessageFile]}`. Content holds text and image parts; `files` (optional) carries files as base64 `data` or a public https `url`, each kept in the session's `/attachments`. */
     requestBody: {
       content: {
         "application/json": unknown;
@@ -36936,7 +37114,7 @@ export interface operations {
       };
       cookie?: never;
     };
-    /** @description `{"message": {"role": "user", "content": [{"type": "text", "text": …}]}}` */
+    /** @description `{"message": {"role": "user", "content": [{"type": "text", "text": …}]}, "files": [MessageFile]}`. Content holds text and image parts; `files` (optional) carries files as base64 `data` or a public https `url`, each kept in the session's `/attachments`. */
     requestBody: {
       content: {
         "application/json": unknown;
@@ -42129,6 +42307,98 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  list_links: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        org: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EverrunsAppLinks"];
+        };
+      };
+      /** @description Admin access required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  authorize_link: {
+    parameters: {
+      query?: {
+        return_to?: string;
+      };
+      header?: never;
+      path: {
+        org: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Redirect to GitHub */
+      303: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Admin access required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  unlink: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        org: string;
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Unlinked */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Admin access required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Link not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -49751,48 +50021,6 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ListResponse_Workspace"];
-        };
-      };
-    };
-  };
-  create_workspace: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["CreateWorkspaceRequest"];
-      };
-    };
-    responses: {
-      /** @description Created */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["Workspace"];
-        };
-      };
-      /** @description Invalid input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Name conflict */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
         };
       };
     };

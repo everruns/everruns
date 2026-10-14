@@ -134,6 +134,10 @@ jest.mock("@/components/harness/harness-select", () => ({
   ),
 }));
 
+jest.mock("@/components/organizations/everruns-github-app-settings", () => ({
+  EverrunsGitHubAppSettings: () => <section aria-label="Everruns GitHub App" />,
+}));
+
 describe("OrganizationPage", () => {
   beforeEach(() => {
     viewerRole = "owner";
@@ -197,6 +201,11 @@ describe("OrganizationPage", () => {
       expect(screen.queryByText("Saved")).not.toBeInTheDocument();
     });
 
+    it("hides the Everruns GitHub App links, which only admins manage", () => {
+      render(<OrganizationPage />);
+      expect(screen.queryByRole("region", { name: "Everruns GitHub App" })).not.toBeInTheDocument();
+    });
+
     it("never issues an update that the backend would reject with 403", async () => {
       jest.useFakeTimers();
 
@@ -223,6 +232,12 @@ describe("OrganizationPage", () => {
       expect(screen.getByRole("table", { name: "Organizations" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Create Organization" })).toBeEnabled();
     });
+  });
+
+  it("shows admins the Everruns GitHub App links", () => {
+    viewerRole = "admin";
+    render(<OrganizationPage />);
+    expect(screen.getByRole("region", { name: "Everruns GitHub App" })).toBeInTheDocument();
   });
 
   it("switches to another organization", () => {

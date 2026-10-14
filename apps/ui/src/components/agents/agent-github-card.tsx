@@ -7,21 +7,40 @@
 // not a trigger, so it is a section of its own between Channels and Triggers.
 // Triggers link here for setup instead of hosting it.
 //
+// Decision (D3): an agent without a GitHub identity chooses one explicitly:
+// its own App (recommended), or the shared Everruns App through an account an
+// org admin linked in Settings > Organization. The shared choice is offered
+// only when the org has a link; nothing falls back to it silently.
+//
 // Decision (D2): GitHub has no API to set an App logo, so a connected agent App
 // shows a "Set the avatar" step: download the agent's avatar, open the App's
 // settings page. Whether a logo is already set is not detected.
 
 import { useState } from "react";
 import Link from "next/link";
-import { Download, ExternalLink, GitPullRequest, MoreHorizontal, Plus } from "lucide-react";
-import { useAgentGitHub, useDisconnectAgentGitHub } from "@/hooks/use-agent-github";
+import {
+  ChevronDown,
+  Download,
+  ExternalLink,
+  GitPullRequest,
+  MoreHorizontal,
+  Plus,
+} from "lucide-react";
+import {
+  useAgentGitHub,
+  useChooseAgentEverrunsApp,
+  useDisconnectAgentGitHub,
+} from "@/hooks/use-agent-github";
 import { ConnectGitHubButton } from "@/components/agents/connect-github-button";
+import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuPositioner,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -119,6 +138,7 @@ export function AgentGitHubCard({
 }) {
   const { data: status, isLoading } = useAgentGitHub(agentId);
   const disconnect = useDisconnectAgentGitHub(agentId);
+  const choose = useChooseAgentEverrunsApp(agentId);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -133,7 +153,19 @@ export function AgentGitHubCard({
     }
   };
 
+  const onChoose = async (connectionId: string) => {
+    setError(null);
+    try {
+      await choose.mutateAsync(connectionId);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to use the Everruns app.");
+    }
+  };
+
   const kindLabel = status?.kind ? KIND_LABELS[status.kind] : null;
+  const shared = status?.kind === "everruns_app";
+  // The choice is offered only before the agent has an App of its own.
+  const choices = status && !status.app_created ? status.everruns_app_installations : [];
 
   return (
     <Card>
@@ -161,6 +193,8 @@ export function AgentGitHubCard({
                 <p className="text-sm text-muted-foreground">
                   Give this agent its own GitHub App to read pull requests and comment as itself.
                   {!status.app_created && " The App can only be installed where it is created."}
+                  {choices.length > 0 &&
+                    " Or act as the shared Everruns App on an account your organization linked."}
                 </p>
               )}
             </div>
@@ -183,7 +217,37 @@ export function AgentGitHubCard({
             </div>
           ) : !isLoading && status ? (
             <div className="flex flex-wrap items-center gap-2">
-              <ConnectGitHubButton agentId={agentId} status={status} />
+              <ConnectGitHubButton
+                agentId={agentId}
+                status={status}
+                label={status.app_created ? undefined : "Create this agent's own GitHub App"}
+              />
+              {!status.app_created && <Badge variant="outline">Recommended</Badge>}
+              {choices.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    className={buttonVariants({ variant: "ghost", size: "sm" })}
+                    disabled={choose.isPending}
+                  >
+                    Use the Everruns app <ChevronDown className="size-4" aria-hidden="true" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuPositioner align="start">
+                    <DropdownMenuContent className="w-60">
+                      <DropdownMenuGroup>
+                        <DropdownMenuLabel>Linked GitHub accounts</DropdownMenuLabel>
+                        {choices.map((choice) => (
+                          <DropdownMenuItem
+                            key={choice.connection_id}
+                            onClick={() => onChoose(choice.connection_id)}
+                          >
+                            <span className="truncate">{choice.account}</span>
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenuPositioner>
+                </DropdownMenu>
+              )}
               {status.app_created && (
                 // An App that was never installed can be forgotten, e.g. to
                 // create it in an organization instead of a personal account.
@@ -243,7 +307,9 @@ export function AgentGitHubCard({
           <DialogHeader>
             <DialogTitle>Disconnect GitHub?</DialogTitle>
             <DialogDescription>
-              This uninstalls the agent&apos;s GitHub App. GitHub triggers will stop firing.
+              {shared
+                ? "The agent stops acting as the Everruns App. The installation stays linked to the organization. GitHub triggers will stop firing."
+                : "This uninstalls the agent's GitHub App. GitHub triggers will stop firing."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

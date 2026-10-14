@@ -218,9 +218,10 @@ pub async fn create_connection(
             org_id: org.org_id,
             name,
             provider: provider_id,
-            access_token_encrypted: encrypted,
+            access_token_encrypted: Some(encrypted),
             provider_username: validation.provider_username,
             provider_metadata: validation.provider_metadata,
+            ..Default::default()
         })
         .await
         .map_err(|error| {
