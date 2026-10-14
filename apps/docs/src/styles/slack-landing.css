@@ -47,6 +47,12 @@
   background: var(--landing-ink);
   border: 1px solid var(--landing-ink);
 }
+/* MDX can wrap multiline link text in a paragraph; keep the CTA's contrast. */
+.slack-landing .slack-link p {
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+}
 .slack-link.secondary {
   background: transparent;
   color: hsl(var(--foreground)) !important;
