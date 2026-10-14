@@ -56,7 +56,7 @@ describe("navigationGroupForPath", () => {
       "Sandboxes",
       "Virtual Users",
     ]);
-    expect(itemsFor("Operational")).toEqual(["Sessions"]);
+    expect(itemsFor("Operational")).toEqual(["Monitoring", "Sessions"]);
     // Sandboxes is one page with tabs, not a sidebar group of its own.
     expect(defaultNavigationSections.some((section) => section.label === "Sandboxes")).toBe(false);
     expect(navigationGroupForPath("/sandboxes")).toBe("Building");

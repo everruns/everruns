@@ -368,6 +368,7 @@ pub(super) async fn start_maintenance(
     // Blob GC, event and Sandbox history retention, both source syncs: one run per cluster
     // per interval, whatever the replica count.
     let cluster_jobs = vec![
+        crate::background::actor_history_retention::retention_job(deps.background_pool.clone()),
         crate::background::blob_gc::blob_gc_job(
             deps.background_db.clone(),
             crate::background::blob_gc::BlobGcConfig::from_env(),

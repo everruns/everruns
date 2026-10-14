@@ -1,6 +1,7 @@
 "use client";
 
 import { useDurableSSE } from "@/hooks";
+import { usePathname } from "next/navigation";
 
 /**
  * Layout for durable execution pages.
@@ -9,7 +10,16 @@ import { useDurableSSE } from "@/hooks";
 export default function DurableLayout({ children }: { children: React.ReactNode }) {
   // Connect to global durable SSE stream
   // This single connection updates React Query cache for all durable data
-  useDurableSSE();
+  const pathname = usePathname();
+  return (
+    <>
+      {pathname !== "/durable" && <DurableStream />}
+      {children}
+    </>
+  );
+}
 
-  return <>{children}</>;
+function DurableStream() {
+  useDurableSSE();
+  return null;
 }

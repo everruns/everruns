@@ -8511,6 +8511,148 @@
         }
       }
     },
+    "/v1/durable/monitoring": {
+      "get": {
+        "tags": [
+          "durable"
+        ],
+        "summary": "Get platform-wide execution monitoring",
+        "description": "Get platform-wide execution monitoring. Requires platform-user access.",
+        "operationId": "get_fleet_monitoring",
+        "responses": {
+          "200": {
+            "description": "Platform-wide execution monitoring",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringSnapshot"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Platform access required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "internal",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/durable/monitoring/actors": {
+      "get": {
+        "tags": [
+          "durable"
+        ],
+        "summary": "List a bounded platform-wide page of session actors",
+        "operationId": "list_fleet_monitoring_actors",
+        "parameters": [
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "worker_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "phase",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Platform actor page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringActorPage"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "internal",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/durable/monitoring/actors/{session_id}": {
+      "get": {
+        "tags": [
+          "durable"
+        ],
+        "summary": "Inspect a session actor across organizations",
+        "description": "Inspect a session actor across organizations. Requires platform-user access.",
+        "operationId": "get_fleet_monitoring_actor",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Platform actor diagnostics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringActorDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Actor not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "internal",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/durable/schedules": {
       "get": {
         "tags": [
@@ -17040,6 +17182,183 @@
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/monitoring": {
+      "get": {
+        "tags": [
+          "monitoring"
+        ],
+        "summary": "Get organization execution monitoring",
+        "operationId": "get_monitoring",
+        "responses": {
+          "200": {
+            "description": "Organization execution monitoring",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringSnapshot"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not enrolled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires organization adoption of the monitoring feature flag",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/monitoring/actors": {
+      "get": {
+        "tags": [
+          "monitoring"
+        ],
+        "summary": "List organization session actors",
+        "operationId": "list_monitoring_actors",
+        "parameters": [
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "worker_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "phase",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Organization actor page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringActorPage"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires organization adoption of the monitoring feature flag",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/monitoring/actors/{session_id}": {
+      "get": {
+        "tags": [
+          "monitoring"
+        ],
+        "summary": "Inspect an organization actor and its lease history",
+        "operationId": "get_monitoring_actor",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Organization actor diagnostics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringActorDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Actor not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires organization adoption of the monitoring feature flag",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/monitoring/config": {
+      "get": {
+        "tags": [
+          "monitoring"
+        ],
+        "summary": "Resolve organization monitoring read authority",
+        "operationId": "monitoring_config",
+        "responses": {
+          "200": {
+            "description": "Monitoring authorization",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceConfigResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires organization adoption of the monitoring feature flag",
+          "group": "operations-billing",
           "support": "preview"
         }
       }
@@ -51755,6 +52074,519 @@
           }
         }
       },
+      "MonitoringActor": {
+        "type": "object",
+        "required": [
+          "session_id",
+          "org_id",
+          "session_status",
+          "phase",
+          "phase_since",
+          "lease_state"
+        ],
+        "properties": {
+          "attempts_since_release": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "cancel_requested_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "consumed_seq": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "fence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "holder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inbox_seq": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "lease_expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lease_renewed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lease_state": {
+            "type": "string"
+          },
+          "lease_ttl_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "next_input_seq": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "org_id": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "phase_since": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "runnable_age_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "runnable_since": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "session_status": {
+            "type": "string"
+          }
+        }
+      },
+      "MonitoringActorDetail": {
+        "type": "object",
+        "required": [
+          "generated_at",
+          "actor",
+          "ownership_history",
+          "steps"
+        ],
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/MonitoringActor"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ownership_history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitoringLeaseEvent"
+            }
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitoringStep"
+            }
+          }
+        }
+      },
+      "MonitoringActorPage": {
+        "type": "object",
+        "required": [
+          "generated_at",
+          "actors"
+        ],
+        "properties": {
+          "actors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitoringActor"
+            }
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "next_offset": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "MonitoringCohort": {
+        "type": "object",
+        "required": [
+          "phase",
+          "org_id",
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "org_id": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "worker_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "MonitoringLeaseEvent": {
+        "type": "object",
+        "required": [
+          "occurred_at",
+          "kind",
+          "holder",
+          "fence"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "fence": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "holder": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "previous_expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "previous_holder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "MonitoringOwnership": {
+        "type": "object",
+        "required": [
+          "worker_id",
+          "org_id",
+          "actor_leases"
+        ],
+        "properties": {
+          "actor_leases": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "org_id": {
+            "type": "string"
+          },
+          "worker_id": {
+            "type": "string"
+          }
+        }
+      },
+      "MonitoringPhase": {
+        "type": "object",
+        "required": [
+          "phase",
+          "count",
+          "oldest_ms"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "oldest_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "phase": {
+            "type": "string"
+          }
+        }
+      },
+      "MonitoringSnapshot": {
+        "type": "object",
+        "required": [
+          "generated_at",
+          "scope",
+          "window_seconds",
+          "actors",
+          "organizations",
+          "actor_leases",
+          "expired_leases",
+          "phases",
+          "cohorts",
+          "ownership",
+          "workers",
+          "events",
+          "lease_events",
+          "cohorts_truncated",
+          "workers_truncated"
+        ],
+        "properties": {
+          "actor_leases": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actors": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "cohorts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitoringCohort"
+            }
+          },
+          "cohorts_truncated": {
+            "type": "boolean"
+          },
+          "events": {
+            "type": "object",
+            "description": "Committed lifecycle event counts in the last window, not lifetime counters.",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "expired_leases": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lease_events": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "oldest_runnable_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "organizations": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "ownership": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitoringOwnership"
+            }
+          },
+          "phases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitoringPhase"
+            }
+          },
+          "scope": {
+            "type": "string"
+          },
+          "window_seconds": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "workers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitoringWorker"
+            }
+          },
+          "workers_truncated": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MonitoringStep": {
+        "type": "object",
+        "required": [
+          "turn_no",
+          "step_no",
+          "kind",
+          "status",
+          "started_at"
+        ],
+        "properties": {
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string"
+          },
+          "step_no": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "turn_no": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "MonitoringWorker": {
+        "type": "object",
+        "required": [
+          "id",
+          "actor_leases",
+          "phases"
+        ],
+        "properties": {
+          "accepting_work": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "actor_leases": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "capacity": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "current_load": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string"
+          },
+          "last_heartbeat_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "phases": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Platform-only heartbeat telemetry; null in organization scope."
+          },
+          "worker_group": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "MoveFileRequest": {
         "type": "object",
         "description": "Request to move/rename a file",
@@ -70940,6 +71772,10 @@
       "x-displayName": "Durable"
     },
     {
+      "name": "monitoring",
+      "x-displayName": "Monitoring"
+    },
+    {
       "name": "durable-schedules",
       "description": "Durable scheduled tasks management endpoints",
       "x-displayName": "Durable schedules"
@@ -71074,6 +71910,7 @@
       "name": "Operations & billing",
       "tags": [
         "durable",
+        "monitoring",
         "durable-schedules",
         "sandbox-templates",
         "sandboxes",

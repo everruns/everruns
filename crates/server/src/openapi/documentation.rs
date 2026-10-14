@@ -102,6 +102,7 @@ const GROUPS: &[(&str, &str, &str, &[&str])] = &[
         "Operate durable execution, schedules, sandbox infrastructure, budgets, payments and audit logs.",
         &[
             "durable",
+            "monitoring",
             "durable-schedules",
             "sandbox-templates",
             "sandboxes",
@@ -268,6 +269,7 @@ fn apply(spec: &mut Value) {
                 "support": if experimental { "experimental" } else { "preview" },
                 "audience": if internal { "internal" } else { "public" },
                 "availability": if experimental { "Requires machine_payments; disabled by default" }
+                    else if tag == "monitoring" { "Requires organization adoption of the monitoring feature flag" }
                     else if tag == "evals" { "Requires the evals feature flag" }
                     else { "Everruns Cloud and self-hosted Platform" },
             });

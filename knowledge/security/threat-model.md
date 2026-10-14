@@ -860,6 +860,17 @@ Workers authenticate to control plane gRPC (port 9001) via two layered mechanism
 **TM-DURABLE-010, Durable API Endpoints (MITIGATED):**
 All `/v1/durable/*` HTTP endpoints require explicit platform-user auth. The auth backend returns `AuthUser.is_platform_user`, HTTP caller construction preserves it through `ResolvedOrg`, and `/v1/durable/config` exposes the same policy result for UI gating.
 
+Monitoring preserves this boundary: fleet summaries and actor diagnostics under
+`/v1/durable/monitoring` require `PlatformUser`. Organization monitoring under
+`/v1/monitoring` additionally requires effective adoption and session-read
+authority on every request, before using a cached snapshot. Repository queries
+scope population, event counts, detail, and ownership history to the resolved
+org and verify owning-session scope even when actor metadata is stale; global worker capacity and heartbeat telemetry are omitted. Responses read
+small event envelopes and timing indexes, never conversation or tool payloads.
+The PAT classification explicitly preserves scoped-token denial (`Never`);
+browser and full-token requests retain the same org/platform checks.
+See [Execution Monitoring](../operations/monitoring.md) and its API tests.
+
 ## 10. Scheduled Tasks (TM-SCHED)
 
 | ID | Threat | Severity | Mitigation | Status |

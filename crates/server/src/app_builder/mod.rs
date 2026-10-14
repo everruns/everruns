@@ -1095,20 +1095,7 @@ impl ServerAppBuilder {
         );
         let http_signing_keys_state = api::http_signing_keys::AppState::from_env();
 
-        if !self.config.api_prefix.is_empty() {
-            tracing::info!(
-                prefix = %self.config.api_prefix,
-                "API prefix configured"
-            );
-        }
-        if self.config.cors_origins.is_empty() {
-            tracing::info!("CORS not configured (same-origin requests only)");
-        } else {
-            tracing::info!(
-                origins = ?self.config.cors_origins,
-                "CORS origins configured"
-            );
-        }
+        http_layers::log_configuration(&self.config);
         // Phase 6: Build API router.
         let mut api_routes = Router::new()
             .merge(api::agent_examples::routes(agent_examples_state))
@@ -1153,6 +1140,10 @@ impl ServerAppBuilder {
             .merge(api::users::routes(api_state.clone()))
             .merge(api::resolver::routes(api_state.clone()))
             .merge(api::durable::routes(durable_state))
+            .merge(api::monitoring::routes(api::monitoring::AppState::new(
+                db.clone(),
+                auth_state.clone(),
+            )))
             .merge(schedules_state)
             .merge(api::files::routes(api_state.clone()))
             .merge(api::images::routes(api_state.clone()))
