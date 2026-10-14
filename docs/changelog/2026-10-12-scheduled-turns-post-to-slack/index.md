@@ -23,3 +23,6 @@ posts a new top-level message rather than into the last thread, and a
 input, never from the schedule's text, and the turn still shows as scheduled.
 A session that has never received a Slack message behaves as before. See
 [How the Agent Replies](/capabilities/slack/#how-the-agent-replies).
+
+Watch the [Kids Duties walkthrough](https://www.youtube.com/watch?v=mbbYFif9juY):
+a saved run and actual 07:00 Slack briefing, with English narration and captions.

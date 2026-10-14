@@ -27,3 +27,9 @@ the bot token through the organization's egress policy, up to 10 files of
 
 Changing the agent's avatar also updates the Slack app icon. See
 [Connect an Agent to Slack](/capabilities/slack/#connect-an-agent-to-slack).
+
+Watch [Kids Duties in Everruns and Slack](https://www.youtube.com/watch?v=mbbYFif9juY)
+for a real configuration, saved execution and Slack conversation. The original
+messages are Ukrainian; narration and captions are English.
+
+<iframe src="https://www.youtube-nocookie.com/embed/mbbYFif9juY?rel=0" title="Slack integration: Kids Duties agent in Everruns" loading="lazy" style="width:100%;aspect-ratio:16/9;border:0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
