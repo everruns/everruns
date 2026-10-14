@@ -223,6 +223,17 @@ store files as uploads of the caller's org
 | serve | Not done: serve sends text only end to end, so files there need its own session storage first. |
 | Webhook, Poppy, voice | Unchanged; they carry no files today. |
 
+### Browser delivery boundary
+
+Attachment types describe what the agent can read; they do not grant browser
+execution on the application's origin. The general
+[files download endpoint](../../crates/server/src/api/files.rs) delivers every
+stored file as an inert download, including existing rows and files from any
+intake surface. Original bytes and media metadata remain available through
+storage and file listings. Authentication, organization scoping and global
+security headers still apply. Active previews use the existing isolated
+[HTML preview boundary](../../crates/server/src/api/session_files.rs).
+
 ### 3. Every attachment carries a label
 
 When a message is turned into a model request, each attachment part becomes a
