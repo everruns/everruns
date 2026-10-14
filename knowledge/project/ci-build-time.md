@@ -117,7 +117,13 @@ durable 9.1m to 2-3m.
   feature union hiding their transport or integration dependencies; the legacy host
   fixtures retain serial execution.
 - **A `--no-run` prebuild does not help.** It was tried and removed: the targets it
-  builds are not reused by the run steps, so it only adds a wave.
+  builds are not reused by later `cargo test` steps, so it only adds a wave.
+  Focused server PR tests instead compile all selected targets in one invocation
+  and execute Cargo's emitted libtest binaries directly, retaining each target's
+  filters, package working directory, and manifest environment. This avoids a
+  second Cargo build without dropping the authorization contracts. The runner
+  reports compilation and per-target execution separately; other affected-crate
+  groups retain Cargo execution and their doctests.
 - **One producer per `rust-cache` `shared-key`.** Cache entries are immutable, so the
   first job to finish writes the key. When ten jobs shared one key, a light job could
   store a `target/` shaped for a different workload and every heavy consumer rebuilt on
