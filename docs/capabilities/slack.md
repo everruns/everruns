@@ -41,6 +41,8 @@ Everruns connects the workspace as soon as you paste the token, rotates it immed
 
 The token can create and change any Slack app in that workspace, and your Slack workspace may require an administrator to generate it. An organization can connect more than one workspace.
 
+If your deployment has a Slack manager app (see [Slack Manager App](/sre/environment-variables/#slack-manager-app)), **Settings** > **Slack workspaces** shows **Connect with Slack** instead: approve Everruns in Slack, pick the workspace, and nothing is copied or pasted. **Use a configuration token instead** keeps the steps above available. Each Agent's app still asks for its own Slack approval when you add it.
+
 **Disconnecting a workspace** does not affect Agents already in it: each has its own Slack app and keeps working. Until you connect the workspace again, you cannot add Agents to it or update their Slack apps.
 
 ## Connect an Agent to Slack

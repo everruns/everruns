@@ -46,6 +46,8 @@ exceptions = [
     # PostgreSQL License: OSI-approved, permissive (BSD/MIT-like). Covers the
     # dev/test-only embedded cluster in crates/pg-embedded.
     { allow = ["PostgreSQL"], crate = "postgresql_archive" },
+    { allow = ["PostgreSQL"], crate = "postgresql_commands" },
+    { allow = ["PostgreSQL"], crate = "postgresql_embedded" },
 ]
 
 # Clarify specific dependencies if needed

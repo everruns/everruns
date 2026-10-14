@@ -14,6 +14,12 @@
 //! * `GET /v1/channels/{channel_id}/slack/oauth/callback` cannot be: Slack redirects
 //!   the operator's browser to it and carries none of our auth. It is
 //!   protected by the single-use `install_state` nonce instead.
+//!
+//! The organization's workspace connection itself comes from a pasted
+//! configuration token, or, on a deployment with a Slack manager app, from one
+//! OAuth consent (`/v1/slack/workspaces/oauth`, EVE-1102). Its callback is
+//! unauthenticated for the same reason and carries an encrypted, expiring
+//! state naming the organization instead.
 
 use crate::domains::agent_channels::record::ChannelType;
 use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
@@ -75,12 +81,17 @@ pub struct SlackWorkspace {
     pub team_name: Option<String>,
     /// `connected` or `reconnect_required`.
     pub status: &'static str,
+    /// `config_token` or `manager_app`: how it was connected, and so how the
+    /// UI offers to reconnect it.
+    pub connected_with: &'static str,
     pub connected_at: chrono::DateTime<chrono::Utc>,
 }
 
 impl From<OrgSlackConnectionRow> for SlackWorkspace {
     fn from(row: OrgSlackConnectionRow) -> Self {
+        let connected_with = row.grant_kind().as_str();
         Self {
+            connected_with,
             id: row.id,
             team_id: row.team_id,
             team_name: row.team_name,
@@ -124,6 +135,113 @@ async fn connect_workspace(
         .await
         .map_err(connection_error_response)?;
     Ok(Json(row.into()))
+}
+
+#[derive(Serialize)]
+pub struct BeginManagerConnectResponse {
+    /// Send the admin here: Slack's consent screen for the manager app.
+    pub authorize_url: String,
+}
+
+/// POST /v1/slack/workspaces/oauth — admin only. Starts connecting a workspace
+/// by Slack consent through this deployment's manager app.
+async fn begin_manager_connect(
+    org: ResolvedOrg,
+    State(state): State<SlackInstallState>,
+) -> Result<Json<BeginManagerConnectResponse>, (StatusCode, Json<ErrorResponse>)> {
+    require_org_admin(&org)?;
+    let manager = state
+        .connection_manager
+        .filter(|manager| manager.manager_app_configured())
+        .ok_or_else(|| {
+            ErrorResponse::new("Connecting Slack by consent is not configured on this deployment")
+                .into_response(StatusCode::NOT_IMPLEMENTED)
+        })?;
+    let authorize_url = manager
+        .manager_authorize_url(org.org_id, &manager_redirect_uri(&state.slack.api_base_url))
+        .map_err(provisioning_error_response)?;
+    Ok(Json(BeginManagerConnectResponse { authorize_url }))
+}
+
+/// Where Slack returns the admin after the manager app consent. Register it as
+/// the manager app's redirect URL.
+fn manager_redirect_uri(api_base_url: &str) -> String {
+    format!(
+        "{}/v1/slack/workspaces/oauth/callback",
+        api_base_url.trim_end_matches('/')
+    )
+}
+
+/// GET /v1/slack/workspaces/oauth/callback
+///
+/// THREAT[TM-SLACK-014]: reached by Slack's browser redirect, so it carries
+/// none of our auth. The encrypted, expiring state is the only thing that
+/// names an organization; anything that does not open is refused before the
+/// code is exchanged, and that refusal reveals nothing. Once the state is
+/// verified, Slack's own error code is passed back so the admin can act on it.
+async fn finish_manager_connect(
+    State(state): State<SlackInstallState>,
+    Query(query): Query<CallbackQuery>,
+) -> Response {
+    let settings = format!("{}/settings/slack", state.ui_base_url.trim_end_matches('/'));
+    let failed = |code: Option<&str>| {
+        let mut url = format!("{settings}?slack_connect=failed");
+        if let Some(code) = code.and_then(slack_error_code) {
+            url.push_str(&format!("&slack_error={code}"));
+        }
+        Redirect::to(&url).into_response()
+    };
+    let Some(manager) = state
+        .connection_manager
+        .as_ref()
+        .filter(|manager| manager.manager_app_configured())
+    else {
+        return failed(None);
+    };
+    let Some(org_id) = query
+        .state
+        .as_deref()
+        .and_then(|sealed| manager.open_manager_state(sealed))
+    else {
+        tracing::warn!("Slack manager connect callback rejected: invalid state");
+        return failed(None);
+    };
+    if let Some(error) = query.error.as_deref() {
+        // `access_denied` when the admin cancels the consent screen.
+        return failed(Some(error));
+    }
+    let Some(code) = query.code.as_deref().filter(|code| !code.is_empty()) else {
+        return failed(None);
+    };
+    match manager
+        .connect_with_manager_code(
+            org_id,
+            code,
+            &manager_redirect_uri(&state.slack.api_base_url),
+        )
+        .await
+    {
+        Ok(_) => Redirect::to(&format!("{settings}?slack_connect=ok")).into_response(),
+        Err(SlackProvisioningError::Rejected(code)) => {
+            tracing::warn!(org_id, slack_error = %code, "Slack manager connect refused");
+            failed(Some(&code))
+        }
+        Err(error) => {
+            tracing::warn!(org_id, %error, "Slack manager connect failed");
+            failed(None)
+        }
+    }
+}
+
+/// A Slack error code safe to put in a URL: Slack's codes are short
+/// `snake_case` words, and anything else is dropped rather than reflected.
+fn slack_error_code(code: &str) -> Option<&str> {
+    (!code.is_empty()
+        && code.len() <= 64
+        && code
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_'))
+    .then_some(code)
 }
 
 async fn test_workspace(
@@ -272,6 +390,11 @@ pub fn routes(state: SlackInstallState) -> Router {
             "/v1/slack/workspaces",
             get(list_workspaces).post(connect_workspace),
         )
+        .route("/v1/slack/workspaces/oauth", post(begin_manager_connect))
+        .route(
+            "/v1/slack/workspaces/oauth/callback",
+            get(finish_manager_connect),
+        )
         .route("/v1/slack/workspaces/{id}", delete(disconnect_workspace))
         .route("/v1/slack/workspaces/{id}/test", post(test_workspace))
         .route(
@@ -296,6 +419,9 @@ pub struct SlackInstallCapability {
     pub connected: bool,
     pub reconnect_required: bool,
     pub can_manage: bool,
+    /// Workspaces connect by Slack consent through this deployment's manager
+    /// app, rather than only by a pasted configuration token.
+    pub manager_app: bool,
 }
 
 async fn install_capability(
@@ -318,6 +444,10 @@ async fn install_capability(
         reconnect_required: status.reconnect_required,
         can_manage: state.connection_manager.is_some()
             && org.role.has_permission(everruns_core::OrgRole::Admin),
+        manager_app: state
+            .connection_manager
+            .as_ref()
+            .is_some_and(|manager| manager.manager_app_configured()),
     }))
 }
 #[derive(Serialize)]
@@ -1024,9 +1154,28 @@ mod tests {
             access_token_expires_at: None,
             state: "connected".to_string(),
             token_generation: 1,
+            grant_kind: "config_token".to_string(),
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         }
+    }
+
+    #[test]
+    fn only_slack_shaped_error_codes_are_reflected_into_the_settings_url() {
+        assert_eq!(slack_error_code("access_denied"), Some("access_denied"));
+        assert_eq!(slack_error_code("missing_scope"), Some("missing_scope"));
+        assert_eq!(slack_error_code(""), None);
+        assert_eq!(slack_error_code("x&slack_connect=ok"), None);
+        assert_eq!(slack_error_code("<script>"), None);
+        assert_eq!(slack_error_code(&"a".repeat(65)), None);
+    }
+
+    #[test]
+    fn manager_consent_returns_to_a_fixed_callback_under_the_api_base() {
+        assert_eq!(
+            manager_redirect_uri("https://api.example.com/api/"),
+            "https://api.example.com/api/v1/slack/workspaces/oauth/callback"
+        );
     }
 
     #[test]

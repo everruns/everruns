@@ -145,6 +145,11 @@ export interface SlackInstallCapability {
   connected: boolean;
   reconnect_required: boolean;
   can_manage: boolean;
+  /**
+   * Workspaces connect by one Slack consent through this deployment's manager app, rather than
+   * only by a pasted configuration token (EVE-1102).
+   */
+  manager_app?: boolean;
 }
 
 export async function getSlackInstallCapability(): Promise<SlackInstallCapability> {
@@ -159,6 +164,8 @@ export interface SlackWorkspace {
   team_id: string | null;
   team_name: string | null;
   status: "connected" | "reconnect_required";
+  /** How it was connected: a pasted configuration token, or the manager app's Slack consent. */
+  connected_with?: "config_token" | "manager_app";
   connected_at: string;
 }
 
@@ -172,6 +179,15 @@ export async function connectSlackWorkspace(refreshToken: string): Promise<Slack
   const response = await api.post<SlackWorkspace>("/v1/slack/workspaces", {
     refresh_token: refreshToken,
   });
+  return response.data;
+}
+
+/**
+ * Start connecting a workspace by Slack consent through the deployment's manager app. Admin only.
+ * Slack returns the browser to Settings > Slack workspaces with `slack_connect=ok|failed`.
+ */
+export async function beginSlackManagerConnect(): Promise<BeginSlackInstallResult> {
+  const response = await api.post<BeginSlackInstallResult>("/v1/slack/workspaces/oauth");
   return response.data;
 }
 

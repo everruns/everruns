@@ -17,7 +17,10 @@ import { beginSlackInstall } from "@/lib/api/agent-channels";
 import type { SlackInstallCapability } from "@/lib/api/agent-channels";
 import { ApiError } from "@/lib/api/client";
 import { useInvalidateSlackWorkspaces, useSlackWorkspaces } from "@/hooks/use-agent-channels";
-import { ConnectSlackWorkspace, slackWorkspaceLabel } from "@/components/slack/slack-workspaces";
+import {
+  ConnectSlackWorkspaceChoice,
+  slackWorkspaceLabel,
+} from "@/components/slack/slack-workspaces";
 
 /**
  * Drives the one-click Slack install for an existing channel (EVE-1069).
@@ -107,12 +110,16 @@ export function SlackWorkspaceChoice({
           </p>
           <p className="text-xs text-muted-foreground">
             {stale.length > 0
-              ? "Slack stopped accepting the saved token. Reconnect once for the organization, then add agents with one click."
+              ? "Slack stopped accepting the saved credential. Reconnect once for the organization, then add agents with one click."
               : "Once per organization. Afterwards, each agent gets its own Slack app with one click."}
           </p>
         </div>
         {capability.can_manage ? (
-          <ConnectSlackWorkspace reconnect={stale.length > 0} onConnected={connected} />
+          <ConnectSlackWorkspaceChoice
+            managerApp={capability.manager_app === true}
+            reconnect={stale.length > 0}
+            onConnected={connected}
+          />
         ) : (
           <p className="text-xs text-muted-foreground">
             Ask an organization administrator to connect a workspace in{" "}
