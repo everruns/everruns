@@ -53,7 +53,8 @@ DEV_MODE=1 ./target/debug/everruns-server
   `~/.cache/everruns/postgres`, or `EVERRUNS_PG_CACHE`), starts a cluster on a free
   loopback port, and runs migrations into a fresh database. `DATABASE_URL` is ignored.
 - Data does not survive a restart. Use `just start-all` for a persistent local database.
-- When run as root, the cluster runs as `nobody`, because PostgreSQL refuses to run as root.
+- Run dev mode as a non-root user. Root callers receive a startup error; use a
+  non-root account or external PostgreSQL with `DEV_MODE=false`.
 - All data is lost when the server stops
 - gRPC server and worker communication are disabled
 - Stale task reclamation is disabled

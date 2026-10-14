@@ -2,6 +2,11 @@
 
 ## 2026-10-13
 
+* **Embedded PostgreSQL uses the lifecycle library.** Dev mode and tests use
+  `postgresql_embedded`; the local adapter retains process-wide sharing, owner-exit
+  cleanup, and template copies. Embedded callers run as non-root users. See
+  [Embedded PostgreSQL](project/embedded-postgresql.md).
+
 * **Web search: the deployment's own search.** A host can offer one search
   provider it pays for to every organization (`HostedWebSearch`), under the
   plan id `hosted`: in Automatic after the organization's accounts and before
