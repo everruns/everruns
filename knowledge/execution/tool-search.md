@@ -304,3 +304,10 @@ Track tool_search effectiveness via existing metadata:
 - [Using GPT-5.5](https://developers.openai.com/api/docs/guides/latest-model)
 - [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses)
 - Internal: `knowledge/execution/capabilities.md`, `knowledge/foundations/llm-drivers.md`
+
+## Recovery after a failed call
+
+Failed tool calls, including pre-execution rejections, reveal the failed tool's
+authoritative schema for the next model step. The durable transcript
+owns this state, including in the experimental result-only reveal mode; other sessions remain deferred, and validation still
+blocks malformed arguments before execution.

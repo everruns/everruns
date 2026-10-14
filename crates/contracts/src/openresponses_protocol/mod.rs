@@ -39,7 +39,7 @@ use crate::llm_retry::{
 use crate::openai_protocol::{is_openai_model_not_found, is_openai_request_too_large};
 use crate::openresponses_types::{self as types};
 use crate::tool_types::ToolDefinition;
-use crate::user_facing_error::is_provider_quota_message;
+use crate::user_facing_error::{is_provider_quota_message, is_usage_limit_message};
 
 // Split out of one 6000-line file. Every item keeps its visibility, so the
 // module's public surface is unchanged.
@@ -415,7 +415,9 @@ impl OpenResponsesProtocolChatDriver {
 
                         // Exhausted billing quota is surfaced as a 429 but is not
                         // transient — fail fast instead of burning retries.
-                        if is_provider_quota_message(&error_text) {
+                        if is_provider_quota_message(&error_text)
+                            || is_usage_limit_message(&error_text)
+                        {
                             return RetryDecision::Terminal(AgentLoopError::llm_kind(
                                 LlmErrorKind::QuotaExhausted,
                                 format!("OpenAI Responses API error ({}): {}", status, error_text),
@@ -997,6 +999,21 @@ impl OpenResponsesProtocolChatDriver {
                             (self.request_extension.as_ref(), rate_limit_info.as_mut())
                         {
                             extension.update_rate_limit_info(info, &response_headers, &error_text);
+                        }
+
+                        if is_provider_quota_message(&error_text)
+                            || is_usage_limit_message(&error_text)
+                        {
+                            return RetryDecision::Terminal(
+                                AgentLoopError::llm_kind(
+                                    LlmErrorKind::QuotaExhausted,
+                                    format!(
+                                        "OpenAI Responses compact API error ({}): {}",
+                                        status, error_text
+                                    ),
+                                )
+                                .with_status(status.as_u16()),
+                            );
                         }
 
                         let wait = rate_limit_info

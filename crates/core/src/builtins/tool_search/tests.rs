@@ -797,3 +797,34 @@ async fn test_execute_filters_registry_to_visible_tools() {
     assert!(available.iter().any(|name| name == "read_file"));
     assert!(available.iter().all(|name| name != "write_file"));
 }
+
+#[test]
+fn rejected_tool_schema_is_recovered_from_the_durable_transcript() {
+    let mut call = RuntimeMessage::assistant("");
+    call.content = vec![ContentPart::ToolCall(
+        everruns_contracts::runtime::message::ToolCallContentPart::new(
+            "failed-call",
+            "tool_0",
+            json!({}),
+        ),
+    )];
+    let transcript = vec![
+        call,
+        RuntimeMessage::tool_result("failed-call", None, Some("invalid_tool_arguments".into())),
+    ];
+    let cap = ToolSearchCapability::with_threshold(1);
+    for config in [json!({}), json!({"reveal": "in_result"})] {
+        let hooks = cap.tool_definition_hooks_with_context(&ctx_for(&transcript), &config);
+        let out = hooks[0].transform(many_tools(2));
+        assert!(
+            !is_stubbed(&out[0]),
+            "failed known calls need their authoritative schema"
+        );
+        assert!(is_stubbed(&out[1]), "other tools remain deferred");
+        let empty = cap.tool_definition_hooks_with_context(&ctx_for(&[]), &config);
+        assert!(
+            empty[0].transform(many_tools(2)).iter().all(is_stubbed),
+            "other sessions do not inherit the failure"
+        );
+    }
+}

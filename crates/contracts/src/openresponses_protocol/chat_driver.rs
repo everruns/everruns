@@ -914,6 +914,22 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 futures::stream::iter(batch)
             }));
 
+        // Strict decoding uses null to represent an omitted optional field.
+        // Restore our own wire conversion before the runtime records a call or
+        // binds approval to its arguments. Deferred/non-strict stubs stay intact.
+        let argument_tools = config.tools.clone();
+        let converted_stream: LlmResponseStream = Box::pin(converted_stream.map(move |event| {
+            event.map(|mut event| {
+                if let LlmStreamEvent::ToolCalls(calls) = &mut event {
+                    crate::tool_schema_compat::restore_strict_openai_tool_calls(
+                        &argument_tools,
+                        calls,
+                    );
+                }
+                event
+            })
+        }));
+
         if required_completion {
             return Ok(Box::pin(converted_stream.chain(futures::stream::once(
                 async move {

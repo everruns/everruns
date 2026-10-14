@@ -86,6 +86,19 @@
   label with that path on every attachment, a deterministic attachment list
   after compaction, one-at-a-time resolution. See
   [Session Attachments](runtime-resources/session-attachments.md).
+* **Local profile task recovery.** Atomic task updates and guarded ownership
+  checks settle orphaned local attempts without replaying commands. Terminal wakes
+  survive interrupted delivery; owner-process loss remains an unverified execution
+  outcome rather than proof of cancellation. See
+  [Session Tasks](runtime-resources/session-tasks.md) and
+  [Background Execution](execution/background-execution.md).
+* **Local session reliability.** MCP authentication rejections pause discovery;
+  failed calls recover schemas from the transcript; strict provider omissions
+  round-trip before approval; daily usage limits preserve their reset time.
+  See [Runtime MCP](integrations/runtime-mcp.md),
+  [Tool Search](execution/tool-search.md), [LLM Drivers](foundations/llm-drivers.md)
+  and [Error Disclosure](execution/error-disclosure.md).
+
 * **PAT scopes step 4: read-only tokens can be created.** Creation accepts
   `[]`, `["*"]` or `["read"]` and nothing else; the token page has a Full
   access / Read-only picker and shows each token's scope; `GET /v1/auth/me`

@@ -358,3 +358,15 @@ Remaining follow-up:
 
 - Per-session TTL cache for runtime tool discovery (currently live per turn,
   matching the control plane's scoped-server behavior).
+
+## Failed discovery caching
+
+The host discovery cache distinguishes typed HTTP authentication rejections
+from transient transport failures. A 401 or 403 clears that attachment's stale
+tools and pauses discovery until invalidation, a new runtime, or a changed
+configuration. Configuration identities are canonical hashes, including static
+credential headers without retaining them in cache keys. Transient failures
+preserve previously discovered tools and permit retry after a short cooldown.
+Both successful and negative entries share the bounded cache and single-flight
+locks. A reload retires in-flight refresh identities so old credentials cannot
+restore a failed entry after invalidation.

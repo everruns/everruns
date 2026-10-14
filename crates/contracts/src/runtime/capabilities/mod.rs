@@ -187,6 +187,9 @@ pub struct ToolDisclosure {
     /// Tools whose full schema the model loaded. An entry ending in `__` is a
     /// tool-name prefix covering every tool of a revealed MCP server.
     pub revealed: std::collections::BTreeSet<String>,
+    /// Failed known tool calls need authoritative schemas for recovery,
+    /// including when ordinary search reveals stay only in the result.
+    pub failed: std::collections::BTreeSet<String>,
 }
 
 impl SystemPromptContext {

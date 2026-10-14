@@ -11,6 +11,19 @@ that need no code changes are not listed. For every release, see the
 
 ## 0.49
 
+### Custom task registries honor recovery guards
+
+`SessionTaskUpdate` adds `expected_recovery`. Code constructing updates with
+`..Default::default()` needs no change; complete struct literals add
+`expected_recovery: None`.
+
+A custom `SessionTaskRegistry::update` must compare a supplied guard against the
+persisted task under the same lock or transaction as the write. On a mismatch,
+return `Ok(None)` before applying the update. Returning the unchanged task as a
+successful update would let a stale recoverer publish a completion notification.
+The local SQLite and server PostgreSQL registries enforce this contract.
+
+
 ### MCP calls take an idempotency key
 
 `McpClient::call`, `McpClient::call_as_tool_result` and
