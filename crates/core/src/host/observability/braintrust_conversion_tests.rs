@@ -505,6 +505,7 @@ fn test_tool_call_events_have_act_as_parent() {
         result: None,
         error: None,
         duration_ms: Some(200),
+        worker_thread_cpu_ns: None,
         capability_id: None,
         capability_name: None,
         narration: None,

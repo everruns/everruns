@@ -1462,6 +1462,7 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     let executor: Arc<dyn crate::tool_execution::ToolExecutor> = Arc::new(tool_registry);
 
     let mut atom = ActAtom::new(executor, adapter.event_emitter())
+        .with_thread_cpu_clock(super::thread_cpu::clock())
         .with_context_services(context_services)
         .with_post_tool_hooks(execution_capabilities.post_tool_hooks)
         .with_pre_tool_hooks(execution_capabilities.pre_tool_hooks)
