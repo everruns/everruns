@@ -115,6 +115,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "turn done: success={} iterations={} response={:?}",
         result.success, result.iterations, result.response
     );
+    assert!(result.success, "turn should succeed: {:?}", result.error);
 
     // 5. The model reached the file through the capability's tools.
     let messages = runtime.messages(session_id).await?;
