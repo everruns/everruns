@@ -174,6 +174,41 @@ durable 9.1m to 2-3m.
   [disk preparation](../../scripts/ci-prepare-disk.sh). This avoids trading latency
   for the earlier disk-exhaustion failure.
 
+The workflow-test producer also uses conditional disk preparation: an unconditional
+SDK cleanup plus linker package setup exhausted its five-minute startup budget in
+[main run 38663303410](https://github.com/everruns/everruns/actions/runs/38663303410).
+Rust jobs now reuse the image's existing linker, exposing its versioned executable
+under the standard command name in runner-local temporary storage when needed.
+Package installation remains a bounded fallback, and shared Cargo linker flags
+stay identical. See [linker preparation](../../scripts/ci-prepare-linker.sh).
+
+## CI-only optimization measurements
+
+The first same-revision, pinned-image profile trial measured opt-level 1 versus 0:
+20m18s versus 9m14s cold, and 13m24s versus 5m37s with dependencies retained.
+Both compiled successfully; a later probe incorrectly tried to request worker help
+and was repaired because the worker starts directly from environment configuration.
+The corrected trial repeats both profiles and validates archive size plus retained
+line-number/symbol sections. See [initial trial](https://github.com/everruns/everruns/actions/runs/38659951614)
+and [corrected trial](https://github.com/everruns/everruns/actions/runs/38661696094).
+These are paired samples, not a latency distribution or an ordinary-PR SLO.
+
+Hosted functional CI adopts the faster optimization setting only for its shared
+server/worker/CLI producer, retaining line-number backtraces and the existing
+workflow, chaos, CLI, SDK and full-stack consumers. Its dependency key is isolated
+from the previous profile; published release settings and the test dependency
+caches are unchanged. Faster artifact compression limits transfer preparation
+cost for the larger executables. See [producer](../../.github/workflows/ci.yml).
+
+The same library executable passed all 3,704 tests (four ignored) in each of six
+native-PostgreSQL runs, in thread order 2/4/8/8/4/2. Mean execution was 309.8s,
+265.1s and 262.3s respectively. Eight threads saved only about one percent versus
+four, so CI retains four and the existing serial integration targets. The pilot
+compiled the library in 524.4s; a separate warm focused-server sample spent 430.5s
+compiling and 251.9s executing library/contracts. Remaining ordinary-PR latency is
+still dominated by Rust compilation; sub-ten-minute whole PR latency is unproven.
+Private database isolation is unchanged. See [concurrency trial](https://github.com/everruns/everruns/actions/runs/38659951614).
+
 ## Success Bar
 
 - A claim that a CI job is slow cites the build/test split from its log, not the job

@@ -500,6 +500,38 @@ fn context() {
             self.assertEqual((root/'server-tests.sha256').read_text().split()[0],hashlib.sha256(binary.read_bytes()).hexdigest())
 
 
+    def test_existing_linker_avoids_package_manager_and_exposes_command(self):
+        with tempfile.TemporaryDirectory(prefix='ci linker ') as directory:
+            root = Path(directory)
+            env = dict(os.environ, PATH=str(root), RUNNER_TEMP=str(root/'runner'),
+                       GITHUB_PATH=str(root/'path'), CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS='-C link-arg=-fuse-ld=lld')
+            for command in ('mkdir', 'ln'):
+                (root/command).symlink_to(shutil.which(command))
+            (root/'ld.lld-18').write_text('#!/bin/sh\necho "LLD 18 fixture"\n')
+            (root/'ld.lld-18').chmod(0o755)
+            command = ['/bin/bash', str(ROOT/'scripts/ci-prepare-linker.sh')]
+            result = subprocess.run(command, env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('LLD 18 fixture', result.stdout)
+            directory = Path((root/'path').read_text().strip())
+            self.assertEqual((directory/'ld.lld').resolve(), (root/'ld.lld-18').resolve())
+            self.assertIn('LLD 18 fixture', subprocess.check_output(['ld.lld', '--version'], env=dict(env, PATH=str(directory)), text=True))
+            # A pre-existing unversioned linker requires neither an alias nor apt.
+            (root/'path').unlink()
+            (root/'ld.lld').symlink_to(root/'ld.lld-18')
+            result = subprocess.run(command, env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse((root/'path').exists())
+            # No installed linker: package-manager failures remain real failures.
+            (root/'ld.lld').unlink(); (root/'ld.lld-18').unlink()
+            (root/'sudo').write_text('#!/bin/sh\nexit 37\n'); (root/'sudo').chmod(0o755)
+            self.assertEqual(subprocess.run(command, env=env, capture_output=True).returncode, 37)
+        prepare = next(step for step in self.jobs['workflow-test-build']['steps'] if step.get('name') == 'Prepare linker and disk')
+        self.assertIn('bash scripts/ci-prepare-disk.sh', prepare['run'])
+        self.assertIn('bash scripts/ci-prepare-linker.sh', prepare['run'])
+        self.assertNotIn('rm -rf', prepare['run'])
+        self.assertEqual(prepare['timeout-minutes'], 5)
+
     def test_disk_preparation_keeps_headroom_without_unnecessary_deletion(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory); log=root/'cleanup.log'
