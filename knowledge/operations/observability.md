@@ -125,6 +125,12 @@ on or backdated by the generation's `duration_ms` otherwise, and so on. The
 listener therefore needs the global tracer provider that `init_telemetry`
 installs; without an OTLP endpoint it runs on the no-op tracer.
 
+Exporter totals convert the runtime's disjoint token buckets to cache-inclusive counts. Model-call and turn totals are separate aggregation views; dashboards must choose one. Capture-off failure spans retain classifications while gating raw status/exception text with other content.
+
+Tool lifecycle state is scoped by session, turn and execution because provider call identifiers need not be globally unique. Regression evidence lives beside the listener in `otel_regression_tests.rs`.
+
+The OTLP factory pins a blocking HTTP client for the SDK's thread-based batch processor, including when downstream feature unification enables async clients. A local collector test exercises event-to-OTLP delivery (`telemetry_transport_tests.rs`).
+
 ### Attributes
 
 The exact attribute set per span lives in `otel.rs`
