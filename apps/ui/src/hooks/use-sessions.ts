@@ -529,6 +529,7 @@ export function useEvents(sessionId: string | undefined, options?: UseEventsOpti
     fetchingKeyRef.current = key;
 
     let cancelled = false;
+    let completed = false;
 
     async function fetchInitialEvents() {
       try {
@@ -565,6 +566,7 @@ export function useEvents(sessionId: string | undefined, options?: UseEventsOpti
       }
 
       if (!cancelled) {
+        completed = true;
         setIsLoading(false);
         setRestLoaded(key);
       }
@@ -573,8 +575,9 @@ export function useEvents(sessionId: string | undefined, options?: UseEventsOpti
     fetchInitialEvents();
     return () => {
       cancelled = true;
-      // Allow re-fetch if effect re-runs after cleanup
-      if (fetchingKeyRef.current === key) {
+      // A completed snapshot stays valid across disabling. Refetching it while
+      // SSE resumes could overwrite events already appended by the new stream.
+      if (!completed && fetchingKeyRef.current === key) {
         fetchingKeyRef.current = null;
       }
     };
@@ -772,15 +775,11 @@ export function useEvents(sessionId: string | undefined, options?: UseEventsOpti
     resumeRef.current = connectSSE;
     const unsubscribe = followIdle
       ? () => {}
-      : subscribeSessionActivity(sessionId, () => {
-          pendingActions += 1;
+      : subscribeSessionActivity(sessionId, (pending) => {
+          pendingActions = pending;
           revision += 1;
-          if (!eventSourceRef.current) connectSSE();
-          return () => {
-            pendingActions -= 1;
-            revision += 1;
-            void checkIdle();
-          };
+          if (pending && !eventSourceRef.current) connectSSE();
+          if (!pending) void checkIdle();
         });
     const wake = () => {
       if (!eventSourceRef.current) connectSSE();
@@ -789,7 +788,7 @@ export function useEvents(sessionId: string | undefined, options?: UseEventsOpti
       window.addEventListener("focus", wake);
       window.addEventListener("online", wake);
     }
-    connectSSE();
+    if (!eventSourceRef.current) connectSSE();
 
     return () => {
       disposed = true;

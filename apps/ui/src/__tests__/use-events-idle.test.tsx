@@ -377,4 +377,48 @@ describe("optional idle SSE lifecycle", () => {
     expect(getSseUrl).toHaveBeenLastCalledWith("session-2", { afterSequence: 0 });
     expect(mockStreams).toHaveLength(1);
   });
+  it("holds following when a mutation starts before the hook subscribes", async () => {
+    const request = deferred<void>();
+    const pending = withSessionActivity("session-1", () => request.promise);
+    const { result } = await mount();
+    await act(async () => {});
+    expect(result.current.isSuspended).toBe(false);
+    expect(mockStreams).toHaveLength(1);
+    await act(async () => {
+      request.resolve();
+      await pending;
+    });
+    await waitFor(() => expect(result.current.isSuspended).toBe(true));
+  });
+  it("retains mutation holds across disabling and re-enabling the hook", async () => {
+    const { result, rerender } = await mount();
+    await waitFor(() => expect(result.current.isSuspended).toBe(true));
+    const request = deferred<void>();
+    let pending!: Promise<void>;
+    act(() => {
+      pending = withSessionActivity("session-1", () => request.promise);
+    });
+    rerender({ id: "session-1", enabled: false });
+    rerender({ id: "session-1", enabled: true });
+    await waitFor(() => expect(mockStreams).toHaveLength(3));
+    act(() => emit("connected", {}));
+    await act(async () => {});
+    expect(result.current.isSuspended).toBe(false);
+    await act(async () => {
+      request.resolve();
+      await pending;
+    });
+    await waitFor(() => expect(result.current.isSuspended).toBe(true));
+  });
+  it("preserves the loaded transcript across disabling instead of replacing it with another REST snapshot", async () => {
+    const { result, rerender } = await mount(true);
+    act(() => push(event("input", "input.message", 1)));
+    rerender({ id: "session-1", enabled: false });
+    rerender({ id: "session-1", enabled: true });
+    await waitFor(() => expect(mockStreams).toHaveLength(2));
+    await act(async () => {});
+    expect(result.current.data.map((e) => e.id)).toEqual(["input"]);
+    expect(listEventsPaginated).toHaveBeenCalledTimes(1);
+    expect(getSseUrl).toHaveBeenLastCalledWith("session-1", { sinceId: "input" });
+  });
 });
