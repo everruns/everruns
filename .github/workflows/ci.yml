@@ -2016,6 +2016,8 @@ jobs:
     timeout-minutes: 40
 
     env:
+      # Functional CI favors compile latency; published artifacts use release.
+      CARGO_PROFILE_RELEASE_CI_OPT_LEVEL: '0'
       CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
 
     steps:
@@ -2046,11 +2048,11 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
-          shared-key: "ci-bins"
+          shared-key: "ci-bins-opt0-v1"
 
-      # release-ci profile: opt-level=1, no LTO — these binaries only drive the
-      # e2e/workflow/openapi CI jobs, so we trade optimization for ~2x faster
-      # builds. Published binaries/images still use `release` (Dockerfile.unified).
+      # The paired cold/warm pilot favored opt-level=0 for functional CI.
+      # Keep the override scoped here and rotate only this dependency cache;
+      # test caches and the published release profile retain their settings.
       - name: Build CI binaries
         env:
           BUILD_WORKER: ${{ needs.changes.outputs.mode != 'pr' || needs.changes.outputs.docker == 'true' || needs.changes.outputs.chaos == 'true' || needs.changes.outputs.budget_e2e == 'true' }}
@@ -2071,6 +2073,7 @@ jobs:
           name: everruns-server
           path: target/release-ci/everruns-server
           retention-days: 1
+          compression-level: 1
 
       - name: Upload worker binary
         if: needs.changes.outputs.mode != 'pr' || needs.changes.outputs.docker == 'true' || needs.changes.outputs.chaos == 'true' || needs.changes.outputs.budget_e2e == 'true'
@@ -2079,6 +2082,7 @@ jobs:
           name: everruns-worker
           path: target/release-ci/everruns-worker
           retention-days: 1
+          compression-level: 1
 
       - name: Upload CLI binary
         if: needs.changes.outputs.mode != 'pr' || needs.changes.outputs.docker == 'true'
@@ -2087,6 +2091,7 @@ jobs:
           name: everruns-cli
           path: target/release-ci/everruns
           retention-days: 1
+          compression-level: 1
 
 
   # Only main may launch binaries with live credentials. Ordinary Rust pushes
