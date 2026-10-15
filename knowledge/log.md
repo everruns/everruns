@@ -2,6 +2,10 @@
 
 ## 2026-10-14
 
+* **PACT account walkthrough.** Published the scoped-consent demo and added it to
+  the PACT/Poppy pages and changelog. MCP discovery uses a matching session grant's
+  user identity. See [Product Video Knowledge](docs/product-videos.md).
+
 * **Slack landing page**: Added the integration overview with English conversation
   examples, the public demo, Agent-building steps and links to the detailed reference.
 
@@ -27,6 +31,10 @@
   `postgresql_embedded`; the local adapter retains process-wide sharing, owner-exit
   cleanup, and template copies. Embedded callers run as non-root users. See
   [Embedded PostgreSQL](project/embedded-postgresql.md).
+
+* **Feature announcement copy.** Recorded the headline rule in
+  [Brand Specification](ui/brand.md#feature-announcement-copy) and linked it
+  from the public changelog's visual guidance.
 
 * **Web search: the deployment's own search.** A host can offer one search
   provider it pays for to every organization (`HostedWebSearch`), under the

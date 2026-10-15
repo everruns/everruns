@@ -33,3 +33,10 @@ replies carry a signed receipt.
 
 See [A2A](/features/a2a/), [Personal agents (PACT)](/features/a2a/#personal-agents-pact)
 and [#4322](https://github.com/everruns/everruns/pull/4322), [#4328](https://github.com/everruns/everruns/pull/4328), [#4350](https://github.com/everruns/everruns/pull/4350), [#4352](https://github.com/everruns/everruns/pull/4352).
+
+Watch PACT account consent, a refused cancellation, and a signed receipt in a
+local walkthrough with synthetic store data:
+
+<iframe src="https://www.youtube-nocookie.com/embed/9FZiYv5PsWY?rel=0" title="PACT account consent and signed receipts in Everruns" loading="lazy" style="width:100%;aspect-ratio:16/9;border:0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+
+[Watch on YouTube](https://www.youtube.com/watch?v=9FZiYv5PsWY).
