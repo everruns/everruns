@@ -5,8 +5,8 @@ import json
 import os
 from pathlib import Path
 import subprocess
-import sys
-import time
+
+import libtest
 
 # These are the existing offline CI configurations. Live-test features remain
 # opt-in in their credentialed workflows; --all-features is unsafe for them.
@@ -58,8 +58,8 @@ def risk_filters(paths):
     if any(p.endswith('/tests/test_harness.rs') or '/tests/test_harness/' in p
            or p.endswith('/storage/test_database.rs') for p in paths):
         filters.update(['auth_integration_test::', 'org_isolation_test::',
-                        'service_mcp_oauth_lifecycle_test::', 'migration_baseline_test::',
-                        'migration_history_test::'])
+                        'db_pool_isolation_test::', 'service_mcp_oauth_lifecycle_test::',
+                        'migration_baseline_test::', 'migration_history_test::'])
     return sorted(filters)
 
 
@@ -139,33 +139,8 @@ def run_server(selection, command):
     targets.update({(target, 'test'): [] for target in selection.get('risk_targets', [])})
     if selection.get('risk_filters'):
         targets[('domain', 'test')] = [*selection['risk_filters'], '--test-threads=1']
-    executables = {}
-    start = time.monotonic()
-    with subprocess.Popen(command, stdout=subprocess.PIPE, text=True) as process:
-        for line in process.stdout:
-            artifact = json.loads(line)
-            if artifact.get('reason') == 'compiler-message':
-                print(artifact['message'].get('rendered', ''), end='', file=sys.stderr)
-            if (artifact.get('reason') != 'compiler-artifact'
-                    or artifact.get('package_id') != package['id']
-                    or not artifact.get('executable') or not artifact['profile']['test']):
-                continue
-            target = artifact['target']
-            key = (target['name'], target['kind'][0])
-            if key in targets:
-                executables[key] = str(Path(artifact['executable']).resolve())
-        if process.wait():
-            raise subprocess.CalledProcessError(process.returncode, command)
-    print(f'Selected server compilation: {time.monotonic() - start:.2f}s', flush=True)
-    if executables.keys() != targets.keys():
-        raise RuntimeError(f'Missing selected test executables: {targets.keys() - executables.keys()}')
-    # Cargo runs tests in their package directory and supplies manifest context
-    # to fixture readers. Execute its emitted artifacts directly, never rebuild.
-    env = dict(os.environ, CARGO_MANIFEST_DIR=str(manifest.parent), CARGO_MANIFEST_PATH=str(manifest))
-    for key, arguments in targets.items():
-        start = time.monotonic()
-        subprocess.run([executables[key], *arguments], cwd=manifest.parent, env=env, check=True)
-        print(f'Selected server {key[0]} execution: {time.monotonic() - start:.2f}s', flush=True)
+    executables = libtest.compile_tests(command, package, targets)
+    libtest.execute_tests(manifest, executables, targets)
 
 
 def main():

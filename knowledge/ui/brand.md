@@ -153,6 +153,15 @@ Prose should read as written by a person, not a model. Applies to public docs
    terms of art where they carry precise meaning, and reword the metaphor
    everywhere else.
 
+#### Feature announcement copy
+
+Feature announcements, release cards, social images, and demo titles name the
+feature directly. Use a headline such as **"PACT & Poppy support"**.
+
+Do not invent slogans or aspirational taglines such as "Your agent. Your
+permission." The feature name is the headline; supporting copy, when needed,
+states concrete behavior or how to use it.
+
 ### Design Principles
 
 1. **Simple and clean**: no fancy colors, gradients only in logo
