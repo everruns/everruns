@@ -43,7 +43,10 @@ def main():
             measure('warm_compile_seconds', command, report)
             binaries = [target/'release-ci'/name for name in ('everruns-server', 'everruns-worker', 'everruns')]
             for binary in binaries:
-                measure(binary.name + '_help_seconds', [str(binary), '--help'], report)
+                # The worker is environment-driven: --help starts it. Its real
+                # server/gRPC behavior is verified by the downstream CI suites.
+                if binary.name != 'everruns-worker':
+                    measure(binary.name + '_help_seconds', [str(binary), '--help'], report)
                 sections = subprocess.check_output(['readelf', '-S', str(binary)], text=True)
                 if '.debug_line' not in sections or '.symtab' not in sections:
                     raise RuntimeError(f'Missing actionable backtrace information: {binary.name}')

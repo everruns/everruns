@@ -9,6 +9,10 @@ on:
         description: Controlled experiment (Rust profiles also measures server test concurrency)
         default: archive
         options: [archive, rust-profiles]
+      server_concurrency:
+        type: boolean
+        description: Also measure repeated server-library concurrency
+        default: true
 permissions:
   contents: read
 concurrency:
@@ -182,7 +186,7 @@ jobs:
           retention-days: 7
 
   server-concurrency:
-    if: inputs.experiment == 'rust-profiles'
+    if: inputs.experiment == 'rust-profiles' && inputs.server_concurrency
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     env:
