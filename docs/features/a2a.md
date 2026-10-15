@@ -366,3 +366,13 @@ cargo run -p serve-example-a2a --bin writer -- "tide pools"
 - [Sub-agents](/capabilities/sub-agents/), the shared `spawn_agent` tool.
 - [ARD Discovery](/integrations/ard/), for finding A2A agents at runtime.
 - [Channels](/features/channels/), for channel lifecycle and legacy routes.
+
+## Watch PACT account consent
+
+A personal agent checks an order, receives a request for additional permission
+when cancellation is refused, and verifies the signed receipt after the customer
+approves. This is a local walkthrough with a demo client and synthetic store data.
+
+<iframe src="https://www.youtube-nocookie.com/embed/9FZiYv5PsWY?rel=0" title="PACT account consent and signed receipts in Everruns" loading="lazy" style="width:100%;aspect-ratio:16/9;border:0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+
+[Watch on YouTube](https://www.youtube.com/watch?v=9FZiYv5PsWY).

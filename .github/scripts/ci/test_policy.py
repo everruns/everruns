@@ -39,6 +39,69 @@ class Policy(unittest.TestCase):
         cls.workflow = yaml.safe_load((ROOT/'.github/workflows/ci.yml').read_text())
         cls.jobs = cls.workflow['jobs']
 
+    def test_large_ci_rust_caches_are_read_only_outside_main(self):
+        producers = 0
+        for job in self.jobs.values():
+            for step in job.get('steps', []):
+                if not step.get('uses', '').startswith('Swatinem/rust-cache@'):
+                    continue
+                condition = step.get('with', {}).get('save-if', True)
+                if condition is False:
+                    continue
+                producers += 1
+                self.assertIsInstance(condition, str)
+                for event, ref in [('pull_request', 'refs/pull/7/merge'),
+                                   ('workflow_dispatch', 'refs/heads/experiment')]:
+                    self.assertFalse(evaluate(condition, {'github.event_name': event, 'github.ref': ref,
+                        'matrix.shard': 'domain', 'needs.changes.outputs.rust': 'true'}))
+        self.assertGreater(producers, 5)
+
+    def test_cleanup_preserves_active_pr_and_all_branch_caches(self):
+        cleanup = load('cache_cleanup')
+        def cache(identity, ref):
+            return dict(id=identity, ref=ref, size_in_bytes=100)
+        caches = [cache(1, 'refs/heads/main'), cache(2, 'refs/heads/topic'),
+                  cache(3, 'refs/pull/7/merge'), cache(4, 'refs/pull/8/merge'),
+                  cache(5, 'refs/pull/7/head'), cache(6, 'refs/pull/9/merge')]
+        deleted = []
+        def request(endpoint, method='GET'):
+            if method == 'DELETE':
+                deleted.append(int(endpoint.rsplit('/', 1)[1])); return
+            if '/actions/caches?' in endpoint:
+                return [{'actions_caches': caches[:3]}, {'actions_caches': caches[3:]}]
+            number = int(endpoint.rsplit('/', 1)[1])
+            return [dict(number=number, state='closed' if number != 8 else 'open',
+                         base={'repo': {'full_name': 'owner/repo' if number != 9 else 'other/repo'}})]
+        self.assertEqual(cleanup.cleanup('owner/repo', request=request), (1, 100))
+        self.assertEqual(deleted, [3])
+        deleted.clear()
+        self.assertEqual(cleanup.cleanup('owner/repo', number=8, request=request), (0, 0))
+        self.assertEqual(deleted, [])
+
+    def test_cleanup_rechecks_reopened_pr_before_each_delete(self):
+        cleanup = load('cache_cleanup')
+        states = iter(['closed', 'open'])
+        deleted = []
+        def request(endpoint, method='GET'):
+            if method == 'DELETE':
+                deleted.append(endpoint); return
+            if '/actions/caches?' in endpoint:
+                return [{'actions_caches': [dict(id=i, ref='refs/pull/7/merge', size_in_bytes=10) for i in (1, 2)]}]
+            return [dict(number=7, state=next(states), base={'repo': {'full_name': 'owner/repo'}})]
+        self.assertEqual(cleanup.cleanup('owner/repo', request=request), (1, 10))
+        self.assertEqual(len(deleted), 1)
+
+    def test_privileged_cleanup_uses_only_trusted_main(self):
+        workflow = yaml.safe_load((ROOT/'.github/workflows/ci-cache-cleanup.yml').read_text())
+        self.assertEqual(workflow[True]['pull_request_target']['types'], ['closed'])
+        self.assertIn('github.event.pull_request.number', workflow['concurrency']['group'])
+        job = workflow['jobs']['cleanup']
+        self.assertEqual(job['permissions'], {'contents': 'read', 'actions': 'write', 'pull-requests': 'read'})
+        checkout = job['steps'][0]
+        self.assertRegex(checkout['uses'], r'actions/checkout@[0-9a-f]{40}$')
+        self.assertEqual(checkout['with'], {'ref': 'main', 'persist-credentials': False})
+        self.assertNotIn('secrets.', json.dumps(workflow))
+
     def test_baseline_never_advances_on_failure_cancel_or_pr(self):
         runs = [dict(id=n,event=e,conclusion=c,head_branch='main',head_sha=sha,display_title='CI batch '+sha)
                 for n,e,c,sha in [(1,'push','success','good'),(2,'push','failure','failed'),
@@ -78,6 +141,7 @@ class Policy(unittest.TestCase):
                 self.assertIn(contract, filters)
             self.assertNotIn('auth_integration_test::', filters)
         self.assertIn('service_mcp_oauth_lifecycle_test::', focused.risk_filters(['crates/server/tests/test_harness.rs']))
+        self.assertIn('db_pool_isolation_test::', focused.risk_filters(['crates/server/tests/test_harness/database.rs']))
 
     def test_database_backend_changes_run_real_router_fixtures(self):
         targets=['background_sweep_wiring_test','pat_scope_sweep_test']
@@ -198,6 +262,74 @@ fn context() {
                                     cwd=package,env=env,capture_output=True,text=True)
             self.assertNotEqual(broken.returncode,0)
             self.assertIn('missing_ci_fixture_function',broken.stderr)
+
+    def test_serial_batches_cover_inventory_propagate_failure_and_keep_external_serial(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root/'src').mkdir(); (root/'tests').mkdir()
+            (root/'Cargo.toml').write_text('[package]\nname="everruns-server"\nversion="0.1.0"\nedition="2024"\n[workspace]\n')
+            (root/'src/lib.rs').write_text('')
+            (root/'tests/domain.rs').write_text(r'''
+use std::sync::atomic::{AtomicUsize, Ordering};
+static ACTIVE: AtomicUsize = AtomicUsize::new(0);
+fn case(name: &str) {
+    let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    assert_eq!(std::env::current_dir().unwrap(), std::path::Path::new(&manifest));
+    assert_eq!(std::env::var("CARGO_MANIFEST_PATH").unwrap(), format!("{manifest}/Cargo.toml"));
+    assert!(std::env::args().any(|arg| arg == "--test-threads=1"));
+    assert_eq!(ACTIVE.fetch_add(1, Ordering::SeqCst), 0, "tests raced inside a batch");
+    let proof = std::path::PathBuf::from(std::env::var_os("BATCH_PROOF").unwrap()).join(name);
+    assert!(!proof.exists(), "test executed more than once");
+    std::fs::write(proof, std::process::id().to_string()).unwrap();
+    let cache = std::path::PathBuf::from(std::env::var_os("BATCH_CACHE").unwrap());
+    if !cache.join("installed").exists() {
+        let _install = std::fs::OpenOptions::new().write(true).create_new(true)
+            .open(cache.join("installing")).expect("cold installation raced");
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        std::fs::write(cache.join("installed"), []).unwrap();
+    }
+    if let Some(path) = std::env::var_os("EVERRUNS_TEST_BATCH_READY") {
+        std::fs::write(path, []).unwrap();
+    }
+    std::thread::sleep(std::time::Duration::from_millis(25));
+    ACTIVE.fetch_sub(1, Ordering::SeqCst);
+    assert!(name != "beta" || std::env::var_os("FAIL_BATCH").is_none(), "batch failure");
+}
+#[test] fn alpha() { case("alpha"); }
+#[test] fn beta() { case("beta"); }
+#[test] fn gamma() { case("gamma"); }
+#[test] fn delta() { case("delta"); }
+#[test] #[ignore] fn ignored() { panic!("ignored fixture ran"); }
+''')
+            env = dict(os.environ, CARGO_TARGET_DIR=str(root/'target'))
+            for name in ('DATABASE_URL', 'DB_PORT', 'EVERRUNS_TEST_POSTGRES_URL'):
+                env.pop(name, None)
+            script = str(ROOT/'.github/scripts/ci/libtest.py')
+            artifacts = root/'artifacts.jsonl'
+            subprocess.run(['cargo','generate-lockfile','--offline'],cwd=root,env=env,check=True,capture_output=True)
+            subprocess.run(['python3',script,'compile',str(artifacts),'--','cargo','test',
+                            '--locked','--test','domain','--no-run','--message-format=json'],
+                           cwd=root,env=env,check=True,capture_output=True)
+            command = ['python3',script,'run',str(artifacts),'--batch','domain']
+            for setting in (None, 'DATABASE_URL', 'DB_PORT', 'EVERRUNS_TEST_POSTGRES_URL', 'FAIL_BATCH'):
+                proof = root/str(setting); proof.mkdir()
+                cache = root/(str(setting)+'-cache'); cache.mkdir()
+                trial = dict(env, BATCH_PROOF=str(proof), BATCH_CACHE=str(cache))
+                if setting: trial[setting] = 'fixture'
+                result = subprocess.run(command,cwd=root,env=trial,capture_output=True,text=True)
+                self.assertEqual(result.returncode == 0, setting != 'FAIL_BATCH', result.stdout+result.stderr)
+                self.assertEqual({p.name for p in proof.iterdir()}, {'alpha','beta','gamma','delta'})
+                pids = {p.read_text() for p in proof.iterdir()}
+                self.assertEqual(len(pids), 2 if setting in (None, 'FAIL_BATCH') else 1)
+                if setting in (None, 'FAIL_BATCH'): self.assertIn('Native PostgreSQL ready', result.stdout)
+                else: self.assertIn('External PostgreSQL configured', result.stdout)
+                if setting == 'FAIL_BATCH': self.assertIn('batch failure', result.stdout)
+                else: self.assertIn('1 ignored;', result.stdout)
+        step = next(s for s in self.jobs['integration-test']['steps'] if s.get('name') == 'Run domain integration tests')
+        self.assertEqual(step['run'].count('cargo test'), 1)
+        self.assertIn('--no-run --message-format=json', step['run'])
+        self.assertIn('--batch domain', step['run'])
+        self.assertEqual(step['env']['RUST_TEST_THREADS'], '1')
 
     def test_main_compilation_can_overlap_binary_build(self):
         producer = self.jobs['workflow-test-build']
@@ -436,6 +568,38 @@ fn context() {
                 self.assertEqual(tar.extractfile('server-tests').read(),binary.read_bytes())
             self.assertEqual((root/'server-tests.sha256').read_text().split()[0],hashlib.sha256(binary.read_bytes()).hexdigest())
 
+
+    def test_existing_linker_avoids_package_manager_and_exposes_command(self):
+        with tempfile.TemporaryDirectory(prefix='ci linker ') as directory:
+            root = Path(directory)
+            env = dict(os.environ, PATH=str(root), RUNNER_TEMP=str(root/'runner'),
+                       GITHUB_PATH=str(root/'path'), CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS='-C link-arg=-fuse-ld=lld')
+            for command in ('mkdir', 'ln'):
+                (root/command).symlink_to(shutil.which(command))
+            (root/'ld.lld-18').write_text('#!/bin/sh\necho "LLD 18 fixture"\n')
+            (root/'ld.lld-18').chmod(0o755)
+            command = ['/bin/bash', str(ROOT/'scripts/ci-prepare-linker.sh')]
+            result = subprocess.run(command, env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('LLD 18 fixture', result.stdout)
+            directory = Path((root/'path').read_text().strip())
+            self.assertEqual((directory/'ld.lld').resolve(), (root/'ld.lld-18').resolve())
+            self.assertIn('LLD 18 fixture', subprocess.check_output(['ld.lld', '--version'], env=dict(env, PATH=str(directory)), text=True))
+            # A pre-existing unversioned linker requires neither an alias nor apt.
+            (root/'path').unlink()
+            (root/'ld.lld').symlink_to(root/'ld.lld-18')
+            result = subprocess.run(command, env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse((root/'path').exists())
+            # No installed linker: package-manager failures remain real failures.
+            (root/'ld.lld').unlink(); (root/'ld.lld-18').unlink()
+            (root/'sudo').write_text('#!/bin/sh\nexit 37\n'); (root/'sudo').chmod(0o755)
+            self.assertEqual(subprocess.run(command, env=env, capture_output=True).returncode, 37)
+        prepare = next(step for step in self.jobs['workflow-test-build']['steps'] if step.get('name') == 'Prepare linker and disk')
+        self.assertIn('bash scripts/ci-prepare-disk.sh', prepare['run'])
+        self.assertIn('bash scripts/ci-prepare-linker.sh', prepare['run'])
+        self.assertNotIn('rm -rf', prepare['run'])
+        self.assertEqual(prepare['timeout-minutes'], 5)
 
     def test_disk_preparation_keeps_headroom_without_unnecessary_deletion(self):
         with tempfile.TemporaryDirectory() as directory:

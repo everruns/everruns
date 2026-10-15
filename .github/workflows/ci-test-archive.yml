@@ -3,6 +3,16 @@ name: Test Archive Pilot
 # No nextest process-per-test change and no provider credentials.
 on:
   workflow_dispatch:
+    inputs:
+      experiment:
+        type: choice
+        description: Controlled experiment (Rust profiles also measures server test concurrency)
+        default: archive
+        options: [archive, rust-profiles]
+      server_concurrency:
+        type: boolean
+        description: Also measure repeated server-library concurrency
+        default: true
 permissions:
   contents: read
 concurrency:
@@ -10,6 +20,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   compile:
+    if: inputs.experiment != 'rust-profiles'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -137,3 +148,74 @@ jobs:
         env:
           PG_CONTAINER: ${{ job.services.postgres.id }}
         run: bash .github/scripts/ci/postgres_recovery.sh
+
+  rust-profiles:
+    if: inputs.experiment == 'rust-profiles'
+    name: CI profile (opt=${{ matrix.opt }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    strategy:
+      fail-fast: false
+      matrix:
+        opt: ['1', '0']
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_RELEASE_CI_OPT_LEVEL: ${{ matrix.opt }}
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: '-C link-arg=-fuse-ld=lld'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - name: Prepare linker and disk
+        run: |
+          bash scripts/ci-prepare-disk.sh
+          command -v ld.lld || { sudo apt-get update -qq && sudo apt-get install -y -qq lld; }
+          rustc -Vv
+          ld.lld --version
+      # Deliberately no target cache: paired cold builds then dependency-only
+      # warm builds on the same runner. No experiment keys crowd production.
+      - name: Measure cold and dependency-warm binary builds
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/profile-target
+        run: python3 .github/scripts/ci/rust_profile.py profile
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: rust-profile-${{ matrix.opt }}
+          path: ${{ runner.temp }}/profile-measurements.json
+          if-no-files-found: error
+          retention-days: 7
+
+  server-concurrency:
+    if: inputs.experiment == 'rust-profiles' && inputs.server_concurrency
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: '-C link-arg=-fuse-ld=lld'
+      SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - name: Prepare linker and disk
+        run: |
+          bash scripts/ci-prepare-disk.sh
+          command -v ld.lld || { sudo apt-get update -qq && sudo apt-get install -y -qq lld; }
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: integration-v2
+          save-if: false
+      - uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/everruns/postgres
+          key: ${{ runner.os }}-pg-embedded-17
+      - name: Measure private-database library tests at bounded concurrency
+        run: python3 .github/scripts/ci/rust_profile.py concurrency
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: server-concurrency
+          path: ${{ runner.temp }}/concurrency-measurements.json
+          if-no-files-found: error
+          retention-days: 7
