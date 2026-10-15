@@ -13,7 +13,7 @@ Everruns turns every agent run into an OpenTelemetry trace and exports it over O
 - **Real timings**: spans start and end at the moment each event happened, so waterfalls show true model latency and tool duration
 - **Token and cost detail**: input, output, and prompt-cache tokens per call and per turn, plus cost where the provider reports it
 - **Tool visibility**: every tool call is its own span with name, description, call id, and outcome
-- **Failure detail**: a low-cardinality `error.type`, an error span status carrying the message, and an `exception` event
+- **Failure detail**: a low-cardinality `error.type`, an error span status carrying a safe classification (the full message requires content capture), and an `exception` event
 - **Privacy by default**: prompts, completions, reasoning, and tool payloads are never exported unless you turn them on
 
 ## Quick Start
@@ -96,6 +96,8 @@ The reason, act, and thinking spans are Everruns phases rather than Gen-AI opera
 | ✅ | Content capture (opt-in) | `gen_ai.system_instructions`, `gen_ai.input.messages`, `gen_ai.output.messages`, `gen_ai.tool.definitions`, `gen_ai.tool.call.arguments`, `gen_ai.tool.call.result` |
 | ✅ | Accurate timestamps | Spans start and end at the times the events record |
 
+Input totals include uncached tokens plus cache reads and cache writes; cache attributes are subsets of that total. Sum model spans (`gen_ai.operation.name=chat`) for model usage or turn roots for turn totals. Summing both counts the same usage and cost twice.
+
 Not emitted yet: `server.address` and `server.port` on model calls, and parameter schemas inside `gen_ai.tool.definitions`.
 
 ## OpenInference Support
@@ -162,6 +164,8 @@ With capture on:
 - tool spans carry their arguments and results
 - the turn root carries the user's message and the final answer
 - the thinking span carries the model's reasoning text
+
+With capture off, error status descriptions and exception messages contain only the error classification. With capture on, detailed errors may include provider response bodies or tool output; treat them as sensitive content.
 
 Two details worth knowing. Everruns keeps the agent's instructions separate from the conversation, so system messages are exported as `gen_ai.system_instructions` and left out of `gen_ai.input.messages`. Image bytes are never copied into a span; an image becomes a reference that names its media type only.
 

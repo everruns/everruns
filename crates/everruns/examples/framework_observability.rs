@@ -14,8 +14,11 @@ use everruns::{Agent, Engine, OpenAI};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _telemetry = install_otlp_from_env();
-    let mut engine = Engine::builder().observe(OpenTelemetry::from_env());
+    let telemetry = install_otlp_from_env();
+    let provider = telemetry
+        .tracer_provider()
+        .ok_or("OTEL_EXPORTER_OTLP_ENDPOINT is required")?;
+    let mut engine = Engine::builder().observe(OpenTelemetry::from_env().tracer_provider(provider));
     if let Some(braintrust) = Braintrust::from_env() {
         engine = engine.observe(braintrust);
     }
@@ -33,5 +36,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if report.timed_out {
         return Err("observability shutdown exceeded its deadline".into());
     }
+    if report
+        .stats
+        .listeners
+        .iter()
+        .any(|listener| !listener.flushed)
+    {
+        return Err("observability exporter flush failed".into());
+    }
+    telemetry.shutdown().await?;
     Ok(())
 }

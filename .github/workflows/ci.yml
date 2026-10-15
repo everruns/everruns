@@ -576,6 +576,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: "msrv"
 
       - name: Check published crates against MSRV
@@ -765,6 +766,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: |
             . -> target
             examples/celld-engine -> target
@@ -942,6 +944,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           # Distinct from the test jobs: clippy compiles --all-targets
           # --all-features, a different feature set than the default-feature
           # test builds. rust-cache keys ignore feature flags, so sharing one
@@ -973,18 +976,14 @@ jobs:
 
       - name: Free space for selected Rust tests
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          df -h /
+          bash scripts/ci-prepare-disk.sh
 
       - uses: dtolnay/rust-toolchain@1.96.0
 
       - name: Install fast linker
         timeout-minutes: 5
         run: |
-          if ! command -v ld.lld >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq lld
-          fi
+          bash scripts/ci-prepare-linker.sh
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -1038,15 +1037,12 @@ jobs:
       # This job builds the most of any single CI job: provider crates, the full
       # runtime, the CLI, and all integration crates share one target/ dir. Their
       # rlibs plus the linker's temporary output exhausted the runner's disk mid-
-      # link (`ld terminated with signal 7 [Bus error]`, 36 MB free). Reclaim the
-      # ~25 GB of preinstalled tooling this job never uses before building.
+      # link (`ld terminated with signal 7 [Bus error]`, 36 MB free). Reclaim
+      # unused tooling on smaller images; skip deletion when ample space exists.
       - name: Free disk space
         if: matrix.shard == 'facade-cli' || matrix.shard == 'provider-engine'
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-            /opt/hostedtoolcache/CodeQL /usr/local/share/powershell \
-            /usr/local/share/chromium /usr/local/lib/node_modules
-          df -h /
+          bash scripts/ci-prepare-disk.sh --extended
 
       # lld instead of GNU ld. These jobs link many binaries against a large
       # dependency graph -- crates/server alone has 51 integration-test targets,
@@ -1059,11 +1055,7 @@ jobs:
         if: env.DOCS_SNIPPETS_ONLY != 'true' || matrix.shard == 'facade-cli'
         timeout-minutes: 5
         run: |
-          if ! command -v ld.lld >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq lld
-          fi
-          ld.lld --version
+          bash scripts/ci-prepare-linker.sh
 
       - name: Install Rust toolchain
         if: env.DOCS_SNIPPETS_ONLY != 'true' || matrix.shard == 'facade-cli'
@@ -1076,7 +1068,7 @@ jobs:
           shared-key: "unit-v2"
           # Heaviest shard writes the key; the others restore it (see `integration`).
           # A docs-only run builds a fraction of the workload, so it never writes.
-          save-if: ${{ matrix.shard == 'facade-cli' && needs.changes.outputs.rust == 'true' }}
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.shard == 'facade-cli' && needs.changes.outputs.rust == 'true' }}
 
       - name: Run pure unit tests (${{ matrix.shard }})
         if: env.DOCS_SNIPPETS_ONLY != 'true' || matrix.shard == 'facade-cli'
@@ -1251,11 +1243,7 @@ jobs:
       - name: Install fast linker
         timeout-minutes: 5
         run: |
-          if ! command -v ld.lld >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq lld
-          fi
-          ld.lld --version
+          bash scripts/ci-prepare-linker.sh
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -1359,6 +1347,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: "live"
 
       - name: Run Daytona live integration tests
@@ -1400,6 +1389,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: "live"
 
       - name: Run E2B live integration tests
@@ -1491,11 +1481,7 @@ jobs:
       - name: Install fast linker
         timeout-minutes: 5
         run: |
-          if ! command -v ld.lld >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq lld
-          fi
-          ld.lld --version
+          bash scripts/ci-prepare-linker.sh
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -1520,7 +1506,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "integration-v2"
-          save-if: ${{ matrix.shard == 'domain' }}
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.shard == 'domain' }}
 
       - name: Cache cargo binaries
         if: matrix.shard == 'durable' || needs.changes.outputs.mode == 'nightly' || needs.changes.outputs.mode == 'full'
@@ -1546,27 +1532,15 @@ jobs:
         if: matrix.shard == 'durable' || needs.changes.outputs.mode == 'nightly' || needs.changes.outputs.mode == 'full'
         run: sqlx migrate run --source crates/server/migrations
 
-      # Keep the number of `cargo test` invocations per shard to a minimum.
-      # everruns-server, everruns-worker and everruns-integrations recompile
-      # on EVERY separate invocation against this package -- ~1m50 each -- even
-      # immediately after a `--no-run` build of the exact same targets, so a
-      # prebuild step does not help here (it was tried and only added a wave).
-      # Within one invocation they compile once, which is why the domain shard
-      # runs as a single command. The server shard needs two because its suites
-      # disagree on --test-threads: the lib's 2451 unit tests run in 18s in
-      # parallel and serializing them to merge the groups costs more than the
-      # wave it saves. The in-memory TestServer contracts ride along with --lib
-      # rather than rebuilding in the pure-test job.
-      - name: Run server unit tests (require DB) and in-memory API contracts
+      # Compile the shared graph once, then retain each target's concurrency.
+      # A later cargo test would pay another codegen/link wave.
+      - name: Run server unit, API contract and repository tests
         if: ${{ matrix.shard == 'server' }}
         run: |
-          cargo test -p everruns-server \
-            --lib \
-            --test contracts
-
-      - name: Run server integration tests (API + repository)
-        if: ${{ matrix.shard == 'server' }}
-        run: cargo test -p everruns-server --test server_integration -- --test-threads=1
+          python3 .github/scripts/ci/libtest.py compile "$RUNNER_TEMP/server-tests.jsonl" -- \
+            cargo test --locked -p everruns-server --lib --test contracts \
+            --test server_integration --no-run --message-format=json
+          python3 .github/scripts/ci/libtest.py run "$RUNNER_TEMP/server-tests.jsonl" --serial server_integration --batch server_integration
 
       # Domain suite: the blob-offload contracts against the in-memory
       # object_store backend, the domain-focused integration tests, and the
@@ -1594,12 +1568,14 @@ jobs:
       - name: Run domain integration tests
         if: ${{ matrix.shard == 'domain' }}
         env:
+          RUST_TEST_THREADS: '1'
           # The local A2A fixtures opt into localhost URLs, which require dev grade.
           DEPLOYMENT_GRADE: dev
           PI_POPPY_DIR: ${{ github.workspace }}/.local/pi-poppy
           PAP_PYTHON: ${{ github.workspace }}/.local/pap-venv/bin/python
         run: |
-          cargo test -p everruns-server \
+          python3 .github/scripts/ci/libtest.py compile "$RUNNER_TEMP/domain-tests.jsonl" -- \
+            cargo test --locked -p everruns-server --no-run --message-format=json \
             --test domain \
             --test blob_offload_integration_test \
             --test prometheus_metrics_test \
@@ -1607,8 +1583,8 @@ jobs:
             --test pat_scope_sweep_test \
             --test plugins_integration_test \
             --test plugins_remote_test \
-            --test strict_client_tools \
-            -- --test-threads=1
+            --test strict_client_tools
+          python3 .github/scripts/ci/libtest.py run "$RUNNER_TEMP/domain-tests.jsonl" --batch domain
 
       - name: Run durable integration tests
         if: ${{ matrix.shard == 'durable' }}
@@ -1718,11 +1694,7 @@ jobs:
       - name: Install fast linker
         timeout-minutes: 5
         run: |
-          if ! command -v ld.lld >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq lld
-          fi
-          ld.lld --version
+          bash scripts/ci-prepare-linker.sh
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
@@ -1807,6 +1779,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: "live"
 
       - name: Run LLM integration tests (skips providers without API keys or out of quota)
@@ -1917,11 +1890,7 @@ jobs:
       - name: Install fast linker
         timeout-minutes: 5
         run: |
-          if ! command -v ld.lld >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq lld
-          fi
-          ld.lld --version
+          bash scripts/ci-prepare-linker.sh
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -2026,6 +1995,8 @@ jobs:
     timeout-minutes: 40
 
     env:
+      # Functional CI favors compile latency; published artifacts use release.
+      CARGO_PROFILE_RELEASE_CI_OPT_LEVEL: '0'
       CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
 
     steps:
@@ -2043,11 +2014,7 @@ jobs:
       - name: Install fast linker
         timeout-minutes: 5
         run: |
-          if ! command -v ld.lld >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq lld
-          fi
-          ld.lld --version
+          bash scripts/ci-prepare-linker.sh
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -2055,11 +2022,12 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "ci-bins"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          shared-key: "ci-bins-opt0-v1"
 
-      # release-ci profile: opt-level=1, no LTO — these binaries only drive the
-      # e2e/workflow/openapi CI jobs, so we trade optimization for ~2x faster
-      # builds. Published binaries/images still use `release` (Dockerfile.unified).
+      # The paired cold/warm pilot favored opt-level=0 for functional CI.
+      # Keep the override scoped here and rotate only this dependency cache;
+      # test caches and the published release profile retain their settings.
       - name: Build CI binaries
         env:
           BUILD_WORKER: ${{ needs.changes.outputs.mode != 'pr' || needs.changes.outputs.docker == 'true' || needs.changes.outputs.chaos == 'true' || needs.changes.outputs.budget_e2e == 'true' }}
@@ -2080,6 +2048,7 @@ jobs:
           name: everruns-server
           path: target/release-ci/everruns-server
           retention-days: 1
+          compression-level: 1
 
       - name: Upload worker binary
         if: needs.changes.outputs.mode != 'pr' || needs.changes.outputs.docker == 'true' || needs.changes.outputs.chaos == 'true' || needs.changes.outputs.budget_e2e == 'true'
@@ -2088,6 +2057,7 @@ jobs:
           name: everruns-worker
           path: target/release-ci/everruns-worker
           retention-days: 1
+          compression-level: 1
 
       - name: Upload CLI binary
         if: needs.changes.outputs.mode != 'pr' || needs.changes.outputs.docker == 'true'
@@ -2096,6 +2066,7 @@ jobs:
           name: everruns-cli
           path: target/release-ci/everruns
           retention-days: 1
+          compression-level: 1
 
 
   # Only main may launch binaries with live credentials. Ordinary Rust pushes
@@ -2195,12 +2166,49 @@ jobs:
         if-no-files-found: warn
         retention-days: 7
 
+  # Compile concurrently with the CI binaries; the execution job only downloads.
+  workflow-test-build:
+    name: Compile Workflow Tests
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.mode != 'pr' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.run_ci == 'true' && (needs.changes.outputs.rust == 'true' || (needs.changes.outputs.provider_live == 'true' && needs.changes.outputs.offline == 'true')) && needs.changes.outputs.skip_slow_rust != 'true'
+    timeout-minutes: 30
+    env:
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.changes.outputs.revision }}
+      - name: Prepare linker and disk
+        timeout-minutes: 5
+        run: |
+          bash scripts/ci-prepare-disk.sh
+          bash scripts/ci-prepare-linker.sh
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: integration-v2
+          save-if: false
+      - name: Compile workflow executable once
+        run: |
+          python3 .github/scripts/ci/libtest.py compile "$RUNNER_TEMP/workflow-tests.jsonl" -- \
+            cargo test --locked -p everruns-server --test workflow_test \
+            --no-run --message-format=json
+          python3 .github/scripts/ci/libtest.py archive-workflow "$RUNNER_TEMP/workflow-tests.jsonl" "$RUNNER_TEMP/workflow-tests"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: workflow-tests
+          path: ${{ runner.temp }}/workflow-tests/
+          retention-days: 1
+          if-no-files-found: error
+
   workflow-test:
     name: Workflow Tests (Server + Worker)
     runs-on: ubuntu-latest
     needs:
       - changes
       - build-binaries
+      - workflow-test-build
     if: needs.changes.outputs.mode != 'pr' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.run_ci == 'true' && (needs.changes.outputs.rust == 'true' || (needs.changes.outputs.provider_live == 'true' && needs.changes.outputs.offline == 'true')) && needs.changes.outputs.skip_slow_rust != 'true'
     timeout-minutes: 30
     services:
@@ -2305,6 +2313,12 @@ jobs:
           name: everruns-worker
           path: ./bin
 
+      - name: Download workflow test executable
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: workflow-tests
+          path: ./bin/workflow-tests
+
       - name: Make binaries executable
         run: chmod +x ./bin/*
 
@@ -2390,7 +2404,7 @@ jobs:
           EVERRUNS_LIVE_SKIP_REPORT: ${{ github.workspace }}/live-provider-skips.md
         run: >-
           doppler run --preserve-env="DATABASE_URL,API_BASE_URL,AUTH_MODE,DEPLOYMENT_GRADE,WORKER_GRPC_AUTH_TOKEN,SECRETS_ENCRYPTION_KEY,RATE_LIMIT_API_REQUESTS_PER_MINUTE,EVERRUNS_REQUIRE_LIVE_TESTS,EVERRUNS_LIVE_SKIP_REPORT"
-          -- cargo test -p everruns-server --test workflow_test -- --test-threads=1
+          -- python3 .github/scripts/ci/libtest.py execute-workflow "$GITHUB_WORKSPACE/bin/workflow-tests" -- --test-threads=1
 
       - name: Run llmsim workflow tests
         if: needs.changes.outputs.provider_live != 'true'
@@ -2400,7 +2414,7 @@ jobs:
           env -u DOPPLER_TOKEN -u OPENAI_API_KEY -u ANTHROPIC_API_KEY
           -u DEFAULT_OPENAI_API_KEY -u DEFAULT_ANTHROPIC_API_KEY
           -u EVERRUNS_REQUIRE_LIVE_TESTS
-          cargo test -p everruns-server --test workflow_test -- --test-threads=1
+          python3 .github/scripts/ci/libtest.py execute-workflow "$GITHUB_WORKSPACE/bin/workflow-tests" -- --test-threads=1
           --skip test_no_duplicate_tool_calls
           --skip test_agent_execution_openai_with_tool_calls
           --skip test_agent_execution_anthropic_with_tool_calls
@@ -2670,6 +2684,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: openapi-v1
 
       - name: Build OpenAPI exporter
@@ -2988,6 +3003,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: "docs"
 
       - name: Install dependencies
@@ -3222,6 +3238,7 @@ jobs:
       - live-provider-matrix
       - s3-integration-test
       - build-binaries
+      - workflow-test-build
       - workflow-test
       - chaos-test
       - cli-e2e-test

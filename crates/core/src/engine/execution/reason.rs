@@ -51,6 +51,7 @@ mod error_policy;
 mod facts;
 mod file_resolution;
 mod finalized_calls;
+mod generation_failure;
 mod generation_outcome;
 mod hosted_tools;
 mod observability;
@@ -354,7 +355,6 @@ impl ReasonAtom {
             Some(parent_span_id.clone()),
         );
 
-        // Track reason phase timing for Braintrust observability
         let reason_start = Instant::now();
 
         // A lost attempt of this step already announced it (EVE-532).
@@ -1104,10 +1104,22 @@ impl ReasonAtom {
         }
 
         let llm_start = Instant::now();
+        let failed_generation = generation_failure::FailedGeneration {
+            emitter: &self.event_emitter,
+            session_id,
+            context: streaming_event_context.clone(),
+            trace_id,
+            reason_span_id,
+            agent: &runtime_agent,
+            model: &model_with_provider,
+            messages: &messages_for_event,
+            request_options: build_request_options(
+                &llm_config,
+                model_with_provider.provider_type.as_str(),
+            ),
+            started: llm_start,
+        };
 
-        // Try LLM call with automatic compaction on RequestTooLarge.
-        // Transient errors (429, 5xx) are retried at the driver level.
-        // Stream-level errors are not retried here to avoid duplicate user-visible messages.
         let mut compaction_info: Option<LlmCompactionInfo> = None;
         let mut llm_messages_for_call = llm_messages.clone();
         let compaction_lifecycle = provider_managed_compaction::Lifecycle::new(
@@ -1189,7 +1201,7 @@ impl ReasonAtom {
                     Ok(result) => result,
                     Err(_) => {
                         compaction_lifecycle.fail_if(provider_managed).await;
-                        return Err(AgentLoopError::llm_kind(
+                        let error = AgentLoopError::llm_kind(
                             crate::engine::error::LlmErrorKind::Unavailable,
                             format!(
                                 "provider retry time budget exhausted after {} retries over {:.1}s; the turn is safe to resume",
@@ -1197,7 +1209,11 @@ impl ReasonAtom {
                                 retry_config.max_retry_elapsed.as_secs_f64()
                             ),
                         )
-                        .with_retry_metadata(&stream_retry_metadata));
+                        .with_retry_metadata(&stream_retry_metadata);
+                        failed_generation
+                            .emit(&error.to_string(), None, &stream_retry_metadata)
+                            .await;
+                        return Err(error);
                     }
                 }
             } else {
@@ -1215,7 +1231,7 @@ impl ReasonAtom {
                     generation_outcome::observe_overflow(&model_with_provider, &e);
                     compaction_lifecycle.fail_if(provider_managed).await;
                     if provider_managed {
-                        return Err(e);
+                        return Err(failed_generation.error(e, &stream_retry_metadata).await);
                     }
                     let Some(policy) = compaction_policy.as_deref() else {
                         tracing::warn!(
@@ -1223,7 +1239,7 @@ impl ReasonAtom {
                             turn_id = %context.turn_id,
                             "ReasonAtom: context too large and compaction capability is not enabled"
                         );
-                        return Err(e);
+                        return Err(failed_generation.error(e, &stream_retry_metadata).await);
                     };
                     let outcome = apply_reactive_compaction(
                         ReactiveCompactionContext {
@@ -1244,20 +1260,26 @@ impl ReasonAtom {
                         &mut llm_messages_for_call,
                         &mut llm_config,
                     )
-                    .await?;
+                    .await;
+                    let outcome = failed_generation
+                        .result(outcome, &stream_retry_metadata)
+                        .await?;
                     let Some(outcome) = outcome else {
-                        return Err(e);
+                        return Err(failed_generation.error(e, &stream_retry_metadata).await);
                     };
                     if outcome.generation_info.is_some() {
                         compaction_info = outcome.generation_info;
                     }
 
-                    chat_driver
+                    let stream = chat_driver
                         .chat_completion_stream(
                             &crate::engine::ProviderEndpoint::default(),
                             llm_messages_for_call.clone(),
                             &llm_config,
                         )
+                        .await;
+                    failed_generation
+                        .result(stream, &stream_retry_metadata)
                         .await?
                 }
                 Err(e)
@@ -1282,7 +1304,7 @@ impl ReasonAtom {
                             &retry_config,
                         );
                         compaction_lifecycle.fail_if(provider_managed).await;
-                        return Err(AgentLoopError::llm_kind(
+                        let error = AgentLoopError::llm_kind(
                             e.llm_error_kind()
                                 .unwrap_or(crate::engine::error::LlmErrorKind::Unavailable),
                             format!(
@@ -1290,7 +1312,11 @@ impl ReasonAtom {
                                 stream_retry_metadata.attempts
                             ),
                         )
-                        .with_retry_metadata(&stream_retry_metadata));
+                        .with_retry_metadata(&stream_retry_metadata);
+                        failed_generation
+                            .emit(&error.to_string(), None, &stream_retry_metadata)
+                            .await;
+                        return Err(error);
                     };
                     tracing::warn!(
                         session_id = %session_id,
@@ -1307,13 +1333,9 @@ impl ReasonAtom {
                     continue 'stream_attempt;
                 }
                 Err(error) => {
-                    let attempts = stream_retry_metadata.attempts;
-                    generation_outcome::observe_terminal(
-                        &model_with_provider,
-                        &error,
-                        attempts,
-                        &retry_config,
-                    );
+                    failed_generation
+                        .terminal_start_failure(&error, &stream_retry_metadata, &retry_config)
+                        .await;
                     return compaction_lifecycle
                         .fail_start(error, provider_managed)
                         .await;
@@ -1805,33 +1827,12 @@ impl ReasonAtom {
                             continue 'stream_attempt;
                         }
 
-                        // No useful output collected — treat as a real failure.
-                        let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
-                        let event_context = EventContext::from_execution_context(context)
-                            .with_span(
-                                trace_id.to_string(),
-                                Uuid::now_v7().to_string(),
-                                Some(reason_span_id.to_string()),
-                            );
-                        let tools_summary: Vec<ToolDefinitionSummary> =
-                            runtime_agent.tools.iter().map(|t| t.into()).collect();
-                        let generation_data = LlmGenerationData::failure(
-                            messages_for_event.clone(),
-                            tools_summary,
-                            runtime_agent.model.clone(),
-                            Some(model_with_provider.provider_type.to_string()),
-                            err.to_string(),
-                            Some(llm_duration_ms),
-                            time_to_first_token_ms,
-                        )
-                        .with_provider_id(Some(model_with_provider.provider.to_string()));
-                        let _ = self
-                            .event_emitter
-                            .emit(EventRequest::new(
-                                session_id,
-                                event_context,
-                                generation_data,
-                            ))
+                        failed_generation
+                            .emit(
+                                &err.to_string(),
+                                time_to_first_token_ms,
+                                &stream_retry_metadata,
+                            )
                             .await;
                         if compaction_started_at.is_some() {
                             compaction_lifecycle.fail().await;
@@ -2102,7 +2103,6 @@ impl ReasonAtom {
             )
         });
 
-        // 16. Emit llm.generation event (child of reason span)
         let event_context = EventContext::from_execution_context(context).with_span(
             trace_id.to_string(),
             Uuid::now_v7().to_string(),
