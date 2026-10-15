@@ -49,8 +49,13 @@ retain their independent schedule. Explicit full validation always runs all surf
 Functional PR/main database tests use native PostgreSQL and private template copies.
 Nightly/full suites supply a disposable external PostgreSQL service with durability
 on. Durable-store tests keep their external service in every broad batch. Tests that
-share process-global state retain serialization; private-database server unit tests
-have bounded concurrency. See [Embedded PostgreSQL](embedded-postgresql.md).
+share process-global state retain serialization within each process. Native domain
+and API integration targets use a few independent serial batches, each with its own
+PostgreSQL cluster; explicitly configured external databases retain one serial
+process because raw-pool fixtures share them. A fixture readiness handshake warms
+the native installation before other batches start. The executable is compiled once
+and its inventory is partitioned without dropping tests or creating a process per
+test. Private-database server unit tests retain bounded thread concurrency. See [Embedded PostgreSQL](embedded-postgresql.md).
 
 Release workflows require successful full validation of the exact main revision
 before publishing. A successful ordinary batch or a different revision cannot

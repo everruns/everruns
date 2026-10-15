@@ -10,6 +10,8 @@ import subprocess
 import sys
 import time
 
+import test_batches
+
 
 def server_package():
     metadata = json.loads(subprocess.check_output(
@@ -52,13 +54,18 @@ def compile_tests(command, package, targets=None, artifacts=None):
     return {key: executables[key] for key in targets}
 
 
-def execute_tests(manifest, executables, targets):
+def execute_tests(manifest, executables, targets, batch_targets=(), processes=2):
     # Cargo supplies package cwd and manifest context to fixture readers.
     manifest = Path(manifest).resolve()
     env = dict(os.environ, CARGO_MANIFEST_DIR=str(manifest.parent), CARGO_MANIFEST_PATH=str(manifest))
     for key, arguments in targets.items():
         start = time.monotonic()
-        subprocess.run([executables[key], *arguments], cwd=manifest.parent, env=env, check=True)
+        if key[0] in batch_targets:
+            if arguments not in ([], ['--test-threads=1']):
+                raise ValueError('Batch execution requires an unfiltered serial target')
+            test_batches.run(executables[key], manifest.parent, env, processes)
+        else:
+            subprocess.run([executables[key], *arguments], cwd=manifest.parent, env=env, check=True)
         print(f'Selected server {key[0]} execution: {time.monotonic() - start:.2f}s', flush=True)
 
 
@@ -76,6 +83,8 @@ def main():
     run = commands.add_parser('run')
     run.add_argument('artifacts', type=Path)
     run.add_argument('--serial', action='append', default=[])
+    run.add_argument('--batch', action='append', default=[])
+    run.add_argument('--processes', type=int, choices=[2, 4], default=2)
     archive = commands.add_parser('archive-workflow')
     archive.add_argument('artifacts', type=Path)
     archive.add_argument('directory', type=Path)
@@ -109,11 +118,11 @@ def main():
         shutil.copyfile(executables[('workflow_test', 'test')], executable)
         (args.directory / 'workflow-tests.sha256').write_text(digest(executable) + '\n')
     else:
-        missing = set(args.serial) - {name for name, _ in executables}
+        missing = set(args.serial + args.batch) - {name for name, _ in executables}
         if missing:
-            raise RuntimeError(f'Missing serial test targets: {missing}')
+            raise RuntimeError(f'Missing selected test targets: {missing}')
         targets = {key: ['--test-threads=1'] if key[0] in args.serial else [] for key in executables}
-        execute_tests(package['manifest_path'], executables, targets)
+        execute_tests(package['manifest_path'], executables, targets, args.batch, args.processes)
 
 
 if __name__ == '__main__':

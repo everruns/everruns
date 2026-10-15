@@ -46,13 +46,19 @@ async fn test_cluster() -> anyhow::Result<&'static TestCluster> {
     static CLUSTER: tokio::sync::OnceCell<TestCluster> = tokio::sync::OnceCell::const_new();
     CLUSTER
         .get_or_try_init(|| async {
-            match std::env::var("EVERRUNS_TEST_POSTGRES_URL") {
-                Ok(url) => Ok(TestCluster::External(url.parse()?)),
-                Err(std::env::VarError::NotPresent) => Ok(TestCluster::Embedded(
+            let cluster = match std::env::var("EVERRUNS_TEST_POSTGRES_URL") {
+                Ok(url) => TestCluster::External(url.parse()?),
+                Err(std::env::VarError::NotPresent) => TestCluster::Embedded(
                     super::embedded_postgres::EmbeddedPostgres::shared().await?,
-                )),
-                Err(error) => Err(error.into()),
+                ),
+                Err(error) => return Err(error.into()),
+            };
+            // The CI batch runner starts other processes only after the first
+            // has finished installing/starting PostgreSQL, including cold caches.
+            if let Some(path) = std::env::var_os("EVERRUNS_TEST_BATCH_READY") {
+                std::fs::write(path, [])?;
             }
+            anyhow::Ok(cluster)
         })
         .await
 }

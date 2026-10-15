@@ -263,6 +263,74 @@ fn context() {
             self.assertNotEqual(broken.returncode,0)
             self.assertIn('missing_ci_fixture_function',broken.stderr)
 
+    def test_serial_batches_cover_inventory_propagate_failure_and_keep_external_serial(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root/'src').mkdir(); (root/'tests').mkdir()
+            (root/'Cargo.toml').write_text('[package]\nname="everruns-server"\nversion="0.1.0"\nedition="2024"\n[workspace]\n')
+            (root/'src/lib.rs').write_text('')
+            (root/'tests/domain.rs').write_text(r'''
+use std::sync::atomic::{AtomicUsize, Ordering};
+static ACTIVE: AtomicUsize = AtomicUsize::new(0);
+fn case(name: &str) {
+    let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    assert_eq!(std::env::current_dir().unwrap(), std::path::Path::new(&manifest));
+    assert_eq!(std::env::var("CARGO_MANIFEST_PATH").unwrap(), format!("{manifest}/Cargo.toml"));
+    assert!(std::env::args().any(|arg| arg == "--test-threads=1"));
+    assert_eq!(ACTIVE.fetch_add(1, Ordering::SeqCst), 0, "tests raced inside a batch");
+    let proof = std::path::PathBuf::from(std::env::var_os("BATCH_PROOF").unwrap()).join(name);
+    assert!(!proof.exists(), "test executed more than once");
+    std::fs::write(proof, std::process::id().to_string()).unwrap();
+    let cache = std::path::PathBuf::from(std::env::var_os("BATCH_CACHE").unwrap());
+    if !cache.join("installed").exists() {
+        let _install = std::fs::OpenOptions::new().write(true).create_new(true)
+            .open(cache.join("installing")).expect("cold installation raced");
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        std::fs::write(cache.join("installed"), []).unwrap();
+    }
+    if let Some(path) = std::env::var_os("EVERRUNS_TEST_BATCH_READY") {
+        std::fs::write(path, []).unwrap();
+    }
+    std::thread::sleep(std::time::Duration::from_millis(25));
+    ACTIVE.fetch_sub(1, Ordering::SeqCst);
+    assert!(name != "beta" || std::env::var_os("FAIL_BATCH").is_none(), "batch failure");
+}
+#[test] fn alpha() { case("alpha"); }
+#[test] fn beta() { case("beta"); }
+#[test] fn gamma() { case("gamma"); }
+#[test] fn delta() { case("delta"); }
+#[test] #[ignore] fn ignored() { panic!("ignored fixture ran"); }
+''')
+            env = dict(os.environ, CARGO_TARGET_DIR=str(root/'target'))
+            for name in ('DATABASE_URL', 'DB_PORT', 'EVERRUNS_TEST_POSTGRES_URL'):
+                env.pop(name, None)
+            script = str(ROOT/'.github/scripts/ci/libtest.py')
+            artifacts = root/'artifacts.jsonl'
+            subprocess.run(['cargo','generate-lockfile','--offline'],cwd=root,env=env,check=True,capture_output=True)
+            subprocess.run(['python3',script,'compile',str(artifacts),'--','cargo','test',
+                            '--locked','--test','domain','--no-run','--message-format=json'],
+                           cwd=root,env=env,check=True,capture_output=True)
+            command = ['python3',script,'run',str(artifacts),'--batch','domain']
+            for setting in (None, 'DATABASE_URL', 'DB_PORT', 'EVERRUNS_TEST_POSTGRES_URL', 'FAIL_BATCH'):
+                proof = root/str(setting); proof.mkdir()
+                cache = root/(str(setting)+'-cache'); cache.mkdir()
+                trial = dict(env, BATCH_PROOF=str(proof), BATCH_CACHE=str(cache))
+                if setting: trial[setting] = 'fixture'
+                result = subprocess.run(command,cwd=root,env=trial,capture_output=True,text=True)
+                self.assertEqual(result.returncode == 0, setting != 'FAIL_BATCH', result.stdout+result.stderr)
+                self.assertEqual({p.name for p in proof.iterdir()}, {'alpha','beta','gamma','delta'})
+                pids = {p.read_text() for p in proof.iterdir()}
+                self.assertEqual(len(pids), 2 if setting in (None, 'FAIL_BATCH') else 1)
+                if setting in (None, 'FAIL_BATCH'): self.assertIn('Native PostgreSQL ready', result.stdout)
+                else: self.assertIn('External PostgreSQL configured', result.stdout)
+                if setting == 'FAIL_BATCH': self.assertIn('batch failure', result.stdout)
+                else: self.assertIn('1 ignored;', result.stdout)
+        step = next(s for s in self.jobs['integration-test']['steps'] if s.get('name') == 'Run domain integration tests')
+        self.assertEqual(step['run'].count('cargo test'), 1)
+        self.assertIn('--no-run --message-format=json', step['run'])
+        self.assertIn('--batch domain', step['run'])
+        self.assertEqual(step['env']['RUST_TEST_THREADS'], '1')
+
     def test_main_compilation_can_overlap_binary_build(self):
         producer = self.jobs['workflow-test-build']
         self.assertEqual(producer['needs'], 'changes')

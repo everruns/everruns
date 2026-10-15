@@ -1540,7 +1540,7 @@ jobs:
           python3 .github/scripts/ci/libtest.py compile "$RUNNER_TEMP/server-tests.jsonl" -- \
             cargo test --locked -p everruns-server --lib --test contracts \
             --test server_integration --no-run --message-format=json
-          python3 .github/scripts/ci/libtest.py run "$RUNNER_TEMP/server-tests.jsonl" --serial server_integration
+          python3 .github/scripts/ci/libtest.py run "$RUNNER_TEMP/server-tests.jsonl" --serial server_integration --batch server_integration
 
       # Domain suite: the blob-offload contracts against the in-memory
       # object_store backend, the domain-focused integration tests, and the
@@ -1568,12 +1568,14 @@ jobs:
       - name: Run domain integration tests
         if: ${{ matrix.shard == 'domain' }}
         env:
+          RUST_TEST_THREADS: '1'
           # The local A2A fixtures opt into localhost URLs, which require dev grade.
           DEPLOYMENT_GRADE: dev
           PI_POPPY_DIR: ${{ github.workspace }}/.local/pi-poppy
           PAP_PYTHON: ${{ github.workspace }}/.local/pap-venv/bin/python
         run: |
-          cargo test -p everruns-server \
+          python3 .github/scripts/ci/libtest.py compile "$RUNNER_TEMP/domain-tests.jsonl" -- \
+            cargo test --locked -p everruns-server --no-run --message-format=json \
             --test domain \
             --test blob_offload_integration_test \
             --test prometheus_metrics_test \
@@ -1581,8 +1583,8 @@ jobs:
             --test pat_scope_sweep_test \
             --test plugins_integration_test \
             --test plugins_remote_test \
-            --test strict_client_tools \
-            -- --test-threads=1
+            --test strict_client_tools
+          python3 .github/scripts/ci/libtest.py run "$RUNNER_TEMP/domain-tests.jsonl" --batch domain
 
       - name: Run durable integration tests
         if: ${{ matrix.shard == 'durable' }}
