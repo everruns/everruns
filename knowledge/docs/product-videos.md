@@ -44,6 +44,13 @@ including the public embed and English conversation examples. The detailed
 Verify deployment before describing a containing page as live.
 
 For public entries, link the real demo rather than a private recording directory.
-The walkthrough illustrates both
+
+The [PACT account walkthrough](https://www.youtube.com/watch?v=9FZiYv5PsWY)
+uses a local personal-agent demo client and synthetic store data. It shows scoped
+consent, cancellation refused before approval, and a verified signed receipt.
+Its release card also names Poppy support; the demonstrated account flow is PACT.
+The public embeds live in the A2A/PACT and Poppy feature pages and PACT changelog.
+
+The Slack walkthrough illustrates both
 [Slack DMs and files](../../docs/changelog/2026-10-13-slack-agents-dms-and-files/index.md)
 and [scheduled Slack briefings](../../docs/changelog/2026-10-12-scheduled-turns-post-to-slack/index.md).
