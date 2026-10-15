@@ -94,6 +94,9 @@ impl<H: ActorHosts> ActorRuntime<H> {
             self.renew_poke.clone(),
         )));
         let finish = self.run_leased(&lease, &actor).await;
+        // Lease-release replies may arrive after another holder takes over;
+        // record the execution boundary before that administrative RPC.
+        tracing::debug!(session_id = %actor.session_id, "Actor turn execution finished");
         drop(renewer);
         match finish {
             Ok(Finish::Release) if !lease.is_lost() => match lease.release().await {
