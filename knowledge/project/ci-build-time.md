@@ -140,6 +140,22 @@ durable 9.1m to 2-3m.
   store a `target/` shaped for a different workload and every heavy consumer rebuilt on
   top of it — the key reported a full match while 490 of 532 crates recompiled. Keys are
   now split by workload with the heaviest consumer pinned as the sole producer.
+- **Keep large CI Rust cache writes on main.** PRs restore the canonical
+  dependency caches but do not retain their own Rust copies. Immutable generations
+  already compete under a fixed repository budget; branch copies can evict the
+  useful main baseline. The trusted [closed-PR cleanup](../../.github/workflows/ci-cache-cleanup.yml)
+  also removes remaining Node and tool caches after closure, rechecking current PR
+  state and accepting only exact PR merge refs. It never deletes branch caches or
+  executes PR code. Manual cleanup sweeps existing closed PRs; no periodic tick or
+  paid cache-capacity increase is required.
+- **Benchmark optimization and concurrency separately.** The manual
+  [pilot](../../.github/workflows/ci-test-archive.yml) compares CI binary optimization
+  on a pinned runner image using empty targets followed by dependency-only warm
+  targets. It writes no experiment caches. A separate server trial compiles once
+  and repeats the same library executable at bounded concurrency in both orders,
+  preserving each test's private PostgreSQL database. Global-state integration
+  targets retain their serial policy. Profile choices require compile, archive and
+  execution evidence plus the existing downstream functional assertions.
 - **Rotate the key name when changing producers.** Immutability means a pinned producer
   cannot replace an entry written under the old race; the `-v2` suffixes exist for that
   reason. Bump the suffix again if a key is ever poisoned the same way.

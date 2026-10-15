@@ -39,6 +39,69 @@ class Policy(unittest.TestCase):
         cls.workflow = yaml.safe_load((ROOT/'.github/workflows/ci.yml').read_text())
         cls.jobs = cls.workflow['jobs']
 
+    def test_large_ci_rust_caches_are_read_only_outside_main(self):
+        producers = 0
+        for job in self.jobs.values():
+            for step in job.get('steps', []):
+                if not step.get('uses', '').startswith('Swatinem/rust-cache@'):
+                    continue
+                condition = step.get('with', {}).get('save-if', True)
+                if condition is False:
+                    continue
+                producers += 1
+                self.assertIsInstance(condition, str)
+                for event, ref in [('pull_request', 'refs/pull/7/merge'),
+                                   ('workflow_dispatch', 'refs/heads/experiment')]:
+                    self.assertFalse(evaluate(condition, {'github.event_name': event, 'github.ref': ref,
+                        'matrix.shard': 'domain', 'needs.changes.outputs.rust': 'true'}))
+        self.assertGreater(producers, 5)
+
+    def test_cleanup_preserves_active_pr_and_all_branch_caches(self):
+        cleanup = load('cache_cleanup')
+        def cache(identity, ref):
+            return dict(id=identity, ref=ref, size_in_bytes=100)
+        caches = [cache(1, 'refs/heads/main'), cache(2, 'refs/heads/topic'),
+                  cache(3, 'refs/pull/7/merge'), cache(4, 'refs/pull/8/merge'),
+                  cache(5, 'refs/pull/7/head'), cache(6, 'refs/pull/9/merge')]
+        deleted = []
+        def request(endpoint, method='GET'):
+            if method == 'DELETE':
+                deleted.append(int(endpoint.rsplit('/', 1)[1])); return
+            if '/actions/caches?' in endpoint:
+                return [{'actions_caches': caches[:3]}, {'actions_caches': caches[3:]}]
+            number = int(endpoint.rsplit('/', 1)[1])
+            return [dict(number=number, state='closed' if number != 8 else 'open',
+                         base={'repo': {'full_name': 'owner/repo' if number != 9 else 'other/repo'}})]
+        self.assertEqual(cleanup.cleanup('owner/repo', request=request), (1, 100))
+        self.assertEqual(deleted, [3])
+        deleted.clear()
+        self.assertEqual(cleanup.cleanup('owner/repo', number=8, request=request), (0, 0))
+        self.assertEqual(deleted, [])
+
+    def test_cleanup_rechecks_reopened_pr_before_each_delete(self):
+        cleanup = load('cache_cleanup')
+        states = iter(['closed', 'open'])
+        deleted = []
+        def request(endpoint, method='GET'):
+            if method == 'DELETE':
+                deleted.append(endpoint); return
+            if '/actions/caches?' in endpoint:
+                return [{'actions_caches': [dict(id=i, ref='refs/pull/7/merge', size_in_bytes=10) for i in (1, 2)]}]
+            return [dict(number=7, state=next(states), base={'repo': {'full_name': 'owner/repo'}})]
+        self.assertEqual(cleanup.cleanup('owner/repo', request=request), (1, 10))
+        self.assertEqual(len(deleted), 1)
+
+    def test_privileged_cleanup_uses_only_trusted_main(self):
+        workflow = yaml.safe_load((ROOT/'.github/workflows/ci-cache-cleanup.yml').read_text())
+        self.assertEqual(workflow[True]['pull_request_target']['types'], ['closed'])
+        self.assertIn('github.event.pull_request.number', workflow['concurrency']['group'])
+        job = workflow['jobs']['cleanup']
+        self.assertEqual(job['permissions'], {'contents': 'read', 'actions': 'write', 'pull-requests': 'read'})
+        checkout = job['steps'][0]
+        self.assertRegex(checkout['uses'], r'actions/checkout@[0-9a-f]{40}$')
+        self.assertEqual(checkout['with'], {'ref': 'main', 'persist-credentials': False})
+        self.assertNotIn('secrets.', json.dumps(workflow))
+
     def test_baseline_never_advances_on_failure_cancel_or_pr(self):
         runs = [dict(id=n,event=e,conclusion=c,head_branch='main',head_sha=sha,display_title='CI batch '+sha)
                 for n,e,c,sha in [(1,'push','success','good'),(2,'push','failure','failed'),

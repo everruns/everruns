@@ -576,6 +576,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: "msrv"
 
       - name: Check published crates against MSRV
@@ -765,6 +766,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: |
             . -> target
             examples/celld-engine -> target
@@ -942,6 +944,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           # Distinct from the test jobs: clippy compiles --all-targets
           # --all-features, a different feature set than the default-feature
           # test builds. rust-cache keys ignore feature flags, so sharing one
@@ -1072,7 +1075,7 @@ jobs:
           shared-key: "unit-v2"
           # Heaviest shard writes the key; the others restore it (see `integration`).
           # A docs-only run builds a fraction of the workload, so it never writes.
-          save-if: ${{ matrix.shard == 'facade-cli' && needs.changes.outputs.rust == 'true' }}
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.shard == 'facade-cli' && needs.changes.outputs.rust == 'true' }}
 
       - name: Run pure unit tests (${{ matrix.shard }})
         if: env.DOCS_SNIPPETS_ONLY != 'true' || matrix.shard == 'facade-cli'
@@ -1355,6 +1358,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: "live"
 
       - name: Run Daytona live integration tests
@@ -1396,6 +1400,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: "live"
 
       - name: Run E2B live integration tests
@@ -1516,7 +1521,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "integration-v2"
-          save-if: ${{ matrix.shard == 'domain' }}
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.shard == 'domain' }}
 
       - name: Cache cargo binaries
         if: matrix.shard == 'durable' || needs.changes.outputs.mode == 'nightly' || needs.changes.outputs.mode == 'full'
@@ -1791,6 +1796,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: "live"
 
       - name: Run LLM integration tests (skips providers without API keys or out of quota)
@@ -2039,6 +2045,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: "ci-bins"
 
       # release-ci profile: opt-level=1, no LTO — these binaries only drive the
@@ -2700,6 +2707,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: openapi-v1
 
       - name: Build OpenAPI exporter
@@ -3018,6 +3026,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: "docs"
 
       - name: Install dependencies
