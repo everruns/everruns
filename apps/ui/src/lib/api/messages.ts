@@ -1,6 +1,7 @@
 // Message API functions
 // Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
+import { withSessionActivity } from "../session-activity";
 import { api, type RequestOptions } from "./client";
 import type { Message, CreateMessageRequest, ListResponse, Controls } from "./types";
 
@@ -19,12 +20,14 @@ export async function createMessage(
   request: CreateMessageBody,
   options?: RequestOptions,
 ): Promise<CreatedMessage> {
-  const response = await api.post<CreatedMessage>(
-    `/v1/sessions/${sessionId}/messages`,
-    request,
-    options,
-  );
-  return response.data;
+  return withSessionActivity(sessionId, async () => {
+    const response = await api.post<CreatedMessage>(
+      `/v1/sessions/${sessionId}/messages`,
+      request,
+      options,
+    );
+    return response.data;
+  });
 }
 
 export async function listMessages(sessionId: string): Promise<Message[]> {
