@@ -475,7 +475,8 @@ def actor_releases(run_dir: str, n_workers: int) -> dict:
     return out
 
 
-SPAN_END = ("Actor released", "Actor lease lost", "the lease will expire")
+SPAN_END = ("Actor turn execution finished", "Actor lease lost", "the lease will expire")
+RELEASE_ACK = ("Actor released", "Actor lease lost before release", "Actor release failed;")
 
 
 def actor_worker_overlap(run_dir: str, n_workers: int, rep: Report) -> int:
@@ -484,8 +485,10 @@ def actor_worker_overlap(run_dir: str, n_workers: int, rep: Report) -> int:
     Events carry no worker id, so this reads the workers' own logs: every
     line naming `session_id=session_<hex>` is activity of that worker on that
     session. A span opens at the first such line, extends with each later
-    one, and closes at that worker's `Actor released`, lease-lost or
-    "the lease will expire" line for the session, or at a SIGKILL marker (a killed worker does no more work). Spans of one
+    one, and closes at that worker's execution-finished, lease-lost or
+    "the lease will expire" line for the session, or at a SIGKILL marker.
+    Release RPC acknowledgements do not extend execution: they can arrive
+    after a valid lease takeover. Spans of one
     session on two different workers that intersect by more than the
     tolerance mean the session ran on two workers at the same time; this is
     the log-side complement of the `session_actors` lease sampler.
@@ -516,11 +519,18 @@ def actor_worker_overlap(run_dir: str, n_workers: int, rep: Report) -> int:
                     continue
                 t = parse_ts(m.group(1))
                 s = sm.group(1)
+                if any(k in line for k in RELEASE_ACK):
+                    # The turn finished before this RPC. Older logs lack an
+                    # explicit execution boundary; retain their last activity
+                    # without treating a delayed response as more turn work.
+                    previous = open_spans.pop(s, None)
+                    if previous:
+                        spans.append((previous[0], previous[1], name, s))
+                    continue
                 sp = open_spans.setdefault(s, [t, t])
                 sp[1] = t
-                # The worker is done with the lease: released, lost, or left
-                # to expire after a failure (another worker resumes the turn
-                # only after expiry, so activity stops here).
+                # Execution completed or must stop after a loss/failure.
+                # Administrative release replies are outside this span.
                 if any(k in line for k in SPAN_END):
                     spans.append((sp[0], sp[1], name, s))
                     del open_spans[s]

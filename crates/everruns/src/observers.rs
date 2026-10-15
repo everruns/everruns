@@ -163,9 +163,12 @@ impl ListenerTarget {
         }
     }
 
-    async fn flush(&self) {
+    async fn flush(&self) -> Result<(), String> {
         match self {
-            Self::App(listener) => listener.flush().await,
+            Self::App(listener) => {
+                listener.flush().await;
+                Ok(())
+            }
             #[cfg(any(feature = "otel", feature = "braintrust"))]
             Self::Host(listener) => listener.flush().await,
         }
@@ -238,6 +241,8 @@ pub struct ListenerStats {
     pub panics: u64,
     /// Whether the listener completed its most recent shutdown flush.
     pub flushed: bool,
+    /// Exporter failure reported by the most recent shutdown flush.
+    pub flush_error: Option<String>,
 }
 
 /// Snapshot of Engine observer delivery counters.
@@ -279,6 +284,7 @@ struct ListenerCounters {
     dropped: AtomicU64,
     panics: AtomicU64,
     flushed: AtomicBool,
+    flush_error: Mutex<Option<String>>,
     next_warning_ms: AtomicU64,
 }
 
@@ -289,6 +295,7 @@ impl ListenerCounters {
             dropped: AtomicU64::new(0),
             panics: AtomicU64::new(0),
             flushed: AtomicBool::new(false),
+            flush_error: Mutex::new(None),
             next_warning_ms: AtomicU64::new(0),
         }
     }
@@ -482,6 +489,12 @@ impl ListenerSlot {
             dropped: self.counters.dropped.load(Ordering::Relaxed),
             panics: self.counters.panics.load(Ordering::Relaxed),
             flushed: self.counters.flushed.load(Ordering::Relaxed),
+            flush_error: self
+                .counters
+                .flush_error
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone(),
         }
     }
 }
@@ -510,7 +523,13 @@ async fn drain_listener(
     let flush_listener = listener.clone();
     let mut flush = AbortOnDrop(tokio::spawn(async move { flush_listener.flush().await }));
     match (&mut flush.0).await {
-        Ok(()) => counters.flushed.store(true, Ordering::Relaxed),
+        Ok(Ok(())) => counters.flushed.store(true, Ordering::Relaxed),
+        Ok(Err(error)) => {
+            *counters
+                .flush_error
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) = Some(error);
+        }
         Err(error) if error.is_panic() => {
             counters.panics.fetch_add(1, Ordering::Relaxed);
         }
@@ -730,6 +749,41 @@ mod tests {
         fn name(&self) -> &'static str {
             "recorder"
         }
+    }
+
+    #[cfg(feature = "otel")]
+    #[tokio::test]
+    async fn shutdown_reports_host_flush_failure() {
+        struct FailedFlush;
+        #[async_trait]
+        impl CoreEventListener for FailedFlush {
+            async fn on_event(&self, _: &CoreEvent) {}
+            async fn flush(&self) -> Result<(), String> {
+                Err("synthetic exporter failure".into())
+            }
+        }
+        let dispatcher =
+            ObserverDispatcher::new(vec![ListenerRegistration::Host(Arc::new(FailedFlush))], 8);
+        let session_id = everruns_contracts::typed_id::SessionId::new();
+        let bus = Arc::new(FacadeEventBus::new(session_id, dispatcher.clone()));
+        let emitter = HostEventEmitter::new(Arc::new(InMemoryEventLog::new()), bus);
+        emitter
+            .emit(EventRequest::new(
+                session_id,
+                EventContext::empty(),
+                everruns_core::events::InputMessageData {
+                    message: everruns_core::message::RuntimeMessage::user("synthetic"),
+                },
+            ))
+            .await
+            .unwrap();
+        let report = dispatcher.shutdown(Duration::from_secs(1)).await;
+        assert!(!report.timed_out);
+        assert!(!report.stats.listeners[0].flushed);
+        assert_eq!(
+            report.stats.listeners[0].flush_error.as_deref(),
+            Some("synthetic exporter failure")
+        );
     }
 
     /// An unfiltered host listener, for asserting that the core half is still

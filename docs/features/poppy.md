@@ -138,3 +138,13 @@ also runs the real-model ones when `OPENAI_API_KEY` is set.
   used by the server's
   [`poppy_agent`](https://github.com/everruns/everruns/tree/main/crates/server/src/domains/poppy_agent)
   and by Framework apps.
+
+## Related PACT walkthrough
+
+Everruns also supports [PACT](/features/a2a/#personal-agents-pact). This walkthrough
+demonstrates PACT account consent, cancellation approvals, and signed receipts,
+using a local demo client and synthetic store data.
+
+<iframe src="https://www.youtube-nocookie.com/embed/9FZiYv5PsWY?rel=0" title="PACT account consent and signed receipts in Everruns" loading="lazy" style="width:100%;aspect-ratio:16/9;border:0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+
+[Watch on YouTube](https://www.youtube.com/watch?v=9FZiYv5PsWY).
