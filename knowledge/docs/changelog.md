@@ -169,7 +169,8 @@ Rules for the body:
   screenshot for a `ui` change, a short video when the change is an
   interaction, a navy-and-grey diagram per [diagrams.md](diagrams.md) when a
   flow changed, a release card for a release, an integration card (host mark
-  plus partner logo) for a new integration. No decorative images.
+  plus partner logo) for a new integration. No decorative images. Visual
+  headlines follow [Feature announcement copy](../ui/brand.md#feature-announcement-copy).
 - Visuals must be sharp. Screenshots are PNG captured at device scale factor
   2 (`name@2x.png`), cropped to the part of the screen that changed rather
   than shrunk from a full page, in the light theme, with realistic data and no

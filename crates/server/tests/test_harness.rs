@@ -25,7 +25,6 @@ use everruns_core::host::TurnBackend;
 use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore};
 use everruns_server::{
     api, auth, domains, services,
-    setup::seed,
     storage::{EncryptionService, StorageBackend},
     turns::ActorTurnBackend,
 };
@@ -603,25 +602,16 @@ impl TestServer {
         permission_resolver: Option<Arc<dyn everruns_core::PermissionResolver>>,
         policy_override: Option<everruns_server::records::FeatureFlagPolicy>,
     ) -> Self {
-        // Both modes use real PostgreSQL and own private databases. Only the
-        // unit-fixture rows differ; product seeding remains local to this server.
-        let database = match mode {
-            TestMode::Postgres => isolated_postgres_database().await,
-            TestMode::InMemory => isolated_test_database().await,
-        };
+        let grade = everruns_core::DeploymentGrade::from_env();
+        let host_composition = Arc::new(everruns_server::oss_host_composition_for_grade(grade));
+        let built_in_harnesses = Arc::new(everruns_server::oss_built_in_harnesses());
+        let database =
+            database::seeded_database(mode, grade, &host_composition, &built_in_harnesses).await;
         let pool = database.pool.clone();
         let db = Arc::new(database.backend());
         let durable_store: Arc<dyn WorkflowEventStore + Send + Sync> =
             Arc::new(PostgresWorkflowEventStore::new(pool.clone()));
         let isolated_database = Arc::new(database);
-
-        // Seed default data synchronously (harnesses, agents, providers, etc.)
-        let grade = everruns_core::DeploymentGrade::from_env();
-        let host_composition = Arc::new(everruns_server::oss_host_composition_for_grade(grade));
-        let built_in_harnesses = Arc::new(everruns_server::oss_built_in_harnesses());
-        seed::seed_all(&db, grade, &seed::SeedAuthContext::default())
-            .await
-            .expect("Failed to seed test data");
 
         // Initialize encryption service (use test key)
         let encryption = encryption_enabled.then(|| {

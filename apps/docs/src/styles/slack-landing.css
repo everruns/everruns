@@ -58,21 +58,29 @@
   color: hsl(var(--foreground)) !important;
   border-color: var(--landing-line);
 }
-.slack-demo {
+.slack-landing .slack-demo {
+  display: block;
   margin: 24px 0 36px;
 }
 .slack-tabs {
   display: flex;
+  align-items: stretch;
   gap: 22px;
   border-bottom: 1px solid var(--landing-line);
   margin-bottom: 12px;
 }
 .slack-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  margin: 0;
   border: 0;
   border-bottom: 2px solid transparent;
   background: none;
   font: inherit;
   font-size: 13px;
+  line-height: 1.4;
   color: var(--landing-muted);
   padding: 10px 0;
   cursor: pointer;
@@ -179,6 +187,7 @@
   font-size: 15px;
   line-height: 1.46;
   box-shadow: 0 4px 24px #0a163605;
+  margin: 0;
 }
 .slack-landing .real-slack * {
   box-sizing: border-box;
@@ -447,15 +456,7 @@
   border: 0;
   margin-top: 18px;
 }
-.slack-landing .slack-demo {
-  display: block;
-}
 .slack-landing .slack-tab:focus-visible {
   outline: 2px solid #d4a43a;
   outline-offset: 4px;
 }
-.slack-landing .slack-steps article {
-  margin: 0;
-}
-
-.slack-landing .slack-features > article { margin: 0; }

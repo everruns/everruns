@@ -20,4 +20,8 @@ conversation examples, or follow **Publish an existing Agent** to the installati
 guide. The detailed Slack reference remains available for scopes, session routing,
 actions and troubleshooting. Slack navigation now uses the recognizable Slack mark.
 
+## Update 2026-10-14
+
+Example tabs now align consistently, with layout and spacing isolated from article typography.
+
 ![English Kids Duties conversation example and daily briefing tab on the Slack integration overview](./slack-examples@2x.png)

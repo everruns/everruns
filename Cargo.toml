@@ -168,7 +168,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # observability feature; scripts/lib/check-observability-isolation.sh enforces it)
 opentelemetry = "0.33"
 opentelemetry_sdk = { version = "0.33", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.33", features = ["http-proto", "reqwest-client"] }
+opentelemetry-otlp = { version = "0.33", features = ["http-proto", "reqwest-blocking-client"] }
 tracing-opentelemetry = "0.34"
 
 # OpenAPI documentation (used by export-openapi binary for spec generation)
