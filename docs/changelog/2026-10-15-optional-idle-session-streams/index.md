@@ -26,3 +26,9 @@ Continuous following remains the default for schedules, channels, and external
 updates. Idle suspension affects this event hook only; independent subscriptions
 remain open. See [Events](/features/events/) for custom mutation handling and the
 external-update tradeoff. Resource savings have not been measured.
+
+## Update 2026-10-15
+
+Optimistic sends now reconcile with stored inputs before rendering, preventing a
+transient duplicate message or turn-status row when an event arrives before its
+request acknowledgement.
