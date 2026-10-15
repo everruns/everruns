@@ -983,10 +983,7 @@ jobs:
       - name: Install fast linker
         timeout-minutes: 5
         run: |
-          if ! command -v ld.lld >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq lld
-          fi
+          bash scripts/ci-prepare-linker.sh
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -1058,11 +1055,7 @@ jobs:
         if: env.DOCS_SNIPPETS_ONLY != 'true' || matrix.shard == 'facade-cli'
         timeout-minutes: 5
         run: |
-          if ! command -v ld.lld >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq lld
-          fi
-          ld.lld --version
+          bash scripts/ci-prepare-linker.sh
 
       - name: Install Rust toolchain
         if: env.DOCS_SNIPPETS_ONLY != 'true' || matrix.shard == 'facade-cli'
@@ -1250,11 +1243,7 @@ jobs:
       - name: Install fast linker
         timeout-minutes: 5
         run: |
-          if ! command -v ld.lld >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq lld
-          fi
-          ld.lld --version
+          bash scripts/ci-prepare-linker.sh
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -1492,11 +1481,7 @@ jobs:
       - name: Install fast linker
         timeout-minutes: 5
         run: |
-          if ! command -v ld.lld >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq lld
-          fi
-          ld.lld --version
+          bash scripts/ci-prepare-linker.sh
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -1707,11 +1692,7 @@ jobs:
       - name: Install fast linker
         timeout-minutes: 5
         run: |
-          if ! command -v ld.lld >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq lld
-          fi
-          ld.lld --version
+          bash scripts/ci-prepare-linker.sh
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
@@ -1907,11 +1888,7 @@ jobs:
       - name: Install fast linker
         timeout-minutes: 5
         run: |
-          if ! command -v ld.lld >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq lld
-          fi
-          ld.lld --version
+          bash scripts/ci-prepare-linker.sh
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -2035,11 +2012,7 @@ jobs:
       - name: Install fast linker
         timeout-minutes: 5
         run: |
-          if ! command -v ld.lld >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq lld
-          fi
-          ld.lld --version
+          bash scripts/ci-prepare-linker.sh
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -2207,11 +2180,8 @@ jobs:
       - name: Prepare linker and disk
         timeout-minutes: 5
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          if ! command -v ld.lld >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq lld
-          fi
+          bash scripts/ci-prepare-disk.sh
+          bash scripts/ci-prepare-linker.sh
       - uses: dtolnay/rust-toolchain@1.96.0
       - uses: Swatinem/rust-cache@v2
         with:

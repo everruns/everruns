@@ -174,6 +174,14 @@ durable 9.1m to 2-3m.
   [disk preparation](../../scripts/ci-prepare-disk.sh). This avoids trading latency
   for the earlier disk-exhaustion failure.
 
+The workflow-test producer also uses conditional disk preparation: an unconditional
+SDK cleanup plus linker package setup exhausted its five-minute startup budget in
+[main run 38663303410](https://github.com/everruns/everruns/actions/runs/38663303410).
+Rust jobs now reuse the image's existing linker, exposing its versioned executable
+under the standard command name in runner-local temporary storage when needed.
+Package installation remains a bounded fallback, and shared Cargo linker flags
+stay identical. See [linker preparation](../../scripts/ci-prepare-linker.sh).
+
 ## CI-only optimization measurements
 
 The first same-revision, pinned-image profile trial measured opt-level 1 versus 0:
