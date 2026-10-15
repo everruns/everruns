@@ -78,6 +78,24 @@ impl EventListener for CompositeEventListener {
         }
     }
 
+    async fn flush(&self) -> Result<(), String> {
+        let mut failures = Vec::new();
+        for listener in &self.listeners {
+            let name = listener.name();
+            let listener = listener.clone();
+            match tokio::spawn(async move { listener.flush().await }).await {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => failures.push(format!("{name}: {error}")),
+                Err(_) => failures.push(format!("{name}: flush panicked or was cancelled")),
+            }
+        }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(failures.join("; "))
+        }
+    }
+
     fn name(&self) -> &'static str {
         "CompositeEventListener"
     }
@@ -218,5 +236,49 @@ mod tests {
             assert_eq!(before.load(Ordering::SeqCst), u32::from(include_before));
             assert_eq!(after.load(Ordering::SeqCst), 1);
         }
+    }
+}
+
+#[cfg(test)]
+mod flush_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    struct FlushListener {
+        calls: Arc<AtomicUsize>,
+        fail: bool,
+    }
+    #[async_trait]
+    impl EventListener for FlushListener {
+        async fn on_event(&self, _: &Event) {}
+        async fn flush(&self) -> Result<(), String> {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            if self.fail {
+                Err("synthetic failure".into())
+            } else {
+                Ok(())
+            }
+        }
+    }
+    #[tokio::test]
+    async fn composite_flush_reports_failure_and_flushes_other_listeners() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let listener = CompositeEventListener::new(vec![
+            Arc::new(FlushListener {
+                calls: calls.clone(),
+                fail: true,
+            }),
+            Arc::new(FlushListener {
+                calls: calls.clone(),
+                fail: false,
+            }),
+        ]);
+        assert!(
+            listener
+                .flush()
+                .await
+                .unwrap_err()
+                .contains("synthetic failure")
+        );
+        assert_eq!(calls.load(Ordering::Relaxed), 2);
     }
 }

@@ -46,13 +46,19 @@ async fn test_cluster() -> anyhow::Result<&'static TestCluster> {
     static CLUSTER: tokio::sync::OnceCell<TestCluster> = tokio::sync::OnceCell::const_new();
     CLUSTER
         .get_or_try_init(|| async {
-            match std::env::var("EVERRUNS_TEST_POSTGRES_URL") {
-                Ok(url) => Ok(TestCluster::External(url.parse()?)),
-                Err(std::env::VarError::NotPresent) => Ok(TestCluster::Embedded(
+            let cluster = match std::env::var("EVERRUNS_TEST_POSTGRES_URL") {
+                Ok(url) => TestCluster::External(url.parse()?),
+                Err(std::env::VarError::NotPresent) => TestCluster::Embedded(
                     super::embedded_postgres::EmbeddedPostgres::shared().await?,
-                )),
-                Err(error) => Err(error.into()),
+                ),
+                Err(error) => return Err(error.into()),
+            };
+            // The CI batch runner starts other processes only after the first
+            // has finished installing/starting PostgreSQL, including cold caches.
+            if let Some(path) = std::env::var_os("EVERRUNS_TEST_BATCH_READY") {
+                std::fs::write(path, [])?;
             }
+            anyhow::Ok(cluster)
         })
         .await
 }
@@ -121,6 +127,24 @@ impl TestDatabase {
     /// Connection URL, for tests that open their own connections.
     pub fn url(&self) -> &str {
         &self.url
+    }
+
+    /// Copy a prepared test fixture into a private database with fresh hooks.
+    /// Close every connection to this database before using it as a template.
+    pub async fn copy(&self) -> anyhow::Result<(PgPool, Arc<Self>)> {
+        let name = format!("test_{}", uuid::Uuid::now_v7().simple());
+        let pg = test_cluster().await?;
+        pg.create_database(&name, Some(&self.name)).await?;
+        let url = pg.url(&name);
+        let pool = PgPoolOptions::new().max_connections(4).connect_lazy(&url)?;
+        Ok((
+            pool,
+            Arc::new(Self {
+                name,
+                url,
+                hooks: TestHooks::default(),
+            }),
+        ))
     }
 
     /// Counters and fault injection shared by every clone of the backend.

@@ -53,11 +53,14 @@ mode. Startup errors explain this choice.
 The test harness can explicitly select a disposable external cluster for nightly
 and release coverage. Both configurations use the same migrations, fixture builder,
 and per-test database copies. Per-process template names prevent initialization
-races between test binaries. API test servers each own a migrated database;
-initial product seeding and feature flags no longer coordinate through process-local
-locks over a shared database. Legacy raw-pool migration/repository cases retain
-serialization where they intentionally share a database. This override belongs only to test support; DEV_MODE
-continues to create its own native cluster and ignore external database settings.
+races between test binaries. API test servers each own a copy of a product-seeded
+template. Templates are prepared once per deployment grade and fixture mode, with
+their pools closed before copying. Per-server feature flags and mutations remain
+private; tests of startup seeding still begin with unseeded databases. This avoids repeating the catalog
+queries and duplicate host construction during seeding. Legacy raw-pool migration
+and repository cases retain serialization where they intentionally share a database.
+This override belongs only to test support; DEV_MODE continues to create its own
+native cluster and ignore external database settings.
 See [test database selection](../../crates/server/src/storage/test_database.rs).
 
 Disposable clusters disable durability for functional tests. They prove actual SQL,
