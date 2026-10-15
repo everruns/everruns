@@ -27,3 +27,7 @@ export EVERRUNS_TRACE_CONVENTIONS=openinference
 
 See [OpenTelemetry](/observability/opentelemetry/) and
 [Framework observability](/framework/observability/). [#3353](https://github.com/everruns/everruns/pull/3353)
+
+## Update 2026-10-14
+
+[OpenTelemetry export and accounting fixes](/changelog/2026-10-14-opentelemetry-export-and-accounting/) correct cached-token totals, exporter batching, tool identity, error privacy and shutdown reporting.

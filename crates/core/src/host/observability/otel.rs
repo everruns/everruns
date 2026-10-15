@@ -55,6 +55,9 @@ use opentelemetry::{Context, KeyValue, StringValue, Value};
 use opentelemetry_sdk::trace::SdkTracerProvider;
 
 use super::openinference as oi;
+#[path = "otel_usage.rs"]
+mod usage;
+use usage::{cost_usd, oi_token_attributes, prompt_tokens};
 
 pub use super::otel_config::TraceConventions;
 use super::otel_config::record_content_from_env;
@@ -313,13 +316,19 @@ impl OtelEventListener {
     ) {
         let kind = error_type(code, message);
         span.set_attribute(KeyValue::new(gen_ai::ERROR_TYPE, kind.clone()));
-        span.set_status(Status::error(message.to_string()));
+        // THREAT[TM-OBS-010]: provider errors can echo prompt or tool content.
+        let detail = if self.record_content {
+            message
+        } else {
+            kind.as_str()
+        };
+        span.set_status(Status::error(detail.to_string()));
         span.add_event_with_timestamp(
             "exception",
             ts,
             vec![
-                KeyValue::new(oi::EXCEPTION_TYPE, kind),
-                KeyValue::new(oi::EXCEPTION_MESSAGE, message.to_string()),
+                KeyValue::new(oi::EXCEPTION_TYPE, kind.clone()),
+                KeyValue::new(oi::EXCEPTION_MESSAGE, detail.to_string()),
             ],
         );
     }
@@ -327,6 +336,15 @@ impl OtelEventListener {
     // ------------------------------------------------------------------
     // Key and parent resolution
     // ------------------------------------------------------------------
+
+    // Provider call IDs (e.g. Gemini's call_0) are local to a response.
+    // THREAT[TM-OBS-010]: never merge payloads across sessions or turns.
+    fn tool_key(event: &Event, call_id: &str) -> String {
+        format!(
+            "tool:{}:{:?}:{:?}:{call_id}",
+            event.session_id, event.context.turn_id, event.context.exec_id
+        )
+    }
 
     fn turn_key(event: &Event) -> Option<String> {
         event.context.turn_id.map(|id| format!("turn:{id}"))
@@ -502,7 +520,7 @@ impl OtelEventListener {
         if self.conventions.gen_ai {
             attrs.push(KeyValue::new(
                 gen_ai::USAGE_INPUT_TOKENS,
-                i64::from(usage.input_tokens),
+                prompt_tokens(usage),
             ));
             attrs.push(KeyValue::new(
                 gen_ai::USAGE_OUTPUT_TOKENS,
@@ -952,7 +970,7 @@ impl OtelEventListener {
             if let Some(usage) = &meta.usage {
                 attrs.push(KeyValue::new(
                     gen_ai::USAGE_INPUT_TOKENS,
-                    i64::from(usage.input_tokens),
+                    prompt_tokens(usage),
                 ));
                 attrs.push(KeyValue::new(
                     gen_ai::USAGE_OUTPUT_TOKENS,
@@ -1227,7 +1245,7 @@ impl OtelEventListener {
 
     fn handle_tool_started(&self, event: &Event, data: &ToolStartedData) {
         let ts = event_time(event);
-        let key = format!("tool:{}", data.tool_call.id);
+        let key = Self::tool_key(event, &data.tool_call.id);
         let mut state = self.state.lock().unwrap();
         let turn_key = Self::turn_key(event).filter(|k| state.spans.contains_key(k));
         let (description, agent_name) = turn_key
@@ -1287,7 +1305,7 @@ impl OtelEventListener {
 
     fn handle_tool_completed(&self, event: &Event, data: &ToolCompletedData) {
         let ts = event_time(event);
-        let key = format!("tool:{}", data.tool_call_id);
+        let key = Self::tool_key(event, &data.tool_call_id);
         let mut state = self.state.lock().unwrap();
         let mut span = match Self::take(&mut state, &key) {
             Some(active) => {
@@ -1399,36 +1417,6 @@ fn backdate(ts: SystemTime, duration_ms: Option<u64>) -> SystemTime {
         .unwrap_or(ts)
 }
 
-fn cost_usd(usage: &TokenUsage) -> Option<f64> {
-    usage
-        .effective_cost_usd
-        .or(usage.actual_cost_usd)
-        .or(usage.estimated_cost_usd)
-}
-
-fn oi_token_attributes(usage: &TokenUsage) -> Vec<KeyValue> {
-    let prompt = i64::from(usage.input_tokens);
-    let completion = i64::from(usage.output_tokens);
-    let mut attrs = vec![
-        KeyValue::new(oi::LLM_TOKEN_COUNT_PROMPT, prompt),
-        KeyValue::new(oi::LLM_TOKEN_COUNT_COMPLETION, completion),
-        KeyValue::new(oi::LLM_TOKEN_COUNT_TOTAL, prompt + completion),
-    ];
-    if let Some(read) = usage.cache_read_tokens {
-        attrs.push(KeyValue::new(
-            oi::LLM_TOKEN_COUNT_PROMPT_CACHE_READ,
-            i64::from(read),
-        ));
-    }
-    if let Some(write) = usage.cache_creation_tokens {
-        attrs.push(KeyValue::new(
-            oi::LLM_TOKEN_COUNT_PROMPT_CACHE_WRITE,
-            i64::from(write),
-        ));
-    }
-    attrs
-}
-
 /// A tool result as one attribute value: a lone text part stays plain text,
 /// anything else is the JSON of the spec-shaped parts.
 fn tool_result_value(result: &[ContentPart]) -> (String, &'static str) {
@@ -1462,10 +1450,15 @@ impl EventListener for OtelEventListener {
         }
     }
 
-    async fn flush(&self) {
-        if let Some(provider) = &self.tracer_provider {
-            let _ = provider.force_flush();
-        }
+    async fn flush(&self) -> Result<(), String> {
+        let provider = self.tracer_provider.clone().ok_or_else(||
+            "OpenTelemetry provider unavailable; flush the application-owned provider or use with_tracer_provider".to_string()
+        )?;
+        // SDK lifecycle methods block; keep Engine's async deadline enforceable.
+        tokio::task::spawn_blocking(move || provider.force_flush())
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())
     }
 
     fn event_types(&self) -> Option<Vec<&'static str>> {

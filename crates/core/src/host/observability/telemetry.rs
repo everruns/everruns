@@ -9,7 +9,7 @@
 
 use opentelemetry::KeyValue;
 use opentelemetry::trace::TracerProvider as _;
-use opentelemetry_otlp::{SpanExporter, WithExportConfig};
+use opentelemetry_otlp::{SpanExporter, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::{
     Resource,
     trace::{RandomIdGenerator, Sampler, SdkTracerProvider},
@@ -99,6 +99,24 @@ impl TelemetryConfig {
 /// Guard that shuts down the tracer provider when dropped
 pub struct TelemetryGuard {
     _provider: Option<SdkTracerProvider>,
+}
+
+impl TelemetryGuard {
+    /// Clone the installed provider for a listener that can report flush failures.
+    pub fn tracer_provider(&self) -> Option<SdkTracerProvider> {
+        self._provider.clone()
+    }
+
+    /// Flush and shut down off runtime threads, reporting exporter failures.
+    pub async fn shutdown(mut self) -> Result<(), String> {
+        let Some(provider) = self._provider.take() else {
+            return Ok(());
+        };
+        tokio::task::spawn_blocking(move || provider.shutdown())
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error.to_string())
+    }
 }
 
 impl Drop for TelemetryGuard {
@@ -210,11 +228,22 @@ fn build_otlp_tracer(
     (SdkTracerProvider, opentelemetry_sdk::trace::Tracer),
     Box<dyn std::error::Error + Send + Sync>,
 > {
+    // Pin a blocking client even if an embedder enables the async OTLP feature:
+    // the SDK's default batch processor exports on its own OS thread.
+    let timeout = Duration::from_secs(10);
+    let client = std::thread::spawn(move || {
+        reqwest::blocking::Client::builder()
+            .timeout(timeout)
+            .build()
+    })
+    .join()
+    .map_err(|_| std::io::Error::other("OTLP HTTP client initialization panicked"))??;
     // Use HTTP OTLP instead of gRPC - more reliable with Docker DNS
     let exporter = SpanExporter::builder()
         .with_http()
+        .with_http_client(client)
         .with_endpoint(traces_endpoint(endpoint))
-        .with_timeout(Duration::from_secs(10))
+        .with_timeout(timeout)
         .build()?;
 
     let provider = SdkTracerProvider::builder()
@@ -298,3 +327,7 @@ mod tests {
         assert!(!config.record_content);
     }
 }
+
+#[cfg(test)]
+#[path = "telemetry_transport_tests.rs"]
+mod transport_tests;

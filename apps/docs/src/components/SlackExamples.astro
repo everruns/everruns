@@ -4,7 +4,8 @@ import kids from "../assets/slack/kids-duties.png";
 import "../styles/slack-landing.css";
 ---
 
-<slack-examples class="slack-demo">
+<!-- Custom UI owns its spacing; exclude Starlight’s article typography. -->
+<slack-examples class="slack-demo not-content">
   <div class="slack-tabs" role="tablist" aria-label="Real Slack examples">
     <button
       id="slack-thread-tab"

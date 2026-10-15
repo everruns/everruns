@@ -91,6 +91,13 @@ impl OpenTelemetry {
         }
     }
 
+    /// Retain an explicit provider while preserving capture/convention settings.
+    /// Engine shutdown can then report whether completed spans were flushed.
+    pub fn tracer_provider(mut self, provider: SdkTracerProvider) -> Self {
+        self.source = OpenTelemetrySource::Provider(provider);
+        self
+    }
+
     /// Enable or disable prompt, message, reasoning, and tool payload capture.
     pub fn record_content(mut self, record_content: bool) -> Self {
         self.record_content = record_content;
@@ -231,6 +238,48 @@ mod tests {
                 "missing {expected} span: {names:?}"
             );
         }
+    }
+
+    #[cfg(feature = "otel")]
+    #[tokio::test]
+    async fn pre_stream_provider_failure_exports_a_model_span() {
+        use everruns_core::host::observability::InMemorySpanExporter;
+        let exporter = InMemorySpanExporter::default();
+        let provider = SdkTracerProvider::builder()
+            .with_simple_exporter(exporter.clone())
+            .build();
+        let engine = Engine::builder()
+            .observe(OpenTelemetry::with_tracer_provider(provider))
+            .build();
+        let agent = Agent::builder()
+            .instructions("Answer concisely.")
+            .model(Model::simulated_error("authentication failed"))
+            .build()
+            .unwrap();
+        let session = engine.create(agent);
+        let _ = session.run("synthetic input").await;
+        let report = engine.shutdown(Duration::from_secs(5)).await;
+        assert!(report.stats.listeners[0].flushed);
+        let spans = exporter.get_finished_spans().unwrap();
+        let models: Vec<_> = spans
+            .iter()
+            .filter(|s| s.name.starts_with("chat "))
+            .collect();
+        assert_eq!(models.len(), 1, "{spans:?}");
+        assert_ne!(models[0].status, Default::default());
+        assert!(
+            models[0]
+                .attributes
+                .iter()
+                .any(|a| a.key.as_str() == "gen_ai.request.model"
+                    && a.value.to_string() == "llmsim-model")
+        );
+        assert!(
+            models[0]
+                .attributes
+                .iter()
+                .any(|a| a.key.as_str() == "error.type")
+        );
     }
 
     #[cfg(feature = "braintrust")]

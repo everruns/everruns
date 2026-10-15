@@ -31,9 +31,11 @@ use everruns::{Agent, Engine, Model};
 
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-let _telemetry = install_otlp_from_env();
+let telemetry = install_otlp_from_env();
+let provider = telemetry.tracer_provider()
+    .ok_or("OTEL_EXPORTER_OTLP_ENDPOINT is required")?;
 let engine = Engine::builder()
-    .observe(OpenTelemetry::from_env())
+    .observe(OpenTelemetry::from_env().tracer_provider(provider))
     .build();
 
 let agent = Agent::builder()
@@ -44,6 +46,8 @@ engine.create(agent).run("Say hello.").await?;
 
 let report = engine.shutdown(Duration::from_secs(10)).await;
 assert!(!report.timed_out);
+assert!(report.stats.listeners.iter().all(|listener| listener.flushed));
+telemetry.shutdown().await?;
 # Ok(())
 # }
 ```
@@ -53,7 +57,7 @@ Pick the constructor by who owns the tracer provider:
 | Constructor | Tracer provider | Content capture |
 |---|---|---|
 | `OpenTelemetry::global()` | The global provider your application installed | Off |
-| `OpenTelemetry::with_tracer_provider(provider)` | An `SdkTracerProvider` you pass in. `Engine::shutdown` force-flushes it | Off |
+| `OpenTelemetry::from_env().tracer_provider(provider)` | An `SdkTracerProvider` you pass in. `Engine::shutdown` force-flushes it | Off |
 | `OpenTelemetry::from_env()` | The global provider | From the environment |
 
 None of them installs global state. `install_otlp_from_env()` is the one helper
@@ -161,12 +165,14 @@ new events for that listener are dropped and counted. A listener that panics is
 isolated, and the panic is counted.
 
 `engine.observer_stats()` returns those counters per listener (`delivered`,
-`dropped`, `panics`, `flushed`), with `dropped()` and `panics()` totals.
+`dropped`, `panics`, `flushed`, `flush_error`), with `dropped()` and `panics()` totals.
 
 `engine.shutdown(deadline)` stops accepting events, drains the queues, and
 calls `flush` on each listener. Listeners still running at the deadline are
 cancelled, and the returned `ObserverReport` has `timed_out` set. Call it
-before the process exits, or the last events may never reach the exporter.
+before the process exits, or the last events may never reach the exporter. An OpenTelemetry exporter failure leaves `flushed=false` and supplies `flush_error`; inspect both that field and `timed_out`.
+
+`OpenTelemetry::global()` and `from_env()` use the application's global tracer. They cannot force-flush an opaque application-owned provider, so shutdown reports that limitation. Use `with_tracer_provider` when Engine shutdown should flush it. `TelemetryGuard::tracer_provider()` exposes the convenience installer's provider; its async `shutdown()` runs the SDK shutdown off runtime threads and reports failures. Dropping the guard retains the SDK's blocking best-effort fallback.
 
 ```rust
 use std::time::Duration;
