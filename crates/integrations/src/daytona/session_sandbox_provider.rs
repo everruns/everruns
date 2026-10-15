@@ -252,6 +252,25 @@ async fn resolve_recovery_binding(
     })
 }
 
+/// Daytona answers 404 for a deleted sandbox only once it has finished going
+/// away; until then GET returns it as `destroying` or `destroyed`, at times for
+/// over a minute (EVE-1280). Either way its compute and disk are gone, so it is
+/// lost, never paused or startable.
+fn is_gone_state(state: &str) -> bool {
+    state.eq_ignore_ascii_case("destroying") || state.eq_ignore_ascii_case("destroyed")
+}
+
+async fn sandbox_is_lost(
+    client: &DaytonaClient,
+    sandbox_id: &str,
+) -> Result<bool, ToolExecutionResult> {
+    match client.get_sandbox(sandbox_id).await {
+        Ok(info) => Ok(is_gone_state(&info.state)),
+        Err(err) if is_not_found(&err) => Ok(true),
+        Err(err) => Err(ToolExecutionResult::tool_error(err)),
+    }
+}
+
 fn is_transition_state(state: &str) -> bool {
     matches!(state, "starting" | "stopping")
 }
@@ -697,35 +716,30 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
             });
         };
 
-        let info = match client.get_sandbox(&instance.external_id).await {
-            Ok(_) => ensure_sandbox_started(&client, &instance.external_id).await?,
-            Err(err) if is_not_found(&err) => {
-                let replacement_name = instance
-                    .display_name
-                    .clone()
-                    .unwrap_or_else(|| requested_sandbox_name(context, config));
-                let replacement = create_daytona_instance(
-                    &client,
-                    context,
-                    config,
-                    &replacement_name,
-                    Some(recovery),
-                    true,
-                )
-                .await?;
-                if let Err(release_err) =
-                    release_sandbox_lease(context, &instance.external_id).await
-                {
-                    warn!(
-                        sandbox_id = %instance.external_id,
-                        error = ?release_err,
-                        "Failed to release lease for lost Daytona sandbox"
-                    );
-                }
-                return Ok(replacement);
+        if sandbox_is_lost(&client, &instance.external_id).await? {
+            let replacement_name = instance
+                .display_name
+                .clone()
+                .unwrap_or_else(|| requested_sandbox_name(context, config));
+            let replacement = create_daytona_instance(
+                &client,
+                context,
+                config,
+                &replacement_name,
+                Some(recovery),
+                true,
+            )
+            .await?;
+            if let Err(release_err) = release_sandbox_lease(context, &instance.external_id).await {
+                warn!(
+                    sandbox_id = %instance.external_id,
+                    error = ?release_err,
+                    "Failed to release lease for lost Daytona sandbox"
+                );
             }
-            Err(err) => return Err(ToolExecutionResult::tool_error(err)),
-        };
+            return Ok(replacement);
+        }
+        let info = ensure_sandbox_started(&client, &instance.external_id).await?;
 
         let workspace_path = instance
             .workspace_path
@@ -812,27 +826,23 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         let client = build_client(api_key, config);
         let recovery = recovery_binding(&context.session_id(), instance)?;
         let delete_instance = if let Some(recovery) = &recovery {
-            match client.get_sandbox(&instance.external_id).await {
-                Ok(_) => {
-                    ensure_sandbox_started(&client, &instance.external_id).await?;
-                    instance.clone()
-                }
-                Err(err) if is_not_found(&err) => {
-                    let replacement_name = instance
-                        .display_name
-                        .clone()
-                        .unwrap_or_else(|| requested_sandbox_name(context, config));
-                    create_daytona_instance(
-                        &client,
-                        context,
-                        config,
-                        &replacement_name,
-                        Some(recovery.clone()),
-                        false,
-                    )
-                    .await?
-                }
-                Err(err) => return Err(ToolExecutionResult::tool_error(err)),
+            if sandbox_is_lost(&client, &instance.external_id).await? {
+                let replacement_name = instance
+                    .display_name
+                    .clone()
+                    .unwrap_or_else(|| requested_sandbox_name(context, config));
+                create_daytona_instance(
+                    &client,
+                    context,
+                    config,
+                    &replacement_name,
+                    Some(recovery.clone()),
+                    false,
+                )
+                .await?
+            } else {
+                ensure_sandbox_started(&client, &instance.external_id).await?;
+                instance.clone()
             }
         } else {
             instance.clone()
@@ -1102,20 +1112,9 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         let api_key = get_managed_api_key(context, &config.credential).await?;
         let client = build_client(api_key, config);
         let info = match client.get_sandbox(&state.instance.external_id).await {
-            Ok(info) => info,
-            Err(err) if is_not_found(&err) => {
-                return Ok(SessionSandboxStatusResponse {
-                    provider: state.provider.clone(),
-                    session_status: SessionSandboxStatus::Lost,
-                    external_id: state.instance.external_id.clone(),
-                    display_name: state.instance.display_name.clone(),
-                    workspace_path: state.instance.workspace_path.clone(),
-                    metadata: json!({
-                        "remote_state": "lost",
-                        "recoverable": recovery_binding(&context.session_id(), &state.instance)?.is_some(),
-                    }),
-                });
-            }
+            Ok(info) if !is_gone_state(&info.state) => info,
+            Ok(_) => return lost_status(context, state),
+            Err(err) if is_not_found(&err) => return lost_status(context, state),
             Err(err) => return Err(ToolExecutionResult::tool_error(err)),
         };
 
@@ -1133,6 +1132,23 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
             }),
         })
     }
+}
+
+fn lost_status(
+    context: &dyn SessionSandboxContext,
+    state: &SessionSandboxState,
+) -> Result<SessionSandboxStatusResponse, ToolExecutionResult> {
+    Ok(SessionSandboxStatusResponse {
+        provider: state.provider.clone(),
+        session_status: SessionSandboxStatus::Lost,
+        external_id: state.instance.external_id.clone(),
+        display_name: state.instance.display_name.clone(),
+        workspace_path: state.instance.workspace_path.clone(),
+        metadata: json!({
+            "remote_state": "lost",
+            "recoverable": recovery_binding(&context.session_id(), &state.instance)?.is_some(),
+        }),
+    })
 }
 
 fn build_client(api_key: String, config: &SessionSandboxConfig) -> DaytonaClient {
