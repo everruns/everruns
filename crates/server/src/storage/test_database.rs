@@ -123,6 +123,24 @@ impl TestDatabase {
         &self.url
     }
 
+    /// Copy a prepared test fixture into a private database with fresh hooks.
+    /// Close every connection to this database before using it as a template.
+    pub async fn copy(&self) -> anyhow::Result<(PgPool, Arc<Self>)> {
+        let name = format!("test_{}", uuid::Uuid::now_v7().simple());
+        let pg = test_cluster().await?;
+        pg.create_database(&name, Some(&self.name)).await?;
+        let url = pg.url(&name);
+        let pool = PgPoolOptions::new().max_connections(4).connect_lazy(&url)?;
+        Ok((
+            pool,
+            Arc::new(Self {
+                name,
+                url,
+                hooks: TestHooks::default(),
+            }),
+        ))
+    }
+
     /// Counters and fault injection shared by every clone of the backend.
     pub fn hooks(&self) -> &TestHooks {
         &self.hooks

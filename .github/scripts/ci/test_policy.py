@@ -141,6 +141,7 @@ class Policy(unittest.TestCase):
                 self.assertIn(contract, filters)
             self.assertNotIn('auth_integration_test::', filters)
         self.assertIn('service_mcp_oauth_lifecycle_test::', focused.risk_filters(['crates/server/tests/test_harness.rs']))
+        self.assertIn('db_pool_isolation_test::', focused.risk_filters(['crates/server/tests/test_harness/database.rs']))
 
     def test_database_backend_changes_run_real_router_fixtures(self):
         targets=['background_sweep_wiring_test','pat_scope_sweep_test']

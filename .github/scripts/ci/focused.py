@@ -58,8 +58,8 @@ def risk_filters(paths):
     if any(p.endswith('/tests/test_harness.rs') or '/tests/test_harness/' in p
            or p.endswith('/storage/test_database.rs') for p in paths):
         filters.update(['auth_integration_test::', 'org_isolation_test::',
-                        'service_mcp_oauth_lifecycle_test::', 'migration_baseline_test::',
-                        'migration_history_test::'])
+                        'db_pool_isolation_test::', 'service_mcp_oauth_lifecycle_test::',
+                        'migration_baseline_test::', 'migration_history_test::'])
     return sorted(filters)
 
 
