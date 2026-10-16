@@ -155,8 +155,9 @@ is 56.
 ### Repeatable real-provider E2E (repository checkout)
 
 The opt-in test downloads the same Compose file, starts a unique project with
-loopback ports and disposable volumes, signs in through the UI, verifies and saves
-an OpenRouter key through the UI, creates an agent through Chat, and runs the
+loopback ports and disposable volumes, opts in to application startup encrypting
+an existing OpenRouter environment key into the disposable database, signs in through the UI,
+verifies the configured provider, creates an agent through Chat, and runs the
 persisted agent in Playground. It checks durable events and the saved answer,
 records the real browser journey, and removes its project and volumes on exit.
 It makes paid requests; use a limited inference key and a low-cost model. No
@@ -174,9 +175,10 @@ EVERRUNS_E2E_ALLOW_PROVIDER_STORAGE=1 node scripts/e2e-compose-openrouter.mjs
 ```
 
 The test prints its evidence directory, containing a WebM video, `report.json`, and
-`commands.log`. Secret values are excluded from command output, inputs stay
-masked, and no trace, HAR, or browser authentication state is saved. To verify
-startup and UI login without a key, run
+`commands.log`. The raw inference key is supplied only to the server environment,
+never written to the test `.env` or entered through browser UI/API. Secret values are excluded
+from command output, and no trace, HAR, or browser authentication state is saved.
+To verify startup and UI login without a key, run
 `node scripts/e2e-compose-openrouter.mjs --setup-only`; this does **not** verify
 inference, agent creation, or agent execution. Set `EVERRUNS_TAG` to pin published
 images, or set `COMPOSE_E2E_FILE` to your local

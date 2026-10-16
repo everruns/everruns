@@ -18,7 +18,8 @@ if (process.argv.includes("--help")) {
 --setup-only verifies clean Compose startup and UI login without any provider credential.
 Requires Docker Compose and apps/ui dependencies (pnpm install, pnpm exec playwright install chromium).
 Uses a unique project, loopback ports, disposable volumes, and an isolated browser.
-The opt-in confirms storing the key encrypted in this disposable test stack.
+The opt-in permits application startup to encrypt the existing environment key into this disposable database.
+No raw provider key is typed or submitted through browser UI/API.
 Optional: EVERRUNS_TAG (default latest), COMPOSE_E2E_FILE (default download from main),
 COMPOSE_E2E_OUTPUT (default temporary directory), OPENROUTER_MODEL (default openai/gpt-6-luna).
 Always tears down its project and volumes. Video and a redacted report remain in the output directory.
@@ -187,7 +188,7 @@ try {
   env.VICTORIAMETRICS_PORT = `127.0.0.1:${metricsPort}`;
   log(`Evidence: ${output}`);
   log(`Isolated Compose project: ${project}; UI ${report.base_url}`);
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true, env });
   context = await browser.newContext({
     viewport: { width: 1280, height: 800 },
     recordVideo: { dir: join(output, "video"), size: { width: 1280, height: 800 } },
@@ -235,6 +236,14 @@ try {
   ].join("\n");
   await writeFile(join(work, ".env"), secrets, { mode: 0o600 });
   log("Generated private .env with encryption, JWT, worker, and admin secrets (values excluded)");
+  if (!setupOnly) {
+    env.DEFAULT_OPENROUTER_API_KEY = key;
+    env.SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV = "true";
+    log(
+      "Existing inference key supplied privately to server startup; the app encrypts it into the default organization (no raw-key UI/API submission)",
+    );
+  }
+  report.credential_mode = setupOnly ? "none" : "startup_materialization";
   report.images = (await command(["config", "--images"])).trim().split("\n");
   await command(["pull", "--quiet"], 600_000);
   report.engine_version = (await docker(["version", "--format", "{{.Server.Version}}"])).trim();
@@ -297,8 +306,10 @@ try {
   await passwordInput.fill(password);
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page).toHaveURL(/\/chats$/);
-  await expect(page.getByText("No intelligence available", { exact: true })).toBeVisible();
-  log("UI login passed; fresh Chat correctly requires a provider");
+  if (setupOnly) {
+    await expect(page.getByText("No intelligence available", { exact: true })).toBeVisible();
+  }
+  log("UI login passed");
   if (setupOnly) {
     report.result = "setup_verified";
     log("SETUP VERIFIED: real provider storage, chat creation, and agent run were not attempted");
@@ -307,14 +318,8 @@ try {
     const card = page
       .locator('[data-slot="card"]')
       .filter({ has: page.getByRole("link", { name: "OpenRouter", exact: true }) });
-    await card.getByRole("button", { name: "Set key", exact: true }).click();
-    const credential = page.getByLabel("API key", { exact: true });
-    await expect(credential).toHaveAttribute("type", "password");
-    await credential.fill(key);
-    await expect(page.getByText(/Key valid/)).toBeVisible({ timeout: 30_000 });
-    await page.getByRole("button", { name: "Save Credentials", exact: true }).click();
-    await expect(page.getByRole("dialog")).toBeHidden();
-    log("UI credential verification and encrypted provider save passed (input masked)");
+    await expect(card.getByText("Configured", { exact: true })).toBeVisible();
+    log("UI shows the provider configured by application startup; secret entry is excluded");
     const providers = (await api("/providers")).data;
     const provider = providers.find((p) => p.provider_type === "openrouter");
     assert(provider?.api_key_set, "OpenRouter credential was not persisted");
