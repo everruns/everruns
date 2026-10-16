@@ -42,7 +42,7 @@ export class SessionAuthority extends App {
     };
   }
   async model(raw) {
-    const request = JSON.parse(raw);
+    const request = JSON.parse(JSON.parse(raw).body);
     const afterTool = request.messages.at(-1)?.role === "tool";
     const message = afterTool
       ? { role: "assistant", content: "Recovered." }
@@ -57,14 +57,33 @@ export class SessionAuthority extends App {
             },
           ],
         };
-    return JSON.stringify({
-      status: 200,
-      body: {
+    const delta = afterTool
+      ? { role: "assistant", content: message.content }
+      : {
+          role: "assistant",
+          tool_calls: message.tool_calls.map((call) => ({ ...call, index: 0 })),
+        };
+    const chunks = [
+      {
         id: "qualification-completion",
-        choices: [{ message, finish_reason: afterTool ? "stop" : "tool_calls" }],
+        object: "chat.completion.chunk",
+        model: request.model,
+        created: Math.floor(Date.now() / 1000),
+        choices: [{ index: 0, delta, finish_reason: null }],
+      },
+      {
+        id: "qualification-completion",
+        object: "chat.completion.chunk",
+        model: request.model,
+        created: Math.floor(Date.now() / 1000),
+        choices: [{ index: 0, delta: {}, finish_reason: afterTool ? "stop" : "tool_calls" }],
         usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
       },
-    });
+    ];
+    return new Response(
+      chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("") + "data: [DONE]\n\n",
+      { headers: { "content-type": "text/event-stream" } },
+    );
   }
 }
 export default worker;

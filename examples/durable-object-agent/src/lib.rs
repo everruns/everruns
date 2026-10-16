@@ -1,22 +1,19 @@
 //! Real-model agent inside an isolate, using the ordinary core host and shared actor driver.
 #![cfg(target_arch = "wasm32")]
 use async_trait::async_trait;
-use everruns_contracts::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmResponseStream, LlmStreamEvent, Message,
-};
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::rt::AssertSend;
-use everruns_contracts::runtime_provider::{Provider, ProviderEndpoint};
+use everruns_contracts::runtime_provider::Provider;
+use everruns_contracts::{ChatDriver, OpenAIProtocolChatDriver};
 use everruns_core::host::InProcessRuntime;
 use everruns_core::{Capability, Tool, ToolContext, ToolExecutionResult};
-use everruns_durable_object::{
-    SessionBinding, activate,
-    wasm::{ObjectTransport, invoke},
-};
+use everruns_durable_object::{SessionBinding, activate, wasm::ObjectTransport};
 use js_sys::Function;
 use serde_json::{Value, json};
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
+
+mod fetch;
 
 const BUILD: &str = match option_env!("AGENT_BUILD_ID") {
     Some(id) => id,
@@ -40,7 +37,15 @@ pub async fn run(
     let session = session
         .parse()
         .map_err(|_| JsValue::from_str("invalid session"))?;
-    let driver = Arc::new(FetchDriver(AssertSend(provider)));
+    let driver: Arc<dyn ChatDriver> = Arc::from(
+        Provider::new(
+            "fetch",
+            OpenAIProtocolChatDriver::new()
+                .with_transport(Arc::new(fetch::FetchTransport(AssertSend(provider)))),
+        )
+        .base_url("https://isolate.invalid/v1")
+        .into_boxed_driver(),
+    );
     let factory = move |id, backends| {
         let driver = driver.clone();
         let model = model.clone();
@@ -128,72 +133,5 @@ impl Tool for Bump {
             Ok(value) => ToolExecutionResult::success(json!({"counter":value})),
             Err(_) => ToolExecutionResult::tool_error("counter store unavailable"),
         }
-    }
-}
-
-// A fetch transport implements the normal provider SPI. Wire conversion is
-// supplied by the shared contracts; agent reasoning and tools run in core.
-struct FetchDriver(AssertSend<Function>);
-#[async_trait]
-impl ChatDriver for FetchDriver {
-    async fn chat_completion_stream(
-        &self,
-        _: &ProviderEndpoint,
-        messages: Vec<Message>,
-        config: &LlmCallConfig,
-    ) -> Result<LlmResponseStream> {
-        let mut body = json!({"model":config.model,"messages":messages.iter().map(everruns_contracts::openai_wire::message_to_openai).collect::<Vec<_>>(),"stream":false});
-        if !config.tools.is_empty() {
-            body["tools"] = json!(
-                config
-                    .tools
-                    .iter()
-                    .map(everruns_contracts::openai_wire::tool_to_openai)
-                    .collect::<Vec<_>>()
-            );
-        }
-        if let Some(value) = config.temperature {
-            body["temperature"] = json!(value);
-        }
-        if let Some(value) = config.max_tokens {
-            body["max_completion_tokens"] = json!(value);
-        }
-        let reply = invoke(&self.0.0, body).await?;
-        let status = reply["status"].as_u64().unwrap_or(503) as u16;
-        if !(200..300).contains(&status) {
-            return Err(AgentLoopError::llm_http(
-                status,
-                "",
-                "isolate provider rejected request",
-            ));
-        }
-        let reply = &reply["body"];
-        let message =
-            everruns_contracts::openai_wire::message_from_openai(&reply["choices"][0]["message"])
-                .map_err(|_| AgentLoopError::llm("invalid provider response"))?;
-        let mut events = Vec::new();
-        let text = message.content.to_text();
-        if !text.is_empty() {
-            events.push(LlmStreamEvent::TextDelta(text));
-        }
-        if let Some(calls) = message.tool_calls.filter(|v| !v.is_empty()) {
-            events.push(LlmStreamEvent::ToolCalls(calls));
-        }
-        let usage = &reply["usage"];
-        let mut metadata = LlmCompletionMetadata::default();
-        metadata.prompt_tokens = usage["prompt_tokens"]
-            .as_u64()
-            .and_then(|v| v.try_into().ok());
-        metadata.completion_tokens = usage["completion_tokens"]
-            .as_u64()
-            .and_then(|v| v.try_into().ok());
-        metadata.total_tokens = usage["total_tokens"]
-            .as_u64()
-            .and_then(|v| v.try_into().ok());
-        metadata.response_id = reply["id"].as_str().map(str::to_owned);
-        metadata.model = Some(config.model.clone());
-        metadata.response_model = reply["model"].as_str().map(str::to_owned);
-        events.push(LlmStreamEvent::Done(Box::new(metadata)));
-        Ok(Box::pin(futures::stream::iter(events.into_iter().map(Ok))))
     }
 }

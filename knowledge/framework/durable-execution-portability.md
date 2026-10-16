@@ -271,10 +271,11 @@ provides SQL, clock, alarm, model transport, secrets and live event delivery.
 It invokes bounded drive; it never decides whether to reason, act, park or retry
 an unsafe call. Use native and Wasm builds of the same semantic modules.
 
-Separate vendor request/response logic from HTTP transport so fetch and native
-clients can reuse provider semantics. The existing example's driver is a useful
-transport spike, not a replacement for all provider features. Qualify streaming,
-reasoning data, hosted tools, compaction and error/retry behavior per driver.
+Vendor request/response logic now uses the shared host HTTP port, so fetch and
+native clients reuse provider semantics. The object example uses the ordinary
+Chat Completions driver over a bounded, cancelable byte transport rather than
+implementing provider JSON or SSE itself. Qualify reasoning data, hosted tools,
+compaction and workload/resource budgets per supported driver and deployment.
 
 Keep state mutations short and serialized, allowing input/cancel requests during
 model I/O. One DO instance is single-threaded, but requests can interleave across

@@ -1,3 +1,4 @@
+import { fetchModel } from "./provider.js";
 import wasm from "../pkg/everruns_object_agent_bg.wasm";
 import { initSync, binding, run } from "../pkg/everruns_object_agent.js";
 import worker, {
@@ -21,7 +22,7 @@ export class SessionAuthority extends Base {
         activation.tenant,
         activation.session_id,
         rpc,
-        (raw) => this.model(raw),
+        (raw, signal) => this.model(raw, signal),
         this.env.MODEL ?? "gpt-6-luna",
       );
       return 200;
@@ -32,57 +33,8 @@ export class SessionAuthority extends Base {
     return objectPort(this.authority, activation);
   }
 
-  async model(raw) {
-    const url = new URL(
-      `${(this.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, "")}/chat/completions`,
-    );
-    if (
-      !(
-        url.protocol === "https:" ||
-        (url.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname))
-      ) ||
-      url.username ||
-      url.password ||
-      url.search ||
-      url.hash
-    )
-      throw new Error("invalid provider endpoint");
-    if (!this.env.OPENAI_API_KEY) throw new Error("provider credential missing");
-    const response = await fetch(url, {
-      method: "POST",
-      redirect: "manual",
-      signal: AbortSignal.timeout(60000),
-      headers: {
-        authorization: `Bearer ${this.env.OPENAI_API_KEY}`,
-        "content-type": "application/json",
-      },
-      body: raw,
-    });
-    const reader = response.body?.getReader();
-    const chunks = [];
-    let size = 0;
-    if (reader) {
-      try {
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          size += value.byteLength;
-          if (size > 3 * 1024 * 1024) throw new Error("provider reply exceeds limit");
-          chunks.push(value);
-        }
-      } catch (error) {
-        await reader.cancel().catch(() => {});
-        throw error;
-      }
-    }
-    const bytes = new Uint8Array(size);
-    let offset = 0;
-    for (const chunk of chunks) {
-      bytes.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    const body = response.ok ? JSON.parse(new TextDecoder().decode(bytes)) : null;
-    return JSON.stringify({ status: response.status, body });
+  async model(raw, signal) {
+    return fetchModel(this.env, raw, signal);
   }
 }
 export default worker;

@@ -11,6 +11,15 @@
   workerd Worker/Durable Object tool-round-trip coverage. See
   [The Execution Kernel in a JavaScript Isolate](framework/wasm-kernel.md).
 
+* **Coding-agent onboarding.** One setup prompt from the user menu, Agents empty
+  state and onboarding Done, with deployment-aware MCP instructions and explicit
+  provider prerequisites. See [Coding Agent Onboarding](ui/coding-agent-onboarding.md).
+
+* **User MCP approval policy.** Add and enable follow shared Tool Approval modes;
+  management adds no hard gate when approval is absent or off. See
+  [User MCP servers](integrations/user-mcp-servers.md) and
+  [Tool Approval](execution/tool-approval.md).
+
 * **Shipping completes follow-ups.** Require implementation of work needed for
   the requested outcome before shipping; defer only for concrete blockers or
   explicit user exclusions. See [Shipping](project/shipping.md).
@@ -25,15 +34,6 @@
   alternatives, failure semantics and qualification gates. See
   [Portable Durable Agent Execution](framework/durable-execution-portability.md)
   and [Durable Execution Guarantees](framework/durable-execution-guarantees.md).
-
-* **Coding-agent onboarding.** One setup prompt from the user menu, Agents empty
-  state and onboarding Done, with deployment-aware MCP instructions and explicit
-  provider prerequisites. See [Coding Agent Onboarding](ui/coding-agent-onboarding.md).
-
-* **User MCP approval policy.** Add and enable follow shared Tool Approval modes;
-  management adds no hard gate when approval is absent or off. See
-  [User MCP servers](integrations/user-mcp-servers.md) and
-  [Tool Approval](execution/tool-approval.md).
 
 ## 2026-10-15
 

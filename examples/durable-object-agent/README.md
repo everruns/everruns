@@ -32,7 +32,9 @@ identity when retrying an uncertain acknowledgement.
 The `bump_counter` tool updates session KV. Its at-most-once recovery policy
 interrupts an operation whose effect may already have happened; it never blindly
 repeats the increment. The same policy is used on the native worker. The example
-provider uses non-streaming Chat Completions through the shared wire contracts.
+uses the shared Chat Completions driver, including SSE parsing, options, retries
+and usage metadata. Its injected transport streams bounded response bytes and
+cancels fetch when the driver drops the body.
 Native filesystem/process tools require an explicitly supported isolate backend.
 
 The build ID hashes source, manifests, locks and toolchain using relative paths.

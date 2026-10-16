@@ -23,7 +23,9 @@ inbox progress and next activation. A native executor or a Wasm isolate reconstr
 ordinary Framework agent or registered serve agent and runs the shared Rust
 session actor driver. JavaScript owns storage and activation, never agent planning.
 Native placement keeps native tools and providers available. Isolate placement
-uses a fetch-backed provider and only tools supported by its injected services.
+uses the shared provider protocols over host fetch and only tools supported by
+its injected services. Protocol encoding, SSE parsing, retry classification and
+usage remain shared Rust code; the object bridge moves HTTP bytes.
 
 The [core driver](../../crates/core/src/host/session_actor/mod.rs) is shared by
 native platform workers and the [object executor](../../crates/durable-object/src/executor.rs).
