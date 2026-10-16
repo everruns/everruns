@@ -52,6 +52,12 @@ picture when one helps.
 
 ## What gets an entry
 
+An entry must describe a meaningful change to what users can do, how the product
+behaves, or what users must change. Being visible is not enough. Cosmetic polish
+(such as docs badge colors), typo fixes, and routine documentation upkeep get no
+entry unless they meet one of the impact criteria below. A substantial usability
+or accessibility fix can qualify; a styling change alone does not.
+
 | Kind | When | Example |
 |---|---|---|
 | `feature` | A user can now do something new, and the work is complete | Call one agent from code with an agent key |
@@ -91,6 +97,8 @@ one paragraph that serves neither.
 **Significance: how much I should care.** `major` (changes how people use the
 product; at most a few a month), `notable` (the default), `minor` (small, but
 someone asked for it). Breaking changes are always at least `notable`.
+Significance is assigned only after a change qualifies for an entry; `minor`
+does not make an otherwise ineligible change eligible.
 
 The index page filters on all three plus kind. Filters are query parameters
 (`/changelog/?product=yolop&significance=major`), so a filtered view is a link
@@ -226,10 +234,12 @@ Writing the entry belongs to the PR that completes the feature, in whichever
 repository that PR lives:
 
 1. **The PR template** in every repository gets one line under "What changed":
-   `Changelog: <entry link> | part of <program or Linear issue> | not user-facing`.
+   `Changelog: <entry link> | part of <program or Linear issue> | not user-facing | no entry: <reason>`.
+   Use `no entry: <reason>` for visible changes below the impact threshold,
+   such as cosmetic polish or routine docs upkeep.
    An empty line is a review finding.
 2. **The ship skills** treat the entry as a synced artifact (shipping outcome 4).
-   When the PR completes a user-facing feature or closes a significant incident,
+   When the PR completes a change that meets the impact criteria above,
    the entry is part of the change; when the PR is a step in a program, the line
    names the program so the last PR knows it owes the entry.
 3. **Entries always land in `everruns/everruns`**, because the docs site lives
