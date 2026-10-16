@@ -159,7 +159,7 @@ server expire abandoned consent after thirty minutes.
 The browser binding uses a host-only cookie with Secure, HttpOnly and Lax
 SameSite semantics so Slack's top-level redirect can return it. Serve the
 manager flow over HTTPS. See [manager consent](../../crates/server/src/channels/slack/provisioning/manager_app.rs),
-[callback](../../crates/server/src/channels/slack/install/manager_connect.rs), and
+[callback](../../crates/server/src/channels/slack/manager_connect.rs), and
 [router regression coverage](../../crates/server/tests/domain/slack_install_integration_test.rs).
 
 ## Testing

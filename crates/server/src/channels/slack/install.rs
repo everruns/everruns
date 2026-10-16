@@ -37,8 +37,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-mod manager_connect;
-use manager_connect::{begin_manager_connect, finish_manager_connect};
+use super::manager_connect::{begin_manager_connect, finish_manager_connect};
 
 use super::events::SlackState;
 use crate::api::common::ErrorResponse;
@@ -217,7 +216,9 @@ fn pick_workspace(
     }
 }
 
-fn require_org_admin(org: &ResolvedOrg) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+pub(super) fn require_org_admin(
+    org: &ResolvedOrg,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     if org.role.has_permission(everruns_core::OrgRole::Admin) {
         Ok(())
     } else {
@@ -597,9 +598,9 @@ fn authorize_url(
 
 #[derive(Deserialize)]
 pub struct CallbackQuery {
-    code: Option<String>,
-    state: Option<String>,
-    error: Option<String>,
+    pub(super) code: Option<String>,
+    pub(super) state: Option<String>,
+    pub(super) error: Option<String>,
 }
 
 /// GET /v1/channels/{channel_id}/slack/oauth/callback
@@ -927,7 +928,9 @@ async fn persist(
     })
 }
 
-fn provisioning_error_response(error: SlackProvisioningError) -> (StatusCode, Json<ErrorResponse>) {
+pub(super) fn provisioning_error_response(
+    error: SlackProvisioningError,
+) -> (StatusCode, Json<ErrorResponse>) {
     match error {
         // Not a failure: it is the self-hosted steady state. 501 rather than
         // 500 so the UI can tell "this deployment does not do one-click" from
@@ -1000,7 +1003,7 @@ fn urlencoding_encode(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::manager_connect::{manager_redirect_uri, slack_error_code};
+    use super::super::manager_connect::{manager_redirect_uri, slack_error_code};
     use super::*;
     use crate::storage::StorageBackend;
     fn resolved_org(role: everruns_core::OrgRole) -> ResolvedOrg {

@@ -1,9 +1,21 @@
 //! Browser-bound, single-use consent for the deployment's manager app.
 
-use super::*;
+use super::install::{
+    CallbackQuery, SlackInstallState, provisioning_error_response, require_org_admin,
+};
+use crate::api::common::ErrorResponse;
+use crate::auth::ResolvedOrg;
 use crate::channels::slack::provisioning::MANAGER_CONNECT_STATE_TTL;
+use crate::domains::agent_channels::record::slack_provisioning::SlackProvisioningError;
+use axum::{
+    Json,
+    extract::{Query, State},
+    http::StatusCode,
+    response::{IntoResponse, Redirect, Response},
+};
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use base64::Engine;
+use serde::Serialize;
 
 #[derive(Serialize)]
 pub struct BeginManagerConnectResponse {
