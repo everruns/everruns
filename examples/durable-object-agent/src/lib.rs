@@ -104,6 +104,13 @@ impl Tool for Bump {
     fn description(&self) -> &str {
         "Increment the session counter once."
     }
+    fn hints(&self) -> everruns_contracts::tool_types::ToolHints {
+        // Serialize this read-modify-write with other session KV mutations.
+        everruns_contracts::tool_types::ToolHints::default()
+            .with_readonly(false)
+            .with_idempotent(false)
+            .with_concurrency_class("session_storage")
+    }
     fn parameters_schema(&self) -> Value {
         json!({"type":"object","properties":{}})
     }
