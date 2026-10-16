@@ -235,7 +235,7 @@ pub struct CreateApiKeyConnectionRequest {
     /// Provider API key, encrypted before storage.
     #[schema(example = "example-api-key")]
     pub api_key: String,
-    /// Additional provider-specific form fields (e.g. org_slug for Deno personal tokens).
+    /// Additional provider-specific form fields (e.g. org_slug for provider personal tokens).
     #[serde(flatten)]
     pub extra_fields: std::collections::HashMap<String, serde_json::Value>,
 }

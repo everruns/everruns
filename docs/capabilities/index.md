@@ -70,7 +70,6 @@ Cloud and container sandbox environments for isolated code execution.
 | [Sandbox Fleet](/capabilities/sandbox-fleet/) | `sandbox_fleet` | 8 |
 | [Daytona](/capabilities/daytona/) | `daytona` | 10 |
 | [E2B](/capabilities/e2b/) | `e2b` | 6 |
-| Deno Sandboxes | `deno` | 6 |
 | [Container Sandbox](/capabilities/container-sandbox/) | `container_sandbox` | 8 (needs `FEATURE_CONTAINER_SANDBOX=prod`) |
 | [Docker Container](/capabilities/docker/) | `docker_container` | 5 (off by default, needs `FEATURE_DOCKER_CAPABILITY` rollout grade) |
 
@@ -297,7 +296,6 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | [Sandbox Fleet](/capabilities/sandbox-fleet/) | [Storage](/capabilities/session-storage/) |
 | [E2B](/capabilities/e2b/) | [Storage](/capabilities/session-storage/) |
 | [Daytona](/capabilities/daytona/) | [Storage](/capabilities/session-storage/) |
-| Deno Sandboxes | Storage |
 | [Browserless](/capabilities/browserless/) | [Storage](/capabilities/session-storage/) |
 | [Browser Use](/capabilities/browser-use/) | [Storage](/capabilities/session-storage/) |
 | [Computer Use](/capabilities/computer-use/) | [Storage](/capabilities/session-storage/) |

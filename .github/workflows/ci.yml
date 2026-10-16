@@ -1130,7 +1130,7 @@ jobs:
           cargo test -p everruns-integrations --features bashkit,brave-search,brave-search-hosted,browserless,cursor,daytona,daytona-test-util,docker,duckduckgo,e2b,filesystem,github,lua,openai-decisions,openai-image,openrouter,parallel,typesafe,typesafe-hosted,web-fetch,modal,modal-test-util -- --test-threads=1
           # Experimental integrations stay on their own support track; unit and
           # mock-backed tests run here, while Sprites live tests remain manual.
-          cargo test -p everruns-integrations-experimental --features deno,sprites -- --test-threads=1
+          cargo test -p everruns-integrations-experimental --features sprites -- --test-threads=1
           # Hosted integration composition and its entries live with the hosted
           # capabilities. The script separately guards catalog completeness.
           cargo test -p everruns-capabilities --features hosted-integration-catalog --lib
@@ -1194,7 +1194,6 @@ jobs:
             # features, which fail closed without real credentials. Live tests run in their
             # own dedicated jobs (e.g. `daytona-live-test`) that provide Doppler secrets.
             cargo test -p everruns-integrations --features daytona,daytona-test-util
-            cargo test -p everruns-integrations-experimental --features deno
             cargo test -p everruns-integrations --features browserless
             cargo test -p everruns-integrations --features cursor
             cargo test -p everruns-integrations --features e2b
@@ -1397,15 +1396,6 @@ jobs:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: doppler run -- cargo test -p everruns-integrations --features e2b-live-tests --test e2b_live_api_test -- --test-threads=1
 
-  # The `deno-live-test` job is quarantined: the Deno organization's plan no
-  # longer includes sandboxes, so `create_sandbox` returns 400
-  # VERIFICATION_REQUIRED_FOR_SANDBOXES and the fail-closed live tests can never
-  # pass. Per the fail-closed contract we remove the job rather than let it
-  # silently skip/pass. The mock-backed unit tests still run above via
-  # `cargo test -p everruns-integrations-experimental --features deno`, so the client stays covered.
-  # Restoring it means re-adding this job, its `deno` path filter and `changes`
-  # output, its entry in the `build-check` needs list, and the matrix entry in
-  # integration-live-sweep.yml. See EVE-946.
 
   # Integration tests requiring PostgreSQL
   # Tests API endpoints, repositories, and durable execution against real database

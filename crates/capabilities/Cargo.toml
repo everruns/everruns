@@ -62,7 +62,6 @@ hosted-integration-catalog = [
     "everruns-integrations/web-search",
     "dep:everruns-integrations-experimental",
     "everruns-integrations-experimental/agentid",
-    "everruns-integrations-experimental/deno",
     "everruns-integrations-experimental/sprites",
     "dep:everruns-ard",
 ]

@@ -14,7 +14,7 @@ lua = ["everruns-capabilities/lua", "everruns/lua"]
 
 [dependencies]
 everruns-integrations = { workspace = true, features = ["bashkit", "daytona", "browserless", "e2b", "typesafe", "openai-decisions"] }
-everruns-integrations-experimental = { workspace = true, features = ["deno", "sprites"] }
+everruns-integrations-experimental = { workspace = true, features = ["sprites"] }
 
 
 mimalloc.workspace = true

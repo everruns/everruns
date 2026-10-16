@@ -46,7 +46,7 @@ layer, never upward.
 | | `everruns-capabilities` | hosted capabilities (subagents, session tasks, background runs, knowledge, container sandbox) | yes |
 | | `everruns-drivers` (+ `everruns-llmsim`) | model drivers, one feature per vendor | yes |
 | `crates/integrations/` | `everruns-integrations` | maintained integrations, selected by feature | yes |
-| `crates/integrations-experimental/` | `everruns-integrations-experimental` | Deno and Sprites, selected by feature | yes |
+| `crates/integrations-experimental/` | `everruns-integrations-experimental` | Sprites, selected by feature | yes |
 | | `everruns-durable` | durable workflow primitives and their own Postgres store | yes |
 | Foundation | `everruns-contracts` | provider and capability SPIs, model profiles, typed ids, runtime view types, connector, store, sandbox, and vector-store traits; the runtime SPI (capability, tool, tool context, session, message, event) behind its `runtime` feature | yes |
 

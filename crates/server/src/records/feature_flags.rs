@@ -846,8 +846,6 @@ mod tests {
             assert!(!disabled.is_connector_enabled(connector), "{connector}");
             assert!(enabled.is_connector_enabled(connector), "{connector}");
         }
-        assert!(!disabled.is_connector_enabled("deno"));
-        assert!(enabled.is_connector_enabled("deno"));
         // Daytona and E2B capabilities and their credential connectors are
         // generally available.
         assert!(disabled.is_capability_enabled("daytona"));
@@ -865,9 +863,6 @@ mod tests {
                 .map(|def| (def.name.to_string(), def.grade))
                 .collect(),
         };
-        assert_eq!(prod.grade("deno"), FeatureFlagGrade::Off);
-        assert!(!prod.deployment_flags().is_enabled("deno"));
-        assert!(!prod.deployment_flags().is_connector_enabled("deno"));
         assert!(prod.deployment_flags().is_connector_enabled("daytona"));
         assert!(
             prod.for_org(&HashMap::new())

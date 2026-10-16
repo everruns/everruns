@@ -92,7 +92,6 @@ const PROVIDER_LABELS: Record<string, string> = {
   docker: "Docker",
   e2b: "E2B",
   sprites: "Sprites",
-  deno: "Deno",
   bashkit: "Bashkit",
   host: "Host",
 };

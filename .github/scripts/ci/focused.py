@@ -20,7 +20,7 @@ FEATURES = {
         'cursor', 'daytona', 'daytona-test-util', 'docker', 'duckduckgo', 'e2b', 'filesystem',
         'github', 'lua', 'openai-decisions', 'openai-image', 'openrouter', 'parallel',
         'typesafe', 'typesafe-hosted', 'web-fetch', 'modal', 'modal-test-util'],
-    'everruns-integrations-experimental': ['deno', 'sprites'],
+    'everruns-integrations-experimental': ['sprites'],
 }
 
 

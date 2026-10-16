@@ -1275,7 +1275,6 @@ fn is_read_file_tool_name(tool_name: &str) -> bool {
             | "sandbox_read_file"
             | "e2b_read_file"
             | "docker_read_file"
-            | "deno_read_file"
             | "sprites_read_file"
             | "read_github_file"
     )
@@ -1370,7 +1369,7 @@ fn summarize_tool_result(
         tool_name if is_read_file_tool_name(tool_name) => {
             summarize_read_file_result(tool_name, object, value)
         }
-        "bash" | "daytona_exec" | "sandbox_exec" | "e2b_exec" | "docker_exec" | "deno_exec" => {
+        "bash" | "daytona_exec" | "sandbox_exec" | "e2b_exec" | "docker_exec" => {
             summarize_exec_result(tool_name, object, value)
         }
         "list_directory" => summarize_list_directory_result(tool_name, object, value),

@@ -577,32 +577,6 @@
     },
     {
       "category": "Sandboxes",
-      "dependencies": [
-        "session_storage"
-      ],
-      "docs_slug": null,
-      "feature_flag": null,
-      "features": [
-        "leased_resources"
-      ],
-      "grades": [
-        "prod",
-        "dev"
-      ],
-      "id": "deno",
-      "name": "Deno Sandboxes",
-      "status": "available",
-      "tools": [
-        "deno_create_sandbox",
-        "deno_exec",
-        "deno_list_sandboxes",
-        "deno_manage_sandbox",
-        "deno_read_file",
-        "deno_write_file"
-      ]
-    },
-    {
-      "category": "Sandboxes",
       "dependencies": [],
       "docs_slug": "docker",
       "feature_flag": "docker_capability",
