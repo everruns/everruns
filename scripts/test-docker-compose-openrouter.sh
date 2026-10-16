@@ -6,11 +6,13 @@ AUTH_JWT_SECRET=compose-config-test \
 SECRETS_ENCRYPTION_KEY=compose-config-test \
 WORKER_GRPC_AUTH_TOKEN=compose-config-test \
 DEFAULT_OPENROUTER_API_KEY=compose-openrouter-fixture \
+SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV=true \
   docker compose -f "$ROOT/examples/docker-compose-full.yaml" config --format json |
   python3 -c '
 import json, sys
 services = json.load(sys.stdin)["services"]
 assert services["server"]["environment"].get("DEFAULT_OPENROUTER_API_KEY") == "compose-openrouter-fixture", "OpenRouter environment key never reaches the server"
+assert services["server"]["environment"].get("SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV") == "true", "Environment keys cannot be materialized for the default organization"
 for name, service in services.items():
     if name != "server":
         assert "DEFAULT_OPENROUTER_API_KEY" not in service.get("environment", {}), name

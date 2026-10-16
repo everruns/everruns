@@ -46,12 +46,20 @@ WORKER_GRPC_AUTH_TOKEN=<worker-token>
 AUTH_ADMIN_EMAIL=admin@example.com
 AUTH_ADMIN_PASSWORD=<choose-a-password>
 
-# Optional: Add API keys here to skip UI configuration
+# Optional, single-tenant admin mode: encrypt these keys into the default org.
+# The explicit seeding opt-in is required to skip UI credential configuration.
+SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV=true
 DEFAULT_OPENAI_API_KEY=sk-...
 DEFAULT_ANTHROPIC_API_KEY=sk-ant-...
 DEFAULT_GEMINI_API_KEY=AIza...
 DEFAULT_OPENROUTER_API_KEY=sk-or-...
 ```
+
+The optional environment-key path stores keys encrypted in the default
+organization's database. Production startup otherwise ignores `DEFAULT_*` keys
+for tenant execution. Enable seeding only for a single-tenant deployment with
+admin auth; built-in signup or OAuth self-provisioning prevents this opt-in from
+sharing host credentials. Leave it unset and use the UI for other deployments.
 
 ### 4. Start Services
 

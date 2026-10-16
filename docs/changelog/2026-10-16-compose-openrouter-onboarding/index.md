@@ -11,9 +11,11 @@ links:
 ---
 
 The Docker Compose stack now forwards `DEFAULT_OPENROUTER_API_KEY` to the control
-plane. Previously, adding this variable to the quickstart's `.env` file left the
+plane and exposes the explicit `SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV` opt-in. Previously, adding this variable to the quickstart's `.env` file left the
 OpenRouter provider without a key. Use an inference key rather than a management
-key, or configure the provider through **Models → Providers**.
+key. Single-tenant admin deployments can enable seeding to encrypt environment
+keys into the default organization; otherwise configure credentials through
+**Models → Providers**.
 
 The [Docker Compose guide](/getting-started/docker-compose/) also documents both
 host-port overrides for running isolated copies, the Compose version required by

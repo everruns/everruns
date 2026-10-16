@@ -245,7 +245,7 @@ try {
       "inspect",
       ...new Set(report.images),
       "--format",
-      '{"id":{{json .Id}},"digests":{{json .RepoDigests}},"architecture":{{json .Architecture}},"labels":{{json .Config.Labels}}}',
+      '{"id":{{json .Id}},"digests":{{json .RepoDigests}},"architecture":{{json .Architecture}},"labels":{{json (index .Config "Labels")}}}',
     ])
   )
     .trim()
