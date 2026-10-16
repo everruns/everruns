@@ -2309,9 +2309,15 @@ mod tests {
         let tool = BashTool::default();
 
         // A nonexistent path resolves but has no file — `cat` fails with a
-        // non-zero exit, not a containment error.
+        // non-zero exit, not a containment error. NB: bashkit 0.19 seeds a
+        // synthetic read-only /etc (default rootfs), so /etc/passwd now
+        // exists; probe a name present in neither the mock store nor the
+        // default rootfs.
         let result = tool
-            .execute_with_context(json!({"commands": "cat /etc/passwd"}), &context)
+            .execute_with_context(
+                json!({"commands": "cat /etc/everruns-probe-definitely-missing"}),
+                &context,
+            )
             .await;
 
         match result {
@@ -2330,6 +2336,31 @@ mod tests {
                 );
             }
             _ => panic!("Unexpected result type"),
+        }
+    }
+
+    // bashkit 0.19 serves a synthetic read-only /etc/passwd (default
+    // rootfs) with no root line. A `root:` entry would mean the host file
+    // leaked through (TM-BASH-002) — tripwire for that.
+    #[tokio::test]
+    async fn test_bash_default_rootfs_passwd_has_no_root_line() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool::default();
+
+        let result = tool
+            .execute_with_context(json!({"commands": "cat /etc/passwd"}), &context)
+            .await;
+
+        match result {
+            ToolExecutionResult::Success(output) => {
+                let stdout = output["stdout"].as_str().unwrap_or_default();
+                assert!(
+                    !stdout.lines().any(|line| line.starts_with("root:")),
+                    "host /etc/passwd leaked into sandbox: {:?}",
+                    output
+                );
+            }
+            other => panic!("expected success, got: {:?}", other),
         }
     }
 
