@@ -152,6 +152,16 @@ impl Capability for UserMcpCapability {
         Vec::new()
     }
 
+    fn tool_definitions_with_config(
+        &self,
+        config: &Value,
+    ) -> Vec<everruns_contracts::tool_types::ToolDefinition> {
+        self.tools_with_config(config)
+            .iter()
+            .map(|tool| tool.to_definition())
+            .collect()
+    }
+
     async fn system_prompt_contribution_with_config(
         &self,
         _ctx: &SystemPromptContext,

@@ -16,5 +16,6 @@ settings when adding or enabling a server. Normal and protective modes ask
 first. With Tool Approval absent or set to `off`, management runs without a
 hidden approval gate.
 
-Management still acts only for the person chatting. Catalog restrictions,
+Agents with management disabled also stop advertising management tools to the
+model. Management still acts only for the person chatting. Catalog restrictions,
 custom-URL validation and separate OAuth consent continue to apply.

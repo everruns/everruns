@@ -246,6 +246,29 @@ fn manage_tools_only_with_manage_and_add_enable_need_approval() {
     }
 }
 
+#[test]
+fn model_definitions_follow_management_and_url_configuration() {
+    for config in [
+        json!({}),
+        json!({"manage": false}),
+        json!({"connect": true}),
+        json!({"manage": true}),
+        json!({"manage": true, "allow_custom_urls": true}),
+    ] {
+        let expected: Vec<_> = UserMcpCapability
+            .tools_with_config(&config)
+            .iter()
+            .map(|tool| tool.to_definition())
+            .collect();
+        let definitions = UserMcpCapability.tool_definitions_with_config(&config);
+        assert_eq!(
+            serde_json::to_value(definitions).unwrap(),
+            serde_json::to_value(expected).unwrap(),
+            "model-facing and executable tools disagree for {config}",
+        );
+    }
+}
+
 #[tokio::test]
 async fn custom_url_is_refused_unless_allowed() {
     let add = tool(json!({"manage": true}), "add_user_mcp_server");

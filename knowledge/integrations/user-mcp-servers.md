@@ -153,6 +153,9 @@ exfiltrate data:
   hidden gate. `user_mcp` contributes no unconditional hook or independent
   approval switch; operators choose the common policy. Other management tools
   follow their hints under that policy. OAuth consent is separate.
+- Model-facing definitions follow the same configuration as executable tools:
+  `manage=false` advertises no management tools, connect-only advertises only
+  Connect, and catalog-only add schemas omit custom URLs.
 - Custom URLs are refused unless `allow_custom_urls` is on, and always pass the
   same URL validation as catalog presets.
 - `connect` never handles a credential. It starts the existing in-chat Connect
