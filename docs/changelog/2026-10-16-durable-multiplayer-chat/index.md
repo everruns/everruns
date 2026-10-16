@@ -18,7 +18,8 @@ reconnect receipts beside queued messages, and wakes for scheduled follow-ups
 even when every browser is closed. A history-search child resumes from its own
 last committed engine step after a restart.
 
-From `examples/cloudflare-durable-chat`, after installing the build prerequisites:
+From the [chat example](https://github.com/everruns/everruns/tree/main/examples/cloudflare-durable-chat),
+after installing the build prerequisites:
 
 ```sh
 npm ci
