@@ -16,3 +16,5 @@ Session cards also show the channel, creation time and last-message time. Hover
 over a time to see its exact date and time. The last-message time tracks user
 messages and completed assistant replies; editing a session or recording tool
 activity does not change it. Sessions without messages say **No messages yet**.
+
+![Seven session cards with archived labels, channels and message times](./sessions@2x.png)
