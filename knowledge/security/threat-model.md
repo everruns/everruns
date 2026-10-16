@@ -557,7 +557,7 @@ fn authorizer(action: AuthAction) -> Authorization {
 | TM-TOOL-020 | Skill `` !`command` `` activation RCE on worker host | High | `ActivateSkillFromVfsTool::execute_with_context` never invokes `preprocess_command_injections`, the trust gate is forced off because no non-user-spoofable provenance signal exists on `SessionFile` today. Expansion is also capped at `MAX_COMMAND_PLACEHOLDERS_PER_SKILL` (32) with concurrency ≤ 4 in the expansion function itself. See EVE-388. | MITIGATED |
 | TM-TOOL-021 | Agent handoff credential leakage or unauthorized target delegation | High | `agent_handoff` delegates only to configured target Agent ids through `spawn_agent(target.type="agent")`, requires server-side `UserConnectionResolver` checks before start, never accepts credentials in tool args/config/task metadata, records only non-secret target/provider/scope labels in `session_tasks`, and keeps invite-mode joins in the current session behind duplicate capability/mount conflict checks. Child-session follow-up control routes through `message_task` for the parent-owned task. Provider tools must still enforce scoped grants before real external writes. | MITIGATED |
 | TM-TOOL-022 | Cross-tenant MCP credential reach via guardrail `mcp` check | High | The guardrails `mcp` check (knowledge/execution/guardrails.md) names a `server`/`tool` to call over the scoped-MCP client. The check resolves connections through the host's per-session `McpConnectionResolver`, which only resolves servers scoped to the current session/org; a tenant's guardrail config can only reach that tenant's servers and never another tenant's MCP credentials. A misconfigured/unknown server fails open (allow) rather than blocking. The verdict parser reads only `verdict`/`reason`, so a poisoned endpoint response cannot widen behavior beyond the fail-open baseline. | MITIGATED |
-| TM-TOOL-024 | WebFetch rendered-page JavaScript escapes egress controls or exhausts worker resources | High | Not applicable: in-process rendering is not compiled in. FetchKit's `render-rakers` feature is disabled, so the tool never advertises a `render` argument and a request for one is refused with `RenderNotAvailable`. JavaScript-rendered pages are served by the browserless and deno integrations, which carry their own sandbox controls. | MITIGATED |
+| TM-TOOL-024 | WebFetch rendered-page JavaScript escapes egress controls or exhausts worker resources | High | Not applicable: in-process rendering is not compiled in. FetchKit's `render-rakers` feature is disabled, so the tool never advertises a `render` argument and a request for one is refused with `RenderNotAvailable`. JavaScript-rendered pages are served by the browserless integration, which carries its own sandbox controls. | MITIGATED |
 | TM-TOOL-025 | MCP OAuth refresh-token theft, torn rotation, or refresh stampede | High | Refresh tokens stay envelope-encrypted and are never logged; token endpoints are revalidated and DNS-pinned through `EgressService` for every refresh (TM-TOOL-018); a bounded per-grant single-flight coalesces concurrent refreshes; access token, rotated refresh token, expiry, and scope are persisted atomically before the new access token is returned. A provider `invalid_grant` response revokes the unusable service grant, while transient provider failures preserve it for a later retry. Rejected or incomplete grants fail closed to `connection_required`. | MITIGATED |
 | TM-TOOL-026 | Model-visible tool lacks a required host service and fails only after invocation | Medium | Context-aware tools declare hard `ToolContext` service requirements. Runtime hosts build one complete service snapshot, validate the active registry before reason exposes definitions, and clone that snapshot into every act call. Configuration errors name the tool and missing service. Runtime parity and reason→act history tests cover propagation. | MITIGATED |
 | TM-TOOL-027 | `query_history` bypasses provider-bound prompt rewrites | High | Persisted messages intentionally retain the original user input as an audit record. When any `user_prompt_submit` hook is configured, runtime capability assembly removes `query_history` from both the reason and act registries so the model cannot retrieve text that a hook removed, while retaining Infinity Context's message filter so prior raw audit messages cannot re-enter the live provider prompt. Provider-visible history can restore the combination once it has a separate durable representation. | MITIGATED |
@@ -979,7 +979,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-002 | Indirect prompt injection via tool results | High | Tool results use `tool_result` role, not `system`; LLM may still follow adversarial instructions in results | **ACCEPTED** |
 | TM-AGENT-003 | Indirect prompt injection via MCP tool descriptions | Medium | MCP tool names/descriptions fed to LLM as tool schema; adversarial descriptions could influence behavior | **ACCEPTED** |
 | TM-AGENT-004 | Agent jailbreak via system prompt | Medium | System prompt set by org member at agent creation; no sanitization of prompt content | **BY DESIGN** |
-| TM-AGENT-005 | Capability escalation via agent creation | High | RiskLevel enum on Capability trait; high-risk capabilities (`a2a_agent_delegation`, `ag_ui_delegation`, `docker_container`, `daytona`, `e2b`, `deno`, `bashkit_shell`, `web_fetch`, `model_scout`) require Admin role to assign via API; the same gate covers effective parent/dependency capabilities when assigning a harness to an agent or directly selecting one for a session; running an already-configured agent remains permitted, and member-owned agents that already had high-risk capabilities are grandfathered (see `knowledge/execution/capabilities.md` "Admin-Only Tier Decision") | MITIGATED |
+| TM-AGENT-005 | Capability escalation via agent creation | High | RiskLevel enum on Capability trait; high-risk capabilities (`a2a_agent_delegation`, `ag_ui_delegation`, `docker_container`, `daytona`, `e2b`, `bashkit_shell`, `web_fetch`, `model_scout`) require Admin role to assign via API; the same gate covers effective parent/dependency capabilities when assigning a harness to an agent or directly selecting one for a session; running an already-configured agent remains permitted, and member-owned agents that already had high-risk capabilities are grandfathered (see `knowledge/execution/capabilities.md` "Admin-Only Tier Decision") | MITIGATED |
 | TM-AGENT-006 | Cost runaway, unbounded LLM calls | High | Max iterations per turn (default 100); configurable per agent | MITIGATED |
 | TM-AGENT-007 | Cost runaway, many tools per iteration | Medium | `ActAtom` runs at most 64 server tool calls per model response (`EVERRUNS_ACT_MAX_TOOL_CALLS`, [`tool_scheduler`](../../crates/core/src/engine/execution/tool_scheduler.rs)); calls past the cap get an error result and never run, so the model has to split the work across turns | MITIGATED |
 | TM-AGENT-008 | Context window poisoning | Medium | Auto-compaction via `llm_driver.compact()` on `RequestTooLarge`; older messages compressed | MITIGATED |
@@ -1425,25 +1425,6 @@ Session A cannot access sb_xyz because tool-side ownership checks reject non-own
 before the Daytona API call, and persisted sandbox state is still scoped by session_id.
 ```
 
-## 17A. Deno Sandbox (TM-DENO)
-
-Deno sandboxes are remote Linux microVMs managed over a websocket + REST control plane. Everruns creates sandboxes with a fixed timeout, reconnects for each tool call, and deletes them via leased-resource cleanup.
-
-> **The integration is unsupported and untested against the live service.** Deno
-> sandboxes require a paid plan the project does not hold, so the live tests were
-> removed rather than left to skip (EVE-946). Every `MITIGATED` status below is
-> therefore asserted against mock-backed unit coverage and code review only — none
-> of it is exercised against the real control plane. Treat these as unverified
-> until live coverage is restored.
-
-| ID | Threat | Severity | Mitigation | Status |
-|----|--------|----------|------------|--------|
-| TM-DENO-001 | Service-wide token misuse via env fallback | High | Env fallback removed; credential resolves exclusively from user connection (`connection_resolver`); tools return `ConnectionRequired` when no connection is configured | MITIGATED |
-| TM-DENO-002 | Cross-session sandbox access | Critical | Deno tools require session-owned sandbox IDs via leased-resource/session-resource ownership checks; persisted sandbox state remains session-scoped in `deno_sandbox:{id}` | MITIGATED |
-| TM-DENO-003 | Sandbox leak from default `session` timeout | Medium | `deno_create_sandbox` forbids `timeout="session"`; Everruns always uses explicit TTLs plus leased-resource cleanup | MITIGATED |
-| TM-API-015 | Lease metadata exposure | Medium | Deno lease metadata stores only non-secret routing/debug fields (`region`, optional `org`, workspace path, timestamps); tokens still resolve from connections/env at cleanup time | MITIGATED |
-| TM-DENO-004 | Network probing from remote sandbox | High | Capability is Admin-gated; residual exposure depends on operator egress controls | **ACCEPTED** |
-
 ## 17B. Cursor Cloud Agents (TM-CURSOR)
 
 Cursor Cloud Agents are third-party asynchronous coding agents that clone GitHub repositories, run commands in Cursor-managed remote environments, push branches, and may create PRs. Everruns calls Cursor's REST API with a user or operator-provided Cursor Cloud Agents API key.
@@ -1561,7 +1542,7 @@ application's network authority, without hosted tenant policy.
 
 ## 21. Container Sandbox (TM-SANDBOX)
 
-Self-hosted container sandboxes via Docker Engine REST API. Agents create, exec, and manage containers per-session. Containers run on the same infrastructure as the server/worker, unlike cloud sandboxes (Daytona, E2B, Deno) which run on third-party infrastructure.
+Self-hosted container sandboxes via Docker Engine REST API. Agents create, exec, and manage containers per-session. Containers run on the same infrastructure as the server/worker, unlike cloud sandboxes (Daytona, E2B) which run on third-party infrastructure.
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
@@ -1906,7 +1887,6 @@ A `poppy` channel serves the Personal Agent Protocol (draft 0.1) at `/v1/channel
 | TM-AGENT-019 | Internal network probing via high-risk execution capabilities | High-risk capabilities are Admin-gated; residual exposure depends on deployment network isolation |
 | TM-DURABLE-006 | DLQ growth | Tasks preserved for debugging; manual cleanup |
 | TM-DAYTONA-001 | Git token on sandbox disk | Same trust boundary as exec; `/tmp` cleared on stop; short-lived token |
-| TM-DENO-004 | Network probing from Deno sandbox | Same residual risk as other remote execution capabilities; requires Admin + operator egress controls |
 | TM-E2B-005 | Full-network sandbox misuse | Same residual risk class as other cloud sandboxes, including the `computer_use_desktop` sandbox; require deployment egress isolation where needed |
 | TM-SANDBOX-001 | Container escape via kernel vulnerability | Configurable runtime; operator chooses isolation level (sysbox/kata/gvisor for production) |
 | TM-SANDBOX-003 | SSRF / metadata / internal-network access from sandbox | No in-product egress filtering; operator must restrict egress (block RFC1918 + 169.254.169.254) at the network/firewall layer |
@@ -1994,7 +1974,6 @@ A `poppy` channel serves the Personal Agent Protocol (draft 0.1) at `/v1/channel
 - `knowledge/execution/capabilities.md`, Agent capabilities system
 - `knowledge/execution/bashkit-requirements.md`, Bashkit integration requirements
 - `crates/integrations/src/daytona/SPEC.md`, Daytona cloud sandbox integration
-- `crates/integrations/src/deno/SPEC.md`, Deno sandbox integration
 - `crates/integrations/src/e2b/SPEC.md`, E2B cloud sandbox integration
 - `knowledge/execution/client-side-tools.md`, Client-side tools for API/SDK consumers
 - `knowledge/integrations/apps.md`, Apps system (agent deployment to channels)

@@ -36874,7 +36874,7 @@
           }
         },
         "additionalProperties": {
-          "description": "Additional provider-specific form fields (e.g. org_slug for Deno personal tokens)."
+          "description": "Additional provider-specific form fields (e.g. org_slug for provider personal tokens)."
         }
       },
       "CreateDatabaseRequest": {

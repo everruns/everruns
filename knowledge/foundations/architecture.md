@@ -113,7 +113,7 @@ Production event routing therefore prefers:
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
    - `durable/` → `everruns-durable` - Generic durable execution engine (task queue, event log, schedules) with in-memory and PostgreSQL stores, published with its own idempotent schema (`PostgresWorkflowEventStore::migrate`); it has no `everruns-*` dependency
    - `drivers/drivers/` → `everruns-drivers` - Feature-selected official LLM transports over `everruns-contracts`; `drivers/llmsim/` retains the simulator
-   - `integrations/` → feature modules in `crates/integrations` (`everruns-integrations`); experimental Deno and Sprites live in `crates/integrations-experimental`.
+   - `integrations/` → feature modules in `crates/integrations` (`everruns-integrations`); experimental Sprites lives in `crates/integrations-experimental`.
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
    - Exports providers, components, hooks, and lib modules via `package.json` `exports` field for SaaS wrapper consumption
 4. **Documentation Site**: Astro Starlight in `apps/docs/` deployed to https://everruns.com/docs/
@@ -143,8 +143,7 @@ everruns/
 ├── integrations/
 │   ├── docker/           # Docker container (inventory plugin)
 │   ├── daytona/          # Daytona cloud sandbox (inventory plugin)
-│   ├── e2b/              # E2B cloud sandbox (inventory plugin)
-│   └── deno/             # Deno sandbox (inventory plugin)
+│   └── e2b/              # E2B cloud sandbox (inventory plugin)
 ├── docs/                 # Documentation content (symlinked to apps/docs)
 ├── knowledge/            # OKF design and product knowledge
 │   └── test-cases/       # Manual test cases

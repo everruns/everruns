@@ -971,7 +971,7 @@ model-facing control tool. Exit: two sessions bound to one Workspace, one on
 Bashkit and one on Daytona, read and write the same files.
 
 **P3, machine target and consolidation.** SSH or daemon transport, then port
-E2B, Deno, Sprites, and container behind the driver contract as already planned.
+E2B, Sprites, and container behind the driver contract as already planned.
 
 **Done, kernel containment.** Yolop's Seatbelt and Landlock providers are
 `everruns_core::host::containment`, and `HostCompute::contained` makes them
