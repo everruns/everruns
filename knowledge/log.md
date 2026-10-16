@@ -2,11 +2,6 @@
 
 ## 2026-10-16
 
-* **User MCP approval policy.** Add and enable follow shared Tool Approval modes;
-  management adds no hard gate when approval is absent or off. See
-  [User MCP servers](integrations/user-mcp-servers.md) and
-  [Tool Approval](execution/tool-approval.md).
-
 * **Public changelog eligibility.** Require meaningful user impact; exclude cosmetic
   polish, typo fixes, and routine docs upkeep. Apply significance only after eligibility
   and record a reason when skipping a visible change. See [Public Changelog](docs/changelog.md).
@@ -14,6 +9,11 @@
 * **Coding-agent onboarding.** One setup prompt from the user menu, Agents empty
   state and onboarding Done, with deployment-aware MCP instructions and explicit
   provider prerequisites. See [Coding Agent Onboarding](ui/coding-agent-onboarding.md).
+
+* **User MCP approval policy.** Add and enable follow shared Tool Approval modes;
+  management adds no hard gate when approval is absent or off. See
+  [User MCP servers](integrations/user-mcp-servers.md) and
+  [Tool Approval](execution/tool-approval.md).
 
 ## 2026-10-15
 
