@@ -13,11 +13,11 @@ cargo test --locked -p everruns-durable-object --test recovery --no-run
 RUN_DIR="$(mktemp -d /tmp/everruns-object-recovery.XXXXXX)"
 AUTHORITY_PID=""
 cleanup() {
-  if [[ -n "$AUTHORITY_PID" ]]; then kill "$AUTHORITY_PID" 2>/dev/null || true; wait "$AUTHORITY_PID" 2>/dev/null || true; fi
+  if [[ -n "$AUTHORITY_PID" ]]; then kill -- "-$AUTHORITY_PID" 2>/dev/null || true; wait "$AUTHORITY_PID" 2>/dev/null || true; kill -KILL -- "-$AUTHORITY_PID" 2>/dev/null || true; fi
 }
 trap cleanup EXIT INT TERM
 cd "$WORKER_ROOT"
-WRANGLER_SEND_METRICS=false node node_modules/wrangler/bin/wrangler.js dev \
+WRANGLER_SEND_METRICS=false setsid node node_modules/wrangler/bin/wrangler.js dev \
   --ip 127.0.0.1 --port 8789 --inspector-port 0 --persist-to "$RUN_DIR/state" \
   --var TENANT_ID:test \
   --var AUTHORITY_TOKEN:authority-test-token-at-least-32-bytes \

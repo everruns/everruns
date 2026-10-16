@@ -1,8 +1,9 @@
 # Durable Object authority (experimental)
 
-A source-only native execution profile: a Durable Object owns admission, the
+A source-only native and Wasm execution profile: a Durable Object owns admission, the
 canonical session log, leases and alarms. Ordinary Everruns Rust agents run on an
-external executor using the same actor driver as the platform worker. No planner
+external executor or inside an object’s Wasm isolate using the same actor driver
+as the platform worker. No planner
 or tool loop is reimplemented in JavaScript. Not published to crates.io yet.
 
 ## Run locally
@@ -56,5 +57,16 @@ npm run test:recovery
 Recovery uses actual workerd and separate native processes, kills an executor
 after a tool effect, and checks alarm-driven recovery without resending input.
 It needs free ports 8789 and 8790; logs are retained under the printed `/tmp` path.
-Production Cloudflare, multi-node celld and Wasm placement remain unqualified.
+For Wasm builds and platform qualification, see the
+[Wasm application](../../examples/durable-object-agent/README.md). Local workerd
+coverage does not establish production Cloudflare or cloud-bucket guarantees.
 See [the architecture](../../knowledge/framework/durable-object-native.md).
+
+## Extension ports
+
+`AuthorityTransport` supplies tenant/session-scoped authority calls; the native
+HTTP implementation and Wasm `ObjectTransport` implement the same protocol.
+`HostFactory` builds an ordinary `InProcessRuntime` from coherent `HostBackends`.
+`activate` claims one known session and invokes the shared `SessionActorDriver`.
+The platform extends its `SessionActorStore` port with fleet discovery through
+`ActorLeaseStore`; object adapters only implement the session port.

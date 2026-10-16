@@ -13,7 +13,7 @@ use async_trait::async_trait;
 use everruns_contracts::typed_id::{AgentId, MessageId, SessionId};
 use std::sync::Arc;
 use std::time::Duration;
-use store::ActorLeaseStore;
+use store::SessionActorStore;
 use tokio::sync::{Notify, watch};
 pub use turn::NO_PROGRESS_SEAL_REASON;
 
@@ -97,13 +97,17 @@ impl SessionActorConfig {
 /// Executes a leased session with the shared turn loop and log-based recovery.
 pub struct SessionActorDriver<H: ActorHosts> {
     hosts: Arc<H>,
-    store: Arc<dyn ActorLeaseStore>,
+    store: Arc<dyn SessionActorStore>,
     config: SessionActorConfig,
     renew_poke: Arc<Notify>,
 }
 
 impl<H: ActorHosts> SessionActorDriver<H> {
-    pub fn new(hosts: Arc<H>, store: Arc<dyn ActorLeaseStore>, config: SessionActorConfig) -> Self {
+    pub fn new(
+        hosts: Arc<H>,
+        store: Arc<dyn SessionActorStore>,
+        config: SessionActorConfig,
+    ) -> Self {
         Self {
             hosts,
             store,

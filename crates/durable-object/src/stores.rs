@@ -7,7 +7,7 @@ use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::execution_loading::SessionStore;
 use everruns_core::host::session_actor::store::{
-    ActorJournal, ActorLeaseStore, ActorRelease, ActorRenewal, LeasedActor,
+    ActorJournal, ActorRelease, ActorRenewal, SessionActorStore,
 };
 use everruns_core::host::{
     EventCursor, EventDurability, EventLog, EventLogError, EventPage, EventReadRequest,
@@ -181,18 +181,7 @@ impl EventLog for Authority {
 }
 
 #[async_trait]
-impl ActorLeaseStore for Authority {
-    async fn lease_actors(
-        &self,
-        _holder: &str,
-        _limit: u32,
-        _ttl: Duration,
-        _fairness: Option<u32>,
-    ) -> Result<Vec<LeasedActor>> {
-        Err(AgentLoopError::config(
-            "object authorities activate a known session; use claim instead of fleet discovery",
-        ))
-    }
+impl SessionActorStore for Authority {
     async fn renew_actor_lease(
         &self,
         session_id: SessionId,

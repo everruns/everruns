@@ -1,0 +1,28 @@
+{
+  "name": "everruns-object-qualification",
+  "main": "isolate-fixture.js",
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "vars": {
+    "TENANT_ID": "test",
+    "MODEL": "qualification-model"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SESSIONS",
+        "class_name": "SessionAuthority"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "SessionAuthority"
+      ]
+    }
+  ]
+}

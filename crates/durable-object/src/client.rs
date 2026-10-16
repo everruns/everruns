@@ -11,59 +11,54 @@ use everruns_core::host::session_actor::store::{ActorFence, LeasedActor, actor_l
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
-const MAX_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
+/// Authority RPC supplied by a native HTTP client or an isolate-local object bridge.
+#[async_trait::async_trait]
+pub trait AuthorityTransport: Send + Sync + 'static {
+    async fn invoke(
+        &self,
+        tenant: &str,
+        session: SessionId,
+        operation: &str,
+        body: Value,
+    ) -> Result<Value>;
+    /// Used by native executors to reject reuse of the authority credential.
+    fn credential_matches(&self, _token: &str) -> bool {
+        false
+    }
+}
 
 /// Client configuration for a single tenant's authority service.
 #[derive(Clone)]
 pub struct AuthorityClient {
-    base: reqwest::Url,
     tenant: String,
-    token: reqwest::header::HeaderValue,
-    http: reqwest::Client,
+    transport: Arc<dyn AuthorityTransport>,
 }
 
 impl AuthorityClient {
-    /// Use HTTPS, or an explicit loopback HTTP endpoint for local development.
-    /// Redirects are disabled so service credentials never follow a redirect.
+    /// HTTPS authority transport; loopback HTTP is available for local development.
+    #[cfg(feature = "native")]
     pub fn new(base: &str, tenant: &str, token: &str) -> Result<Self> {
-        let base = reqwest::Url::parse(base)
-            .map_err(|_| AgentLoopError::config("invalid authority URL"))?;
-        let loopback = matches!(base.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
-        if !(base.scheme() == "https" || base.scheme() == "http" && loopback)
-            || !base.username().is_empty()
-            || base.password().is_some()
-            || base.query().is_some()
-            || base.fragment().is_some()
-            || base.path() != "/"
-        {
-            return Err(AgentLoopError::config(
-                "authority URL must be an HTTPS origin (loopback HTTP is allowed)",
-            ));
-        }
+        Self::with_transport(
+            tenant,
+            Arc::new(crate::http_transport::HttpAuthorityTransport::new(
+                base, token,
+            )?),
+        )
+    }
+
+    /// Inject an authority transport without selecting a native HTTP stack.
+    pub fn with_transport(tenant: &str, transport: Arc<dyn AuthorityTransport>) -> Result<Self> {
         if tenant.is_empty()
             || tenant.len() > 128
             || !tenant
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
-            || token.len() < 32
         {
-            return Err(AgentLoopError::config(
-                "authority requires a valid tenant and a service token of at least 32 bytes",
-            ));
+            return Err(AgentLoopError::config("invalid authority tenant"));
         }
-        let mut token = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
-            .map_err(|_| AgentLoopError::config("invalid authority credential"))?;
-        token.set_sensitive(true);
-        let http = reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .timeout(Duration::from_secs(3))
-            .build()
-            .map_err(|_| AgentLoopError::config("cannot build authority transport"))?;
         Ok(Self {
-            base,
             tenant: tenant.to_owned(),
-            token,
-            http,
+            transport,
         })
     }
 
@@ -77,12 +72,13 @@ impl AuthorityClient {
         }
     }
 
-    pub(crate) fn tenant(&self) -> &str {
+    pub fn tenant(&self) -> &str {
         &self.tenant
     }
 
+    #[cfg(feature = "native")]
     pub(crate) fn credential_matches(&self, token: &str) -> bool {
-        self.token.as_bytes() == format!("Bearer {token}").as_bytes()
+        self.transport.credential_matches(token)
     }
 }
 
@@ -246,49 +242,15 @@ impl Authority {
             }
             body["lease"] = json!({ "holder": fence.holder, "fence": fence.fence });
         }
-        let path = format!(
-            "/tenants/{}/sessions/{}/{}",
-            self.client.tenant, self.session_id, operation
-        );
-        let url = self
+        let result = self
             .client
-            .base
-            .join(&path)
-            .map_err(|_| AgentLoopError::config("invalid authority path"))?;
-        let mut response = self
-            .client
-            .http
-            .post(url)
-            .header(reqwest::header::AUTHORIZATION, self.client.token.clone())
-            .json(&body)
-            .send()
-            .await
-            .map_err(|_| AgentLoopError::store("authority transport unavailable"))?;
-        if response.status() == reqwest::StatusCode::PRECONDITION_FAILED {
-            let error = actor_lease_lost(self.session_id, "authority rejected stale ownership");
-            if let Some(fence) = &fence {
-                fence.observe::<()>(&Err(actor_lease_lost(self.session_id, "stale ownership")));
-            }
-            return Err(error);
+            .transport
+            .invoke(&self.client.tenant, self.session_id, operation, body)
+            .await;
+        if let Some(fence) = &fence {
+            fence.observe(&result);
         }
-        if !response.status().is_success() {
-            return Err(AgentLoopError::store(format!(
-                "authority {operation} rejected ({})",
-                response.status().as_u16()
-            )));
-        }
-        let mut bytes = Vec::new();
-        while let Some(chunk) = response
-            .chunk()
-            .await
-            .map_err(|_| AgentLoopError::store("authority response interrupted"))?
-        {
-            if bytes.len().saturating_add(chunk.len()) > MAX_RESPONSE_BYTES {
-                return Err(AgentLoopError::store("authority response exceeds limit"));
-            }
-            bytes.extend_from_slice(&chunk);
-        }
-        serde_json::from_slice(&bytes)
+        serde_json::from_value(result?)
             .map_err(|_| AgentLoopError::store("invalid authority response"))
     }
 }

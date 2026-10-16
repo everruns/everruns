@@ -14,7 +14,7 @@ use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::SessionId;
 
 use crate::actor_lease_store::{
-    ActorJournal, ActorLeaseStore, ActorRelease, ActorRenewal, LeasedActor,
+    ActorJournal, ActorLeaseStore, ActorRelease, ActorRenewal, LeasedActor, SessionActorStore,
 };
 use crate::core::TURN_STARTED;
 use crate::host::InProcessRuntime;
@@ -218,7 +218,10 @@ impl ActorLeaseStore for MemoryActors {
         }
         Ok(leased)
     }
+}
 
+#[async_trait]
+impl SessionActorStore for MemoryActors {
     async fn renew_actor_lease(
         &self,
         session_id: SessionId,

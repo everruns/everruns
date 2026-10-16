@@ -11,10 +11,14 @@
   workerd Worker/Durable Object tool-round-trip coverage. See
   [The Execution Kernel in a JavaScript Isolate](framework/wasm-kernel.md).
 
-* **Native Durable Object execution.** Share the session actor driver across native
-  workers and object executors, expose Framework/serve host seams, and qualify
-  alarm-driven native process recovery on workerd. See
-  [Native Execution with Durable Object Authority](framework/durable-object-native.md).
+* **Shipping completes follow-ups.** Require implementation of work needed for
+  the requested outcome before shipping; defer only for concrete blockers or
+  explicit user exclusions. See [Shipping](project/shipping.md).
+
+* **Portable Durable Object execution.** Share the session actor driver across native
+  workers, HTTP executors and Wasm isolates, expose Framework/serve host seams,
+  and qualify alarm-driven recovery on workerd and the Cloudflare service. See
+  [Shared Execution with Durable Object Authority](framework/durable-object-native.md).
 
 * **Portable durable execution investigation.** Add proposals for a shared Rust
   execution host across native actors and Durable Objects, with deployment

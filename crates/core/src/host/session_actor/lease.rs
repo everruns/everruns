@@ -36,16 +36,17 @@
 //!   Any cancel requested while a turn runs targets it, since the turn's input
 //!   is in the inbox by then.
 
+use everruns_contracts::rt::Instant;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::{MessageId, SessionId};
 use tokio::sync::{Notify, watch};
 
-use super::store::{ActorFence, ActorLeaseStore, ActorRelease, LeasedActor};
+use super::store::{ActorFence, ActorRelease, LeasedActor, SessionActorStore};
 use crate::events::{Event, EventData};
 
 /// The message id of `event` when it is input that starts or steers a turn.
@@ -68,7 +69,7 @@ pub(crate) struct FreshInput {
 }
 
 pub(crate) struct Lease {
-    store: Arc<dyn ActorLeaseStore>,
+    store: Arc<dyn SessionActorStore>,
     holder: String,
     pub(crate) session_id: SessionId,
     fence: u64,
@@ -98,7 +99,7 @@ struct CancelTarget {
 
 impl Lease {
     pub(crate) fn new(
-        store: Arc<dyn ActorLeaseStore>,
+        store: Arc<dyn SessionActorStore>,
         holder: String,
         actor: &LeasedActor,
         ttl: Duration,
@@ -226,7 +227,7 @@ impl Lease {
     /// does too once no renew succeeded for a whole TTL.
     pub(crate) async fn renew(&self) -> Result<()> {
         let started = Instant::now();
-        let renewal = tokio::time::timeout(
+        let renewal = everruns_contracts::rt::timeout(
             self.ttl.saturating_sub(self.since_renewed()),
             self.store.renew_actor_lease(
                 self.session_id,
@@ -450,7 +451,7 @@ pub(crate) async fn renew_loop(lease: Arc<Lease>, poke: Arc<Notify>) {
     loop {
         let wait = if failing { retry } else { period };
         tokio::select! {
-            _ = tokio::time::sleep(wait) => {}
+            _ = everruns_contracts::rt::sleep(wait) => {}
             _ = poke.notified() => {}
         }
         let since_renewed = lease.since_renewed();

@@ -33,6 +33,11 @@ echo "2. provider protocols and official chat drivers for $TARGET"
 cargo check --locked --target "$TARGET" --no-default-features \
   -p everruns-drivers --features openai,openrouter
 
+echo "Shared actor execution host and Durable Object transport for $TARGET"
+cargo check --locked --target "$TARGET" --no-default-features \
+  -p everruns-durable-object --features wasm
+cargo check --locked --manifest-path examples/durable-object-agent/Cargo.toml --target "$TARGET"
+
 EXAMPLE=examples/celld-engine/Cargo.toml
 echo "3. $EXAMPLE: native tests, then $TARGET"
 cargo test --locked --manifest-path "$EXAMPLE"

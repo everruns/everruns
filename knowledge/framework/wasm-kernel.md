@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "The Execution Kernel in a JavaScript Isolate"
-description: "Why the execution kernel and shared HTTP chat protocols run in JavaScript isolates with host time, tasks and fetch, and how the celld engine commits steps."
+description: "Why core execution and its optional host build for Wasm, how time and tasks port, and how the original celld step-machine example differs."
 tags:
   - everruns
   - framework
@@ -14,10 +14,10 @@ tags:
 
 **Status: experimental.** The kernel crates build for
 `wasm32-unknown-unknown` with default features off, and
-`examples/celld-engine` runs the engine inside a celld Durable Object. Coverage includes
-the kernel and the HTTP chat drivers below. The build guard
-(`scripts/lib/check-wasm-portability.sh`) and workerd integration keep those
-boundaries from regressing.
+`examples/durable-object-agent` runs the ordinary host and shared actor driver
+inside an object. The smaller `examples/celld-engine` remains a custom step-machine
+example. These surfaces remain experimental; the build guard
+(`scripts/lib/check-wasm-portability.sh`) and workerd tests protect their boundaries.
 
 ## Problem
 
@@ -31,9 +31,13 @@ own storage.
 
 ## Decisions
 
-- **Port the kernel, not the host.** `everruns-contracts` and `everruns-core`
-  with default features disabled, including core’s portable `engine` feature,
-  build for wasm32. The host, stores and server stay native. The
+- **Port orchestration over injected services.** `everruns-contracts` and
+  `everruns-core` with default features disabled, including the optional
+  `engine`, `execution-host` and `actor-runtime` features, build for wasm32.
+  The portable host composes the same runtime and recovery implementation files
+  as native hosts. Native filesystem/process backends, default socket/TLS transports and server
+  hosting stay native. See [Shared Durable Object Execution](durable-object-native.md)
+  for the authority profile and its separate qualification evidence. The
   engine's `tokio` dependency is narrowed to `rt`, `sync`, `time` and
   `macros`; `getrandom` and `uuid` take their JavaScript backends on that
   target only.
@@ -58,6 +62,13 @@ own storage.
   exchanges in both Worker and Durable Object contexts, including incremental
   SSE and portable deadlines. Native non-chat services and WebSockets are
   outside this boundary.
+
+## Original celld-engine example
+
+The following decisions describe the original custom step machine. The shared
+actor host instead uses the canonical event log and the ordinary tool recovery
+policies described in [Execution Backends](execution-backends.md).
+
 - **The cell commits per engine step, not per event.** One step is one atom:
   a Reason (one model call) or an Act (one tool batch). The events a step
   emits are written uncommitted, and the step commits them, the next turn

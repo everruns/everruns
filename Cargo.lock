@@ -2720,6 +2720,7 @@ dependencies = [
  "everruns-contracts",
  "everruns-core",
  "everruns-llmsim",
+ "js-sys",
  "reqwest",
  "serde",
  "serde_json",
@@ -2728,6 +2729,8 @@ dependencies = [
  "tokio",
  "tower",
  "uuid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]

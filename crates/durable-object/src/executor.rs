@@ -1,7 +1,6 @@
-use std::future::Future;
 use std::sync::Arc;
 
-use async_trait::async_trait;
+use crate::HostFactory;
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, State},
@@ -10,41 +9,12 @@ use axum::{
 };
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::SessionId;
-use everruns_core::host::session_actor::store::ActorLeaseStore;
-use everruns_core::host::session_actor::{
-    ActorHosts, HostTurn, SessionActorConfig, SessionActorDriver, TurnSignals,
-};
-use everruns_core::host::{HostBackends, InProcessRuntime};
+use everruns_core::host::session_actor::SessionActorConfig;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
-use crate::{Authority, AuthorityClient, SessionBinding};
-
-/// Reconstruct executable agent behavior for a known session and coherent stores.
-#[async_trait]
-pub trait HostFactory: Send + Sync + 'static {
-    async fn build(
-        &self,
-        session_id: SessionId,
-        backends: HostBackends,
-    ) -> Result<InProcessRuntime>;
-}
-
-#[async_trait]
-impl<F, Fut> HostFactory for F
-where
-    F: Fn(SessionId, HostBackends) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = Result<InProcessRuntime>> + Send,
-{
-    async fn build(
-        &self,
-        session_id: SessionId,
-        backends: HostBackends,
-    ) -> Result<InProcessRuntime> {
-        self(session_id, backends).await
-    }
-}
+use crate::{AuthorityClient, SessionBinding};
 
 /// Authenticated, capacity-bounded native activation endpoint for one agent build.
 #[derive(Clone)]
@@ -133,70 +103,9 @@ async fn activate(
     if claim.binding != executor.binding || claim.actor.session_id != activation.session_id {
         return StatusCode::CONFLICT;
     }
-    let fenced = authority.fenced(&holder, claim.actor.fence);
-    // The command and alarm already live at the authority. Losing this task
-    // expires its lease and causes another activation, including during setup.
     tokio::spawn(async move {
         let _permit = permit;
-        let runtime = match tokio::time::timeout(
-            config.lease_ttl,
-            executor
-                .factory
-                .build(activation.session_id, fenced.backends()),
-        )
-        .await
-        {
-            Ok(Ok(runtime)) => runtime,
-            Ok(Err(error)) => {
-                if error.is_non_retryable() || claim.actor.attempts > config.poison_attempts {
-                    let _ = fenced
-                        .call::<serde_json::Value>("suspend", serde_json::json!({}))
-                        .await;
-                }
-                return;
-            }
-            Err(_) => return,
-        };
-        // Construction may use most of the original lease. Confirm ownership
-        // and a fresh TTL before executing any agent code.
-        let mut actor = claim.actor;
-        let Ok(Some(renewal)) = fenced
-            .renew_actor_lease(
-                actor.session_id,
-                &holder,
-                actor.fence,
-                config.lease_ttl,
-                actor.consumed_seq,
-            )
-            .await
-        else {
-            return;
-        };
-        actor.inbox_seq = renewal.inbox_seq;
-        actor.cancel_inbox_seq = renewal.cancel_inbox_seq;
-        let hosts = NativeHosts {
-            runtime,
-            authority: fenced.clone(),
-        };
-        SessionActorDriver::new(Arc::new(hosts), Arc::new(fenced), config)
-            .run_actor(actor)
-            .await;
+        let _ = crate::activation::run_claimed(authority, claim, config, executor.factory).await;
     });
     StatusCode::ACCEPTED
-}
-
-struct NativeHosts {
-    runtime: InProcessRuntime,
-    authority: Authority,
-}
-
-#[async_trait]
-impl ActorHosts for NativeHosts {
-    type Host = InProcessRuntime;
-    fn host(&self, _turn: HostTurn, signals: &TurnSignals) -> InProcessRuntime {
-        if let Some(fence) = &signals.fence {
-            self.authority.observe_fence(fence);
-        }
-        self.runtime.clone()
-    }
 }

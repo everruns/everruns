@@ -5,9 +5,19 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
+mod activation;
 mod client;
+#[cfg(feature = "native")]
 mod executor;
+#[cfg(feature = "native")]
+mod http_transport;
 mod stores;
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+pub mod wasm;
 
-pub use client::{Authority, AuthorityClient, Claim, EventBatch, SessionBinding};
-pub use executor::{Executor, HostFactory};
+pub use activation::{HostFactory, activate};
+pub use client::{
+    Authority, AuthorityClient, AuthorityTransport, Claim, EventBatch, SessionBinding,
+};
+#[cfg(feature = "native")]
+pub use executor::Executor;

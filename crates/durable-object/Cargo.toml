@@ -7,23 +7,28 @@ license.workspace = true
 authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
-description = "Experimental Durable Object session authority for native Everruns execution"
+description = "Experimental Durable Object session authority for native and Wasm Everruns execution"
 readme = "README.md"
 # Qualified as a workspace integration before joining the release publish set.
 publish = false
 
+[features]
+default = ["native"]
+native = ["dep:axum", "dep:reqwest", "dep:subtle", "everruns-core/host", "tokio/rt-multi-thread", "tokio/net"]
+wasm = ["dep:js-sys", "dep:wasm-bindgen", "dep:wasm-bindgen-futures"]
+
 [dependencies]
 async-trait.workspace = true
-axum.workspace = true
+axum = { workspace = true, optional = true }
 chrono.workspace = true
 everruns-contracts = { workspace = true, default-features = false }
 everruns-core = { workspace = true, default-features = false, features = ["actor-runtime"] }
-reqwest = { workspace = true, features = ["json"] }
+reqwest = { workspace = true, features = ["json"], optional = true }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-subtle = "2.6"
-tokio.workspace = true
+subtle = { version = "2.6", optional = true }
+tokio = { version = "1.50", default-features = false, features = ["rt", "sync", "time", "macros"] }
 uuid.workspace = true
 
 [dev-dependencies]
@@ -33,3 +38,12 @@ tower = { workspace = true, features = ["util"] }
 
 [lints]
 workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = { version = "0.3", optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+
+[[example]]
+name = "native"
+required-features = ["native"]

@@ -71,7 +71,7 @@ enum Finish {
 }
 
 /// Aborts the renewer when the actor's run ends, however it ends.
-struct AbortOnDrop(tokio::task::JoinHandle<()>);
+struct AbortOnDrop(everruns_contracts::rt::JoinHandle<()>);
 
 impl Drop for AbortOnDrop {
     fn drop(&mut self) {
@@ -89,7 +89,7 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             self.config.lease_ttl,
             self.config.journal_page,
         ));
-        let renewer = AbortOnDrop(tokio::spawn(renew_loop(
+        let renewer = AbortOnDrop(everruns_contracts::rt::spawn(renew_loop(
             lease.clone(),
             self.renew_poke.clone(),
         )));
@@ -130,7 +130,7 @@ impl<H: ActorHosts> SessionActorDriver<H> {
         let (stop_tx, stop) = tokio::sync::watch::channel(false);
         let (mut lost, mut cancel) = (lease.lost(), lease.cancel());
         let cancel_view = lease.cancel();
-        tokio::spawn(async move {
+        everruns_contracts::rt::spawn(async move {
             tokio::select! {
                 _ = lost.wait_for(|lost| *lost) => {}
                 _ = cancel.wait_for(|cancel| *cancel) => {}

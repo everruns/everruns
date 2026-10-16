@@ -31,7 +31,7 @@ everruns-contracts = { workspace = true, default-features = false }
 everruns-durable.workspace = true
 # Source reaches core through the `crate::core` re-export (lib.rs); see
 # scripts/lib/check-durable-isolation.sh.
-everruns-core = { workspace = true, default-features = false, features = ["engine", "actor-runtime", "mcp", "observability", "openai-agents-api", "tree-sitter-outlines"] }
+everruns-core = { workspace = true, default-features = false, features = ["engine", "host", "actor-runtime", "mcp", "observability", "openai-agents-api", "tree-sitter-outlines"] }
 # Production-safe deterministic `llmsim` provider (seeded LlmSim models and
 # LLMSIM_DEMO scenarios). Testing/demo helpers stay out of the worker tree.
 everruns-llmsim.workspace = true

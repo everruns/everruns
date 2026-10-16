@@ -16,7 +16,6 @@ Implementation update: the first native executor profile is now implemented; see
 [Native Execution with Durable Object Authority](durable-object-native.md) for
 current scope and qualification. The broader design below remains a proposal.
 
-
 **Status: draft proposal, 2026-10-16.** Companion to
 [Portable Durable Agent Execution](durable-execution-portability.md), which owns
 the source assessment, placement alternatives and rollout recommendation.

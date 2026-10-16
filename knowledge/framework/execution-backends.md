@@ -32,8 +32,8 @@ components for users.
 The experimental `TurnBackendFactory` is injectable through the Engine builder;
 serve can accept that Engine. External hosts can also reconstruct ordinary
 Framework or registered serve agents with coherent host stores. The native
-platform and object executor share core's per-session actor driver; workers retain
-fleet polling. See [Native Execution with Durable Object Authority](durable-object-native.md)
+platform, HTTP executor and Wasm object host share core's per-session actor driver; workers retain
+fleet polling. See [Shared Execution with Durable Object Authority](durable-object-native.md)
 for the first external profile and its explicit qualification limits.
 
 Both actor runners stop renewal attempts when the last confirmed lease expires,

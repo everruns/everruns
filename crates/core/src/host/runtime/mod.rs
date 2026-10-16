@@ -1648,5 +1648,5 @@ fn message_from_input_with_id(message_id: MessageId, input: InputMessage) -> Run
 }
 
 #[cfg(test)]
-#[path = "runtime_tests.rs"]
+#[path = "../runtime_tests.rs"]
 mod org_id_mapping_tests;

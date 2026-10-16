@@ -5,19 +5,18 @@ sidebar:
   order: 4
 ---
 
-> **Experimental, source-only.** This native execution profile is available in the
-> repository. Production Cloudflare deployments, multi-node celld failover and
-> execution inside a Wasm isolate are not yet qualified.
+> **Experimental, source-only.** Native and Wasm placements are available in the
+> repository. Validate your deployment platform and storage before production use.
 
 A Durable Object owns each session's durable input, journal, execution lease and
-alarm. A native Rust executor runs your ordinary Framework agent. Both it and
+alarm. A native Rust executor or an object’s Wasm isolate runs your ordinary agent. These placements and
 the platform worker use the same Rust session actor driver, turn loop, providers,
 tools and recovery decisions. JavaScript handles authority and activation.
 
 ```mermaid
 flowchart LR
   A[Authenticated application] -->|Admit input| D[Durable Object]
-  D -->|Alarm activation| E[Native executor]
+  D -->|Alarm activation| E[Native executor or Wasm host]
   E -->|Fenced journal and state| D
   E --> R[Shared Everruns runtime]
   R --> T[Providers and tools]
@@ -58,6 +57,19 @@ and immutable build, admit messages, read bounded event pages, submit client-too
 results and cancel. Keep service credentials on trusted servers and authorize
 user access before invoking this privileged service API. Executor URLs are fixed
 deployment configuration and production endpoints require HTTPS.
+
+## Run inside the object
+
+The [Wasm application](https://github.com/everruns/everruns/tree/main/examples/durable-object-agent)
+compiles the ordinary Rust host builder and shared session driver into the Worker.
+It uses the same capability and tool interfaces; the object supplies journal,
+session state and a fetch-based model transport. Its counter tool demonstrates
+durable session KV. Follow its README to build and run it with a real model.
+
+`AuthorityTransport` is the adapter’s transport port. Native placement supplies
+HTTP; isolate placement supplies an object-scoped callback. A `HostFactory`
+assembles the agent from its immutable build and injected services. Adding a
+placement does not require another planner, tool loop or recovery implementation.
 
 ## Guarantees and limits
 

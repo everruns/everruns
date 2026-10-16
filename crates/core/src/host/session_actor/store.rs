@@ -3,12 +3,12 @@
 //! Decisions:
 //! - Each session is an actor: a worker leases a runnable session and runs its
 //!   whole turn, and the session event log is the only turn state, so resume
-//!   is a fold of the log ([`ActorLeaseStore::read_actor_journal`]).
+//!   is a fold of the log ([`SessionActorStore::read_actor_journal`]).
 //! - Platform workers never touch the database. The control plane serves this port
 //!   over gRPC (`GrpcActorLeaseStore`) and, in DEV_MODE, in process through
 //!   the same repository (`DirectWorkerAdapters`).
 //! - Fleet discovery is cross-org on the platform. A known-session object host
-//!   scopes its implementation to one tenant/session and refuses fleet discovery.
+//!   scopes its implementation to one tenant/session without a fleet discovery port.
 //! - Fences are `u64`, as in core's `SessionLease`, so a leased actor maps onto
 //!   it directly.
 
@@ -177,7 +177,7 @@ pub struct ActorJournal {
 
 /// The control plane's runnable index and lease protocol.
 #[async_trait]
-pub trait ActorLeaseStore: Send + Sync {
+pub trait ActorLeaseStore: SessionActorStore {
     /// Lease up to `limit` runnable actors to `holder` for `ttl`, oldest
     /// first, except that an org holding `max_leased_per_org` leases or more
     /// (counting leases already held) goes after every other org: a fairness
@@ -189,7 +189,11 @@ pub trait ActorLeaseStore: Send + Sync {
         ttl: Duration,
         max_leased_per_org: Option<u32>,
     ) -> Result<Vec<LeasedActor>>;
+}
 
+/// Ownership and journal operations for one known session.
+#[async_trait]
+pub trait SessionActorStore: Send + Sync {
     /// Extend `holder`'s lease on `session_id`, recording that its turn
     /// consumed input up to `consumed_seq` (the cursor only moves forward).
     /// `None` when the lease is lost (another holder took it after it

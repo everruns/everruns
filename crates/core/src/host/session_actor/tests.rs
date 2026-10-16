@@ -7,16 +7,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 struct Deletable(AtomicU8);
 
 #[async_trait]
-impl ActorLeaseStore for Deletable {
-    async fn lease_actors(
-        &self,
-        _holder: &str,
-        _limit: u32,
-        _ttl: Duration,
-        _fairness: Option<u32>,
-    ) -> Result<Vec<LeasedActor>> {
-        unreachable!("the test starts from an already leased session")
-    }
+impl SessionActorStore for Deletable {
     async fn renew_actor_lease(
         &self,
         session_id: SessionId,

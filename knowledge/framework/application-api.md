@@ -406,7 +406,7 @@ entrypoints.
 - `crates/everruns/tests/facade/session_work.rs`
 - `crates/everruns/tests/facade/lifecycle_hooks.rs`
 - `examples/coding-cli/tests/application_parity.rs`
-- `crates/core/src/host/runtime.rs`
+- `crates/core/src/host/runtime/mod.rs`
 - `crates/core/src/host/events.rs`
 - `crates/core/src/host/mod.rs`
 - `crates/everruns/src/local/`

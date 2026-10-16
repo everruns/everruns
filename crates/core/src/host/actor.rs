@@ -36,8 +36,8 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::rt::Instant;
 use everruns_contracts::typed_id::SessionId;
-use tokio::time::Instant;
 use uuid::Uuid;
 
 use super::runtime::InProcessRuntime;
@@ -277,7 +277,7 @@ impl ActorRunner {
             if now >= deadline {
                 return Err(session_held_elsewhere(session_id));
             }
-            tokio::time::sleep(poll.min(deadline - now)).await;
+            everruns_contracts::rt::sleep(poll.min(deadline - now)).await;
         }
     }
 }
@@ -330,8 +330,8 @@ async fn keep(leases: &dyn SessionLeases, lease: &SessionLease, ttl: Duration) -
     let every = ttl / 3;
     let mut deadline = Instant::now() + ttl;
     loop {
-        let renewal = tokio::time::timeout_at(deadline, async {
-            tokio::time::sleep(every).await;
+        let renewal = everruns_contracts::rt::timeout_at(deadline, async {
+            everruns_contracts::rt::sleep(every).await;
             let started = Instant::now();
             (started, leases.renew(lease, ttl).await)
         })

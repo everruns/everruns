@@ -17,7 +17,6 @@ Implementation update: the first native executor profile is now implemented; see
 [Native Execution with Durable Object Authority](durable-object-native.md) for
 current scope and qualification. The broader design below remains a proposal.
 
-
 **Status: draft proposal, 2026-10-16. No architecture decision or runtime change
 is implied.** Source analysis uses OSS revision
 `93edb4fd49edf8cb7b0e81dcc39cc38ec36c4f50`. Cloudflare documentation was checked
@@ -358,6 +357,18 @@ or external long-running activities later. Keep the Everruns planner as the sole
 agent planner; do not restate its loop in workflow JavaScript. A second replay
 history alongside the canonical log adds migration and consistency costs without
 being necessary for the initial DO backend.
+
+## Implemented placements
+
+The [shared authority profile](durable-object-native.md) implements both A and B:
+a native HTTP executor and a Wasm object host reconstruct the ordinary runtime
+through injected services. The Wasm host is a separate example from the original
+custom `celld-engine` step machine; the latter remains a useful minimal example.
+Single-session ownership is its own port; platform fleet discovery extends it.
+Neither backend reimplements agent planning or tool recovery in JavaScript.
+
+The following sequence remains the roadmap for broader product adoption, rather
+than a claim that every capability or deployment has been qualified.
 
 ## Implementation sequence and decision gates
 

@@ -638,6 +638,10 @@ pub mod engine;
 // The inherited host module contains audited Unix ownership and containment calls.
 #[allow(unsafe_code)]
 pub mod host;
+/// Portable host orchestration for isolate execution.
+#[cfg(all(feature = "execution-host", not(feature = "host")))]
+#[path = "portable_host.rs"]
+pub mod host;
 /// MCP client, auth, and tool adaptation over injected transports.
 #[cfg(feature = "mcp")]
 pub mod mcp;

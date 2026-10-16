@@ -22,9 +22,8 @@ crates/core/src/builtins/skills.rs
 crates/core/src/engine/execution/act.rs
 crates/core/src/engine/execution/reason.rs
 crates/core/src/guardrail_checks.rs
-crates/core/src/host/events.rs
 crates/core/src/host/observability/braintrust.rs
-crates/core/src/host/runtime.rs
+crates/core/src/host/runtime/mod.rs
 crates/drivers/drivers/src/anthropic/driver.rs
 crates/drivers/llmsim/src/lib.rs
 crates/durable/src/persistence/memory.rs
