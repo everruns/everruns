@@ -1,5 +1,6 @@
 # UI and generative UI
 
+* [Coding Agent Onboarding](coding-agent-onboarding.md) - Connect an external coding agent while keeping runtime provider setup and connection status explicit.
 * [WebMCP UI tools](webmcp.md) - Browser-native tools exposed by the authenticated Everruns UI.
 * [Markdown Messages Rendering](markdown-messages.md) - Chat message markdown rendering with llm-ui.
 * [OpenUI, Generative UI Integration](openui.md) - OpenUI generative-UI capability.
