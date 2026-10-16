@@ -1,5 +1,11 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-15
+
+* **Optional idle session following.** Client-driven UI embeddings can suspend
+  settled event streams and replay on activity while continuous following remains
+  the default. See [Events](execution/events.md).
+
 ## 2026-10-14
 
 * **PACT account walkthrough.** Published the scoped-consent demo and added it to
