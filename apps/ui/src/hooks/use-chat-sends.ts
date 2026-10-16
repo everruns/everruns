@@ -217,10 +217,16 @@ export function useChatSends({ sessionId, events, send, cancel }: UseChatSendsOp
     };
   }, [sessionId]);
 
-  const busy = pending.some((p) => p.phase === "sending" || p.phase === "acked");
+  // The stream can echo a send before its POST returns. Reconcile the visible
+  // projection now: effect cleanup alone leaves a render with two identical keys.
+  const visiblePending = useMemo(
+    () => reconcilePendingSends(pending, events ?? []),
+    [pending, events],
+  );
+  const busy = visiblePending.some((p) => p.phase === "sending" || p.phase === "acked");
 
   return useMemo(
-    () => ({ pending, busy, submit, retry, discard, stop }),
-    [pending, busy, submit, retry, discard, stop],
+    () => ({ pending: visiblePending, busy, submit, retry, discard, stop }),
+    [visiblePending, busy, submit, retry, discard, stop],
   );
 }
