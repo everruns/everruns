@@ -449,6 +449,7 @@ pub(crate) fn test_session(
         locale: None,
         preview: None,
         output_preview: None,
+        last_message_at: None,
         tags: vec![],
         model_id: None,
         capabilities: vec![],

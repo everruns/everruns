@@ -47,6 +47,9 @@
   [Portable Durable Agent Execution](framework/durable-execution-portability.md)
   and [Durable Execution Guarantees](framework/durable-execution-guarantees.md).
 
+* Agent Sessions includes archived history to match its count; session cards show channel,
+  creation time and the last conversational-message timestamp.
+
 ## 2026-10-15
 
 * **Optional idle session following.** Client-driven UI embeddings can suspend

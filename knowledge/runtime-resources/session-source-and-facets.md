@@ -178,6 +178,12 @@ The chat surface is where this is spent: `/chats` hides archived threads and
 offers a "Show archived" filter to bring them back, and that filter is always
 present — it is the only way back to an archived thread short of its URL.
 
+The agent detail Sessions tab deliberately requests archived sessions as well:
+it is the agent's complete history, matching its all-time session-count badge.
+Cards label archived rows and show source, creation time, and the latest input
+or completed assistant message. That message timestamp comes from the event
+sequence, so session edits, tool events and archive operations cannot advance it.
+
 ## Index shape
 
 The list and every aggregate share one predicate shape, org, then some subset

@@ -140,6 +140,7 @@ impl DbSessionStore {
                     locale: row.locale,
                     preview: None,
                     output_preview: None,
+                    last_message_at: None,
                     tags: row.tags,
                     model_id: row.model_id,
                     capabilities,

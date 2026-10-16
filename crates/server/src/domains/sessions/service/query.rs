@@ -504,6 +504,7 @@ impl SessionService {
             locale: row.locale,
             preview: None,        // Populated separately in list()
             output_preview: None, // Populated separately in list()
+            last_message_at: row.last_message_at,
             tags: row.tags,
             model_id: row.model_id,
             capabilities,

@@ -1,7 +1,7 @@
 // Failure history reads the same terminal events as agent activity. The trace
 // index is asynchronous, so it cannot define which failures the count links to.
 
-use super::{Database, SESSION_COLUMNS, SessionRow};
+use super::{Database, LAST_MESSAGE_AT, SESSION_COLUMNS, SessionRow};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::AgentId;
@@ -64,7 +64,8 @@ impl Database {
             "{FAILURE_SESSIONS}, page AS (
                 SELECT * FROM failure_sessions
                 ORDER BY failed_at DESC, session_id LIMIT $5 OFFSET $6
-             ) SELECT sessions.*, page.failed_turns, page.failed_at,
+             ) SELECT sessions.*, {LAST_MESSAGE_AT} AS last_message_at,
+                      page.failed_turns, page.failed_at,
                       failure.failure_sequence, failure.error
              FROM (SELECT {SESSION_COLUMNS} FROM sessions WHERE org_id = $1) sessions
              JOIN page ON page.session_id = sessions.id

@@ -21,6 +21,7 @@ import type { SessionExportFormat } from "@/lib/api/sessions";
 import { getEntityReferenceClassName, getEntityReferenceLabel } from "@/lib/entity-lifecycle";
 import { joinTags } from "@/lib/tags";
 import { sessionOutcome } from "@/lib/session-outcome";
+import { sourceLabel } from "@/lib/session-filters";
 import Link from "next/link";
 import { failureTraceHref } from "@/lib/agent-failures";
 
@@ -163,7 +164,7 @@ export function SessionCard({
             {statusInfo.label}
           </Badge>
           {session.archived_at && (
-            <Badge variant="outline" className="text-muted-foreground">
+            <Badge variant="outline" className="flex-shrink-0 text-xs text-muted-foreground">
               Archived
             </Badge>
           )}
@@ -249,8 +250,21 @@ export function SessionCard({
           {truncateToLines(outputPreview, 1)}
         </p>
       )}
-      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-        <span>Created {formatRelativeTime(session.created_at)}</span>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
+        <span>Channel: {sourceLabel(session.source ?? "unknown")}</span>
+        {session.last_message_at ? (
+          <time
+            dateTime={session.last_message_at}
+            title={new Date(session.last_message_at).toLocaleString()}
+          >
+            Last message {formatRelativeTime(session.last_message_at)}
+          </time>
+        ) : (
+          <span>No messages yet</span>
+        )}
+        <time dateTime={session.created_at} title={new Date(session.created_at).toLocaleString()}>
+          Created {formatRelativeTime(session.created_at)}
+        </time>
         {session.usage && (session.usage.input_tokens > 0 || session.usage.output_tokens > 0) && (
           <span className="flex items-center gap-1" title="Token usage">
             <Zap className="w-3 h-3" />

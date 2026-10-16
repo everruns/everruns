@@ -71,6 +71,8 @@ export interface Session {
    * yet, and on deployments with no utility LLM — readers must have a fallback.
    */
   run_summary?: string;
+  /** Latest user or completed assistant message; list projection, independent of session edits. */
+  last_message_at?: string | null;
   created_at: string;
   updated_at: string;
   started_at: string | null;
