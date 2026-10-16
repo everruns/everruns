@@ -48,6 +48,7 @@ Agent definitions and their configuration.
 | [`agents credentials create`](#agents-credentials-create) | Create a write-only Agent credential setup requirement: one attached MCP tool parameter, or an HTTP API the agent's shell calls with $ENV_NAME (the value is injected only into requests to the bound URL). |
 | [`agents exposures resume`](#agents-exposures-resume) | Let an agent's live channels accept traffic again. |
 | [`agents exposures suspend`](#agents-exposures-suspend) | Stop every channel on an agent from accepting traffic. |
+| [`agents failures list`](#agents-failures-list) | List sessions with failed turns. |
 | [`agents github connect`](#agents-github-connect) | Start connecting an agent to GitHub through its own GitHub App. |
 | [`agents github disconnect`](#agents-github-disconnect) | Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. |
 | [`agents github get`](#agents-github-get) | Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks. |
@@ -817,6 +818,29 @@ Example:
 ```bash
 # Stop an agent answering on its exposed surfaces without deleting it
 everruns agents exposures suspend agent_01h9 --reason 'Pause while the prompt is fixed'
+```
+
+## agents failures list
+
+List sessions with failed turns. Filters by failure time and includes older, recovered, and archived sessions, matching agent activity. Returns the latest matching failure per session.
+
+```bash
+everruns agents failures list [OPTIONS] [AGENT]
+```
+
+| Flag | Description |
+|---|---|
+| `--agent <AGENT_ID>` |  |
+| `--after <AFTER>` | Exclusive lower bound on failure time; defaults to 24 hours before `before`. |
+| `--before <BEFORE>` | Inclusive upper bound, normally the Agents activity response's generated_at. |
+| `--limit <LIMIT>` |  |
+| `--offset <OFFSET>` |  |
+
+Example:
+
+```bash
+# Find an agent's failed turns, including sessions that later recovered
+everruns agents failures list agent_01h9 --limit 20
 ```
 
 ## agents github connect

@@ -154,6 +154,7 @@ fn test_proto_session_roundtrip_includes_organization_id() {
         playground_user_id: None,
         source: Default::default(),
         activity: Default::default(),
+        last_turn_status: None,
         run_summary: None,
         id: session_id,
         // Equality invariant: workspace.id == session.id for default sessions.
@@ -344,6 +345,7 @@ fn test_proto_session_drops_unparseable_capability_but_keeps_valid() {
         playground_user_id: None,
         source: Default::default(),
         activity: Default::default(),
+        last_turn_status: None,
         run_summary: None,
         id: session_id,
         workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(session_id.uuid()),

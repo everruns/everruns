@@ -14,7 +14,7 @@ import { useAgent, useSession, useEvents, useModel, useSessionResolvedModel } fr
 import { cancelTurn } from "@/lib/api/sessions";
 import { sendChatMessage } from "@/lib/api/messages";
 import { useChatSends, type ChatSends } from "@/hooks/use-chat-sends";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
 import { isChatThread } from "@/lib/chat-threads";
 import { useOrg } from "@/providers/org-provider";
@@ -41,6 +41,7 @@ import { latestStreamingMessage } from "@/lib/streaming-message-state";
 import type { UseMutationResult } from "@tanstack/react-query";
 import { useWebMcpTool } from "@/hooks/use-webmcp-tool";
 import { useWebMcp } from "@/providers/webmcp-context";
+import { queryKeys } from "@/lib/query-keys";
 import type { WebMcpToolDefinition } from "@/lib/webmcp/types";
 
 /** Accumulated streamed output for a single tool call */
@@ -155,6 +156,7 @@ export function SessionProvider({
   const webmcp = useWebMcp();
   const { locale } = useLocale();
   const org = currentOrg?.public_id;
+  const queryClient = useQueryClient();
 
   // Fetch session first to get agent_id
   const { data: session, isLoading: sessionLoading } = useSession(sessionId);
@@ -634,6 +636,16 @@ export function SessionProvider({
     },
     [],
   );
+
+  const latestTerminalId = events?.findLast((event) =>
+    ["turn.completed", "turn.failed", "turn.cancelled"].includes(event.type),
+  )?.id;
+  // Refresh the authoritative outcome on terminal events; worker clocks need
+  // not agree with database timestamps, so do not infer freshness from time.
+  useEffect(() => {
+    if (latestTerminalId)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessions.detail(org, sessionId) });
+  }, [latestTerminalId, org, sessionId, queryClient]);
 
   const value: SessionContextValue = {
     agentId,

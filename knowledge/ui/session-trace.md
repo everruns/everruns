@@ -151,6 +151,12 @@ away drops the farthest ones. Nothing derives over the whole session in the brow
 Filters and the selected step live in the URL
 (`?view=tools&errors=1&lifecycle=1&turn=2418&step=3`), so a debugging link can be shared.
 
+Agent failure-history links anchor on the terminal event's sequence, resolve its turn through
+the trace index after catch-up, and select the latest recorded failed step when available. A
+short banner names that failed turn and its recorded error independently of the session's
+current outcome. A turn that failed before any indexed step still opens on the turn, without
+inventing an assistant error message.
+
 ### 3. Live sessions refresh the tail, not the session
 
 The page keeps the existing SSE stream. When a step-relevant event arrives for the last

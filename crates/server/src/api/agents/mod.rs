@@ -245,6 +245,7 @@ pub fn routes(state: AppState) -> Router {
             get(get_health_check),
         )
         .merge(super::agent_activity::routes())
+        .command::<crate::domains::agents::failures::ListAgentFailures>()
         .merge(super::agent_mcp_attachments::routes())
         .merge(super::agent_avatars::routes())
         .route(

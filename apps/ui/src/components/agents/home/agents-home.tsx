@@ -390,6 +390,8 @@ export function AgentsHome() {
                     agent={agent}
                     activity={activityById.get(agent.id)}
                     attention={attentionByAgent.get(agent.id) ?? []}
+                    activityGeneratedAt={activity?.generated_at}
+                    activityWindowStart={activity?.window_start}
                   />
                 ))}
               </ul>

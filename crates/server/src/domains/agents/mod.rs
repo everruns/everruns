@@ -17,6 +17,7 @@ pub mod commands;
 pub mod credentials;
 pub mod draft;
 pub mod draft_resources;
+pub mod failures;
 pub mod github;
 pub mod health_check;
 mod lifecycle;

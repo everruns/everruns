@@ -117,6 +117,7 @@ impl DbSessionStore {
                     playground_user_id: row.playground_user_id,
                     source: SessionSource::from(row.source.as_str()),
                     run_summary: row.run_summary.clone(),
+                    last_turn_status: row.last_turn_status.clone(),
                     activity: SessionActivity::derive(
                         &SessionStatus::from(row.status.as_str()),
                         row.last_turn_status.as_deref(),

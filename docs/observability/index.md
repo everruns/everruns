@@ -7,6 +7,28 @@ sidebar:
 
 Everruns emits structured events for every agent turn, model calls, tool invocations, retries, token usage, latency. The integrations in this section forward those signals to observability platforms so you can monitor agents in production, evaluate prompt changes, and debug failures with full trace context.
 
+## Investigate failed turns
+
+In the platform UI, each agent's activity chart covers the last 24 hours, with
+one bar per hour. Hover or keyboard-focus the chart to confirm the time window.
+Click **1 failed** (or the corresponding failure count) to open the agent's
+**Sessions** tab filtered to failures in that chart's window.
+
+The filter uses the time a turn failed, so it includes sessions created earlier,
+archived sessions, and sessions that later recovered. Counts distinguish failed
+turns from affected sessions. Each card shows its current outcome and the latest
+matching failure. **View failure** opens that turn in **Trace**, selecting the
+error step when one was recorded. A failure can exist without a model or tool
+step; the Trace banner still identifies the failed turn.
+
+Use **With failed turns** in an agent's Sessions tab to investigate failures
+over the last 24 hours, 7 days, or 30 days. Choose **All sessions** to clear the
+failure filter.
+
+For scripted investigation, run `everruns agents failures list <agent-id>`.
+Use `--after` and `--before` to choose a failure-time window, and `--limit` and
+`--offset` to page through matching sessions.
+
 ## Available Integrations
 
 For live execution inside the platform, use [Monitoring](/observability/monitoring/).

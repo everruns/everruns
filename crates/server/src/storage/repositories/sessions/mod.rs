@@ -1,5 +1,6 @@
 // PostgreSQL repository: Sessions (instance of agentic loop), Pinned Sessions
 
+pub mod failures;
 pub(super) mod rows;
 use rows::*;
 

@@ -1269,6 +1269,58 @@
     ]
   },
   {
+    "wire_name": "list_agent_failures",
+    "path": [
+      "agents",
+      "failures"
+    ],
+    "verb": "list",
+    "description": "List sessions with failed turns. Filters by failure time and includes older, recovered, and archived sessions, matching agent activity. Returns the latest matching failure per session.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/failures",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent",
+        "position": 1,
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "after",
+        "long": "after",
+        "kind": "string",
+        "required": false,
+        "help": "Exclusive lower bound on failure time; defaults to 24 hours before `before`."
+      },
+      {
+        "field": "before",
+        "long": "before",
+        "kind": "string",
+        "required": false,
+        "help": "Inclusive upper bound, normally the Agents activity response's generated_at."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find an agent's failed turns, including sessions that later recovered",
+        "command": "everruns agents failures list agent_01h9 --limit 20"
+      }
+    ]
+  },
+  {
     "wire_name": "get_agent",
     "path": [
       "agents"
