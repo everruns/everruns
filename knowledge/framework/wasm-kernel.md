@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "The Execution Kernel in a JavaScript Isolate"
-description: "Why everruns-provider, -core and -engine build for wasm32-unknown-unknown, how time and task spawning port, and why the celld engine cell commits one engine step at a time."
+description: "Why the execution kernel and shared HTTP chat protocols run in JavaScript isolates with host time, tasks and fetch, and how the celld engine commits steps."
 tags:
   - everruns
   - framework
@@ -14,9 +14,10 @@ tags:
 
 **Status: experimental.** The kernel crates build for
 `wasm32-unknown-unknown` with default features off, and
-`examples/celld-engine` runs the engine inside a celld Durable Object. No
-crate promises wasm support yet; the CI guard
-(`scripts/lib/check-wasm-portability.sh`) keeps the build from regressing.
+`examples/celld-engine` runs the engine inside a celld Durable Object. Coverage includes
+the kernel and the HTTP chat drivers below. The build guard
+(`scripts/lib/check-wasm-portability.sh`) and workerd integration keep those
+boundaries from regressing.
 
 ## Problem
 
