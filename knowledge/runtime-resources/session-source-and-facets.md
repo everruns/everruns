@@ -90,6 +90,8 @@ are carried through navigation, and archived sessions remain included because th
 includes them. Totals and pagination share a database snapshot and report failed turns and
 distinct affected sessions separately. The row includes the latest matching error per session;
 the event sequence is a durable link to the failure's Trace turn even after later turns run.
+The same read is available through the [shared command tree](../execution/command-tree.md),
+with the same agent and session permissions.
 
 The session card and recording header show execution in progress first, otherwise the latest
 terminal outcome. Cancellation is displayed as Stopped rather than failure. Recovery changes

@@ -71,6 +71,12 @@ fn failure_window(
     policy = SESSION_VIEW,
     http = plain,
     params(ListAgentFailures),
+    cli = CliRoute::new(&["agents", "failures"], "list")
+        .with_args(&[CliArg::new("agent_id").at(1).long("agent")])
+        .with_examples(&[CliExample::new(
+            "Find an agent's failed turns, including sessions that later recovered",
+            "everruns agents failures list agent_01h9 --limit 20",
+        )]),
 )]
 impl Command for ListAgentFailures {
     type Output = AgentFailureSessions;

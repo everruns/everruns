@@ -25,6 +25,10 @@ Use **With failed turns** in an agent's Sessions tab to investigate failures
 over the last 24 hours, 7 days, or 30 days. Choose **All sessions** to clear the
 failure filter.
 
+For scripted investigation, run `everruns agents failures list <agent-id>`.
+Use `--after` and `--before` to choose a failure-time window, and `--limit` and
+`--offset` to page through matching sessions.
+
 ## Available Integrations
 
 For live execution inside the platform, use [Monitoring](/observability/monitoring/).

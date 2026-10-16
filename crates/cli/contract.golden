@@ -27,6 +27,7 @@ agents draft	--context-revision --draft --messages! --reason
 agents export	--format --out <agent>!
 agents exposures resume	--agent --context-revision --reason <agent_id>
 agents exposures suspend	--agent --context-revision --reason <agent_id>
+agents failures list	--after --agent --before --context-revision --limit --offset --reason <agent_id>
 agents get	--context-revision --id --reason <id>
 agents github connect	--agent-id! --context-revision --owner-org --reason --return-to
 agents github disconnect	--agent-id! --context-revision --reason

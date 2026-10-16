@@ -25,6 +25,7 @@ Agent definitions and their configuration.
 | [`agents destroy`](#agents-destroy) | Permanently delete an archived agent. |
 | [`agents draft`](#agents-draft) | Revise an agent draft from a conversation with the agent builder. |
 | [`agents get`](#agents-get) | Get a single agent by ID or name. |
+| [`agents failures list`](#agents-failures-list) | List sessions with failed turns. |
 | [`agents list`](#agents-list) | List all active agents. |
 | [`agents preview`](#agents-preview) | Preview the final agent shape with capabilities applied. |
 | [`agents upsert`](#agents-upsert) | Upsert agent — create (201) or update (200) by ID. |
@@ -311,6 +312,29 @@ Example:
 ```bash
 # Show one agent's full configuration
 everruns agents get agent_01h9
+```
+
+## agents failures list
+
+List sessions with failed turns. Filters by failure time and includes older, recovered, and archived sessions, matching agent activity. Returns the latest matching failure per session.
+
+```bash
+everruns agents failures list [OPTIONS] [AGENT]
+```
+
+| Flag | Description |
+|---|---|
+| `--agent <AGENT_ID>` |  |
+| `--after <AFTER>` | Exclusive lower bound on failure time; defaults to 24 hours before `before`. |
+| `--before <BEFORE>` | Inclusive upper bound, normally the Agents activity response's generated_at. |
+| `--limit <LIMIT>` |  |
+| `--offset <OFFSET>` |  |
+
+Example:
+
+```bash
+# Find an agent's failed turns, including sessions that later recovered
+everruns agents failures list agent_01h9 --limit 20
 ```
 
 ## agents list

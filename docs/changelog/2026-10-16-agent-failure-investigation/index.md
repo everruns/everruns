@@ -5,7 +5,7 @@ date: 2026-10-16
 kind: improvement
 significance: minor
 products: [platform, cloud]
-surfaces: [ui, api]
+surfaces: [ui, api, cli]
 links:
   docs: [/observability/]
 ---
