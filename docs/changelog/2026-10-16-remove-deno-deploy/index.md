@@ -23,3 +23,9 @@ the container sandbox instead.
 
 See the [capabilities overview](/capabilities/) for the supported sandbox
 providers.
+
+```bash
+# Deno connections no longer resolve; use a supported sandbox provider
+everruns connections set daytona
+everruns connections list
+```

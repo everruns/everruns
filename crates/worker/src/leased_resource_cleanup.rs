@@ -609,5 +609,4 @@ mod tests {
             "CDP WebSocket connection failed: dns error"
         ));
     }
-
 }
