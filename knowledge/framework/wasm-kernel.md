@@ -60,6 +60,39 @@ own storage.
   log only when its turn opens, so it never lands between a tool call and its
   result.
 
+## Multiplayer chat host
+
+`examples/cloudflare-durable-chat` is a standalone native Cloudflare
+`ChatRoom` application. It owns its Worker entrypoint and portable step adapter;
+it has no celld runtime, sibling-example dependency, container or minimal-agent
+binding. Its hosting contract test audits resolved dependencies and built exports.
+Room-level receipts commit with commands; conversation-level inboxes and
+step positions use the shared kernel. A search child is owned by the stable
+execution idempotency key, including the assistant tool-call message, rather
+than by the provider call ID alone. Recovering the parent resumes that same
+child. Search children and search-generated assistant answers are excluded
+from future evidence.
+
+Model configuration stays at the trusted host boundary. The chat host uses
+OpenRouter credentials explicitly, with bounded completion output so the router
+does not reserve the model's entire output window.
+
+The room's JSON document occupies one SQLite row. Synchronous mutations do
+not cross an await; a single write commits a command and receipt, or a due
+occurrence and its inbox delivery. This deliberately trades throughput and
+large-history efficiency for a readable atomicity boundary. It is not a
+promoted Framework backend. The browser uses native hibernatable WebSockets
+and committed snapshots, with no token streaming or automatic compaction.
+The alarm is armed before a command is accepted and before an engine step;
+future schedules and active work share that one alarm. Duplicate alarms do
+not duplicate a committed occurrence; missed recurring ticks collapse to one.
+
+The [public walkthrough](../../docs/framework/examples/durable-chat.md) and
+[host tests](../../examples/cloudflare-durable-chat/test/chat-e2e.mjs) own exact setup
+and acceptance procedures. Tests exercise workerd/SQLite and kill the host
+with no reconnect needed for recovery. An optional shared access key gates all Worker routes; individual identity,
+room authorization and production quotas remain the hosting application's responsibility.
+
 ## Open
 
 - A tool with side effects outside the cell can run twice if the node is
@@ -69,4 +102,4 @@ own storage.
   `fetch`; the provider crate's drivers need `reqwest` and do not build for
   the isolate.
 - Built-in tools that need a filesystem or processes have no isolate
-  equivalent; the example ships one pure tool.
+  equivalent; the minimal cell ships one pure tool and the chat host adds scheduling and scoped search.

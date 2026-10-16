@@ -1,5 +1,9 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-16
+
+- Added a standalone Cloudflare multiplayer chat host with no celld runtime or sibling-example dependency; recorded its atomic room state, execution-keyed search children, and alarm delivery boundary, explicit OpenRouter credentials, and deployer access responsibilities in [the isolate decision](framework/wasm-kernel.md) and [threat model](security/threat-model.md).
+
 ## 2026-10-15
 
 * **Optional idle session following.** Client-driven UI embeddings can suspend
