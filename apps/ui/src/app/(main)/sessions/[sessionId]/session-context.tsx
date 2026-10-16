@@ -134,6 +134,8 @@ interface SessionProviderProps {
   sessionId: string;
   /** Adopted work threads must be reopened before browser-agent mutations too. */
   readOnlyWhenArchived?: boolean;
+  /** Opt out of continuous external updates only for client-driven sessions. */
+  followIdle?: boolean;
   draftAgent?: Agent;
   draftModel?: ModelWithProvider;
   children: ReactNode;
@@ -146,6 +148,7 @@ export function SessionProvider({
   draftAgent,
   draftModel,
   readOnlyWhenArchived = false,
+  followIdle = true,
 }: SessionProviderProps) {
   const pathname = usePathname();
   const { currentOrg } = useOrg();
@@ -208,7 +211,7 @@ export function SessionProvider({
     loadingOlder: loadingOlderEvents,
     loadOlderEvents,
     totalNonDeltaCount,
-  } = useEvents(sessionId);
+  } = useEvents(sessionId, { followIdle });
 
   const cancelTurnRequest = useCallback(() => cancelTurn(sessionId), [sessionId]);
   const sendChat = useCallback(
