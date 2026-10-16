@@ -2,6 +2,10 @@
 
 ## 2026-10-16
 
+* **Chaos actor log boundaries.** Include the shared core driver in the harness debug
+  filter so lease releases and completed activations remain visible to overlap checks.
+  See [Load Testing](operations/load-testing.md#chaos-harness).
+
 * **Coding-agent dialog finalized.** Focus setup on one copyable prompt and
   supported agent marks; keep approval management in Settings. The public
   changelog describes only the approved final design. See
