@@ -175,3 +175,48 @@ it("reports a send with no ack in time as not delivered", async () => {
     jest.useRealTimers();
   }
 });
+
+it.each(["client echo before ack", "stored id after ack"])(
+  "never renders a pending send beside its stored message: %s",
+  async (order) => {
+    let acknowledge!: (value: CreatedMessage) => void;
+    const send = () =>
+      new Promise<CreatedMessage>((resolve) => {
+        acknowledge = resolve;
+      });
+    const cancel = jest.fn(async () => undefined);
+    const renderedMessageCounts: number[] = [];
+    const { result, rerender } = renderHook(
+      ({ events }: { events: Event[] }) => {
+        const sends = useChatSends({ sessionId: "ses_1", events, send, cancel });
+        renderedMessageCounts.push(events.length + sends.pending.length);
+        return sends;
+      },
+      { initialProps: { events: [] as Event[] } },
+    );
+    let sending!: Promise<CreatedMessage>;
+    act(() => {
+      sending = result.current.submit({ text: "hi" });
+    });
+    const clientId = result.current.pending[0].clientId;
+    if (order === "stored id after ack") {
+      await act(async () => {
+        acknowledge(message("msg_1"));
+        await sending;
+      });
+    }
+    renderedMessageCounts.length = 0;
+    const input = stored("msg_1", order === "client echo before ack" ? clientId : "legacy-client");
+    rerender({ events: [input] });
+    if (order === "client echo before ack") {
+      await act(async () => {
+        acknowledge(message("msg_1"));
+        await sending;
+      });
+    }
+    // Observe every render, including the frame before effect-based cleanup.
+    expect(renderedMessageCounts.length).toBeGreaterThan(0);
+    expect(renderedMessageCounts.every((count) => count === 1)).toBe(true);
+    expect(result.current.busy).toBe(false);
+  },
+);
