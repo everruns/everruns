@@ -34,8 +34,8 @@ importers:
         specifier: ^0.13.10
         version: 0.13.10(@openuidev/react-headless@0.9.13(react@19.3.0)(zustand@4.5.7(@types/react@19.3.0)(immer@11.1.8)(react@19.3.0)))(@openuidev/react-lang@0.2.15(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5))(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5)(zustand@4.5.7(@types/react@19.3.0)(immer@11.1.8)(react@19.3.0))
       '@rjsf/core':
-        specifier: ^6.10.0
-        version: 6.10.0(@rjsf/utils@6.10.1(react@19.3.0))(react@19.3.0)
+        specifier: ^6.10.1
+        version: 6.10.1(@rjsf/utils@6.10.1(react@19.3.0))(react@19.3.0)
       '@rjsf/utils':
         specifier: ^6.10.1
         version: 6.10.1(react@19.3.0)
@@ -1781,11 +1781,11 @@ packages:
       react-redux:
         optional: true
 
-  '@rjsf/core@6.10.0':
-    resolution: {integrity: sha512-fdyaPnhIe+NzTFZcYcYcp/QqVcAJhhloIsU6vN+hp/IhiGJrzgB9REMVVUlKYNzP37xZ/BsEq7u7RC24KKdLAQ==}
+  '@rjsf/core@6.10.1':
+    resolution: {integrity: sha512-LHLbXYEq1+c2CpynBlf5JBlUhPNxOkVV+txf1BvamgJSt4QOisXFw5Uv+mBdLRi4BI+FfT0ofMVOgGWnuwG7gw==}
     engines: {node: '>=20'}
     peerDependencies:
-      '@rjsf/utils': ^6.10.0
+      '@rjsf/utils': ^6.10.1
       react: '>=18'
 
   '@rjsf/utils@6.10.1':
@@ -3553,8 +3553,8 @@ packages:
   markdown-table@3.0.4:
     resolution: {integrity: sha512-wiYz4+JrLyb/DqW2hkFJxP7Vd7JuTDm77fvbM8VfEQdmSMqcImWeeRbHwZjBjIFki/VaMK2BhFi7oUUZeM5bqw==}
 
-  markdown-to-jsx@9.10.2:
-    resolution: {integrity: sha512-iR9GadlIox0q1uXnpqdxpF02Vb1WDmZ/QIXWjBR5htzjUEEhyIWbM65LuVKavdwJaVo4q95C/F2OOyNjWe91ig==}
+  markdown-to-jsx@9.10.3:
+    resolution: {integrity: sha512-J5/NCmNYQ0ExsnThzvF3F1fSzNYLgROcW2diUqRqoIoiyhoy8DSI06jLuMYk0c86SQd/FiVYJrV6tIgci9S2tQ==}
     engines: {node: '>= 18'}
     peerDependencies:
       react: '>= 16.0.0'
@@ -6237,10 +6237,10 @@ snapshots:
       react: 19.3.0
       react-redux: 9.3.0(@types/react@19.3.0)(react@19.3.0)(redux@5.0.1)
 
-  '@rjsf/core@6.10.0(@rjsf/utils@6.10.1(react@19.3.0))(react@19.3.0)':
+  '@rjsf/core@6.10.1(@rjsf/utils@6.10.1(react@19.3.0))(react@19.3.0)':
     dependencies:
       '@rjsf/utils': 6.10.1(react@19.3.0)
-      markdown-to-jsx: 9.10.2(react@19.3.0)
+      markdown-to-jsx: 9.10.3(react@19.3.0)
       react: 19.3.0
     transitivePeerDependencies:
       - react-native
@@ -8183,7 +8183,7 @@ snapshots:
 
   markdown-table@3.0.4: {}
 
-  markdown-to-jsx@9.10.2(react@19.3.0):
+  markdown-to-jsx@9.10.3(react@19.3.0):
     optionalDependencies:
       react: 19.3.0
 

@@ -378,7 +378,7 @@ impl AgentPackage {
             if file.is_dir() {
                 continue;
             }
-            let path = asset_path(file.name())?;
+            let path = asset_path(&file.name().map_err(|e| error("zip", e))?)?;
             if file
                 .unix_mode()
                 .is_some_and(|mode| mode & 0o170000 == 0o120000)

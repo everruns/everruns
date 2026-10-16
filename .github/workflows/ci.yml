@@ -113,7 +113,7 @@ jobs:
       skip_integration_workflows: ${{ steps.ci_opt_outs.outputs.skip_integration_workflows }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
@@ -203,7 +203,7 @@ jobs:
           set_output skip_docker "ci:skip-docker"
           set_output skip_integration_workflows "ci:skip-integration-workflows"
 
-      - uses: dorny/paths-filter@v4
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: core_filter
         if: (steps.plan.outputs.mode == 'pr' || steps.plan.outputs.mode == 'batch') && steps.plan.outputs.force != 'true'
         with:
@@ -461,7 +461,7 @@ jobs:
       # `some-with-excludes` matches any positive path while making every
       # negated docs pattern final; `some` leaks exclusions and `every` makes
       # disjoint positive paths impossible to match.
-      - uses: dorny/paths-filter@v4
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: live_filter
         if: (steps.plan.outputs.mode == 'pr' || steps.plan.outputs.mode == 'batch') && steps.plan.outputs.force != 'true'
         with:
@@ -2000,7 +2000,7 @@ jobs:
       CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.changes.outputs.revision }}
 
@@ -2017,10 +2017,10 @@ jobs:
           bash scripts/ci-prepare-linker.sh
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
 
       - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: "ci-bins-opt0-v1"
@@ -2043,7 +2043,7 @@ jobs:
           cargo build --locked --profile release-ci "${args[@]}"
 
       - name: Upload server binary
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: everruns-server
           path: target/release-ci/everruns-server
@@ -2052,7 +2052,7 @@ jobs:
 
       - name: Upload worker binary
         if: needs.changes.outputs.mode != 'pr' || needs.changes.outputs.docker == 'true' || needs.changes.outputs.chaos == 'true' || needs.changes.outputs.budget_e2e == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: everruns-worker
           path: target/release-ci/everruns-worker
@@ -2061,7 +2061,7 @@ jobs:
 
       - name: Upload CLI binary
         if: needs.changes.outputs.mode != 'pr' || needs.changes.outputs.docker == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: everruns-cli
           path: target/release-ci/everruns
@@ -2166,6 +2166,8 @@ jobs:
         if-no-files-found: warn
         retention-days: 7
 
+  # THREAT[TM-CI-010]: producers can tamper with code later run with credentials.
+  # Keep actions here and in their dependency jobs pinned, as in the consumer.
   # Compile concurrently with the CI binaries; the execution job only downloads.
   workflow-test-build:
     name: Compile Workflow Tests
@@ -2176,7 +2178,7 @@ jobs:
     env:
       CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.changes.outputs.revision }}
       - name: Prepare linker and disk
@@ -2184,8 +2186,8 @@ jobs:
         run: |
           bash scripts/ci-prepare-disk.sh
           bash scripts/ci-prepare-linker.sh
-      - uses: dtolnay/rust-toolchain@1.96.0
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: integration-v2
           save-if: false
@@ -2195,7 +2197,7 @@ jobs:
             cargo test --locked -p everruns-server --test workflow_test \
             --no-run --message-format=json
           python3 .github/scripts/ci/libtest.py archive-workflow "$RUNNER_TEMP/workflow-tests.jsonl" "$RUNNER_TEMP/workflow-tests"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: workflow-tests
           path: ${{ runner.temp }}/workflow-tests/
