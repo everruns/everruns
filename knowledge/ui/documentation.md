@@ -146,6 +146,9 @@ hero: ../images/section/visual.png  # Optional: hero image for social card
 - `hero` is optional, relative path to an image that will be composited into the page's OG social card (see [Social Card Images](#social-card-images-og-images))
 - `appliesTo` is optional: any of `framework`, `platform`, `cloud`. `PageTitle.astro` renders it as an "Applies to" badge row under the title. Set it on capability, feature, and how-to pages, and only after checking availability in code: `framework` means the default Framework capability registry or an `everruns` Cargo feature; `platform` and `cloud` share the server registry, except that plugins behind a dev-grade feature flag are never on Cloud. A page without the field shows no row, which is better than a wrong one
 
+Unavailable targets keep muted gray labels and borders without strikethroughs; the
+badge row indicates applicability without making other products look deprecated.
+
 #### Notebook-Backed Tutorials
 
 Notebook tutorials use a checked-in `.ipynb` file as the source of truth and a hand-authored MDX wrapper for page metadata.
