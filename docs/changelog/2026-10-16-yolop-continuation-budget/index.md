@@ -1,6 +1,6 @@
 ---
-title: Configure automatic continuation budgets in Yolop
-description: "Yolop allows five automatic continuations by default, configurable turn, token and time limits, and conversational approval to resume with a fresh budget."
+title: Control Yolop continuation budgets and trace stop reasons
+description: "Yolop supports five automatic continuations, configurable limits, durable stop and retry reasons, and OpenTelemetry budget diagnostics."
 date: 2026-10-16
 kind: improvement
 significance: notable
@@ -11,9 +11,8 @@ links:
   prs: [everruns/yolop#858]
 ---
 
-Yolop now allows five automatic continuation turns by default, with configurable
-turn, token, and elapsed-time limits. Ask Yolop to change the budget or use the
-existing config commands:
+Yolop allows five automatic continuation turns by default, with configurable
+turn, token, and elapsed-time limits. Ask Yolop to change the budget or use:
 
 ```bash
 yolop config set continuation_max_turns 10
@@ -21,11 +20,18 @@ yolop config set continuation_max_tokens 512000
 yolop config set continuation_max_seconds 3600
 ```
 
-The first reached limit pauses work. Yolop names that limit and asks you to
-approve resuming with a fresh budget, without requiring specific reply words.
-Approval refreshes the budget without increasing the saved limits.
+The first reached limit pauses work and asks for approval to resume with a fresh
+budget, without prescribing reply words. Named profiles can override the limits;
+attached changes apply at the next continuation check without resetting usage.
 
-Named profiles can override the limits. Attached configuration changes apply at
-the next continuation check and retain usage already consumed. Clear a setting
-to restore its inherited value or default. See
+Decisions, retry reasons, budget usage, and exhausted limits survive restarts in
+private session logs. Find earlier stops with:
+
+```bash
+yolop sessions search --query "continuation exhausted"
+```
+
+Enabled trace extensions receive the same diagnostics. The Logfire exporter
+emits OpenTelemetry budget spans with decision attributes correlated to the
+completed turn. See
 [Plans and completion](https://github.com/everruns/yolop/blob/main/docs/features/tools.md#plans-and-completion).
