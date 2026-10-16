@@ -14,6 +14,11 @@ const waiting = new Map();
 let leak = false;
 const model = createServer(async (req, res) => {
   try {
+    if (req.url === "/empty") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
     if (req.url.startsWith("/ack/")) {
       const key = req.url.slice(5);
       assert.ok(waiting.has(key), `no stream waiting for ${key}`);
@@ -322,6 +327,13 @@ const config :Workerd.Config = (
   }
   assert.ok(ready, logs);
   for (const where of ["worker", "do"]) {
+    const empty = await fetch(
+      `http://127.0.0.1:${port}/${where}?${new URLSearchParams({ base, driver: "completions", scenario: "empty-body" })}`,
+      { signal: AbortSignal.timeout(15000) },
+    );
+    assert.equal(empty.status, 200, await empty.clone().text());
+    assert.deepEqual(await empty.json(), { empty: true });
+    console.log(`ok ${where}/empty-body`);
     for (const driver of [
       "completions",
       "responses",

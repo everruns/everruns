@@ -4,7 +4,7 @@ A test-only Worker runs the shared Chat Completions and Responses protocols,
 OpenAI's two chat drivers, and OpenRouter through the example's host `fetch`
 adapter, both directly and inside a Durable Object. A local scripted HTTP
 server checks tool-call replay, exact headers and provider options, JSON
-responses, retry handling, structured errors and redirect refusal. It splits
+responses, empty response bodies, retry handling, structured errors and redirect refusal. It splits
 SSE at byte boundaries and withholds completion until WASM acknowledges a text
 delta, so a buffered adapter cannot pass. No provider credential is needed.
 

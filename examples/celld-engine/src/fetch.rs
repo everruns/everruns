@@ -71,6 +71,14 @@ impl HttpTransport for FetchTransport {
                     .map_err(|_| HttpError::new("invalid response header", false))?;
                 headers.append(name, value);
             }
+            // Fetch exposes null bodies (for example 204) without a reader.
+            if matches!(response.body(), ResponseBody::Empty) {
+                return Ok(HttpResponse::new(
+                    status,
+                    headers,
+                    Box::pin(futures::stream::empty()),
+                ));
+            }
             let stream = SendWrapper::new(response.stream().map_err(|_| transport_error())?);
             let body = futures::stream::unfold(Some((stream, guard)), |state| async move {
                 let (mut stream, guard) = state?;

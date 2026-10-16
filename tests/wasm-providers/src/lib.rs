@@ -21,6 +21,20 @@ use host_fetch::FetchTransport;
 
 async fn run(base: &str, driver: &str, scenario: &str) -> everruns_contracts::Result<Value> {
     let transport = Arc::new(FetchTransport);
+    if scenario == "empty-body" {
+        let response = transport
+            .execute(
+                Request::builder()
+                    .uri(format!("{base}/empty"))
+                    .body(vec![])
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status().as_u16(), 204);
+        assert!(response.bytes().await.unwrap().is_empty());
+        return Ok(json!({"empty": true}));
+    }
     let retry = LlmRetryConfig {
         max_retries: 1,
         initial_backoff: Duration::from_millis(1),
