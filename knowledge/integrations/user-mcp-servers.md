@@ -147,8 +147,12 @@ consumers using a published agent.
 Guardrails, because adding an MCP server is how a prompt injection would
 exfiltrate data:
 
-- `add` and `enable` require tool approval by default (the user confirms the
-  server name and host in chat). `remove`, `disable` and `list` do not.
+- `add` and `enable` declare approval-required tool policy, enforced by the
+  shared [Tool Approval](../execution/tool-approval.md) capability in normal
+  and protective modes. With hard approval absent or off, they run without a
+  hidden gate. `user_mcp` contributes no unconditional hook or independent
+  approval switch; operators choose the common policy. Other management tools
+  follow their hints under that policy. OAuth consent is separate.
 - Custom URLs are refused unless `allow_custom_urls` is on, and always pass the
   same URL validation as catalog presets.
 - `connect` never handles a credential. It starts the existing in-chat Connect
@@ -235,7 +239,7 @@ not just the protocol, without new crates:
 | `UserMcpStore` trait: list, upsert, remove, set_enabled | `everruns-core` | virtual-user rows | `McpConfigStore` (already has these four methods) |
 | `McpTokenStore` | `everruns-core` (exists) | virtual-user connections | `connections.toml` (exists) |
 | `McpLoginPrompter` trait: start a login, report when done | `everruns-core` | in-chat Connect card | loopback callback + browser (exists) |
-| `user_mcp` capability (use/manage tools, approval policy) | `everruns-capabilities` | registered | registered; replaces yolop's read-only MCP capability, so the model can add and log in without `/mcp` |
+| `user_mcp` capability (use/manage tools) | `everruns-capabilities` | registered | registered; replaces yolop's read-only MCP capability, so the model can add and log in without `/mcp` |
 | Deferred servers | `tool_search` in `everruns-core` | yes | yes |
 
 `yolop mcp …` and `/mcp …` stay as the human commands and call the same store.
@@ -293,7 +297,7 @@ for one agent did not make it available to Platform Chat.
   `user_or_service` label. Adding a server keeps the single "Who does this act
   as?" question with a third option, "Each user, or the agent if they have not
   connected".
-- **Chat**: Connect cards unchanged; approval cards for `add`/`enable`.
+- **Chat**: Connect cards unchanged; approval cards for `add`/`enable` when the shared policy requires them.
 - **Chat header**: an **MCP** button, shown only when the conversation has
   servers added for it alone, lists them (name, host, signed in or not) with
   Remove.
@@ -320,7 +324,7 @@ Each step is one PR, shippable alone.
 1. **User servers backend.** Owner column on `mcp_servers`, `/v1/virtual-users/{id|me}/mcp-servers` self-service routes (the same authority as preferences; the command catalog is management-only), OAuth authorize/callback for a user-owned row, tests for cross-user and cross-org refusal.
 2. **My MCP servers in settings.** Section in My agent experience; MCP page *My connections* tab redirects there.
 3. **`user_mcp` capability, *use*.** Resolve the initiating virtual user's enabled servers into the turn; unattended and shared sessions get none; Platform Chat turns *use* on. Built: `crates/server/src/domains/mcp_servers/user_layer/mod.rs`, which the worker turn context, MCP prefix resolution and the tool-call token check all share; channel consumers may sign in to their own servers (`RuntimeAccount::allowed_mcp_providers`). Name-clash reporting in the agent MCP sheet moves to step 4, with the list tool.
-4. **`user_mcp` *manage* and `connect_mcp_server`.** Shared store and prompter traits in `everruns-core`; approval defaults; Platform Chat turns it on; an eval case in `evals/platform-capability` for "add Linear and connect it". Built: `UserMcpStore` and `McpLoginPrompter` in `crates/core/src/mcp/user_store.rs`; the tools in `crates/capabilities/src/capabilities/user_mcp/`, which hold `add` and `enable` behind a capability-owned durable approval gate; the control-plane store in `crates/server/src/domains/mcp_servers/user_manage/mod.rs`, which re-derives `manage`, `allow_custom_urls` and the initiating person itself and is reached in process or over the `InvokeUserMcpStore` worker RPC. Name clashes are reported by the list tool and, for the viewer's own servers, in the agent MCP sheet. Eval case `user-mcp-add-linear-and-connect`.
+4. **`user_mcp` *manage* and `connect_mcp_server`.** Shared store and prompter traits in `everruns-core`; approval defaults; Platform Chat turns it on; an eval case in `evals/platform-capability` for "add Linear and connect it". Built: `UserMcpStore` and `McpLoginPrompter` in `crates/core/src/mcp/user_store.rs`; the tools in `crates/capabilities/src/capabilities/user_mcp/`, which declare `add` and `enable` approval-required for the shared approval policy; the control-plane store in `crates/server/src/domains/mcp_servers/user_manage/mod.rs`, which re-derives `manage`, `allow_custom_urls` and the initiating person itself and is reached in process or over the `InvokeUserMcpStore` worker RPC. Name clashes are reported by the list tool and, for the viewer's own servers, in the agent MCP sheet. Eval case `user-mcp-add-linear-and-connect`.
 5. **`user_or_service` and connection-backed presets.** New `actsAs` value with per-call recorded identity; preset field naming a connection provider; GitHub preset backed by the agent's GitHub App. Built: `McpServerActsAs::UserOrService` and its `resolution_order` in `crates/contracts/src/runtime/mcp_server.rs`, composed by the default `UserConnectionResolver::get_mcp_connection_credential` so the worker RPC stays per identity; the identity a call used travels as `McpConnection::acted_as` to `ToolCompletedData::acted_as` through the per-call `McpCallIdentity` slot (`crates/contracts/src/runtime/mcp_proxy.rs`). Presets name a provider in their settings (`service_connection_provider`), pinned to the hosts that accept its tokens on save and on every resolution (`crates/server/src/domains/mcp_servers/connection_backed.rs`); the seeded `github` preset uses it. `connect_mcp_server` alone is derived for agents with a `user` or `user_or_service` server (`imply_mcp_connect_tool` in `crates/core/src/runtime_context.rs`), and the control-plane store routes a service server's card to the agent's sheet (`agent_server_login` in `user_manage.rs`). MCP Events triggers resolve the same way without a session: `DbConnectionResolver::agent_service_mcp_token` (`crates/server/src/storage/connection_resolver/mod.rs`) answers a connection-backed preset from the agent's named connection, with the same host pin, and an ordinary preset from the agent's MCP OAuth grant.
 6. **`connectInChat` per attachment.** Built: `McpConnectInChat` on `ScopedMcpServer` in `crates/contracts/src/runtime/mcp_server.rs` (`connectInChat`, omitted when `ask`), carried by the resolved descriptor (`McpServerResolved`, the worker `McpServerInfo` and its proto field) onto `McpConnection::connect_in_chat`; `connection_required_result` in `crates/core/src/mcp/executor.rs` turns a missing grant under `never` into a tool error with the setup URL and no `connection_required`, so nothing pauses. `connect_mcp_server` gets the setting through `McpLogin::Pending::connect_in_chat` (`agent_server_login` in `user_manage.rs`) and returns the link instead of a card. The agent MCP sheet adds an **Ask to connect in chat** switch and reports the value on `AgentMcpAttachment::connect_in_chat`. A person's own servers have no attachment and always `ask`. OpenAI-hosted MCP calls already fail the turn with the link, unchanged.
 7. **Deferred servers and session servers.** Per-server deferral through `tool_search`; ARD's session record generalized. Two PRs:

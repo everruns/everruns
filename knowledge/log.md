@@ -2,6 +2,11 @@
 
 ## 2026-10-16
 
+* **User MCP approval policy.** Add and enable follow shared Tool Approval modes;
+  management adds no hard gate when approval is absent or off. See
+  [User MCP servers](integrations/user-mcp-servers.md) and
+  [Tool Approval](execution/tool-approval.md).
+
 * **Public changelog eligibility.** Require meaningful user impact; exclude cosmetic
   polish, typo fixes, and routine docs upkeep. Apply significance only after eligibility
   and record a reason when skipping a visible change. See [Public Changelog](docs/changelog.md).

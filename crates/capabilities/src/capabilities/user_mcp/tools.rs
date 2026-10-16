@@ -233,9 +233,9 @@ impl Tool for AddUserMcpServerTool {
 
     fn description(&self) -> &str {
         if self.allow_custom_urls {
-            "Add an MCP server to the person's own list: give `catalog` with the name of a server in the organization's MCP catalog, or `name` and an HTTPS `url`. With `scope: \"chat\"` it joins only this conversation instead. The person approves it first. It is usable from their next message; offer connect_mcp_server if it needs a sign-in."
+            "Add an MCP server to the person's own list: give `catalog` with the name of a server in the organization's MCP catalog, or `name` and an HTTPS `url`. With `scope: \"chat\"` it joins only this conversation instead. The agent's configured tool approval policy applies. It is usable from their next message; offer connect_mcp_server if it needs a sign-in."
         } else {
-            "Add a server from the organization's MCP catalog to the person's own list: give `catalog` with its catalog name. With `scope: \"chat\"` it joins only this conversation instead. The person approves it first. It is usable from their next message; offer connect_mcp_server if it needs a sign-in."
+            "Add a server from the organization's MCP catalog to the person's own list: give `catalog` with its catalog name. With `scope: \"chat\"` it joins only this conversation instead. The agent's configured tool approval policy applies. It is usable from their next message; offer connect_mcp_server if it needs a sign-in."
         }
     }
 
@@ -462,7 +462,7 @@ impl Tool for RemoveUserMcpServerTool {
 // enable / disable
 // ============================================================================
 
-/// `enable_user_mcp_server` (approval) or `disable_user_mcp_server`.
+/// `enable_user_mcp_server` (shared approval policy) or `disable_user_mcp_server`.
 pub struct SetUserMcpServerEnabledTool {
     pub enabled: bool,
 }
@@ -510,7 +510,7 @@ impl Tool for SetUserMcpServerEnabledTool {
 
     fn description(&self) -> &str {
         if self.enabled {
-            "Turn on an MCP server in the person's own list so it joins their conversations from their next message. The person approves it first."
+            "Turn on an MCP server in the person's own list so it joins their conversations from their next message. The agent's configured tool approval policy applies."
         } else {
             "Turn off an MCP server in the person's own list without removing it. It stops joining their conversations from their next message."
         }

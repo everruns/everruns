@@ -8,3 +8,4 @@
 * [Platform chat](platform_chat/) - 5 manual Agent workflow cases.
 
 * [MCP recovery](mcp_recovery/) - Listing failure, successful removal, and caller isolation.
+* [User MCP](user_mcp/) - Personal MCP management and shared approval policy.

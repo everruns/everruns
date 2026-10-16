@@ -147,6 +147,15 @@ just consumed for that call id, so the second gate does not ask again. A
 different call, or the model's next identical call (a new id), still needs its
 own answer.
 
+## User MCP management
+
+The [User MCP Servers](../integrations/user-mcp-servers.md) capability exposes
+management tools only with `manage` enabled. Add and enable declare approval
+required and pass through this shared gate in normal and protective modes.
+They do not install a capability-owned gate: hard approval absent or off
+allows them to run. This choice does not authorize a different person, bypass
+catalog/URL restrictions, or replace OAuth consent.
+
 ## MCP tool labels
 
 A remote MCP tool's hints come from the server describing itself, and default to
