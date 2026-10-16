@@ -1,0 +1,15 @@
+{
+  "name": "everruns-durable-chat",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "worker-build --release",
+    "dev": "wrangler dev --local",
+    "deploy": "npm run build && wrangler deploy",
+    "test": "npm run check:hosting && node test/chat-e2e.mjs",
+    "check:hosting": "node --test test/hosting-contract.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "4.151.1"
+  }
+}

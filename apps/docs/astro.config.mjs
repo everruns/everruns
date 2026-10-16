@@ -386,6 +386,7 @@ export default defineConfig({
                     { label: "Bashkit Repo Agent", slug: "framework/examples/bashkit-repo-agent" },
                     { label: "Host Shell Agent", slug: "framework/examples/host-shell-agent" },
                     { label: "Foreman", slug: "framework/examples/foreman-agent" },
+                    { label: "Durable Chat on Cloudflare", slug: "framework/examples/durable-chat" },
                   ],
                 },
               ],

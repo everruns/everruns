@@ -216,6 +216,8 @@
 
 ## 2026-10-16
 
+- Added a standalone Cloudflare multiplayer chat host with no celld runtime or sibling-example dependency; recorded its atomic room state, execution-keyed search children, and alarm delivery boundary, explicit OpenRouter credentials, and deployer access responsibilities in [the isolate decision](framework/wasm-kernel.md) and [threat model](security/threat-model.md).
+
 * **Platform operating skills.** Share product, CLI, and agent-authoring skills
   through the Platform capability; publish the general and CLI guides alongside
   MCP workflows. Move Rust development guidance to `everruns-framework`. Distribute the five
