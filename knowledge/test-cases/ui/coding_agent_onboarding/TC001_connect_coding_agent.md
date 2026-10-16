@@ -20,9 +20,9 @@ tags:
 
 1. Open Connect your coding agent in the user menu. Verify no host or organisation selector is shown.
 2. Copy the setup prompt. Verify it contains the public bootstrap URL, this deployment's exact MCP endpoint and its authentication guidance.
-3. Expand MCP configuration. Verify the URL and JSON target this same deployment.
-4. On the authenticated stack, choose Check connections. Verify the dialog closes and the Connected AI clients panel is reached. Refresh its approvals; no plugin-installation or setup-success claim appears.
-5. On the no-auth stack, verify no sign-in or Check connections action is offered.
+3. Verify Claude Code, Codex, Cursor and Gemini CLI icons and labels appear without a selector, configuration accordion or separate authorization section.
+4. Open Manual setup and verify the maintained AI-tools installation guide is reached. Manage OAuth approvals separately in Settings → My agent experience → Connected AI clients; refresh its approvals without a plugin-installation or setup-success claim.
+5. On the no-auth stack, verify the prompt states that authentication is not required. On the authenticated stack, verify the prompt retains browser OAuth guidance.
 6. Open the empty Agents page and verify its connection action opens the same dialog.
 7. In organisation Configure, skip provider setup. Verify Done offers Add a model provider linking to Models → Providers, explains that Platform Chat requires it, and still offers coding-agent connection.
 8. With an existing provider, continue through Configure without entering another key. Verify Done offers Platform Chat as primary and coding-agent connection as secondary.

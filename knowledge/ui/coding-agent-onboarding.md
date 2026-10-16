@@ -39,10 +39,15 @@ the [shared onboarding shell](../../apps/ui/src/components/onboarding/onboarding
 
 ## Honest connection status
 
-The dialog offers manual setup and expandable MCP configuration, including a
-copyable same-origin endpoint. On authenticated deployments, Check connections
-opens the existing Connected AI clients panel, where the user can refresh OAuth
-approvals and revoke them. Local no-auth deployments do not ask for sign-in.
+The dialog stays focused on one setup prompt and its copy action. Claude Code,
+Codex, Cursor and Gemini CLI marks identify compatible agents without becoming a
+selector. Manual installation remains a small documentation link. OAuth guidance
+and local no-auth instructions live in the deployment-specific prompt.
+
+Connection management stays in Settings → My agent experience → Connected AI
+clients, where users can refresh OAuth approvals and revoke them. The dialog has
+no separate authorization step, configuration accordion or provider explanation;
+provider setup remains in the existing onboarding flow.
 
 There is no waiting spinner or success claim based on opening the dialog or
 copying the prompt. An OAuth grant records approval; last use records an MCP

@@ -24,8 +24,8 @@ prompt and paste it into your coding agent. It reads the maintained plugin
 instructions and guides you through installation and browser sign-in. The same
 dialog is available after organisation setup and on an empty Agents page.
 
-**Check connections** opens **Settings → My agent experience → Connected AI
-clients**, where you can refresh approvals or revoke access. It records OAuth
+In **Settings → My agent experience → Connected AI clients**, you can refresh
+approvals or revoke access. It records OAuth
 approval and last use, not local plugin installation.
 
 For manual installation:

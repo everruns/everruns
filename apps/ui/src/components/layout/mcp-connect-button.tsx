@@ -2,12 +2,9 @@
 
 import { useState, type ReactNode } from "react";
 import { ArrowRight, Check, Copy, ExternalLink, SquareTerminal } from "lucide-react";
-import { Button, LinkButton } from "@/components/ui/button";
-import {
-  codingAgentSetupPrompt,
-  CODING_AGENT_MANUAL_URL,
-  CONNECTED_AI_CLIENTS_HREF,
-} from "@/lib/coding-agent-setup";
+import { Button } from "@/components/ui/button";
+import { codingAgentSetupPrompt, CODING_AGENT_MANUAL_URL } from "@/lib/coding-agent-setup";
+import { CodingAgentIcons } from "@/components/icons/coding-agent-icons";
 import { capabilityIconMap } from "@/lib/capability-icons";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
@@ -23,24 +20,7 @@ import { useAuth } from "@/providers/auth-provider";
 
 const McpIcon = capabilityIconMap.mcp;
 
-function useMcpConfig() {
-  const mcpUrl = typeof window !== "undefined" ? `${window.location.origin}/mcp` : "/mcp";
-  const configSnippet = JSON.stringify(
-    {
-      mcpServers: {
-        everruns: {
-          url: mcpUrl,
-        },
-      },
-    },
-    null,
-    2,
-  );
-
-  return { mcpUrl, configSnippet };
-}
-
-function CopySnippetButton({ value, compact = false }: { value: string; compact?: boolean }) {
+function CopySnippetButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState(false);
 
@@ -57,16 +37,9 @@ function CopySnippetButton({ value, compact = false }: { value: string; compact?
 
   return (
     <>
-      <Button
-        type="button"
-        onClick={handleCopy}
-        variant={compact ? "ghost" : "default"}
-        size={compact ? "icon-sm" : "lg"}
-        className={compact ? "absolute top-2 right-2" : "w-full"}
-        aria-label={compact ? "Copy MCP configuration" : undefined}
-      >
+      <Button type="button" onClick={handleCopy} variant="default" size="lg" className="w-full">
         {copied ? <Check /> : <Copy />}
-        {!compact && (copied ? "Copied" : "Copy setup prompt")}
+        {copied ? "Copied" : "Copy setup prompt"}
       </Button>
       {error && (
         <p role="status" className="mt-2 text-xs text-destructive">
@@ -77,82 +50,35 @@ function CopySnippetButton({ value, compact = false }: { value: string; compact?
   );
 }
 
-function McpConnectDialogContent({
-  mcpUrl,
-  configSnippet,
-  onNavigate,
-}: {
-  mcpUrl: string;
-  configSnippet: string;
-  onNavigate: () => void;
-}) {
+function McpConnectDialogContent() {
   const { requiresAuth } = useAuth();
+  const mcpUrl = typeof window !== "undefined" ? `${window.location.origin}/mcp` : "/mcp";
+  const prompt = codingAgentSetupPrompt(mcpUrl, requiresAuth);
 
   return (
-    <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
-      <DialogHeader>
-        <DialogTitle className="flex items-center gap-2">
-          <SquareTerminal className="h-5 w-5" />
-          Connect your coding agent
-        </DialogTitle>
-        <DialogDescription>
-          Use Everruns from Claude Code, Codex, Cursor, or Gemini CLI.
-        </DialogDescription>
+    <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+      <DialogHeader className="text-left">
+        <DialogTitle>Connect your coding agent</DialogTitle>
+        <DialogDescription>Copy this prompt and paste it into your coding agent.</DialogDescription>
       </DialogHeader>
 
-      <div className="space-y-5">
-        <div>
-          <p className="mb-2 text-sm font-medium">Paste this into your coding agent</p>
-          <pre className="mb-3 whitespace-pre-wrap break-words border bg-muted p-4 font-mono text-xs leading-relaxed select-text">
-            {codingAgentSetupPrompt(mcpUrl, requiresAuth)}
-          </pre>
-          <CopySnippetButton value={codingAgentSetupPrompt(mcpUrl, requiresAuth)} />
-          <p className="mt-2 text-xs text-muted-foreground">
-            Your agent will choose the setup steps for your tools.
-          </p>
-        </div>
+      <CodingAgentIcons />
 
-        <div className="space-y-3 border-t pt-4">
-          <div>
-            <p className="text-sm font-medium">
-              {requiresAuth ? "Complete sign-in in your agent" : "No sign-in required"}
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {requiresAuth
-                ? "Follow the browser OAuth sign-in when prompted."
-                : "This local Everruns server does not require authentication."}
-            </p>
-          </div>
-          {requiresAuth && (
-            <LinkButton variant="outline" href={CONNECTED_AI_CLIENTS_HREF} onClick={onNavigate}>
-              Check connections <ArrowRight />
-            </LinkButton>
-          )}
-          <a
-            href={CODING_AGENT_MANUAL_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-sm text-primary underline underline-offset-4 sm:ml-3"
-          >
-            Manual setup <ExternalLink className="size-3" />
-          </a>
-        </div>
-
-        <details className="border-t pt-4">
-          <summary className="cursor-pointer text-sm font-medium">MCP configuration</summary>
-          <p className="mt-2 break-all font-mono text-xs text-muted-foreground">{mcpUrl}</p>
-          <div className="relative mt-2">
-            <pre className="overflow-x-auto border bg-muted px-3 py-2 pr-10 font-mono text-xs">
-              {configSnippet}
-            </pre>
-            <CopySnippetButton value={configSnippet} compact />
-          </div>
-        </details>
-        <p className="border-t pt-3 text-xs text-muted-foreground">
-          {requiresAuth && "Your coding agent acts as you across your organisations. "}
-          A model provider in Everruns is still needed to run agents.
-        </p>
+      <div>
+        <pre className="mb-3 whitespace-pre-wrap break-words border bg-muted p-4 font-mono text-xs leading-relaxed select-text">
+          {prompt}
+        </pre>
+        <CopySnippetButton value={prompt} />
       </div>
+
+      <a
+        href={CODING_AGENT_MANUAL_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mx-auto inline-flex items-center gap-1 text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+      >
+        Manual setup <ExternalLink className="size-3" />
+      </a>
     </DialogContent>
   );
 }
@@ -164,21 +90,14 @@ export function McpConnectDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { mcpUrl, configSnippet } = useMcpConfig();
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <McpConnectDialogContent
-        mcpUrl={mcpUrl}
-        configSnippet={configSnippet}
-        onNavigate={() => onOpenChange(false)}
-      />
+      <McpConnectDialogContent />
     </Dialog>
   );
 }
 
 export function McpConnectButton() {
-  const { mcpUrl, configSnippet } = useMcpConfig();
   const [open, setOpen] = useState(false);
 
   return (
@@ -195,11 +114,7 @@ export function McpConnectButton() {
         <TooltipContent>Connect your coding agent</TooltipContent>
       </Tooltip>
 
-      <McpConnectDialogContent
-        mcpUrl={mcpUrl}
-        configSnippet={configSnippet}
-        onNavigate={() => setOpen(false)}
-      />
+      <McpConnectDialogContent />
     </Dialog>
   );
 }
