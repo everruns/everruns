@@ -1,6 +1,7 @@
 mod branding;
 mod manager_app;
 
+pub(crate) use manager_app::MANAGER_CONNECT_STATE_TTL;
 pub use manager_app::SlackManagerApp;
 
 use std::sync::Arc;

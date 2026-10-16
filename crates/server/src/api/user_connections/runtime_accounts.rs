@@ -69,7 +69,12 @@ pub(super) async fn register_pending_setup(
     );
     state
         .db
-        .register_connection_setup(&pending.state, &pending.provider, &hash)
+        .register_connection_setup(
+            &pending.state,
+            &pending.provider,
+            &hash,
+            chrono::Utc::now() + chrono::Duration::minutes(10),
+        )
         .await
         .map_err(|e| sanitized_internal_error("Setup state", &e))
 }

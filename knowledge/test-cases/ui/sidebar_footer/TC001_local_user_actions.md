@@ -32,12 +32,12 @@ mode without presenting the local user as authenticated, and preserves the authe
 1. Open the no-auth stack on desktop and inspect the sidebar footer.
 2. Open the local identity menu with a pointer, then close and reopen it with the keyboard.
 3. Verify Profile is present and Personal access tokens and Sign out are absent.
-4. Open Connect via MCP and verify the server URL, configuration snippet, copy controls, and
-   no-auth guidance are visible.
+4. Open Connect your coding agent and verify the setup prompt targets this deployment, copy it, expand MCP configuration,
+   and verify no-auth guidance is visible without a sign-in action.
 5. Open the mobile navigation drawer and repeat steps 2–4.
 6. Open Settings > Features and verify MCP endpoint is not presented as an experimental toggle.
 7. Open the authenticated stack, sign in, and inspect the identity menu on desktop and mobile.
-8. Verify Profile, Personal access tokens, Connect via MCP, and Sign out are present and the MCP
+8. Verify Profile, Personal access tokens, Connect your coding agent, and Sign out are present and the MCP
    dialog retains its OAuth guidance.
 
 ## Expected Result

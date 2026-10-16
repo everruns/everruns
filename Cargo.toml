@@ -233,7 +233,7 @@ tokio-tungstenite = { version = "0.30", features = ["rustls-tls-native-roots"] }
 futures-util = "0.3"
 
 # Everruns SDK
-everruns-sdk = "0.2.0"
+everruns-sdk = "0.3.0"
 everruns-core = { path = "crates/core", version = "0.48.0", default-features = false }
 everruns-durable = { path = "crates/durable", version = "0.48.0" }
 everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.48.0", default-features = false }
