@@ -249,6 +249,10 @@ describe("Sidebar", () => {
 
     fireEvent.click(trigger);
     expect(screen.getByRole("menuitem", { name: "Profile" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Changelog" })).toHaveAttribute(
+      "href",
+      "https://everruns.com/docs/changelog/",
+    );
     expect(screen.getByRole("menuitem", { name: "Connect your coding agent" })).toBeInTheDocument();
     expect(
       screen.queryByRole("menuitem", { name: /personal access tokens/i }),
@@ -347,6 +351,28 @@ describe("Sidebar", () => {
 
     expect(open).toHaveBeenCalledWith("https://everruns.com/docs", "_blank", "noopener,noreferrer");
     open.mockRestore();
+  });
+
+  it("links the Changelog menu item to the public changelog", () => {
+    mockUseAuth.mockReturnValue({
+      user: { name: "Test User", email: "test@example.com", avatar_url: null },
+      requiresAuth: true,
+      isAuthenticated: true,
+      config: { mode: "password" },
+      isLoading: false,
+      logout: jest.fn(),
+      logoutPending: false,
+      createOrganization: undefined,
+    });
+
+    render(<Sidebar />);
+
+    fireEvent.click(screen.getByRole("button", { name: /test user/i }));
+    const changelog = screen.getByRole("menuitem", { name: "Changelog" });
+
+    expect(changelog).toHaveAttribute("href", "https://everruns.com/docs/changelog/");
+    expect(changelog).toHaveAttribute("target", "_blank");
+    expect(changelog).toHaveAttribute("rel", "noopener noreferrer");
   });
 
   it("renders all navigation items", () => {
