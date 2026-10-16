@@ -146,6 +146,22 @@ The API `Message` response includes `external_actor` (optional) so clients can d
 
 This is channel-agnostic, any future channel adapter (Discord, Teams) populates the same `ExternalActor` struct and gets the same LLM prefix behavior.
 
+## Manager workspace consent
+
+Workspace consent is bound to the initiating browser and organization, with a
+shared, single-use authorization transaction. Separate tabs keep independent
+transactions. A wrong browser does not invalidate the original consent. The
+server consumes a matching transaction before contacting Slack, including when
+consent is declined or the exchange fails; retry by starting fresh. An API
+restart does not reset pending or consumed state. Both the browser and the
+server expire abandoned consent after thirty minutes.
+
+The browser binding uses a host-only cookie with Secure, HttpOnly and Lax
+SameSite semantics so Slack's top-level redirect can return it. Serve the
+manager flow over HTTPS. See [manager consent](../../crates/server/src/channels/slack/provisioning/manager_app.rs),
+[callback](../../crates/server/src/channels/slack/install/manager_connect.rs), and
+[router regression coverage](../../crates/server/tests/domain/slack_install_integration_test.rs).
+
 ## Testing
 
 Integration tests in `crates/server/tests/slack_integration_test.rs`:

@@ -370,9 +370,14 @@ async fn stale_refresh_and_revocation_cannot_overwrite_reconnected_credentials()
 #[tokio::test]
 async fn setup_state_is_hash_bound_single_use_and_provider_scoped() {
     let db = Arc::new(StorageBackend::test_database());
-    db.register_connection_setup("opaque", "github", &[1; 32])
-        .await
-        .unwrap();
+    db.register_connection_setup(
+        "opaque",
+        "github",
+        &[1; 32],
+        chrono::Utc::now() + chrono::Duration::minutes(10),
+    )
+    .await
+    .unwrap();
     assert!(
         !db.consume_connection_setup("opaque", "other", &[1; 32])
             .await
@@ -397,6 +402,40 @@ async fn setup_state_is_hash_bound_single_use_and_provider_scoped() {
         wins += usize::from(task.await.unwrap());
     }
     assert_eq!(wins, 1);
+}
+
+#[tokio::test]
+async fn setup_state_enforces_its_server_expiry() {
+    let db = StorageBackend::test_database();
+    db.register_connection_setup(
+        "expired",
+        "slack_manager_connect",
+        &[1; 32],
+        chrono::Utc::now() - chrono::Duration::seconds(1),
+    )
+    .await
+    .unwrap();
+    assert!(
+        !db.consume_connection_setup("expired", "slack_manager_connect", &[1; 32])
+            .await
+            .unwrap()
+    );
+    db.register_connection_setup(
+        "pending",
+        "slack_manager_connect",
+        &[2; 32],
+        chrono::Utc::now() + chrono::Duration::minutes(30),
+    )
+    .await
+    .unwrap();
+    // An earlier pending transaction remains valid beyond the old ten-minute TTL.
+    sqlx::query("UPDATE connection_setup_states SET expires_at = expires_at - interval '11 minutes' WHERE state = 'pending'")
+        .execute(db.database().pool()).await.unwrap();
+    assert!(
+        db.consume_connection_setup("pending", "slack_manager_connect", &[2; 32])
+            .await
+            .unwrap()
+    );
 }
 
 #[tokio::test]
