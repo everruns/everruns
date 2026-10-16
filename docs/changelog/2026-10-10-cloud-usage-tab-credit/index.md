@@ -22,3 +22,7 @@ banner appears on every page when credit is low (under $1), below zero, or used
 up, asking members to contact an admin and admins to top up.
 
 See [Credit and the spend cap](/getting-started/cloud/#credit-and-the-spend-cap).
+
+## Update 2026-10-16
+
+Credit warnings can now be [dismissed per account and organization](/changelog/2026-10-16-cloud-credit-warning-dismissal/), with the choice saved across browsers and devices.
