@@ -1,5 +1,6 @@
 # UI test cases
 
+* [Coding-agent onboarding](coding_agent_onboarding/) - Setup prompts, OAuth approval inspection and provider prerequisites.
 * [Admin login](admin_login/) - Manual UI cases.
 * [Agent avatars](agent_avatars/) - Manual UI cases.
 * [Agent chat](agent_chat/) - Manual UI cases.

@@ -561,6 +561,13 @@ async fn test_live_session_sandbox_recovers_after_physical_loss() {
                 sandbox_is_absent = true;
                 break;
             }
+            // Daytona can keep a deleted sandbox in `destroying` for over a
+            // minute before it answers 404 (EVE-1280); the provider reports
+            // that as lost too.
+            Ok(info) if matches!(info.state.as_str(), "destroying" | "destroyed") => {
+                sandbox_is_absent = true;
+                break;
+            }
             Ok(_) => tokio::time::sleep(std::time::Duration::from_secs(1)).await,
             Err(err) => panic!("failed while waiting for physical sandbox deletion: {err}"),
         }

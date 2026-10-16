@@ -20,9 +20,29 @@
 // Decision: connection failures are reported with the full error chain.
 // `anyhow` `Display` prints only the outermost context, which hid the real
 // cause behind "Failed to connect to NATS".
+//
+// Decision: the first connection is retried a few times with backoff before
+// giving up. Callers fall back to in-memory event delivery and PG NOTIFY and
+// never retry NATS for the life of the process, so one refused connect while
+// NATS restarts alongside the control plane pinned the instance to the
+// fallback until its next restart (Sentry EVERRUNS-4). The retry is bounded
+// rather than async-nats' `retry_on_initial_connect`, which would hide a
+// misconfigured `NATS_URL` behind a client that never connects.
+
+use std::future::Future;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use async_nats::{Client, ConnectOptions, ServerAddr};
+use tracing::warn;
+
+/// Waits between initial connection attempts: five attempts over about 7.5s.
+const INITIAL_CONNECT_BACKOFF: [Duration; 4] = [
+    Duration::from_millis(500),
+    Duration::from_secs(1),
+    Duration::from_secs(2),
+    Duration::from_secs(4),
+];
 
 /// Username and password parsed out of a NATS URL's userinfo.
 type Credentials = (String, String);
@@ -110,14 +130,52 @@ pub async fn connect(url: &str) -> Result<Client> {
     if addrs.is_empty() {
         anyhow::bail!("NATS URL is empty");
     }
-    let mut options = ConnectOptions::new();
-    if let Some((user, pass)) = credentials {
-        options = options.user_and_password(user, pass);
+    let target = redact_server_urls(url);
+    retry_initial_connect(&INITIAL_CONNECT_BACKOFF, &target, || {
+        let mut options = ConnectOptions::new();
+        if let Some((user, pass)) = credentials.clone() {
+            options = options.user_and_password(user, pass);
+        }
+        let addrs = addrs.clone();
+        async move {
+            options
+                .connect(addrs)
+                .await
+                .context("NATS connection failed")
+        }
+    })
+    .await
+}
+
+/// Run `attempt` once, then again after each `backoff` delay while it fails.
+/// Returns the first success or the last error.
+async fn retry_initial_connect<T, F, Fut>(
+    backoff: &[Duration],
+    target: &str,
+    mut attempt: F,
+) -> Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T>>,
+{
+    let mut delays = backoff.iter();
+    loop {
+        match attempt().await {
+            Ok(value) => return Ok(value),
+            Err(error) => match delays.next() {
+                Some(delay) => {
+                    warn!(
+                        target_url = %target,
+                        error = %error_chain(&error),
+                        retry_in_ms = delay.as_millis() as u64,
+                        "NATS connection attempt failed, retrying"
+                    );
+                    tokio::time::sleep(*delay).await;
+                }
+                None => return Err(error),
+            },
+        }
     }
-    options
-        .connect(addrs)
-        .await
-        .context("NATS connection failed")
 }
 
 /// Render an error with its full context chain on one line for log fields.
@@ -128,6 +186,41 @@ pub fn error_chain(error: &anyhow::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    const NO_WAIT: [Duration; 4] = [Duration::ZERO; 4];
+
+    /// Regression test for Sentry EVERRUNS-4: a connect refused while NATS is
+    /// still starting must be retried instead of pinning the fallback.
+    #[tokio::test]
+    async fn initial_connect_retries_until_nats_accepts() {
+        let attempts = AtomicUsize::new(0);
+        let result = retry_initial_connect(&NO_WAIT, "nats://nats:4222", || {
+            let n = attempts.fetch_add(1, Ordering::SeqCst);
+            async move {
+                if n < 2 {
+                    anyhow::bail!("connection refused")
+                }
+                Ok(n)
+            }
+        })
+        .await;
+        assert_eq!(result.unwrap(), 2);
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn initial_connect_gives_up_after_the_backoff_schedule() {
+        let attempts = AtomicUsize::new(0);
+        let result: Result<()> = retry_initial_connect(&NO_WAIT, "nats://nats:4222", || {
+            attempts.fetch_add(1, Ordering::SeqCst);
+            async { anyhow::bail!("connection refused") }
+        })
+        .await;
+        assert_eq!(result.unwrap_err().to_string(), "connection refused");
+        assert_eq!(attempts.load(Ordering::SeqCst), NO_WAIT.len() + 1);
+    }
 
     #[test]
     fn credentials_absent_without_userinfo() {

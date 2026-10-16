@@ -49,7 +49,7 @@ jsonschema = { version = "0.58.1", default-features = false }
 serde_yaml.workspace = true
 toml = "1.1"
 # Portable archive support is selected independently of core defaults.
-zip = { version = "8", default-features = false, features = ["deflate"], optional = true }
+zip = { version = "9", default-features = false, features = ["deflate"], optional = true }
 
 # UUID and time
 uuid.workspace = true
