@@ -11,6 +11,17 @@
   workerd Worker/Durable Object tool-round-trip coverage. See
   [The Execution Kernel in a JavaScript Isolate](framework/wasm-kernel.md).
 
+* **Native Durable Object execution.** Share the session actor driver across native
+  workers and object executors, expose Framework/serve host seams, and qualify
+  alarm-driven native process recovery on workerd. See
+  [Native Execution with Durable Object Authority](framework/durable-object-native.md).
+
+* **Portable durable execution investigation.** Add proposals for a shared Rust
+  execution host across native actors and Durable Objects, with deployment
+  alternatives, failure semantics and qualification gates. See
+  [Portable Durable Agent Execution](framework/durable-execution-portability.md)
+  and [Durable Execution Guarantees](framework/durable-execution-guarantees.md).
+
 * **Coding-agent onboarding.** One setup prompt from the user menu, Agents empty
   state and onboarding Done, with deployment-aware MCP instructions and explicit
   provider prerequisites. See [Coding Agent Onboarding](ui/coding-agent-onboarding.md).

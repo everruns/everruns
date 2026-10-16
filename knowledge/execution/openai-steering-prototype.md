@@ -14,7 +14,7 @@ tags:
 
 Mid-turn user corrections are a concrete benefit unavailable through the current
 HTTP reason activity. The normal worker consumes persisted user messages from
-the session log at phase boundaries (see [the actor inbox](../../crates/worker/src/actor_runtime/inbox.rs)).
+the session log at phase boundaries (see [the actor inbox](../../crates/core/src/host/session_actor/inbox.rs)).
 A socket cannot follow a session across the stateless workers that lease it.
 
 The [runnable prototype](../../examples/openai-steering/README.md) therefore has

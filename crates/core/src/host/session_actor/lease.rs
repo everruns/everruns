@@ -45,8 +45,8 @@ use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::{MessageId, SessionId};
 use tokio::sync::{Notify, watch};
 
-use crate::actor_lease_store::{ActorFence, ActorLeaseStore, ActorRelease, LeasedActor};
-use crate::core::events::{Event, EventData};
+use super::store::{ActorFence, ActorLeaseStore, ActorRelease, LeasedActor};
+use crate::events::{Event, EventData};
 
 /// The message id of `event` when it is input that starts or steers a turn.
 pub(crate) fn turn_input(event: &Event) -> Option<MessageId> {
@@ -225,22 +225,34 @@ impl Lease {
     /// does a deleted session (`SessionNotFound`, EVE-1235); a store error
     /// does too once no renew succeeded for a whole TTL.
     pub(crate) async fn renew(&self) -> Result<()> {
-        let renewal = self
-            .store
-            .renew_actor_lease(
+        let started = Instant::now();
+        let renewal = tokio::time::timeout(
+            self.ttl.saturating_sub(self.since_renewed()),
+            self.store.renew_actor_lease(
                 self.session_id,
                 &self.holder,
                 self.fence,
                 self.ttl,
                 self.committed_cursor(),
-            )
-            .await;
+            ),
+        )
+        .await;
+        let renewal = match renewal {
+            Ok(result) => result,
+            Err(_) => {
+                self.lost.send_replace(true);
+                return Err(super::store::actor_lease_lost(
+                    self.session_id,
+                    "lease renewal timed out",
+                ));
+            }
+        };
         match renewal {
             Ok(Some(renewal)) => {
                 *self
                     .last_renewed
                     .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = Instant::now();
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = started;
                 self.inbox_seq
                     .fetch_max(renewal.inbox_seq, Ordering::SeqCst);
                 if let Some(position) = renewal.cancel_inbox_seq {

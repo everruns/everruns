@@ -14,8 +14,8 @@ use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::InputMessage;
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::host::{
-    AcceptedTurnInput, ActorRunner, InProcessRuntime, TurnBackend, TurnInput, TurnRequest,
-    TurnResult, TurnSteering, TurnSteeringPushError, TurnTicket,
+    AcceptedTurnInput, InProcessRuntime, TurnBackend, TurnInput, TurnRequest, TurnResult,
+    TurnSteering, TurnSteeringPushError, TurnTicket,
 };
 use everruns_core::turn::TurnStopReason;
 use tokio::sync::{OnceCell, mpsc, oneshot, watch};
@@ -1148,7 +1148,7 @@ impl SessionActor {
             // The session runs as an actor: each turn holds the session's
             // lease, so a process sharing these backends cannot run it at
             // the same time.
-            self.backend = Some(Arc::new(ActorRunner::new(runtime.clone(), leases)));
+            self.backend = Some(self.execution.turn_backend(runtime.clone(), leases)?);
             self.runtime = Some(runtime);
         }
         Ok(())

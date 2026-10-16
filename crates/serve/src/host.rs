@@ -235,6 +235,15 @@ fn now() -> String {
 impl Host {
     /// A host persisting under `data_dir` (dev, start), or in memory (eval).
     pub(crate) fn new(app: App, mode: Mode, data_dir: Option<PathBuf>) -> crate::Result<Arc<Self>> {
+        Self::with_engine(app, mode, data_dir, everruns::Engine::new())
+    }
+
+    pub(crate) fn with_engine(
+        app: App,
+        mode: Mode,
+        data_dir: Option<PathBuf>,
+        engine: everruns::Engine,
+    ) -> crate::Result<Arc<Self>> {
         let store = Arc::new(match &data_dir {
             Some(dir) => Store::open(&dir.join("serve.db"))?,
             None => Store::in_memory()?,
@@ -251,7 +260,7 @@ impl Host {
             build_id,
             notices,
             store,
-            engine: everruns::Engine::new(),
+            engine,
             data_dir,
             live: Mutex::new(HashMap::new()),
             approvals: Mutex::new(HashMap::new()),

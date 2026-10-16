@@ -27,6 +27,19 @@ option](#retired-the-facades-durable-option). The public [Framework
 Architecture](../../docs/framework/architecture.md) page diagrams these
 components for users.
 
+## External execution profiles
+
+The experimental `TurnBackendFactory` is injectable through the Engine builder;
+serve can accept that Engine. External hosts can also reconstruct ordinary
+Framework or registered serve agents with coherent host stores. The native
+platform and object executor share core's per-session actor driver; workers retain
+fleet polling. See [Native Execution with Durable Object Authority](durable-object-native.md)
+for the first external profile and its explicit qualification limits.
+
+Both actor runners stop renewal attempts when the last confirmed lease expires,
+including when a store call hangs. Canonical stale writes must still be rejected
+by the storage authority.
+
 ## Problem
 
 The framework and the platform already run the same turn. The facade's
@@ -94,7 +107,7 @@ port, `TurnInbox`, whose atomic take-or-close at a finishing reason is what
 splits steering from the next turn. `InProcessRuntime` implements the inbox
 over its steering queue, wake queue and in-memory parks; a worker running whole
 turns on a session lease implements its own over the session log
-([`actor_runtime/inbox.rs`](../../crates/worker/src/actor_runtime/inbox.rs)).
+([`actor_runtime/inbox.rs`](../../crates/core/src/host/session_actor/inbox.rs)).
 A fresh turn opens through the same host-generic entry step,
 [`turn_entry_plan`](../../crates/core/src/host/turn_loop.rs), on both.
 

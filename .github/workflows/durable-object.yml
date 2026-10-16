@@ -1,0 +1,54 @@
+name: Durable Object Recovery
+
+on:
+  pull_request:
+    paths:
+      - 'crates/core/**'
+      - 'crates/contracts/**'
+      - 'crates/everruns/**'
+      - 'crates/durable-object/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/durable-object.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'crates/core/**'
+      - 'crates/contracts/**'
+      - 'crates/everruns/**'
+      - 'crates/durable-object/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/durable-object.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CARGO_INCREMENTAL: '0'
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: durable-object
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install pinned Worker toolchain
+        working-directory: crates/durable-object/worker
+        run: npm ci
+      - name: Test authority transactions and races
+        working-directory: crates/durable-object/worker
+        run: npm test
+      - name: Test native host adapters
+        run: cargo test --locked -p everruns-durable-object
+      - name: Test native executor crash recovery on workerd
+        working-directory: crates/durable-object/worker
+        run: npm run test:recovery

@@ -1,0 +1,35 @@
+[package]
+name = "everruns-durable-object"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Experimental Durable Object session authority for native Everruns execution"
+readme = "README.md"
+# Qualified as a workspace integration before joining the release publish set.
+publish = false
+
+[dependencies]
+async-trait.workspace = true
+axum.workspace = true
+chrono.workspace = true
+everruns-contracts = { workspace = true, default-features = false }
+everruns-core = { workspace = true, default-features = false, features = ["actor-runtime"] }
+reqwest = { workspace = true, features = ["json"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+subtle = "2.6"
+tokio.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+everruns = { path = "../everruns", default-features = false, features = ["openai"] }
+everruns-llmsim = { path = "../drivers/llmsim", features = ["host"] }
+tower = { workspace = true, features = ["util"] }
+
+[lints]
+workspace = true

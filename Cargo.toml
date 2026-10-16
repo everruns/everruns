@@ -21,6 +21,7 @@ members = [
     "crates/cli",
     "crates/cli-contract",
     "crates/durable",
+    "crates/durable-object",
     "crates/ard",
     # Integrations, one feature module per vendor (everruns-integrations).
     "crates/integrations",

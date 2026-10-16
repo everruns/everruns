@@ -40,6 +40,7 @@ pub type MicroVm = Arc<dyn Fn(everruns::AgentBuilder) -> everruns::AgentBuilder 
 /// Builder for [`Server`].
 #[must_use]
 pub struct ServerBuilder {
+    engine: Option<everruns::Engine>,
     app: App,
     mode: Mode,
     data_dir: Option<PathBuf>,
@@ -49,6 +50,12 @@ pub struct ServerBuilder {
 }
 
 impl ServerBuilder {
+    /// Use an application-owned Engine, including its experimental execution backend.
+    pub fn engine(mut self, engine: everruns::Engine) -> Self {
+        self.engine = Some(engine);
+        self
+    }
+
     /// Persist under `dir`. Without it everything stays in memory.
     pub fn data_dir(mut self, dir: impl Into<PathBuf>) -> Self {
         self.data_dir = Some(dir.into());
@@ -84,6 +91,7 @@ impl ServerBuilder {
     /// unset, or when an agent does not resolve.
     pub fn build(self) -> crate::Result<Server> {
         let Self {
+            engine,
             app,
             mode,
             data_dir,
@@ -108,7 +116,7 @@ impl ServerBuilder {
             methods.extend(api_keys_from_env_value(&value));
         }
         let auth = Auth::new(methods, auth_verifier)?;
-        let host = Host::new(app.clone(), mode, data_dir)?;
+        let host = Host::with_engine(app.clone(), mode, data_dir, engine.unwrap_or_default())?;
         if let Some(microvm) = microvm {
             host.set_microvm(microvm);
         }
@@ -133,6 +141,7 @@ impl Server {
     /// Start building a server for `app` in `mode`.
     pub fn builder(app: App, mode: Mode) -> ServerBuilder {
         ServerBuilder {
+            engine: None,
             app,
             mode,
             data_dir: None,
@@ -166,6 +175,29 @@ impl Server {
     /// The build sessions are pinned to.
     pub fn build_id(&self) -> &str {
         &self.host.build_id
+    }
+
+    /// Reconstruct a registered agent for an authenticated external actor host.
+    ///
+    /// The hosting target owns activation authorization and supplies coherent
+    /// durable stores. Agent declarations, tools and provider resolution use
+    /// the same composition as the HTTP server. This is experimental host SPI.
+    pub async fn execution_host(
+        &self,
+        agent: &str,
+        session_id: everruns::SessionId,
+        backends: everruns_core::host::HostBackends,
+    ) -> crate::Result<everruns_core::host::InProcessRuntime> {
+        let entry = self
+            .host
+            .app
+            .inner
+            .agents
+            .iter()
+            .find(|entry| entry.name == agent)
+            .ok_or_else(|| anyhow!("unknown agent registration"))?;
+        let agent = self.host.build_agent(entry, None, false)?;
+        Ok(agent.execution_host(session_id, backends).await?)
     }
 
     /// serve's `/v1` wire API (plus `/health`), to merge into a target's

@@ -67,6 +67,8 @@ mod runtime_context;
 #[path = "host.rs"]
 mod runtime_host;
 mod script_run;
+#[cfg(feature = "actor-runtime")]
+pub mod session_actor;
 mod session_file_system_factory;
 pub mod session_services;
 mod turn_backend;
@@ -170,7 +172,8 @@ pub use session_services::{
     update_session_title_with_event,
 };
 pub use turn_backend::{
-    InProcessBackend, TurnBackend, TurnInput, TurnRequest, TurnScope, TurnTicket,
+    InProcessBackend, TurnBackend, TurnBackendFactory, TurnInput, TurnRequest, TurnScope,
+    TurnTicket,
 };
 pub use turn_loop::{PendingInput, TurnDrive, TurnInbox, TurnResult, drive_turn, turn_entry_plan};
 pub use turn_resume::{

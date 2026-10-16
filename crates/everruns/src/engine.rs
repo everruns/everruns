@@ -66,6 +66,11 @@ impl HarnessBindingStore for InMemoryHarnessBindingStore {
 /// Private binding between a [`Session`] and its owning engine.
 #[async_trait]
 pub(crate) trait SessionExecution: Send + Sync + fmt::Debug {
+    fn turn_backend(
+        &self,
+        runtime: everruns_core::host::InProcessRuntime,
+        leases: Arc<dyn everruns_core::host::SessionLeases>,
+    ) -> everruns_contracts::error::Result<Arc<dyn everruns_core::host::TurnBackend>>;
     fn session_id(&self) -> SessionId;
     fn agent_snapshot(&self) -> Agent;
     fn harness_snapshot(&self) -> Option<Harness>;
@@ -93,6 +98,7 @@ pub struct Engine {
 }
 
 struct EngineInner {
+    backend_factory: Option<Arc<dyn everruns_core::host::TurnBackendFactory>>,
     sessions: Mutex<HashMap<SessionId, EngineSessionEntry>>,
     memory_backends: Arc<OnceCell<Arc<EngineBackends>>>,
     observers: Arc<ObserverDispatcher>,
@@ -104,6 +110,7 @@ struct EngineInner {
 ///
 /// Stability: alpha.
 pub struct EngineBuilder {
+    backend_factory: Option<Arc<dyn everruns_core::host::TurnBackendFactory>>,
     listeners: Vec<ListenerRegistration>,
     observer_queue_capacity: usize,
 }
@@ -111,6 +118,7 @@ pub struct EngineBuilder {
 impl Default for EngineBuilder {
     fn default() -> Self {
         Self {
+            backend_factory: None,
             listeners: Vec::new(),
             observer_queue_capacity: OBSERVER_QUEUE_CAPACITY,
         }
@@ -118,6 +126,19 @@ impl Default for EngineBuilder {
 }
 
 impl EngineBuilder {
+    /// Select a custom session execution backend using the experimental host SPI.
+    ///
+    /// The default runs the shared runtime under the session store's lease.
+    /// A backend controls placement; agent tools, providers and policies remain
+    /// on the assembled runtime supplied to its factory.
+    pub fn execution_backend(
+        mut self,
+        factory: Arc<dyn everruns_core::host::TurnBackendFactory>,
+    ) -> Self {
+        self.backend_factory = Some(factory);
+        self
+    }
+
     /// Register an event listener for every session this Engine runs.
     pub fn listener(mut self, listener: impl EventListener) -> Self {
         self.listeners
@@ -147,6 +168,7 @@ impl EngineBuilder {
     pub fn build(self) -> Engine {
         Engine {
             inner: Arc::new(EngineInner {
+                backend_factory: self.backend_factory,
                 sessions: Mutex::new(HashMap::new()),
                 memory_backends: Arc::new(OnceCell::new()),
                 observers: ObserverDispatcher::new(self.listeners, self.observer_queue_capacity),
@@ -663,6 +685,19 @@ impl fmt::Debug for EngineSessionExecution {
 
 #[async_trait]
 impl SessionExecution for EngineSessionExecution {
+    fn turn_backend(
+        &self,
+        runtime: everruns_core::host::InProcessRuntime,
+        leases: Arc<dyn everruns_core::host::SessionLeases>,
+    ) -> everruns_contracts::error::Result<Arc<dyn everruns_core::host::TurnBackend>> {
+        match &self.engine.inner.backend_factory {
+            Some(factory) => factory.create(runtime, leases),
+            None => Ok(Arc::new(everruns_core::host::ActorRunner::new(
+                runtime, leases,
+            ))),
+        }
+    }
+
     fn session_id(&self) -> SessionId {
         self.session_id
     }

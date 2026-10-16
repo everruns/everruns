@@ -47,10 +47,10 @@ use everruns_contracts::user_facing_error::{
 
 use super::inbox::ActorInbox;
 use super::lease::{Lease, renew_loop, sequence, turn_input};
-use super::{ActorHosts, ActorRuntime, HostTurn, TurnSignals};
-use crate::actor_lease_store::{ActorRelease, LeasedActor};
-use crate::core::RuntimeMessage;
-use crate::core::events::{
+use super::store::{ActorRelease, LeasedActor};
+use super::{ActorHosts, HostTurn, SessionActorDriver, TurnSignals};
+use crate::RuntimeMessage;
+use crate::events::{
     Event, EventContext, EventData, EventRequest, InputMessageData, OutputMessageCompletedData,
     ToolCompletedData, TurnCancelledData,
 };
@@ -79,7 +79,7 @@ impl Drop for AbortOnDrop {
     }
 }
 
-impl<H: ActorHosts> ActorRuntime<H> {
+impl<H: ActorHosts> SessionActorDriver<H> {
     /// Run the leased `actor` to the end of one turn and release it.
     pub async fn run_actor(&self, actor: LeasedActor) {
         let lease = Arc::new(Lease::new(
@@ -161,7 +161,7 @@ impl<H: ActorHosts> ActorRuntime<H> {
         let tail = lease.read_tail().await?;
         let started_at = tail
             .first()
-            .filter(|event| event.event_type == crate::core::TURN_STARTED)
+            .filter(|event| event.event_type == crate::TURN_STARTED)
             .and_then(|event| event.sequence)
             .map(i64::from);
         let open =
@@ -339,7 +339,7 @@ impl<H: ActorHosts> ActorRuntime<H> {
         }
         // Every way the drive ended but a lost lease or a deleted session
         // waits for the turn's queued events first. A queued store that gave
-        // up left a gap in the log (see `crate::write_behind`): the turn ends
+        // up left a gap in the host's write-behind log: the turn ends
         // as on a retryable failure, without committing its input or writing
         // anything more, and the next holder resumes from the log.
         let flushed = match &stopped {
@@ -564,15 +564,15 @@ async fn settle_pause_for_input<A: RuntimeHostAdapter>(
     for call in paused {
         // The same results the server's intake records for a waiting session.
         let completed = if call.name == everruns_contracts::ASK_USER_TOOL_NAME {
-            let result = crate::core::builtins::ask_user::AskUserResult {
-                status: crate::core::builtins::ask_user::AskUserStatus::Cancelled,
-                answered_by: crate::core::builtins::ask_user::AskUserAnsweredBy::Unattended,
+            let result = crate::builtins::ask_user::AskUserResult {
+                status: crate::builtins::ask_user::AskUserStatus::Cancelled,
+                answered_by: crate::builtins::ask_user::AskUserAnsweredBy::Unattended,
                 answers: Vec::new(),
             };
             ToolCompletedData::success(
                 call.id,
                 call.name,
-                vec![crate::core::ContentPart::tool_result_text(
+                vec![crate::ContentPart::tool_result_text(
                     &serde_json::to_value(result).unwrap_or_default(),
                 )],
                 None,
@@ -633,10 +633,10 @@ async fn assistant_error<A: RuntimeHostAdapter>(
 fn is_turn_terminal(event_type: &str) -> bool {
     matches!(
         event_type,
-        crate::core::events::TURN_COMPLETED
-            | crate::core::events::TURN_FAILED
-            | crate::core::events::TURN_CANCELLED
-            | crate::core::events::TURN_SEALED
+        crate::events::TURN_COMPLETED
+            | crate::events::TURN_FAILED
+            | crate::events::TURN_CANCELLED
+            | crate::events::TURN_SEALED
     )
 }
 
@@ -645,7 +645,7 @@ fn is_turn_terminal(event_type: &str) -> bool {
 fn closed_input(tail: &[Event]) -> Option<MessageId> {
     let started = tail
         .first()
-        .filter(|event| event.event_type == crate::core::TURN_STARTED)?;
+        .filter(|event| event.event_type == crate::TURN_STARTED)?;
     tail.iter()
         .any(|event| is_turn_terminal(&event.event_type))
         .then_some(started.context.input_message_id)
@@ -656,7 +656,7 @@ fn closed_input(tail: &[Event]) -> Option<MessageId> {
 /// `session.idled` after it: its holder died before idling the session.
 fn unidled_turn(tail: &[Event]) -> Option<(TurnId, MessageId)> {
     for event in tail.iter().rev() {
-        if event.event_type == crate::core::events::SESSION_IDLED {
+        if event.event_type == crate::events::SESSION_IDLED {
             return None;
         }
         if is_turn_terminal(&event.event_type) {
