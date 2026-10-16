@@ -19,6 +19,7 @@ import {
   unpinSession,
   archiveSession,
   unarchiveSession,
+  type SessionListFilters,
 } from "@/lib/api/sessions";
 import { DEFAULT_EXCLUDED_EVENTS, getSseUrl, listEventsPaginated } from "@/lib/api/events";
 import { queryKeys } from "@/lib/query-keys";
@@ -53,14 +54,20 @@ import { useResourceOrgFallback } from "./use-resource-org-fallback";
  */
 export function useSessions(
   agentId?: string,
-  params?: PaginationParams,
+  params?: PaginationParams & Pick<SessionListFilters, "includeArchived">,
   options: { enabled?: boolean } = {},
 ) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
   const query = useQuery({
-    queryKey: queryKeys.sessions.list(org, agentId, params?.offset ?? 0, params?.limit ?? 20),
+    queryKey: queryKeys.sessions.list(
+      org,
+      agentId,
+      params?.offset ?? 0,
+      params?.limit ?? 20,
+      params?.includeArchived ?? false,
+    ),
     queryFn: () => listSessions({ ...params, agentId }),
     enabled: !!org && (options.enabled ?? true),
   });

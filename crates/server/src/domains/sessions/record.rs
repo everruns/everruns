@@ -432,6 +432,10 @@ pub struct Session {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "Here is a Q3 plan covering the three pillars we discussed...")]
     pub output_preview: Option<String>,
+    /// Timestamp of the latest input or completed assistant message.
+    /// Populated on session lists; session edits and tool events do not advance it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_message_at: Option<DateTime<Utc>>,
     /// Tags for organizing and filtering sessions.
     #[serde(default)]
     #[schema(example = json!(["marketing", "q3", "draft"]))]
@@ -639,6 +643,7 @@ impl Session {
             locale: execution.locale,
             preview: None,
             output_preview: None,
+            last_message_at: None,
             tags: execution.tags,
             model_id: execution.model_id,
             capabilities: execution.capabilities,

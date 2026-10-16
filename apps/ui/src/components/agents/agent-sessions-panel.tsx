@@ -205,6 +205,8 @@ function AllSessions({
   const { data: sessionsResponse, isLoading } = useSessions(agentId, {
     offset,
     limit: PAGE_SIZE,
+    // The agent's session_count includes archived sessions too.
+    includeArchived: true,
   });
   const { data: models } = useModels();
   const sessions = sessionsResponse?.data ?? [];
@@ -236,6 +238,9 @@ function AllSessions({
 
   return (
     <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">
+        {totalSessions} {totalSessions === 1 ? "session" : "sessions"} · Includes archived sessions
+      </p>
       <div className="space-y-2">
         {sessions.map((session) => (
           <SessionCard

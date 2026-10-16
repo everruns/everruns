@@ -521,7 +521,11 @@ impl Database {
         let limit_idx = plan.next_param_idx;
         let offset_idx = plan.next_param_idx + 1;
         let select_sql = format!(
-            r#"SELECT {SESSION_COLUMNS}
+            r#"SELECT {SESSION_COLUMNS},
+                (SELECT e.ts FROM events e
+                 WHERE e.session_id = sessions.id
+                   AND e.event_type IN ('input.message', 'output.message.completed')
+                 ORDER BY e.sequence DESC LIMIT 1) AS last_message_at
             FROM sessions {where_clause}
             ORDER BY {order_by}
             LIMIT ${limit_idx} OFFSET ${offset_idx}"#,

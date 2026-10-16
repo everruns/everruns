@@ -20979,6 +20979,12 @@ export interface components {
         /** @description Outcome of the latest terminal turn, distinguishing cancellation from failure. */
         last_turn_status?: string | null;
         /**
+         * Format: date-time
+         * @description Timestamp of the latest input or completed assistant message.
+         *     Populated on session lists; session edits and tool events do not advance it.
+         */
+        last_message_at?: string | null;
+        /**
          * @description Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).
          * @example en-US
          */
@@ -21576,6 +21582,12 @@ export interface components {
         is_pinned?: boolean | null;
         /** @description Outcome of the latest terminal turn, distinguishing cancellation from failure. */
         last_turn_status?: string | null;
+        /**
+         * Format: date-time
+         * @description Timestamp of the latest input or completed assistant message.
+         *     Populated on session lists; session edits and tool events do not advance it.
+         */
+        last_message_at?: string | null;
         /**
          * @description Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).
          * @example en-US
@@ -24648,6 +24660,12 @@ export interface components {
       is_pinned?: boolean | null;
       /** @description Outcome of the latest terminal turn, distinguishing cancellation from failure. */
       last_turn_status?: string | null;
+      /**
+       * Format: date-time
+       * @description Timestamp of the latest input or completed assistant message.
+       *     Populated on session lists; session edits and tool events do not advance it.
+       */
+      last_message_at?: string | null;
       /**
        * @description Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).
        * @example en-US
@@ -30378,6 +30396,12 @@ export interface components {
       is_pinned?: boolean | null;
       /** @description Outcome of the latest terminal turn, distinguishing cancellation from failure. */
       last_turn_status?: string | null;
+      /**
+       * Format: date-time
+       * @description Timestamp of the latest input or completed assistant message.
+       *     Populated on session lists; session edits and tool events do not advance it.
+       */
+      last_message_at?: string | null;
       /**
        * @description Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).
        * @example en-US
