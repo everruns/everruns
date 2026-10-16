@@ -145,7 +145,7 @@ fn extract_zip_archive(data: &[u8]) -> Result<ExtractedArchive> {
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
-        let raw_name = file.name().to_string();
+        let raw_name = file.name()?.to_string();
 
         if file.is_dir() {
             continue;
@@ -225,7 +225,9 @@ fn detect_top_level_prefix(
 
     for i in 0..archive.len() {
         if let Ok(file) = archive.by_index(i) {
-            let name = file.name().to_string();
+            let Ok(name) = file.name().map(|name| name.to_string()) else {
+                continue;
+            };
             if let Some(slash_pos) = name.find('/') {
                 let dir = &name[..=slash_pos];
                 match &first_dir {

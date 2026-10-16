@@ -308,6 +308,27 @@ async fn daytona_provider_mounts_recovery_volume_for_logical_session() {
 
 #[tokio::test]
 async fn daytona_provider_replaces_lost_instance_and_restores_workspace() {
+    assert_lost_instance_is_replaced(
+        ResponseTemplate::new(404).set_body_string("sandbox not found"),
+    )
+    .await;
+}
+
+// Daytona keeps a deleted sandbox readable in `destroying` (and briefly
+// `destroyed`) before it answers 404; the nightly live test saw it linger past
+// a minute (EVE-1280). Such a sandbox is gone, not paused.
+#[tokio::test]
+async fn daytona_provider_treats_destroying_instance_as_lost() {
+    for state in ["destroying", "destroyed"] {
+        assert_lost_instance_is_replaced(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "sb_lost",
+            "state": state
+        })))
+        .await;
+    }
+}
+
+async fn assert_lost_instance_is_replaced(lost_response: ResponseTemplate) {
     let mock_server = MockServer::start().await;
     let context = test_context();
     let mut config = test_config(&mock_server);
@@ -317,7 +338,7 @@ async fn daytona_provider_replaces_lost_instance_and_restores_workspace() {
 
     Mock::given(method("GET"))
         .and(path("/sandbox/sb_lost"))
-        .respond_with(ResponseTemplate::new(404).set_body_string("sandbox not found"))
+        .respond_with(lost_response)
         .mount(&mock_server)
         .await;
     Mock::given(method("POST"))

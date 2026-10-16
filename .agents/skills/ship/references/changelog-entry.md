@@ -1,14 +1,18 @@
 # Changelog entry
 
 The public changelog at <https://everruns.com/docs/changelog/> gets one entry per **completed**
-user-facing feature, notable improvement, user-visible fix, breaking change, deprecation, or
+user-facing feature, notable improvement, meaningful user-visible fix, breaking change, deprecation, or
 significant Cloud incident, across every product (Cloud, self-hosted Platform, Framework, SDKs,
 CLI, Yolop, Mira, Bashkit). Intent, taxonomy and rules:
 [`knowledge/docs/changelog.md`](../../../../knowledge/docs/changelog.md).
 
 ## Does this PR owe an entry?
 
-- It finishes something a user of the UI, API, CLI or crates will notice: **yes**.
+- It completes a meaningful change to what users can do, how the product behaves, or what
+  users must change: **yes**, if it meets the linked policy's impact criteria.
+- Cosmetic polish (including docs badge colors), typo fixes, routine documentation upkeep:
+  **no** (`no entry: <reason>`). Visibility alone is insufficient. Substantial usability or
+  accessibility fixes can qualify under the policy.
 - It is one step of a larger piece of work: **no**; the PR body's `Changelog:` line names the
   program or Linear issue so the PR that finishes it knows it owes the entry.
 - Refactor, CI, dependencies, tests, internal docs, design docs: **no** (`not user-facing`).
@@ -16,7 +20,10 @@ CLI, Yolop, Mira, Bashkit). Intent, taxonomy and rules:
   (`grep -ril "<feature name or slug>" docs/changelog/`): append `## Update YYYY-MM-DD`, or set
   `supersededBy: <folder>` when replaced. Fix moved links in place.
 
-Every PR body carries one line: `Changelog: <entry path> | part of <program> | not user-facing`.
+Assign significance only after the change qualifies; `minor` does not bypass eligibility.
+
+Every PR body carries one line:
+`Changelog: <entry path> | part of <program> | not user-facing | no entry: <reason>`.
 
 ## Writing it
 
