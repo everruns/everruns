@@ -1,6 +1,5 @@
 export const CODING_AGENT_SETUP_URL = "https://everruns.com/agent-setup/prompt.md";
 export const CODING_AGENT_MANUAL_URL = "https://everruns.com/docs/getting-started/use-in-ai-tools/";
-export const CONNECTED_AI_CLIENTS_HREF = "/settings/agent-experience#connected-ai-clients";
 
 // Carry the deployment explicitly: the distributed plugin defaults to Cloud,
 // while this dialog also ships in self-hosted and local installations.

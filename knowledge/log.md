@@ -2,6 +2,11 @@
 
 ## 2026-10-16
 
+* **Coding-agent dialog finalized.** Focus setup on one copyable prompt and
+  supported agent marks; keep approval management in Settings. The public
+  changelog describes only the approved final design. See
+  [Coding Agent Onboarding](ui/coding-agent-onboarding.md).
+
 * **Public changelog eligibility.** Require meaningful user impact; exclude cosmetic
   polish, typo fixes, and routine docs upkeep. Apply significance only after eligibility
   and record a reason when skipping a visible change. See [Public Changelog](docs/changelog.md).
