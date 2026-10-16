@@ -11,6 +11,9 @@
   polish, typo fixes, and routine docs upkeep. Apply significance only after eligibility
   and record a reason when skipping a visible change. See [Public Changelog](docs/changelog.md).
 
+* **Agent failure investigation.** Added failure-time filtering, recovered-session history,
+  outcome badges and terminal-event links into Trace. See [Agents Home](ui/agents-home.md).
+
 * **Provider drivers through host fetch.** Shared OpenAI-compatible and
   OpenRouter chat protocols run in WASM with host HTTP, portable deadlines and
   workerd Worker/Durable Object tool-round-trip coverage. See

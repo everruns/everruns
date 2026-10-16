@@ -498,6 +498,9 @@ pub struct Session {
     /// This is the value the sessions list groups by and the facet rail counts.
     #[serde(default)]
     pub activity: SessionActivity,
+    /// Outcome of the latest terminal turn, distinguishing cancellation from failure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_turn_status: Option<String>,
     /// Generated one-sentence description of what the run did, and where it
     /// failed (EVE-867). Absent until a terminal turn has been summarised, and
     /// always absent for chat threads and for deployments with no utility LLM,
@@ -650,6 +653,7 @@ impl Session {
             status,
             source: SessionSource::Unknown,
             activity,
+            last_turn_status: None,
             // Summaries are generated after a terminal turn, so a session
             // projected from an execution snapshot never carries one.
             run_summary: None,

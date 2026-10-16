@@ -16,10 +16,13 @@ import {
 import { cn, shortenId } from "@/lib/utils";
 import { formatRelativeTime, formatTokens } from "@/lib/formatting";
 import { useLocale } from "@/providers/locale-provider";
-import type { Session, SessionStatus, ModelWithProvider, TokenUsage } from "@/lib/api/types";
+import type { Session, ModelWithProvider, TokenUsage } from "@/lib/api/types";
 import type { SessionExportFormat } from "@/lib/api/sessions";
 import { getEntityReferenceClassName, getEntityReferenceLabel } from "@/lib/entity-lifecycle";
 import { joinTags } from "@/lib/tags";
+import { sessionOutcome } from "@/lib/session-outcome";
+import Link from "next/link";
+import { failureTraceHref } from "@/lib/agent-failures";
 
 /**
  * Format total tokens from usage
@@ -30,6 +33,7 @@ function formatTotalTokens(usage: TokenUsage): string {
 }
 
 export interface SessionCardProps {
+  failure?: { count: number; at: string; error?: string | null; sequence: number };
   /** The session to display */
   session: Session;
   /** Optional agent name to display (for org-level session lists) */
@@ -56,25 +60,6 @@ function truncateToLines(text: string, lines: number = 2): string {
   const maxChars = lines * 60;
   if (text.length <= maxChars) return text;
   return text.slice(0, maxChars).trim() + "...";
-}
-
-/**
- * Get display status info for a session status
- */
-function getStatusInfo(status: SessionStatus): {
-  label: string;
-  variant: "default" | "secondary" | "outline";
-  isRunning: boolean;
-} {
-  switch (status) {
-    case "active":
-      return { label: "Running", variant: "default", isRunning: true };
-    case "idle":
-      return { label: "Idle", variant: "secondary", isRunning: false };
-    case "started":
-    default:
-      return { label: "New", variant: "outline", isRunning: false };
-  }
 }
 
 /**
@@ -143,9 +128,10 @@ export function SessionCard({
   summary,
   onTogglePin,
   onExport,
+  failure,
 }: SessionCardProps) {
   const { t } = useLocale();
-  const statusInfo = getStatusInfo(session.status);
+  const statusInfo = sessionOutcome(session);
   const displayTitle = session.title || `Session ${shortenId(session.id)}`;
   // Show preview from session (first user message), explicit summary prop, or nothing
   const inputPreview = summary ?? session.preview;
@@ -170,9 +156,17 @@ export function SessionCard({
       }
       inlineBadges={
         <>
-          <Badge variant={statusInfo.variant} className="flex-shrink-0 text-xs">
+          <Badge
+            variant={statusInfo.variant}
+            className={cn("flex-shrink-0 text-xs", statusInfo.className)}
+          >
             {statusInfo.label}
           </Badge>
+          {session.archived_at && (
+            <Badge variant="outline" className="text-muted-foreground">
+              Archived
+            </Badge>
+          )}
           {agentName && (
             <Badge variant="outline" className="flex-shrink-0 text-xs">
               <span className={getEntityReferenceClassName(agentStatus)}>
@@ -250,13 +244,13 @@ export function SessionCard({
         </p>
       )}
       {/* Output preview: last assistant response */}
-      {outputPreview && (
+      {outputPreview && !failure && session.activity !== "failed" && (
         <p className="text-sm text-muted-foreground/70 mt-0.5 line-clamp-1 italic">
           {truncateToLines(outputPreview, 1)}
         </p>
       )}
       <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-        <span>{formatRelativeTime(session.created_at)}</span>
+        <span>Created {formatRelativeTime(session.created_at)}</span>
         {session.usage && (session.usage.input_tokens > 0 || session.usage.output_tokens > 0) && (
           <span className="flex items-center gap-1" title="Token usage">
             <Zap className="w-3 h-3" />
@@ -270,6 +264,26 @@ export function SessionCard({
           </span>
         )}
       </div>
+      {failure && (
+        <div className="mt-3 flex flex-wrap items-center gap-3 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium text-destructive">
+              {failure.count} failed {failure.count === 1 ? "turn" : "turns"} ·{" "}
+              {new Date(failure.at).toLocaleString()}
+              {failure.count > 1 && " · latest failure"}
+            </p>
+            <p className="mt-1 line-clamp-2 break-words" title={failure.error ?? undefined}>
+              {failure.error?.trim() || "No error details recorded"}
+            </p>
+          </div>
+          <Link
+            href={failureTraceHref(session.id, failure.sequence)}
+            className="shrink-0 text-destructive underline underline-offset-2"
+          >
+            View failure
+          </Link>
+        </div>
+      )}
     </EntityCard>
   );
 }

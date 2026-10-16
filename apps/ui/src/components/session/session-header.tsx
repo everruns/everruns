@@ -27,6 +27,7 @@ import {
 } from "@/lib/entity-lifecycle";
 import { formatCompactNumber, formatTokens } from "@/lib/formatting";
 import { cn, shortenId } from "@/lib/utils";
+import { sessionOutcome } from "@/lib/session-outcome";
 import {
   Activity,
   Coins,
@@ -117,24 +118,19 @@ function SessionTraceBadge({ href, label }: { href?: string; label?: string }) {
   );
 }
 
-export function SessionStatusBadge({ status }: { status: SessionStatus | undefined }) {
-  if (status === "active") {
-    return <Badge variant="default">Processing...</Badge>;
-  }
-
-  if (status === "idle") {
-    return <Badge variant="secondary">Ready</Badge>;
-  }
-
-  if (status === "waiting_for_tool_results") {
-    return <Badge variant="outline">Waiting on tools</Badge>;
-  }
-
-  if (status === "started") {
-    return <Badge variant="outline">New</Badge>;
-  }
-
-  return null;
+export function SessionStatusBadge({
+  status,
+  session,
+}: {
+  status: SessionStatus | undefined;
+  session?: Session;
+}) {
+  const outcome = sessionOutcome(session ?? { status: status ?? "started" }, status);
+  return (
+    <Badge variant={outcome.variant} className={outcome.className}>
+      {outcome.label}
+    </Badge>
+  );
 }
 
 /**
@@ -393,7 +389,7 @@ export function SessionHeader({
 
           <SessionTraceBadge href={sessionTraceUrl} label={sessionTraceLabel} />
 
-          <SessionStatusBadge status={effectiveStatus} />
+          <SessionStatusBadge status={effectiveStatus} session={session} />
 
           <SessionRecordingActions
             sessionId={sessionId}

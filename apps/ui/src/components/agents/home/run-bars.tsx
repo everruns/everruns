@@ -16,24 +16,25 @@ export function RunBars({
   label: string;
   className?: string;
 }) {
-  const max = Math.max(1, ...buckets.map((bucket) => bucket.runs));
+  const max = Math.max(1, ...buckets.map((bucket) => Math.max(bucket.runs, bucket.failed)));
   return (
     <div role="img" aria-label={label} className={cn("flex h-6 items-end gap-px", className)}>
       {buckets.map((bucket, index) => {
-        const height = bucket.runs === 0 ? 0 : Math.max(18, Math.round((bucket.runs / max) * 100));
+        const count = Math.max(bucket.runs, bucket.failed);
+        const height = count === 0 ? 0 : Math.max(18, Math.round((count / max) * 100));
         return (
           <span
             // Buckets are positional; the index is their identity.
             key={index}
             className={cn(
               "w-1 flex-1",
-              bucket.runs === 0
+              count === 0
                 ? "h-px bg-border"
                 : bucket.failed > 0
                   ? "bg-destructive"
                   : "bg-muted-foreground/55",
             )}
-            style={bucket.runs === 0 ? undefined : { height: `${height}%` }}
+            style={count === 0 ? undefined : { height: `${height}%` }}
           />
         );
       })}

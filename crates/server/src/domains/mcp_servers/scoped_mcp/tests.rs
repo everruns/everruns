@@ -430,6 +430,7 @@ pub(crate) fn test_session(
         playground_user_id: None,
         source: Default::default(),
         activity: Default::default(),
+        last_turn_status: None,
         run_summary: None,
         id: session_id,
         // Default 1:1 session<->workspace: workspace.id mirrors the session id.

@@ -81,6 +81,22 @@ The derivation exists twice, in Rust
 because the list filters in the database while other callers derive in
 Rust. They are pinned to one truth table by test; change them together.
 
+## Failure investigation
+
+Agent failure counts open a separate, bounded failure-history read, implemented by
+[`ListAgentFailures`](../../crates/server/src/domains/agents/failures/mod.rs). It filters the timestamp
+of `turn.failed`, not session creation time or latest activity. The activity snapshot's bounds
+are carried through navigation, and archived sessions remain included because the activity read
+includes them. Totals and pagination share a database snapshot and report failed turns and
+distinct affected sessions separately. The row includes the latest matching error per session;
+the event sequence is a durable link to the failure's Trace turn even after later turns run.
+
+The session card and recording header show execution in progress first, otherwise the latest
+terminal outcome. Cancellation is displayed as Stopped rather than failure. Recovery changes
+that current-outcome badge without erasing earlier failure history. The error excerpt belongs
+to the selected failed turn: neither a later run summary nor an earlier successful assistant
+message substitutes for it. Missing error detail is explicitly named.
+
 ## Run summary: the sentence the header shows
 
 `SessionActivity` says *whether* a run failed. `sessions.run_summary` says
