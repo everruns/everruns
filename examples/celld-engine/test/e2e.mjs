@@ -44,8 +44,11 @@ const model = createServer((req, res) => {
               },
             ],
           };
-    res.setHeader("content-type", "application/json");
-    res.end(JSON.stringify({ choices: [{ message }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }));
+    res.setHeader("content-type", "text/event-stream");
+    const delta = message.tool_calls
+      ? { tool_calls: message.tool_calls.map((call, index) => ({ index, ...call })) }
+      : { content: message.content };
+    res.end(`data: ${JSON.stringify({ choices: [{ delta, finish_reason: message.tool_calls ? "tool_calls" : "stop" }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } })}\n\ndata: [DONE]\n\n`);
   });
 });
 await new Promise((r) => model.listen(0, "127.0.0.1", r));

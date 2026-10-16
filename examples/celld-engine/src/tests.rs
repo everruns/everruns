@@ -7,12 +7,14 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use everruns_core::events::EventData;
 use everruns_contracts::error::Result;
+use everruns_core::events::EventData;
 use serde_json::{Value, json};
 
 use crate::cell::{Cell, Next, Progress, Store};
-use crate::openai::{ChatCompletions, Transport};
+use everruns_contracts::http_transport::{
+    HeaderMap, HttpError, HttpRequest, HttpResponse, HttpTransport, StatusCode,
+};
 
 #[derive(Default)]
 struct Rows {
@@ -96,37 +98,42 @@ struct Scripted {
 }
 
 #[async_trait]
-impl Transport for Scripted {
-    async fn post_json(&self, url: &str, bearer: &str, body: Value) -> Result<Value> {
-        assert!(url.ends_with("/chat/completions"));
-        assert_eq!(bearer, "test-key");
+impl HttpTransport for Scripted {
+    async fn execute(&self, request: HttpRequest) -> std::result::Result<HttpResponse, HttpError> {
+        assert!(request.uri().path().ends_with("/chat/completions"));
+        assert_eq!(request.headers()["authorization"], "Bearer test-key");
+        let body: Value = serde_json::from_slice(request.body()).unwrap();
         self.calls.fetch_add(1, Ordering::SeqCst);
         everruns_contracts::rt::sleep(self.delay).await;
         let messages = body["messages"].as_array().unwrap();
         let answered = messages.iter().any(|m| m["role"] == "tool");
-        if answered {
-            Ok(
-                json!({"choices":[{"message":{"role":"assistant","content":"celld runs Durable Objects."}}]}),
-            )
+        let delta = if answered {
+            json!({"content":"celld runs Durable Objects."})
         } else {
             assert_eq!(body["tools"][0]["function"]["name"], "look_up");
-            Ok(
-                json!({"choices":[{"message":{"role":"assistant","content":null,"tool_calls":[
-                    {"id":"call_1","type":"function","function":{"name":"look_up","arguments":"{\"topic\":\"celld\"}"}}
-                ]}}]}),
-            )
-        }
+            json!({"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"look_up","arguments":"{\"topic\":\"celld\"}"}}]})
+        };
+        let finish = if answered { "stop" } else { "tool_calls" };
+        let text = format!(
+            "data: {}\n\ndata: [DONE]\n\n",
+            json!({"choices":[{"delta":delta,"finish_reason":finish}]})
+        );
+        Ok(HttpResponse::new(
+            StatusCode::OK,
+            HeaderMap::new(),
+            Box::pin(futures::stream::once(async move { Ok(text.into()) })),
+        ))
     }
 }
 
 fn cell(store: &Arc<MemStore>, transport: &Arc<Scripted>) -> Cell<MemStore> {
     Cell {
         store: store.clone(),
-        driver: Arc::new(ChatCompletions {
-            base_url: "http://model.test/v1/".into(),
-            api_key: "test-key".into(),
-            transport: transport.clone(),
-        }),
+        driver: crate::openai::driver(
+            "http://model.test/v1/".into(),
+            "test-key".into(),
+            transport.clone(),
+        ),
         model: "test-model".into(),
         tool_delay: Duration::from_millis(200),
     }

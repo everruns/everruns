@@ -14,7 +14,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 async-trait = "0.1"
-everruns-contracts = { path = "../../crates/contracts", default-features = false }
+everruns-contracts = { path = "../../crates/contracts", default-features = false, features = ["http"] }
 futures = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

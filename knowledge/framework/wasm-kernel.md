@@ -32,7 +32,7 @@ own storage.
 
 - **Port the kernel, not the host.** `everruns-contracts` and `everruns-core`
   with default features disabled, including core’s portable `engine` feature,
-  build for wasm32. The host, stores, HTTP drivers and the server stay native. The
+  build for wasm32. The host, stores and server stay native. The
   engine's `tokio` dependency is narrowed to `rt`, `sync`, `time` and
   `macros`; `getrandom` and `uuid` take their JavaScript backends on that
   target only.
@@ -46,6 +46,17 @@ own storage.
   use the multi-thread runtime. JavaScript futures are `!Send`; on the
   single-threaded wasm target, `rt::AssertSend` (and `worker::send` in the
   example) marks them `Send` there and only there.
+- **Provider protocols use host-owned HTTP.** The shared Chat Completions and
+  Responses protocols and OpenAI/OpenRouter chat drivers accept an injected
+  transport on native and wasm32. Only the native default links sockets/TLS;
+  the isolate host supplies fetch, incremental response bytes, redirect/egress
+  policy and cancellation. Protocol encoding, options, error mapping and retry
+  semantics remain shared. The celld example uses this boundary rather than a
+  local Chat Completions implementation. The
+  [workerd integration](../../tests/wasm-providers/README.md) proves model/tool/model
+  exchanges in both Worker and Durable Object contexts, including incremental
+  SSE and portable deadlines. Native non-chat services and WebSockets are
+  outside this boundary.
 - **The cell commits per engine step, not per event.** One step is one atom:
   a Reason (one model call) or an Act (one tool batch). The events a step
   emits are written uncommitted, and the step commits them, the next turn
@@ -65,8 +76,5 @@ own storage.
 - A tool with side effects outside the cell can run twice if the node is
   lost after it ran and before its step committed. Idempotency keys per tool
   call would close that.
-- The cell's model driver is a non-streaming Chat Completions call through
-  `fetch`; the provider crate's drivers need `reqwest` and do not build for
-  the isolate.
 - Built-in tools that need a filesystem or processes have no isolate
   equivalent; the example ships one pure tool.

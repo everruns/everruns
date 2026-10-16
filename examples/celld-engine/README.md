@@ -44,8 +44,8 @@ Any Chat Completions endpoint works: set `OPENAI_BASE_URL` and `MODEL` in
   node dies, that alarm fires on the node that owns the cell next. The cell
   discards the uncommitted events and re-runs only the interrupted step.
 
-The step machine (`src/cell.rs`) and the driver (`src/openai.rs`) are
-portable; only `src/durable.rs` needs the isolate.
+The step machine (`src/cell.rs`) and the shared provider driver are portable.
+`src/fetch.rs` supplies host HTTP; `src/durable.rs` supplies storage and alarms.
 
 ## Tests
 
@@ -65,6 +65,7 @@ committed call was not repeated.
 
 - A tool with side effects outside the cell can run twice if the node dies
   after it ran and before its step committed.
-- Model calls are non-streaming Chat Completions through `fetch`.
+- Model calls use the shared Chat Completions driver with streaming host `fetch`.
+  Request encoding, tool replay, usage, errors and retries come from `everruns-contracts`.
 - The example's one tool is pure; tools that need a filesystem or processes
   have no isolate equivalent.

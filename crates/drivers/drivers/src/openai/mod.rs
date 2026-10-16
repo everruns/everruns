@@ -28,8 +28,11 @@
 //! [Framework model guide](https://everruns.com/docs/framework/models-and-providers/).
 
 mod driver;
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod embeddings;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod realtime;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod speech;
 mod types;
 
@@ -40,8 +43,11 @@ pub use driver::{
     OpenAIChatDriver, OpenAICompletionsChatDriver, azure_descriptor, azure_provider,
     completions_descriptor, completions_provider, descriptor, from_env, provider, register_driver,
 };
+#[cfg(not(target_arch = "wasm32"))]
 pub use embeddings::OpenAIEmbeddingsDriver;
+#[cfg(not(target_arch = "wasm32"))]
 pub use realtime::OpenAIRealtimeDriver;
+#[cfg(not(target_arch = "wasm32"))]
 pub use speech::OpenAISpeechDriver;
 pub use types::{
     ChatMessage, ChatRequest, CompletionMetadata, LlmConfig, LlmStreamEvent, MessageRole,
@@ -52,4 +58,5 @@ pub use everruns_contracts::driver_registry::{ChatDriver, DriverRegistry};
 
 pub mod async_tools;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub mod decisions;

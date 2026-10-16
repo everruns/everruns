@@ -12,7 +12,7 @@
 //! while `Err` means the catalog request itself failed.
 
 #[cfg(feature = "http")]
-use crate::driver_helpers::shared_request_http_client;
+use crate::http_transport::HttpClient;
 use chrono::{DateTime, Utc};
 
 use crate::driver_registry::{DriverId, DriverRegistry, ProviderConfig};
@@ -408,6 +408,30 @@ fn openai_compatible_profile(
 pub async fn list_openai_compatible_models(
     endpoint: &crate::runtime_provider::ProviderEndpoint,
 ) -> Result<Option<Vec<DiscoveredModel>>> {
+    #[cfg(not(target_arch = "wasm32"))]
+    let client = HttpClient::new(std::sync::Arc::new(
+        crate::driver_helpers::shared_request_http_client(),
+    ));
+    #[cfg(target_arch = "wasm32")]
+    let client = HttpClient::default();
+    list_compatible_models(endpoint, &client).await
+}
+
+/// Discover models through application HTTP (including host fetch on WASM).
+/// The adapter owns redirect and DNS policy just as for chat requests.
+#[cfg(feature = "http")]
+pub async fn list_openai_compatible_models_with_transport(
+    endpoint: &crate::runtime_provider::ProviderEndpoint,
+    transport: std::sync::Arc<dyn crate::http_transport::HttpTransport>,
+) -> Result<Option<Vec<DiscoveredModel>>> {
+    list_compatible_models(endpoint, &HttpClient::new(transport)).await
+}
+
+#[cfg(feature = "http")]
+async fn list_compatible_models(
+    endpoint: &crate::runtime_provider::ProviderEndpoint,
+    client: &HttpClient,
+) -> Result<Option<Vec<DiscoveredModel>>> {
     let url = endpoint
         .url("models")
         .ok_or_else(|| AgentLoopError::config("provider endpoint is not configured"))?;
@@ -417,9 +441,9 @@ pub async fn list_openai_compatible_models(
         .map_err(|error| AgentLoopError::config(format!("unsafe models endpoint: {error}")))?;
     let resolved = endpoint.resolve("GET", url, &[]).await?;
     // THREAT[TM-API-013]: Provider base URLs are org-configurable. Use the
-    // shared client so redirects, private DNS results, and hung responses are
-    // rejected at request time.
-    list_openai_compatible_models_with_client(&shared_request_http_client(), &resolved).await
+    // native shared client rejects redirects, private DNS and hung responses.
+    // An injected host transport must enforce its deployment's egress policy.
+    list_openai_compatible_models_with_client(client, &resolved).await
 }
 
 /// The same fallback, for a driver that has declined to list a host itself.
@@ -446,7 +470,7 @@ pub async fn list_openai_compatible_models_best_effort(
 
 #[cfg(feature = "http")]
 async fn list_openai_compatible_models_with_client(
-    client: &reqwest::Client,
+    client: &HttpClient,
     resolved: &crate::runtime_provider::ResolvedProviderRequest,
 ) -> Result<Option<Vec<DiscoveredModel>>> {
     let mut request = client.get(&resolved.url);
@@ -980,7 +1004,9 @@ mod tests {
             ],
         };
         let result = list_openai_compatible_models_with_client(
-            &reqwest::Client::builder().no_proxy().build().unwrap(),
+            &HttpClient::new(std::sync::Arc::new(
+                reqwest::Client::builder().no_proxy().build().unwrap(),
+            )),
             &input,
         )
         .await
@@ -1034,7 +1060,9 @@ mod tests {
             .mount(&server)
             .await;
         let result = list_openai_compatible_models_with_client(
-            &reqwest::Client::builder().no_proxy().build().unwrap(),
+            &HttpClient::new(std::sync::Arc::new(
+                reqwest::Client::builder().no_proxy().build().unwrap(),
+            )),
             &crate::ResolvedProviderRequest {
                 url: server.uri(),
                 headers: vec![],
@@ -1112,7 +1140,9 @@ mod tests {
                 .mount(&server)
                 .await;
         }
-        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let client = HttpClient::new(std::sync::Arc::new(
+            reqwest::Client::builder().no_proxy().build().unwrap(),
+        ));
         let empty = list_openai_compatible_models_with_client(
             &client,
             &crate::ResolvedProviderRequest {

@@ -29,8 +29,12 @@ cargo check --locked --target "$TARGET" --no-default-features \
 cargo check --locked --target "$TARGET" --no-default-features \
   -p everruns-core --features engine
 
+echo "2. provider protocols and official chat drivers for $TARGET"
+cargo check --locked --target "$TARGET" --no-default-features \
+  -p everruns-drivers --features openai,openrouter
+
 EXAMPLE=examples/celld-engine/Cargo.toml
-echo "2. $EXAMPLE: native tests, then $TARGET"
+echo "3. $EXAMPLE: native tests, then $TARGET"
 cargo test --locked --manifest-path "$EXAMPLE"
 cargo check --locked --manifest-path "$EXAMPLE" --target "$TARGET"
 
