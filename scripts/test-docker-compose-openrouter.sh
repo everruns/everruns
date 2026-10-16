@@ -19,6 +19,19 @@ for name, service in services.items():
 print("Compose forwards the OpenRouter default credential only to the server")
 '
 
+# An omitted or empty opt-in must keep host credentials out of the default org.
+AUTH_JWT_SECRET=compose-config-test \
+SECRETS_ENCRYPTION_KEY=compose-config-test \
+WORKER_GRPC_AUTH_TOKEN=compose-config-test \
+SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV= \
+  docker compose -f "$ROOT/examples/docker-compose-full.yaml" config --format json |
+  python3 -c '
+import json, sys
+server = json.load(sys.stdin)["services"]["server"]
+assert server["environment"]["SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV"] == "false", "Default provider-key seeding must remain disabled"
+print("Compose leaves provider-key materialization disabled without explicit opt-in")
+'
+
 # Guard rails must fail before opening a browser, creating containers, or saving a key.
 node --check "$ROOT/scripts/e2e-compose-openrouter.mjs"
 python3 - "$ROOT" <<'PY'
