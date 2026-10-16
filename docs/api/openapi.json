@@ -54195,6 +54195,14 @@
                   "description": "Whether this session is pinned by the current user.\nOnly populated when the request has an authenticated user context.",
                   "example": false
                 },
+                "last_message_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp of the latest input or completed assistant message.\nPopulated on session lists; session edits and tool events do not advance it."
+                },
                 "last_turn_status": {
                   "type": [
                     "string",
@@ -55182,6 +55190,14 @@
                       ],
                       "description": "Whether this session is pinned by the current user.\nOnly populated when the request has an authenticated user context.",
                       "example": false
+                    },
+                    "last_message_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time",
+                      "description": "Timestamp of the latest input or completed assistant message.\nPopulated on session lists; session edits and tool events do not advance it."
                     },
                     "last_turn_status": {
                       "type": [
@@ -60761,6 +60777,14 @@
             ],
             "description": "Whether this session is pinned by the current user.\nOnly populated when the request has an authenticated user context.",
             "example": false
+          },
+          "last_message_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp of the latest input or completed assistant message.\nPopulated on session lists; session edits and tool events do not advance it."
           },
           "last_turn_status": {
             "type": [
@@ -71083,6 +71107,14 @@
                 ],
                 "description": "Whether this session is pinned by the current user.\nOnly populated when the request has an authenticated user context.",
                 "example": false
+              },
+              "last_message_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "Timestamp of the latest input or completed assistant message.\nPopulated on session lists; session edits and tool events do not advance it."
               },
               "last_turn_status": {
                 "type": [

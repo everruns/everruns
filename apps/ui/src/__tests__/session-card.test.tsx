@@ -48,3 +48,29 @@ it("marks archived sessions while keeping their execution status", () => {
   expect(screen.getByText("Archived")).toBeInTheDocument();
   expect(screen.getByText("Idle")).toBeInTheDocument();
 });
+
+it("retains failure details beside the channel and last-message time", () => {
+  render(
+    <SessionCard
+      session={{
+        ...session,
+        activity: "failed",
+        last_turn_status: "failed",
+        last_message_at: session.created_at,
+      }}
+      failure={{ count: 1, at: session.updated_at, error: "Model request timed out", sequence: 42 }}
+    />,
+  );
+
+  expect(screen.getByText("Last turn failed")).toBeInTheDocument();
+  expect(screen.getByText("Model request timed out")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "View failure" })).toHaveAttribute(
+    "href",
+    "/sessions/session_test/trace?failure=42",
+  );
+  expect(screen.getByText("Channel: Slack")).toBeInTheDocument();
+  expect(screen.getByText(/^Last message /).closest("time")).toHaveAttribute(
+    "dateTime",
+    session.created_at,
+  );
+});

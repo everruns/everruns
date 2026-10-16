@@ -81,6 +81,7 @@ impl DirectWorkerAdapters {
                 source: crate::domains::sessions::record::SessionSource::from(r.source.as_str()),
                 run_summary: r.run_summary.clone(),
                 last_turn_status: r.last_turn_status.clone(),
+                last_message_at: None,
                 activity: crate::domains::sessions::record::SessionActivity::derive(
                     &crate::domains::sessions::record::SessionStatus::from(r.status.as_str()),
                     r.last_turn_status.as_deref(),

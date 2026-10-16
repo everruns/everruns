@@ -30,6 +30,12 @@ const SESSION_COLUMNS: &str = "id, org_id, workspace_id, app_id, channel_id, tri
      forked_from_session_id, forked_from_sequence, \
      blueprint_id, blueprint_config, archived_at, COALESCE((SELECT es.next_sequence - 1 - es.removed_count FROM event_sequences es WHERE es.session_id = id), 0)::BIGINT AS event_count, task_count";
 
+// Conversational activity is shared by ordinary and failed-turn session cards.
+const LAST_MESSAGE_AT: &str = "(SELECT e.ts FROM events e
+    WHERE e.session_id = sessions.id
+      AND e.event_type IN ('input.message', 'output.message.completed')
+    ORDER BY e.sequence DESC LIMIT 1)";
+
 /// SQL mirror of `crate::domains::sessions::record::SessionActivity::derive` — the list filters in
 /// the database while the in-memory backend filters in Rust. Both must change
 /// together; `activity_derivation_truth_table` in `everruns_core::session`
@@ -522,10 +528,7 @@ impl Database {
         let offset_idx = plan.next_param_idx + 1;
         let select_sql = format!(
             r#"SELECT {SESSION_COLUMNS},
-                (SELECT e.ts FROM events e
-                 WHERE e.session_id = sessions.id
-                   AND e.event_type IN ('input.message', 'output.message.completed')
-                 ORDER BY e.sequence DESC LIMIT 1) AS last_message_at
+                {LAST_MESSAGE_AT} AS last_message_at
             FROM sessions {where_clause}
             ORDER BY {order_by}
             LIMIT ${limit_idx} OFFSET ${offset_idx}"#,

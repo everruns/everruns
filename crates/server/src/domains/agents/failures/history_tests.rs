@@ -93,6 +93,8 @@ async fn history_keeps_old_recovered_and_archived_sessions_and_matches_activity(
         "model timed out",
     )
     .await;
+    let message_at = now - Duration::minutes(21);
+    event(&db, old, "output.message.completed", message_at, "").await;
     event(&db, old, "turn.completed", now - Duration::minutes(20), "").await;
     sqlx::query("UPDATE sessions SET archived_at = now() WHERE id = $1")
         .bind(old)
@@ -151,6 +153,13 @@ async fn history_keeps_old_recovered_and_archived_sessions_and_matches_activity(
         Some("completed")
     );
     assert!(recovered.session.archived_at.is_some());
+    assert_eq!(
+        recovered
+            .session
+            .last_message_at
+            .map(|at| at.timestamp_micros()),
+        Some(message_at.timestamp_micros())
+    );
     let activity = db.agent_activity(DEFAULT_ORG_ID, now).await.unwrap();
     assert_eq!(
         activity
@@ -168,6 +177,10 @@ async fn history_keeps_old_recovered_and_archived_sessions_and_matches_activity(
     let page = paged.run(&ctx).await.unwrap();
     assert_eq!(page.data.len(), 1);
     assert_eq!(page.data[0].session.id, old);
+    assert_eq!(
+        page.data[0].session.last_message_at,
+        recovered.session.last_message_at
+    );
     assert_eq!((page.failed_turns, page.total_sessions), (3, 2));
     let mut empty = request(public_agent, now);
     empty.offset = Some(100);
