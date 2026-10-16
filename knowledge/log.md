@@ -1,5 +1,11 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-16
+
+* **Coding-agent onboarding.** One setup prompt from the user menu, Agents empty
+  state and onboarding Done, with deployment-aware MCP instructions and explicit
+  provider prerequisites. See [Coding Agent Onboarding](ui/coding-agent-onboarding.md).
+
 ## 2026-10-15
 
 * **Optional idle session following.** Client-driven UI embeddings can suspend
