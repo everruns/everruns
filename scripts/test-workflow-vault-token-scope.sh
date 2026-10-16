@@ -9,7 +9,8 @@
 #      step. Workflow- or job-level `env:` hands it to every action in the job,
 #      and a `uses:` step's `env:`/`with:` hands it to that action's code.
 #   2. Immutable actions. Every external action in a job that holds the token is
-#      pinned to a full commit SHA. A mutable tag can be repointed; an earlier
+#      pinned to a full commit SHA, including transitive dependency and artifact
+#      producer jobs. A mutable tag can be repointed; an earlier
 #      action can then plant a binary or shell hook that the credentialed
 #      `doppler run` step executes.
 #   3. Trusted refs. A job that holds the token is gated on a trusted ref
@@ -96,7 +97,9 @@ def scan(path, text):
     if mentions_token(document.get("env")):
         errors.append(f"{path}: workflow-level env exposes the vault token to every job")
 
-    for job_name, job in (document.get("jobs") or {}).items():
+    jobs = document.get("jobs") or {}
+    credentialed_jobs = set()
+    for job_name, job in jobs.items():
         where = f"{path}:{job_name}"
         if not isinstance(job, dict):
             continue
@@ -128,22 +131,56 @@ def scan(path, text):
         if not credentialed:
             continue
 
-        for step in steps:
-            uses = step.get("uses")
-            if not isinstance(uses, str) or uses.startswith("./"):
-                continue
-            if not SHA_PINNED.match(uses):
-                errors.append(
-                    f"{where}: `{uses}` runs beside the vault token on a mutable "
-                    "ref; pin it to a full commit SHA (`owner/repo@<sha> # vN`)"
-                )
-
+        credentialed_jobs.add(job_name)
         if not trusted_ref_gate(job.get("if")):
             errors.append(
                 f"{where}: holds the vault token without a trusted-ref gate; add "
                 f"one of {sorted(TRUSTED_GATES)} as a top-level `&&` conjunct of "
                 "the job `if:`"
             )
+    # Include all dependency jobs: their artifacts and outputs can select or
+    # replace code executed with credentials. Artifact edges also cover uploads
+    # downloaded without an explicit `needs` edge. Unknown names match every
+    # upload, so expressions/patterns cannot silently bypass this boundary.
+    uploads = []
+    for name, job in jobs.items():
+        for step in job.get("steps", []):
+            if step.get("uses", "").startswith("actions/upload-artifact@"):
+                uploads.append((name, step.get("with", {}).get("name", "artifact")))
+
+    protected, pending = set(), list(credentialed_jobs)
+    while pending:
+        name = pending.pop()
+        if name in protected:
+            continue
+        protected.add(name)
+        job = jobs.get(name)
+        if not isinstance(job, dict):
+            errors.append(f"{path}:{name}: unknown upstream job at vault boundary")
+            continue
+        reusable = job.get("uses")
+        if reusable:
+            # A same-repository reusable workflow has its own dependency graph;
+            # it cannot be treated as an opaque, trusted producer.
+            errors.append(f"{path}:{name}: reusable upstream workflow needs an explicit trust policy")
+        needs = job.get("needs") or []
+        pending.extend([needs] if isinstance(needs, str) else needs)
+        for step in job.get("steps", []):
+            uses = step.get("uses", "")
+            if uses and not uses.startswith("./") and not SHA_PINNED.fullmatch(uses):
+                errors.append(
+                    f"{path}:{name}: `{uses}` runs at or upstream of the vault "
+                    "boundary on a mutable ref; pin it to a full commit SHA"
+                )
+            if not uses.startswith("actions/download-artifact@"):
+                continue
+            options = step.get("with", {})
+            if any(key in options for key in ("run-id", "repository", "github-token")):
+                errors.append(f"{path}:{name}: cross-run artifact at vault boundary needs an explicit trust policy")
+            wanted = options.get("name")
+            for producer, uploaded in uploads:
+                if not wanted or "${{" in str(wanted) or "${{" in str(uploaded) or wanted == uploaded:
+                    pending.append(producer)
     return errors
 
 
@@ -198,6 +235,36 @@ FIXTURES = [
     ("inherited-secrets", "on: push\njobs:\n  call:\n    uses: ./.github/workflows/x.yml\n    secrets: inherit\n", True),
     ("uncredentialed-job-may-use-tags", workflow(
         "\n    steps:\n      - uses: actions/checkout@v7\n      - run: cargo test\n"), False),
+]
+
+
+# Producers remain uncredentialed and may also serve PR-safe consumers, but
+# mutable actions anywhere upstream can tamper with executable artifacts.
+def producer_workflow(producer, dependencies="build", intermediate=""):
+    live = GOOD_JOB.replace("    steps:", f"    needs: {dependencies}\n    steps:", 1)
+    return workflow(live) + "  build:\n    runs-on: ubuntu-latest\n" + producer + intermediate
+
+
+PRODUCER = f"    steps:\n      - uses: {PIN}\n      - run: cargo build\n"
+FIXTURES += [
+    ("pinned-producer", producer_workflow(PRODUCER), False),
+    ("mutable-direct-producer", producer_workflow(PRODUCER.replace(PIN, "actions/checkout@v7")), True),
+    ("mutable-transitive-producer", producer_workflow(
+        PRODUCER.replace(PIN, "actions/checkout@v7"), "[relay]",
+        "  relay:\n    needs: build\n    steps:\n      - run: echo transfer\n"), True),
+    ("unrelated-mutable-job", workflow(GOOD_JOB) + "  other:\n" + PRODUCER.replace(PIN, "actions/checkout@v7"), False),
+    ("artifact-producer-without-needs", workflow(GOOD_JOB + f"      - uses: actions/download-artifact@{'a' * 40}\n        with:\n          name: executable\n") +
+        "  build:\n    steps:\n      - uses: actions/upload-artifact@v7\n        with:\n          name: executable\n", True),
+]
+
+DOWNLOAD = f"      - uses: actions/download-artifact@{'a' * 40}\n"
+UPLOAD = f"  build:\n    steps:\n      - uses: actions/upload-artifact@{'b' * 40}\n        with:\n          name: executable\n"
+FIXTURES += [
+    ("pinned-artifact-without-needs", workflow(GOOD_JOB + DOWNLOAD + "        with:\n          name: executable\n") + UPLOAD, False),
+    ("download-all-includes-producers", workflow(GOOD_JOB + DOWNLOAD) + UPLOAD.replace('b' * 40, 'v7'), True),
+    ("dynamic-artifact-includes-producers", workflow(GOOD_JOB + DOWNLOAD + "        with:\n          name: ${{ matrix.artifact }}\n") + UPLOAD.replace('b' * 40, 'v7'), True),
+    ("cross-run-artifact-needs-policy", workflow(GOOD_JOB + DOWNLOAD + "        with:\n          run-id: 123\n"), True),
+    ("reusable-upstream-needs-policy", producer_workflow("    uses: ./.github/workflows/build.yml\n"), True),
 ]
 
 
