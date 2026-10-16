@@ -387,3 +387,24 @@ records. Their output is derivative; it cannot mutate the source event.
   passed through as an untyped public payload.
 - Full-text and debug filters preserve the same authorization and supported-type
   checks as ordinary event listing.
+
+## Optional UI idle following
+
+Continuous following remains the default, including sessions driven by schedules,
+channels, or other clients. A client-driven embedding may opt out and accept that
+external updates wait for its next wake-up. Suspension requires a settled event
+tail, current settled session state, terminal background tasks, and cursor parity
+with the durable server tail. Uncertainty keeps following. A stale idle snapshot
+must never interrupt replay, local input, or parked work awaiting external events.
+
+Local mutations hold following across the request/commit gap. Reopening reuses the
+last durable cursor and preserves UI deduplication; ephemeral deltas cannot become
+replay cursors. Session switches, disabling, and unmount invalidate callbacks,
+checks, and retry timers belonging to the previous subscription.
+
+The [event hook](../../apps/ui/src/hooks/use-sessions.ts),
+[mutation coordination](../../apps/ui/src/lib/session-activity.ts), and
+[lifecycle tests](../../apps/ui/src/__tests__/use-events-idle.test.tsx) own the
+implementation and executable cases. [Events documentation](../../docs/features/events.md)
+explains the embedding option and its external-update tradeoff. Separate task
+subscriptions are unaffected; savings require measurement and are not promised.
