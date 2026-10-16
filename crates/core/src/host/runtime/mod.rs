@@ -1,6 +1,4 @@
 // In-process host builder and runner.
-// Decision: the public runtime is in-memory today, but uses the same core atoms
-// and capability resolution path as the durable worker so behavior stays close.
 
 use crate::ExecutionContext;
 use crate::agent_definition::AgentDefinition;
@@ -153,7 +151,9 @@ impl AcceptedTurnInput {
         &self.input
     }
 
-    fn into_message(self) -> RuntimeMessage {
+    /// Materialize the canonical input message without changing its accepted ID.
+    /// External durable hosts use this before committing admission and activation.
+    pub fn into_message(self) -> RuntimeMessage {
         message_from_input_with_id(self.message_id, self.input)
     }
 }
@@ -1648,5 +1648,5 @@ fn message_from_input_with_id(message_id: MessageId, input: InputMessage) -> Run
 }
 
 #[cfg(test)]
-#[path = "runtime_tests.rs"]
+#[path = "../runtime_tests.rs"]
 mod org_id_mapping_tests;

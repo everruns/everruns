@@ -678,7 +678,7 @@ harness rows.
 - **`retired`** is the removal. The implementation is deleted down to an
   identity-only shell: no tools, prompt, mounts, dependencies, or hooks. The ID
   stays registered on purpose — an unregistered ID fails
-  `RuntimeAgent` activation (`crates/core/src/host/runtime.rs`), whereas a retired one
+  `RuntimeAgent` activation (`crates/core/src/host/runtime/mod.rs`), whereas a retired one
   resolves to a no-op, so an agent that still references it keeps running. It is
   hidden from `list_capabilities` unless `include_retired` is set, which is how
   management UIs still name the stale attachment and offer to remove it.

@@ -2710,6 +2710,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-durable-object"
+version = "0.48.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "everruns",
+ "everruns-contracts",
+ "everruns-core",
+ "everruns-llmsim",
+ "js-sys",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "subtle",
+ "tokio",
+ "tower",
+ "uuid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
 name = "everruns-example-demo"
 version = "0.1.0"
 dependencies = [
@@ -2984,6 +3008,7 @@ dependencies = [
  "cron",
  "everruns",
  "everruns-contracts",
+ "everruns-core",
  "everruns-sdk",
  "everruns-serve-macros",
  "futures",

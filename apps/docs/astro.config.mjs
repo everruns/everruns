@@ -366,6 +366,7 @@ export default defineConfig({
                     { label: "Build a Voice Agent", slug: "framework/voice" },
                     { label: "Serve on AgentCore (experimental)", slug: "framework/serve-agentcore" },
                     { label: "Serve on celld (experimental)", slug: "framework/serve-celld" },
+                    { label: "Durable Object authority (experimental)", slug: "framework/durable-objects" },
                   ],
                 },
                 {

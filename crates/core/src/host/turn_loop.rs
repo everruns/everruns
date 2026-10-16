@@ -7,7 +7,7 @@
 //! the engine returns. What differs between hosts is where a turn's input
 //! comes from and where a park is kept, so that is the one port the loop
 //! takes: a [`TurnInbox`]. The in-process runtime implements it over its
-//! [`TurnSteering`](crate::host::TurnSteering) queue, its session wake queue
+//! in-memory steering queue, its session wake queue
 //! and its in-memory parked turns; a worker running whole turns on a session
 //! lease implements it over its own queue.
 //!

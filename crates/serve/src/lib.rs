@@ -79,6 +79,8 @@ mod config;
 mod connection;
 mod cx;
 mod eval;
+#[cfg(test)]
+mod execution_host_tests;
 mod files;
 mod gateway;
 mod host;

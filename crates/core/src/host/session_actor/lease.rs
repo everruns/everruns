@@ -36,17 +36,18 @@
 //!   Any cancel requested while a turn runs targets it, since the turn's input
 //!   is in the inbox by then.
 
+use everruns_contracts::rt::Instant;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::{MessageId, SessionId};
 use tokio::sync::{Notify, watch};
 
-use crate::actor_lease_store::{ActorFence, ActorLeaseStore, ActorRelease, LeasedActor};
-use crate::core::events::{Event, EventData};
+use super::store::{ActorFence, ActorRelease, LeasedActor, SessionActorStore};
+use crate::events::{Event, EventData};
 
 /// The message id of `event` when it is input that starts or steers a turn.
 pub(crate) fn turn_input(event: &Event) -> Option<MessageId> {
@@ -68,7 +69,7 @@ pub(crate) struct FreshInput {
 }
 
 pub(crate) struct Lease {
-    store: Arc<dyn ActorLeaseStore>,
+    store: Arc<dyn SessionActorStore>,
     holder: String,
     pub(crate) session_id: SessionId,
     fence: u64,
@@ -98,7 +99,7 @@ struct CancelTarget {
 
 impl Lease {
     pub(crate) fn new(
-        store: Arc<dyn ActorLeaseStore>,
+        store: Arc<dyn SessionActorStore>,
         holder: String,
         actor: &LeasedActor,
         ttl: Duration,
@@ -225,22 +226,34 @@ impl Lease {
     /// does a deleted session (`SessionNotFound`, EVE-1235); a store error
     /// does too once no renew succeeded for a whole TTL.
     pub(crate) async fn renew(&self) -> Result<()> {
-        let renewal = self
-            .store
-            .renew_actor_lease(
+        let started = Instant::now();
+        let renewal = everruns_contracts::rt::timeout(
+            self.ttl.saturating_sub(self.since_renewed()),
+            self.store.renew_actor_lease(
                 self.session_id,
                 &self.holder,
                 self.fence,
                 self.ttl,
                 self.committed_cursor(),
-            )
-            .await;
+            ),
+        )
+        .await;
+        let renewal = match renewal {
+            Ok(result) => result,
+            Err(_) => {
+                self.lost.send_replace(true);
+                return Err(super::store::actor_lease_lost(
+                    self.session_id,
+                    "lease renewal timed out",
+                ));
+            }
+        };
         match renewal {
             Ok(Some(renewal)) => {
                 *self
                     .last_renewed
                     .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = Instant::now();
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = started;
                 self.inbox_seq
                     .fetch_max(renewal.inbox_seq, Ordering::SeqCst);
                 if let Some(position) = renewal.cancel_inbox_seq {
@@ -438,7 +451,7 @@ pub(crate) async fn renew_loop(lease: Arc<Lease>, poke: Arc<Notify>) {
     loop {
         let wait = if failing { retry } else { period };
         tokio::select! {
-            _ = tokio::time::sleep(wait) => {}
+            _ = everruns_contracts::rt::sleep(wait) => {}
             _ = poke.notified() => {}
         }
         let since_renewed = lease.since_renewed();

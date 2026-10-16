@@ -1,0 +1,92 @@
+---
+title: Durable Object authority (experimental)
+description: Run ordinary Everruns Rust agents with durable admission, leases, event logs and alarm-driven recovery owned by a Durable Object.
+sidebar:
+  order: 4
+---
+
+> **Experimental, source-only.** Native and Wasm placements are available in the
+> repository. Validate your deployment platform and storage before production use.
+
+A Durable Object owns each session's durable input, journal, execution lease and
+alarm. A native Rust executor or an object’s Wasm isolate runs your ordinary agent. These placements and
+the platform worker use the same Rust session actor driver, turn loop, providers,
+tools and recovery decisions. JavaScript handles authority and activation.
+
+```mermaid
+flowchart LR
+  A[Authenticated application] -->|Admit input| D[Durable Object]
+  D -->|Alarm activation| E[Native executor or Wasm host]
+  E -->|Fenced journal and state| D
+  E --> R[Shared Everruns runtime]
+  R --> T[Providers and tools]
+```
+
+The object commits input and its alarm together before acknowledging admission.
+If the executor dies, the alarm checks its lease and activates a replacement.
+The replacement folds the session log and resumes the interrupted turn. Callers
+retain the accepted message identity when retrying an uncertain acknowledgement.
+
+## Compose an executor
+
+Use an ordinary `Agent` with `Agent::execution_host` in the executor's host factory.
+For registered [serve](/framework/serve/) agents,
+`Server::execution_host(agent_name, session_id, backends)` reconstructs the same
+agent declarations and tool/provider composition. Your host supplies coherent
+durable stores and owns activation authorization and application lifecycle hooks.
+
+The Framework also accepts an experimental `TurnBackendFactory` through
+`Engine::builder().execution_backend(...)`; serve accepts a configured Engine
+through its server builder. This extension point does not change the durable
+acknowledgement contract of normal Framework sends. The object profile admits
+messages through its own authority client, not through serve's `/v1` routes.
+
+## Try the native profile
+
+From the source checkout, follow the
+[adapter README](https://github.com/everruns/everruns/tree/main/crates/durable-object)
+to start the Worker and configure separate authority/executor service secrets.
+Then run the real-model executor:
+
+```sh
+cargo run -p everruns-durable-object --example native
+```
+
+An authenticated application uses `AuthorityClient` to bind a session to an agent
+and immutable build, admit messages, read bounded event pages, submit client-tool
+results and cancel. Keep service credentials on trusted servers and authorize
+user access before invoking this privileged service API. Executor URLs are fixed
+deployment configuration and production endpoints require HTTPS.
+
+## Run inside the object
+
+The [Wasm application](https://github.com/everruns/everruns/tree/main/examples/durable-object-agent)
+compiles the ordinary Rust host builder and shared session driver into the Worker.
+It uses the same capability and tool interfaces; the object supplies journal,
+session state and a fetch-based model transport. Its counter tool demonstrates
+durable session KV. Follow its README to build and run it with a real model.
+
+`AuthorityTransport` is the adapter’s transport port. Native placement supplies
+HTTP; isolate placement supplies an object-scoped callback. A `HostFactory`
+assembles the agent from its immutable build and injected services. Adding a
+placement does not require another planner, tool loop or recovery implementation.
+
+## Guarantees and limits
+
+Ownership checks and canonical mutations share one object transaction. An expired
+or superseded executor cannot append events, advance progress or update session
+state. Build bindings prevent a replacement from silently using different code;
+retain the required immutable executor build for the session's lifetime.
+
+External effects still need idempotency or reconciliation. A tool recorded as
+started with at-most-once semantics recovers as interrupted, without running it
+again. This does not promise exactly-once external effects. Client-tool waits and
+partial answers are durable; workspaces, secret storage, background processes,
+schedules and application approval handlers require explicit host integration.
+The default adapter refuses secret storage rather than storing plaintext.
+
+The recovery test runs actual workerd, kills a separate native executor after a
+tool effect, and requires alarm-driven completion without resending the input.
+It verifies one effect and an interrupted result. The
+[existing celld snapshot example](/framework/serve-celld/) remains a separate
+placement with its documented replay semantics.

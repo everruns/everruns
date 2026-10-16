@@ -100,6 +100,7 @@ pub mod decisions;
 mod default_workspace;
 mod engine;
 mod events;
+mod execution_host;
 /// Wire types of the Agent Execution API, the per-agent session API that the
 /// everruns server and serve both expose.
 ///

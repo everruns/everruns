@@ -1,0 +1,112 @@
+name: Durable Object Recovery
+
+on:
+  pull_request:
+    paths:
+      - 'crates/core/**'
+      - 'crates/contracts/**'
+      - 'crates/everruns/**'
+      - 'crates/serve/**'
+      - 'crates/worker/**'
+      - 'examples/durable-object-agent/**'
+      - 'crates/durable-object/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/durable-object.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'crates/core/**'
+      - 'crates/contracts/**'
+      - 'crates/everruns/**'
+      - 'crates/serve/**'
+      - 'crates/worker/**'
+      - 'examples/durable-object-agent/**'
+      - 'crates/durable-object/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/durable-object.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CARGO_INCREMENTAL: '0'
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: durable-object
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install pinned Worker toolchain
+        working-directory: crates/durable-object/worker
+        run: npm ci
+      - name: Test authority transactions and races
+        working-directory: crates/durable-object/worker
+        run: npm test
+      - name: Test native host adapters
+        run: cargo test --locked -p everruns-durable-object
+      - name: Test native executor crash recovery on workerd
+        working-directory: crates/durable-object/worker
+        run: npm run test:recovery
+      - name: Preserve native recovery failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: native-object-recovery
+          path: /tmp/everruns-object-recovery.*/authority.log
+          if-no-files-found: ignore
+
+  isolate-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CARGO_INCREMENTAL: '0'
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: durable-object-wasm
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install pinned Worker and qualification tools
+        run: |
+          npm ci --prefix crates/durable-object/worker
+          cargo install wasm-bindgen-cli --version 0.2.129 --locked
+          cargo install s3s-fs --version 0.14.1 --features binary --locked
+          curl --fail --location --retry 3 https://github.com/denoland/celld/releases/download/v0.6.2/celld-x86_64-unknown-linux-gnu.gz -o /tmp/celld.gz
+          echo 'ce0ee3552cc8d55dde3998dc3b1b0c8f547bbcb4bc803d2a94842368b047646c  /tmp/celld.gz' | sha256sum --check
+          gzip --decompress --stdout /tmp/celld.gz > "$HOME/.cargo/bin/celld"
+          chmod +x "$HOME/.cargo/bin/celld"
+      - name: Build the ordinary Rust execution host for Wasm
+        run: bash examples/durable-object-agent/build.sh
+      - name: Test isolate loss and autonomous alarm recovery on workerd
+        working-directory: crates/durable-object/worker
+        run: npm run test:isolate
+      - name: Test owner node loss in a three-node celld fleet
+        working-directory: crates/durable-object/worker
+        run: npm run test:celld
+      - name: Preserve isolate recovery failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: isolate-object-recovery
+          path: |
+            /tmp/everruns-wasm-recovery.*/workerd.log
+            /tmp/everruns-celld-qualification.*/*.log
+          if-no-files-found: ignore

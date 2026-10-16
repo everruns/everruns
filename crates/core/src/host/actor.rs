@@ -36,8 +36,8 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::rt::Instant;
 use everruns_contracts::typed_id::SessionId;
-use tokio::time::Instant;
 use uuid::Uuid;
 
 use super::runtime::InProcessRuntime;
@@ -277,7 +277,7 @@ impl ActorRunner {
             if now >= deadline {
                 return Err(session_held_elsewhere(session_id));
             }
-            tokio::time::sleep(poll.min(deadline - now)).await;
+            everruns_contracts::rt::sleep(poll.min(deadline - now)).await;
         }
     }
 }
@@ -328,11 +328,19 @@ async fn release(leases: &dyn SessionLeases, lease: &SessionLease) {
 /// Renew `lease` until it is lost; returns the error the turn then fails with.
 async fn keep(leases: &dyn SessionLeases, lease: &SessionLease, ttl: Duration) -> AgentLoopError {
     let every = ttl / 3;
+    let mut deadline = Instant::now() + ttl;
     loop {
-        tokio::time::sleep(every).await;
-        match leases.renew(lease, ttl).await {
-            Ok(true) => {}
-            Ok(false) => {
+        let renewal = everruns_contracts::rt::timeout_at(deadline, async {
+            everruns_contracts::rt::sleep(every).await;
+            let started = Instant::now();
+            (started, leases.renew(lease, ttl).await)
+        })
+        .await;
+        match renewal {
+            Ok((started, Ok(true))) => {
+                deadline = started + ttl;
+            }
+            Ok((_, Ok(false))) | Err(_) => {
                 return AgentLoopError::store(format!(
                     "session {} lost its lease to another process",
                     lease.session_id
@@ -340,7 +348,7 @@ async fn keep(leases: &dyn SessionLeases, lease: &SessionLease, ttl: Duration) -
             }
             // A store hiccup is retried at the next beat; the lease lasts
             // three beats.
-            Err(error) => {
+            Ok((_, Err(error))) => {
                 tracing::warn!(session_id = %lease.session_id, error = %error, "session lease renewal failed");
             }
         }
@@ -399,6 +407,37 @@ impl TurnBackend for ActorRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct UnavailableLeases {
+        hang: bool,
+    }
+    #[async_trait]
+    impl SessionLeases for UnavailableLeases {
+        async fn acquire(&self, _id: SessionId, _ttl: Duration) -> Result<Option<SessionLease>> {
+            unreachable!("the lease is already held")
+        }
+        async fn renew(&self, _lease: &SessionLease, _ttl: Duration) -> Result<bool> {
+            if self.hang {
+                std::future::pending().await
+            } else {
+                Err(AgentLoopError::store("authority unavailable"))
+            }
+        }
+        async fn release(&self, _lease: &SessionLease) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn renewal_errors_or_a_hung_store_cannot_extend_execution_past_its_ttl() {
+        let lease = SessionLease::new(SessionId::new(), 1);
+        let ttl = Duration::from_secs(1);
+        for hang in [false, true] {
+            tokio::time::timeout(ttl * 2, keep(&UnavailableLeases { hang }, &lease, ttl))
+                .await
+                .expect("a runner stops when ownership cannot be confirmed within its TTL");
+        }
+    }
 
     #[tokio::test]
     async fn a_held_lease_blocks_another_holder_until_released() {

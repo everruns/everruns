@@ -9,7 +9,7 @@ use everruns_internal_protocol::proto;
 use uuid::Uuid;
 
 use crate::actor_lease_store::{
-    ActorJournal, ActorLeaseStore, ActorRelease, ActorRenewal, LeasedActor,
+    ActorJournal, ActorLeaseStore, ActorRelease, ActorRenewal, LeasedActor, SessionActorStore,
 };
 use crate::grpc_adapters::{
     GrpcClient, grpc_missing_field, grpc_status_to_error, proto_event_to_core, uuid_to_proto,
@@ -88,7 +88,10 @@ impl ActorLeaseStore for GrpcActorLeaseStore {
             })
             .collect()
     }
+}
 
+#[async_trait]
+impl SessionActorStore for GrpcActorLeaseStore {
     async fn renew_actor_lease(
         &self,
         session_id: SessionId,
