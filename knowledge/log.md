@@ -10,6 +10,11 @@
   state and onboarding Done, with deployment-aware MCP instructions and explicit
   provider prerequisites. See [Coding Agent Onboarding](ui/coding-agent-onboarding.md).
 
+* **User MCP approval policy.** Add and enable follow shared Tool Approval modes;
+  management adds no hard gate when approval is absent or off. See
+  [User MCP servers](integrations/user-mcp-servers.md) and
+  [Tool Approval](execution/tool-approval.md).
+
 ## 2026-10-15
 
 * **Optional idle session following.** Client-driven UI embeddings can suspend
