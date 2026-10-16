@@ -53,6 +53,8 @@ pub mod execution_api;
 pub mod execution_phase;
 pub mod form_elicitation_types;
 pub mod hosted_mcp;
+#[cfg(feature = "http")]
+pub mod http_transport;
 mod llm_call_config_builder;
 pub mod llm_error;
 pub mod llm_retry;
@@ -140,12 +142,14 @@ pub use model::{
     CostTier, Modality, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelVendor,
     ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
 };
-#[cfg(feature = "http")]
-pub use model_discovery::list_openai_compatible_models;
 pub use model_discovery::{
     DiscoveredProviderModel, ModelSearchMatch, ModelSearchResult, RankedDiscoveredModels,
     discover_provider_models, enrich_with_profiles, match_models, normalize_and_enrich,
     rank_discovered_models, search_provider_models,
+};
+#[cfg(feature = "http")]
+pub use model_discovery::{
+    list_openai_compatible_models, list_openai_compatible_models_with_transport,
 };
 pub use model_profiles::{
     ModelProfileEntry, all_profile_entries, all_profiles, get_model_profile, get_model_vendor,
@@ -199,7 +203,7 @@ pub use user_facing_error::{
 /// to pick a default implicitly when a crate in the graph could install another.
 /// Repeated and concurrent calls are safe: rustls accepts the first
 /// installation and later calls are no-ops.
-#[cfg(feature = "tls-aws-lc-rs")]
+#[cfg(all(feature = "tls-aws-lc-rs", not(target_arch = "wasm32")))]
 pub fn install_default_crypto_provider() {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 }
@@ -224,3 +228,6 @@ pub mod decisions;
 
 /// Voice channels and speech-to-speech provider sessions.
 pub mod voice;
+
+#[cfg(all(feature = "http", target_arch = "wasm32"))]
+pub fn install_default_crypto_provider() {}

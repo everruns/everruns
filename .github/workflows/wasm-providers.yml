@@ -1,0 +1,51 @@
+name: WASM Provider Integration
+
+on:
+  pull_request:
+    paths:
+      - "crates/contracts/**"
+      - "crates/drivers/drivers/**"
+      - "examples/celld-engine/**"
+      - "tests/wasm-providers/**"
+      - "scripts/lib/test-wasm-providers.sh"
+      - ".github/workflows/wasm-providers.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  push:
+    branches: [main]
+    paths:
+      - "crates/contracts/**"
+      - "crates/drivers/drivers/**"
+      - "examples/celld-engine/**"
+      - "tests/wasm-providers/**"
+      - "scripts/lib/test-wasm-providers.sh"
+      - ".github/workflows/wasm-providers.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  workerd:
+    name: Provider calls inside workerd
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: tests/wasm-providers/package-lock.json
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tests/wasm-providers -> target
+      - name: Install worker-build
+        run: cargo install worker-build --locked --version 0.8.7
+      - name: Run Worker and Durable Object provider round trips
+        run: bash scripts/lib/test-wasm-providers.sh

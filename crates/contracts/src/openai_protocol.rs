@@ -14,10 +14,11 @@
 // llm.generation events are emitted by ReasonAtom, and OtelEventListener
 // creates the appropriate gen-ai spans. No direct tracing in drivers.
 
+use crate::http_transport::{HttpClient, HttpResponse, HttpTransport};
 use async_trait::async_trait;
 use futures::StreamExt;
-use reqwest::{Client, Url};
 use std::sync::{Arc, Mutex};
+use url::Url;
 
 use crate::driver_registry::{
     ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmResponse, LlmResponseStream,
@@ -146,7 +147,7 @@ fn capture_request_body(
 /// The status is classified here, at the provider boundary, so callers that
 /// act on the *kind* of failure (credential checks distinguishing a rejected
 /// key from an unreachable provider) do not have to re-parse the message.
-pub fn models_api_status_error(status: reqwest::StatusCode) -> AgentLoopError {
+pub fn models_api_status_error(status: http::StatusCode) -> AgentLoopError {
     AgentLoopError::llm_http(
         status.as_u16(),
         "",
@@ -180,6 +181,7 @@ pub fn models_api_status_error(status: reqwest::StatusCode) -> AgentLoopError {
 pub struct OpenAIProtocolChatDriver {
     /// Retry configuration for rate limit errors
     retry_config: LlmRetryConfig,
+    transport: HttpClient,
     /// Send `prompt_cache_key` when prompt caching is enabled. Off by default:
     /// not every OpenAI-compatible host accepts the field.
     prompt_cache_key: bool,
@@ -195,6 +197,7 @@ impl OpenAIProtocolChatDriver {
         crate::install_default_crypto_provider();
         Self {
             retry_config: LlmRetryConfig::default(),
+            transport: HttpClient::default(),
             prompt_cache_key: false,
         }
     }
@@ -213,6 +216,17 @@ impl OpenAIProtocolChatDriver {
             .flatten()
     }
 
+    /// Use host HTTP without replacing request encoding, parsing or retries.
+    pub fn with_transport(mut self, transport: Arc<dyn HttpTransport>) -> Self {
+        self.transport = HttpClient::new(transport);
+        self
+    }
+
+    /// The injected transport, or the lazy native default.
+    pub fn http_client(&self) -> HttpClient {
+        self.transport.clone()
+    }
+
     /// Configure retry behavior for rate limit errors
     pub fn with_retry_config(mut self, config: LlmRetryConfig) -> Self {
         self.retry_config = config;
@@ -226,7 +240,8 @@ impl OpenAIProtocolChatDriver {
     ///
     /// Returned by value for subclass access; a `reqwest::Client` is an `Arc`
     /// handle, so cloning it shares the same connection pool.
-    pub fn client(&self) -> Client {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn client(&self) -> reqwest::Client {
         crate::driver_helpers::shared_streaming_http_client()
     }
 
@@ -250,7 +265,7 @@ impl OpenAIProtocolChatDriver {
         model: &str,
         extra_headers: &[(String, String)],
         retries_consumed: u32,
-    ) -> Result<(reqwest::Response, RetryMetadata)> {
+    ) -> Result<(HttpResponse, RetryMetadata)> {
         let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let mut retry_config = self.retry_config.clone();
         retry_config.max_retries = retry_config.max_retries.saturating_sub(retries_consumed);
@@ -271,7 +286,7 @@ impl OpenAIProtocolChatDriver {
                     .resolve("POST", api_url, &body)
                     .await
                     .map_err(SendOutcome::Fatal)?;
-                let mut request_builder = self.client().post(&resolved.url);
+                let mut request_builder = self.http_client().post(&resolved.url);
                 let mut headers = resolved.headers;
                 headers.push(("Content-Type".to_string(), "application/json".to_string()));
                 for (name, value) in

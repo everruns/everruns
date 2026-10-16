@@ -164,6 +164,17 @@ Stream items can fail with a transport error, and providers can also emit an
 `Error` event. Handle both. `LlmStreamEvent` is non-exhaustive, so keep a wildcard
 arm; tool calls and other events need handling when building an agent loop.
 
+## WASM and host HTTP
+
+OpenAI and OpenRouter chat drivers build for `wasm32-unknown-unknown`. Supply
+`.with_transport(Arc<dyn HttpTransport>)` from `everruns_contracts::http_transport`
+to use your host's fetch; request encoding, options, SSE, tools and retries stay
+in the driver. Native builds keep their existing client by default. The adapter
+owns endpoint/DNS policy, redirect refusal, timeouts and cancellation. Non-chat
+services and WebSockets remain native. See the
+[host fetch guide](https://everruns.com/docs/framework/models-and-providers/#wasm-and-host-fetch)
+and the [Workers adapter](https://github.com/everruns/everruns/blob/main/examples/celld-engine/src/fetch.rs).
+
 ## Register enabled drivers
 
 Hosts that select providers from configuration can register the enabled vendors

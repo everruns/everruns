@@ -15,6 +15,8 @@ pub mod openai;
 
 #[cfg(target_arch = "wasm32")]
 mod durable;
+#[cfg(target_arch = "wasm32")]
+pub mod fetch;
 
 #[cfg(test)]
 mod tests;

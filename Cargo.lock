@@ -2642,6 +2642,7 @@ version = "0.48.0"
 dependencies = [
  "axum",
  "everruns",
+ "everruns-contracts",
  "everruns-core",
  "everruns-drivers",
  "everruns-integrations",
@@ -2679,6 +2680,7 @@ dependencies = [
  "tokio-stream",
  "tokio-tungstenite 0.30.0",
  "tracing",
+ "web-time",
  "wiremock",
 ]
 

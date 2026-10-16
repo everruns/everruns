@@ -16,17 +16,14 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
-use async_trait::async_trait;
-use everruns_contracts::error::{AgentLoopError, Result as EngineResult};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use wasm_bindgen::JsValue;
 use wasm_bindgen::closure::Closure;
-use worker::send::SendFuture;
 use worker::*;
 
 use crate::cell::{Cell, Progress, Store};
-use crate::openai::{ChatCompletions, Transport};
+use crate::fetch::FetchTransport;
 
 const SCHEMA: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS events (seq INTEGER PRIMARY KEY, committed INTEGER NOT NULL, type TEXT NOT NULL, json TEXT NOT NULL)",
@@ -211,43 +208,6 @@ impl Store for SqlStore {
 
 use wasm_bindgen::JsCast;
 
-/// The model call, through the isolate's `fetch`.
-struct Fetch;
-
-#[async_trait]
-impl Transport for Fetch {
-    async fn post_json(&self, url: &str, bearer: &str, body: Value) -> EngineResult<Value> {
-        let url = url.to_string();
-        let bearer = bearer.to_string();
-        SendFuture::new(async move {
-            let headers = Headers::new();
-            headers.set("content-type", "application/json")?;
-            headers.set("authorization", &format!("Bearer {bearer}"))?;
-            let mut init = RequestInit::new();
-            init.with_method(Method::Post)
-                .with_headers(headers)
-                .with_body(Some(JsValue::from_str(&body.to_string())));
-            let request = Request::new_with_init(&url, &init)?;
-            let mut response = worker::Fetch::Request(request).send().await?;
-            let status = response.status_code();
-            let text = response.text().await?;
-            Ok::<_, worker::Error>((status, text))
-        })
-        .await
-        .map_err(|e| AgentLoopError::llm(e.to_string()))
-        .and_then(|(status, text)| {
-            if !(200..300).contains(&status) {
-                return Err(AgentLoopError::llm_http(
-                    status,
-                    &text,
-                    "chat completions failed",
-                ));
-            }
-            serde_json::from_str(&text).map_err(|e| AgentLoopError::llm(e.to_string()))
-        })
-    }
-}
-
 #[durable_object]
 pub struct AgentCell {
     state: State,
@@ -275,13 +235,12 @@ impl AgentCell {
     fn cell(&self) -> Result<Cell<SqlStore>> {
         Ok(Cell {
             store: Arc::new(SqlStore::open(&self.state)?),
-            driver: Arc::new(ChatCompletions {
-                base_url: self
-                    .var("OPENAI_BASE_URL")
+            driver: crate::openai::driver(
+                self.var("OPENAI_BASE_URL")
                     .unwrap_or_else(|| "https://api.openai.com/v1".into()),
-                api_key: self.var("OPENAI_API_KEY").unwrap_or_default(),
-                transport: Arc::new(Fetch),
-            }),
+                self.var("OPENAI_API_KEY").unwrap_or_default(),
+                Arc::new(FetchTransport),
+            ),
             model: self.var("MODEL").unwrap_or_else(|| "gpt-6-luna".into()),
             tool_delay: self.millis("TOOL_DELAY_MS", 2000),
         })

@@ -95,6 +95,11 @@ mod imp {
         }
     }
 
+    /// Run a future until a deadline on the host clock.
+    pub async fn timeout_at<F: Future>(deadline: Instant, future: F) -> Result<F::Output, Elapsed> {
+        timeout(deadline.saturating_duration_since(Instant::now()), future).await
+    }
+
     /// The task was aborted before it finished.
     #[derive(Debug)]
     pub struct JoinError(());
@@ -163,7 +168,7 @@ mod imp {
 mod imp {
     pub use tokio::task::{JoinError, JoinHandle, spawn};
     pub use tokio::time::error::Elapsed;
-    pub use tokio::time::{Instant, Sleep, sleep, timeout};
+    pub use tokio::time::{Instant, Sleep, sleep, timeout, timeout_at};
 }
 
 pub use imp::*;

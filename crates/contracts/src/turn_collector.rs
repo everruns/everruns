@@ -33,10 +33,11 @@
 //!
 //! [`chat_completion_stream`]: crate::driver_registry::ChatDriver::chat_completion_stream
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
+use crate::rt::Instant as TokioInstant;
 use futures::StreamExt;
-use tokio::time::Instant as TokioInstant;
 
 use crate::driver_registry::{
     LlmCompletionMetadata, LlmResponse, LlmResponseStream, LlmStreamEvent,
@@ -233,7 +234,7 @@ pub async fn collect_turn(
             }
         };
         let next = match deadline {
-            Some(deadline) => match tokio::time::timeout_at(deadline, stream.next()).await {
+            Some(deadline) => match crate::rt::timeout_at(deadline, stream.next()).await {
                 Ok(next) => next,
                 Err(_) => return Err(timed_out(limits, first_event_at.is_none(), started)),
             },
@@ -359,7 +360,7 @@ pub fn limit_stream(stream: LlmResponseStream, limits: TurnLimits) -> LlmRespons
             (total, _) => total,
         };
         let next = match deadline {
-            Some(deadline) => match tokio::time::timeout_at(deadline, state.stream.next()).await {
+            Some(deadline) => match crate::rt::timeout_at(deadline, state.stream.next()).await {
                 Ok(next) => next,
                 Err(_) => {
                     let error = timed_out(&state.limits, !state.seen_event, state.started);
@@ -457,7 +458,7 @@ where
     };
     let started = Instant::now();
     let value = match budget {
-        Some(budget) => match tokio::time::timeout(budget, future).await {
+        Some(budget) => match crate::rt::timeout(budget, future).await {
             Ok(value) => value?,
             Err(_) => {
                 return Err(if limits.first_event == Some(budget) {
