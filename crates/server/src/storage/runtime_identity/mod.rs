@@ -43,15 +43,15 @@ impl StorageBackend {
         state: &str,
         provider: &str,
         hash: &[u8],
+        expires_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<()> {
         if state.is_empty() || state.len() > 128 || provider.len() > 128 || hash.len() != 32 {
             bail!("Invalid setup state");
         }
-        let expires = chrono::Utc::now() + chrono::Duration::minutes(10);
         {
             let db = self.database();
             sqlx::query("DELETE FROM connection_setup_states WHERE state IN (SELECT state FROM connection_setup_states WHERE expires_at<now() LIMIT 1000)").execute(db.pool()).await?;
-            sqlx::query("INSERT INTO connection_setup_states(state,provider,payload_hash,expires_at) VALUES($1,$2,$3,$4)").bind(state).bind(provider).bind(hash).bind(expires).execute(db.pool()).await?;
+            sqlx::query("INSERT INTO connection_setup_states(state,provider,payload_hash,expires_at) VALUES($1,$2,$3,$4)").bind(state).bind(provider).bind(hash).bind(expires_at).execute(db.pool()).await?;
         }
         Ok(())
     }

@@ -6,7 +6,7 @@
 // (knowledge/integrations/mcp-connected-clients.md, phase 1).
 
 import { useState } from "react";
-import { Plug } from "lucide-react";
+import { Plug, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -65,13 +65,22 @@ export function ConnectedClientsPanel() {
   };
 
   return (
-    <section>
+    <section id="connected-ai-clients" className="scroll-mt-6">
       <div className="mb-4">
         <h2 className="text-xl font-semibold">Connected AI clients</h2>
         <p className="text-sm text-muted-foreground">
           Apps like Claude, ChatGPT and Cursor that you approved to use Everruns MCP as you, in
           every organization you belong to.
         </p>
+        <Button
+          className="mt-3"
+          variant="outline"
+          size="sm"
+          disabled={clients.isFetching}
+          onClick={() => void clients.refetch()}
+        >
+          <RefreshCw className="size-4" /> Refresh connections
+        </Button>
       </div>
       <QueryStateWrapper
         isLoading={clients.isLoading}

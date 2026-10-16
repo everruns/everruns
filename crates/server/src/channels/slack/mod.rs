@@ -22,4 +22,5 @@ pub(crate) mod host;
 #[cfg(test)]
 mod host_tests;
 pub mod install;
+mod manager_connect;
 pub mod provisioning;

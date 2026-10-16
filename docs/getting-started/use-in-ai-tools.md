@@ -19,6 +19,17 @@ skills that load only when a task needs them:
 
 ## Install
 
+In the Everruns user menu, choose **Connect your coding agent**, copy the setup
+prompt and paste it into your coding agent. It reads the maintained plugin
+instructions and guides you through installation and browser sign-in. The same
+dialog is available after organisation setup and on an empty Agents page.
+
+**Check connections** opens **Settings → My agent experience → Connected AI
+clients**, where you can refresh approvals or revoke access. It records OAuth
+approval and last use, not local plugin installation.
+
+For manual installation:
+
 **Claude Code**:
 
 ```text
@@ -60,6 +71,12 @@ can add `https://app.everruns.com/mcp` as a remote server named `everruns`.
 
 Every change the agent makes is recorded in the entity's
 [change history](/features/change-history/) with the reason it gave.
+
+Your coding-agent subscription does not configure model access inside Everruns.
+Running Everruns agents, including Platform Chat, requires a model provider in
+**Models → Providers**. An existing Cloud-managed provider can satisfy that need.
+If you skip provider setup, you can still connect your coding agent for setup
+and management; onboarding keeps an **Add a model provider** action visible.
 
 ## Use the CLI too
 
