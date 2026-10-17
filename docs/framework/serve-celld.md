@@ -7,7 +7,8 @@ sidebar:
 
 `everruns-serve-celld` is experimental. It hosts ordinary serve agents through
 `everruns::Engine`; the hosting plugin selects celld Durable Objects for session
-authority. The profile migration and platform qualification are in progress.
+authority. Native containers and Wasm isolates use the shared Engine path;
+qualification covers the failure domains described below.
 
 Each tenant/session has its own authority object. That object commits creation,
 admission receipts, canonical history and execution epochs, and retains alarms

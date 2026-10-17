@@ -12,7 +12,8 @@ import mobileDiagram from "./durable-objects-mobile.svg?url&no-inline";
 The experimental `everruns-durable-object` plugin supplies coherent session
 hosting beneath `everruns::Engine`. Application code defines ordinary Framework
 Agents and uses the same Session API on native execution and Wasm inside an
-object. The Engine profile migration is experimental and still being qualified.
+object. The profiles and deployment APIs remain experimental; their guarantees
+cover the failure domains exercised by the qualification tests.
 
 <picture className="er-responsive-diagram">
   <source media="(max-width: 40rem)" srcSet={mobileDiagram} />
@@ -45,7 +46,8 @@ The [native example](https://github.com/everruns/everruns/tree/main/crates/durab
 registers an ordinary Agent on Engine and supplies that Engine to an authenticated
 `Executor`. Activation validates the authoritative binding and retained registry.
 The [Wasm application](https://github.com/everruns/everruns/tree/main/examples/durable-object-agent)
-uses the same Agent module. Its Workers `/v1` adapter calls Engine for creation,
+uses the same [Agent definition](https://github.com/everruns/everruns/blob/main/crates/durable-object/examples/shared/agent.rs),
+which imports only `everruns`. Its Workers `/v1` adapter calls Engine for creation,
 admission and queries, and uses bounded canonical pages for SSE replay. JavaScript
 handles transport, storage and alarms; Rust owns agent and tool policy.
 

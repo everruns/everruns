@@ -13,42 +13,47 @@ tags:
 
 # Engine-Owned Durable Sessions
 
-**Status: accepted for implementation; migration in progress.** This revision makes `everruns::Engine`
-mandatory for the DO application and execution paths. It supersedes the earlier
-proposal's recommendation to expose an external host factory as the Framework
-integration. The [implemented DO adapter](durable-object-native.md) remains a
-working lower-level authority and recovery proof; it does not yet satisfy this
-Framework contract. No existing API or durability guarantee changes through this
-proposal alone.
+**Status: implemented, experimental.** `everruns::Engine` owns the DO application
+and execution paths. The concrete integration is a session hosting profile,
+superseding the earlier turn-factory proposal. The
+[DO implementation and qualification](durable-object-native.md) describes the
+supported placements and their failure domains.
 
-## Implementation status
+## Implementation and qualification
 
-The in-progress [Framework hosting implementation](../../crates/everruns/src/hosting/mod.rs)
-now owns transactional admission, retained behavior/Harness/Environment references,
-authority epochs and reconstructible outcomes. Memory and single-domain SQLite
-profiles share the actor driver with `ObjectHosting`. Framework lifecycle receipts
-conservatively record uncertain hook effects. Approval batches and client results
-target a retained logical turn; repeated provider call ids cannot authorize a later
-turn. Timer obligations are separate from runnable input; Rust interprets expired
-waits after an independently delivered activation.
+The [Framework hosting implementation](../../crates/everruns/src/hosting/mod.rs)
+owns transactional admission, retained Agent/Harness/Environment references,
+authority epochs and reconstructible outcomes. Default memory, supervised
+single-domain SQLite and `ObjectHosting` share the session actor driver. The
+[shared Agent example](../../crates/durable-object/examples/shared/agent.rs)
+imports only `everruns`; native and Wasm bootstraps supply hosting and transport.
 
-The public facade and shared Agent compile for Wasm. The DO application enters
-Engine for creation, commands and execution. Workers event polling/SSE uses bounded
-canonical pages and exact opaque event identities. Native serve reads authoritative
-status and can rebuild a lost catalog from binding metadata. Explicit Environment
-factories reopen workspace services; a durable journal does not supply those services.
-The celld bootstrap and native adapter now use these same paths. The native
-container placement has passed executor-container loss and replicated authority
-owner loss without client recovery traffic; final revision qualification remains
-the completion gate.
+Framework lifecycle receipts conservatively record uncertain effects. Approval
+batches and client results target a retained logical turn; repeated provider call
+ids cannot authorize a later turn. Rust interprets expired waits after independent
+activation. Context and interruption queries use read-only authority snapshots;
+resumption reuses the original admission and does not force ownership.
 
-These changes are not the completion gate: explicit legacy facade retirement,
-complete API/protocol parity, required host-service coverage and final platform crash proofs
-still require validation. The publication hold remains in force. Qualification
-results must identify the tested revision and placement; prior low-level proofs
-do not qualify the Engine migration.
+Workers polling/SSE reads bounded canonical pages and resolves opaque event IDs.
+Native serve derives routing and status from authoritative bindings and repairs
+its catalog projection. The celld isolate bootstrap and native container adapter
+use these same Engine paths. The maintained recovery harnesses cover workerd,
+the actual Cloudflare service, a local replicated celld fleet, and replaceable
+native containers, observing recovery without client requests. The
+[qualification decision](durable-object-native.md) records the limits of those proofs.
 
-## Decision to make
+A durable journal does not supply workspace, compute, channel, schedule or
+subagent services. Environment factories reopen declared workspace services;
+unsupported external serve declarations fail before listening. Explicit legacy
+`LocalConfig` and custom host backends retain their separate weaker facade lane.
+They are not coherent durable profiles. The platform PostgreSQL actor host remains
+a separate consumer of the same core driver.
+
+The announcement publication hold remains in force. Qualification results must
+identify the tested revision and placement; low-level authority proofs alone do
+not establish the Framework contract.
+
+## Decision
 
 Keep one concrete Engine and one public Agent/Session API. Make a coherent
 **session hosting profile** pluggable beneath Engine, above input admission and
@@ -455,8 +460,9 @@ Implement in reviewable stages, with a runnable proof at every step:
 4. Adapt the existing DO authority/activation to the Engine profile. Replace
    `HostFactory` examples with the same ordinary Agent module on native and Wasm.
    Existing fencing, alarm and crash qualification remain mandatory.
-5. Wire serve's normal session API, durable waits and required catalog/channel
-   storage to the profile. Run the same tests over native HTTP and the DO `/v1`
+5. Wire serve's normal session API, durable waits and reconstructible catalog
+   to the profile; validate independent channel host services before allowing
+   their declarations. Run the same tests over native HTTP and the DO `/v1`
    target. Migrate the celld examples and integration described above, including
    both isolate and native-container placements. Remove bypass paths, the custom
    example step driver and superseded factories once their replacements qualify.
