@@ -62,7 +62,10 @@ impl EngineBuilder {
 }
 
 impl Engine {
-    pub(crate) async fn inspect_hosted(&self, session: SessionId) -> Result<crate::SessionContext> {
+    async fn query_runtime_hosted(
+        &self,
+        session: SessionId,
+    ) -> Result<(everruns_core::host::InProcessRuntime, Agent)> {
         let snapshot = self.profile()?.query_snapshot(session).await?;
         self.cache_hosted(session, snapshot.binding.clone())?;
         let registration = self.registration(&snapshot.binding.behavior)?;
@@ -113,10 +116,41 @@ impl Engine {
             .ok_or_else(|| AgentLoopError::store("query metadata missing"))?;
         snapshot.configuration.apply(&mut record);
         metadata.add_session(record).await?;
+        Ok((runtime, registration.agent))
+    }
+
+    pub(crate) async fn inspect_hosted(&self, session: SessionId) -> Result<crate::SessionContext> {
+        let (runtime, agent) = self.query_runtime_hosted(session).await?;
         Ok(crate::SessionContext::from_runtime(
             runtime.load_context(session).await?,
-            registration.agent.plugin_warnings(),
+            agent.plugin_warnings(),
         ))
+    }
+
+    pub(crate) async fn interrupted_hosted(
+        &self,
+        session: SessionId,
+    ) -> Result<
+        Option<(
+            crate::InterruptedTurn,
+            everruns_contracts::typed_id::MessageId,
+        )>,
+    > {
+        let status = self.session_status(session).await?;
+        if status.executing || !status.waiting.is_empty() || !status.runnable {
+            return Ok(None);
+        }
+        let (runtime, _) = self.query_runtime_hosted(session).await?;
+        Ok(runtime.interrupted_tool_calls(session).await?.map(|turn| {
+            (
+                crate::InterruptedTurn {
+                    turn_id: turn.turn_id.to_string(),
+                    tool_calls: turn.tool_calls,
+                    not_rerun: turn.not_rerun,
+                },
+                turn.input_message_id,
+            )
+        }))
     }
 
     /// Whether creation and admission use a coherent session authority.

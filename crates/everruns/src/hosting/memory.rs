@@ -508,6 +508,8 @@ impl SessionHosting for MemoryHosting {
         let session = self.session(id);
         let state = session.control.lock().await;
         Ok(HostingStatus {
+            executing: state.holder.is_some()
+                && state.expires.is_some_and(|at| at > Instant::now()),
             now_ms: everruns_contracts::rt::utc_now().timestamp_millis(),
             wake_at: state.wake_at,
             created_at: state.created_at.clone(),

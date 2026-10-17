@@ -689,6 +689,7 @@ impl SessionHosting for SqliteHosting {
     async fn status(&self, session: SessionId) -> Result<HostingStatus> {
         self.transaction(session, |tx, state| {
             Ok(HostingStatus {
+                executing: state.holder.is_some() && state.expires > now(),
                 now_ms: everruns_contracts::rt::utc_now().timestamp_millis(),
                 wake_at: state.wake_at,
                 created_at: state.created_at.clone(),

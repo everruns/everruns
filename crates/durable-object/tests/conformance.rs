@@ -100,6 +100,8 @@ async fn object_waits_reopen_and_mixed_resolution_is_atomic() {
         matches!(session.admission(message).await.unwrap().unwrap().state().await.unwrap(),
         everruns::hosting::AdmissionState::Waiting { calls, .. } if calls.len() == 2)
     );
+    assert!(session.interrupted_turn().await.unwrap().is_none());
+    assert!(session.resume_interrupted_turn().await.unwrap().is_none());
     let turn = waiting.open_turn.unwrap();
     let approval = waiting
         .waiting

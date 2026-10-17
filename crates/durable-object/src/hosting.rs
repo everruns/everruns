@@ -258,6 +258,8 @@ impl SessionHosting for ObjectHosting {
     async fn status(&self, session: SessionId) -> Result<HostingStatus> {
         #[derive(Deserialize)]
         struct Status {
+            holder: Option<String>,
+            expires: i64,
             now_ms: i64,
             wake_at: Option<i64>,
             created_at: String,
@@ -275,6 +277,7 @@ impl SessionHosting for ObjectHosting {
             .call("status", json!({}))
             .await?;
         Ok(HostingStatus {
+            executing: status.holder.is_some() && status.expires > status.now_ms,
             now_ms: status.now_ms,
             wake_at: status.wake_at,
             created_at: status.created_at,

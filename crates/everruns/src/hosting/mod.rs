@@ -125,6 +125,8 @@ pub struct SessionActivation {
 /// Authority status; suspension is observable without another execution attempt.
 #[derive(Clone, Debug)]
 pub struct HostingStatus {
+    /// An execution epoch is currently leased according to the authority clock.
+    pub executing: bool,
     /// Authority clock used for interpreting persisted deadlines.
     pub now_ms: i64,
     /// Next independent activation deadline, even while parked.

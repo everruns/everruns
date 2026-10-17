@@ -10,16 +10,30 @@ use super::{Command, RunError, Session, SessionActor, TurnCompletion, TurnEntry,
 impl Session {
     /// The turn a process exit cut off, if the session's last turn is one.
     ///
-    /// A running turn, or one waiting on a person (a tool approval, an
-    /// `ask_user` question), lives inside the process; when the process
-    /// exits, the durable log keeps the turn without an end. After a restart,
-    /// rebuild the agent, [`Engine::attach`](crate::Engine::attach) and
-    /// [`Engine::resume`](crate::Engine::resume) the session, then ask here.
-    /// `None` while a turn of this session runs in this process, or when the
-    /// last turn ended or already has its answer.
+    /// Hosted sessions read authority ownership and the canonical journal.
+    /// A live epoch or durable client wait is not an interruption. Rebuild the
+    /// retained Agent and resume the session to inspect work whose executor was
+    /// lost. Explicit legacy profiles attach their reconstructed Agent first.
+    /// `None` while an epoch is live, the turn waits for client results, or its
+    /// answer is already committed.
     ///
     /// Stability: alpha.
     pub async fn interrupted_turn(&self) -> Result<Option<InterruptedTurn>, RunError> {
+        if self.inner.execution.hosting().is_some() {
+            self.inner
+                .execution
+                .ensure_cataloged()
+                .await
+                .map_err(|error| {
+                    everruns_contracts::error::AgentLoopError::store(error.to_string())
+                })?;
+            return Ok(self
+                .inner
+                .execution
+                .interrupted_turn()
+                .await?
+                .map(|(turn, _)| turn));
+        }
         let (response, result) = oneshot::channel();
         self.command_sender()
             .await?
@@ -43,8 +57,36 @@ impl Session {
     /// calls reasons again. The turn keeps its id; turn-start handlers do
     /// not run again.
     ///
+    /// Hosted profiles retain the original admission and its activation
+    /// obligation. This method never forces ownership or bypasses a live epoch;
+    /// durable client waits remain parked until their answers arrive.
+    ///
     /// Stability: alpha.
     pub async fn resume_interrupted_turn(&self) -> Result<Option<TurnHandle>, RunError> {
+        if self.inner.execution.hosting().is_some() {
+            self.inner
+                .execution
+                .ensure_cataloged()
+                .await
+                .map_err(|error| {
+                    everruns_contracts::error::AgentLoopError::store(error.to_string())
+                })?;
+            let Some((_, input)) = self.inner.execution.interrupted_turn().await? else {
+                return Ok(None);
+            };
+            let admission = self.admission(input).await?.ok_or_else(|| {
+                everruns_contracts::error::AgentLoopError::store(
+                    "interrupted turn has no original admission",
+                )
+            })?;
+            // Recovery uses the existing admission and its durable activation
+            // obligation. This nudge cannot replace or bypass a live epoch.
+            self.inner.execution.activate();
+            return Ok(Some(TurnHandle {
+                session: self.clone(),
+                source: super::TurnHandleSource::Admission(admission),
+            }));
+        }
         let (response, result) = oneshot::channel();
         self.command_sender()
             .await?

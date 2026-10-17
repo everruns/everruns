@@ -83,6 +83,18 @@ pub(crate) trait SessionExecution: Send + Sync + fmt::Debug {
             "query port unavailable",
         ))
     }
+    async fn interrupted_turn(
+        &self,
+    ) -> everruns_contracts::error::Result<
+        Option<(
+            crate::InterruptedTurn,
+            everruns_contracts::typed_id::MessageId,
+        )>,
+    > {
+        Err(everruns_contracts::error::AgentLoopError::config(
+            "query port unavailable",
+        ))
+    }
     fn turn_backend(
         &self,
         runtime: everruns_core::host::InProcessRuntime,
@@ -769,6 +781,16 @@ impl fmt::Debug for EngineSessionExecution {
 impl SessionExecution for EngineSessionExecution {
     async fn inspect_context(&self) -> everruns_contracts::error::Result<crate::SessionContext> {
         self.engine.inspect_hosted(self.session_id).await
+    }
+    async fn interrupted_turn(
+        &self,
+    ) -> everruns_contracts::error::Result<
+        Option<(
+            crate::InterruptedTurn,
+            everruns_contracts::typed_id::MessageId,
+        )>,
+    > {
+        self.engine.interrupted_hosted(self.session_id).await
     }
     fn hosting(&self) -> Option<Arc<dyn crate::hosting::SessionHosting>> {
         self.engine

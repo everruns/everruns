@@ -76,6 +76,13 @@ binding, concrete in-process runtime, stores, or platform DTOs. The `engine` fea
 planning; it is the lower-level host kernel, not an application-pluggable
 Engine implementation.
 
+Accepted hosted work outlives frontend handles. Interruption inspection reads
+canonical state and authority-clock ownership through the query runtime; a live
+epoch or durable client wait is not an interrupted executor. Explicit resumption
+reuses the original admission and existing activation obligation, without another
+turn loop or a forced ownership change. See the
+[session interruption adapter](../../crates/everruns/src/session/interrupted.rs).
+
 Neutral persisted turn outcomes and approval records live in `everruns-contracts`.
 Core algorithms and hosts import those owners directly; the Framework preserves
 its application-facing exports without adding compatibility owners to the kernel.

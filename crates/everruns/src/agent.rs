@@ -430,7 +430,15 @@ impl Agent {
             || self.capabilities.iter().any(|reference| {
                 matches!(
                     reference.capability_id(),
-                    "filesystem" | "file_system" | "skills" | "host_shell" | "bash" | "bashkit"
+                    "filesystem"
+                        | "file_system"
+                        | "session_file_system"
+                        | "skills"
+                        | "host_shell"
+                        | "bash"
+                        | "bashkit"
+                        | "bashkit_shell"
+                        | "virtual_bash"
                 )
             })
     }

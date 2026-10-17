@@ -63,6 +63,8 @@ async fn parked_client_calls_reopen_and_resolve(profile: impl SessionHosting + C
         matches!(admission.state().await.unwrap(),AdmissionState::Waiting{calls,..} if calls.len()==2)
     );
     assert_eq!(completions.load(Ordering::SeqCst), 0);
+    assert!(session.interrupted_turn().await.unwrap().is_none());
+    assert!(session.resume_interrupted_turn().await.unwrap().is_none());
     let turn_id = replacement
         .session_status(id)
         .await
@@ -853,7 +855,7 @@ async fn native_process_loss_preserves_admission_and_finalization() {
                 .args([
                     "--ignored",
                     "--exact",
-                    "native_process_fixture",
+                    "controls::native_process_fixture",
                     "--nocapture",
                 ])
                 .env("EVERRUNS_PROCESS_FIXTURE_DIR", directory.path())
@@ -943,4 +945,30 @@ async fn native_process_loss_preserves_admission_and_finalization() {
         1
     );
     drop(replacement);
+}
+
+#[tokio::test]
+async fn canonical_filesystem_and_shell_capabilities_require_retained_environments_before_creation()
+{
+    for capability in ["session_file_system", "bashkit_shell", "virtual_bash"] {
+        let owner = engine(
+            MemoryHosting::default(),
+            Agent::builder()
+                .instructions("Use the configured workspace.")
+                .model(Model::simulated("done"))
+                .capability(capability)
+                .build()
+                .unwrap(),
+        );
+        let id = SessionId::new();
+        let error = match owner.create_registered(id, &build()).await {
+            Ok(_) => panic!("{capability} must not silently select an ephemeral workspace"),
+            Err(error) => error,
+        };
+        assert!(
+            error.to_string().contains("retained Environment"),
+            "{error}"
+        );
+        assert!(owner.session_binding(id).await.is_err());
+    }
 }
