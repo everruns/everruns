@@ -534,12 +534,18 @@ impl ServerAppBuilder {
         // =====================================================================
         // Phase 4: Event listeners & domain/infra helpers
         // =====================================================================
+        let driver_registry = Arc::new(host_composition.driver_registry().clone());
+        let provider_resolver = Arc::new(
+            services::ProviderResolverService::new(db.clone(), encryption.clone())
+                .with_driver_registry((*driver_registry).clone()),
+        );
         let listeners::Listeners {
             event_listeners,
             budget_service,
             mcp_events,
             mcp_event_triggers,
             thread_turns,
+            automatic_titles,
             session_sandbox_service,
             notification_service,
             observer_wake,
@@ -550,6 +556,7 @@ impl ServerAppBuilder {
                 host_composition: host_composition.clone(),
                 auth_state: auth_state.clone(),
                 auth_config: auth_config.clone(),
+                provider_resolver: provider_resolver.clone(),
                 observers_enabled: feature_flags.observers,
                 prometheus_enabled: prometheus_handle.is_some(),
             },
@@ -579,6 +586,7 @@ impl ServerAppBuilder {
             event_listeners.clone(),
         ));
         thread_turns.bind_registry(&db, &event_service, &runner);
+        automatic_titles.bind_events(&event_service);
         let background_event_service = Arc::new(services::EventService::with_listeners(
             background_db.clone(),
             event_delivery.clone(),
@@ -698,11 +706,6 @@ impl ServerAppBuilder {
             notification_broadcaster,
             auth: auth_state.clone(),
         };
-        let driver_registry = Arc::new(host_composition.driver_registry().clone());
-        let provider_resolver = Arc::new(
-            services::ProviderResolverService::new(db.clone(), encryption.clone())
-                .with_driver_registry((*driver_registry).clone()),
-        );
 
         // Now that the LLM stack exists, spawn the observer scoring worker with
         // an LLM-judge client backed by the org's own configured providers.

@@ -91,8 +91,12 @@ pub async fn update_session_title_with_event(
     let Some(event) =
         session_title_updated_event(session_id, event_context, previous_title, title.clone())
     else {
+        // Explicit naming takes ownership even when the text is unchanged.
+        let session = session_mutator
+            .update_session_title(session_id, title)
+            .await?;
         return Ok(SessionTitleMutation {
-            session: current,
+            session,
             changed: false,
         });
     };

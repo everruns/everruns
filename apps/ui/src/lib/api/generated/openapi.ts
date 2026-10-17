@@ -17341,6 +17341,8 @@ export interface components {
          *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
          */
         onboarding_completed_at?: string | null;
+        /** @description Optional small chat model, independent of the main chat and decision defaults. */
+        small_model_id?: string | null;
         /**
          * @description Who answers deployment-owned decision checks: `deployment` (default)
          *     or `organization` (the org's default decision model).
@@ -20675,6 +20677,8 @@ export interface components {
        *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
        */
       onboarding_completed_at?: string | null;
+      /** @description Optional small chat model, independent of the main chat and decision defaults. */
+      small_model_id?: string | null;
       /**
        * @description Who answers deployment-owned decision checks: `deployment` (default)
        *     or `organization` (the org's default decision model).
@@ -28228,6 +28232,11 @@ export interface components {
        * @example Acme Corporation
        */
       name?: string | null;
+      /**
+       * @description Shared small chat model for lightweight work. Omit to preserve the selection;
+       *     pass null to clear it. Does not change the main chat or decision default.
+       */
+      small_model_id?: string | null;
       system_decisions?: components["schemas"]["SystemDecisions"] | null;
       web_search_defaults?: components["schemas"]["WebSearchDefaults"] | null;
     };

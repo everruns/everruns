@@ -47600,6 +47600,13 @@
                   "format": "date-time",
                   "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
                 },
+                "small_model_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional small chat model, independent of the main chat and decision defaults."
+                },
                 "system_decisions": {
                   "$ref": "#/components/schemas/SystemDecisions",
                   "description": "Who answers deployment-owned decision checks: `deployment` (default)\nor `organization` (the org's default decision model)."
@@ -53702,6 +53709,13 @@
             ],
             "format": "date-time",
             "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
+          },
+          "small_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional small chat model, independent of the main chat and decision defaults."
           },
           "system_decisions": {
             "$ref": "#/components/schemas/SystemDecisions",
@@ -67387,6 +67401,13 @@
             ],
             "description": "The display name of the organization.",
             "example": "Acme Corporation"
+          },
+          "small_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Shared small chat model for lightweight work. Omit to preserve the selection;\npass null to clear it. Does not change the main chat or decision default."
           },
           "system_decisions": {
             "oneOf": [

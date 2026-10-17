@@ -2,6 +2,8 @@
 
 ## 2026-10-17
 
+* **Automatic session titles and Small model.** Add opt-in naming outside the turn path, sparse persistent admission, explicit-title priority, and an independent organization small-model selection. See [Session titles](runtime-resources/session-titles.md).
+
 * **PostgreSQL archive compatibility patch.** Select patched ZIP9 through a
   checksum-attributed upstream copy while the published PostgreSQL dependency
   still selects ZIP8. Preserve extraction policy and ordinary advisory/license
