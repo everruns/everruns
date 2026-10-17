@@ -25525,11 +25525,17 @@ export interface components {
     /** @description Request to answer pending tool-approval requests, `POST …/sessions/{id}/tool-approvals`. */
     SubmitToolApprovalsRequest: {
       /**
+       * Format: uuid
+       * @description Retain when retrying an uncertain response. Requires `turn_id`.
+       */
+      command_id?: string | null;
+      /**
        * @description Decisions for the pending requests. A pending request in the same batch
        *     that is left out is resolved as not approved: the turn resumes once, so
        *     every request in it is settled now, and silence never approves.
        */
       decisions: components["schemas"]["ToolApprovalAnswer"][];
+      turn_id?: components["schemas"]["turnId"] | null;
     };
     /** @description Result of answering tool-approval requests. */
     SubmitToolApprovalsResponse: {
@@ -27334,6 +27340,7 @@ export interface components {
        * @example stop
        */
       stop_reason?: string | null;
+      termination_reason?: components["schemas"]["TurnStopReason"] | null;
       /**
        * Format: int64
        * @description First-token latency for the turn, usually from the first LLM generation.
@@ -27430,6 +27437,17 @@ export interface components {
        */
       turn_id: string;
     };
+    /**
+     * @description Stable reason a turn stopped, independent of provider-specific strings.
+     * @enum {string}
+     */
+    TurnStopReason:
+      | "end_turn"
+      | "max_tokens"
+      | "max_turn_requests"
+      | "refusal"
+      | "error"
+      | "cancelled";
     /** @description Waited result for `POST /v1/sessions/{session_id}/messages?wait=true`. */
     TurnWaitResponse: {
       /**
@@ -30875,6 +30893,11 @@ export interface components {
      * @example session_01933b5a000070008000000000000001
      */
     sessionId: string;
+    /**
+     * @description Prefixed identifier with 'turn' prefix
+     * @example turn_01933b5a000070008000000000000001
+     */
+    turnId: string;
   };
   responses: never;
   parameters: never;

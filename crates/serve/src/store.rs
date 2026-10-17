@@ -119,7 +119,8 @@ impl Store {
         self.conn().execute(
             "INSERT INTO sessions
                (id, agent, build_id, title, tags, hints, metadata, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) ON CONFLICT(id) DO NOTHING",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) ON CONFLICT(id) DO UPDATE SET
+                 agent=excluded.agent, build_id=excluded.build_id",
             params![
                 row.id,
                 row.agent,

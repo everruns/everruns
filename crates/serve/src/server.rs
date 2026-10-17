@@ -279,6 +279,8 @@ pub(crate) async fn session_json(host: &Host, id: &str) -> crate::Result<Value> 
     if let Some(authority) = authority {
         session["build_id"] = json!(authority.binding.behavior.build_id);
         session["agent_name"] = json!(authority.binding.behavior.agent);
+        session["agent_id"] = session["agent_name"].clone();
+        session["created_at"] = json!(authority.created_at);
         session["status"] = json!(authority.phase());
         let approvals:Vec<_>=authority.waiting.iter().filter(|call|call.name=="approve_tool_call").map(|call|json!({"tool_call_id":call.id,"tool_name":call.arguments["tool"],"arguments":call.arguments["arguments"]})).collect();
         let questions: Vec<_> = authority

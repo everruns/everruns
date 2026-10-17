@@ -1,10 +1,10 @@
 # Durable Object authority (experimental)
 
-A source-only native and Wasm execution profile: a Durable Object owns admission, the
+An experimental native and Wasm execution profile: a Durable Object owns admission, the
 canonical session log, leases and alarms. Ordinary Everruns Rust agents run on an
 external executor or inside an object’s Wasm isolate using the same actor driver
 as the platform worker. No planner
-or tool loop is reimplemented in JavaScript. Not published to crates.io yet.
+or tool loop is reimplemented in JavaScript.
 
 ## Run locally
 

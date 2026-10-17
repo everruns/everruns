@@ -853,6 +853,10 @@ async fn catalog_projection_cannot_rebind_the_authoritative_build() {
     let store = crate::store::Store::open(&dir.path().join("serve.db")).unwrap();
     store.repin_for_test(&id, "b-older");
     drop(store);
+    everruns::sqlite::open(dir.path().join("serve.db"))
+        .unwrap()
+        .execute("UPDATE sessions SET agent='asker' WHERE id=?", [&id])
+        .unwrap();
     let host = Host::new(app(), Mode::Start, Some(dir.path().to_path_buf())).unwrap();
     let server = serve(host).await;
     let response = server
@@ -860,6 +864,62 @@ async fn catalog_projection_cannot_rebind_the_authoritative_build() {
         .await;
     assert_eq!(response.status(), 201);
     assert_eq!(server.session(&id).await["build_id"], retained);
+    assert_eq!(server.session(&id).await["agent_id"], "tester");
+    assert_eq!(
+        server
+            .get(&format!("/v1/channels/asker/sessions/{id}"))
+            .await
+            .status(),
+        404
+    );
+    assert_eq!(
+        server
+            .get(&format!("/v1/channels/tester/sessions/{id}"))
+            .await
+            .status(),
+        200
+    );
+}
+
+#[tokio::test]
+async fn hosted_history_remains_readable_when_the_agent_was_removed() {
+    let dir = tempfile::tempdir().unwrap();
+    let id = {
+        let host = Host::new(app(), Mode::Eval, Some(dir.path().to_path_buf())).unwrap();
+        let id = host.create_session(NewSession::default()).await.unwrap();
+        assert!(
+            host.send(&id, "hello".into())
+                .await
+                .unwrap()
+                .wait()
+                .await
+                .unwrap()
+                .success
+        );
+        id
+    };
+    let mut replacement = app();
+    Arc::get_mut(&mut replacement.inner)
+        .unwrap()
+        .agents
+        .retain(|agent| agent.name != "tester");
+    let server =
+        serve(Host::new(replacement, Mode::Eval, Some(dir.path().to_path_buf())).unwrap()).await;
+    let session = server.get(&format!("/v1/sessions/{id}")).await;
+    assert_eq!(session.status(), 200);
+    assert_eq!(
+        session.json::<Value>().await.unwrap()["agent_name"],
+        "tester"
+    );
+    let events = server.get(&format!("/v1/sessions/{id}/events")).await;
+    assert_eq!(events.status(), 200);
+    assert!(
+        events.json::<Value>().await.unwrap()["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|event| event["type"] == "turn.completed")
+    );
 }
 
 #[tokio::test]

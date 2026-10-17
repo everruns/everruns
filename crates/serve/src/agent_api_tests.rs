@@ -29,6 +29,28 @@ async fn create(server: &Server, agent: &str) -> Value {
 }
 
 #[tokio::test]
+async fn agent_creation_retains_a_stable_identity_after_a_lost_reply() {
+    let server = serve(Host::new(app(), Mode::Eval, None).unwrap()).await;
+    let id = everruns::SessionId::new().to_string();
+    let body = json!({"id":id,"title":"retained","metadata":{"ticket":"same"}});
+    let path = "/v1/channels/tester/sessions";
+    let first = server.post(path, body.clone()).await;
+    assert_eq!(first.status(), 201);
+    let first = first.json::<Value>().await.unwrap();
+    let repeated = server.post(path, body).await;
+    assert_eq!(repeated.status(), 201);
+    assert_eq!(repeated.json::<Value>().await.unwrap(), first);
+    assert_eq!(first["id"], id);
+    assert_eq!(
+        server.get(path).await.json::<Value>().await.unwrap()["data"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
 async fn the_card_names_the_agent_and_its_session_collection() {
     let server = serve(Host::new(app(), Mode::Eval, None).unwrap()).await;
     let card: Value = server

@@ -83,7 +83,18 @@ fn top_level<'a>(host: &'a Host, name: &str) -> ApiResult<&'a AgentEntry> {
 async fn confine(host: &Host, name: &str, id: &str) -> ApiResult<()> {
     top_level(host, name)?;
     host.session(id).await?;
-    if host.session_row(id)?.agent != name {
+    // THREAT[TM-DURABLE-012]: catalog rows are projections, never the
+    // authorization source for the immutable session/agent association.
+    let agent = if host.engine.has_session_hosting() {
+        host.engine
+            .session_binding(id.parse()?)
+            .await?
+            .behavior
+            .agent
+    } else {
+        host.session_row(id)?.agent
+    };
+    if agent != name {
         return Err(ApiError::NotFound(format!("session {id}")).into());
     }
     Ok(())
@@ -129,21 +140,31 @@ pub(crate) async fn card(
     }))
 }
 
+#[derive(Deserialize, Default)]
+struct CreateSessionBody {
+    #[serde(flatten)]
+    request: CreateAgentSessionRequest,
+    // Serve extension shared with the Workers gateway: retain across a lost
+    // creation response, without changing the Platform request contract.
+    #[serde(default)]
+    id: Option<everruns::SessionId>,
+}
+
 async fn create_session(
     State(host): State<Arc<Host>>,
     Path(name): Path<String>,
-    body: Option<Json<CreateAgentSessionRequest>>,
+    body: Option<Json<CreateSessionBody>>,
 ) -> ApiResult<Response> {
     top_level(&host, &name)?;
     let body = body.map(|b| b.0).unwrap_or_default();
     let id = host
         .create_session(NewSession {
-            id: None,
+            id: body.id,
             agent: Some(name.clone()),
-            title: body.title,
+            title: body.request.title,
             tags: Vec::new(),
             hints: None,
-            metadata: body.metadata,
+            metadata: body.request.metadata,
         })
         .await?;
     Ok((

@@ -572,7 +572,7 @@ impl Host {
         if let Some(live) = lock(&self.live).get(id).cloned() {
             return Ok(live);
         }
-        if self.engine.has_session_hosting() && self.store.session(id)?.is_none() {
+        if self.engine.has_session_hosting() {
             let session: SessionId = id
                 .parse()
                 .map_err(|_| ApiError::NotFound(format!("session {id}")))?;
@@ -609,20 +609,28 @@ impl Host {
                 from: row.build_id.clone(),
             });
         }
-        let entry = self
-            .app
-            .agent(&row.agent)
-            .ok_or_else(|| {
-                anyhow!(
-                    "session {id} ran agent `{}`, which this build lacks",
-                    row.agent
-                )
-            })?
-            .clone();
+        // Hosted history and settled outcomes remain readable even when this
+        // deployment no longer retains the executable Agent. Engine activation
+        // handles that case by suspending instead of selecting current code.
+        let entry = if self.engine.has_session_hosting() {
+            None
+        } else {
+            Some(
+                self.app
+                    .agent(&row.agent)
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "session {id} ran agent `{}`, which this build lacks",
+                            row.agent
+                        )
+                    })?
+                    .clone(),
+            )
+        };
         let session_id = SessionId::parse(id)
             .map_err(|err| ApiError::BadRequest(format!("bad session id {id}: {err}")))?;
-        if !self.engine.has_session_hosting() {
-            let agent = self.build_agent(&entry, None, true)?;
+        if let Some(entry) = &entry {
+            let agent = self.build_agent(entry, None, true)?;
             self.engine.attach(session_id, agent).await?;
         }
         let session = self.engine.resume(session_id).await?;
@@ -647,11 +655,13 @@ impl Host {
         };
         self.notify(Notice::Live {
             session_id: id.to_string(),
-            agent: entry.name.to_string(),
+            agent: row.agent,
             resumed: true,
             after,
         });
-        self.resume_interrupted(id, &live, &entry).await?;
+        if let Some(entry) = &entry {
+            self.resume_interrupted(id, &live, entry).await?;
+        }
         Ok(live)
     }
 

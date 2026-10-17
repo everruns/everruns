@@ -62387,12 +62387,31 @@
           "decisions"
         ],
         "properties": {
+          "command_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Retain when retrying an uncertain response. Requires `turn_id`."
+          },
           "decisions": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ToolApprovalAnswer"
             },
             "description": "Decisions for the pending requests. A pending request in the same batch\nthat is left out is resolved as not approved: the turn resumes once, so\nevery request in it is settled now, and silence never approves."
+          },
+          "turn_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/turnId",
+                "description": "Exact turn that issued the pending batch; call ids may repeat later."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -65618,6 +65637,17 @@
             "description": "Normalized finish reason of the turn's final LLM generation (`stop`,\n`length`, `content_filter`, `refusal`, ...). A turn that \"completed\" on\n`length` ended because the model ran out of output budget, not because\nit was done. `None` when the provider reported no reason.",
             "example": "stop"
           },
+          "termination_reason": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TurnStopReason",
+                "description": "Provider-neutral reason execution ended. Persisted with termination so\nhosts can recover the same outcome after losing their in-memory result."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "time_to_first_token_ms": {
             "type": [
               "integer",
@@ -65788,6 +65818,18 @@
             "example": "turn_01933b5a00007000800000000000001"
           }
         }
+      },
+      "TurnStopReason": {
+        "type": "string",
+        "description": "Stable reason a turn stopped, independent of provider-specific strings.",
+        "enum": [
+          "end_turn",
+          "max_tokens",
+          "max_turn_requests",
+          "refusal",
+          "error",
+          "cancelled"
+        ]
       },
       "TurnWaitResponse": {
         "type": "object",
@@ -71948,6 +71990,12 @@
         "description": "Prefixed identifier with 'session' prefix",
         "example": "session_01933b5a000070008000000000000001",
         "pattern": "^session_[0-9a-f]{32}$"
+      },
+      "turnId": {
+        "type": "string",
+        "description": "Prefixed identifier with 'turn' prefix",
+        "example": "turn_01933b5a000070008000000000000001",
+        "pattern": "^turn_[0-9a-f]{32}$"
       }
     },
     "securitySchemes": {
