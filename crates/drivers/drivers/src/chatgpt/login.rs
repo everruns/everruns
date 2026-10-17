@@ -19,6 +19,21 @@ pub struct LoginAttempt {
     state: String,
     nonce: String,
     verifier: String,
+    success_page: SuccessPage,
+}
+
+struct SuccessPage {
+    content_type: &'static str,
+    body: String,
+}
+
+impl Default for SuccessPage {
+    fn default() -> Self {
+        Self {
+            content_type: "text/plain; charset=utf-8",
+            body: "Sign-in received. Return to the application to check the result.".into(),
+        }
+    }
 }
 pub fn random_token() -> String {
     let mut bytes = [0u8; 32];
@@ -70,8 +85,22 @@ impl LoginAttempt {
             state,
             nonce,
             verifier,
+            success_page: SuccessPage::default(),
         })
     }
+
+    /// Replaces the successful callback response with an HTML page supplied by the embedder.
+    ///
+    /// The page is returned verbatim, so callers should provide trusted HTML rather than
+    /// interpolating untrusted input.
+    pub fn with_success_page_html(mut self, html: impl Into<String>) -> Self {
+        self.success_page = SuccessPage {
+            content_type: "text/html; charset=utf-8",
+            body: html.into(),
+        };
+        self
+    }
+
     pub fn nonce(&self) -> &str {
         &self.nonce
     }
@@ -172,13 +201,19 @@ impl LoginAttempt {
                 && params.get("state") == Some(&self.state);
             let status = if valid { "200 OK" } else { "400 Bad Request" };
             // Receiving a code is not proof of a completed login; verification follows.
-            let body = if valid {
-                "Sign-in received. Return to the application to check the result."
+            let (content_type, body) = if valid {
+                (
+                    self.success_page.content_type,
+                    self.success_page.body.as_str(),
+                )
             } else {
-                "This sign-in callback does not match the pending attempt."
+                (
+                    "text/plain; charset=utf-8",
+                    "This sign-in callback does not match the pending attempt.",
+                )
             };
             let response = format!(
-                "HTTP/1.1 {status}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                 body.len()
             );
             let _ = tokio::time::timeout(
@@ -190,5 +225,66 @@ impl LoginAttempt {
                 return Ok(params);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn endpoints() -> Endpoints {
+        Endpoints {
+            issuer: "https://auth.example.com".into(),
+            authorize: "https://auth.example.com/authorize".into(),
+            token: "https://auth.example.com/token".into(),
+            revoke: "https://auth.example.com/revoke".into(),
+            jwks: "https://auth.example.com/jwks".into(),
+        }
+    }
+
+    async fn callback_response(attempt: LoginAttempt) -> (String, String) {
+        let authorize_url = reqwest::Url::parse(&attempt.authorize_url).unwrap();
+        let params: HashMap<_, _> = authorize_url.query_pairs().into_owned().collect();
+        let callback_url = format!(
+            "{}?state={}&code=test",
+            params["redirect_uri"], params["state"]
+        );
+        let (callback, response) = tokio::join!(attempt.callback(), reqwest::get(callback_url));
+        callback.unwrap();
+        let response = response.unwrap();
+        let content_type = response.headers()[reqwest::header::CONTENT_TYPE]
+            .to_str()
+            .unwrap()
+            .to_owned();
+        (content_type, response.text().await.unwrap())
+    }
+
+    #[tokio::test]
+    async fn callback_uses_default_success_page() {
+        let attempt = LoginAttempt::start(endpoints(), "Test", "host", None, None, false)
+            .await
+            .unwrap();
+
+        let (content_type, body) = callback_response(attempt).await;
+
+        assert_eq!(content_type, "text/plain; charset=utf-8");
+        assert_eq!(
+            body,
+            "Sign-in received. Return to the application to check the result."
+        );
+    }
+
+    #[tokio::test]
+    async fn callback_uses_custom_html_success_page() {
+        let html = "<!doctype html><title>Yolop</title><p>Return to Yolop.</p>";
+        let attempt = LoginAttempt::start(endpoints(), "Test", "host", None, None, false)
+            .await
+            .unwrap()
+            .with_success_page_html(html);
+
+        let (content_type, body) = callback_response(attempt).await;
+
+        assert_eq!(content_type, "text/html; charset=utf-8");
+        assert_eq!(body, html);
     }
 }
