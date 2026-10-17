@@ -80,7 +80,6 @@ mod workspace;
 
 pub use crate::AssembledTurnContext;
 pub use crate::task_observer::{TaskTransition, TaskTransitionObserver};
-pub use crate::turn::TurnStopReason;
 pub use actor::{
     ActorRunner, DEFAULT_SESSION_LEASE_TTL, InMemorySessionLeases, SessionLease, SessionLeases,
     session_held_elsewhere,
@@ -118,6 +117,7 @@ pub use events::{
 pub use everruns_contracts::error::{
     AgentLoopError, BillingPressureReason, LlmError, LlmErrorKind,
 };
+pub use everruns_contracts::turn::TurnStopReason;
 pub use everruns_contracts::typed_id::WorkspaceId;
 pub use execution_snapshot::{load_execution_snapshot, load_execution_snapshot_for_session};
 pub use extensions::{

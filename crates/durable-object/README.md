@@ -1,10 +1,52 @@
-# Durable Object authority (experimental)
+# everruns-durable-object
 
-A source-only native and Wasm execution profile: a Durable Object owns admission, the
+> Coherent session hosting for ordinary Everruns Agents on native executors and Wasm Durable Objects.
+
+Part of the [Everruns](https://everruns.com) ecosystem.
+
+An experimental native and Wasm execution profile: a Durable Object owns admission, the
 canonical session log, leases and alarms. Ordinary Everruns Rust agents run on an
 external executor or inside an object’s Wasm isolate using the same actor driver
 as the platform worker. No planner
-or tool loop is reimplemented in JavaScript. Not published to crates.io yet.
+or tool loop is reimplemented in JavaScript.
+
+## What It Provides
+
+- One per-session authority for binding, admission, commands, canonical events and wakeups.
+- Epoch-fenced runtime ports and exact-turn approval/client-result commands.
+- The same Framework Engine and shared actor driver on native and Wasm placements.
+
+## Quick Example
+
+Enable `everruns/openai` in the application. Configure the Worker and its
+independent Engine executor as described below, then admit an ordinary Agent input:
+
+```rust,no_run
+use everruns::{Agent, Engine, MessageId, OpenAI, SessionId, hosting::AgentBuild};
+use everruns_durable_object::{AuthorityClient, ObjectHosting};
+
+# #[cfg(feature = "native")]
+# async fn submit() -> Result<(), Box<dyn std::error::Error>> {
+let client = AuthorityClient::new(
+    "https://authority.example.com", "tenant", "replace-with-a-long-random-service-secret",
+)?;
+let agent = Agent::builder()
+    .instructions("Answer concisely.")
+    .provider(OpenAI::from_env()?)
+    .model("gpt-6.1-sol")
+    .build()?;
+let build = AgentBuild::new("assistant", "immutable-build-v1");
+let engine = Engine::builder()
+    .hosting(ObjectHosting::new(client))
+    .register(build.clone(), agent)
+    .build();
+let session = engine.create_registered(SessionId::new(), &build).await?;
+let receipt = session.send_with_id(MessageId::new(), "Hello.").await?;
+println!("admitted {}", receipt.message_id);
+# Ok(())
+# }
+# fn main() {}
+```
 
 ## Run locally
 
@@ -32,19 +74,17 @@ The example expects `OPENAI_API_KEY`. Its executor listens on loopback port 8790
 A production Worker needs a reachable HTTPS executor and separate production
 secrets. Pin immutable code builds and retain the matching executors.
 
-Embed `AuthorityClient` in a trusted authenticated application. Create a typed
-session ID, call `session(id).bind(SessionBinding { agent, build_id })`, then
-`send(AcceptedTurnInput)`. Keep the accepted input identity when retrying a lost
-acknowledgement. The object schedules execution; clients can page `events`,
-resolve client calls, cancel or resume a suspended session. This service protocol
-is not the public platform `/v1` API. Never expose its credentials to browsers.
+Configure an Engine with `ObjectHosting::new(client)` and register ordinary
+Framework Agents under immutable `AgentBuild` references. Applications use
+`Engine::create_registered`, `Session::send_with_id` and reconstructible
+admission handles. An authenticated `Executor` enters that same Engine for
+native placement; the Wasm application calls `Engine::activate` inside the object.
+The privileged authority protocol is internal and must never be exposed to browsers.
 
-Use `Agent::execution_host` for normal Framework agents, or
-`serve::Server::execution_host` for registered serve agents, in the executor's
-`HostFactory`. The host receives the authority's coherent event/session/KV stores.
-Default secret storage fails closed; supply an encrypted backend if needed.
-Workspaces and external effects require their own durable contracts. Outer
-application lifecycle/approval handlers are owned by the embedding host.
+Start/completion hooks, durable approvals, client-tool waits, cancellation and
+outcome finalization run in Framework under the authority epoch. The profile
+supplies coherent event/session/KV storage. Workspace and other host services
+require explicit supported contracts; a durable journal does not preserve them.
 
 ## Verify
 
@@ -60,13 +100,23 @@ It needs free ports 8789 and 8790; logs are retained under the printed `/tmp` pa
 For Wasm builds and platform qualification, see the
 [Wasm application](../../examples/durable-object-agent/README.md). Local workerd
 coverage does not establish production Cloudflare or cloud-bucket guarantees.
-See [the architecture](../../knowledge/framework/durable-object-native.md).
+See the [hosting guide](https://everruns.com/docs/framework/durable-objects/).
 
 ## Extension ports
 
 `AuthorityTransport` supplies tenant/session-scoped authority calls; the native
 HTTP implementation and Wasm `ObjectTransport` implement the same protocol.
-`HostFactory` builds an ordinary `InProcessRuntime` from coherent `HostBackends`.
-`activate` claims one known session and invokes the shared `SessionActorDriver`.
-The platform extends its `SessionActorStore` port with fleet discovery through
-`ActorLeaseStore`; object adapters only implement the session port.
+`ObjectHosting` implements the Framework `SessionHosting` and `SessionEpoch`
+ports. Only a claimed epoch supplies canonical write access; frontend bundles
+are read-only. Native and Wasm placements invoke the shared `SessionActorDriver`
+through Engine. No application host factory assembles a core runtime.
+
+## Documentation
+
+- [Durable Object hosting](https://everruns.com/docs/framework/durable-objects/)
+- [API reference](https://docs.rs/everruns-durable-object)
+- [Framework architecture](https://everruns.com/docs/framework/architecture/)
+
+## License
+
+MIT. See [LICENSE](https://github.com/everruns/everruns/blob/main/LICENSE).

@@ -40,6 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // A receipt confirms acceptance, not that the model has applied the update.
     let latest = session.send(update.as_str()).await?;
     match latest.disposition {
+        SendDisposition::Pending => println!("Admitted; turn assignment is pending."),
         SendDisposition::Steered => println!("Accepted into the active turn."),
         SendDisposition::Started => {
             println!("The first turn finished; accepted as a follow-up turn.")

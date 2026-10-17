@@ -258,7 +258,6 @@ pub use everruns_contracts::runtime::truncation_info;
 mod test_fixtures;
 
 // Stable completion semantics; execution state and planning live in everruns_core::engine.
-pub mod turn;
 pub mod turn_completion;
 
 // Note: Chat Driver implementations (AnthropicChatDriver, OpenAIChatDriver) live in

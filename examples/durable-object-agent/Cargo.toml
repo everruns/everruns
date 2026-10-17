@@ -9,7 +9,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 async-trait = "0.1"
 everruns-contracts = { path = "../../crates/contracts", default-features = false, features = ["runtime", "http"] }
-everruns-core = { path = "../../crates/core", default-features = false, features = ["actor-runtime"] }
+everruns = { path = "../../crates/everruns", default-features = false }
 everruns-durable-object = { path = "../../crates/durable-object", default-features = false, features = ["wasm"] }
 futures = "0.3"
 serde_json = "1"

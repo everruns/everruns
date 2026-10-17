@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 /// Stable reason a turn stopped, independent of provider-specific strings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum TurnStopReason {
     EndTurn,
     MaxTokens,

@@ -293,6 +293,7 @@ async fn run_full_turn(h: &OtelHarness) {
         800,
         h.context(None, None, None),
         TurnCompletedData {
+            termination_reason: None,
             issue_count: None,
             turn_id: h.turn,
             iterations: 1,
@@ -956,6 +957,7 @@ async fn orphan_completions_are_reconstructed_from_their_duration() {
         800,
         h.context(None, None, None),
         TurnCompletedData {
+            termination_reason: None,
             issue_count: None,
             turn_id: h.turn,
             iterations: 1,
@@ -990,6 +992,7 @@ async fn orphan_completions_are_reconstructed_from_their_duration() {
             50,
             other.context(None, None, None),
             TurnCompletedData {
+                termination_reason: None,
                 issue_count: None,
                 turn_id: other.turn,
                 iterations: 2,
@@ -1207,6 +1210,7 @@ async fn truncation_details_reach_chat_and_turn_spans() {
             800,
             h.context(None, None, None),
             TurnCompletedData {
+                termination_reason: None,
                 turn_id: h.turn,
                 iterations: 1,
                 status: Some("completed".into()),

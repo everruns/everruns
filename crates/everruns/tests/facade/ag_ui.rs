@@ -485,7 +485,8 @@ async fn a_run_reports_the_message_it_sent() {
 
     let run = session.ag_ui(input("Hi")).await.expect("run starts");
     let sent = run.sent().expect("a user message starts a turn").clone();
-    assert_eq!(sent.disposition, SendDisposition::Started);
+    assert_eq!(sent.disposition, SendDisposition::Pending);
+    assert!(sent.turn_id.is_none());
     let events: Vec<Event> = run.collect().await;
     assert_well_formed(&events);
     assert!(sent.wait().await.expect("turn ends").success);

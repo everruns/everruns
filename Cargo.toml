@@ -251,6 +251,7 @@ everruns-macros = { path = "crates/macros", version = "0.48.0" }
 everruns-serve = { path = "crates/serve", version = "0.48.0" }
 everruns-serve-agentcore = { path = "crates/serve-agentcore", version = "0.48.0" }
 everruns-serve-celld = { path = "crates/serve-celld", version = "0.48.0" }
+everruns-durable-object = { path = "crates/durable-object", version = "0.48.0" }
 everruns-serve-build = { path = "crates/serve-build", version = "0.48.0" }
 everruns-serve-macros = { path = "crates/serve-macros", version = "0.48.0" }
 everruns-cli-contract = { path = "crates/cli-contract", version = "0.48.0" }

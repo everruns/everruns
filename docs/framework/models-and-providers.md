@@ -516,7 +516,7 @@ futures must be wrapped for the single-threaded WASM `Send` contract. OpenAI
 WebSocket, realtime, speech, embeddings and decision transports remain native;
 this support covers HTTP chat.
 
-The [Workers/Durable Object fetch adapter](https://github.com/everruns/everruns/blob/main/examples/celld-engine/src/fetch.rs)
+The [Workers/Durable Object fetch adapter](https://github.com/everruns/everruns/blob/main/examples/durable-object-agent/src/fetch.rs)
 shows exact bytes, manual redirects, cancellation and read deadlines. The
 [workerd integration tests](https://github.com/everruns/everruns/tree/main/tests/wasm-providers)
 run model/tool/model exchanges in both a Worker and a Durable Object without

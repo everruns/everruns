@@ -27334,6 +27334,7 @@ export interface components {
        * @example stop
        */
       stop_reason?: string | null;
+      termination_reason?: components["schemas"]["TurnStopReason"] | null;
       /**
        * Format: int64
        * @description First-token latency for the turn, usually from the first LLM generation.
@@ -27430,6 +27431,17 @@ export interface components {
        */
       turn_id: string;
     };
+    /**
+     * @description Stable reason a turn stopped, independent of provider-specific strings.
+     * @enum {string}
+     */
+    TurnStopReason:
+      | "end_turn"
+      | "max_tokens"
+      | "max_turn_requests"
+      | "refusal"
+      | "error"
+      | "cancelled";
     /** @description Waited result for `POST /v1/sessions/{session_id}/messages?wait=true`. */
     TurnWaitResponse: {
       /**

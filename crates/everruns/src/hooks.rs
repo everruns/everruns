@@ -24,13 +24,39 @@ use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_hooks::{PostToolExecHook, PreToolUseDecision, PreToolUseHook};
 use serde_json::Value;
 
+mod durable;
+
 pub(crate) const LIFECYCLE_HOOK_CAPABILITY_ID: &str = "__everruns_framework_lifecycle_hooks";
 
 /// The boxed future returned by one type-erased lifecycle handler.
 type HookFuture = Pin<Box<dyn Future<Output = Result<(), String>> + Send>>;
 
 /// One async lifecycle handler receiving an owned, typed context.
-type Handler<T> = Arc<dyn Fn(T) -> HookFuture + Send + Sync>;
+#[derive(Clone)]
+struct Handler<T> {
+    callback: Arc<dyn Fn(T) -> HookFuture + Send + Sync>,
+    recovery: HookRecovery,
+}
+
+impl<T> std::ops::Deref for Handler<T> {
+    type Target = dyn Fn(T) -> HookFuture + Send + Sync;
+    fn deref(&self) -> &Self::Target {
+        self.callback.as_ref()
+    }
+}
+
+/// How an unfinished hook invocation recovers after executor loss.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HookRecovery {
+    /// An uncertain effect is not repeated. Gates fail closed; completion
+    /// reports the uncertainty in the durable Framework outcome.
+    #[default]
+    AtMostOnce,
+    /// The application guarantees retries are harmless under the same logical
+    /// session/turn/call identity. An unfinished invocation may run again.
+    Idempotent,
+}
 
 /// Convert a lifecycle handler's output into the Framework hook result.
 ///
@@ -64,14 +90,17 @@ where
     Fut: Future<Output = O> + Send + 'static,
     O: IntoHookResult + 'static,
 {
-    Arc::new(move |context| {
-        let future = callback(context);
-        Box::pin(async move { future.await.into_hook_result() })
-    })
+    Handler {
+        callback: Arc::new(move |context| {
+            let future = callback(context);
+            Box::pin(async move { future.await.into_hook_result() })
+        }),
+        recovery: HookRecovery::AtMostOnce,
+    }
 }
 
 /// A typed Framework lifecycle point.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum HookPoint {
     /// Before the first turn attempted by one session.
@@ -104,7 +133,7 @@ impl fmt::Display for HookPoint {
 /// builder registration order. Tool failures also carry the relevant call
 /// identity. No prompt, credential, or unrelated tool payload is copied into
 /// the failure.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct HookFailure {
     /// Lifecycle point whose handler failed.
@@ -269,6 +298,22 @@ impl fmt::Debug for LifecycleHooks {
 }
 
 impl LifecycleHooks {
+    pub(crate) fn set_last_recovery(&mut self, point: HookPoint, recovery: HookRecovery) {
+        macro_rules! set {
+            ($handlers:expr) => {
+                if let Some(handler) = $handlers.last_mut() {
+                    handler.recovery = recovery;
+                }
+            };
+        }
+        match point {
+            HookPoint::AgentStart => set!(self.agent_start),
+            HookPoint::TurnStart => set!(self.turn_start),
+            HookPoint::ToolStart => set!(self.tool_start),
+            HookPoint::ToolEnd => set!(self.tool_end),
+            HookPoint::Completion => set!(self.completion),
+        }
+    }
     pub(crate) fn is_empty(&self) -> bool {
         self.agent_start.is_empty()
             && self.turn_start.is_empty()
@@ -371,6 +416,7 @@ async fn run_pre_effect<T: Clone>(
 pub(crate) struct HookRunState {
     hooks: LifecycleHooks,
     failures: Mutex<Vec<HookFailure>>,
+    epoch: Option<Arc<dyn crate::hosting::SessionEpoch>>,
 }
 
 impl HookRunState {
@@ -378,6 +424,7 @@ impl HookRunState {
         Arc::new(Self {
             hooks,
             failures: Mutex::new(Vec::new()),
+            epoch: None,
         })
     }
 
@@ -477,7 +524,19 @@ impl PreToolUseHook for ToolStartHook {
             arguments: tool_call.execution_arguments(),
         };
         for (handler_index, handler) in self.state.hooks.tool_start.iter().enumerate() {
-            if let Err(message) = handler(hook_context.clone()).await {
+            let invocation = format!(
+                "{}/tool_start/{}/{handler_index}",
+                hook_context.turn_id.as_deref().unwrap_or("unknown"),
+                tool_call.id
+            );
+            if let Err(message) = durable::invoke(
+                self.state.epoch.as_ref(),
+                &invocation,
+                handler.recovery,
+                || handler(hook_context.clone()),
+            )
+            .await
+            {
                 let failure = HookFailure::for_tool(
                     HookPoint::ToolStart,
                     handler_index,
@@ -492,6 +551,9 @@ impl PreToolUseHook for ToolStartHook {
                     "tool call blocked by {} hook #{}",
                     failure.point, failure.handler_index
                 );
+                self.state
+                    .record_durable_failure(&invocation, &failure)
+                    .await;
                 self.state.record(failure);
                 return PreToolUseDecision::Block {
                     tool_call,
@@ -531,14 +593,30 @@ impl PostToolExecHook for ToolEndHook {
             error: result.error.clone(),
         };
         for (handler_index, handler) in self.state.hooks.tool_end.iter().enumerate() {
-            if let Err(message) = handler(hook_context.clone()).await {
-                self.state.record(HookFailure::for_tool(
+            let invocation = format!(
+                "{}/tool_end/{}/{handler_index}",
+                hook_context.turn_id.as_deref().unwrap_or("unknown"),
+                tool_call.id
+            );
+            if let Err(message) = durable::invoke(
+                self.state.epoch.as_ref(),
+                &invocation,
+                handler.recovery,
+                || handler(hook_context.clone()),
+            )
+            .await
+            {
+                let failure = HookFailure::for_tool(
                     HookPoint::ToolEnd,
                     handler_index,
                     message,
                     &tool_call.name,
                     &tool_call.id,
-                ));
+                );
+                self.state
+                    .record_durable_failure(&invocation, &failure)
+                    .await;
+                self.state.record(failure);
             }
         }
     }

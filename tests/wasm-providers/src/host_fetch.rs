@@ -1,5 +1,5 @@
-//! Workers/Durable Objects HTTP. Endpoints are trusted application configuration;
-//! deployments own egress policy because isolates cannot install a DNS resolver.
+//! Test-only workerd HTTP transport for shared provider protocol conformance.
+//! The fixture runner creates every endpoint and credential locally.
 use async_trait::async_trait;
 use everruns_contracts::http_transport::{
     HeaderMap, HttpError, HttpRequest, HttpResponse, HttpTransport, StatusCode, header,

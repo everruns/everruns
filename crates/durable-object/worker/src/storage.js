@@ -34,6 +34,7 @@ export class Journal {
     this.sql.exec(
       "CREATE TABLE IF NOT EXISTS events (seq INTEGER PRIMARY KEY, type TEXT NOT NULL, turn_id TEXT, identity TEXT UNIQUE, value TEXT NOT NULL)",
     );
+    this.sql.exec("CREATE INDEX IF NOT EXISTS events_public_id ON events(json_extract(value,'$.id'))");
     this.sql.exec(
       "CREATE INDEX IF NOT EXISTS events_turn_start ON events(type,seq)",
     );
@@ -88,10 +89,13 @@ export class Journal {
         409,
         "unsupported authority state version",
       );
+      if(state.wake_at!=null && state.wake_at<=this.now()) {
+        state.wake_at=null;state.resume_generation=(state.resume_generation??0)+1;state.runnable=true;
+      }
       const result = fn(state);
       this.write(state);
-      if (state.runnable && !state.suspended) {
-        const desired =
+      if ((state.runnable || state.wake_at!=null) && !state.suspended) {
+        const desired = !state.runnable ? Math.max(this.now()+10,state.wake_at) :
           state.holder && state.expires > this.now()
             ? state.expires
             : Math.max(this.now() + 10, state.retry_at || 0);
@@ -231,6 +235,10 @@ export class Journal {
       );
       state.open = null;
       state.pending = [];
+      if (state.binding?.framework === 1) {
+        state.finalizing ??= [];
+        if (!state.finalizing.includes(turn)) state.finalizing.push(turn);
+      }
     }
     if (event.type === "tool.call_requested")
       state.pending = event.data.tool_calls ?? [];

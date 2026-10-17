@@ -11,6 +11,7 @@ everruns-contracts
 everruns-core
 everruns-drivers
 everruns-durable
+everruns-durable-object
 everruns-integrations
 everruns-integrations-experimental
 everruns-llmsim

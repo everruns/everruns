@@ -199,6 +199,7 @@ mod tests {
         use everruns_contracts::typed_id::TurnId;
         use everruns_core::events::TurnCompletedData;
         let data = EventData::TurnCompleted(TurnCompletedData {
+            termination_reason: None,
             issue_count: None,
             turn_id: TurnId::new(),
             iterations: 1,
