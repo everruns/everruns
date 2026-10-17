@@ -7,6 +7,7 @@ import starlightLlmsTxt from "starlight-llms-txt";
 import starlightLinksValidator from "starlight-links-validator";
 import apiSidebarFix from "./plugins/api-sidebar-fix.ts";
 import remarkStripRustHiddenLines from "./plugins/remark-strip-rust-hidden-lines.ts";
+import remarkMermaidDiagrams from "./plugins/remark-mermaid-diagrams.mjs";
 import rehypeBaseLinks from "./plugins/rehype-base-links.ts";
 import { BASE, SITE, withBase } from "./site.config.mjs";
 import perPageMarkdown from "./integrations/per-page-markdown.mjs";
@@ -53,6 +54,7 @@ export default defineConfig({
       // Hide rustdoc `# ` boilerplate lines in Rust blocks. rustdoc hides
       // them; Starlight would otherwise render the `#` prefixes literally.
       remarkStripRustHiddenLines,
+      remarkMermaidDiagrams,
     ],
     rehypePlugins: [[rehypeBaseLinks, { base: BASE }]],
   },
