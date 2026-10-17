@@ -29,6 +29,7 @@ change is ready; do not walk this file as a fixed checklist.
    change that meets the public changelog's impact criteria, its entry with screenshots is part
    of the change; when it changes an older entry's behavior, that entry is updated. See
    [`references/changelog-entry.md`](references/changelog-entry.md).
+   Honor explicit user publication holds before creating or reinstating an entry or its assets.
 6. **Smoke test the affected flows** end to end. For a coding-agent stack, follow the canonical
    startup contract in the root `AGENTS.md`; it includes the DB-backed infrastructure required for
    database, migration, infra, or API integration risk.

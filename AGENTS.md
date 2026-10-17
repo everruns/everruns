@@ -38,6 +38,12 @@ closer `AGENTS.md` (`apps/ui/`, `crates/server/migrations/`, `plugins/`, `.deeps
 
 ### Gotchas
 
+- Engine-owned durable execution for DO/Cloudflare/celld has an explicit user publication hold.
+  Do not create or reinstate its public changelog entry or announcement assets until the
+  Framework Engine, serve and celld implementation and qualification are complete, and the user
+  explicitly approves the entry afterward. CI, merge and release are not publication approval.
+  Continue implementation without an entry; record the hold in the PR's `Changelog:` line.
+
 - Working-tree changes you did not make are probably another agent's or the user's. Work with
   them, and stage files by name rather than `git add -A`.
 - Create server migrations with `just new-migration <name>` (UTC timestamp version). A new
