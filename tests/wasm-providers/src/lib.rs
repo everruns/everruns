@@ -14,8 +14,8 @@ use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
 use worker::*;
 
-// Exercise exactly the adapter used by the Durable Object example.
-#[path = "../../../examples/celld-engine/src/fetch.rs"]
+// Generic workerd transport for protocol conformance. The Engine isolate
+// example has its own endpoint-confined transport and recovery qualification.
 mod host_fetch;
 use host_fetch::FetchTransport;
 
