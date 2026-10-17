@@ -1144,11 +1144,13 @@ jobs:
             --manifest-path crates/everruns/tests/fixtures/external-consumer/Cargo.toml \
             -p external-platform-store
           # capability_boundary's dependency/narration invariants only hold
-          # with `environment-capabilities` on: every hosted binary
-          # (crates/server, crates/worker) enables it, and some hosted
-          # capabilities (memory, data_knowledge, platform) declare a hard
-          # dependency on the filesystem integration it links.
-          cargo test -p everruns-capabilities --features environment-capabilities \
+          # with the hosted binaries' features on: crates/server and
+          # crates/worker enable both. memory, data_knowledge, and platform
+          # depend on the filesystem integration `environment-capabilities`
+          # links; platform also depends on `skills`, which only
+          # `portable-builtins` registers.
+          cargo test -p everruns-capabilities \
+            --features environment-capabilities,portable-builtins \
             --test capability_boundary
           # Test-support (EVE-875): in-memory loop, test doubles, fixture
           # capabilities, and llmsim-driven suites that moved out of core.

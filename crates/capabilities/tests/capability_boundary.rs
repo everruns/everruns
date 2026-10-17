@@ -70,11 +70,12 @@ fn product_registration_adds_the_hosted_catalog() {
 // `memory`, `data_knowledge`, and `platform` declare an unconditional
 // dependency on `session_file_system`, which only registers when
 // `environment-capabilities` links the filesystem integration crate
-// (crates/platform/Cargo.toml). The full hosted catalog is only a coherent
-// dependency graph with that feature on — every hosted binary
-// (crates/server, crates/worker) enables it — so this check requires it too
-// rather than reporting a dangling dependency that is not actually a bug.
-#[cfg(feature = "environment-capabilities")]
+// (crates/platform/Cargo.toml). `platform` also depends on `skills`, which
+// only `portable-builtins` registers. The full hosted catalog is only a
+// coherent dependency graph with both features on — every hosted binary
+// (crates/server, crates/worker) enables them — so this check requires them
+// too rather than reporting a dangling dependency that is not actually a bug.
+#[cfg(all(feature = "environment-capabilities", feature = "portable-builtins"))]
 #[test]
 fn hosted_catalog_keeps_dependency_tool_and_narration_invariants() {
     let registry = everruns_capabilities::capabilities::hosted_capability_registry_for_grade(
