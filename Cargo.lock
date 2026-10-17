@@ -997,15 +997,18 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bashkit"
-version = "0.18.2"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3cfa416d004dd8f4ddeab07eba333b0b4eb60b2407eb93e7f51e2cab92e40ed0"
+checksum = "06c1281755331c0a86d9ac1ba5c41f8ce2276be82aaa61c53a5d38fc130422aa"
 dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.23.1",
  "bigdecimal",
  "bitflags 2.13.2",
+ "blake2",
+ "bstr",
+ "bytes",
  "bzip2",
  "chrono",
  "chrono-tz",
@@ -1013,23 +1016,29 @@ dependencies = [
  "ed25519-dalek 3.0.0",
  "fancy-regex 0.19.2",
  "flate2",
+ "foldhash 0.2.0",
  "futures-core",
  "futures-util",
  "getrandom 0.4.3",
+ "hifijson",
  "hmac",
+ "indexmap",
  "jaq-core",
- "jaq-json",
  "jaq-std",
  "md-5 0.11.0",
+ "num-bigint",
  "num-traits",
  "os_display",
  "rand 0.10.3",
  "regex",
+ "regex-automata",
  "reqwest",
  "rustls",
+ "ryu",
+ "self_cell",
  "serde",
  "serde_json",
- "serde_yaml_ng",
+ "serde_norway",
  "sha1 0.11.0",
  "sha2 0.11.0",
  "thiserror 2.0.21",
@@ -1038,6 +1047,20 @@ dependencies = [
  "unit-prefix",
  "url",
  "zeroize",
+]
+
+[[package]]
+name = "bashkit-scripted-tool"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab1f2aacf40635027a83524aa761b44d3722b8352ec0b3e6195ddb393ceb3ff3"
+dependencies = [
+ "async-trait",
+ "bashkit",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
 ]
 
 [[package]]
@@ -3097,6 +3120,7 @@ dependencies = [
  "axum-extra",
  "base64 0.23.1",
  "bashkit",
+ "bashkit-scripted-tool",
  "chrono",
  "chrono-tz",
  "clap",
@@ -4461,25 +4485,6 @@ dependencies = [
  "dyn-clone",
  "once_cell",
  "typed-arena",
-]
-
-[[package]]
-name = "jaq-json"
-version = "2.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4be2f53207ffb1313a2d2ad819cfa8bfaa7936cb85a110eda10fd5da822cec94"
-dependencies = [
- "bstr",
- "bytes",
- "foldhash 0.1.5",
- "hifijson",
- "indexmap",
- "jaq-core",
- "jaq-std",
- "num-bigint",
- "num-traits",
- "ryu",
- "self_cell",
 ]
 
 [[package]]
@@ -7302,6 +7307,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_norway"
+version = "0.9.42"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e408f29489b5fd500fab51ff1484fc859bb655f32c671f307dcd733b72e8168c"
+dependencies = [
+ "indexmap",
+ "itoa",
+ "ryu",
+ "serde",
+ "unsafe-libyaml-norway",
+]
+
+[[package]]
 name = "serde_path_to_error"
 version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7349,19 +7367,6 @@ name = "serde_yaml"
 version = "0.9.34+deprecated"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47"
-dependencies = [
- "indexmap",
- "itoa",
- "ryu",
- "serde",
- "unsafe-libyaml",
-]
-
-[[package]]
-name = "serde_yaml_ng"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b4db627b98b36d4203a7b458cf3573730f2bb591b28871d916dfa9efabfd41f"
 dependencies = [
  "indexmap",
  "itoa",
@@ -8986,6 +8991,12 @@ name = "unsafe-libyaml"
 version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "673aac59facbab8a9007c7f6108d11f63b603f7cabff99fabf650fea5c32b861"
+
+[[package]]
+name = "unsafe-libyaml-norway"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b39abd59bf32521c7f2301b52d05a6a2c975b6003521cbd0c6dc1582f0a22104"
 
 [[package]]
 name = "untrusted"

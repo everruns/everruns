@@ -2309,10 +2309,9 @@ mod tests {
         let tool = BashTool::default();
 
         // A nonexistent path resolves but has no file — `cat` fails with a
-        // non-zero exit, not a containment error.
-        let result = tool
-            .execute_with_context(json!({"commands": "cat /etc/passwd"}), &context)
-            .await;
+        // non-zero exit, not a containment error (0.19 seeds /etc/passwd).
+        let params = json!({"commands": "cat /etc/everruns-probe-missing"});
+        let result = tool.execute_with_context(params, &context).await;
 
         match result {
             ToolExecutionResult::Success(output) => {
