@@ -2,6 +2,7 @@
 title: Deno Deploy sandbox integration removed
 description: The experimental Deno Deploy sandbox provider, its deno_* tools, the deno-coder demo agent, and related docs are removed.
 date: 2026-10-16
+cloud: 2026-10-17
 kind: breaking
 significance: minor
 products: [platform, cloud]
