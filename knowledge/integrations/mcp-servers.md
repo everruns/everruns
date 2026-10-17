@@ -420,6 +420,16 @@ authorization-server metadata.
   whose request failed, and a short fixed `reason`. Provider bodies and
   upstream messages never reach it; the server log keeps the detail. The
   classification is the one browser sign-in errors use (`connect_error`).
+- Discovery follows the MCP authorization spec's well-known fallbacks (RFC
+  9728 path-inserted then root protected-resource metadata; RFC 8414 and
+  OpenID Connect locations for the authorization server). A 404 tries the
+  next location, any other failure ends discovery, and a server with no
+  protected-resource metadata is its own authorization server. Order and
+  rationale: `discover_resource_metadata` and
+  `discover_oauth_server_metadata` in
+  `crates/server/src/api/user_connections/mcp_oauth.rs`. An unreachable
+  sign-in service is logged at info (it is a recorded outcome); policy blocks
+  and failed setup log at warn.
 - The check runs where the API layer wires it (REST, MCP, `/v1/commands`);
   other surfaces leave a new preset `not_checked`. Presets saved before checks
   existed read `not_checked` until a check or a successful sign-in.

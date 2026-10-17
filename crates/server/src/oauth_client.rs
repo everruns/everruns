@@ -241,8 +241,38 @@ pub(crate) async fn egress_oauth_json<T: serde::de::DeserializeOwned>(
     body: Vec<u8>,
 ) -> Result<T, (StatusCode, String)> {
     let response = send_oauth_request(egress, method, url, headers, body).await?;
+    oauth_json_response(url, response)
+}
+
+/// GET an OAuth discovery document through [`egress_oauth_json`]'s boundary.
+///
+/// `Ok(None)` means the document is not published there (HTTP 404), so the
+/// caller tries its next well-known location; any other failure is final.
+pub(crate) async fn egress_oauth_discovery_json<T: serde::de::DeserializeOwned>(
+    egress: &dyn EgressService,
+    url: &str,
+) -> Result<Option<T>, (StatusCode, String)> {
+    let response = send_oauth_request(egress, "GET", url, &[], Vec::new()).await?;
+    if response.status == 404 {
+        tracing::debug!(
+            host = %host_of(url),
+            "OAuth discovery document not published at this location"
+        );
+        return Ok(None);
+    }
+    oauth_json_response(url, response).map(Some)
+}
+
+fn oauth_json_response<T: serde::de::DeserializeOwned>(
+    url: &str,
+    response: EgressResponse,
+) -> Result<T, (StatusCode, String)> {
     if !(200..300).contains(&response.status) {
-        tracing::warn!(
+        // Debug, not warn: every caller returns this error into its own
+        // result (connect redirect, connection check) and logs it there. Only
+        // the host is logged; paths and queries can carry tenant ids or keys.
+        tracing::debug!(
+            host = %host_of(url),
             status = response.status,
             body_len = response.body.len(),
             "OAuth external service rejected request"
@@ -252,6 +282,14 @@ pub(crate) async fn egress_oauth_json<T: serde::de::DeserializeOwned>(
 
     serde_json::from_slice(&response.body)
         .map_err(|e| sanitized_bad_gateway("External service response parse", &e))
+}
+
+/// The host of `url` for logs, never its path, query or credentials.
+fn host_of(url: &str) -> String {
+    url::Url::parse(url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned))
+        .unwrap_or_default()
 }
 
 async fn send_oauth_request(
@@ -285,7 +323,10 @@ async fn send_oauth_request(
         everruns_core::EgressError::NetworkAccessDenied { url } => {
             // The host stays in the server log: the browser only learns that
             // the policy refused it (`connect_error=blocked_by_network_policy`).
-            tracing::warn!(%url, "OAuth request blocked by network access policy");
+            tracing::warn!(
+                host = %host_of(&url),
+                "OAuth request blocked by network access policy"
+            );
             // 502, not 4xx: the caller's request is valid; the gateway refused
             // to forward it upstream. The message names the policy so the JSON
             // variants are actionable instead of a bare "Bad gateway".
