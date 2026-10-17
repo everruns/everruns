@@ -58,3 +58,5 @@
 * [Skills](skills/) - Manual UI cases.
 * [Tag editor](tag_editor/) - Manual UI cases.
 * [Webmcp](webmcp/) - Manual UI cases.
+
+* [Automatic session titles](automatic_session_titles/) - Model defaults and explicit naming.

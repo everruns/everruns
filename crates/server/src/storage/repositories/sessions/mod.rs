@@ -1,5 +1,6 @@
 // PostgreSQL repository: Sessions (instance of agentic loop), Pinned Sessions
 
+mod automatic_titles;
 pub mod failures;
 pub(super) mod rows;
 use rows::*;
@@ -1275,6 +1276,7 @@ impl Database {
             SET
                 harness_id = COALESCE($3, harness_id),
                 title = COALESCE($4, title),
+                title_is_automatic = CASE WHEN $4 IS NOT NULL THEN FALSE ELSE title_is_automatic END,
                 goal = COALESCE($5, goal),
                 virtual_user_id = CASE WHEN $6 THEN $7 ELSE virtual_user_id END,
                 owner_principal_id = COALESCE($8, owner_principal_id),

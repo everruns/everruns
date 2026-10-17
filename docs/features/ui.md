@@ -190,7 +190,7 @@ Each capability card shows:
   rotate its key, sync its models and open its settings. Several providers of
   one kind can be connected under different names; model pickers show
   "Model (Provider name)".
-- **Defaults**: the organization's default model, default decision model,
+- **Defaults**: the organization's default model, Small model for lightweight work, default decision model,
   system decisions source, and default provider for realtime, embeddings,
   images and rerank.
 
