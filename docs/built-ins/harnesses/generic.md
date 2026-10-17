@@ -17,7 +17,7 @@ The **Generic** harness is deprecated. Existing agents, sessions and child harne
 | Property | Value |
 |----------|-------|
 | **Type** | `generic` |
-| **System Prompt** | "You are a helpful assistant." |
+| **System Prompt** | Instruction hierarchy only; the agent's own prompt follows it |
 | **Default Model** | None (inherits from agent or organization) |
 
 ## Bundled Capabilities

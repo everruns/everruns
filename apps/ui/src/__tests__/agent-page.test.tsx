@@ -187,6 +187,7 @@ jest.mock("@/hooks", () => ({
   useAgentStats: () => ({ data: undefined, isLoading: false, error: null }),
   useAgentMcpAttachments: () => ({ data: [{ name: "github" }, { name: "linear" }] }),
   useAgentCredentials: () => ({ data: [] }),
+  useAgentTriggers: () => ({ data: [] }),
   useLatestHealthCheckRun: () => ({ data: { config_changed: false } }),
   useUpdateAgent: () => mutation(mockUpdate),
   useDeleteAgent: () => mutation(mockArchive),
