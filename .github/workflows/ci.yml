@@ -270,6 +270,11 @@ jobs:
             chaos:
               - 'scripts/chaos/**'
               - '!scripts/chaos/**/*.md'
+              # Cancellation ownership must survive concurrent completion and
+              # backend failures under the multi-process harness.
+              - 'crates/server/src/domains/sessions/commands/**'
+              - 'crates/server/src/api/channel_api.rs'
+              - 'crates/server/src/channels/a2a/mod.rs'
               - '.github/workflows/chaos.yml'
               - '.github/workflows/ci.yml'
             sdk_compat:

@@ -32,8 +32,9 @@ their own environment outside the shared API harness.
 Ordinary Rust changes do not build the server/worker/CLI binaries, full PostgreSQL
 shards, SDK cohorts, or Docker images. Public API and packaging inputs retain their
 specific consumers. Chaos functional coverage uses the existing shared CI binaries
-in broad batches and harness-specific PRs; its separate release-profile build is a
-manual benchmark. See [selection](../../.github/scripts/ci/focused.py) and
+in broad batches and PRs touching the harness or cancellation controls; its
+separate release-profile build is a manual benchmark. See
+[selection](../../.github/scripts/ci/focused.py) and
 [workflow routing](../../.github/workflows/ci.yml).
 
 Main uses push-triggered coalescing: one batch runs to completion while only the
