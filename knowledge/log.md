@@ -2,6 +2,11 @@
 
 ## 2026-10-16
 
+* **Durable Object announcement withdrawn.** Remove the premature public entry.
+  Engine-owned Framework/serve/celld implementation and qualification must finish
+  before explicit user approval of a replacement announcement. The publication
+  hold is recorded in root `AGENTS.md` and honored by the ship workflow.
+
 * **Chaos actor log boundaries.** Include the shared core driver in the harness debug
   filter so lease releases and completed activations remain visible to overlap checks.
   See [Load Testing](operations/load-testing.md#chaos-harness).
