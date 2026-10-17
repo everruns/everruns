@@ -1468,3 +1468,4 @@ mod catalog_listing_flow;
 mod connect_errors_flow;
 mod connection_check_flow;
 mod github_org_flow;
+mod oauth_discovery_flow;
