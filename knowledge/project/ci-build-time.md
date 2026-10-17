@@ -24,6 +24,9 @@ which share the same cache and linker characteristics.
 Pull requests run formatting, linting, repository guards, affected workspace tests,
 and relevant UI/docs checks. The affected set includes reverse Cargo dependencies;
 server persistence, authorization, and migration changes add focused contracts.
+Hosted capability graph validation selects both portable builtins and environment
+capabilities, matching server/worker composition; either catalog alone can omit
+dependencies supplied by the other.
 Database-backend changes also exercise production-router fixtures that configure
 their own environment outside the shared API harness.
 Ordinary Rust changes do not build the server/worker/CLI binaries, full PostgreSQL
