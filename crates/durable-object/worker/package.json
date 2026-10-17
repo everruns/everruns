@@ -11,6 +11,6 @@
     "test:celld": "node test/qualify-celld.mjs"
   },
   "devDependencies": {
-    "wrangler": "4.109.0"
+    "wrangler": "4.151.1"
   }
 }
