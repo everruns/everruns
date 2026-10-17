@@ -332,24 +332,22 @@ impl SessionFileSystem for RealDiskFileStore {
         self.mark_readonly(canonical.clone(), false).await;
         // Seeding is the trusted host's explicit replacement operation. Restore
         // owner write access before replacing an earlier read-only declaration.
-        if let Ok(metadata) = tokio::fs::metadata(&absolute).await {
-            if metadata.permissions().readonly() {
-                let mut permissions = metadata.permissions();
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    permissions.set_mode(permissions.mode() | 0o200);
-                }
-                #[cfg(not(unix))]
-                permissions.set_readonly(false);
-                tokio::fs::set_permissions(&absolute, permissions)
-                    .await
-                    .map_err(|error| {
-                        AgentLoopError::tool(format!(
-                            "restore seeded file permissions failed: {error}"
-                        ))
-                    })?;
+        if let Ok(metadata) = tokio::fs::metadata(&absolute).await
+            && metadata.permissions().readonly()
+        {
+            let mut permissions = metadata.permissions();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                permissions.set_mode(permissions.mode() | 0o200);
             }
+            #[cfg(not(unix))]
+            permissions.set_readonly(false);
+            tokio::fs::set_permissions(&absolute, permissions)
+                .await
+                .map_err(|error| {
+                    AgentLoopError::tool(format!("restore seeded file permissions failed: {error}"))
+                })?;
         }
 
         self.write_file_unlocked(session_id, &file.path, &file.content, &file.encoding)
