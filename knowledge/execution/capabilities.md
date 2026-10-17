@@ -567,7 +567,9 @@ The hosted `platform` capability contributes the maintained `everruns`,
 content through read-only mounts, without organization registry rows. Its
 always-present interface guidance keeps external MCP examples from switching a
 session away from its organization-bound command surface. Workspace builds embed
-the allowlisted source trees; standalone crate builds without repository skills
+the allowlisted source trees. API and worker source image builds include the
+authored tree before compiling, so both binaries embed the same guides without
+a runtime checkout or fetch. Standalone crate builds without repository skills
 omit that content, matching the optional embedded-docs boundary. See the
 [contribution implementation](../../crates/capabilities/src/capabilities/platform_skills.rs)
 and [canonical skills](../../skills/).
