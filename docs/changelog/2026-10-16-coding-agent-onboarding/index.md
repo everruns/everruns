@@ -2,7 +2,7 @@
 title: "Connect your coding agent from the Everruns UI"
 description: "Copy one setup prompt for Claude Code, Codex, Cursor or Gemini CLI, with deployment-aware instructions and model-provider setup in its existing flow."
 date: 2026-10-16
-cloud: 2026-10-16
+cloud: 2026-10-17
 kind: improvement
 significance: minor
 products: [platform, cloud]

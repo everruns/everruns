@@ -2,7 +2,7 @@
 title: User MCP management respects approval settings
 description: Adding and enabling personal MCP servers now follow the agent's shared Tool Approval mode, preserving URL restrictions and separate OAuth consent.
 date: 2026-10-16
-cloud: 2026-10-16
+cloud: 2026-10-17
 kind: fix
 significance: minor
 products: [platform, cloud, framework]
