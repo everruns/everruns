@@ -124,13 +124,13 @@ async fn oauth_discovery_falls_back_to_openid_configuration() {
 async fn oauth_discovery_tries_every_candidate_for_an_issuer_with_a_path() {
     let egress = RoutedEgress::default().route(
         "GET",
-        "https://1.1.1.1/realms/acme/.well-known/openid-configuration",
+        "https://1.1.1.1/realms/acme/.well-known/oauth-authorization-server",
         as_metadata("https://1.1.1.1/realms/acme"),
     );
 
     discover_oauth_server_metadata(&egress, "https://1.1.1.1/realms/acme")
         .await
-        .expect("path-appended openid-configuration is accepted");
+        .expect("the pre-spec path-appended location is still accepted");
 
     assert_eq!(
         egress.seen(),
@@ -138,6 +138,7 @@ async fn oauth_discovery_tries_every_candidate_for_an_issuer_with_a_path() {
             "https://1.1.1.1/.well-known/oauth-authorization-server/realms/acme",
             "https://1.1.1.1/.well-known/openid-configuration/realms/acme",
             "https://1.1.1.1/realms/acme/.well-known/openid-configuration",
+            "https://1.1.1.1/realms/acme/.well-known/oauth-authorization-server",
         ]
     );
 }

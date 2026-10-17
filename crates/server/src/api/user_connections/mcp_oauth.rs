@@ -213,7 +213,9 @@ pub(super) fn authorization_server_issuer(
 
 /// Well-known metadata locations for `issuer`, in the MCP authorization
 /// spec's order: RFC 8414 inserts the segment before an issuer path, OpenID
-/// Connect Discovery appends it after.
+/// Connect Discovery appends it after. The path-appended
+/// `oauth-authorization-server` is not in the spec list but is where discovery
+/// looked before; it stays last so presets that relied on it keep working.
 fn authorization_server_metadata_urls(
     issuer: &reqwest::Url,
 ) -> Result<Vec<String>, (StatusCode, String)> {
@@ -229,6 +231,7 @@ fn authorization_server_metadata_urls(
             format!("{origin}/.well-known/oauth-authorization-server{path}"),
             format!("{origin}/.well-known/openid-configuration{path}"),
             format!("{origin}{path}/.well-known/openid-configuration"),
+            format!("{origin}{path}/.well-known/oauth-authorization-server"),
         ]
     })
 }
