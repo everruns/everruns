@@ -561,6 +561,17 @@ See [egress.md](../operations/egress.md) and [network-access.md](../operations/n
 
 Capabilities may ship reusable skills in code via `contribute_skills() -> Vec<SkillContribution>` (default empty). Each `SkillContribution` carries a name, description, SKILL.md body, bundled files, and invocability flags. During capability collection each contribution is normalized into a read-only mount at `/.agents/skills/{name}/` containing a reconstructed `SKILL.md` plus bundled files. The portable `skills` capability in `everruns-core` (`builtins` feature) then discovers and serves them through the same VFS scan used for filesystem and registry skills, no parallel pipeline, no special-case prompt injection, and `/slash` invocability + `disable-model-invocation` flags are honored through the same frontmatter. See `knowledge/project/skills-registry.md` for the discovery/activation contract and `crates/contracts/src/runtime/capabilities/skill_contribution.rs` for the neutral contribution values and mount normalization.
 
+The hosted `platform` capability contributes the maintained `everruns`,
+`everruns-cli`, and `everruns-agent-authoring` product skills and depends on the
+`skills` loader. Both shell and three-tool surfaces receive the same authored
+content through read-only mounts, without organization registry rows. Its
+always-present interface guidance keeps external MCP examples from switching a
+session away from its organization-bound command surface. Workspace builds embed
+the allowlisted source trees; standalone crate builds without repository skills
+omit that content, matching the optional embedded-docs boundary. See the
+[contribution implementation](../../crates/capabilities/src/capabilities/platform_skills.rs)
+and [canonical skills](../../skills/).
+
 ### Capability Dependencies
 
 Capabilities can declare dependencies on other capabilities. When a capability is selected, its dependencies are automatically resolved and applied.
