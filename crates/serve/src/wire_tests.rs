@@ -640,8 +640,7 @@ async fn cancel_stops_a_turn_waiting_for_approval() {
     assert_eq!(
         kinds(&events)
             .into_iter()
-            .filter(|kind| kind.starts_with("turn."))
-            .last(),
+            .rfind(|kind| kind.starts_with("turn.")),
         Some("turn.cancelled")
     );
     let after = server.wait_until(&id, |s| s["status"] == "idle").await;
