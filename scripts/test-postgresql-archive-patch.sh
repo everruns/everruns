@@ -10,3 +10,6 @@ cp "$ROOT/Cargo.lock" "$FIXTURE/archive/Cargo.lock"
 CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}" cargo test \
   --manifest-path "$FIXTURE/archive/Cargo.toml" --no-default-features \
   --features zonky,tls-rustls-aws-lc-rs --test zip_compatibility
+CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}" cargo test \
+  --manifest-path "$FIXTURE/archive/Cargo.toml" --no-default-features \
+  --features zonky,tls-rustls-aws-lc-rs --lib error::test::test_from_reqwest_error -- --exact

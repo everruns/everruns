@@ -242,7 +242,7 @@ mod test {
     fn test_from_reqwest_error() {
         crate::install_crypto_provider();
         let reqwest_error = reqwest::Client::new()
-            .get("http://")
+            .get("https://")
             .build()
             .expect_err("reqwest error");
         let error = Error::from(reqwest_error);
