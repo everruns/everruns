@@ -289,7 +289,7 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | [Bashkit Shell](/capabilities/bashkit-shell/) | [File System](/capabilities/file-system/) |
 | [Tools in Shell](/capabilities/tools-in-shell/) | [Bashkit Shell](/capabilities/bashkit-shell/) |
 | [Host Shell](/capabilities/host-shell/) | [File System](/capabilities/file-system/) |
-| [Platform](/capabilities/platform/) | [File System](/capabilities/file-system/) (when embedded docs are enabled) |
+| [Platform](/capabilities/platform/) | [Agent Skills](/capabilities/agent-skills/), [File System](/capabilities/file-system/) (when embedded docs are enabled) |
 | [Agent Skills](/capabilities/agent-skills/) | [File System](/capabilities/file-system/) |
 | [GitHub Scout](/capabilities/github-scout/) | [Sub Agents](/capabilities/sub-agents/) |
 | Managed Environment | [Storage](/capabilities/session-storage/) |

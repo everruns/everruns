@@ -1100,6 +1100,7 @@
     {
       "category": "Platform",
       "dependencies": [
+        "skills",
         "session_file_system"
       ],
       "docs_slug": "platform",
