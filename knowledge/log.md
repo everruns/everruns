@@ -14,6 +14,12 @@
   before explicit user approval of a replacement announcement. The publication
   hold is recorded in root `AGENTS.md` and honored by the ship workflow.
 
+* **Documentation diagrams.** Mermaid fences render in the Everruns diagram
+  palette with readable source fallback. The Durable Object authority flow uses
+  responsive hand-authored SVGs and one colocated Mermaid source to keep its
+  return paths clear at desktop and mobile sizes.
+  See [Diagram Specification](docs/diagrams.md).
+
 * **Chaos actor log boundaries.** Include the shared core driver in the harness debug
   filter so lease releases and completed activations remain visible to overlap checks.
   See [Load Testing](operations/load-testing.md#chaos-harness).
