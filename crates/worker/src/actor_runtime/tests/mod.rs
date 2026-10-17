@@ -216,6 +216,8 @@ struct Probe {
     running: Mutex<HashSet<SessionId>>,
     overlapped: AtomicBool,
     on_turn_ended: Mutex<Option<Hook>>,
+    /// Runs (once) inside the flush it names (1-based), before it returns.
+    at_flush: Mutex<Option<(usize, Hook)>>,
     /// The fence of the latest turn host, as its appends would carry it.
     fence: Mutex<Option<crate::actor_lease_store::ActorFence>>,
     /// Runs (once) where a fresh turn's host is built: after its input was
@@ -251,6 +253,19 @@ impl ActorHosts for TestHosts {
 
     async fn flush(&self, _host: &InProcessRuntime) -> everruns_contracts::error::Result<()> {
         let flush = self.probe.flushes.fetch_add(1, Ordering::SeqCst) + 1;
+        let hook = {
+            let mut at_flush = self.probe.at_flush.lock().unwrap();
+            match at_flush.take() {
+                Some((at, hook)) if at == flush => Some(hook),
+                other => {
+                    *at_flush = other;
+                    None
+                }
+            }
+        };
+        if let Some(hook) = hook {
+            hook.await;
+        }
         if flush == self.probe.hang_at_flush.load(Ordering::SeqCst) {
             self.probe.hung.notify_one();
             std::future::pending::<()>().await;
