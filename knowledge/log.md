@@ -2,6 +2,13 @@
 
 ## 2026-10-17
 
+* **PostgreSQL archive compatibility patch.** Select patched ZIP9 through a
+  checksum-attributed upstream copy while the published PostgreSQL dependency
+  still selects ZIP8. Preserve extraction policy and ordinary advisory/license
+  gates without ZIP exceptions; consumers with separate workspace roots select
+  the patch explicitly.
+  See [Security Testing](security/security-testing.md).
+
 * **ChatGPT Plan UI removal.** Remove the provider and its models from Platform
   setup and selection until a suitable web OAuth client and callback exist;
   retain the framework driver and server connection APIs. See

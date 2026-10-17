@@ -23,6 +23,7 @@ WORKDIR /app
 FROM chef AS planner
 
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY vendor vendor
 COPY crates crates
 COPY integrations integrations
 COPY docs docs
@@ -36,6 +37,7 @@ FROM chef AS builder
 
 # Copy recipe and build dependencies first (cached layer)
 COPY --from=planner /app/recipe.json recipe.json
+COPY vendor vendor
 RUN cargo chef cook --release --recipe-path recipe.json
 
 # Copy source and build application
