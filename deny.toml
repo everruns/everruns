@@ -13,8 +13,8 @@ unmaintained = "none"
 # affected crate over ignoring; only ignore when no upstream fix path exists and
 # the advisory is not reachable in our usage.
 ignore = [
-    # Empty: every advisory in the tree must be fixed by upgrading, not ignored.
-    # Entries here need a justification comment and a removal condition.
+    # Empty: the PostgreSQL archive compatibility patch selects ZIP9, so the
+    # ZIP advisories need no exceptions. Fix new advisories rather than ignore.
 ]
 
 [licenses]

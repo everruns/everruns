@@ -28,10 +28,6 @@ jest.mock("@/hooks/use-policies", () => ({
   usePolicies: () => ({ can: () => mockCanManage }),
 }));
 
-jest.mock("@/hooks/use-chatgpt-connection", () => ({
-  useChatGptConnection: () => ({ data: null }),
-}));
-
 const mockProviders = [
   {
     id: "provider-1",

@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { Key, RefreshCw, Settings2, Sparkles } from "lucide-react";
-import { useChatGptConnection } from "@/hooks/use-chatgpt-connection";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -36,25 +35,13 @@ export type ProviderCardProps = {
 };
 
 export function ProviderCard(props: ProviderCardProps) {
-  return props.provider.provider_type === "chatgpt" ? (
-    <PersonalProviderCard {...props} />
-  ) : (
-    <ProviderCardContent {...props} />
-  );
-}
-
-function PersonalProviderCard(props: ProviderCardProps) {
-  const { data: connection } = useChatGptConnection(props.provider.id);
-  return <ProviderCardContent {...props} connectionEmail={connection?.email ?? undefined} />;
+  return <ProviderCardContent {...props} />;
 }
 
 function providerStatus(provider: Provider): { label: string; dot: string } {
   if (provider.status === "disabled") return { label: "Disabled", dot: "bg-muted-foreground/50" };
   if (!provider.api_key_set) {
-    return {
-      label: provider.provider_type === "chatgpt" ? "Not signed in" : "Needs a key",
-      dot: "bg-warning",
-    };
+    return { label: "Needs a key", dot: "bg-warning" };
   }
   return { label: "Active", dot: "bg-success" };
 }
@@ -69,9 +56,7 @@ function ProviderCardContent({
   onSetApiKey,
   onSyncModels,
   onReviewNew,
-  connectionEmail,
-}: ProviderCardProps & { connectionEmail?: string }) {
-  const personal = provider.provider_type === "chatgpt";
+}: ProviderCardProps) {
   const status = providerStatus(provider);
   const listed = models.filter((model) => !model.stale);
   const enabled = listed.filter((model) => model.enabled).length;
@@ -81,18 +66,16 @@ function ProviderCardContent({
   ).map((service) => SERVICE_LABELS[service]);
   // Host-managed providers keep their credential and catalog with the host
   // (EVE-810); choosing which models to enable stays with the org.
-  const canEditCredential = canManage && !provider.managed && !personal;
-  const canSync = canManage && provider.api_key_set && !personal;
+  const canEditCredential = canManage && !provider.managed;
+  const canSync = canManage && provider.api_key_set;
   const detailHref = `/models/providers/${provider.id}`;
   const modelsHref = `/models?provider=${encodeURIComponent(provider.id)}`;
 
-  const credential = personal
-    ? `You · ${connectionEmail ?? (provider.api_key_set ? "ChatGPT account" : "not signed in")}`
-    : provider.managed
-      ? "Host managed"
-      : provider.api_key_set
-        ? "Configured"
-        : "Not set";
+  const credential = provider.managed
+    ? "Host managed"
+    : provider.api_key_set
+      ? "Configured"
+      : "Not set";
 
   return (
     <EntityCard
@@ -122,11 +105,6 @@ function ProviderCardContent({
           {provider.managed && (
             <Badge variant="outline" title={managedProviderCopy.badgeTitle}>
               {managedProviderCopy.badge}
-            </Badge>
-          )}
-          {personal && (
-            <Badge variant="outline" title="Visible only to you">
-              Personal
             </Badge>
           )}
           <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
@@ -195,29 +173,19 @@ function ProviderCardContent({
           <EntityCardDetail label={<span className="inline-block w-20">Services</span>}>
             <span className="truncate">{services.join(", ") || "—"}</span>
           </EntityCardDetail>
-          <EntityCardDetail
-            label={
-              <span className="inline-block w-20">{personal ? "Sign-in" : "Credentials"}</span>
-            }
-          >
+          <EntityCardDetail label={<span className="inline-block w-20">Credentials</span>}>
             <span className={provider.api_key_set ? "truncate" : "truncate text-warning"}>
               {credential}
             </span>
           </EntityCardDetail>
-          {!personal && (
-            <EntityCardDetail label={<span className="inline-block w-20">Endpoint</span>}>
-              <span className="min-w-0 truncate font-mono" title={provider.base_url}>
-                {provider.base_url ?? "Driver default"}
-              </span>
-            </EntityCardDetail>
-          )}
+          <EntityCardDetail label={<span className="inline-block w-20">Endpoint</span>}>
+            <span className="min-w-0 truncate font-mono" title={provider.base_url}>
+              {provider.base_url ?? "Driver default"}
+            </span>
+          </EntityCardDetail>
           <EntityCardDetail label={<span className="inline-block w-20">Last synced</span>}>
             <span>
-              {provider.last_synced_at
-                ? formatRelativeTime(provider.last_synced_at)
-                : personal
-                  ? "On sign-in"
-                  : "Never"}
+              {provider.last_synced_at ? formatRelativeTime(provider.last_synced_at) : "Never"}
             </span>
           </EntityCardDetail>
         </div>
