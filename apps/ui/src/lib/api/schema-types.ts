@@ -888,7 +888,6 @@ export type OpenApipayacctId = Schemas["payacctId"];
 export type OpenApipayattId = Schemas["payattId"];
 export type OpenApipaypolId = Schemas["paypolId"];
 export type OpenApisessionId = Schemas["sessionId"];
-export type OpenApiturnId = Schemas["turnId"];
 
 export type AcceptInviteResponse = Schemas["AcceptInviteResponse"];
 export type AddSessionParticipantRequest = Schemas["AddSessionParticipantRequest"];
@@ -1489,4 +1488,3 @@ export type payacctId = Schemas["payacctId"];
 export type payattId = Schemas["payattId"];
 export type paypolId = Schemas["paypolId"];
 export type sessionId = Schemas["sessionId"];
-export type turnId = Schemas["turnId"];

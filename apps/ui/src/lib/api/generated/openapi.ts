@@ -25525,17 +25525,11 @@ export interface components {
     /** @description Request to answer pending tool-approval requests, `POST …/sessions/{id}/tool-approvals`. */
     SubmitToolApprovalsRequest: {
       /**
-       * Format: uuid
-       * @description Retain when retrying an uncertain response. Requires `turn_id`.
-       */
-      command_id?: string | null;
-      /**
        * @description Decisions for the pending requests. A pending request in the same batch
        *     that is left out is resolved as not approved: the turn resumes once, so
        *     every request in it is settled now, and silence never approves.
        */
       decisions: components["schemas"]["ToolApprovalAnswer"][];
-      turn_id?: components["schemas"]["turnId"] | null;
     };
     /** @description Result of answering tool-approval requests. */
     SubmitToolApprovalsResponse: {
@@ -30893,11 +30887,6 @@ export interface components {
      * @example session_01933b5a000070008000000000000001
      */
     sessionId: string;
-    /**
-     * @description Prefixed identifier with 'turn' prefix
-     * @example turn_01933b5a000070008000000000000001
-     */
-    turnId: string;
   };
   responses: never;
   parameters: never;
