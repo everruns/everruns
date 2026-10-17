@@ -47,6 +47,10 @@ pub struct TurnStartedData {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct TurnCompletedData {
+    /// Provider-neutral reason execution ended. Persisted with termination so
+    /// hosts can recover the same outcome after losing their in-memory result.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub termination_reason: Option<crate::turn::TurnStopReason>,
     /// Turn identifier
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
     pub turn_id: TurnId,

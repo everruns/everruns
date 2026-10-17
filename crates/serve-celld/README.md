@@ -1,69 +1,37 @@
 # everruns-serve-celld
 
-> Run a [serve](https://crates.io/crates/everruns-serve) app durably on celld. Imported as `serve_celld`.
-
-[![Crates.io](https://img.shields.io/crates/v/everruns-serve-celld.svg)](https://crates.io/crates/everruns-serve-celld)
-[![Documentation](https://docs.rs/everruns-serve-celld/badge.svg)](https://docs.rs/everruns-serve-celld)
-[![License](https://img.shields.io/crates/l/everruns-serve-celld.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
-
-**Experimental.** A hosting target for serve in the [Everruns](https://everruns.com)
-ecosystem. Like serve, it is a proof of concept with no compatibility promise.
-
-[celld](https://github.com/denoland/celld) runs Cloudflare Workers and Durable
-Objects on your own machines. A Durable Object (a *cell*) has one owner node at a
-time and a SQLite database that celld replicates and fails over; a container the
-cell supervises loses its disk when the cell moves. So the agent runs in the
-container, and the cell keeps a snapshot of serve's state plus a journal of the
-requests since. A fresh container is restored and the journal replayed, so a turn
-a crash interrupted runs again.
-
-This crate is the container half. The cell is a small JavaScript Durable Object in
-[`examples/serve/celld/worker`](https://github.com/everruns/everruns/tree/main/examples/serve/celld/worker).
-
-## What It Provides
-
-| Route | What it does |
-|---|---|
-| `GET /celld/state` | `{"boot_id", "booted", "busy"}`. A new `boot_id` means a fresh container. Never boots the app |
-| `GET /celld/snapshot` | serve's data directory as a tar, SQLite databases copied through the online backup API. `409` while a turn runs |
-| `PUT /celld/restore` | Unpack a snapshot into the data directory. `409` once the app has booted |
-| `/health`, `/v1/...` | serve's own wire API, booted on the first request so a restore can come first |
-
-## Quick Example
+Experimental native [serve](../serve) hosting over per-session celld Durable
+Objects. Applications keep ordinary serve declarations. The adapter selects
+`everruns::Engine` with `ObjectHosting` and exposes that same Engine at the
+independently authenticated `/execute` activation endpoint.
 
 ```rust
-use serve::prelude::*;
-
-#[agent]
-fn assistant() -> Agent {
-    Agent::builder()
-        .model("anthropic/claude-sonnet-5")
-        .instructions("Be brief.")
-        .build()
-}
-
 #[tokio::main]
 async fn main() -> serve::Result {
-    serve_celld::start(App::builder().discover().build()).await
+    serve_celld::start(serve::App::builder().discover().build()).await
 }
 ```
 
-With no command the binary serves the contract on port 8080 in serve's `start`
-mode; `celld --dev` runs it offline. Other commands are serve's.
+With no command or `celld`, startup requires `AUTHORITY_URL`, `TENANT_ID`,
+`AUTHORITY_TOKEN` and a distinct `EXECUTOR_TOKEN`. Configure `SERVE_API_KEYS` for
+the user API. Other commands go to ordinary serve. Missing configuration fails
+before listening. `SERVE_DATA_DIR` holds only the local catalog/cache; authority
+binding metadata can reconstruct the session catalog after container loss.
 
-## Guarantees
+The [Worker](../../examples/serve/celld/worker) has one session authority per
+tenant/session and a separate replaceable executor container. Creation commits
+its binding before acknowledgement, including while another session runs.
+Admission, receipts, canonical events, epochs and alarms belong to the session
+DO. Containers never restore a canonical snapshot or replay accepted HTTP
+requests. Old `/cells/...` and `/celld/snapshot`/`restore` protocols are removed.
 
-- Turn-level durability: a request the cell acknowledged survives the loss of the
-  container or the node. A replayed turn calls the model and its tools again.
-- `POST /v1/sessions` is acknowledged only after a snapshot holds the session.
-- State lives in `SERVE_DATA_DIR` (default `/tmp/serve-celld`). The engine records
-  the workspace root, so every container of an image must use the same path.
+OS tools require an explicitly provisioned `SERVE_WORKSPACE_DIR`; its storage
+lifetime is independent of the journal. An ephemeral container disk does not
+preserve referenced files. The container is the OS containment boundary; choose
+an appropriate container runtime for tools that execute untrusted code.
 
-## Documentation
-
-- [Serve on celld](https://everruns.com/docs/framework/serve-celld/)
-- [API reference](https://docs.rs/everruns-serve-celld)
-
-## License
-
-Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).
+See the [example](../../examples/serve/celld) and
+[Engine hosting architecture](../../knowledge/framework/engine-durable-sessions.md).
+The Engine profile migration and platform qualification are in progress; these
+changes do not qualify production storage, unsupported host services or channel
+outbox durability.

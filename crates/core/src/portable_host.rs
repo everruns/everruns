@@ -15,6 +15,12 @@ pub mod capabilities;
 mod command_host;
 #[path = "host/composition.rs"]
 mod composition;
+#[path = "host/compute.rs"]
+pub mod compute;
+#[path = "host/decisions/mod.rs"]
+pub mod decisions;
+#[path = "host/environment_preamble.rs"]
+pub mod environment_preamble;
 #[path = "host/events.rs"]
 pub mod events;
 #[path = "host/file_store_decorators.rs"]
@@ -33,6 +39,8 @@ mod session_file_system_factory;
 pub mod session_services;
 #[path = "host/turn_backend.rs"]
 mod turn_backend;
+#[path = "host/workspace.rs"]
+mod workspace;
 
 #[path = "host/ask_user_lifecycle.rs"]
 mod ask_user_lifecycle;
@@ -98,8 +106,8 @@ pub use file_store_decorators::{
 };
 pub use in_memory::{
     InMemoryAgentStore, InMemoryCompactionCheckpointStore, InMemoryHarnessStore,
-    InMemoryProviderStore, InMemorySessionFileStore, InMemorySessionStorageStore,
-    InMemorySessionStore,
+    InMemoryProviderStore, InMemorySessionFileStore, InMemorySessionFileSystemFactory,
+    InMemorySessionStorageStore, InMemorySessionStore,
 };
 pub use in_process_execution::InProcessExecution;
 pub use runtime::{
@@ -120,7 +128,8 @@ pub use session_file_system_factory::{
 };
 pub use session_services::{
     SESSION_CAPABILITY_ID, SESSION_STORAGE_CAPABILITY_ID, SessionCapability, SessionMutator,
-    SessionMutatorExt, SessionStorageCapability,
+    SessionMutatorExt, SessionStorageCapability, is_internal_session_kv_key,
+    is_internal_session_secret_name,
 };
 pub use turn_backend::{
     InProcessBackend, TurnBackend, TurnBackendFactory, TurnInput, TurnRequest, TurnScope,
@@ -132,3 +141,17 @@ pub use turn_resume::{
     interrupted_tool_calls, resume_entry_plan, resume_open_turn, resume_plan_from_log,
 };
 pub use turn_strategy::advance_host_execution;
+
+pub use compute::{
+    Compute, ComputeCapabilities, ComputeError, ComputeKind, ComputeSession, Containment,
+    ContainmentLevel, Durability, ExecRequest, ExecResult, NetworkPolicy,
+};
+pub use decisions::{DecisionRouter, LLM_DECISION_DRIVER_ID, LlmDecisionDriver};
+pub use workspace::{
+    Environment, EnvironmentBindingError, EnvironmentBindingStore, EnvironmentBuilder,
+    EnvironmentError, InMemoryEnvironmentBindingStore, Workspace, WorkspaceBackend,
+    WorkspaceBackendId, WorkspaceBinding, WorkspaceCheckpoint, WorkspaceDescriptor, WorkspaceDiff,
+    WorkspaceError, WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadBuilder,
+    WorkspaceHeadDescriptor, WorkspaceHeadId, WorkspaceHeadRequest, WorkspaceHeadResource,
+    WorkspaceHeadStatus,
+};

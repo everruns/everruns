@@ -289,7 +289,7 @@ async fn send_routes_to_the_active_turn_and_returns_before_completion() {
 
     let turn = latest.wait().await.expect("active turn completes");
     assert!(turn.success);
-    assert_eq!(turn.turn_id, latest.turn_id);
+    assert_eq!(turn.turn_id, latest.turn().wait().await.unwrap().turn_id);
     assert_eq!(turn.response, "Echo: Prefer trains");
 
     let history = session.history().page().await.expect("history available");
@@ -381,6 +381,7 @@ async fn turn_handle_cancellation_emits_a_correlated_terminal_event() {
         .expect("active turn cancelled");
     let turn = steered.wait().await.expect("cancellation is an outcome");
     assert_eq!(turn.stop_reason, TurnStopReason::Cancelled);
+    assert_eq!(pending.wait().await.unwrap().turn_id, turn.turn_id);
 
     loop {
         let event = tokio::time::timeout(Duration::from_secs(1), events.recv())
@@ -389,7 +390,7 @@ async fn turn_handle_cancellation_emits_a_correlated_terminal_event() {
             .expect("event stream is healthy")
             .expect("event stream remains open");
         if event.kind.is_terminal() {
-            assert_eq!(event.turn_id.as_deref(), Some(pending.turn_id.as_str()));
+            assert_eq!(event.turn_id.as_deref(), Some(turn.turn_id.as_str()));
             assert!(matches!(event.kind, SessionEventKind::TurnCancelled));
             break;
         }

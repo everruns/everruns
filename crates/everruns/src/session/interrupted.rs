@@ -56,8 +56,10 @@ impl Session {
             .map_err(|_| RunError::SessionClosed)??
             .map(|(turn_id, completion)| TurnHandle {
                 session: self.clone(),
-                turn_id,
-                completion,
+                source: super::TurnHandleSource::Local {
+                    turn_id,
+                    completion,
+                },
             }))
     }
 }

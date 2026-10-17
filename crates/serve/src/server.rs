@@ -60,6 +60,7 @@ pub(crate) fn router(host: Arc<Host>) -> Router {
         .route("/v1/sessions/{id}", get(get_session))
         .route("/v1/sessions/{id}/messages", post(create_message))
         .route("/v1/sessions/{id}/cancel", post(cancel))
+        .route("/v1/sessions/{id}/admissions/{message_id}", get(admission))
         .route("/v1/sessions/{id}/sse", get(sse))
         .route("/v1/sessions/{id}/events", get(list_events))
         .route("/v1/sessions/{id}/question-answers", post(question_answers))
@@ -210,6 +211,9 @@ async fn agent_card(State(host): State<Arc<Host>>) -> Json<Value> {
 /// Unknown fields are accepted and ignored.
 #[derive(Deserialize, Default)]
 struct CreateSessionBody {
+    /// Optional stable identity for retryable session creation.
+    #[serde(default)]
+    id: Option<everruns::SessionId>,
     /// The serve agent; the app's default agent when absent.
     #[serde(default)]
     agent_name: Option<String>,
@@ -225,7 +229,11 @@ struct CreateSessionBody {
 }
 
 /// A session in the server's `Session` shape, plus serve's optional extras.
-pub(crate) fn session_json(host: &Host, id: &str) -> crate::Result<Value> {
+pub(crate) async fn session_json(host: &Host, id: &str) -> crate::Result<Value> {
+    let authority = host.authoritative_status(id).await?;
+    if authority.is_some() {
+        host.session(id).await?;
+    }
     let row = host.session_row(id)?;
     let mut session = json!({
         "id": row.id,
@@ -250,6 +258,20 @@ pub(crate) fn session_json(host: &Host, id: &str) -> crate::Result<Value> {
     if let Some(metadata) = row.metadata {
         session["metadata"] = metadata;
     }
+    if let Some(authority) = authority {
+        session["status"] = json!(authority.phase());
+        let approvals:Vec<_>=authority.waiting.iter().filter(|call|call.name=="approve_tool_call").map(|call|json!({"tool_call_id":call.id,"tool_name":call.arguments["tool"],"arguments":call.arguments["arguments"]})).collect();
+        let questions: Vec<_> = authority
+            .waiting
+            .iter()
+            .filter(|call| call.name == "ask_user")
+            .map(|call| json!({"tool_call_id":call.id,"questions":call.arguments["questions"]}))
+            .collect();
+        session["turn_id"] = json!(authority.open_turn);
+        session["suspension_reason"]=json!(authority.suspension_reason);
+        session["pending_approvals"] = json!(approvals);
+        session["pending_questions"] = json!(questions);
+    }
     Ok(session)
 }
 
@@ -267,6 +289,7 @@ async fn create_session(
     let body = body.map(|b| b.0).unwrap_or_default();
     let id = host
         .create_session(NewSession {
+            id: body.id,
             agent: body.agent_name,
             title: body.title,
             tags: body.tags,
@@ -277,7 +300,7 @@ async fn create_session(
     Ok((
         StatusCode::CREATED,
         [(header::LOCATION, format!("/v1/sessions/{id}"))],
-        Json(session_json(&host, &id)?),
+        Json(session_json(&host, &id).await?),
     )
         .into_response())
 }
@@ -288,11 +311,13 @@ pub(crate) async fn get_session(
 ) -> ApiResult<Json<Value>> {
     // After a restart, a turn waiting on a person shows as waiting again.
     host.wake(&id).await;
-    Ok(Json(session_json(&host, &id)?))
+    Ok(Json(session_json(&host, &id).await?))
 }
 
 #[derive(Deserialize)]
 pub(crate) struct CreateMessageBody {
+    #[serde(default)]
+    message_id: Option<everruns::MessageId>,
     message: InputMessage,
     #[serde(default)]
     metadata: Option<Value>,
@@ -353,7 +378,7 @@ pub(crate) async fn create_message(
     } else {
         joined_text(&body.message)?
     };
-    host.session_row(&id)?;
+    host.session(&id).await?;
     let mut content = Vec::new();
     if !text.trim().is_empty() {
         content.push(everruns::ContentPart::text(text));
@@ -365,7 +390,11 @@ pub(crate) async fn create_message(
     let mut input = everruns::InputMessage::user("");
     input.content = content;
     let parts = serde_json::to_value(&input.content)?;
-    let sent = host.send_message(&id, input).await?;
+    let sent = if let Some(message_id) = body.message_id {
+        host.send_message_with_id(&id, message_id, input).await?
+    } else {
+        host.send_message(&id, input).await?
+    };
     let mut message = json!({
         "id": sent.message_id,
         "session_id": id,
@@ -381,12 +410,22 @@ pub(crate) async fn create_message(
             events.iter().rev().find_map(|event| {
                 (event.event_type() == "input.message"
                     && event.canonical_json()["data"]["message"]["id"] == sent.message_id.as_str())
-                .then(|| event.sequence())
+                .then(|| {
+                    event.sequence().map(|sequence| {
+                        (
+                            sequence,
+                            event.canonical_json()["data"]["message"]["created_at"].clone(),
+                        )
+                    })
+                })
                 .flatten()
             })
         });
-        if let Some(sequence) = sequence {
+        if let Some((sequence, created_at)) = sequence {
             message["sequence"] = json!(sequence);
+            if !created_at.is_null() {
+                message["created_at"] = created_at;
+            }
             break;
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -397,16 +436,51 @@ pub(crate) async fn create_message(
     Ok((StatusCode::CREATED, Json(message)).into_response())
 }
 
+async fn admission(
+    State(host): State<Arc<Host>>,
+    Path((id, message)): Path<(String, everruns::MessageId)>,
+) -> ApiResult<Json<Value>> {
+    let session = host.session(&id).await?;
+    let accepted = session
+        .admission(message)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("admission receipt".into()))?;
+    Ok(Json(serde_json::to_value(accepted.state().await?)?))
+}
+
+#[derive(Deserialize, Default)]
+pub(crate) struct CancelBody {
+    #[serde(default)]
+    command_id: Option<uuid::Uuid>,
+    #[serde(default)]
+    message_id: Option<everruns::MessageId>,
+}
+
 pub(crate) async fn cancel(
     State(host): State<Arc<Host>>,
     Path(id): Path<String>,
-) -> ApiResult<Json<Value>> {
-    host.session_row(&id)?;
-    Ok(Json(if host.cancel(&id).await? {
-        json!({ "status": "cancelled", "message": "Turn cancelled successfully" })
-    } else {
-        json!({ "status": "no_op", "message": "No turn was running" })
-    }))
+    body: Option<Json<Option<CancelBody>>>,
+) -> ApiResult<Response> {
+    let body = body.and_then(|body| body.0).unwrap_or_default();
+    host.session(&id).await?;
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(
+            if host
+                .cancel_target(
+                    &id,
+                    body.command_id.unwrap_or_else(uuid::Uuid::new_v4),
+                    body.message_id,
+                )
+                .await?
+            {
+                json!({ "status": "accepted", "message": "Cancellation requested" })
+            } else {
+                json!({ "status": "no_op", "message": "No turn was running" })
+            },
+        ),
+    )
+        .into_response())
 }
 
 #[derive(Deserialize)]
@@ -432,11 +506,11 @@ async fn approval(
     Path((id, tool_call_id)): Path<(String, String)>,
     Json(body): Json<ApprovalBody>,
 ) -> ApiResult<Json<Value>> {
-    host.session_row(&id)?;
+    host.session(&id).await?;
     // After a restart, the approval is pending again once the session is.
     host.session(&id).await?;
     let approve = matches!(body.decision, DecisionKind::Approve);
-    host.resolve_approval(&id, &tool_call_id, approve)?;
+    host.resolve_approval(&id, &tool_call_id, approve).await?;
     Ok(Json(json!({
         "status": if approve { "approved" } else { "denied" },
         "tool_call_id": tool_call_id,
@@ -480,7 +554,7 @@ pub(crate) async fn question_answers(
     Path(id): Path<String>,
     Json(body): Json<QuestionAnswersBody>,
 ) -> ApiResult<Json<Value>> {
-    host.session_row(&id)?;
+    host.session(&id).await?;
     // After a restart, the question is pending again once the session is.
     host.session(&id).await?;
     let status = match body.status {
@@ -497,7 +571,8 @@ pub(crate) async fn question_answers(
             secret_ref: None,
         })
         .collect();
-    host.answer_questions(&id, body.tool_call_id.as_deref(), status, answers)?;
+    host.answer_questions(&id, body.tool_call_id.as_deref(), status, answers)
+        .await?;
     Ok(Json(json!({
         "status": match status { Status::Declined => "declined", _ => "answered" },
         "answered_by": "user",
@@ -573,6 +648,16 @@ async fn resolve_since_id(host: &Host, id: &str, since_id: &str) -> crate::Resul
     if !since_id.starts_with("event_") {
         return Err(ApiError::BadRequest(format!("invalid since_id {since_id:?}")).into());
     }
+    if host.authoritative_status(id).await?.is_some() {
+        return host
+            .session(id)
+            .await?
+            .event_sequence(since_id)
+            .await?
+            .ok_or_else(|| {
+                ApiError::BadRequest("event cursor does not belong to this session".into()).into()
+            });
+    }
     Ok(host
         .events_after(id, 0)
         .await?
@@ -610,10 +695,13 @@ pub(crate) async fn sse(
     if query.after_sequence.is_some_and(|seq| seq < 0) {
         return Err(bad_request("after_sequence must be >= 0"));
     }
-    host.session_row(&id)?;
+    host.session(&id).await?;
     let session = host.session(&id).await?;
     let after = match (&query.since_id, query.after_sequence) {
         (Some(since_id), _) => Some(resolve_since_id(&host, &id, since_id).await?),
+        (None, None) if host.authoritative_status(&id).await?.is_some() => {
+            Some(session.event_page(None, 1).await?.high_watermark)
+        }
         (None, after) => after,
     };
     let events = match after {
@@ -701,7 +789,7 @@ pub(crate) async fn list_events(
     {
         return Err(bad_request("limit must be between 1 and 1000"));
     }
-    host.session_row(&id)?;
+    host.session(&id).await?;
     let after = match (&query.since_id, query.after_sequence) {
         (Some(since_id), _) => resolve_since_id(&host, &id, since_id).await?,
         (None, after) => after.unwrap_or(0),

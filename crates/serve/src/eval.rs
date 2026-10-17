@@ -232,7 +232,7 @@ impl EvalCx {
                             session,
                             &view.tool_call_id,
                             self.on_approval == OnApproval::Approve,
-                        );
+                        ).await;
                     }
                     Ok(Notice::QuestionAsked { session_id, tool_call_id, questions })
                         if session_id == session =>
@@ -244,7 +244,7 @@ impl EvalCx {
                             Some(&tool_call_id),
                             Status::Answered,
                             outcome.answers,
-                        );
+                        ).await;
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                         bail!("host shut down mid-turn")

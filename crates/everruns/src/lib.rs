@@ -99,8 +99,9 @@ pub mod conversation {
 pub mod decisions;
 mod default_workspace;
 mod engine;
+pub use events::{SessionEventCursor, SessionEventPage};
 mod events;
-mod execution_host;
+pub mod hosting;
 /// Wire types of the Agent Execution API, the per-agent session API that the
 /// everruns server and serve both expose.
 ///
@@ -213,8 +214,8 @@ pub use history::{
     ResumeError, SessionMessage,
 };
 pub use hooks::{
-    AgentStartContext, CompletionContext, HookFailure, HookPoint, IntoHookResult, ToolEndContext,
-    ToolStartContext, TurnStartContext,
+    AgentStartContext, CompletionContext, HookFailure, HookPoint, HookRecovery, IntoHookResult,
+    ToolEndContext, ToolStartContext, TurnStartContext,
 };
 pub use llm::{Completion, CompletionError};
 pub use mcp::McpServer;
@@ -229,7 +230,9 @@ pub use session::{
     SendDisposition, SentMessage, Session, Turn, TurnHandle,
 };
 pub use session_environment::SessionEnvironmentError;
-pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolCallContext, ToolResponse};
+pub use tool::{
+    FunctionTool, IntoTool, IntoToolResult, Tool, ToolAnswer, ToolCallContext, ToolResponse,
+};
 
 #[cfg(feature = "local")]
 pub mod coordination;
@@ -379,12 +382,13 @@ pub use everruns_contracts::driver_registry::{
 };
 pub use everruns_contracts::provider::DriverId;
 pub use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
-pub use everruns_contracts::typed_id::{SessionId, WorkspaceId};
+pub use everruns_contracts::typed_id::{MessageId, SessionId, TurnId, WorkspaceId};
 
 // --- Deterministic in-process LLM simulator -----------------------------
 // `LlmSimConfig::scripted` takes `SimTurn`s, so the turn, tool-call, and
 // exhaustion types belong here beside it: without them the facade exposes a
 // constructor nothing outside the workspace can call.
+#[cfg(not(target_arch = "wasm32"))]
 pub use everruns_llmsim::{LlmSimConfig, OnExhausted, SimError, SimToolCall, SimTurn};
 
 /// The common path: everything needed to describe an agent and run turns.
@@ -405,6 +409,8 @@ pub mod prelude {
     pub use crate::DuckDuckGo;
     #[cfg(feature = "filesystem")]
     pub use crate::FileSystem;
+    #[cfg(not(target_arch = "wasm32"))]
+    pub use crate::LlmSimConfig;
     #[cfg(feature = "local")]
     pub use crate::LocalConfig;
     #[cfg(feature = "local")]
@@ -432,14 +438,14 @@ pub mod prelude {
         EventListener, EventStream, EventStreamError, FunctionTool, Harness, HarnessBuildError,
         HarnessBuilder, HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage,
         HistoryPages, HistoryQuery, HookFailure, HookPoint, InMemoryEngine, InitialFile,
-        IntoCapability, IntoHookResult, IntoTool, IntoToolResult, LlmSimConfig, McpServer, Model,
-        ObserverReport, ObserverStats, PluginError, ResumeError, RunError, RunOptions,
-        SendDisposition, SentMessage, Session, SessionContext, SessionEnvironmentError,
-        SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool, ToolCallContext,
-        ToolEndContext, ToolInfo, ToolResponse, ToolStartContext, Turn, TurnHandle,
-        TurnStartContext, Workspace, WorkspaceBackend, WorkspaceBackendId, WorkspaceDiff,
-        WorkspaceError, WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId,
-        WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
+        IntoCapability, IntoHookResult, IntoTool, IntoToolResult, McpServer, Model, ObserverReport,
+        ObserverStats, PluginError, ResumeError, RunError, RunOptions, SendDisposition,
+        SentMessage, Session, SessionContext, SessionEnvironmentError, SessionEvent,
+        SessionEventKind, SessionId, SessionMessage, Tool, ToolCallContext, ToolEndContext,
+        ToolInfo, ToolResponse, ToolStartContext, Turn, TurnHandle, TurnStartContext, Workspace,
+        WorkspaceBackend, WorkspaceBackendId, WorkspaceDiff, WorkspaceError, WorkspaceHead,
+        WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId, WorkspacePolicy, WorkspacePolicyBuilder,
+        WorkspacePolicyError,
     };
     #[cfg(feature = "builtins")]
     pub use crate::{

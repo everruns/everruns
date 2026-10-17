@@ -40,6 +40,7 @@ pub type MicroVm = Arc<dyn Fn(everruns::AgentBuilder) -> everruns::AgentBuilder 
 /// Builder for [`Server`].
 #[must_use]
 pub struct ServerBuilder {
+    environment_ref: Option<String>,
     engine: Option<everruns::Engine>,
     app: App,
     mode: Mode,
@@ -50,6 +51,18 @@ pub struct ServerBuilder {
 }
 
 impl ServerBuilder {
+    /// Bind every Agent's explicitly configured host workspace under a retained
+    /// Environment reference. Changing its configuration requires a new key.
+    pub fn host_environment(mut self, reference: impl Into<String>) -> Self {
+        self.environment_ref = Some(reference.into());
+        self
+    }
+    /// Select coherent Engine session hosting. Admission and canonical state
+    /// belong to this profile; the serve catalog remains a projection.
+    pub fn hosting(mut self, profile: impl everruns::hosting::SessionHosting) -> Self {
+        self.engine = Some(everruns::Engine::builder().hosting(profile).build());
+        self
+    }
     /// Use an application-owned Engine, including its experimental execution backend.
     pub fn engine(mut self, engine: everruns::Engine) -> Self {
         self.engine = Some(engine);
@@ -91,6 +104,7 @@ impl ServerBuilder {
     /// unset, or when an agent does not resolve.
     pub fn build(self) -> crate::Result<Server> {
         let Self {
+            environment_ref,
             engine,
             app,
             mode,
@@ -105,6 +119,26 @@ impl ServerBuilder {
                 app.errors().len(),
                 app.errors().join("; ")
             );
+        }
+        if engine
+            .as_ref()
+            .is_some_and(everruns::Engine::has_session_hosting)
+        {
+            if !app.inner.channels.is_empty() {
+                bail!(
+                    "this session hosting profile requires a separately configured durable channel inbox/outbox; channel delivery cannot use the local catalog"
+                );
+            }
+            if !app.inner.schedules.is_empty() {
+                bail!(
+                    "this session hosting profile requires an independent durable schedule service"
+                );
+            }
+            if app.inner.agents.iter().any(|agent| agent.sub) {
+                bail!(
+                    "this session hosting profile does not yet supply Engine-owned child session activation"
+                );
+            }
         }
         let missing = missing_secrets(&app);
         if mode == Mode::Start && !missing.is_empty() {
@@ -123,9 +157,12 @@ impl ServerBuilder {
         if let Some(auth) = auth {
             host.set_auth(auth);
         }
+        if let Some(reference) = environment_ref {
+            host.set_environment_ref(reference);
+        }
         // Resolve every agent once so a bad model or tool schema fails at boot.
         for agent in &app.inner.agents {
-            host.build_agent(agent, None, false)?;
+            host.register_agent(agent)?;
         }
         Ok(Server { host })
     }
@@ -141,6 +178,7 @@ impl Server {
     /// Start building a server for `app` in `mode`.
     pub fn builder(app: App, mode: Mode) -> ServerBuilder {
         ServerBuilder {
+            environment_ref: None,
             engine: None,
             app,
             mode,
@@ -177,27 +215,10 @@ impl Server {
         &self.host.build_id
     }
 
-    /// Reconstruct a registered agent for an authenticated external actor host.
-    ///
-    /// The hosting target owns activation authorization and supplies coherent
-    /// durable stores. Agent declarations, tools and provider resolution use
-    /// the same composition as the HTTP server. This is experimental host SPI.
-    pub async fn execution_host(
-        &self,
-        agent: &str,
-        session_id: everruns::SessionId,
-        backends: everruns_core::host::HostBackends,
-    ) -> crate::Result<everruns_core::host::InProcessRuntime> {
-        let entry = self
-            .host
-            .app
-            .inner
-            .agents
-            .iter()
-            .find(|entry| entry.name == agent)
-            .ok_or_else(|| anyhow!("unknown agent registration"))?;
-        let agent = self.host.build_agent(entry, None, false)?;
-        Ok(agent.execution_host(session_id, backends).await?)
+    /// The Framework Engine used by the ordinary session HTTP API. Native
+    /// hosting adapters pass this same Engine to authenticated activation.
+    pub fn engine(&self) -> everruns::Engine {
+        self.host.engine.clone()
     }
 
     /// serve's `/v1` wire API (plus `/health`), to merge into a target's

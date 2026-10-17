@@ -2942,6 +2942,7 @@ dependencies = [
 name = "everruns-durable-object"
 version = "0.48.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "axum",
  "chrono",
@@ -2957,6 +2958,7 @@ dependencies = [
  "subtle",
  "tokio",
  "tower",
+ "tracing",
  "uuid",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -3291,14 +3293,12 @@ dependencies = [
  "axum",
  "clap",
  "everruns",
+ "everruns-durable-object",
  "everruns-serve",
  "reqwest",
  "serde_json",
- "tar",
  "tempfile",
  "tokio",
- "tower",
- "uuid",
 ]
 
 [[package]]

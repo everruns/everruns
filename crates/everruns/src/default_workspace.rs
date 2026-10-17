@@ -1,16 +1,19 @@
 #![allow(deprecated)] // Built-in backends emit legacy errors during their deprecation window.
 use std::collections::{BTreeMap, HashSet};
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use everruns_contracts::typed_id::{SessionId, WorkspaceId};
 use everruns_core::host::{
-    Environment, InMemorySessionFileStore, RealDiskFileStore, Workspace, WorkspaceBackend,
-    WorkspaceBackendId, WorkspaceBinding, WorkspaceCheckpoint, WorkspaceDescriptor, WorkspaceDiff,
-    WorkspaceError, WorkspaceHeadAccess, WorkspaceHeadDescriptor, WorkspaceHeadId,
-    WorkspaceHeadRequest, WorkspaceHeadResource, WorkspaceHeadStatus,
+    Environment, InMemorySessionFileStore, Workspace, WorkspaceBackend, WorkspaceBackendId,
+    WorkspaceBinding, WorkspaceCheckpoint, WorkspaceDescriptor, WorkspaceDiff, WorkspaceError,
+    WorkspaceHeadDescriptor, WorkspaceHeadId, WorkspaceHeadRequest, WorkspaceHeadResource,
+    WorkspaceHeadStatus,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use everruns_core::host::{RealDiskFileStore, WorkspaceHeadAccess};
 use everruns_core::session_files::SessionFileSystem;
 use uuid::Uuid;
 
@@ -29,6 +32,7 @@ impl DefaultWorkspace {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn directory(root: PathBuf) -> Self {
         Self {
             backend: Arc::new(DefaultDirectoryWorkspaceBackend { root }),
@@ -70,13 +74,16 @@ impl Clone for DefaultWorkspace {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 const DIRECTORY_BACKEND_ID: &str = "everruns.framework.directory.v1";
 const MEMORY_BACKEND_ID: &str = "everruns.framework.memory.v1";
 
+#[cfg(not(target_arch = "wasm32"))]
 struct DefaultDirectoryWorkspaceBackend {
     root: PathBuf,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl DefaultDirectoryWorkspaceBackend {
     fn backend_id() -> WorkspaceBackendId {
         WorkspaceBackendId::new(DIRECTORY_BACKEND_ID).expect("static backend id is valid")
@@ -160,6 +167,7 @@ impl DefaultDirectoryWorkspaceBackend {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[async_trait]
 impl WorkspaceBackend for DefaultDirectoryWorkspaceBackend {
     fn id(&self) -> WorkspaceBackendId {

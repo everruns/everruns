@@ -100,8 +100,8 @@ replacement input and requires alarm-driven completion with one external effect.
 It runs in the [recovery workflow](../../.github/workflows/durable-object.yml).
 
 The [Wasm application](../../examples/durable-object-agent/README.md) runs the
-ordinary host builder, capability/tool SPI, shared actor driver and canonical
-turn loop inside the object. The [isolate qualification test](../../crates/durable-object/worker/test/qualify-isolate.mjs)
+ordinary Framework Agent/Engine, capability/tool APIs, shared actor driver and
+canonical turn loop inside the object. The [isolate qualification test](../../crates/durable-object/worker/test/qualify-isolate.mjs)
 loses the isolate after a committed session KV effect, then permits no application
 requests during recovery. Its first subsequent event read must already contain a
 completed turn. It also checks immutable build binding, admission deduplication,
@@ -111,8 +111,8 @@ Backend qualification is specific to the platform and failure tested. Local
 workerd evidence is not evidence of Cloudflare production service behavior, and a
 local replicated celld fleet is not evidence of a particular cloud bucket's
 consistency, network topology or operations. Keep those limits with the published
-validation results. The older snapshot/replay example retains its documented
-weaker tool replay semantics.
+validation results. The Engine migration replaces the older snapshot/replay example; its canonical
+snapshots are not a supported authority format.
 
 The Cloudflare service qualification passed isolate abort after the committed
 counter effect, no client requests during recovery, one interrupted result and

@@ -10,7 +10,7 @@ mod turn;
 
 use crate::host::{DEFAULT_SESSION_LEASE_TTL, RuntimeHostAdapter, TurnDrive, WaitsOnPerson};
 use async_trait::async_trait;
-use everruns_contracts::typed_id::{AgentId, MessageId, SessionId};
+use everruns_contracts::typed_id::{AgentId, MessageId, SessionId, TurnId};
 use std::sync::Arc;
 use std::time::Duration;
 use store::SessionActorStore;
@@ -52,6 +52,45 @@ pub trait ActorHosts: Send + Sync + 'static {
 
     /// A host for `turn`, stopping its tools on `signals`.
     fn host(&self, turn: HostTurn, signals: &TurnSignals) -> Self::Host;
+
+    /// Recover host-owned finalization before admitting another logical turn,
+    /// and finish it under the live epoch before release. A terminal runtime
+    /// event alone need not be the application's finalized outcome.
+    async fn checkpoint(
+        &self,
+        _host: &Self::Host,
+        _tail: &[crate::events::Event],
+    ) -> everruns_contracts::error::Result<()> {
+        Ok(())
+    }
+
+    /// Retain a logical turn identity before start hooks or `turn.started`.
+    async fn fresh_turn_id(
+        &self,
+        _input: MessageId,
+        proposed: TurnId,
+    ) -> everruns_contracts::error::Result<TurnId> {
+        Ok(proposed)
+    }
+
+    /// Await application gates under the same execution epoch as the turn.
+    async fn before_turn(
+        &self,
+        _host: &Self::Host,
+        _drive: &TurnDrive,
+        _input: Option<&crate::RuntimeMessage>,
+    ) -> everruns_contracts::error::Result<()> {
+        Ok(())
+    }
+
+    /// Record assignment before a reason can consume admitted steering.
+    async fn inputs_consumed(
+        &self,
+        _drive: &TurnDrive,
+        _inputs: &[MessageId],
+    ) -> everruns_contracts::error::Result<()> {
+        Ok(())
+    }
 
     /// A phase of `drive`'s turn begins on `host`.
     fn begin_phase(&self, _host: &Self::Host, _drive: &TurnDrive, _phase: Phase) {}

@@ -14,7 +14,7 @@ export async function runActivation(authority, execute) {
       activation: {
         tenant: state.tenant,
         session_id: state.session_id,
-        binding: state.binding,
+        binding: {agent:state.binding.agent,build_id:state.binding.build_id},
       },
     };
   });

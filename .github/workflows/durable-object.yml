@@ -9,6 +9,9 @@ on:
       - 'crates/serve/**'
       - 'crates/worker/**'
       - 'examples/durable-object-agent/**'
+      - 'examples/celld-engine/**'
+      - 'examples/serve/celld/**'
+      - 'crates/serve-celld/**'
       - 'crates/durable-object/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
@@ -22,6 +25,9 @@ on:
       - 'crates/serve/**'
       - 'crates/worker/**'
       - 'examples/durable-object-agent/**'
+      - 'examples/celld-engine/**'
+      - 'examples/serve/celld/**'
+      - 'crates/serve-celld/**'
       - 'crates/durable-object/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
@@ -53,8 +59,12 @@ jobs:
       - name: Test authority transactions and races
         working-directory: crates/durable-object/worker
         run: npm test
-      - name: Test native host adapters
+      - name: Test Framework authority conformance on memory and SQLite
+        run: cargo test --locked -p everruns --no-default-features --features local,builtins --test hosted_sessions
+      - name: Test native Engine host adapters
         run: cargo test --locked -p everruns-durable-object
+      - name: Test ordinary serve registration and catalog reconstruction
+        run: cargo test --locked -p everruns-serve --lib execution_host_tests
       - name: Test native executor crash recovery on workerd
         working-directory: crates/durable-object/worker
         run: npm run test:recovery
@@ -93,7 +103,9 @@ jobs:
           echo 'ce0ee3552cc8d55dde3998dc3b1b0c8f547bbcb4bc803d2a94842368b047646c  /tmp/celld.gz' | sha256sum --check
           gzip --decompress --stdout /tmp/celld.gz > "$HOME/.cargo/bin/celld"
           chmod +x "$HOME/.cargo/bin/celld"
-      - name: Build the ordinary Rust execution host for Wasm
+      - name: Check the portable public Framework facade
+        run: cargo check --locked -p everruns --no-default-features --features macros,capabilities,builtins --target wasm32-unknown-unknown
+      - name: Build the ordinary Framework application for Wasm
         run: bash examples/durable-object-agent/build.sh
       - name: Test isolate loss and autonomous alarm recovery on workerd
         working-directory: crates/durable-object/worker

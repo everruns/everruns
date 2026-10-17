@@ -27,6 +27,7 @@ use everruns_core::host::{
     EnvironmentBindingStore, EventLogError, EventSink, HarnessBuilder, HostBackends,
     InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder, WorkspaceBackend,
 };
+#[cfg(not(target_arch = "wasm32"))]
 use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
 
 use crate::agent_state::AgentState;
@@ -67,6 +68,7 @@ impl Model {
     ///
     /// Backed by the `llmsim` driver, so an agent using it runs entirely
     /// offline — no credentials, no network.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn simulated(response: impl Into<String>) -> Self {
         Self::bundled(
             "llmsim-model",
@@ -79,6 +81,7 @@ impl Model {
     /// This keeps examples and evaluations offline while allowing multiple
     /// responses, tool-call sequences, and the other controls exposed by
     /// [`LlmSimConfig`].
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn simulated_with_config(config: LlmSimConfig) -> Self {
         Self::bundled(
             "llmsim-model",
@@ -198,6 +201,8 @@ impl fmt::Debug for Model {
 pub enum BuildError {
     /// `instructions` was empty or only whitespace.
     BlankInstructions,
+    /// This target cannot supply a requested native host service.
+    UnsupportedHostFeature(&'static str),
     /// Both [`AgentBuilder::backends`] and [`AgentBuilder::local`] were set.
     ConflictingBackends,
     /// No model was selected.
@@ -274,6 +279,7 @@ pub enum BuildError {
 impl fmt::Display for BuildError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnsupportedHostFeature(feature) => write!(f, "host does not support {feature}"),
             BuildError::BlankInstructions => {
                 write!(f, "agent instructions must not be blank")
             }
@@ -350,6 +356,8 @@ pub struct Agent {
     #[cfg(feature = "local")]
     local: Option<crate::LocalConfig>,
     lifecycle_hooks: crate::hooks::LifecycleHooks,
+    client_tools: Vec<everruns_contracts::tool_types::ClientSideTool>,
+    client_questions: bool,
     /// See [`AgentBuilder::backends`]; mutually exclusive with `local`.
     pub(crate) backends: Option<HostBackends>,
     pub(crate) state: Arc<AgentState>,
@@ -415,6 +423,17 @@ impl BackendInitError {
 }
 
 impl Agent {
+    pub(crate) fn requires_hosted_workspace(&self) -> bool {
+        self.workspace_root.is_some()
+            || !self.initial_files.is_empty()
+            || self.capabilities.iter().any(|reference| {
+                matches!(
+                    reference.capability_id(),
+                    "filesystem" | "file_system" | "skills" | "host_shell" | "bash" | "bashkit"
+                )
+            })
+    }
+
     /// Start describing an agent.
     ///
     /// # Example
@@ -450,6 +469,24 @@ impl Agent {
             .await
             .map_err(crate::SessionEnvironmentError::from)?;
         Ok(())
+    }
+
+    /// Trusted host factory for this Agent's configured workspace. Register it
+    /// with an immutable Environment reference on the Engine. Persistent hosts
+    /// must provision the workspace storage independently of session authority.
+    pub fn environment_factory(&self) -> impl crate::hosting::EnvironmentFactory {
+        let configured = self.clone();
+        move |session| {
+            let configured = configured.clone();
+            async move {
+                configured
+                    .default_session_environment(session)
+                    .await
+                    .map_err(|error| {
+                        everruns_contracts::error::AgentLoopError::config(error.to_string())
+                    })
+            }
+        }
     }
 
     pub(crate) async fn default_session_environment(
@@ -637,6 +674,11 @@ impl Agent {
             .agent(agent_id)
             .capabilities(capabilities)
             .mcp_servers(self.mcp_servers.clone());
+        for tool in &self.client_tools {
+            session = session.tool(everruns_contracts::tool_types::ToolDefinition::ClientSide(
+                tool.clone(),
+            ));
+        }
         if let Some(environment) = &environment {
             session = session.workspace(environment.workspace_head().workspace_id());
         }
@@ -649,9 +691,18 @@ impl Agent {
         for file in &self.initial_files {
             session = session.initial_file(file.clone());
         }
-        let session =
+        let mut session =
             crate::engine::keep_catalog_fields(backends.session_store.as_ref(), session.build())
                 .await;
+        if !self.client_tools.is_empty() || self.client_questions {
+            let hints = session.hints.get_or_insert_with(Default::default);
+            if !self.client_tools.is_empty() {
+                hints.insert("setup_connection".into(), true.into());
+            }
+            if self.client_questions {
+                hints.insert("ask_user".into(), true.into());
+            }
+        }
         let mut builder = InProcessRuntimeBuilder::new()
             .host_composition(
                 everruns_core::host::HostComposition::builder()
@@ -708,33 +759,41 @@ impl Agent {
                 .build();
             builder = builder.host_composition(platform);
         } else if let Some(root) = workspace_root {
-            // THREAT[TM-BASH-001] / THREAT[TM-FS-013]: reuse the canonical
-            // real-disk factory so every operation retains containment and
-            // symlink rejection; the facade does not implement a second path
-            // mapper.
-            let registry = {
-                #[cfg(feature = "local")]
-                if self.local.is_some() {
-                    // The local profile serves the hosted catalog from SQLite
-                    // (EVE-885), so validation and execution see one set.
-                    crate::local::local_capability_registry()
-                } else {
-                    framework_capability_registry(false)
-                }
-                #[cfg(not(feature = "local"))]
-                {
-                    framework_capability_registry(false)
-                }
-            };
-            let platform = everruns_core::host::HostComposition::builder()
-                .capability_registry(registry)
-                .driver_registry(everruns_contracts::DriverRegistry::new())
-                .egress_service(crate::batteries::runtime_egress_service())
-                .session_file_system_factory(Arc::new(
-                    everruns_core::host::RealDiskSessionFileSystemFactory::new(root),
-                ))
-                .build();
-            builder = builder.host_composition(platform);
+            #[cfg(target_arch = "wasm32")]
+            return Err(everruns_contracts::error::AgentLoopError::config(format!(
+                "native workspace unavailable: {}",
+                root.display()
+            )));
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                // THREAT[TM-BASH-001] / THREAT[TM-FS-013]: reuse the canonical
+                // real-disk factory so every operation retains containment and
+                // symlink rejection; the facade does not implement a second path
+                // mapper.
+                let registry = {
+                    #[cfg(feature = "local")]
+                    if self.local.is_some() {
+                        // The local profile serves the hosted catalog from SQLite
+                        // (EVE-885), so validation and execution see one set.
+                        crate::local::local_capability_registry()
+                    } else {
+                        framework_capability_registry(false)
+                    }
+                    #[cfg(not(feature = "local"))]
+                    {
+                        framework_capability_registry(false)
+                    }
+                };
+                let platform = everruns_core::host::HostComposition::builder()
+                    .capability_registry(registry)
+                    .driver_registry(everruns_contracts::DriverRegistry::new())
+                    .egress_service(crate::batteries::runtime_egress_service())
+                    .session_file_system_factory(Arc::new(
+                        everruns_core::host::RealDiskSessionFileSystemFactory::new(root),
+                    ))
+                    .build();
+                builder = builder.host_composition(platform);
+            }
         }
         // References and code-defined implementations were normalized and
         // collision-checked together at Agent build time. Register each
@@ -777,6 +836,8 @@ pub struct AgentBuilder {
     providers: Vec<Provider>,
     capabilities: Vec<crate::CapabilitySpec>,
     tools: Vec<Tool>,
+    client_tools: Vec<everruns_contracts::tool_types::ClientSideTool>,
+    client_questions: bool,
     initial_files: Vec<InitialFile>,
     network_access: Option<everruns_core::network_access::NetworkAccessList>,
     package_manifest: Option<everruns_core::agent_package::Manifest>,
@@ -800,6 +861,22 @@ pub struct AgentBuilder {
 }
 
 impl AgentBuilder {
+    /// Declare a client-executed tool. Its calls park durably until
+    /// [`Session::resolve_tools`](crate::Session::resolve_tools) supplies results.
+    pub fn client_tool(
+        mut self,
+        name: impl Into<String>,
+        description: impl Into<String>,
+        parameters: serde_json::Value,
+    ) -> Self {
+        self.client_tools
+            .push(everruns_contracts::tool_types::ClientSideTool::new(
+                name,
+                description,
+                parameters,
+            ));
+        self
+    }
     /// Set the network policy applied to this agent and its sessions.
     pub fn network_access(
         mut self,
@@ -872,6 +949,96 @@ impl AgentBuilder {
     /// ```
     pub fn tool(mut self, tool: impl IntoTool) -> Self {
         self.tools.push(tool.into_tool());
+        self
+    }
+
+    /// Register a handler with an explicit executor-loss recovery policy.
+    /// Invocation identities remain stable across replacement Engines.
+    pub fn on_agent_start_with_recovery<F, Fut, O>(
+        mut self,
+        recovery: crate::HookRecovery,
+        handler: F,
+    ) -> Self
+    where
+        F: Fn(crate::AgentStartContext) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = O> + Send + 'static,
+        O: crate::IntoHookResult + 'static,
+    {
+        self.lifecycle_hooks.on_agent_start(handler);
+        self.lifecycle_hooks
+            .set_last_recovery(crate::HookPoint::AgentStart, recovery);
+        self
+    }
+
+    /// Register a handler with an explicit executor-loss recovery policy.
+    /// Invocation identities remain stable across replacement Engines.
+    pub fn on_turn_start_with_recovery<F, Fut, O>(
+        mut self,
+        recovery: crate::HookRecovery,
+        handler: F,
+    ) -> Self
+    where
+        F: Fn(crate::TurnStartContext) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = O> + Send + 'static,
+        O: crate::IntoHookResult + 'static,
+    {
+        self.lifecycle_hooks.on_turn_start(handler);
+        self.lifecycle_hooks
+            .set_last_recovery(crate::HookPoint::TurnStart, recovery);
+        self
+    }
+
+    /// Register a handler with an explicit executor-loss recovery policy.
+    /// Invocation identities remain stable across replacement Engines.
+    pub fn on_tool_start_with_recovery<F, Fut, O>(
+        mut self,
+        recovery: crate::HookRecovery,
+        handler: F,
+    ) -> Self
+    where
+        F: Fn(crate::ToolStartContext) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = O> + Send + 'static,
+        O: crate::IntoHookResult + 'static,
+    {
+        self.lifecycle_hooks.on_tool_start(handler);
+        self.lifecycle_hooks
+            .set_last_recovery(crate::HookPoint::ToolStart, recovery);
+        self
+    }
+
+    /// Register a handler with an explicit executor-loss recovery policy.
+    /// Invocation identities remain stable across replacement Engines.
+    pub fn on_tool_end_with_recovery<F, Fut, O>(
+        mut self,
+        recovery: crate::HookRecovery,
+        handler: F,
+    ) -> Self
+    where
+        F: Fn(crate::ToolEndContext) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = O> + Send + 'static,
+        O: crate::IntoHookResult + 'static,
+    {
+        self.lifecycle_hooks.on_tool_end(handler);
+        self.lifecycle_hooks
+            .set_last_recovery(crate::HookPoint::ToolEnd, recovery);
+        self
+    }
+
+    /// Register a handler with an explicit executor-loss recovery policy.
+    /// Invocation identities remain stable across replacement Engines.
+    pub fn on_completion_with_recovery<F, Fut, O>(
+        mut self,
+        recovery: crate::HookRecovery,
+        handler: F,
+    ) -> Self
+    where
+        F: Fn(crate::CompletionContext) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = O> + Send + 'static,
+        O: crate::IntoHookResult + 'static,
+    {
+        self.lifecycle_hooks.on_completion(handler);
+        self.lifecycle_hooks
+            .set_last_recovery(crate::HookPoint::Completion, recovery);
         self
     }
 
@@ -1161,9 +1328,17 @@ impl AgentBuilder {
                 None
             }
         });
+        #[cfg(not(target_arch = "wasm32"))]
         let default_workspace = default_workspace_root
             .map(crate::default_workspace::DefaultWorkspace::directory)
             .unwrap_or_else(crate::default_workspace::DefaultWorkspace::in_memory);
+        #[cfg(target_arch = "wasm32")]
+        let default_workspace = {
+            if default_workspace_root.is_some() {
+                return Err(BuildError::UnsupportedHostFeature("native workspace"));
+            }
+            crate::default_workspace::DefaultWorkspace::in_memory()
+        };
         let default_backend = default_workspace.backend();
         let default_backend_id = default_backend.id();
         if workspace_backends
@@ -1331,6 +1506,23 @@ impl AgentBuilder {
         // exactly those tools. Fail closed: a gated tool without an approver
         // is a build error, never a silently ungated call.
         let approval_predicates = crate::tool::approval_predicates(&function_tools);
+        for tool in &self.client_tools {
+            validate_tool_name(&tool.name).map_err(|reason| BuildError::InvalidToolName {
+                name: tool.name.clone(),
+                reason,
+            })?;
+            validate_tool_schema(&tool.parameters).map_err(|reason| {
+                BuildError::InvalidToolSchema {
+                    name: tool.name.clone(),
+                    reason,
+                }
+            })?;
+            if !seen_tool_names.insert(tool.name.clone()) {
+                return Err(BuildError::DuplicateTool {
+                    name: tool.name.clone(),
+                });
+            }
+        }
         if let Some((first_gated, _)) = approval_predicates.first() {
             #[cfg(feature = "builtins")]
             {
@@ -1401,6 +1593,8 @@ impl AgentBuilder {
             #[cfg(feature = "local")]
             local: self.local,
             lifecycle_hooks: self.lifecycle_hooks,
+            client_tools: self.client_tools,
+            client_questions: self.client_questions,
             backends: self.backends,
             state: Arc::new(AgentState::new(workspace_backends)),
         })

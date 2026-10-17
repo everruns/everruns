@@ -74,10 +74,7 @@ impl AuthorityTransport for ObjectTransport {
             return Err(actor_lease_lost(session, "object rejected stale ownership"));
         }
         if !(200..300).contains(&reply.status) {
-            return Err(AgentLoopError::store(format!(
-                "authority {operation} rejected ({})",
-                reply.status
-            )));
+            return Err(crate::client::rejected(reply.status));
         }
         Ok(reply.value)
     }

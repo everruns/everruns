@@ -20,8 +20,12 @@ export class Authority {
     const j = this.journal;
     if (
       operation === "events" ||
+      operation === "event_sequence" ||
       operation === "journal" ||
-      operation === "status"
+      operation === "status" ||
+      operation === "command" ||
+      operation === "receipt" ||
+      (operation === "framework" && ["get", "list"].includes(body.operation))
     ) {
       const state = j.read();
       requireValue(
@@ -29,7 +33,30 @@ export class Authority {
         404,
         "session not found",
       );
-      if (operation === "status") return state;
+      if(operation==="event_sequence") {
+        requireValue(typeof body.event_id==="string" && /^event_[a-f0-9]{32}$/.test(body.event_id),400,"invalid event cursor identity");
+        return j.sql.exec("SELECT seq FROM events WHERE json_extract(value,'$.id')=? LIMIT 1",body.event_id).toArray()[0]?.seq??null;
+      }
+      if (operation === "status") return {...state,now_ms:j.now()};
+      if (operation === "command") {
+        requireValue(typeof body.id === "string" && /^approval:[a-zA-Z0-9-]{1,64}$/.test(body.id),400,"invalid command lookup");
+        const row=j.sql.exec("SELECT fingerprint,value FROM commands WHERE id=?",body.id).toArray()[0];
+        return row?{fingerprint:JSON.parse(row.fingerprint),value:JSON.parse(row.value)}:null;
+      }
+      if (operation === "receipt") {
+        requireValue(/^message_[a-f0-9]{32}$/.test(body.message_id), 400, "invalid message identity");
+        const row = j.sql.exec("SELECT value FROM commands WHERE id=?", body.message_id).toArray()[0];
+        return row ? JSON.parse(row.value) : null;
+      }
+      if (operation === "framework") {
+        requireValue(typeof body.key === "string" && body.key.length <= 512, 400, "invalid Framework receipt key");
+        if (body.operation === "list") {
+          const rows = j.sql.exec("SELECT key,value FROM objects WHERE kind='framework' AND substr(key,1,?)=? ORDER BY key LIMIT 4097", body.key.length, body.key).toArray();
+          requireValue(rows.length <= 4096, 429, "lifecycle receipt scan limit exceeded");
+          return rows.map((row) => [row.key, JSON.parse(row.value)]);
+        }
+        return j.object("framework", body.key);
+      }
       let after = body.after ?? 0;
       if (operation === "journal" && body.after == null) {
         const row = j.sql
@@ -63,6 +90,7 @@ export class Authority {
             409,
             "session belongs to another agent build",
           );
+        state.created_at ??= new Date(j.now()).toISOString();
         state.binding = body.binding;
         state.session_id = sessionId;
         state.tenant = tenant;
@@ -116,6 +144,7 @@ export class Authority {
           state.expires = j.now() + duration;
           state.attempts++;
           state.cancel_reported = state.cancel_inbox_seq !== null;
+          state.resume_claimed = state.resume_generation ?? 0;
           return {
             binding: state.binding,
             actor: {
@@ -163,11 +192,19 @@ export class Authority {
           state.failures = 0;
           state.retry_at = 0;
           state.runnable =
+            (state.resume_generation ?? 0) > (state.resume_claimed ?? 0) ||
+            (state.finalizing?.length ?? 0) > 0 ||
             state.inbox_seq > state.consumed_seq ||
             (state.cancel_inbox_seq !== null && !state.cancel_reported);
           if (state.cancel_reported) state.cancel_inbox_seq = null;
           state.cancel_reported = false;
           return { Released: { still_runnable: state.runnable } };
+        }
+        case "schedule": {
+          j.checkOwner(state,body.lease);
+          requireValue(body.wake_at===null || Number.isSafeInteger(body.wake_at) && body.wake_at>=0,400,"invalid activation deadline");
+          state.wake_at=body.wake_at;
+          return {};
         }
         case "append": {
           j.checkOwner(state, body.lease);
@@ -178,6 +215,34 @@ export class Authority {
             actual: null,
             event: j.append(state, body.event),
           };
+        }
+        case "approve": {
+          requireValue(identifier(body.command_id),400,"invalid approval command identity");
+          const answers=body.approvals;
+          requireValue(Array.isArray(answers) && answers.length>0 && answers.length<=256 && new Set(answers.map(answer=>answer.request_id)).size===answers.length,400,"invalid approval batch");
+          requireValue(answers.every(answer=>typeof answer?.request_id === "string" && ["allow","reject","allow_always","reject_always"].includes(answer.decision)),400,"invalid approval decision");
+          return j.deduplicate(`approval:${body.command_id}`,stableJson(answers),()=>{
+            requireValue(Array.isArray(body.prepared) && body.prepared.length===answers.length,400,"invalid prepared approval batch");
+            // Validate the complete snapshot before writing. The transaction
+            // owns atomicity; Framework Rust owns approval/tool policy.
+            for (const [index,answer] of answers.entries()) {
+              const call=state.pending.find(call=>call.id===answer.request_id && call.name==="approve_tool_call");
+              const request=call?.arguments;
+              requireValue(state.open && answer.turn_id===state.open.turn_id && request?.code==="tool_approval_required",409,"approval request is not pending on the targeted turn");
+              requireValue(Number.isFinite(Date.parse(request.expires_at)) && Date.parse(request.expires_at)>j.now(),409,"approval request expired");
+              const prepared=body.prepared[index];
+              requireValue(prepared && stableJson(prepared.expected_request)===stableJson(call) && prepared.not_after_ms===Date.parse(request.expires_at),409,"approval snapshot changed");
+              requireValue(typeof prepared.key==="string" && prepared.key.startsWith("tool_approval/") && prepared.key.length<=512 && typeof prepared.record==="string" && prepared.record.length<=32768,400,"invalid approval record");
+              requireValue(prepared.result?.tool_call_id===call.id && prepared.result.tool_name===call.name && prepared.spoken?.role==="user",400,"invalid correlated approval answer");
+            }
+            for (const prepared of body.prepared) {
+              j.put("value",prepared.key,prepared.record);
+              j.append(state,{type:"tool.completed",ts:new Date(j.now()).toISOString(),session_id:sessionId,context:state.open,data:prepared.result});
+              j.append(state,{type:"input.message",ts:new Date(j.now()).toISOString(),session_id:sessionId,context:state.open,data:{message:prepared.spoken}});
+            }
+            if (!state.pending.length) {state.inbox_seq=state.head;state.resume_generation=(state.resume_generation??0)+1;state.runnable=true;}
+            return {};
+          });
         }
         case "resolve": {
           requireValue(
@@ -192,10 +257,12 @@ export class Authority {
             400,
             "invalid tool results",
           );
+          requireValue(body.results.every(result=>result.tool_name!=="approve_tool_call"),400,"approval requests require an approval command");
           return j.deduplicate(
             `resolution:${body.resolution_id}`,
-            stableJson(body.results),
+            stableJson({turn_id:body.turn_id??null,results:body.results}),
             () => {
+              requireValue(state.binding.framework!==1 || body.turn_id===state.open?.turn_id,409,"tool resolution targets another turn");
               requireValue(
                 state.open && state.pending.length,
                 409,
@@ -227,6 +294,7 @@ export class Authority {
               }
               // Partial answers stay parked until every requested call is resolved.
               if (!state.pending.length) {
+                state.resume_generation=(state.resume_generation??0)+1;
                 state.inbox_seq = state.head;
                 state.runnable = true;
               }
@@ -240,7 +308,22 @@ export class Authority {
             400,
             "invalid cancellation identity",
           );
-          return j.deduplicate(`cancel:${body.command_id}`, "cancel", () => {
+          const target = body.input_message_id;
+          if (state.binding.framework === 1) {
+            requireValue(/^message_[a-f0-9]{32}$/.test(target), 400, "Framework cancellation requires an admission target");
+          }
+          return j.deduplicate(`cancel:${body.command_id}`, stableJson({ target: target ?? null }), () => {
+            if (target) {
+              const assignment = j.object("framework", `assignment/${target}`);
+              const admitted = j.sql.exec("SELECT value FROM commands WHERE id=?", target).toArray()[0];
+              requireValue(admitted, 404, "admission not found");
+              state.target_cancels ??= {};
+              state.target_cancels[target] = state.inbox_seq;
+              if (!assignment) return {};
+              // A late cancellation of an old admission must never stop a
+              // newer turn. Runtime termination and finalization are separate.
+              if (state.open?.turn_id !== assignment.turn_id) return {};
+            }
             if (state.open || state.runnable) {
               state.cancel_inbox_seq = state.inbox_seq;
               state.cancel_reported = false;
@@ -257,10 +340,32 @@ export class Authority {
         case "suspend":
           j.checkOwner(state, body.lease);
           state.suspended = true;
-          state.last_error = "host_configuration_error";
+          requireValue(typeof body.reason==="string" && /^[a-z0-9_]{1,128}$/.test(body.reason),400,"invalid suspension diagnostic");
+          state.last_error = body.reason;
           return {};
         case "store":
           return this.store(state, body);
+        case "framework": {
+          j.checkOwner(state, body.lease);
+          requireValue(state.binding.framework === 1 && body.operation === "set" && typeof body.key === "string" && body.key.length > 0 && body.key.length <= 512, 400, "invalid Framework receipt");
+          requireValue(JSON.stringify(body.value).length <= 1048576, 413, "Framework receipt too large");
+          if (body.absent && j.object("framework", body.key) !== null) return false;
+          j.put("framework", body.key, body.value);
+          if (body.key.startsWith("assignment/")) {
+            const target = body.key.slice("assignment/".length);
+            const position = state.target_cancels?.[target];
+            if (position != null && (!state.open || state.open.turn_id === body.value.turn_id)) {
+              state.cancel_inbox_seq = position;
+              state.cancel_reported = false;
+              state.runnable = true;
+            }
+          }
+          if (body.key.startsWith("outcome/")) {
+            const turn = body.key.slice("outcome/".length);
+            state.finalizing = (state.finalizing ?? []).filter((id) => id !== turn);
+          }
+          return true;
+        }
         default:
           requireValue(false, 404, "unknown authority operation");
       }

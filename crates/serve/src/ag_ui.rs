@@ -194,9 +194,10 @@ impl InterruptSource for HostInterrupts {
             // answer through the `/v1` API); the turn has moved on then.
             let _ = match answer {
                 Answer::Approval(decision) => {
-                    self.host.decide_approval(&id, &tool_call_id, decision)
+                    self.host
+                        .decide_local_approval(&id, &tool_call_id, decision)
                 }
-                Answer::Question(outcome) => self.host.answer_questions(
+                Answer::Question(outcome) => self.host.answer_local_questions(
                     &id,
                     Some(&tool_call_id),
                     outcome.status,

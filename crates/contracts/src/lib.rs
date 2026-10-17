@@ -98,6 +98,7 @@ pub mod structured_output;
 pub mod tool_approval_types;
 pub mod tool_schema_compat;
 pub mod tool_types;
+pub mod turn;
 pub mod turn_collector;
 pub mod typed_id;
 pub mod url_validation;

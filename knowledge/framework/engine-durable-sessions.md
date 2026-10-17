@@ -21,6 +21,30 @@ working lower-level authority and recovery proof; it does not yet satisfy this
 Framework contract. No existing API or durability guarantee changes through this
 proposal alone.
 
+## Implementation status
+
+The in-progress [Framework hosting implementation](../../crates/everruns/src/hosting/mod.rs)
+now owns transactional admission, retained behavior/Harness/Environment references,
+authority epochs and reconstructible outcomes. Memory and single-domain SQLite
+profiles share the actor driver with `ObjectHosting`. Framework lifecycle receipts
+conservatively record uncertain hook effects. Approval batches and client results
+target a retained logical turn; repeated provider call ids cannot authorize a later
+turn. Timer obligations are separate from runnable input; Rust interprets expired
+waits after an independently delivered activation.
+
+The public facade and shared Agent compile for Wasm. The DO application enters
+Engine for creation, commands and execution. Workers event polling/SSE uses bounded
+canonical pages and exact opaque event identities. Native serve reads authoritative
+status and can rebuild a lost catalog from binding metadata. Explicit Environment
+factories reopen workspace services; a durable journal does not supply those services.
+The celld bootstrap and native adapter are being migrated onto these same paths.
+
+These changes are not the completion gate: default facade execution retirement,
+complete API/protocol parity, host-service coverage and all platform crash proofs
+still require validation. The publication hold remains in force. Qualification
+results must identify the tested revision and placement; prior low-level proofs
+do not qualify the Engine migration.
+
 ## Decision to make
 
 Keep one concrete Engine and one public Agent/Session API. Make a coherent
@@ -35,18 +59,18 @@ alternative application API. serve continues to call Engine. Yolop's current
 custom core host is a separate consumer and need not be migrated to establish
 this contract.
 
-## Why the existing extension is insufficient
+## Why the previous extension was insufficient
 
-The source has useful shared execution, but the current integration boundary is
+The previous extension shared execution, but its integration boundary was
 a turn boundary rather than a session authority boundary:
 
-| Current coupling | Consequence for DO |
+| Previous coupling | Consequence for DO |
 | --- | --- |
 | [Engine](../../crates/everruns/src/engine.rs) holds executable Agent snapshots in a process-local map and initializes memory/local stores from Agent configuration | Replacing turn execution does not replace session creation, attachment, identity or storage selection |
 | [Session admission](../../crates/everruns/src/session.rs) acknowledges a local mailbox before preparation and execution, and steering also uses a local queue | A successful Framework send is not a durable DO admission |
 | Session owns start/completion hooks, cancellation finalization, runtime construction and completion watchers | A remote turn factory cannot move these semantics or survive loss of the frontend |
 | History and live observation reach local execution bindings and the facade event bus | A remote turn result does not provide a coherent remote session API |
-| [DO activation](../../crates/durable-object/src/activation.rs) accepts a factory returning `InProcessRuntime` | It bypasses Engine and its session lifecycle, even when the factory started from an Agent |
+| The former DO activation factory accepts a factory returning `InProcessRuntime` | It bypasses Engine and its session lifecycle, even when the factory started from an Agent |
 | [The Wasm application](../../examples/durable-object-agent/src/lib.rs) imports core/contracts directly | It proves portable shared execution, not portable Framework application composition |
 
 `TurnBackendFactory` is therefore too narrow as the public hosting extension.

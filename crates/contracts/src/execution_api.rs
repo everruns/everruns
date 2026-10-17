@@ -255,3 +255,37 @@ mod tests {
         assert!(json["links"].get("ag_ui").is_none());
     }
 }
+
+/// Public execution envelope, excluding provider-only replay artifacts and
+/// signed/encrypted reasoning payloads. Native and Workers APIs share this view.
+pub fn public_event(event: &serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+    let mut envelope = event.clone();
+    let strip = |content: &mut Value| {
+        if let Some(parts) = content.as_array_mut() {
+            parts.retain(|part| part["type"] != "provider_opaque");
+            for part in parts.iter_mut() {
+                if part["type"] == "reasoning"
+                    && let Some(part) = part.as_object_mut()
+                {
+                    part.remove("signature");
+                    part.remove("encrypted");
+                }
+            }
+        }
+    };
+    if let Some(content) = envelope.pointer_mut("/data/message/content") {
+        strip(content);
+    }
+    if let Some(messages) = envelope
+        .pointer_mut("/data/messages")
+        .and_then(Value::as_array_mut)
+    {
+        for message in messages {
+            if let Some(content) = message.get_mut("content") {
+                strip(content);
+            }
+        }
+    }
+    envelope
+}

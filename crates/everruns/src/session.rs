@@ -75,7 +75,7 @@ pub struct Session {
 pub(crate) struct SessionInner {
     pub(crate) execution: Arc<dyn SessionExecution>,
     session_id: SessionId,
-    event_bus: Arc<FacadeEventBus>,
+    pub(crate) event_bus: Arc<FacadeEventBus>,
     hook_state: Arc<HookRunState>,
     pub(crate) harness: OnceLock<Harness>,
     environment: OnceLock<everruns_core::host::Environment>,
@@ -102,6 +102,144 @@ const SESSION_COMMAND_CAPACITY: usize = 64;
 const CLIENT_ANSWERS_PAUSES_HINT: &str = "setup_connection";
 
 impl Session {
+    /// Answer a durable approval request by its synthetic request call id.
+    /// Retain `command` when retrying after an uncertain transport response.
+    pub async fn approve_tool(
+        &self,
+        command: uuid::Uuid,
+        turn_id: crate::TurnId,
+        request_id: &str,
+        decision: crate::hosting::ToolApprovalDecision,
+    ) -> Result<(), RunError> {
+        self.approve_tools(
+            command,
+            vec![crate::hosting::ApprovalCommit {
+                turn_id,
+                request_id: request_id.into(),
+                decision,
+            }],
+        )
+        .await
+    }
+
+    /// Commit all decisions atomically. Invalid or stale members reject the
+    /// entire batch; retries retain the same command identity and decisions.
+    pub async fn approve_tools(
+        &self,
+        command: uuid::Uuid,
+        approvals: Vec<crate::hosting::ApprovalCommit>,
+    ) -> Result<(), RunError> {
+        let profile = self
+            .inner
+            .execution
+            .hosting()
+            .ok_or_else(|| AgentLoopError::config("Engine has no session authority"))?;
+        profile
+            .approve_many(self.session_id(), command, approvals)
+            .await?;
+        self.inner.execution.activate();
+        Ok(())
+    }
+    /// Read the outstanding durable client calls without activating execution.
+    pub async fn pending_tools(&self) -> Result<Vec<crate::ToolCall>, RunError> {
+        let profile = self
+            .inner
+            .execution
+            .hosting()
+            .ok_or_else(|| AgentLoopError::config("Engine has no session authority"))?;
+        Ok(profile.status(self.session_id()).await?.waiting)
+    }
+
+    /// Atomically resolve matching durable client calls. A retry after a lost
+    /// reply must reuse `command`. Partial results leave other calls parked.
+    pub async fn resolve_tools(
+        &self,
+        command: uuid::Uuid,
+        turn_id: crate::TurnId,
+        results: Vec<crate::ToolAnswer>,
+    ) -> Result<(), RunError> {
+        if results.iter().any(|answer| {
+            answer.tool_name == everruns_contracts::tool_types::APPROVE_TOOL_CALL_TOOL
+        }) {
+            return Err(AgentLoopError::config("approval requests require approve_tool").into());
+        }
+        let profile = self
+            .inner
+            .execution
+            .hosting()
+            .ok_or_else(|| AgentLoopError::config("Engine has no session authority"))?;
+        let results = results
+            .into_iter()
+            .map(|answer| answer.into_event_data())
+            .collect();
+        profile
+            .resolve(self.session_id(), command, turn_id, results)
+            .await?;
+        self.inner.execution.activate();
+        Ok(())
+    }
+    /// Resolve an exact canonical event identity to its session sequence using
+    /// bounded pages. Event identifiers need not be time ordered.
+    pub async fn event_sequence(&self, event_id: &str) -> Result<Option<i32>, crate::HistoryError> {
+        if let Some(profile) = self.inner.execution.hosting() {
+            return profile
+                .event_sequence(self.session_id(), event_id)
+                .await
+                .map_err(|_| crate::HistoryError::Unavailable);
+        }
+        let mut cursor = None;
+        loop {
+            let page = self.event_page(cursor, 256).await?;
+            if let Some(event) = page.events.iter().find(|event| event.event_id == event_id) {
+                return Ok(event.sequence());
+            }
+            match page.next_cursor {
+                Some(next) => cursor = Some(next),
+                None => return Ok(None),
+            }
+        }
+    }
+
+    /// Read one bounded, snapshot-consistent canonical event page. Persist the
+    /// returned cursor to resume after frontend loss. A cursor is scoped to
+    /// this session and is validated by the authority.
+    pub async fn event_page(
+        &self,
+        cursor: Option<crate::SessionEventCursor>,
+        limit: usize,
+    ) -> Result<crate::SessionEventPage, crate::HistoryError> {
+        use everruns_core::host::{EventReadLimit, EventReadRequest};
+        self.inner.execution.ensure_cataloged().await?;
+        let limit = EventReadLimit::new(limit).map_err(|_| crate::HistoryError::InvalidLimit {
+            requested: limit,
+            maximum: 1024,
+        })?;
+        let mut request = EventReadRequest::new(self.session_id(), limit);
+        if let Some(cursor) = cursor {
+            request = request.with_cursor(cursor);
+        }
+        let backends = self
+            .inner
+            .execution
+            .backends()
+            .await
+            .map_err(|error| error.history_error())?;
+        let page = backends
+            .host
+            .event_log
+            .read_page(request)
+            .await
+            .map_err(|_| crate::HistoryError::Unavailable)?;
+        Ok(crate::SessionEventPage {
+            high_watermark: page.snapshot_high_watermark(),
+            events: page
+                .events
+                .iter()
+                .map(crate::SessionEvent::from_core_event)
+                .collect(),
+            next_cursor: page.next_cursor,
+        })
+    }
     pub(crate) fn from_inner(inner: Arc<SessionInner>) -> Self {
         Self { inner }
     }
@@ -120,8 +258,11 @@ impl Session {
         observers: Arc<ObserverDispatcher>,
     ) -> Self {
         let session_id = execution.session_id();
-        let agent = execution.agent_snapshot();
-        let hook_state = HookRunState::new(agent.lifecycle_hooks());
+        let hook_state = HookRunState::new(if execution.hosting().is_some() {
+            Default::default()
+        } else {
+            execution.agent_snapshot().lifecycle_hooks()
+        });
         let session = Self {
             inner: Arc::new(SessionInner {
                 execution,
@@ -185,6 +326,9 @@ impl Session {
         &self,
         harness: Harness,
     ) -> Result<(), SessionEnvironmentError> {
+        if self.inner.execution.hosting().is_some() {
+            return Err(SessionEnvironmentError::AlreadyBound);
+        }
         let _environment_guard = self.inner.environment_gate.lock().await;
         if self.inner.commands.initialized() {
             return Err(SessionEnvironmentError::AlreadyStarted);
@@ -277,7 +421,11 @@ impl Session {
     /// [`AgentBuilder::on_turn_start`](crate::AgentBuilder::on_turn_start) or
     /// another typed lifecycle handler instead.
     pub fn events(&self) -> EventStream {
-        self.inner.event_bus.subscribe()
+        let stream = self.inner.event_bus.subscribe();
+        match self.inner.execution.hosting() {
+            Some(profile) => stream.with_authority(profile, self.session_id(), 0),
+            None => stream,
+        }
     }
 
     /// Read this session's durable events with a sequence greater than
@@ -322,6 +470,13 @@ impl Session {
     /// Stability: alpha — may change without a major bump; see
     /// [`stability`](crate::stability).
     pub async fn events_from(&self, after: i32) -> Result<EventStream, crate::HistoryError> {
+        if let Some(profile) = self.inner.execution.hosting() {
+            return Ok(self.inner.event_bus.subscribe().with_authority(
+                profile,
+                self.session_id(),
+                after,
+            ));
+        }
         let live = self.inner.event_bus.subscribe();
         let backlog = self.events_after(after).await?;
         Ok(live.with_replay(after.max(0), backlog))
@@ -335,6 +490,47 @@ impl Session {
     /// be [`wait`](SentMessage::wait)ed.
     pub async fn send(&self, input: impl Into<InputMessage>) -> Result<SentMessage, RunError> {
         self.send_internal(input.into(), None).await
+    }
+
+    /// Admit input under a caller-retained message identity. Use the same id
+    /// and content after an uncertain reply, including after frontend loss.
+    pub async fn send_with_id(
+        &self,
+        message_id: MessageId,
+        input: impl Into<InputMessage>,
+    ) -> Result<SentMessage, RunError> {
+        let profile =
+            self.inner.execution.hosting().ok_or_else(|| {
+                AgentLoopError::config("stable admission requires Engine hosting")
+            })?;
+        let mut message = AcceptedTurnInput::new(input.into()).into_message();
+        message.id = message_id;
+        let receipt = profile.admit(self.session_id(), message).await?;
+        let admission = crate::hosting::Admission {
+            hosting: profile,
+            session: self.session_id(),
+            receipt,
+        };
+        self.inner.execution.activate();
+        Ok(SentMessage::admitted(self.clone(), admission))
+    }
+
+    /// Reconstruct an accepted handle without resending its content.
+    pub async fn admission(
+        &self,
+        message: MessageId,
+    ) -> Result<Option<crate::hosting::Admission>, RunError> {
+        let hosting = self.inner.execution.hosting().ok_or_else(|| {
+            AgentLoopError::config("Engine has no authoritative admission profile")
+        })?;
+        Ok(hosting
+            .receipt(self.session_id(), message)
+            .await?
+            .map(|receipt| crate::hosting::Admission {
+                hosting,
+                session: self.session_id(),
+                receipt,
+            }))
     }
 
     /// Send a message and wait for the turn that accepted it.
@@ -401,7 +597,7 @@ impl Session {
             } => cancel_turn.await,
             () = async {
                 match timeout {
-                    Some(timeout) => tokio::time::sleep(timeout).await,
+                    Some(timeout) => everruns_contracts::rt::sleep(timeout).await,
                     None => std::future::pending().await,
                 }
             } => cancel_turn.await,
@@ -523,6 +719,9 @@ impl Session {
         input: InputMessage,
         cancel: Option<crate::CancellationToken>,
     ) -> Result<SentMessage, RunError> {
+        if self.inner.execution.hosting().is_some() {
+            return self.send_with_id(MessageId::new(), input).await;
+        }
         let (response, result) = oneshot::channel();
         self.command_sender()
             .await?
@@ -538,6 +737,12 @@ impl Session {
     }
 
     async fn command_sender(&self) -> Result<mpsc::Sender<Command>, RunError> {
+        if self.inner.execution.hosting().is_some() {
+            return Err(AgentLoopError::config(
+                "this operation requires a hosting query or command port",
+            )
+            .into());
+        }
         self.start().await.map_err(RunError::Environment)?;
         let _environment_guard = self.inner.environment_gate.lock().await;
         Ok(self
@@ -545,7 +750,7 @@ impl Session {
             .commands
             .get_or_init(|| async {
                 let (sender, receiver) = mpsc::channel(SESSION_COMMAND_CAPACITY);
-                tokio::spawn(SessionActor::new(&self.inner).run(receiver));
+                everruns_contracts::rt::spawn(SessionActor::new(&self.inner).run(receiver));
                 sender
             })
             .await
@@ -1225,6 +1430,8 @@ async fn cancellable<T>(
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SendDisposition {
+    /// Durably admitted; consumption has not yet assigned a turn.
+    Pending,
     /// The session was idle and started a new turn.
     Started,
     /// The message joined the currently running turn.
@@ -1237,7 +1444,7 @@ pub struct SentMessage {
     /// Opaque id of the accepted user message.
     pub message_id: String,
     /// Opaque id of the turn that accepted the message.
-    pub turn_id: String,
+    pub turn_id: Option<String>,
     /// Whether acceptance started a turn or steered the active one.
     pub disposition: SendDisposition,
     turn: TurnHandle,
@@ -1247,14 +1454,39 @@ impl SentMessage {
     fn new(session: Session, message: ActorSentMessage) -> Self {
         let turn = TurnHandle {
             session,
-            turn_id: message.turn_id,
-            completion: message.completion,
+            source: TurnHandleSource::Local {
+                turn_id: message.turn_id,
+                completion: message.completion,
+            },
         };
         Self {
             message_id: message.message_id.to_string(),
-            turn_id: message.turn_id.to_string(),
+            turn_id: Some(message.turn_id.to_string()),
             disposition: message.disposition,
             turn,
+        }
+    }
+
+    fn admitted(session: Session, admission: crate::hosting::Admission) -> Self {
+        Self {
+            message_id: admission.message_id().to_string(),
+            turn_id: None,
+            disposition: SendDisposition::Pending,
+            turn: TurnHandle {
+                session,
+                source: TurnHandleSource::Admission(admission),
+            },
+        }
+    }
+
+    /// Read the authoritative assignment, which can be pending at admission.
+    pub async fn assignment(&self) -> Result<Option<crate::hosting::TurnAssignment>, RunError> {
+        match &self.turn.source {
+            TurnHandleSource::Admission(admission) => Ok(admission.assignment().await?),
+            TurnHandleSource::Local { turn_id, .. } => Ok(Some(crate::hosting::TurnAssignment {
+                turn_id: *turn_id,
+                steered: self.disposition == SendDisposition::Steered,
+            })),
         }
     }
 
@@ -1273,19 +1505,40 @@ impl SentMessage {
 #[derive(Clone)]
 pub struct TurnHandle {
     session: Session,
-    turn_id: TurnId,
-    completion: watch::Receiver<TurnCompletion>,
+    source: TurnHandleSource,
+}
+
+#[derive(Clone)]
+enum TurnHandleSource {
+    Local {
+        turn_id: TurnId,
+        completion: watch::Receiver<TurnCompletion>,
+    },
+    Admission(crate::hosting::Admission),
 }
 
 impl TurnHandle {
+    /// Stable identity of this handle, even before a turn is assigned.
+    pub fn identity(&self) -> String {
+        match &self.source {
+            TurnHandleSource::Local { turn_id, .. } => turn_id.to_string(),
+            TurnHandleSource::Admission(admission) => admission.message_id().to_string(),
+        }
+    }
     /// The opaque turn id shared with events and the final [`Turn`].
-    pub fn id(&self) -> String {
-        self.turn_id.to_string()
+    pub fn id(&self) -> Option<String> {
+        match &self.source {
+            TurnHandleSource::Local { turn_id, .. } => Some(turn_id.to_string()),
+            TurnHandleSource::Admission(_) => None,
+        }
     }
 
     /// Wait for this turn's terminal result. Multiple waiters receive the same result.
     pub async fn wait(&self) -> Result<Turn, RunError> {
-        let mut completion = self.completion.clone();
+        let mut completion = match &self.source {
+            TurnHandleSource::Admission(admission) => return admission.wait().await,
+            TurnHandleSource::Local { completion, .. } => completion.clone(),
+        };
         loop {
             let state = completion.borrow().clone();
             match state {
@@ -1300,7 +1553,13 @@ impl TurnHandle {
 
     /// Cooperatively cancel this turn if it is still active.
     pub async fn cancel(&self) -> Result<(), CancelError> {
-        self.session.cancel_turn(self.turn_id).await
+        match &self.source {
+            TurnHandleSource::Local { turn_id, .. } => self.session.cancel_turn(*turn_id).await,
+            TurnHandleSource::Admission(admission) => admission
+                .cancel(uuid::Uuid::new_v4())
+                .await
+                .map_err(|_| CancelError::SessionClosed),
+        }
     }
 }
 
@@ -1329,7 +1588,7 @@ impl std::error::Error for CancelError {}
 ///
 /// A small, stable projection of the runtime's turn result — no stores, session
 /// records, or platform identity.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Turn {
     /// Final text response produced by the turn.
@@ -1396,6 +1655,8 @@ impl From<TurnResult> for Turn {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum RunError {
+    /// Accepted work is durably suspended and requires host intervention.
+    Suspended,
     /// The in-process runtime failed to build or execute the turn.
     Runtime(Arc<AgentLoopError>),
     /// A pre-effect lifecycle handler failed before the operation could run.
@@ -1411,6 +1672,7 @@ pub enum RunError {
 impl std::fmt::Display for RunError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            RunError::Suspended => f.write_str("session execution is suspended"),
             RunError::Runtime(err) => write!(f, "session run failed: {err}"),
             RunError::Hook(err) => write!(f, "session hook failed: {err}"),
             RunError::Environment(err) => write!(f, "session environment failed: {err}"),
@@ -1423,6 +1685,7 @@ impl std::fmt::Display for RunError {
 impl std::error::Error for RunError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            RunError::Suspended => None,
             RunError::Runtime(err) => Some(err.as_ref()),
             RunError::Hook(err) => Some(err),
             RunError::Environment(err) => Some(err),

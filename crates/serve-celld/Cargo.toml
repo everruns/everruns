@@ -21,7 +21,7 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-serve-celld"
-description = "Run a serve app (experimental) durably on celld: a container whose state a Durable Object snapshots, restores and replays"
+description = "Native Framework Engine and serve hosting over per-session celld Durable Objects"
 readme = "README.md"
 keywords = ["agent", "celld", "durable-objects", "containers", "ag-ui"]
 categories = ["development-tools", "web-programming::http-server"]
@@ -31,18 +31,14 @@ name = "serve_celld"
 
 [dependencies]
 everruns-serve = { workspace = true, features = ["ag-ui"] }
+everruns-durable-object = { path = "../durable-object" }
 anyhow.workspace = true
 axum.workspace = true
 clap.workspace = true
 # `HostShell` for `[sandbox] kind = "microvm"`: the container is the boundary.
 everruns = { workspace = true, default-features = true, features = ["host-shell", "local"] }
-# Consistent copies of open SQLite databases (the online backup API), on the
-# same bundled SQLite serve and everruns link.
 serde_json.workspace = true
-tar.workspace = true
 tokio = { workspace = true, features = ["full"] }
-tower.workspace = true
-uuid.workspace = true
 
 [dev-dependencies]
 reqwest.workspace = true

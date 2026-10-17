@@ -19,16 +19,19 @@ wasm = ["dep:js-sys", "dep:wasm-bindgen", "dep:wasm-bindgen-futures"]
 
 [dependencies]
 async-trait.workspace = true
+anyhow.workspace = true
 axum = { workspace = true, optional = true }
 chrono.workspace = true
 everruns-contracts = { workspace = true, default-features = false }
 everruns-core = { workspace = true, default-features = false, features = ["actor-runtime"] }
+everruns = { path = "../everruns", default-features = false }
 reqwest = { workspace = true, features = ["json"], optional = true }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 subtle = { version = "2.6", optional = true }
 tokio = { version = "1.50", default-features = false, features = ["rt", "sync", "time", "macros"] }
+tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

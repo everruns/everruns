@@ -25,6 +25,8 @@ use crate::{
     SessionEvent, SessionId,
 };
 
+mod hosting;
+
 /// The runtime resources owned by an [`Engine`].
 pub(crate) struct EngineBackends {
     pub(crate) host: HostBackends,
@@ -66,6 +68,10 @@ impl HarnessBindingStore for InMemoryHarnessBindingStore {
 /// Private binding between a [`Session`] and its owning engine.
 #[async_trait]
 pub(crate) trait SessionExecution: Send + Sync + fmt::Debug {
+    fn hosting(&self) -> Option<Arc<dyn crate::hosting::SessionHosting>> {
+        None
+    }
+    fn activate(&self) {}
     fn turn_backend(
         &self,
         runtime: everruns_core::host::InProcessRuntime,
@@ -98,6 +104,8 @@ pub struct Engine {
 }
 
 struct EngineInner {
+    hosting: Option<Arc<dyn crate::hosting::SessionHosting>>,
+    registry: Mutex<HashMap<crate::hosting::AgentBuild, hosting::Registration>>,
     backend_factory: Option<Arc<dyn everruns_core::host::TurnBackendFactory>>,
     sessions: Mutex<HashMap<SessionId, EngineSessionEntry>>,
     memory_backends: Arc<OnceCell<Arc<EngineBackends>>>,
@@ -110,6 +118,8 @@ struct EngineInner {
 ///
 /// Stability: alpha.
 pub struct EngineBuilder {
+    hosting: Option<Arc<dyn crate::hosting::SessionHosting>>,
+    registry: HashMap<crate::hosting::AgentBuild, hosting::Registration>,
     backend_factory: Option<Arc<dyn everruns_core::host::TurnBackendFactory>>,
     listeners: Vec<ListenerRegistration>,
     observer_queue_capacity: usize,
@@ -118,6 +128,8 @@ pub struct EngineBuilder {
 impl Default for EngineBuilder {
     fn default() -> Self {
         Self {
+            hosting: None,
+            registry: HashMap::new(),
             backend_factory: None,
             listeners: Vec::new(),
             observer_queue_capacity: OBSERVER_QUEUE_CAPACITY,
@@ -168,6 +180,8 @@ impl EngineBuilder {
     pub fn build(self) -> Engine {
         Engine {
             inner: Arc::new(EngineInner {
+                hosting: self.hosting,
+                registry: Mutex::new(self.registry),
                 backend_factory: self.backend_factory,
                 sessions: Mutex::new(HashMap::new()),
                 memory_backends: Arc::new(OnceCell::new()),
@@ -192,9 +206,10 @@ impl Default for Engine {
 }
 
 struct EngineSessionEntry {
-    agent: Agent,
+    agent: Option<Agent>,
     harness: Option<Harness>,
     state: Option<Weak<crate::session::SessionInner>>,
+    durable_binding: Option<crate::hosting::SessionBinding>,
 }
 
 #[cfg(feature = "local")]
@@ -245,6 +260,12 @@ impl Engine {
 
     /// Reopen a session already owned by this engine.
     pub async fn resume(&self, session_id: SessionId) -> Result<Session, ResumeError> {
+        if self.inner.hosting.is_some() {
+            return self
+                .resume_hosted(session_id)
+                .await
+                .map_err(|_| ResumeError::Unavailable);
+        }
         if let Some(state) = self.state(session_id) {
             return Ok(Session::from_inner(state));
         }
@@ -358,9 +379,10 @@ impl Engine {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .entry(session_id)
             .or_insert(EngineSessionEntry {
-                agent,
+                agent: Some(agent),
                 harness,
                 state: None,
+                durable_binding: None,
             });
         Ok(())
     }
@@ -371,7 +393,7 @@ impl Engine {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .get(&session_id)
-            .map(|entry| entry.agent.clone())
+            .and_then(|entry| entry.agent.clone())
     }
 
     fn harness(&self, session_id: SessionId) -> Option<Harness> {
@@ -396,6 +418,16 @@ impl Engine {
         let entry = sessions
             .get_mut(&session_id)
             .expect("engine binding references a cataloged session");
+        if entry.durable_binding.is_some() {
+            return match &entry.harness {
+                Some(bound)
+                    if serde_json::to_value(bound).ok() == serde_json::to_value(&harness).ok() =>
+                {
+                    Ok(())
+                }
+                _ => Err(SessionEnvironmentError::HarnessAlreadyBound),
+            };
+        }
         match &entry.harness {
             Some(bound) if !bound.is_same_binding(&harness) => {
                 Err(SessionEnvironmentError::HarnessAlreadyBound)
@@ -497,9 +529,10 @@ impl Engine {
             .insert(
                 session_id,
                 EngineSessionEntry {
-                    agent,
+                    agent: Some(agent),
                     harness: None,
                     state: None,
+                    durable_binding: None,
                 },
             );
     }
@@ -685,6 +718,27 @@ impl fmt::Debug for EngineSessionExecution {
 
 #[async_trait]
 impl SessionExecution for EngineSessionExecution {
+    fn hosting(&self) -> Option<Arc<dyn crate::hosting::SessionHosting>> {
+        self.engine.inner.hosting.clone()
+    }
+
+    fn activate(&self) {
+        if self
+            .engine
+            .inner
+            .hosting
+            .as_ref()
+            .is_some_and(|profile| profile.process_scheduler())
+        {
+            let engine = self.engine.clone();
+            let session = self.session_id;
+            everruns_contracts::rt::spawn(async move {
+                if let Err(error) = engine.activate(session).await {
+                    tracing::warn!(%session, %error, "Engine activation failed");
+                }
+            });
+        }
+    }
     fn turn_backend(
         &self,
         runtime: everruns_core::host::InProcessRuntime,
@@ -717,10 +771,26 @@ impl SessionExecution for EngineSessionExecution {
     }
 
     async fn backends(&self) -> Result<Arc<EngineBackends>, BackendInitError> {
+        if let Some(profile) = &self.engine.inner.hosting {
+            return Ok(Arc::new(EngineBackends {
+                host: profile.reader(self.session_id),
+                binding_store: Arc::new(InMemoryEnvironmentBindingStore::default()),
+                harness_binding_store: Arc::new(InMemoryHarnessBindingStore::default()),
+                #[cfg(feature = "local")]
+                hub: None,
+            }));
+        }
         self.engine.backends_for(&self.agent_snapshot()).await
     }
 
     async fn ensure_cataloged(&self) -> Result<(), crate::HistoryError> {
+        if let Some(profile) = &self.engine.inner.hosting {
+            profile
+                .status(self.session_id)
+                .await
+                .map_err(|_| crate::HistoryError::Unavailable)?;
+            return Ok(());
+        }
         let agent =
             self.engine
                 .agent(self.session_id)
@@ -760,6 +830,20 @@ impl SessionExecution for EngineSessionExecution {
         &self,
         environment: &Environment,
     ) -> Result<(), SessionEnvironmentError> {
+        if self.engine.inner.hosting.is_some() {
+            let retained = self
+                .engine
+                .hosted_environment(self.session_id)
+                .await
+                .map_err(|_| SessionEnvironmentError::Unavailable)?;
+            return if retained.workspace_head().workspace_id()
+                == environment.workspace_head().workspace_id()
+            {
+                Ok(())
+            } else {
+                Err(SessionEnvironmentError::AlreadyBound)
+            };
+        }
         let agent = self.agent_snapshot();
         let backends = self
             .backends()
@@ -775,11 +859,21 @@ impl SessionExecution for EngineSessionExecution {
     }
 
     async fn default_environment(&self) -> Result<Environment, SessionEnvironmentError> {
+        if self.engine.inner.hosting.is_some() {
+            return self
+                .engine
+                .hosted_environment(self.session_id)
+                .await
+                .map_err(|_| SessionEnvironmentError::Unavailable);
+        }
         let agent = self.agent_snapshot();
         agent.default_session_environment(self.session_id).await
     }
 
     async fn reopen_environment(&self) -> Result<Option<Environment>, ResumeError> {
+        if self.engine.inner.hosting.is_some() {
+            return Ok(None);
+        }
         let agent = self.agent_snapshot();
         let backends = self
             .backends()

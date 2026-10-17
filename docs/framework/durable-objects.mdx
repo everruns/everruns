@@ -9,13 +9,10 @@ sidebar:
 import desktopDiagram from "./durable-objects.svg?url&no-inline";
 import mobileDiagram from "./durable-objects-mobile.svg?url&no-inline";
 
-> **Experimental, source-only.** Native and Wasm placements are available in the
-> repository. Validate your deployment platform and storage before production use.
-
-A Durable Object owns each session's durable input, journal, execution lease and
-alarm. A native Rust executor or an object’s Wasm isolate runs your ordinary agent. These placements and
-the platform worker use the same Rust session actor driver, turn loop, providers,
-tools and recovery decisions. JavaScript handles authority and activation.
+The source-only `everruns-durable-object` plugin supplies coherent session
+hosting beneath `everruns::Engine`. Application code defines ordinary Framework
+Agents and uses the same Session API on native execution and Wasm inside an
+object. The Engine profile migration is experimental and still being qualified.
 
 <picture className="er-responsive-diagram">
   <source media="(max-width: 40rem)" srcSet={mobileDiagram} />
@@ -25,71 +22,58 @@ tools and recovery decisions. JavaScript handles authority and activation.
   />
 </picture>
 
-The object commits input and its alarm together before acknowledging admission.
-If the executor dies, the alarm checks its lease and activates a replacement.
-The replacement folds the session log and resumes the interrupted turn. Callers
-retain the accepted message identity when retrying an uncertain acknowledgement.
+Create an Engine with `ObjectHosting::new(client)` and register trusted Agent
+builds under immutable `AgentBuild` identities. `create_registered` asynchronously
+commits a session binding at a caller-retained session ID. `Session::send_with_id`
+commits input, its deduplicated receipt and an independent wakeup obligation.
+Retain those identities across uncertain transport responses.
 
-## Compose an executor
+Admission precedes turn assignment. Reopen an admission by its message identity
+to observe pending assignment, a durable wait, suspension or finalized outcome.
+Dropping a handle or SSE connection does not cancel accepted work. Approval and
+tool answers name their exact logical turn; cancellation names a retained input.
+Acceptance of cancellation is separate from reaching a cancelled terminal state.
 
-Use an ordinary `Agent` with `Agent::execution_host` in the executor's host factory.
-For registered [serve](/framework/serve/) agents,
-`Server::execution_host(agent_name, session_id, backends)` reconstructs the same
-agent declarations and tool/provider composition. Your host supplies coherent
-durable stores and owns activation authorization and application lifecycle hooks.
+Framework start/completion hooks run on the executor under the same ownership
+epoch. Invocation records conservatively handle uncertain external effects;
+explicitly idempotent hooks can opt into recovery. A turn result becomes final
+only after its awaited Framework completion hooks settle.
 
-The Framework also accepts an experimental `TurnBackendFactory` through
-`Engine::builder().execution_backend(...)`; serve accepts a configured Engine
-through its server builder. This extension point does not change the durable
-acknowledgement contract of normal Framework sends. The object profile admits
-messages through its own authority client, not through serve's `/v1` routes.
+## Native and isolate placements
 
-## Try the native profile
-
-From the source checkout, follow the
-[adapter README](https://github.com/everruns/everruns/tree/main/crates/durable-object)
-to start the Worker and configure separate authority/executor service secrets.
-Then run the real-model executor:
-
-```sh
-cargo run -p everruns-durable-object --example native
-```
-
-An authenticated application uses `AuthorityClient` to bind a session to an agent
-and immutable build, admit messages, read bounded event pages, submit client-tool
-results and cancel. Keep service credentials on trusted servers and authorize
-user access before invoking this privileged service API. Executor URLs are fixed
-deployment configuration and production endpoints require HTTPS.
-
-## Run inside the object
-
+The [native example](https://github.com/everruns/everruns/tree/main/crates/durable-object/examples)
+registers an ordinary Agent on Engine and supplies that Engine to an authenticated
+`Executor`. Activation validates the authoritative binding and retained registry.
 The [Wasm application](https://github.com/everruns/everruns/tree/main/examples/durable-object-agent)
-compiles the ordinary Rust host builder and shared session driver into the Worker.
-It uses the same capability and tool interfaces; the object supplies journal,
-session state and a fetch-based model transport. Its counter tool demonstrates
-durable session KV. Follow its README to build and run it with a real model.
+uses the same Agent module. Its Workers `/v1` adapter calls Engine for creation,
+admission and queries, and uses bounded canonical pages for SSE replay. JavaScript
+handles transport, storage and alarms; Rust owns agent and tool policy.
 
-`AuthorityTransport` is the adapter’s transport port. Native placement supplies
-HTTP; isolate placement supplies an object-scoped callback. A `HostFactory`
-assembles the agent from its immutable build and injected services. Adding a
-placement does not require another planner, tool loop or recovery implementation.
+[serve on celld](/framework/serve-celld/) selects this hosting profile and exposes
+its same Engine for native activation. The celld isolate bootstrap imports the
+shared Wasm application. There is no application runtime factory or celld step
+machine to implement.
 
-## Guarantees and limits
+## Hosting boundaries
 
-Ownership checks and canonical mutations share one object transaction. An expired
-or superseded executor cannot append events, advance progress or update session
-state. Build bindings prevent a replacement from silently using different code;
-retain the required immutable executor build for the session's lifetime.
+Keep API, authority and executor credentials separate. Tenant scope comes from
+trusted host configuration. Privileged authority credentials stay on trusted
+hosts; browsers use the user API. Production native authority/executor endpoints
+require HTTPS. Retain exact builds and Environment references while sessions
+need them; unavailable behavior suspends rather than silently selecting the latest.
 
-External effects still need idempotency or reconciliation. A tool recorded as
-started with at-most-once semantics recovers as interrupted, without running it
-again. This does not promise exactly-once external effects. Client-tool waits and
-partial answers are durable; workspaces, secret storage, background processes,
-schedules and application approval handlers require explicit host integration.
-The default adapter refuses secret storage rather than storing plaintext.
+Every canonical/session-state mutation checks an unexpired epoch at the authority.
+An old owner cannot commit after replacement. External effects still need their
+own idempotency or reconciliation: a started tool with at-most-once recovery is
+reported interrupted when its effect is uncertain, and is not blindly repeated.
+This does not promise exactly-once external effects.
 
-The recovery test runs actual workerd, kills a separate native executor after a
-tool effect, and requires alarm-driven completion without resending the input.
-It verifies one effect and an interrupted result. The
-[existing celld snapshot example](/framework/serve-celld/) remains a separate
-placement with its documented replay semantics.
+Workspace and compute services are explicit retained Environment factories.
+A journal does not preserve ephemeral container files, secrets, background tasks,
+channels or schedules. Unsupported requirements must be refused before admission.
+The adapter's default secret backend refuses plaintext storage.
+
+See the [adapter setup and tests](https://github.com/everruns/everruns/tree/main/crates/durable-object)
+for workerd, Cloudflare and replicated celld qualification. A test qualifies its
+specific revision, placement and failure domain; local fleet results do not
+establish production bucket or network-partition guarantees.

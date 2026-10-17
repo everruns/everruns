@@ -1341,6 +1341,7 @@ async fn next_event(mut state: RunState) -> Option<(Event, RunState)> {
                     "the session closed before the run finished",
                 )),
                 Err(EventStreamError::Lagged { .. }) => state.recover().await,
+                Err(EventStreamError::Unavailable) => state.projector.fail(RunErrorEvent::new("session event authority unavailable")),
             },
             () = parked_on(&mut state.parked, session_id) => state.interrupt_if_parked(),
             () = parked_with(&mut state.parked_calls, state.awaiting.as_deref()) => {

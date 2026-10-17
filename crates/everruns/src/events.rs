@@ -48,6 +48,19 @@ use tokio::sync::broadcast;
 /// the turn — the runner must never block on an observer.
 pub const EVENT_STREAM_CAPACITY: usize = 4096;
 
+/// A validated, session-scoped continuation for canonical event replay.
+pub use everruns_core::host::EventCursor as SessionEventCursor;
+
+/// One bounded snapshot of canonical session events.
+pub struct SessionEventPage {
+    /// Persisted envelopes in sequence order.
+    pub events: Vec<SessionEvent>,
+    /// Continue this snapshot; absent once its watermark is reached.
+    pub next_cursor: Option<SessionEventCursor>,
+    /// Sequence that fixed this snapshot.
+    pub high_watermark: i32,
+}
+
 /// A single observed event from a running [`Session`](crate::Session).
 ///
 /// Two surfaces, deliberately separated:
@@ -712,12 +725,19 @@ pub struct EventStream {
     /// by the caller). Live durable events at or below it are duplicates of
     /// the replay and are dropped; sequence-less ephemeral events pass.
     replayed_through: Option<i32>,
+    authority: Option<(
+        std::sync::Arc<dyn crate::hosting::SessionHosting>,
+        SessionId,
+        i32,
+    )>,
 }
 
 /// Why an [`EventStream`] could not deliver the next event losslessly.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum EventStreamError {
+    /// The authority could not provide a replay page. Retry from the last cursor.
+    Unavailable,
     /// The consumer fell behind the bounded stream buffer.
     ///
     /// The next call can continue from the oldest retained event, but the
@@ -733,6 +753,7 @@ pub enum EventStreamError {
 impl std::fmt::Display for EventStreamError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Unavailable => f.write_str("session event authority unavailable"),
             Self::Lagged { missed } => write!(f, "event stream lagged by {missed} events"),
         }
     }
@@ -746,7 +767,18 @@ impl EventStream {
             rx,
             backlog: VecDeque::new(),
             replayed_through: None,
+            authority: None,
         }
+    }
+
+    pub(crate) fn with_authority(
+        mut self,
+        hosting: std::sync::Arc<dyn crate::hosting::SessionHosting>,
+        session: SessionId,
+        after: i32,
+    ) -> Self {
+        self.authority = Some((hosting, session, after.max(0)));
+        self
     }
 
     /// Put `backlog` ahead of the live feed and suppress live duplicates of
@@ -785,6 +817,39 @@ impl EventStream {
             return Ok(Some(event));
         }
         loop {
+            if let Some((hosting, session, after)) = &mut self.authority {
+                use everruns_core::host::{EventCursor, EventReadLimit, EventReadRequest};
+                let cursor = EventCursor::after(*session, *after)
+                    .map_err(|_| EventStreamError::Unavailable)?;
+                let page = hosting
+                    .reader(*session)
+                    .event_log
+                    .read_page(EventReadRequest::from_cursor(
+                        cursor,
+                        EventReadLimit::default(),
+                    ))
+                    .await
+                    .map_err(|_| EventStreamError::Unavailable)?;
+                if let Some(last) = page.events.last().and_then(|event| event.sequence) {
+                    *after = last;
+                    self.replayed_through = Some(last);
+                    self.backlog
+                        .extend(page.events.iter().map(SessionEvent::from_core_event));
+                    return Ok(self.backlog.pop_front());
+                }
+                tokio::select! {
+                    _ = everruns_contracts::rt::sleep(std::time::Duration::from_millis(50)) => continue,
+                    event = self.rx.recv() => match event {
+                        // Canonical events use the cursor reader, so a local
+                        // notification cannot skip an unseen journal gap.
+                        Ok(event) if event.sequence().is_none() => return Ok(Some(event)),
+                        Ok(_) | Err(_) => {
+                            everruns_contracts::rt::sleep(std::time::Duration::from_millis(50)).await;
+                            continue;
+                        }
+                    }
+                }
+            }
             match self.rx.recv().await {
                 Ok(event) if self.is_replayed(&event) => continue,
                 Ok(event) => return Ok(Some(event)),

@@ -1104,6 +1104,7 @@ impl Fold {
             // Turn events are boundaries, not steps: close the open step and
             // record turn stats at the root extension point.
             EventData::TurnCompleted(TurnCompletedData {
+                termination_reason: None,
                 turn_id,
                 iterations,
                 duration_ms,
@@ -1764,6 +1765,7 @@ mod tests {
             event(
                 session,
                 TurnCompletedData {
+                    termination_reason: None,
                     turn_id,
                     iterations: 2,
                     duration_ms: Some(1500),

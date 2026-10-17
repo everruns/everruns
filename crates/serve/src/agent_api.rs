@@ -80,8 +80,9 @@ fn top_level<'a>(host: &'a Host, name: &str) -> ApiResult<&'a AgentEntry> {
 }
 
 /// 404 unless session `id` runs agent `name`.
-fn confine(host: &Host, name: &str, id: &str) -> ApiResult<()> {
+async fn confine(host: &Host, name: &str, id: &str) -> ApiResult<()> {
     top_level(host, name)?;
+    host.session(id).await?;
     if host.session_row(id)?.agent != name {
         return Err(ApiError::NotFound(format!("session {id}")).into());
     }
@@ -137,6 +138,7 @@ async fn create_session(
     let body = body.map(|b| b.0).unwrap_or_default();
     let id = host
         .create_session(NewSession {
+            id: None,
             agent: Some(name.clone()),
             title: body.title,
             tags: Vec::new(),
@@ -147,7 +149,7 @@ async fn create_session(
     Ok((
         StatusCode::CREATED,
         [(header::LOCATION, format!("{}/sessions/{id}", base(&name)))],
-        Json(crate::server::session_json(&host, &id)?),
+        Json(crate::server::session_json(&host, &id).await?),
     )
         .into_response())
 }
@@ -172,11 +174,10 @@ async fn list_sessions(
             "limit must be between 1 and {MAX_LIST_LIMIT}"
         )));
     }
-    let data = host
-        .session_ids_for_agent(&name, limit)?
-        .iter()
-        .map(|id| crate::server::session_json(&host, id))
-        .collect::<crate::Result<Vec<_>>>()?;
+    let mut data = Vec::new();
+    for id in host.session_ids_for_agent(&name, limit)? {
+        data.push(crate::server::session_json(&host, &id).await?);
+    }
     Ok(Json(json!({ "data": data })))
 }
 
@@ -184,7 +185,7 @@ async fn get_session(
     State(host): State<Arc<Host>>,
     Path((name, id)): Path<(String, String)>,
 ) -> ApiResult<Json<Value>> {
-    confine(&host, &name, &id)?;
+    confine(&host, &name, &id).await?;
     crate::server::get_session(State(host), Path(id)).await
 }
 
@@ -193,16 +194,17 @@ async fn create_message(
     Path((name, id)): Path<(String, String)>,
     body: Json<CreateMessageBody>,
 ) -> ApiResult<Response> {
-    confine(&host, &name, &id)?;
+    confine(&host, &name, &id).await?;
     crate::server::create_message(State(host), Path(id), body).await
 }
 
 async fn cancel(
     State(host): State<Arc<Host>>,
     Path((name, id)): Path<(String, String)>,
-) -> ApiResult<Json<Value>> {
-    confine(&host, &name, &id)?;
-    crate::server::cancel(State(host), Path(id)).await
+    body: Option<Json<Option<crate::server::CancelBody>>>,
+) -> ApiResult<Response> {
+    confine(&host, &name, &id).await?;
+    crate::server::cancel(State(host), Path(id), body).await
 }
 
 async fn sse(
@@ -210,7 +212,7 @@ async fn sse(
     Path((name, id)): Path<(String, String)>,
     query: Query<SseQuery>,
 ) -> ApiResult<Response> {
-    confine(&host, &name, &id)?;
+    confine(&host, &name, &id).await?;
     Ok(crate::server::sse(State(host), Path(id), query)
         .await?
         .into_response())
@@ -221,7 +223,7 @@ async fn list_events(
     Path((name, id)): Path<(String, String)>,
     query: Query<ListQuery>,
 ) -> ApiResult<Response> {
-    confine(&host, &name, &id)?;
+    confine(&host, &name, &id).await?;
     crate::server::list_events(State(host), Path(id), query).await
 }
 
@@ -230,7 +232,7 @@ async fn question_answers(
     Path((name, id)): Path<(String, String)>,
     body: Json<QuestionAnswersBody>,
 ) -> ApiResult<Json<Value>> {
-    confine(&host, &name, &id)?;
+    confine(&host, &name, &id).await?;
     crate::server::question_answers(State(host), Path(id), body).await
 }
 
@@ -239,7 +241,7 @@ async fn tool_approvals(
     Path((name, id)): Path<(String, String)>,
     body: Json<SubmitToolApprovalsRequest>,
 ) -> ApiResult<Json<SubmitToolApprovalsResponse>> {
-    confine(&host, &name, &id)?;
+    confine(&host, &name, &id).await?;
     any_tool_approvals(State(host), Path(id), body).await
 }
 
@@ -303,6 +305,7 @@ pub(crate) async fn any_tool_approvals(
         // Settled meanwhile by another caller: that answer stands.
         if host
             .decide_approval(&id, &view.tool_call_id, decision)
+            .await
             .is_ok()
         {
             resolved.push(ToolApprovalResolution {

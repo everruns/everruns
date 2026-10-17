@@ -32,19 +32,17 @@ The example expects `OPENAI_API_KEY`. Its executor listens on loopback port 8790
 A production Worker needs a reachable HTTPS executor and separate production
 secrets. Pin immutable code builds and retain the matching executors.
 
-Embed `AuthorityClient` in a trusted authenticated application. Create a typed
-session ID, call `session(id).bind(SessionBinding { agent, build_id })`, then
-`send(AcceptedTurnInput)`. Keep the accepted input identity when retrying a lost
-acknowledgement. The object schedules execution; clients can page `events`,
-resolve client calls, cancel or resume a suspended session. This service protocol
-is not the public platform `/v1` API. Never expose its credentials to browsers.
+Configure an Engine with `ObjectHosting::new(client)` and register ordinary
+Framework Agents under immutable `AgentBuild` references. Applications use
+`Engine::create_registered`, `Session::send_with_id` and reconstructible
+admission handles. An authenticated `Executor` enters that same Engine for
+native placement; the Wasm application calls `Engine::activate` inside the object.
+The privileged authority protocol is internal and must never be exposed to browsers.
 
-Use `Agent::execution_host` for normal Framework agents, or
-`serve::Server::execution_host` for registered serve agents, in the executor's
-`HostFactory`. The host receives the authority's coherent event/session/KV stores.
-Default secret storage fails closed; supply an encrypted backend if needed.
-Workspaces and external effects require their own durable contracts. Outer
-application lifecycle/approval handlers are owned by the embedding host.
+Start/completion hooks, durable approvals, client-tool waits, cancellation and
+outcome finalization run in Framework under the authority epoch. The profile
+supplies coherent event/session/KV storage. Workspace and other host services
+require explicit supported contracts; a durable journal does not preserve them.
 
 ## Verify
 
@@ -66,7 +64,7 @@ See [the architecture](../../knowledge/framework/durable-object-native.md).
 
 `AuthorityTransport` supplies tenant/session-scoped authority calls; the native
 HTTP implementation and Wasm `ObjectTransport` implement the same protocol.
-`HostFactory` builds an ordinary `InProcessRuntime` from coherent `HostBackends`.
-`activate` claims one known session and invokes the shared `SessionActorDriver`.
-The platform extends its `SessionActorStore` port with fleet discovery through
-`ActorLeaseStore`; object adapters only implement the session port.
+`ObjectHosting` implements the Framework `SessionHosting` and `SessionEpoch`
+ports. Only a claimed epoch supplies canonical write access; frontend bundles
+are read-only. Native and Wasm placements invoke the shared `SessionActorDriver`
+through Engine. No application host factory assembles a core runtime.

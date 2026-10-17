@@ -69,7 +69,7 @@ default = ["macros", "capabilities", "builtins", "filesystem", "agent-package-fs
 # Re-export `#[everruns::tool]` (EVE-829) and the hidden `__macro_support`
 # runtime helpers it expands into. Pulls in `everruns-macros`, `schemars` (JSON
 # Schema generation), and `serde` (derive). Kept out of `everruns-core`.
-macros = ["dep:everruns-macros", "dep:schemars", "dep:serde"]
+macros = ["dep:everruns-macros", "dep:schemars"]
 # Curated service-provider interface for code-defined capabilities. The
 # authoring types live in the neutral `everruns-contracts` crate
 # (EVE-873); this feature turns on its `definition` surface plus the runtime
@@ -79,7 +79,7 @@ macros = ["dep:everruns-macros", "dep:schemars", "dep:serde"]
 utility-llm = ["everruns-contracts/http", "dep:everruns-drivers", "everruns-drivers/openrouter"]
 utility-openai = ["utility-llm"]
 openai-agents-api = ["everruns-core/openai-agents-api"]
-capabilities = ["everruns-contracts/definition", "dep:schemars", "dep:serde"]
+capabilities = ["everruns-contracts/definition", "dep:schemars"]
 # Curated typed values plus the backend-neutral implementation bundle. Kept
 # optional so `default-features = false` Framework consumers compile no built-in
 # implementation package.
@@ -126,7 +126,6 @@ local = [
     "dep:futures",
     "dep:parking_lot",
     "dep:thiserror",
-    "dep:serde",
     "tokio/process",
     "tokio/time",
 ]
@@ -162,7 +161,7 @@ typesafe = ["dep:everruns-integrations", "everruns-integrations/typesafe"]
 # types, the shared runtime-event projection, and an interrupt gate for
 # `ask_user` and tool approvals. Off by default; it enables core's
 # transport-free AG-UI types and projection without an HTTP server.
-ag-ui = ["builtins", "everruns-core/ag-ui", "everruns-core/ag-ui-projection", "dep:futures", "dep:serde"]
+ag-ui = ["builtins", "everruns-core/ag-ui", "everruns-core/ag-ui-projection", "dep:futures"]
 # A ready-made axum handler for `ag-ui` (`everruns::ag_ui::AgUiHandler`):
 # authorizer, thread resolution, SSE framing and keepalive. A separate opt-in
 # so `ag-ui` alone stays free of an HTTP server dependency.
@@ -200,7 +199,7 @@ everruns-integrations = { workspace = true, optional = true, default-features = 
 everruns-contracts = { workspace = true, default-features = false }
 # Production-safe deterministic in-process simulator backing
 # `Model::simulated`; no dependency on testing/demo helpers.
-everruns-llmsim.workspace = true
+
 everruns-capabilities = { workspace = true, optional = true, features = ["portable-builtins"] }
 # Optional real-provider edge: one crate, with the vendor features above turning
 # on the matching `everruns-drivers` features. Re-exported as `everruns::drivers`.
@@ -216,7 +215,7 @@ base64.workspace = true
 serde_json.workspace = true
 # Session event streaming, observer queues, deadline-bounded shutdown, and
 # cancellation use Tokio synchronization, runtime, and timing primitives.
-tokio = { workspace = true, features = ["sync", "macros", "rt", "time"] }
+tokio = { version = "1.50", default-features = false, features = ["sync", "macros", "rt", "time"] }
 # `CancellationToken` backs the facade's public cancellation handle without
 # leaking the tokio-util type onto the public surface. Matches the pin used by
 # everruns-core.
@@ -226,7 +225,7 @@ tokio-util = { version = "0.7", default-features = false }
 # advanced typed protocol schemas.
 everruns-macros = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
-serde = { workspace = true, optional = true }
+serde.workspace = true
 # SQLite for the `local` feature. `everruns::sqlite` owns connection opening
 # for the facade and serve hosts.
 rusqlite = { version = "0.39", features = ["bundled", "backup"], optional = true }
@@ -240,7 +239,11 @@ parking_lot = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tracing.workspace = true
 
-everruns-core = { workspace = true, default-features = false, features = ["host", "agent-package"] }
+everruns-core = { workspace = true, default-features = false, features = ["actor-runtime", "agent-package"] }
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+everruns-core = { workspace = true, default-features = false, features = ["host"] }
+everruns-llmsim.workspace = true
+
 [dev-dependencies]
 chrono.workspace = true
 # Verifies existing embedding callbacks keep their SQLite query type identity.

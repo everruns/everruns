@@ -107,6 +107,8 @@ impl PendingTurn {
 /// What a new session is created with.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct NewSession {
+    /// Caller-retained creation identity, when supplied by the wire API.
+    pub id: Option<SessionId>,
     /// The agent to run; the default agent when `None`.
     pub agent: Option<String>,
     pub title: Option<String>,
@@ -203,7 +205,7 @@ pub(crate) struct Host {
     pub(crate) store: Arc<Store>,
     /// The shared channel runtime over this host's sessions.
     channels: everruns::channels::ChannelHost,
-    engine: everruns::Engine,
+    pub(crate) engine: everruns::Engine,
     /// `Some` persists sessions through everruns' local store.
     data_dir: Option<PathBuf>,
     live: Mutex<HashMap<String, Arc<Live>>>,
@@ -214,6 +216,7 @@ pub(crate) struct Host {
     pub(crate) gateway: gateway::Env,
     /// The hosting target's `[sandbox] kind = "microvm"` adapter, if any.
     microvm: std::sync::OnceLock<crate::hosting::MicroVm>,
+    environment_ref: std::sync::OnceLock<String>,
     /// Who may call the agent routes; unset leaves them open.
     auth: std::sync::OnceLock<crate::auth::Auth>,
     /// Names the session a request just parked on, for AG-UI runs.
@@ -233,6 +236,40 @@ fn now() -> String {
 }
 
 impl Host {
+    pub(crate) async fn authoritative_status(
+        &self,
+        id: &str,
+    ) -> crate::Result<Option<everruns::hosting::HostingStatus>> {
+        if !self.engine.has_session_hosting() {
+            return Ok(None);
+        }
+        let session = id
+            .parse()
+            .map_err(|_| ApiError::BadRequest("invalid session identity".into()))?;
+        Ok(Some(self.engine.session_status(session).await?))
+    }
+    pub(crate) fn register_agent(&self, entry: &AgentEntry) -> crate::Result {
+        let agent = self.build_agent(entry, None, false)?;
+        if self.engine.has_session_hosting() {
+            let harness = entry
+                .spec
+                .package
+                .as_ref()
+                .map(|package| package.session_harness())
+                .transpose()?
+                .flatten();
+            let build = everruns::hosting::AgentBuild::new(&entry.name, &self.build_id);
+            if let Some(reference) = self.environment_ref.get() {
+                let factory = agent.environment_factory();
+                self.engine
+                    .register_agent_with_environment(build, agent, harness, reference, factory)?;
+            } else {
+                self.engine
+                    .register_agent_with_harness(build, agent, harness)?;
+            }
+        }
+        Ok(())
+    }
     /// A host persisting under `data_dir` (dev, start), or in memory (eval).
     pub(crate) fn new(app: App, mode: Mode, data_dir: Option<PathBuf>) -> crate::Result<Arc<Self>> {
         Self::with_engine(app, mode, data_dir, everruns::Engine::new())
@@ -248,10 +285,14 @@ impl Host {
             Some(dir) => Store::open(&dir.join("serve.db"))?,
             None => Store::in_memory()?,
         });
-        let build_id = std::env::var("SERVE_BUILD_ID")
+        let build_id = match std::env::var("SERVE_BUILD_ID")
             .ok()
             .filter(|id| !id.is_empty())
-            .unwrap_or_else(|| crate::manifest::build_id(&app));
+        {
+            Some(retained) => retained,
+            None if engine.has_session_hosting() => crate::manifest::execution_build_id(&app)?,
+            None => crate::manifest::build_id(&app),
+        };
         let (notices, _) = broadcast::channel(1024);
         let host = Arc::new_cyclic(|me| Host {
             channels: crate::channels::build(me.clone(), &app, store.clone(), notices.clone()),
@@ -268,6 +309,7 @@ impl Host {
             answered: Mutex::new(HashSet::new()),
             gateway: gateway::Env::from_process(),
             microvm: std::sync::OnceLock::new(),
+            environment_ref: std::sync::OnceLock::new(),
             auth: std::sync::OnceLock::new(),
             #[cfg(feature = "ag-ui")]
             parked_on: broadcast::channel(64).0,
@@ -287,6 +329,9 @@ impl Host {
 
     /// Install the hosting target's microVM adapter. Set once, before any
     /// agent is built.
+    pub(crate) fn set_environment_ref(&self, reference: String) {
+        let _ = self.environment_ref.set(reference);
+    }
     pub(crate) fn set_microvm(&self, microvm: crate::hosting::MicroVm) {
         let _ = self.microvm.set(microvm);
     }
@@ -352,13 +397,24 @@ impl Host {
             })?,
         }
         .clone();
-        let agent = self.build_agent(&entry, None, true)?;
-        let session = match &entry.spec.package {
-            Some(package) => package.create(&self.engine, agent)?,
-            None => self.engine.create(agent),
+        let session = if self.engine.has_session_hosting() {
+            self.engine.create_registered_with_metadata(new.id.unwrap_or_else(SessionId::new),&everruns::hosting::AgentBuild::new(&entry.name,&self.build_id),json!({"title":new.title,"tags":new.tags,"hints":new.hints,"metadata":new.metadata})).await?
+        } else {
+            let agent = self.build_agent(&entry, None, true)?;
+            match &entry.spec.package {
+                Some(package) => package.create(&self.engine, agent)?,
+                None => self.engine.create(agent),
+            }
         };
         let id = session.id();
-        let at = now();
+        let at = if self.engine.has_session_hosting() {
+            self.engine
+                .session_status(session.session_id())
+                .await?
+                .created_at
+        } else {
+            now()
+        };
         self.store.insert_session(&SessionRow {
             id: id.clone(),
             agent: entry.name.to_string(),
@@ -394,8 +450,32 @@ impl Host {
         if let Some(live) = lock(&self.live).get(id).cloned() {
             return Ok(live);
         }
+        if self.engine.has_session_hosting() && self.store.session(id)?.is_none() {
+            let session: SessionId = id
+                .parse()
+                .map_err(|_| ApiError::BadRequest("invalid session identity".into()))?;
+            let status = self.engine.session_status(session).await?;
+            let metadata = status.binding.metadata;
+            self.store.insert_session(&SessionRow {
+                id: id.into(),
+                agent: status.binding.behavior.agent,
+                build_id: status.binding.behavior.build_id,
+                title: metadata["title"].as_str().map(str::to_owned),
+                tags: serde_json::from_value(metadata["tags"].clone()).unwrap_or_default(),
+                hints: metadata
+                    .get("hints")
+                    .filter(|value| !value.is_null())
+                    .cloned(),
+                metadata: metadata
+                    .get("metadata")
+                    .filter(|value| !value.is_null())
+                    .cloned(),
+                created_at: status.created_at.clone(),
+                updated_at: status.created_at,
+            })?;
+        }
         let row = self.session_row(id)?;
-        if row.build_id != self.build_id {
+        if row.build_id != self.build_id && !self.engine.has_session_hosting() {
             if self.mode == Mode::Start {
                 return Err(ApiError::Pinned {
                     build_id: row.build_id,
@@ -419,8 +499,10 @@ impl Host {
             .clone();
         let session_id = SessionId::parse(id)
             .map_err(|err| ApiError::BadRequest(format!("bad session id {id}: {err}")))?;
-        let agent = self.build_agent(&entry, None, true)?;
-        self.engine.attach(session_id, agent).await?;
+        if !self.engine.has_session_hosting() {
+            let agent = self.build_agent(&entry, None, true)?;
+            self.engine.attach(session_id, agent).await?;
+        }
         let session = self.engine.resume(session_id).await?;
         let after = session
             .events_after(0)
@@ -462,6 +544,9 @@ impl Host {
         live: &Arc<Live>,
         entry: &AgentEntry,
     ) -> crate::Result {
+        if self.engine.has_session_hosting() {
+            return Ok(());
+        }
         let Some(interrupted) = live.session.interrupted_turn().await? else {
             return Ok(());
         };
@@ -650,6 +735,18 @@ impl Host {
         Ok(sent)
     }
 
+    pub(crate) async fn send_message_with_id(
+        &self,
+        id: &str,
+        message_id: everruns::MessageId,
+        message: everruns::InputMessage,
+    ) -> crate::Result<SentMessage> {
+        let live = self.live(id).await?;
+        let sent = live.session.send_with_id(message_id, message).await?;
+        self.track(id, &live, &sent);
+        Ok(sent)
+    }
+
     /// The turn running on `id`'s session, if one is.
     pub(crate) fn active_turn(&self, id: &str) -> Option<TurnHandle> {
         let live = lock(&self.live).get(id).cloned()?;
@@ -666,7 +763,7 @@ impl Host {
     /// it started a turn, follow that turn (status, cancel, delivery).
     fn track(&self, id: &str, live: &Arc<Live>, sent: &SentMessage) {
         let _ = self.store.touch(id, &now());
-        if !matches!(sent.disposition, SendDisposition::Started) {
+        if matches!(sent.disposition, SendDisposition::Steered) {
             return;
         }
         self.follow(live, sent.turn());
@@ -683,7 +780,7 @@ impl Host {
             // A newer turn may already be the active one.
             if active
                 .as_ref()
-                .is_some_and(|current| current.id() == turn.id())
+                .is_some_and(|current| current.identity() == turn.identity())
             {
                 *active = None;
             }
@@ -727,8 +824,50 @@ impl Host {
     }
 
     /// Cancel the active turn. `Ok(false)` when no turn was running.
+    #[cfg(feature = "a2a")]
     pub(crate) async fn cancel(&self, id: &str) -> crate::Result<bool> {
+        self.cancel_target(id, uuid::Uuid::new_v4(), None).await
+    }
+
+    pub(crate) async fn cancel_target(
+        &self,
+        id: &str,
+        command: uuid::Uuid,
+        message: Option<everruns::MessageId>,
+    ) -> crate::Result<bool> {
         let live = self.live(id).await?;
+        if let Some(status) = self.authoritative_status(id).await? {
+            if let Some(message) = message {
+                let admission = live
+                    .session
+                    .admission(message)
+                    .await?
+                    .ok_or_else(|| ApiError::NotFound("admission receipt".into()))?;
+                admission.cancel(command).await?;
+                return Ok(true);
+            }
+            let Some(turn) = status.open_turn else {
+                return Ok(false);
+            };
+            let events = live.session.events_after(0).await?;
+            let target = events
+                .iter()
+                .find(|event| event.canonical_json()["context"]["turn_id"] == turn.to_string())
+                .and_then(|event| {
+                    event.canonical_json()["context"]["input_message_id"]
+                        .as_str()
+                        .map(str::to_owned)
+                });
+            let target = target
+                .ok_or_else(|| ApiError::Conflict("open turn has no input identity".into()))?;
+            let target = target.parse()?;
+            let admission =
+                live.session.admission(target).await?.ok_or_else(|| {
+                    ApiError::Conflict("open turn has no admission receipt".into())
+                })?;
+            admission.cancel(command).await?;
+            return Ok(true);
+        }
         let active = lock(&live.active).clone();
         // Stop the turn before dropping what it waits on: a dropped approval
         // reads as a rejection, and the turn could finish on it first.
@@ -745,7 +884,7 @@ impl Host {
     // --- Approvals and questions ---------------------------------------------
 
     /// Resolve a pending approval. `NotFound` when there is none by that id.
-    pub(crate) fn resolve_approval(
+    pub(crate) async fn resolve_approval(
         &self,
         session_id: &str,
         tool_call_id: &str,
@@ -757,10 +896,52 @@ impl Host {
             ApprovalDecision::Reject
         };
         self.decide_approval(session_id, tool_call_id, decision)
+            .await
     }
 
     /// Resolve a pending approval with any decision, `*_always` included.
-    pub(crate) fn decide_approval(
+    pub(crate) async fn decide_approval(
+        &self,
+        session_id: &str,
+        tool_call_id: &str,
+        decision: ApprovalDecision,
+    ) -> crate::Result {
+        if self.engine.has_session_hosting() {
+            let decision = match decision {
+                ApprovalDecision::Allow => everruns::hosting::ToolApprovalDecision::Allow,
+                ApprovalDecision::Reject => everruns::hosting::ToolApprovalDecision::Reject,
+                ApprovalDecision::AllowAlways => {
+                    everruns::hosting::ToolApprovalDecision::AllowAlways
+                }
+                ApprovalDecision::RejectAlways => {
+                    everruns::hosting::ToolApprovalDecision::RejectAlways
+                }
+                _ => {
+                    return Err(ApiError::BadRequest(
+                        "an explicit approval decision is required".into(),
+                    )
+                    .into());
+                }
+            };
+            self.session(session_id)
+                .await?
+                .approve_tool(
+                    uuid::Uuid::new_v4(),
+                    self.engine
+                        .session_status(session_id.parse()?)
+                        .await?
+                        .open_turn
+                        .ok_or_else(|| ApiError::Conflict("no open turn".into()))?,
+                    tool_call_id,
+                    decision,
+                )
+                .await?;
+            return Ok(());
+        }
+        self.decide_local_approval(session_id, tool_call_id, decision)
+    }
+
+    pub(crate) fn decide_local_approval(
         &self,
         session_id: &str,
         tool_call_id: &str,
@@ -778,7 +959,63 @@ impl Host {
     /// Answer a pending `ask_user` question set, like the everruns server's
     /// `POST /question-answers`. Without `tool_call_id`, the one pending set
     /// of the session is answered.
-    pub(crate) fn answer_questions(
+    pub(crate) async fn answer_questions(
+        &self,
+        session_id: &str,
+        tool_call_id: Option<&str>,
+        status: Status,
+        answers: Vec<Answer>,
+    ) -> crate::Result {
+        if self.engine.has_session_hosting() {
+            let session = self.session(session_id).await?;
+            let pending = session.pending_tools().await?;
+            let mut matches = pending.iter().filter(|call| {
+                call.name == "ask_user" && tool_call_id.is_none_or(|id| id == call.id)
+            });
+            let call = matches
+                .next()
+                .ok_or_else(|| ApiError::NotFound("pending question set".into()))?;
+            if matches.next().is_some() {
+                return Err(ApiError::BadRequest(
+                    "several question sets are pending; pass tool_call_id".into(),
+                )
+                .into());
+            }
+            let questions: Vec<Question> =
+                serde_json::from_value(call.arguments["questions"].clone())?;
+            if status == Status::Answered {
+                validate_answers(&questions, &answers).map_err(ApiError::BadRequest)?;
+            }
+            session
+                .resolve_tools(
+                    uuid::Uuid::new_v4(),
+                    self.engine
+                        .session_status(session_id.parse()?)
+                        .await?
+                        .open_turn
+                        .ok_or_else(|| ApiError::Conflict("no open turn".into()))?,
+                    vec![everruns::ToolAnswer {
+                        tool_call_id: call.id.clone(),
+                        tool_name: call.name.clone(),
+                        result: serde_json::to_value(Outcome {
+                            status,
+                            answered_by: AnsweredBy::User,
+                            answers: if status == Status::Answered {
+                                answers
+                            } else {
+                                vec![]
+                            },
+                        })?,
+                        error: None,
+                    }],
+                )
+                .await?;
+            return Ok(());
+        }
+        self.answer_local_questions(session_id, tool_call_id, status, answers)
+    }
+
+    pub(crate) fn answer_local_questions(
         &self,
         session_id: &str,
         tool_call_id: Option<&str>,
@@ -869,9 +1106,12 @@ impl Host {
         let mut builder = everruns::Agent::builder()
             .name(&entry.name)
             .model(model)
-            .instructions(instructions)
-            .approver(gate.clone())
-            .ask_user(gate);
+            .instructions(instructions);
+        if self.engine.has_session_hosting() {
+            builder = builder.durable_approvals().client_questions();
+        } else {
+            builder = builder.approver(gate.clone()).ask_user(gate);
+        }
         // Skills use the built-in capability: each embedded skill is seeded
         // read-only where it looks (`.agents/skills/<name>/SKILL.md`), and the
         // agent discovers and activates them with its own tools.
@@ -920,7 +1160,10 @@ impl Host {
                 None => builder.capability(BashkitShell::new()),
             },
         };
-        if persistent && let Some(dir) = &self.data_dir {
+        if persistent
+            && !self.engine.has_session_hosting()
+            && let Some(dir) = &self.data_dir
+        {
             builder = builder.local(LocalConfig::new(dir.join("everruns")));
         }
         if let Some(customize) = &spec.customize {
@@ -1228,34 +1471,7 @@ fn validate_answers(questions: &[Question], answers: &[Answer]) -> Result<(), St
 /// projection does (opaque provider parts dropped; reasoning signatures and
 /// encrypted payloads removed).
 pub(crate) fn wire_json(event: &SessionEvent) -> Value {
-    let mut envelope = event.canonical_json().clone();
-    let strip = |content: &mut Value| {
-        if let Some(parts) = content.as_array_mut() {
-            parts.retain(|part| part["type"] != "provider_opaque");
-            for part in parts.iter_mut() {
-                if part["type"] == "reasoning"
-                    && let Some(part) = part.as_object_mut()
-                {
-                    part.remove("signature");
-                    part.remove("encrypted");
-                }
-            }
-        }
-    };
-    if let Some(content) = envelope.pointer_mut("/data/message/content") {
-        strip(content);
-    }
-    if let Some(messages) = envelope
-        .pointer_mut("/data/messages")
-        .and_then(Value::as_array_mut)
-    {
-        for message in messages {
-            if let Some(content) = message.get_mut("content") {
-                strip(content);
-            }
-        }
-    }
-    envelope
+    everruns_contracts::execution_api::public_event(event.canonical_json())
 }
 
 #[cfg(test)]

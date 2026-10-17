@@ -513,7 +513,7 @@ async fn a_denied_call_reaches_the_model_as_a_tool_error() {
             break view.tool_call_id;
         }
     };
-    host.resolve_approval(&id, &call, false).unwrap();
+    host.resolve_approval(&id, &call, false).await.unwrap();
     assert!(turn.wait().await.unwrap().success);
     let events = host.events_after(&id, 0).await.unwrap();
     let completed = events
@@ -633,7 +633,7 @@ async fn cancel_stops_a_turn_waiting_for_approval() {
         .json()
         .await
         .unwrap();
-    assert_eq!(cancelled["status"], "cancelled");
+    assert_eq!(cancelled["status"], "accepted");
     let events = server.wait_turns(&id, 2).await;
     assert_eq!(kinds(&events).last(), Some(&"turn.cancelled"));
     let after = server.wait_until(&id, |s| s["status"] == "idle").await;
@@ -803,7 +803,7 @@ async fn boot_resumes_a_turn_a_restart_cut_off_while_it_waited() {
     host.spawn_resume_interrupted();
     wait_for(|| !host.pending_approvals(&id).is_empty()).await;
     let call = host.pending_approvals(&id)[0].tool_call_id.clone();
-    host.resolve_approval(&id, &call, true).unwrap();
+    host.resolve_approval(&id, &call, true).await.unwrap();
     let server = serve(host).await;
     let events = server.wait_turns(&id, 2).await;
     assert!(

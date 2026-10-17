@@ -1,211 +1,85 @@
-// End to end on a real celld node: the cell restores a lost serve process and
-// replays the turn the loss interrupted.
-//
-//   cargo build -p serve-example-celld
-//   node test/e2e.mjs
-//
-// Uses the external cell (SERVE_URL) so it needs no container engine: killing
-// the serve process and starting a new one with an empty data directory is
-// what a container lost with its node looks like to the cell. Then the celld
-// node itself is killed with a journaled turn outstanding, and the cell's
-// alarm must snapshot it after the restart.
-import { spawn } from "node:child_process";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+// Test-only model + real celld authority + replaceable native serve process.
+// Canonical sessions are observed through the ordinary authenticated /v1 API.
 import assert from "node:assert/strict";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const worker = join(here, "..");
-const repo = join(worker, "..", "..", "..", "..");
-const binary = process.env.SERVE_BIN ?? join(repo, "target", "debug", "celld-agent");
-const servePort = 18000 + Math.floor(Math.random() * 1000);
-const cellPort = 19000 + Math.floor(Math.random() * 1000);
-const base = `http://127.0.0.1:${cellPort}/cells/e2e`;
-const children = new Set();
-
-function start(cmd, args, opts) {
-  const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], ...opts });
-  child.log = "";
-  child.stdout.on("data", (d) => (child.log += d));
-  child.stderr.on("data", (d) => (child.log += d));
-  children.add(child);
-  return child;
+import {spawn} from "node:child_process";
+import {createServer} from "node:http";
+import {mkdtempSync,writeFileSync,openSync,closeSync,existsSync,unlinkSync} from "node:fs";
+import {tmpdir} from "node:os";
+import {join,resolve,dirname} from "node:path";
+import {fileURLToPath} from "node:url";
+const here=dirname(fileURLToPath(import.meta.url)),worker=resolve(here,".."),repo=resolve(worker,"../../../..");
+const run=mkdtempSync(join(tmpdir(),"everruns-serve-celld-engine."));
+const binary=process.env.SERVE_BIN??join(repo,"target/debug/celld-agent");
+assert.ok(existsSync(binary),"build first: cargo build -p serve-example-celld");
+const token="synthetic-authority-credential-at-least-32-bytes",apiToken="synthetic-api-credential-at-least-32-bytes",executorToken="synthetic-executor-credential-at-least-32-bytes";
+const children=[];const servers=[];
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function listen(server){servers.push(server);await new Promise((resolve,reject)=>server.once("error",reject).listen(0,"127.0.0.1",resolve));return server.address().port;}
+async function freePort(){const server=createServer();const port=await listen(server);await new Promise(resolve=>server.close(resolve));return port;}
+function start(command,args,name,extra={}) {
+ const fd=openSync(join(run,`${name}.log`),"w");const child=spawn(command,args,{cwd:repo,env:{...process.env,...extra},detached:true,stdio:["ignore",fd,fd]});closeSync(fd);
+ child.failure=null;child.once("error",error=>child.failure=error);children.push(child);return child;
 }
+async function kill(child){const exited=child.exitCode!==null||child.signalCode!==null;const exit=exited?Promise.resolve():new Promise(resolve=>child.once("exit",resolve));try{process.kill(-child.pid,"SIGKILL");}catch{}await exit;}
+async function until(label,fn,timeout=30000){const deadline=Date.now()+timeout;while(Date.now()<deadline){if(providerFailure)throw providerFailure;for(const child of children)if(child.failure)throw child.failure;try{const value=await fn();if(value)return value;}catch(error){if(error.name!=="TypeError")throw error;}await sleep(100);}throw new Error(`${label}: ${run}`);}
+const nativePort=await freePort(),authorityPort=await freePort();
+const authority=`http://127.0.0.1:${authorityPort}`,native=`http://127.0.0.1:${nativePort}`;
+let modelCalls=0,providerFailure=null;
+const gatewayPort=await listen(createServer(async(request,response)=>{
+ try {
+  let raw="";for await(const chunk of request)raw+=chunk;
+  const input=JSON.parse(raw);modelCalls++;
+  assert.ok(Array.isArray(input.input),"native OpenAI Responses request expected");
+  const done=input.input.some(item=>item.type==="function_call_output");
+  response.writeHead(200,{"content-type":"text/event-stream"});
+  const emit=event=>response.write(`data: ${JSON.stringify(event)}\n\n`);
+  const item=done?{type:"message",id:"msg_recovered",status:"completed",role:"assistant",content:[{type:"output_text",text:"Recovered through Framework Engine.",annotations:[]}]}:{type:"function_call",id:"fc_research",call_id:"call_research",name:"look_up",arguments:'{"topic":"celld"}',status:"completed"};
+  emit({type:"response.output_item.added",sequence_number:0,output_index:0,item});
+  if(done) emit({type:"response.output_text.delta",sequence_number:1,item_id:item.id,output_index:0,content_index:0,delta:item.content[0].text});
+  emit({type:"response.output_item.done",sequence_number:2,output_index:0,item});
+  emit({type:"response.completed",sequence_number:3,response:{id:`response_${modelCalls}`,object:"response",created_at:0,model:input.model,status:"completed",output:[item],usage:{input_tokens:10,output_tokens:2,total_tokens:12}}});
+  response.end();
+ } catch(error) {providerFailure=error;if(!response.headersSent)response.writeHead(500);response.end();}
 
-function kill(child) {
-  return new Promise((resolve) => {
-    if (child.exitCode !== null || child.signalCode !== null) return resolve();
-    child.once("exit", resolve);
-    child.kill("SIGKILL");
-  });
+}));
+const config=join(run,"wrangler.json");
+writeFileSync(join(run,"worker.js"),`export {default,SessionAuthority,ServeExecutor} from ${JSON.stringify(join(worker,"src/index.js"))};\n`);
+writeFileSync(config,JSON.stringify({name:"serve-celld-engine-test",main:"worker.js",compatibility_date:"2026-09-01",compatibility_flags:["nodejs_compat"],vars:{TENANT_ID:"test",SERVE_URL:native,AUTHORITY_TOKEN:token,EXECUTOR_TOKEN:executorToken,API_TOKEN:apiToken},durable_objects:{bindings:[{name:"SESSIONS",class_name:"SessionAuthority"}]},migrations:[{tag:"v1",new_sqlite_classes:["SessionAuthority"]}]}));
+const nativeEnv={AUTHORITY_URL:authority,TENANT_ID:"test",AUTHORITY_TOKEN:token,EXECUTOR_TOKEN:executorToken,SERVE_API_KEYS:apiToken,SERVE_GATEWAY_URL:`http://127.0.0.1:${gatewayPort}/v1`,SERVE_GATEWAY_KEY:"synthetic",RESEARCH_DELAY_MS:"120000",PORT:String(nativePort)};
+let generation=0;
+function startNative(){const name=`native-${++generation}`;return start(binary,["celld"],name,{...nativeEnv,SERVE_DATA_DIR:join(run,name)});}
+async function api(path,method="GET",body) {
+ const response=await fetch(`${authority}/v1${path}`,{method,headers:{authorization:`Bearer ${apiToken}`,"content-type":"application/json"},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(15000)});
+ const value=await response.json();assert.ok(response.ok,`${method} ${path}: ${response.status} ${JSON.stringify(value)}`);return {status:response.status,value};
 }
-
-// One path, wiped per start: a new container has the same image layout and
-// an empty disk. (The engine records the workspace root, so a restore must
-// land at the path it was taken from.)
-const dataDir = join(mkdtempSync(join(tmpdir(), "serve-celld-e2e-")), "data");
-
-function startServe() {
-  rmSync(dataDir, { recursive: true, force: true });
-  return start(binary, ["celld", "--dev"], {
-    env: {
-      ...process.env,
-      PORT: String(servePort),
-      SERVE_DATA_DIR: dataDir,
-      RESEARCH_DELAY_MS: "3000",
-    },
-  });
-}
-
-function startCelld() {
-  return start("celld", ["dev", "wrangler.external.jsonc", "--port", String(cellPort), "--no-watch", "--logs"], {
-    cwd: worker,
-  });
-}
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function until(what, fn, ms = 30_000) {
-  const deadline = Date.now() + ms;
-  let last;
-  while (Date.now() < deadline) {
-    try {
-      last = await fn();
-      if (last) return last;
-    } catch (err) {
-      last = err;
-    }
-    await sleep(200);
-  }
-  throw new Error(`timed out waiting for ${what}: ${last?.stack ?? JSON.stringify(last)}`);
-}
-
-async function json(path, init) {
-  const res = await fetch(base + path, init);
-  const text = await res.text();
-  if (!res.ok) throw new Error(`${init?.method ?? "GET"} ${path}: ${res.status} ${text}`);
-  return text ? JSON.parse(text) : null;
-}
-
-const cell = () => json("/_cell/state");
-
-async function say(session, text) {
-  return json(`/v1/sessions/${session}/messages`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ message: { role: "user", content: [{ type: "text", text }] } }),
-  });
-}
-
-// The texts of the session's user and agent messages, in order.
-async function transcript(session) {
-  const page = await json(`/v1/sessions/${session}/events?limit=1000`);
-  const events = page.data ?? page.events ?? page;
-  const out = [];
-  for (const event of events) {
-    const message = event.data?.message;
-    if (!message || !["input.message", "output.message.completed"].includes(event.type)) continue;
-    const text = (message.content ?? [])
-      .filter((part) => part.type === "text")
-      .map((part) => part.text)
-      .join("");
-    if (text) out.push(`${event.type === "input.message" ? "user" : "agent"}: ${text}`);
-  }
-  return out;
-}
-
-async function idle(session) {
-  const s = await json(`/v1/sessions/${session}`);
-  return s.status === "idle";
-}
-
-async function main() {
-  writeFileSync(join(worker, ".dev.vars"), `SERVE_URL=http://127.0.0.1:${servePort}\n`);
-  rmSync(join(worker, ".celld"), { recursive: true, force: true });
-  let serve = startServe();
-  let celld = startCelld();
-  await until("serve", () => fetch(`http://127.0.0.1:${servePort}/celld/state`).then((r) => r.ok));
-  await until("celld", () => fetch(base + "/_cell/state").then((r) => r.ok), 120_000);
-
-  // A created session is acknowledged only once a snapshot holds it.
-  const session = (
-    await json("/v1/sessions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{}",
-    })
-  ).id;
-  let state = await cell();
-  assert.equal(state.snapshot_seq, 1, "create takes a snapshot");
-  assert.equal(state.journal, 0);
-
-  // A finished turn is folded into the next snapshot by the cell's alarm.
-  await say(session, "first");
-  await until("first turn snapshotted", async () => {
-    const s = await cell();
-    return s.journal === 0 && s.snapshot_seq >= 2 && (await idle(session));
-  });
-
-  // Lose the container mid-turn: the message is journaled, not snapshotted.
-  await say(session, "second");
-  await sleep(500);
-  assert.equal((await json(`/v1/sessions/${session}`)).status, "active");
-  await kill(serve);
-  state = await cell();
-  assert.equal(state.journal, 1, "the interrupted turn is journaled");
-
-  // A fresh container with an empty disk: the next request restores and
-  // replays, and the interrupted turn runs to the end exactly once.
-  serve = startServe();
-  await until("new serve", () => fetch(`http://127.0.0.1:${servePort}/celld/state`).then((r) => r.ok));
-  await until("replayed turn finished", () => idle(session), 60_000);
-  const lines = await transcript(session);
-  console.log(lines.join("\n"));
-  assert.deepEqual(
-    lines.filter((line) => line.startsWith("user:")),
-    ["user: first", "user: second"],
-    "each message once, in order",
-  );
-  assert.equal(lines.filter((line) => line.startsWith("agent:")).length, 2, "both turns answered");
-  state = await cell();
-  assert.equal(state.restores, 1);
-  assert.equal(state.replayed, 1);
-
-  // Lose the celld node with a journaled turn outstanding. The alarm is
-  // durable, so the restarted node snapshots the turn without any request.
-  const before = (await until("second turn snapshotted", async () => {
-    const s = await cell();
-    return s.journal === 0 && s;
-  })).snapshot_seq;
-  await say(session, "third");
-  await kill(celld);
-  await sleep(4000); // the turn finishes in the container meanwhile
-  celld = startCelld();
-  await until(
-    "alarm snapshot after node restart",
-    async () => {
-      const r = await fetch(base + "/_cell/state");
-      if (!r.ok) return false;
-      const s = await r.json();
-      return s.journal === 0 && s.snapshot_seq > before && s;
-    },
-    120_000,
-  );
-  assert.equal((await transcript(session)).filter((l) => l.startsWith("agent:")).length, 3);
-
-  // The container's control routes are not reachable from outside.
-  assert.equal((await fetch(base + "/celld/snapshot")).status, 404);
-  console.log("e2e: ok", await cell());
-}
-
 try {
-  await main();
-} catch (err) {
-  for (const child of children) console.error(`--- ${child.spawnfile} log ---\n${child.log.slice(-4000)}`);
-  throw err;
+ start("celld",["dev",config,"--port",String(authorityPort),"--no-watch","--logs"],"celld",{CELLD_ESBUILD:join(repo,"crates/durable-object/worker/node_modules/esbuild/bin/esbuild")});
+ let executor=startNative();
+ await until("native ready",async()=>{const response=await fetch(`${native}/health`,{headers:{authorization:`Bearer ${apiToken}`}});return response.ok;});
+ await until("authority ready",async()=>{const response=await fetch(authority);return response.status===401;});
+ const session=`session_${crypto.randomUUID().replaceAll("-","")}`,message=`message_${crypto.randomUUID().replaceAll("-","")}`;
+ const create={id:session};const created=await api("/sessions","POST",create);
+ assert.deepEqual((await api("/sessions","POST",create)).value,created.value);
+ const send={message_id:message,message:{role:"user",content:[{type:"text",text:"Research celld."}]}};
+ const accepted=await api(`/sessions/${session}/messages`,"POST",send);
+ assert.deepEqual((await api(`/sessions/${session}/messages`,"POST",send)).value,accepted.value);
+ await until("tool started",async()=>(await api(`/sessions/${session}/events`)).value.data.some(event=>event.type==="tool.started"));
+ const second=`session_${crypto.randomUUID().replaceAll("-","")}`;
+ assert.equal((await api("/sessions","POST",{id:second})).value.id,second,"creation commits while another session executes");
+ await kill(executor);executor=startNative();
+ // No API requests during recovery. Startup is immediate; DO alarms own retry.
+ await sleep(20000);
+ const outcome=(await api(`/sessions/${session}/admissions/${message}`)).value;
+ assert.equal(outcome.status,"complete");assert.equal(outcome.turn.success,true);
+ const events=(await api(`/sessions/${session}/events`)).value.data;
+ for(const kind of ["input.message","turn.started","tool.started","tool.completed","turn.completed"])assert.equal(events.filter(event=>event.type===kind).length,1,kind);
+ assert.equal(events.find(event=>event.type==="tool.completed").data.status,"interrupted");
+ assert.equal(modelCalls,2,"committed reason and tool dispatch must not repeat");
+ assert.equal((await api(`/sessions/${second}`)).value.id,second,"empty session survives catalog loss too");
+ console.log(JSON.stringify({backend:"celld",placement:"native serve Engine",creation_while_busy:"committed",recovery:"independent alarm",canonical_replay:false,model_calls:modelCalls,admissions:1,turns:1,tool_status:"interrupted"}));
+ console.log(`Native serve qualification evidence: ${run}`);
 } finally {
-  await Promise.all([...children].map(kill));
-  rmSync(join(worker, ".dev.vars"), { force: true });
+ for(const child of children.reverse())await kill(child);
+ for(const server of servers){server.closeAllConnections?.();await new Promise(resolve=>server.close(resolve));}
+ unlinkSync(config);
 }
