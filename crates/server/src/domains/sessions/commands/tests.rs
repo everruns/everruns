@@ -162,9 +162,12 @@ async fn fork_session_enforces_shared_org_rate_limit() {
     assert_eq!(err.retry_after_seconds, Some(60));
 }
 
-// Minimal runner whose `cancel_run` succeeds without a real durable backend,
-// so `CancelSession` can be exercised against the in-memory store.
-struct CancelTestRunner;
+// Control the backend's cancellation acknowledgement without a live worker,
+// so the command's event ownership can be checked against the in-memory store.
+#[derive(Default)]
+struct CancelTestRunner {
+    cancel_error: Option<&'static str>,
+}
 
 #[async_trait::async_trait]
 impl everruns_core::host::TurnBackend for CancelTestRunner {
@@ -184,6 +187,9 @@ impl everruns_core::host::TurnBackend for CancelTestRunner {
         &self,
         _session_id: everruns_contracts::typed_id::SessionId,
     ) -> everruns_contracts::error::Result<bool> {
+        if let Some(error) = self.cancel_error {
+            return Err(everruns_contracts::error::AgentLoopError::store(error));
+        }
         Ok(false)
     }
 
@@ -203,7 +209,7 @@ impl everruns_core::host::TurnBackend for CancelTestRunner {
 #[tokio::test]
 async fn cancel_active_session_transitions_to_idle() {
     let db = Arc::new(StorageBackend::test_database());
-    let ctx = test_ctx(db.clone(), 100).with_runner(Arc::new(CancelTestRunner));
+    let ctx = test_ctx(db.clone(), 100).with_runner(Arc::new(CancelTestRunner::default()));
     let harness_id = seed_harness(&ctx).await;
 
     let session = CreateSession(create_request(harness_id))
@@ -245,7 +251,7 @@ async fn cancel_active_session_transitions_to_idle() {
 #[tokio::test]
 async fn cancel_names_the_running_turn() {
     let db = Arc::new(StorageBackend::test_database());
-    let ctx = test_ctx(db.clone(), 100).with_runner(Arc::new(CancelTestRunner));
+    let ctx = test_ctx(db.clone(), 100).with_runner(Arc::new(CancelTestRunner::default()));
     let harness_id = seed_harness(&ctx).await;
     let session = CreateSession(create_request(harness_id))
         .execute(&ctx)
@@ -303,6 +309,49 @@ async fn cancel_names_the_running_turn() {
     assert_eq!(
         cancelled[0].context.input_message_id,
         Some(input_message_id)
+    );
+}
+
+// A failed backend request does not transfer terminal-event ownership to the
+// API. The worker can finish while the request times out acquiring a connection.
+#[tokio::test]
+async fn failed_cancel_does_not_publish_a_terminal_or_idle_the_session() {
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = test_ctx(db, 100).with_runner(Arc::new(CancelTestRunner {
+        cancel_error: Some("pool timed out while waiting for an open connection"),
+    }));
+    let harness_id = seed_harness(&ctx).await;
+    let session = CreateSession(create_request(harness_id))
+        .execute(&ctx)
+        .await
+        .expect("create session");
+    q::session_service(&ctx)
+        .unwrap()
+        .update_status(&ctx.caller, session.id.uuid(), "active".to_string())
+        .await
+        .expect("mark active");
+    let events = ctx.event_service.as_ref().expect("event service");
+    let before = events
+        .list(session.id.uuid(), None, None, &[], &[], None, None)
+        .await
+        .expect("list events");
+
+    let error = CancelSession {
+        session_id: session.id.to_string(),
+    }
+    .execute(&ctx)
+    .await
+    .expect_err("an unacknowledged backend cancel must fail");
+    assert!(matches!(error.kind, CommandErrorKind::Internal(_)));
+    let after = events
+        .list(session.id.uuid(), None, None, &[], &[], None, None)
+        .await
+        .expect("list events");
+    assert_eq!(after.len(), before.len(), "no synthetic cancel events");
+    assert_eq!(
+        q::get_session(&ctx, session.id, None).await.unwrap().status,
+        crate::domains::sessions::record::SessionStatus::Active,
+        "the worker still owns the running turn"
     );
 }
 
