@@ -40,6 +40,8 @@ use futures::StreamExt;
 use futures::stream;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+type SessionSequenceCounters =
+    std::collections::HashMap<String, (Arc<AtomicUsize>, Arc<AtomicUsize>)>;
 
 use everruns_contracts::driver_registry::{
     BoxedChatDriver, ChatDriver, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
@@ -462,6 +464,8 @@ pub struct LlmSimDriver {
     tool_call_counter: Arc<AtomicUsize>,
     /// Attempt counts for scenario steps that fail first
     scenario_attempts: scenarios::Attempts,
+    // Registered Agents share one driver; sequence state belongs to each session.
+    session_counters: Arc<std::sync::Mutex<SessionSequenceCounters>>,
 }
 
 struct GeneratedTurn {
@@ -478,6 +482,7 @@ impl LlmSimDriver {
             response_counter: Arc::new(AtomicUsize::new(0)),
             tool_call_counter: Arc::new(AtomicUsize::new(0)),
             scenario_attempts: scenarios::Attempts::default(),
+            session_counters: Arc::default(),
         }
     }
 
@@ -487,7 +492,7 @@ impl LlmSimDriver {
     }
 
     /// Generate response text based on configuration
-    fn generate_response(&self, messages: &[Message]) -> String {
+    fn generate_response(&self, messages: &[Message], counter: &AtomicUsize) -> String {
         match &self.config.response {
             ResponseConfig::Fixed(text) => text.clone(),
 
@@ -512,7 +517,7 @@ impl LlmSimDriver {
                 if responses.is_empty() {
                     return String::new();
                 }
-                let idx = self.response_counter.fetch_add(1, Ordering::SeqCst);
+                let idx = counter.fetch_add(1, Ordering::SeqCst);
                 responses[idx % responses.len()].clone()
             }
 
@@ -528,7 +533,7 @@ impl LlmSimDriver {
     }
 
     /// Get tool calls based on configuration
-    fn get_tool_calls(&self, messages: &[Message]) -> Option<Vec<ToolCall>> {
+    fn get_tool_calls(&self, messages: &[Message], counter: &AtomicUsize) -> Option<Vec<ToolCall>> {
         match &self.config.tool_calls {
             None => None,
 
@@ -544,7 +549,7 @@ impl LlmSimDriver {
                 if sequences.is_empty() {
                     return None;
                 }
-                let idx = self.tool_call_counter.fetch_add(1, Ordering::SeqCst);
+                let idx = counter.fetch_add(1, Ordering::SeqCst);
                 let calls = &sequences[idx % sequences.len()];
                 if calls.is_empty() {
                     None
@@ -580,18 +585,23 @@ impl LlmSimDriver {
         }
     }
 
-    fn generate_turn(&self, messages: &[Message]) -> Result<GeneratedTurn> {
+    fn generate_turn(
+        &self,
+        messages: &[Message],
+        response: &AtomicUsize,
+        tools: &AtomicUsize,
+    ) -> Result<GeneratedTurn> {
         if let ResponseConfig::Scripted {
             turns,
             on_exhausted,
         } = &self.config.response
         {
-            return self.generate_scripted_turn(turns, *on_exhausted);
+            return self.generate_scripted_turn(turns, *on_exhausted, response);
         }
 
         Ok(GeneratedTurn {
-            text: self.generate_response(messages),
-            tool_calls: self.get_tool_calls(messages),
+            text: self.generate_response(messages, response),
+            tool_calls: self.get_tool_calls(messages, tools),
             stream_stall: false,
         })
     }
@@ -600,6 +610,7 @@ impl LlmSimDriver {
         &self,
         turns: &[SimTurn],
         on_exhausted: OnExhausted,
+        counter: &AtomicUsize,
     ) -> Result<GeneratedTurn> {
         if turns.is_empty() {
             return Err(AgentLoopError::config(
@@ -607,7 +618,7 @@ impl LlmSimDriver {
             ));
         }
 
-        let turn_index = self.response_counter.fetch_add(1, Ordering::SeqCst);
+        let turn_index = counter.fetch_add(1, Ordering::SeqCst);
         let turn = if turn_index < turns.len() {
             turns[turn_index].clone()
         } else {
@@ -759,8 +770,28 @@ impl ChatDriver for LlmSimDriver {
             return played;
         }
 
-        let generated_turn = model_names::realistic_turn(self, &messages, config)
-            .map_or_else(|| self.generate_turn(&messages), Ok)?;
+        let counters = if let Some(session) = config.metadata.get("session_id") {
+            let mut sessions = self
+                .session_counters
+                .lock()
+                .map_err(|_| AgentLoopError::config("simulator session counters unavailable"))?;
+            if sessions.len() >= 100_000 && !sessions.contains_key(session) {
+                return Err(AgentLoopError::config("simulator session capacity reached"));
+            }
+            sessions
+                .entry(session.clone())
+                .or_insert_with(|| (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0))))
+                .clone()
+        } else {
+            (
+                self.response_counter.clone(),
+                self.tool_call_counter.clone(),
+            )
+        };
+        let generated_turn = model_names::realistic_turn(self, &messages, config).map_or_else(
+            || self.generate_turn(&messages, &counters.0, &counters.1),
+            Ok,
+        )?;
         if generated_turn.stream_stall {
             return Ok(Box::pin(futures::stream::pending()));
         }
@@ -1193,6 +1224,44 @@ mod tests {
             .await
             .unwrap();
         assert!(r3.tool_calls.is_none());
+    }
+
+    #[tokio::test]
+    async fn shared_driver_sequences_are_independent_for_each_session() {
+        let driver = LlmSimDriver::new(LlmSimConfig::sequence(vec![
+            "first".into(),
+            "second".into(),
+        ]));
+        let mut first = make_config();
+        first
+            .metadata
+            .insert("session_id".into(), "session-one".into());
+        let mut second = first.clone();
+        second
+            .metadata
+            .insert("session_id".into(), "session-two".into());
+        let messages = vec![user_message("hello")];
+        assert_eq!(
+            driver
+                .chat_completion(messages.clone(), &first)
+                .await
+                .unwrap()
+                .text,
+            "first"
+        );
+        assert_eq!(
+            driver
+                .clone()
+                .chat_completion(messages.clone(), &second)
+                .await
+                .unwrap()
+                .text,
+            "first"
+        );
+        assert_eq!(
+            driver.chat_completion(messages, &first).await.unwrap().text,
+            "second"
+        );
     }
 
     #[tokio::test]

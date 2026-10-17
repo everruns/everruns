@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "Engine-Owned Durable Sessions"
-description: "Proposed Engine and Session architecture for one Framework application API over native and Durable Object hosting."
+description: "Engine and Session architecture for one Framework application API over native and Durable Object hosting."
 tags:
   - everruns
   - framework
@@ -37,10 +37,13 @@ Engine for creation, commands and execution. Workers event polling/SSE uses boun
 canonical pages and exact opaque event identities. Native serve reads authoritative
 status and can rebuild a lost catalog from binding metadata. Explicit Environment
 factories reopen workspace services; a durable journal does not supply those services.
-The celld bootstrap and native adapter are being migrated onto these same paths.
+The celld bootstrap and native adapter now use these same paths. The native
+container placement has passed executor-container loss and replicated authority
+owner loss without client recovery traffic; final revision qualification remains
+the completion gate.
 
-These changes are not the completion gate: default facade execution retirement,
-complete API/protocol parity, host-service coverage and all platform crash proofs
+These changes are not the completion gate: explicit legacy facade retirement,
+complete API/protocol parity, required host-service coverage and final platform crash proofs
 still require validation. The publication hold remains in force. Qualification
 results must identify the tested revision and placement; prior low-level proofs
 do not qualify the Engine migration.

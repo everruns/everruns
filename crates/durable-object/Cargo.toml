@@ -9,8 +9,6 @@ homepage.workspace = true
 repository.workspace = true
 description = "Experimental Durable Object session authority for native and Wasm Everruns execution"
 readme = "README.md"
-# Qualified as a workspace integration before joining the release publish set.
-publish = false
 
 [features]
 default = ["native"]
@@ -24,7 +22,7 @@ axum = { workspace = true, optional = true }
 chrono.workspace = true
 everruns-contracts = { workspace = true, default-features = false }
 everruns-core = { workspace = true, default-features = false, features = ["actor-runtime"] }
-everruns = { path = "../everruns", default-features = false }
+everruns = { workspace = true, default-features = false }
 reqwest = { workspace = true, features = ["json"], optional = true }
 serde.workspace = true
 serde_json.workspace = true

@@ -256,7 +256,15 @@ impl<H: ActorHosts> SessionActorDriver<H> {
                 tokio::select! {
                     biased;
                     _=stop.wait_for(|stop|*stop)=>{},
-                    result=self.hosts.before_turn(&host,&drive,input_message.as_ref())=>result?,
+                    result=self.hosts.before_turn(&host,&drive,input_message.as_ref())=> {
+                        if result?==super::InputPreparation::Rejected {
+                            // The host durably settled the input without starting a
+                            // turn. It is safe to commit past the fresh-input guard.
+                            lease.turn_stored();
+                            lease.advance(input.sequence);
+                            return Ok(Finish::Release);
+                        }
+                    },
                 }
             }
             if lease.is_lost() {

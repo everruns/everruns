@@ -34,7 +34,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_extra::extract::Query;
-use everruns::ask_user::{Answer, Status};
+use everruns::ask_user::Status;
 use everruns::{EventStreamError, SessionEvent};
 use futures::Stream;
 use serde::Deserialize;
@@ -134,7 +134,25 @@ impl IntoResponse for Failure {
             Some(ApiError::BadRequest(_)) => (StatusCode::BAD_REQUEST, None),
             Some(ApiError::Conflict(_)) => (StatusCode::CONFLICT, None),
             Some(ApiError::Pinned { build_id }) => (StatusCode::CONFLICT, Some(build_id.clone())),
-            None => (StatusCode::INTERNAL_SERVER_ERROR, None),
+            None => {
+                let status = self
+                    .0
+                    .chain()
+                    .find_map(|cause| {
+                        cause.downcast_ref::<everruns_contracts::error::AgentLoopError>()
+                    })
+                    .map(|error| match error {
+                        everruns_contracts::error::AgentLoopError::SessionNotFound(_) => {
+                            StatusCode::NOT_FOUND
+                        }
+                        everruns_contracts::error::AgentLoopError::Configuration(_) => {
+                            StatusCode::BAD_REQUEST
+                        }
+                        _ => StatusCode::INTERNAL_SERVER_ERROR,
+                    })
+                    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+                (status, None)
+            }
         };
         let mut response = problem(status, detail);
         if let Some(build) = build.and_then(|b| HeaderValue::from_str(&b).ok()) {
@@ -259,6 +277,8 @@ pub(crate) async fn session_json(host: &Host, id: &str) -> crate::Result<Value> 
         session["metadata"] = metadata;
     }
     if let Some(authority) = authority {
+        session["build_id"] = json!(authority.binding.behavior.build_id);
+        session["agent_name"] = json!(authority.binding.behavior.agent);
         session["status"] = json!(authority.phase());
         let approvals:Vec<_>=authority.waiting.iter().filter(|call|call.name=="approve_tool_call").map(|call|json!({"tool_call_id":call.id,"tool_name":call.arguments["tool"],"arguments":call.arguments["arguments"]})).collect();
         let questions: Vec<_> = authority
@@ -268,7 +288,7 @@ pub(crate) async fn session_json(host: &Host, id: &str) -> crate::Result<Value> 
             .map(|call| json!({"tool_call_id":call.id,"questions":call.arguments["questions"]}))
             .collect();
         session["turn_id"] = json!(authority.open_turn);
-        session["suspension_reason"]=json!(authority.suspension_reason);
+        session["suspension_reason"] = json!(authority.suspension_reason);
         session["pending_approvals"] = json!(approvals);
         session["pending_questions"] = json!(questions);
     }
@@ -518,36 +538,7 @@ async fn approval(
     })))
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum SubmittedStatus {
-    Answered,
-    Declined,
-}
-
-/// The server's `QuestionAnswersRequest`.
-#[derive(Deserialize)]
-pub(crate) struct QuestionAnswersBody {
-    #[serde(default)]
-    tool_call_id: Option<String>,
-    #[serde(default = "answered")]
-    status: SubmittedStatus,
-    #[serde(default)]
-    answers: Vec<SubmittedAnswer>,
-}
-
-fn answered() -> SubmittedStatus {
-    SubmittedStatus::Answered
-}
-
-#[derive(Deserialize)]
-struct SubmittedAnswer {
-    id: String,
-    #[serde(default)]
-    selected: Vec<String>,
-    #[serde(default)]
-    other_text: Option<String>,
-}
+pub(crate) type QuestionAnswersBody = everruns::hosting::QuestionAnswersRequest;
 
 pub(crate) async fn question_answers(
     State(host): State<Arc<Host>>,
@@ -557,20 +548,39 @@ pub(crate) async fn question_answers(
     host.session(&id).await?;
     // After a restart, the question is pending again once the session is.
     host.session(&id).await?;
-    let status = match body.status {
-        SubmittedStatus::Answered => Status::Answered,
-        SubmittedStatus::Declined => Status::Declined,
-    };
-    let answers = body
-        .answers
-        .into_iter()
-        .map(|answer| Answer {
-            id: answer.id,
-            selected: answer.selected,
-            other_text: answer.other_text,
-            secret_ref: None,
-        })
-        .collect();
+    let status = body.status;
+    if host.engine.has_session_hosting() {
+        let session = host.session(&id).await?;
+        if body.command_id.is_none() {
+            let pending = session.pending_tools().await?;
+            if !pending.iter().any(|call| {
+                call.name == "ask_user"
+                    && body.tool_call_id.as_ref().is_none_or(|id| id == &call.id)
+            }) {
+                if let Some(call) = &body.tool_call_id {
+                    let completed = session.events_after(0).await?.iter().any(|event| {
+                        event.event_type() == "tool.completed"
+                            && event.canonical_json()["data"]["tool_call_id"].as_str()
+                                == Some(call.as_str())
+                            && event.canonical_json()["data"]["tool_name"] == "ask_user"
+                    });
+                    if completed {
+                        return Err(ApiError::Conflict(
+                            "question set has already been answered".into(),
+                        )
+                        .into());
+                    }
+                }
+                return Err(ApiError::NotFound("pending question set".into()).into());
+            }
+        }
+        session.answer_questions(body).await?;
+        let phase = host.engine.session_status(session.session_id()).await?;
+        return Ok(Json(
+            json!({"status":status,"answered_by":"user","session_status":phase.phase()}),
+        ));
+    }
+    let answers = body.answers;
     host.answer_questions(&id, body.tool_call_id.as_deref(), status, answers)
         .await?;
     Ok(Json(json!({
@@ -685,8 +695,19 @@ fn sse_event(event: &SessionEvent) -> Event {
 pub(crate) async fn sse(
     State(host): State<Arc<Host>>,
     Path(id): Path<String>,
-    Query(query): Query<SseQuery>,
+    Query(mut query): Query<SseQuery>,
+    headers: HeaderMap,
 ) -> ApiResult<Sse<impl Stream<Item = Result<Event, Infallible>>>> {
+    if query.since_id.is_none() && query.after_sequence.is_none() {
+        if let Some(value) = headers.get("last-event-id") {
+            query.since_id = Some(
+                value
+                    .to_str()
+                    .map_err(|_| bad_request("invalid Last-Event-ID"))?
+                    .to_owned(),
+            );
+        }
+    }
     if query.since_id.is_some() && query.after_sequence.is_some() {
         return Err(bad_request(
             "since_id and after_sequence are mutually exclusive",

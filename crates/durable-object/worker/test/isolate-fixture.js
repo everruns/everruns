@@ -7,6 +7,10 @@ export class SessionAuthority extends App {
     super(ctx, env);
     this.qualificationContext = ctx;
   }
+  failure(error) {
+    console.error("Synthetic qualification failure", error);
+    return super.failure(error);
+  }
   async fetch(request) {
     if (new URL(request.url).pathname.endsWith("/evict")) {
       const status = new URL(request.url);

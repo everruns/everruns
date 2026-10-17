@@ -125,19 +125,112 @@ impl HookRunState {
 
     pub(crate) async fn durable_agent_start(
         &self,
+        input: crate::MessageId,
         context: AgentStartContext,
     ) -> Result<(), HookFailure> {
         for (index, handler) in self.hooks.agent_start.iter().enumerate() {
+            let completed = format!("hook/agent_start/{index}");
+            if let Some(epoch) = &self.epoch {
+                let record = epoch.record(&completed).await.map_err(|error| {
+                    HookFailure::new(HookPoint::AgentStart, index, error.to_string())
+                })?;
+                if let Some(record) = record {
+                    if record.get("policy") != Some(&json!(handler.recovery)) {
+                        return Err(HookFailure::new(
+                            HookPoint::AgentStart,
+                            index,
+                            "retained lifecycle recovery policy conflicts with registered behavior"
+                                .into(),
+                        ));
+                    }
+                    if record.get("result") == Some(&json!(Ok::<(), String>(()))) {
+                        continue;
+                    }
+                }
+                // Cancellation can drop preparation after its attempt receipt
+                // settled but before the session-wide success marker committed.
+                // Recover that boundary before considering a new input's effect.
+                let attempts = epoch
+                    .records(&format!("hook/agent_start/{index}/attempt/"))
+                    .await
+                    .map_err(|error| {
+                        HookFailure::new(HookPoint::AgentStart, index, error.to_string())
+                    })?;
+                let mut settled = false;
+                for (_, record) in attempts {
+                    if record.get("policy") != Some(&json!(handler.recovery)) {
+                        return Err(HookFailure::new(
+                            HookPoint::AgentStart,
+                            index,
+                            "retained lifecycle recovery policy conflicts with registered behavior"
+                                .into(),
+                        ));
+                    }
+                    match record.get("result").and_then(|result|serde_json::from_value::<Result<(),String>>(result.clone()).ok()) {
+                        Some(Ok(()))=>settled=true,
+                        Some(Err(_))=>{},
+                        None if handler.recovery==HookRecovery::AtMostOnce=>return Err(HookFailure::new(HookPoint::AgentStart,index,"lifecycle effect has an uncertain outcome; automatic retry refused".into())),
+                        None=>{},
+                    }
+                }
+                if settled {
+                    epoch.commit(&completed,json!({"state":"settled","policy":handler.recovery,"result":Ok::<(),String>(())}),false).await.map_err(|error|HookFailure::new(HookPoint::AgentStart,index,error.to_string()))?;
+                    continue;
+                }
+            }
             invoke(
                 self.epoch.as_ref(),
-                &format!("agent_start/{index}"),
+                &format!("agent_start/{index}/attempt/{input}"),
                 handler.recovery,
                 || handler(context.clone()),
             )
             .await
             .map_err(|message| HookFailure::new(HookPoint::AgentStart, index, message))?;
+            if let Some(epoch) = &self.epoch {
+                epoch.commit(&completed,json!({"state":"settled","policy":handler.recovery,"result":Ok::<(),String>(())}),false).await.map_err(|error|HookFailure::new(HookPoint::AgentStart,index,error.to_string()))?;
+            }
         }
         Ok(())
+    }
+
+    // Only a matching, settled handler error may reject this input and permit
+    // a later explicit command. Missing receipts and policy drift suspend.
+    pub(crate) async fn gate_failure_is_known(
+        &self,
+        input: crate::MessageId,
+        turn: &str,
+        failure: &HookFailure,
+    ) -> everruns_contracts::error::Result<bool> {
+        let (key, policy) = match failure.point {
+            HookPoint::AgentStart => (
+                format!("hook/agent_start/{}/attempt/{input}", failure.handler_index),
+                self.hooks
+                    .agent_start
+                    .get(failure.handler_index)
+                    .map(|handler| handler.recovery),
+            ),
+            HookPoint::TurnStart => (
+                format!("hook/{turn}/turn_start/{}", failure.handler_index),
+                self.hooks
+                    .turn_start
+                    .get(failure.handler_index)
+                    .map(|handler| handler.recovery),
+            ),
+            _ => return Ok(false),
+        };
+        let Some(epoch) = &self.epoch else {
+            return Ok(false);
+        };
+        let Some(record) = epoch.record(&key).await? else {
+            return Ok(false);
+        };
+        if policy.map(|policy| json!(policy)).as_ref() != record.get("policy") {
+            return Ok(false);
+        }
+        Ok(record
+            .get("result")
+            .and_then(|value| serde_json::from_value::<Result<(), String>>(value.clone()).ok())
+            .is_some_and(|result| matches!(result,Err(message) if message==failure.message)))
     }
 
     pub(crate) async fn durable_turn_start(

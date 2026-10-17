@@ -20,6 +20,8 @@ export class Authority {
     const j = this.journal;
     if (
       operation === "events" ||
+      operation === "snapshot" ||
+      operation === "execution" ||
       operation === "event_sequence" ||
       operation === "journal" ||
       operation === "status" ||
@@ -33,13 +35,19 @@ export class Authority {
         404,
         "session not found",
       );
+      if(operation==="execution") return {execution:j.object("session","record"),configuration:j.object("framework","configuration")??{}};
+      if(operation==="snapshot") {
+        const rejected=j.sql.exec("SELECT key FROM objects WHERE kind='framework' AND key>='rejected/' AND key<'rejected0' ORDER BY key LIMIT 4097").toArray();
+        requireValue(rejected.length<=4096,413,"input rejection scan limit exceeded");
+        return {binding:state.binding,high_watermark:state.head,configuration:j.object("framework","configuration")??{},execution:j.object("session","record"),rejected_inputs:rejected.map(row=>row.key.slice(9))};
+      }
       if(operation==="event_sequence") {
         requireValue(typeof body.event_id==="string" && /^event_[a-f0-9]{32}$/.test(body.event_id),400,"invalid event cursor identity");
         return j.sql.exec("SELECT seq FROM events WHERE json_extract(value,'$.id')=? LIMIT 1",body.event_id).toArray()[0]?.seq??null;
       }
       if (operation === "status") return {...state,now_ms:j.now()};
       if (operation === "command") {
-        requireValue(typeof body.id === "string" && /^approval:[a-zA-Z0-9-]{1,64}$/.test(body.id),400,"invalid command lookup");
+        requireValue(typeof body.id === "string" && /^(approval|approval_submission|resolution|wait_resolution):[a-zA-Z0-9-]{1,64}$/.test(body.id),400,"invalid command lookup");
         const row=j.sql.exec("SELECT fingerprint,value FROM commands WHERE id=?",body.id).toArray()[0];
         return row?{fingerprint:JSON.parse(row.fingerprint),value:JSON.parse(row.value)}:null;
       }
@@ -102,6 +110,54 @@ export class Authority {
         "session not found",
       );
       switch (operation) {
+        case "resolve_waits": {
+          requireValue(identifier(body.command_id) && Array.isArray(body.approvals) && Array.isArray(body.prepared) && Array.isArray(body.results) && body.approvals.length===body.prepared.length && body.prepared.length+body.results.length>0 && body.prepared.length+body.results.length<=256,400,"invalid wait resolution");
+          return j.deduplicate(`wait_resolution:${body.command_id}`,stableJson({turn_id:body.turn_id,approvals:body.approvals,results:body.results}),()=>{
+            requireValue(state.open?.turn_id===body.turn_id,409,"wait resolution targets another turn");
+            const ids=new Set();
+            for(const [index,prepared] of body.prepared.entries()) {
+              const answer=body.approvals[index];const call=state.pending.find(call=>call.id===answer.request_id && call.name==="approve_tool_call");
+              requireValue(call && answer.turn_id===body.turn_id && !ids.has(call.id) && stableJson(prepared.expected_request)===stableJson(call) && prepared.not_after_ms===Date.parse(call.arguments.expires_at) && prepared.not_after_ms>j.now(),409,"approval request changed or expired");
+              requireValue(typeof prepared.key==="string" && prepared.key.startsWith("tool_approval/") && prepared.key.length<=512 && typeof prepared.record==="string" && prepared.record.length<=32768 && prepared.result?.tool_call_id===call.id && prepared.result.tool_name===call.name && prepared.spoken?.role==="user",400,"invalid prepared approval");
+              ids.add(call.id);
+            }
+            for(const result of body.results) {
+              const call=state.pending.find(call=>call.id===result.tool_call_id && call.name===result.tool_name);
+              const expected=body.expected_pending?.find(call=>call.id===result.tool_call_id);
+              requireValue(call && call.name!=="approve_tool_call" && !ids.has(call.id) && expected && stableJson(call)===stableJson(expected),409,"client request changed");
+              if(call.name==="ask_user")requireValue(Date.parse(call.arguments.expires_at)>j.now(),409,"question request expired");
+              ids.add(call.id);
+            }
+            for(const prepared of body.prepared) {
+              j.put("value",prepared.key,prepared.record);
+              j.append(state,{type:"tool.completed",ts:new Date(j.now()).toISOString(),session_id:sessionId,context:state.open,data:prepared.result});
+              j.append(state,{type:"input.message",ts:new Date(j.now()).toISOString(),session_id:sessionId,context:state.open,data:{message:prepared.spoken}});
+            }
+            for(const result of body.results)j.append(state,{type:"tool.completed",ts:new Date(j.now()).toISOString(),session_id:sessionId,context:state.open,data:result});
+            if(!state.pending.length){state.inbox_seq=state.head;state.resume_generation=(state.resume_generation??0)+1;state.runnable=true;}
+            return {};
+          });
+        }
+        case "configure": {
+          requireValue(identifier(body.command_id) && body.patch && JSON.stringify(body.patch).length<=1024*1024,400,"invalid session configuration");
+          requireValue(body.patch.instructions==null || typeof body.patch.instructions==="string",400,"invalid instructions");
+          requireValue(!Object.hasOwn(body.patch,"client_tools") || (Array.isArray(body.patch.client_tools) && body.patch.client_tools.length<=64 && body.patch.client_tools.every(tool=>tool.type==="client_side")),400,"invalid client tools");
+          return j.deduplicate(`configuration:${body.command_id}`,stableJson(body.patch),()=>{
+            const previous=j.object("framework","configuration")??{};
+            for(const key of ["instructions","client_tools"]) if(Object.hasOwn(body.patch,key)) previous[key]=body.patch[key];
+            j.put("framework","configuration",previous);
+            return {};
+          });
+        }
+        case "seed": {
+          requireValue(identifier(body.command_id) && Array.isArray(body.events) && body.events.length<=4096 && JSON.stringify(body.events).length<=4*1024*1024,400,"invalid history seed");
+          for(const event of body.events) requireValue(!event.context?.turn_id && ((event.type==="input.message" && event.data?.message?.role==="user") || (event.type==="output.message.completed" && event.data?.message?.role==="agent")),400,"invalid history seed event");
+          return j.deduplicate(`seed:${body.command_id}`,stableJson(body.events),()=>{
+            const exists=j.sql.exec("SELECT 1 AS found FROM events WHERE type IN ('input.message','output.message.completed') LIMIT 1").toArray().length>0;
+            if(!exists) for(const event of body.events) j.append(state,event);
+            return !exists;
+          });
+        }
         case "input": {
           const event = body.event;
           requireValue(
@@ -117,7 +173,7 @@ export class Authority {
             updated_at: _updated,
             ...message
           } = event.data.message;
-          return j.deduplicate(message.id, stableJson(message), () => {
+          return j.deduplicate(message.id, stableJson(body.cancelled?{message,cancelled:true}:message), () => {
             const pending = j.sql
               .exec(
                 "SELECT count(*) AS n FROM events WHERE type='input.message' AND turn_id IS NULL AND seq>?",
@@ -126,6 +182,7 @@ export class Authority {
               .one().n;
             requireValue(pending < 256, 429, "session inbox is full");
             const stored = j.append(state, event);
+            if(body.cancelled){state.target_cancels??={};state.target_cancels[message.id]=stored.sequence;}
             state.inbox_seq = stored.sequence;
             if (state.next_input_seq <= state.consumed_seq)
               state.next_input_seq = stored.sequence;
@@ -221,7 +278,8 @@ export class Authority {
           const answers=body.approvals;
           requireValue(Array.isArray(answers) && answers.length>0 && answers.length<=256 && new Set(answers.map(answer=>answer.request_id)).size===answers.length,400,"invalid approval batch");
           requireValue(answers.every(answer=>typeof answer?.request_id === "string" && ["allow","reject","allow_always","reject_always"].includes(answer.decision)),400,"invalid approval decision");
-          return j.deduplicate(`approval:${body.command_id}`,stableJson(answers),()=>{
+          const commandKey=body.submission?`approval_submission:${body.command_id}`:`approval:${body.command_id}`;
+          return j.deduplicate(commandKey,stableJson(body.submission?.fingerprint??answers),()=>{
             requireValue(Array.isArray(body.prepared) && body.prepared.length===answers.length,400,"invalid prepared approval batch");
             // Validate the complete snapshot before writing. The transaction
             // owns atomicity; Framework Rust owns approval/tool policy.
@@ -241,7 +299,7 @@ export class Authority {
               j.append(state,{type:"input.message",ts:new Date(j.now()).toISOString(),session_id:sessionId,context:state.open,data:{message:prepared.spoken}});
             }
             if (!state.pending.length) {state.inbox_seq=state.head;state.resume_generation=(state.resume_generation??0)+1;state.runnable=true;}
-            return {};
+            return body.submission?.response??{};
           });
         }
         case "resolve": {
@@ -275,6 +333,12 @@ export class Authority {
                 "duplicate tool results",
               );
               for (const result of body.results) {
+                if(body.expected_pending) {
+                  const expected=body.expected_pending.find(call=>call.id===result.tool_call_id);
+                  const actual=state.pending.find(call=>call.id===result.tool_call_id);
+                  requireValue(expected && stableJson(actual)===stableJson(expected),409,"pending request changed");
+                  if(actual.name==="ask_user") requireValue(Date.parse(actual.arguments.expires_at)>j.now(),409,"question request expired");
+                }
                 requireValue(
                   state.pending.some(
                     (call) =>
@@ -322,7 +386,7 @@ export class Authority {
               if (!assignment) return {};
               // A late cancellation of an old admission must never stop a
               // newer turn. Runtime termination and finalization are separate.
-              if (state.open?.turn_id !== assignment.turn_id) return {};
+              if ((state.open && state.open.turn_id !== assignment.turn_id) || j.object("framework",`rejected/${target}`) || j.sql.exec("SELECT 1 AS terminal FROM events WHERE identity=? LIMIT 1",`terminal:${assignment.turn_id}`).toArray().length) return {};
             }
             if (state.open || state.runnable) {
               state.cancel_inbox_seq = state.inbox_seq;

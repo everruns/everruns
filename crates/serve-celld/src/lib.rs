@@ -27,6 +27,14 @@ struct Cli {
 /// Explicit authority and host configuration. Credentials stay in host memory
 /// and are never part of a session binding or canonical record.
 pub struct Options {
+    /// Explicit sandbox adapter for OS tools. It must isolate agent commands
+    /// from the Engine process and its privileged service credentials.
+    pub microvm: Option<serve::MicroVm>,
+    /// Independently provisioned workspace/compute services, with a retained reference.
+    pub environment: Option<(
+        String,
+        std::sync::Arc<dyn everruns::hosting::EnvironmentFactory>,
+    )>,
     /// Ordinary serve startup mode.
     pub mode: Mode,
     /// Authority transport confined to one tenant.
@@ -44,6 +52,8 @@ impl Options {
     /// Configure a native placement without reading process environment.
     pub fn new(mode: Mode, authority: AuthorityClient, executor_token: impl Into<String>) -> Self {
         Self {
+            microvm: None,
+            environment: None,
             mode,
             authority,
             executor_token: executor_token.into(),
@@ -98,9 +108,11 @@ pub async fn start(app: App) -> serve::Result {
 /// Ordinary `/v1` and authenticated `/execute` over the same Framework Engine.
 /// No app-level cell or container owns canonical session state.
 pub fn router(app: App, options: Options) -> serve::Result<Router> {
-    if options.workspace_dir.is_none() && app.manifest().sandbox.kind == "microvm" {
+    // THREAT[TM-DURABLE-012]: uncontained agent commands could read the native
+    // Engine's authority credentials. Workspace persistence is not a sandbox.
+    if options.microvm.is_none() && app.manifest().sandbox.kind == "microvm" {
         anyhow::bail!(
-            "SERVE_WORKSPACE_DIR required for celld native OS tools; provision its storage independently of session authority"
+            "celld native OS tools require an explicit isolated sandbox adapter; a workspace directory alone cannot isolate authority credentials"
         );
     }
     let mut builder =
@@ -109,15 +121,19 @@ pub fn router(app: App, options: Options) -> serve::Result<Router> {
         builder = builder.data_dir(dir);
     }
     if let Some(workspace) = options.workspace_dir {
-        builder = builder.host_environment(format!("celld-workspace:{}", workspace.display()));
-        builder = builder.microvm(move |agent| {
-            agent
-                .workspace(&workspace)
-                .workspace_policy(everruns::WorkspacePolicy::read_write())
-                .capability(
-                    everruns::HostShell::new().containment(everruns::ContainmentMode::FullAccess),
-                )
+        builder = builder.host_environment_factory(
+            format!("celld-workspace:{}", workspace.display()),
+            everruns::hosting::DirectoryEnvironmentFactory::new(workspace),
+        );
+    }
+    if let Some((reference, factory)) = options.environment {
+        builder = builder.host_environment_factory(reference, move |session| {
+            let factory = factory.clone();
+            async move { factory.open(session).await }
         });
+    }
+    if let Some(adapter) = options.microvm {
+        builder = builder.microvm(move |agent| adapter(agent));
     }
     let server = builder.build()?;
     let executor = Executor::registered(

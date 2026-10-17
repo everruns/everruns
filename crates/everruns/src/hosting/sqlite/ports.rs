@@ -304,7 +304,13 @@ impl SessionStore for Ports {
         self.scope(session)?;
         self.hosting.transaction(session, |tx, state| {
             state.binding(session)?;
-            object(tx, session, "session", "record")
+            let mut record: Option<ExecutionSession> = object(tx, session, "session", "record")?;
+            let configuration: SessionConfiguration =
+                object(tx, session, "framework", "configuration")?.unwrap_or_default();
+            if let Some(record) = record.as_mut() {
+                configuration.apply(record);
+            }
+            Ok(record)
         })
     }
 }

@@ -76,6 +76,52 @@ jobs:
           path: /tmp/everruns-object-recovery.*/authority.log
           if-no-files-found: ignore
 
+  native-container-recovery:
+    # Match the qualification image's libc; a newer runner's linked binary
+    # cannot be assumed to run in an older runtime image.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CARGO_INCREMENTAL: '0'
+      WRANGLER_SEND_METRICS: 'false'
+      SERVE_TEST_CONTAINER_IMAGE: ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: durable-object-native-container
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install pinned celld qualification tools
+        run: |
+          npm ci --prefix crates/durable-object/worker
+          cargo install s3s-fs --version 0.14.1 --features binary --locked
+          curl --fail --location --retry 3 https://github.com/denoland/celld/releases/download/v0.6.2/celld-x86_64-unknown-linux-gnu.gz -o /tmp/celld.gz
+          echo 'ce0ee3552cc8d55dde3998dc3b1b0c8f547bbcb4bc803d2a94842368b047646c  /tmp/celld.gz' | sha256sum --check
+          gzip --decompress --stdout /tmp/celld.gz > "$HOME/.cargo/bin/celld"
+          chmod +x "$HOME/.cargo/bin/celld"
+          docker pull "$SERVE_TEST_CONTAINER_IMAGE"
+      - name: Build the ordinary serve application
+        run: cargo build --locked -p serve-example-celld
+      - name: Lose a native Engine container without client recovery traffic
+        run: node examples/serve/celld/worker/test/e2e.mjs
+      - name: Lose the replicated authority owner while native Engine executes
+        env:
+          CELLD_QUALIFY_NATIVE: '1'
+        run: node crates/durable-object/worker/test/qualify-celld.mjs
+      - name: Preserve native placement failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: native-container-object-recovery
+          path: |
+            /tmp/everruns-serve-celld-engine.*/*.log
+            /tmp/everruns-celld-qualification.*/*.log
+          if-no-files-found: ignore
+
   isolate-recovery:
     runs-on: ubuntu-latest
     timeout-minutes: 35

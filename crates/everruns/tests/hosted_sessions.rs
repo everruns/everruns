@@ -29,6 +29,53 @@ fn engine(profile: impl SessionHosting, agent: Agent) -> Engine {
 struct External<H>(H);
 #[async_trait::async_trait]
 impl<H: SessionHosting> SessionHosting for External<H> {
+    async fn resolve_waits(
+        &self,
+        id: SessionId,
+        command: uuid::Uuid,
+        target: everruns::TurnId,
+        approvals: Vec<everruns::hosting::ApprovalCommit>,
+        results: Vec<everruns_core::events::ToolCompletedData>,
+    ) -> everruns_contracts::error::Result<()> {
+        self.0
+            .resolve_waits(id, command, target, approvals, results)
+            .await
+    }
+    async fn submit_approvals(
+        &self,
+        id: SessionId,
+        command: uuid::Uuid,
+        target: everruns::TurnId,
+        decisions: Vec<everruns_contracts::execution_api::ToolApprovalAnswer>,
+    ) -> everruns_contracts::error::Result<
+        everruns_contracts::execution_api::SubmitToolApprovalsResponse,
+    > {
+        self.0
+            .submit_approvals(id, command, target, decisions)
+            .await
+    }
+    async fn configure(
+        &self,
+        id: SessionId,
+        command: uuid::Uuid,
+        patch: everruns::hosting::SessionConfiguration,
+    ) -> everruns_contracts::error::Result<()> {
+        self.0.configure(id, command, patch).await
+    }
+    async fn seed_history(
+        &self,
+        id: SessionId,
+        command: uuid::Uuid,
+        messages: Vec<everruns_core::RuntimeMessage>,
+    ) -> everruns_contracts::error::Result<bool> {
+        self.0.seed_history(id, command, messages).await
+    }
+    async fn query_snapshot(
+        &self,
+        id: SessionId,
+    ) -> everruns_contracts::error::Result<everruns::hosting::SessionQuerySnapshot> {
+        self.0.query_snapshot(id).await
+    }
     async fn approve_many(
         &self,
         id: SessionId,
@@ -54,8 +101,9 @@ impl<H: SessionHosting> SessionHosting for External<H> {
         &self,
         id: SessionId,
         message: everruns_core::RuntimeMessage,
+        cancelled: bool,
     ) -> everruns_contracts::error::Result<everruns::hosting::AdmissionReceipt> {
-        self.0.admit(id, message).await
+        self.0.admit(id, message, cancelled).await
     }
     async fn receipt(
         &self,
@@ -203,7 +251,7 @@ async fn completion_is_not_visible_until_awaited_framework_hooks_settle() {
 }
 
 #[tokio::test]
-async fn pre_effect_failure_is_a_durable_suspension_and_never_runs_the_model() {
+async fn settled_pre_effect_failure_rejects_the_command_and_never_runs_the_model() {
     let profile = MemoryHosting::default();
     let calls = Arc::new(AtomicUsize::new(0));
     let counted = calls.clone();
@@ -222,9 +270,150 @@ async fn pre_effect_failure_is_a_durable_suspension_and_never_runs_the_model() {
         .await
         .unwrap();
     let result = session.send("hello").await.unwrap().wait().await;
-    assert!(matches!(result, Err(RunError::Suspended)));
+    assert!(matches!(result, Err(RunError::Hook(_))));
     engine.activate(session.session_id()).await.unwrap();
     assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert!(
+        !session
+            .events_after(0)
+            .await
+            .unwrap()
+            .iter()
+            .any(|event| event.event_type() == "reason.started")
+    );
+}
+
+async fn configuration_seed_and_queries_reopen_without_execution(
+    profile: impl SessionHosting + Clone,
+) {
+    use everruns::hosting::SessionConfiguration;
+    let id = SessionId::new();
+    let owner = engine(External(profile.clone()), agent());
+    let session = owner.create_registered(id, &build()).await.unwrap();
+    let command = uuid::Uuid::new_v4();
+    let patch = SessionConfiguration {
+        instructions: Some(Some("Retained override.".into())),
+        client_tools: Some(Vec::new()),
+    };
+    profile.configure(id, command, patch.clone()).await.unwrap();
+    profile.configure(id, command, patch).await.unwrap();
+    assert!(
+        profile
+            .configure(id, command, SessionConfiguration::default())
+            .await
+            .is_err()
+    );
+    let seed = uuid::Uuid::new_v4();
+    let messages = vec![
+        everruns_core::RuntimeMessage::user("Earlier question"),
+        everruns_core::RuntimeMessage::assistant("Earlier answer"),
+    ];
+    assert!(
+        profile
+            .seed_history(id, seed, messages.clone())
+            .await
+            .unwrap()
+    );
+    assert!(
+        profile
+            .seed_history(id, seed, messages.clone())
+            .await
+            .unwrap()
+    );
+    assert!(
+        !profile
+            .seed_history(id, uuid::Uuid::new_v4(), messages)
+            .await
+            .unwrap()
+    );
+    let before = profile.query_snapshot(id).await.unwrap().high_watermark;
+    let context = session.inspect().await.unwrap();
+    assert!(context.instructions.contains("Retained override."));
+    assert_eq!(context.messages.len(), 2);
+    assert_eq!(
+        profile.query_snapshot(id).await.unwrap().high_watermark,
+        before
+    );
+    assert!(!profile.status(id).await.unwrap().runnable);
+    let replacement = engine(External(profile.clone()), agent());
+    assert!(
+        replacement
+            .resume(id)
+            .await
+            .unwrap()
+            .inspect()
+            .await
+            .unwrap()
+            .instructions
+            .contains("Retained override.")
+    );
+    // Explicit null clears an override across serialization and reopening.
+    let clear: SessionConfiguration =
+        serde_json::from_value(serde_json::json!({"instructions":null})).unwrap();
+    profile
+        .configure(id, uuid::Uuid::new_v4(), clear)
+        .await
+        .unwrap();
+    assert!(
+        !session
+            .inspect()
+            .await
+            .unwrap()
+            .instructions
+            .contains("Retained override.")
+    );
+}
+
+#[tokio::test]
+async fn memory_queries_seed_and_configuration_are_coherent() {
+    configuration_seed_and_queries_reopen_without_execution(MemoryHosting::default()).await;
+}
+
+#[cfg(feature = "local")]
+#[tokio::test]
+async fn sqlite_queries_seed_and_configuration_are_coherent() {
+    let dir = tempfile::tempdir().unwrap();
+    configuration_seed_and_queries_reopen_without_execution(
+        everruns::hosting::SqliteHosting::open(dir.path().join("authority.db")).unwrap(),
+    )
+    .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn uncertain_agent_start_suspends_without_repeating_the_effect_or_dispatching_a_model() {
+    let profile = MemoryHosting::default();
+    let effects = Arc::new(AtomicUsize::new(0));
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let counted = effects.clone();
+    let signal = entered.clone();
+    let agent = Agent::builder()
+        .instructions("Answer.")
+        .model(Model::simulated("must not run"))
+        .on_agent_start(move |_| {
+            let counted = counted.clone();
+            let signal = signal.clone();
+            async move {
+                counted.fetch_add(1, Ordering::SeqCst);
+                signal.notify_one();
+                std::future::pending::<()>().await;
+            }
+        })
+        .build()
+        .unwrap();
+    let make = || engine(External(profile.clone()), agent.clone());
+    let first = make();
+    let id = SessionId::new();
+    let session = first.create_registered(id, &build()).await.unwrap();
+    let sent = session.send("hello").await.unwrap();
+    let executor = tokio::spawn(async move { first.activate(id).await });
+    entered.notified().await;
+    executor.abort();
+    let _ = executor.await;
+    tokio::time::advance(std::time::Duration::from_secs(11)).await;
+    let replacement = make();
+    replacement.activate(id).await.unwrap();
+    assert!(matches!(sent.wait().await, Err(RunError::Suspended)));
+    assert_eq!(effects.load(Ordering::SeqCst), 1);
     assert!(
         !session
             .events_after(0)
@@ -951,24 +1140,35 @@ async fn approval_survives_frontend_loss(profile: impl SessionHosting + Clone) {
     assert_eq!(session.pending_tools().await.unwrap().len(), 1);
     assert_eq!(effects.load(Ordering::SeqCst), 0);
     let command = uuid::Uuid::new_v4();
-    session
-        .approve_tool(
-            command,
-            turn_id,
-            &request.id,
-            everruns::hosting::ToolApprovalDecision::Allow,
-        )
+    let decisions = vec![everruns_contracts::execution_api::ToolApprovalAnswer {
+        tool_call_id: request.id.clone(),
+        decision: everruns::hosting::ToolApprovalDecision::Allow,
+    }];
+    let receipt = session
+        .submit_approvals(command, turn_id, decisions.clone())
         .await
         .unwrap();
-    session
-        .approve_tool(
-            command,
-            turn_id,
-            &request.id,
-            everruns::hosting::ToolApprovalDecision::Allow,
-        )
-        .await
-        .unwrap();
+    assert_eq!(receipt.resolved.len(), 1);
+    assert_eq!(
+        receipt,
+        session
+            .submit_approvals(command, turn_id, decisions)
+            .await
+            .unwrap()
+    );
+    assert!(
+        session
+            .submit_approvals(
+                command,
+                turn_id,
+                vec![everruns_contracts::execution_api::ToolApprovalAnswer {
+                    tool_call_id: request.id.clone(),
+                    decision: everruns::hosting::ToolApprovalDecision::Reject
+                }]
+            )
+            .await
+            .is_err()
+    );
     let outcome = tokio::time::timeout(
         std::time::Duration::from_secs(5),
         session.admission(message).await.unwrap().unwrap().wait(),
@@ -985,6 +1185,138 @@ async fn approval_survives_frontend_loss(profile: impl SessionHosting + Clone) {
 #[tokio::test]
 async fn memory_approval_resolves_after_frontend_loss_without_duplicating_effects() {
     approval_survives_frontend_loss(MemoryHosting::default()).await;
+}
+
+#[cfg(feature = "builtins")]
+async fn mixed_wait_resolution_is_atomic(profile: impl SessionHosting + Clone) {
+    let effects = Arc::new(AtomicUsize::new(0));
+    let counted = effects.clone();
+    let agent = Agent::builder()
+        .instructions("Use the tools, then finish.")
+        .model(Model::simulated_with_config(
+            everruns::LlmSimConfig::fixed("done").with_tool_call_sequence(vec![
+                vec![
+                    everruns::ToolCall {
+                        id: "mutate_first".into(),
+                        name: "mutate".into(),
+                        arguments: serde_json::json!({}),
+                    },
+                    everruns::ToolCall {
+                        id: "render_first".into(),
+                        name: "render".into(),
+                        arguments: serde_json::json!({}),
+                    },
+                ],
+                vec![everruns::ToolCall {
+                    id: "mutate_retry".into(),
+                    name: "mutate".into(),
+                    arguments: serde_json::json!({}),
+                }],
+                vec![],
+            ]),
+        ))
+        .client_tool(
+            "render",
+            "Render the result",
+            serde_json::json!({"type":"object"}),
+        )
+        .tool(
+            everruns::FunctionTool::new(
+                "mutate",
+                "Change one value",
+                serde_json::json!({"type":"object"}),
+                move |_: serde_json::Value| {
+                    let counted = counted.clone();
+                    async move {
+                        counted.fetch_add(1, Ordering::SeqCst);
+                        Ok::<_, String>(serde_json::json!({"done":true}))
+                    }
+                },
+            )
+            .always_needs_approval(),
+        )
+        .durable_approvals()
+        .build()
+        .unwrap();
+    let owner = engine(profile.clone(), agent);
+    let id = SessionId::new();
+    let session = owner.create_registered(id, &build()).await.unwrap();
+    let sent = session.send("work").await.unwrap();
+    let waiting = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        loop {
+            let status = profile.status(id).await.unwrap();
+            if status.waiting.len() == 2 {
+                break status;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let turn = waiting.open_turn.unwrap();
+    let approval = waiting
+        .waiting
+        .iter()
+        .find(|call| call.name == "approve_tool_call")
+        .unwrap();
+    let decisions = vec![everruns::hosting::ApprovalCommit {
+        turn_id: turn,
+        request_id: approval.id.clone(),
+        decision: everruns::hosting::ToolApprovalDecision::Allow,
+    }];
+    let before = session.events_after(0).await.unwrap().len();
+    let result = everruns::ToolAnswer {
+        tool_call_id: "render_first".into(),
+        tool_name: "render".into(),
+        result: serde_json::json!({"rendered":true}),
+        error: None,
+    };
+    let mut invalid = result.clone();
+    invalid.tool_call_id = "not_pending".into();
+    assert!(
+        session
+            .resolve_waits(uuid::Uuid::new_v4(), turn, decisions.clone(), vec![invalid])
+            .await
+            .is_err()
+    );
+    assert_eq!(session.events_after(0).await.unwrap().len(), before);
+    assert_eq!(session.pending_tools().await.unwrap().len(), 2);
+    assert_eq!(effects.load(Ordering::SeqCst), 0);
+    let command = uuid::Uuid::new_v4();
+    session
+        .resolve_waits(command, turn, decisions.clone(), vec![result.clone()])
+        .await
+        .unwrap();
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_secs(3), sent.wait())
+            .await
+            .unwrap()
+            .unwrap()
+            .success
+    );
+    let after = session.events_after(0).await.unwrap().len();
+    session
+        .resolve_waits(command, turn, decisions, vec![result])
+        .await
+        .unwrap();
+    assert_eq!(session.events_after(0).await.unwrap().len(), after);
+    assert_eq!(effects.load(Ordering::SeqCst), 1);
+}
+
+#[cfg(feature = "builtins")]
+#[tokio::test]
+async fn memory_mixed_wait_resolution_is_atomic() {
+    mixed_wait_resolution_is_atomic(MemoryHosting::default()).await;
+}
+
+#[cfg(all(feature = "builtins", feature = "local"))]
+#[tokio::test]
+async fn sqlite_mixed_wait_resolution_is_atomic() {
+    let dir = tempfile::tempdir().unwrap();
+    mixed_wait_resolution_is_atomic(
+        everruns::hosting::SqliteHosting::open(dir.path().join("authority.db")).unwrap(),
+    )
+    .await;
 }
 
 #[cfg(all(feature = "builtins", feature = "local"))]

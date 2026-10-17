@@ -25,10 +25,12 @@ Admission, receipts, canonical events, epochs and alarms belong to the session
 DO. Containers never restore a canonical snapshot or replay accepted HTTP
 requests. Old `/cells/...` and `/celld/snapshot`/`restore` protocols are removed.
 
-OS tools require an explicitly provisioned `SERVE_WORKSPACE_DIR`; its storage
-lifetime is independent of the journal. An ephemeral container disk does not
-preserve referenced files. The container is the OS containment boundary; choose
-an appropriate container runtime for tools that execute untrusted code.
+`SERVE_WORKSPACE_DIR` supplies separate persistent workspace directories by session.
+Its lifetime is independent of the journal. For OS commands, configure an explicit
+`Options::microvm` sandbox adapter and, when needed, `Options::environment` host
+services. The adapter must isolate commands from the Engine process, other sessions
+and privileged authority credentials. A directory or the executor container alone
+does not provide that isolation; the adapter never enables an uncontained shell.
 
 See the [example](../../examples/serve/celld) and
 [Engine hosting architecture](../../knowledge/framework/engine-durable-sessions.md).

@@ -22,8 +22,10 @@ export class SessionAuthority extends Base {
         (raw,signal)=>this.model(raw,signal),this.env.MODEL ?? "gpt-6-luna",
         body.operation,JSON.stringify(body.body ?? {})));
       return Response.json(reply.value,{status:reply.status});
-    } catch(error) { return failure(error); }
+    } catch(error) { return this.failure(error); }
   }
+  // Hosts may attach server-side diagnostics while keeping public failures redacted.
+  failure(error) { return failure(error); }
   async alarm() {
     return runActivation(this.authority, async (activation) => {
       const expected = JSON.parse(binding());

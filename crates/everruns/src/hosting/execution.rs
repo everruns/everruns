@@ -10,7 +10,8 @@ use everruns_core::{
     host::{
         InProcessRuntime, TurnDrive,
         session_actor::{
-            ActorHosts, HostTurn, SessionActorConfig, SessionActorDriver, TurnSignals,
+            ActorHosts, HostTurn, InputPreparation, SessionActorConfig, SessionActorDriver,
+            TurnSignals,
         },
     },
 };
@@ -26,6 +27,22 @@ pub(crate) async fn run(
 ) -> Result<()> {
     let epoch = activation.epoch;
     expire_waits(engine, session, epoch.as_ref()).await?;
+    let rejected = epoch
+        .records("rejected/")
+        .await?
+        .into_iter()
+        .map(|(key, _)| {
+            key.strip_prefix("rejected/")
+                .unwrap_or("")
+                .parse::<MessageId>()
+                .map_err(|_| AgentLoopError::store("invalid input rejection identity"))
+        })
+        .collect::<Result<std::collections::HashSet<_>>>()?;
+    let mut backends = epoch.backends();
+    backends.event_log = Arc::new(super::query::InputFilterLog::new(
+        backends.event_log,
+        rejected,
+    ));
     let state = HookRunState::durable(agent.lifecycle_hooks(), epoch.clone());
     let handle = engine.resume_hosted(session).await?;
     let environment = if activation.binding.environment.is_some() {
@@ -44,7 +61,7 @@ pub(crate) async fn run(
     let runtime = match everruns_contracts::rt::timeout(
         config.lease_ttl,
         agent.build_runtime_with_event_sink(
-            epoch.backends(),
+            backends,
             session,
             Some(environment),
             harness.as_ref(),
@@ -68,6 +85,7 @@ pub(crate) async fn run(
         }
     };
     let store = epoch.actor_store();
+    let renew_poke = epoch.renew_poke();
     let hosts = Arc::new(FrameworkHosts {
         engine: engine.clone(),
         runtime,
@@ -76,9 +94,11 @@ pub(crate) async fn run(
         state,
         session,
     });
-    SessionActorDriver::new(hosts, store, config)
-        .run_actor(activation.actor)
-        .await;
+    let mut driver = SessionActorDriver::new(hosts, store, config);
+    if let Some(poke) = renew_poke {
+        driver = driver.with_renew_poke(poke);
+    }
+    driver.run_actor(activation.actor).await;
     Ok(())
 }
 
@@ -134,15 +154,18 @@ impl ActorHosts for FrameworkHosts {
         _: &Self::Host,
         drive: &TurnDrive,
         input: Option<&RuntimeMessage>,
-    ) -> Result<()> {
+    ) -> Result<InputPreparation> {
         let input = input
             .ok_or_else(|| AgentLoopError::store("admitted input missing from resolved history"))?;
         let result = async {
             self.state
-                .durable_agent_start(AgentStartContext {
-                    agent_name: self.agent.name().to_owned(),
-                    session_id: self.session,
-                })
+                .durable_agent_start(
+                    drive.input_message_id,
+                    AgentStartContext {
+                        agent_name: self.agent.name().to_owned(),
+                        session_id: self.session,
+                    },
+                )
                 .await?;
             self.state
                 .durable_turn_start(
@@ -164,10 +187,24 @@ impl ActorHosts for FrameworkHosts {
                     false,
                 )
                 .await?;
+            if self
+                .state
+                .gate_failure_is_known(drive.input_message_id, &drive.turn_id.to_string(), &failure)
+                .await?
+            {
+                self.epoch
+                    .commit(
+                        &format!("rejected/{}", drive.input_message_id),
+                        json!({"turn_id":drive.turn_id,"failure":failure}),
+                        true,
+                    )
+                    .await?;
+                return Ok(InputPreparation::Rejected);
+            }
             self.epoch.suspend("lifecycle_gate_failed").await?;
             return Err(AgentLoopError::config("Framework lifecycle gate failed"));
         }
-        Ok(())
+        Ok(InputPreparation::Ready)
     }
 
     async fn checkpoint(&self, _: &Self::Host, tail: &[Event]) -> Result<()> {

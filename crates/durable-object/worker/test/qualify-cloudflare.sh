@@ -14,9 +14,11 @@ WRANGLER="$PROJECT_ROOT/crates/durable-object/worker/node_modules/wrangler/bin/w
 CLEAN_CONFIG="$TEST_DIR/$WORKER_NAME.generated.json"
 CLEAN_SCRIPT="$TEST_DIR/$WORKER_NAME.generated.js"
 CREATED=false
+TAIL_PID=""
 cleanup() {
   local original_status=$?
   trap - EXIT
+  if [[ -n "$TAIL_PID" ]]; then kill "$TAIL_PID" 2>/dev/null || true; wait "$TAIL_PID" 2>/dev/null || true; fi
   if [[ "$CREATED" == true ]]; then
     printf 'export default { fetch() { return new Response("qualification finished", {status:404}); } };\n' > "$CLEAN_SCRIPT"
     node --input-type=module - "$CLEAN_CONFIG" "$WORKER_NAME" "$(basename "$CLEAN_SCRIPT")" <<'JS'
@@ -52,5 +54,9 @@ import {readFileSync} from 'node:fs';const match=readFileSync(process.argv[2],'u
 JS
 )"
 export DO_QUALIFY_URL DO_QUALIFY_BACKEND=cloudflare
+WRANGLER_SEND_METRICS=false node "$WRANGLER" tail "$WORKER_NAME" --config "$TEST_DIR/qualification.json" --format json >"$RUN_DIR/worker.log" 2>&1 &
+TAIL_PID=$!
+# Allow the diagnostic stream to attach before the first synthetic request.
+sleep 3
 NODE_USE_ENV_PROXY=1 node "$TEST_DIR/qualify-isolate.mjs" | tee "$RUN_DIR/proof.jsonl"
 echo "Cloudflare qualification evidence: $RUN_DIR/proof.jsonl"

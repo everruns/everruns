@@ -26,6 +26,7 @@ pub struct MemoryHosting {
 
 struct MemorySession {
     id: SessionId,
+    renew_poke: Arc<tokio::sync::Notify>,
     control: tokio::sync::Mutex<Control>,
     log: InMemoryEventLog,
     services: HostBackends,
@@ -64,6 +65,7 @@ impl MemoryHosting {
     fn new_session(id: SessionId) -> Arc<MemorySession> {
         Arc::new(MemorySession {
             id,
+            renew_poke: Arc::default(),
             control: tokio::sync::Mutex::new(Control::default()),
             log: InMemoryEventLog::new(),
             services: HostBackends::in_memory(),
@@ -100,6 +102,314 @@ impl Control {
 
 #[async_trait]
 impl SessionHosting for MemoryHosting {
+    async fn resolve_waits(
+        &self,
+        id: SessionId,
+        command: uuid::Uuid,
+        target: TurnId,
+        approvals: Vec<ApprovalCommit>,
+        results: Vec<ToolCompletedData>,
+    ) -> Result<()> {
+        let session = self.session(id);
+        let mut state = session.control.lock().await;
+        state.binding(id)?;
+        let fingerprint = json!({"turn_id":target,"approvals":approvals,"results":results});
+        let key = ("wait_resolution".into(), command);
+        if let Some(previous) = state.commands.get(&key) {
+            return if previous == &fingerprint {
+                Ok(())
+            } else {
+                Err(AgentLoopError::config("wait resolution identity conflict"))
+            };
+        }
+        if state.open != Some(target) {
+            return Err(AgentLoopError::config(
+                "wait resolution targets another turn",
+            ));
+        }
+        let batch = if approvals.is_empty() {
+            Vec::new()
+        } else {
+            prepare_approvals(
+                &approvals,
+                &state.pending,
+                target,
+                everruns_contracts::rt::utc_now(),
+            )?
+        };
+        if !results.is_empty() {
+            validate_tool_resolutions(&results, &state.pending, everruns_contracts::rt::utc_now())?;
+        }
+        if batch.is_empty() && results.is_empty() {
+            return Err(AgentLoopError::config("empty wait resolution"));
+        }
+        let events = all_events(&session, None).await?;
+        let input = events
+            .iter()
+            .rev()
+            .find(|event| event.context.turn_id == Some(target))
+            .and_then(|event| event.context.input_message_id)
+            .ok_or_else(|| AgentLoopError::store("open turn has no input"))?;
+        let mut last = 0;
+        for prepared in batch {
+            session
+                .services
+                .storage_store
+                .set_value(id, &prepared.key, &prepared.record)
+                .await?;
+            session
+                .log
+                .append(EventRequest::new(
+                    id,
+                    EventContext::turn(target, input),
+                    prepared.result,
+                ))
+                .await
+                .map_err(core_error)?;
+            let event = session
+                .log
+                .append(EventRequest::new(
+                    id,
+                    EventContext::turn(target, input),
+                    InputMessageData::new(prepared.spoken),
+                ))
+                .await
+                .map_err(core_error)?;
+            state
+                .pending
+                .retain(|call| call.id != prepared.expected_request.id);
+            last = event.sequence.unwrap_or(0);
+        }
+        for result in results {
+            state.pending.retain(|call| call.id != result.tool_call_id);
+            let event = session
+                .log
+                .append(EventRequest::new(
+                    id,
+                    EventContext::turn(target, input),
+                    result,
+                ))
+                .await
+                .map_err(core_error)?;
+            last = event.sequence.unwrap_or(0);
+        }
+        if state.pending.is_empty() {
+            state.inbox = i64::from(last);
+            state.resume_generation += 1;
+            state.runnable = true;
+        }
+        state.commands.insert(key, fingerprint);
+        Ok(())
+    }
+    async fn submit_approvals(
+        &self,
+        id: SessionId,
+        command: uuid::Uuid,
+        target: TurnId,
+        decisions: Vec<everruns_contracts::execution_api::ToolApprovalAnswer>,
+    ) -> Result<everruns_contracts::execution_api::SubmitToolApprovalsResponse> {
+        let session = self.session(id);
+        let mut state = session.control.lock().await;
+        state.binding(id)?;
+        let fingerprint = json!({"turn_id":target,"decisions":decisions});
+        let key = ("approval_submission".into(), command);
+        let receipt_key = format!("approval_submission/{command}");
+        if let Some(previous) = state.commands.get(&key) {
+            if previous != &fingerprint {
+                return Err(AgentLoopError::config("approval command identity conflict"));
+            }
+            return serde_json::from_value(
+                state
+                    .records
+                    .get(&receipt_key)
+                    .cloned()
+                    .ok_or_else(|| AgentLoopError::store("approval receipt missing"))?,
+            )
+            .map_err(core_error);
+        }
+        if state.open != Some(target) {
+            return Err(AgentLoopError::config(
+                "approval submission targets another turn",
+            ));
+        }
+        let (approvals, response) =
+            prepare_approval_submission(&decisions, &state.pending, target)?;
+        let batch = prepare_approvals(
+            &approvals,
+            &state.pending,
+            target,
+            everruns_contracts::rt::utc_now(),
+        )?;
+        let events = all_events(&session, None).await?;
+        let input = events
+            .iter()
+            .rev()
+            .find(|event| event.context.turn_id == Some(target))
+            .and_then(|event| event.context.input_message_id)
+            .ok_or_else(|| AgentLoopError::store("open turn has no input"))?;
+        let mut last = 0;
+        for prepared in batch {
+            session
+                .services
+                .storage_store
+                .set_value(id, &prepared.key, &prepared.record)
+                .await?;
+            session
+                .log
+                .append(EventRequest::new(
+                    id,
+                    EventContext::turn(target, input),
+                    prepared.result,
+                ))
+                .await
+                .map_err(core_error)?;
+            let spoken = session
+                .log
+                .append(EventRequest::new(
+                    id,
+                    EventContext::turn(target, input),
+                    InputMessageData::new(prepared.spoken),
+                ))
+                .await
+                .map_err(core_error)?;
+            state
+                .pending
+                .retain(|call| call.id != prepared.expected_request.id);
+            last = spoken.sequence.unwrap_or(0);
+        }
+        if state.pending.is_empty() {
+            state.inbox = i64::from(last);
+            state.resume_generation += 1;
+            state.runnable = true;
+        }
+        state.commands.insert(key, fingerprint);
+        state.records.insert(receipt_key, json!(response));
+        Ok(response)
+    }
+    async fn configure(
+        &self,
+        id: SessionId,
+        command: uuid::Uuid,
+        patch: SessionConfiguration,
+    ) -> Result<()> {
+        patch.validate()?;
+        let session = self.session(id);
+        let mut state = session.control.lock().await;
+        state.binding(id)?;
+        let fingerprint = json!(patch);
+        let key = ("configuration".into(), command);
+        if let Some(previous) = state.commands.get(&key) {
+            return if previous == &fingerprint {
+                Ok(())
+            } else {
+                Err(AgentLoopError::config(
+                    "configuration command identity conflict",
+                ))
+            };
+        }
+        let mut configuration: SessionConfiguration = serde_json::from_value(
+            state
+                .records
+                .get("configuration")
+                .cloned()
+                .unwrap_or(json!({})),
+        )
+        .map_err(core_error)?;
+        configuration.merge(patch);
+        state
+            .records
+            .insert("configuration".into(), json!(configuration));
+        state.commands.insert(key, fingerprint);
+        Ok(())
+    }
+    async fn seed_history(
+        &self,
+        id: SessionId,
+        command: uuid::Uuid,
+        messages: Vec<RuntimeMessage>,
+    ) -> Result<bool> {
+        validate_history_seed(&messages)?;
+        let session = self.session(id);
+        let mut state = session.control.lock().await;
+        state.binding(id)?;
+        let fingerprint = json!(messages);
+        let key = ("seed".into(), command);
+        if let Some(previous) = state.commands.get(&key) {
+            if previous != &fingerprint {
+                return Err(AgentLoopError::config(
+                    "history seed command identity conflict",
+                ));
+            }
+            return Ok(state
+                .records
+                .get(&format!("seed/{command}"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false));
+        }
+        let events = all_events(&session, None).await?;
+        let empty = !events.iter().any(|event| {
+            matches!(
+                event.data,
+                EventData::InputMessage(_) | EventData::OutputMessageCompleted(_)
+            )
+        });
+        if empty {
+            for message in messages {
+                let request = if message.role == everruns_core::message::RuntimeMessageRole::Agent {
+                    EventRequest::new(
+                        id,
+                        EventContext::empty(),
+                        everruns_core::events::OutputMessageCompletedData::new(message),
+                    )
+                } else {
+                    EventRequest::new(id, EventContext::empty(), InputMessageData::new(message))
+                };
+                session.log.append(request).await.map_err(core_error)?;
+            }
+        }
+        state.commands.insert(key, fingerprint);
+        state
+            .records
+            .insert(format!("seed/{command}"), json!(empty));
+        Ok(empty)
+    }
+    async fn query_snapshot(&self, id: SessionId) -> Result<SessionQuerySnapshot> {
+        use everruns_core::host::{EventReadLimit, EventReadRequest};
+        let session = self.session(id);
+        let state = session.control.lock().await;
+        let binding = state.binding(id)?;
+        let page = session
+            .log
+            .read_page(EventReadRequest::new(
+                id,
+                EventReadLimit::new(1).map_err(core_error)?,
+            ))
+            .await
+            .map_err(core_error)?;
+        let execution = session.services.session_store.get_session(id).await?;
+        Ok(SessionQuerySnapshot {
+            configuration: serde_json::from_value(
+                state
+                    .records
+                    .get("configuration")
+                    .cloned()
+                    .unwrap_or(json!({})),
+            )
+            .map_err(core_error)?,
+            binding,
+            high_watermark: page.snapshot_high_watermark(),
+            execution,
+            rejected_inputs: state
+                .records
+                .keys()
+                .filter_map(|key| key.strip_prefix("rejected/"))
+                .map(|key| {
+                    key.parse()
+                        .map_err(|_| AgentLoopError::store("invalid rejection receipt identity"))
+                })
+                .collect::<Result<_>>()?,
+        })
+    }
     async fn approve_many(
         &self,
         id: SessionId,
@@ -204,12 +514,24 @@ impl SessionHosting for MemoryHosting {
             binding: state.binding(id)?,
             runnable: state.runnable,
             suspended: state.suspended,
-            suspension_reason:if state.suspended {state.records.get("suspension").and_then(|value|value["reason"].as_str().map(str::to_owned))}else{None},
+            suspension_reason: if state.suspended {
+                state
+                    .records
+                    .get("suspension")
+                    .and_then(|value| value["reason"].as_str().map(str::to_owned))
+            } else {
+                None
+            },
             open_turn: state.open,
             waiting: state.pending.clone(),
         })
     }
-    async fn admit(&self, id: SessionId, message: RuntimeMessage) -> Result<AdmissionReceipt> {
+    async fn admit(
+        &self,
+        id: SessionId,
+        message: RuntimeMessage,
+        cancelled: bool,
+    ) -> Result<AdmissionReceipt> {
         let session = self.session(id);
         let mut state = session.control.lock().await;
         state.binding(id)?;
@@ -222,6 +544,9 @@ impl SessionHosting for MemoryHosting {
             object.remove("created_at");
             object.remove("updated_at");
         });
+        if cancelled {
+            fingerprint = json!({"message":fingerprint,"cancelled":true});
+        }
         if let Some((previous, receipt)) = state.admissions.get(&message.id) {
             return if previous == &fingerprint {
                 Ok(receipt.clone())
@@ -265,6 +590,9 @@ impl SessionHosting for MemoryHosting {
             .admissions
             .insert(message_id, (fingerprint, receipt.clone()));
         state.pending_inputs.push_back(i64::from(sequence));
+        if cancelled {
+            state.target_cancels.insert(message_id, i64::from(sequence));
+        }
         state.inbox = i64::from(sequence);
         if state.next_input <= state.consumed {
             state.next_input = state.inbox;
@@ -305,6 +633,7 @@ impl SessionHosting for MemoryHosting {
                 Err(AgentLoopError::config("resolution identity conflict"))
             };
         }
+        validate_tool_resolutions(&results, &state.pending, everruns_contracts::rt::utc_now())?;
         // Resolve only calls still requested in the canonical open turn.
         let turn = state
             .open
@@ -396,10 +725,14 @@ impl SessionHosting for MemoryHosting {
         if let Some(assignment) = state.records.get(&format!("assignment/{input}")) {
             let assignment: super::TurnAssignment = serde_json::from_value(assignment.clone())
                 .map_err(|_| AgentLoopError::store("invalid turn assignment"))?;
-            if state.open == Some(assignment.turn_id) {
+            if (state.open.is_none() || state.open == Some(assignment.turn_id))
+                && !state.terminal.contains_key(&assignment.turn_id)
+                && !state.records.contains_key(&format!("rejected/{input}"))
+            {
                 state.cancel = Some(position);
                 state.cancel_reported = false;
                 state.runnable = true;
+                session.renew_poke.notify_one();
             }
         }
         state
@@ -479,6 +812,8 @@ fn log_error(error: impl std::fmt::Display) -> EventLogError {
 
 impl Ports {
     fn check(&self, state: &Control) -> Result<()> {
+        // THREAT[TM-DURABLE-012]: callers hold the authority gate while checking
+        // ownership and committing; lease expiry fences delayed writers too.
         let fence = self.fence.read().unwrap_or_else(|p| p.into_inner());
         if fence
             .as_ref()
@@ -555,6 +890,9 @@ impl Ports {
 
 #[async_trait]
 impl SessionEpoch for Ports {
+    fn renew_poke(&self) -> Option<Arc<tokio::sync::Notify>> {
+        Some(self.session.renew_poke.clone())
+    }
     async fn schedule(&self, wake_at: Option<i64>) -> Result<()> {
         let mut state = self.session.control.lock().await;
         self.check(&state)?;
@@ -562,7 +900,7 @@ impl SessionEpoch for Ports {
         Ok(())
     }
     fn backends(&self) -> HostBackends {
-        let mut backends = self.session.services.clone();
+        let mut backends = HostBackends::in_memory();
         backends.event_log = Arc::new(self.clone());
         backends.session_store = Arc::new(self.clone());
         backends.storage_store = Arc::new(self.clone());
@@ -632,7 +970,9 @@ impl SessionEpoch for Ports {
         let mut state = self.session.control.lock().await;
         self.check(&state)?;
         state.suspended = true;
-        state.records.insert("suspension".into(),json!({"reason":reason}));
+        state
+            .records
+            .insert("suspension".into(), json!({"reason":reason}));
         Ok(())
     }
 }
@@ -773,7 +1113,20 @@ impl SessionActorStore for Ports {
 impl SessionStore for Ports {
     async fn get_session(&self, id: SessionId) -> Result<Option<ExecutionSession>> {
         self.scope(id)?;
-        self.session.services.session_store.get_session(id).await
+        let state = self.session.control.lock().await;
+        let mut record = self.session.services.session_store.get_session(id).await?;
+        let configuration: SessionConfiguration = serde_json::from_value(
+            state
+                .records
+                .get("configuration")
+                .cloned()
+                .unwrap_or(json!({})),
+        )
+        .map_err(core_error)?;
+        if let Some(record) = record.as_mut() {
+            configuration.apply(record);
+        }
+        Ok(record)
     }
 }
 #[async_trait]

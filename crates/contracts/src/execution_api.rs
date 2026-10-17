@@ -172,6 +172,12 @@ pub struct ToolApprovalAnswer {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SubmitToolApprovalsRequest {
+    /// Retain when retrying an uncertain response. Requires `turn_id`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command_id: Option<uuid::Uuid>,
+    /// Exact turn that issued the pending batch; call ids may repeat later.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<crate::typed_id::TurnId>,
     /// Decisions for the pending requests. A pending request in the same batch
     /// that is left out is resolved as not approved: the turn resumes once, so
     /// every request in it is settled now, and silence never approves.

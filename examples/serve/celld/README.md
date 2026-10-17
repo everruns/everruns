@@ -38,8 +38,12 @@ Run `celld dev` from `worker/`. Set `AUTHORITY_URL` to the reachable authority
 Worker origin. For a fleet, push an immutable image and pin it in the deployment
 configuration. Retain matching builds for active sessions.
 
-Native OS tools require an explicit `SERVE_WORKSPACE_DIR` backed by your chosen
-workspace service. Journal durability does not preserve container files. The
+`SERVE_WORKSPACE_DIR` provides a separate directory per session; preserve it with
+your chosen workspace service. OS tools additionally require an explicit isolated
+`Options::microvm` adapter. `Options::environment` can reopen remote workspace and
+compute services. The adapter does not enable an uncontained shell in the Engine
+process: its authority credentials must remain inaccessible to commands. Journal
+durability does not preserve container files. The
 local serve catalog is a projection. Channels and schedules require their own
 qualified host services; the new profile migration is still being qualified.
 

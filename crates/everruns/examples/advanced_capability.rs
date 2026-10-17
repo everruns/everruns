@@ -98,7 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let SessionEventKind::ToolProgress { message, .. } = &event.kind {
             eprintln!("progress: {message}");
         }
-        if event.turn_id.as_deref() == Some(&pending.turn_id) && event.kind.is_terminal() {
+        if event.kind.is_terminal() {
             break;
         }
     }

@@ -11,16 +11,21 @@ export async function sessionApi(request, env) {
     await authenticate(request, env.API_TOKEN);
     requireValue(env.API_TOKEN !== env.AUTHORITY_TOKEN, 503, "API and authority credentials must be distinct");
     const url = new URL(request.url);
-    const route = url.pathname.match(/^\/v1\/sessions(?:\/(session_[a-f0-9]{32})(?:\/(messages|events|sse|cancel|tool-results|admissions|tool-approvals)(?:\/(message_[a-f0-9]{32}))?)?)?$/);
+    const agentRoute=url.pathname.match(/^\/v1\/channels\/([A-Za-z0-9_-]{1,128})(\/sessions(?:\/.*)?)?$/);
+    const agent=agentRoute?.[1];
+    if(agent && !agentRoute[2] && request.method==="GET")return invoke(env,`session_${"0".repeat(32)}`,"card",{agent_name:agent});
+    const pathname=agentRoute?.[2]?`/v1${agentRoute[2]}`:url.pathname;
+    const route = pathname.match(/^\/v1\/sessions(?:\/(session_[a-f0-9]{32})(?:\/(messages|events|sse|cancel|tool-results|admissions|tool-approvals|question-answers)(?:\/(message_[a-f0-9]{32}))?)?)?$/);
     requireValue(route, 404, "session route not found");
     let [,session,action,message] = route;
+    if(agent && session){const scope=await invoke(env,session,"scope",{agent_name:agent});if(!scope.ok)return scope;}
     const body = request.method === "POST" ? await readJson(request) : {};
     let operation, command, status = 200;
     if (!session && request.method === "POST") {
       session = body.id ?? body.session_id ?? identity("session");
       requireValue(sessionPattern.test(session),400,"invalid stable session identity");
-      operation = "create"; command = {agent_name:body.agent_name,creation:{title:body.title??null,tags:body.tags??[],hints:body.hints??null,metadata:body.metadata??null}}; status = 201;
-    } else if (!action && request.method === "GET") {
+      operation = "create"; command = {agent_name:agent??body.agent_name,creation:{title:body.title??null,tags:body.tags??[],hints:body.hints??null,metadata:body.metadata??null}}; status = 201;
+    } else if (session && !action && request.method === "GET") {
       operation = "status"; command = {};
     } else if (action === "messages" && request.method === "POST") {
       requireValue(body.message?.role == null || body.message.role === "user",400,"only user messages may be admitted");
@@ -40,6 +45,10 @@ export async function sessionApi(request, env) {
       operation = "cancel"; command = {message_id:body.message_id,command_id:body.command_id ?? crypto.randomUUID()}; status = 202;
     } else if (action === "tool-results" && request.method === "POST") {
       operation = "resolve"; command = {command_id:body.command_id ?? crypto.randomUUID(),turn_id:body.turn_id,results:body.results}; status = 202;
+    } else if (action === "tool-approvals" && request.method === "POST") {
+      operation="submit_approvals"; command=body;
+    } else if (action === "question-answers" && request.method === "POST") {
+      operation="answer_questions"; command=body;
     } else {
       throw new HttpError(405,"method not supported");
     }

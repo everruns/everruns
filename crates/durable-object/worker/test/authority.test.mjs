@@ -31,6 +31,60 @@ test("acknowledged input and its alarm commit together, including after lost ack
   assert.equal((await f.call("events")).events.length, 1);
 });
 
+test("configuration patches and empty-history seeds retain retry results without activation",async()=>{
+  const f=await fixture();const tools=[{type:"client_side",name:"render",description:"Show a result",parameters:{type:"object"}}];
+  await f.call("configure",{command_id:"tools",patch:{client_tools:tools}});
+  await f.call("configure",{command_id:"instructions",patch:{instructions:"Use the retained tools"}});
+  assert.deepEqual((await f.call("snapshot")).configuration,{client_tools:tools,instructions:"Use the retained tools"});
+  await f.call("configure",{command_id:"instructions",patch:{instructions:"Use the retained tools"}});
+  await assert.rejects(f.call("configure",{command_id:"instructions",patch:{instructions:null}}),/different input/);
+  await f.call("configure",{command_id:"clear",patch:{instructions:null}});
+  assert.deepEqual((await f.call("snapshot")).configuration,{client_tools:tools,instructions:null});
+  const events=[input()];
+  assert.equal(await f.call("seed",{command_id:"import",events}),true);
+  assert.equal(await f.call("seed",{command_id:"import",events}),true);
+  assert.equal(await f.call("seed",{command_id:"another",events}),false);
+  const snapshot=await f.call("snapshot");assert.equal(snapshot.high_watermark,1);
+  assert.equal((await f.call("status")).runnable,false);assert.equal(f.storage.alarm,null);
+});
+
+test("already-cancelled admission commits cancellation with the input receipt",async()=>{
+  const f=await fixture();const event=input();
+  const receipt=await f.call("input",{event,cancelled:true});
+  assert.equal((await f.call("status")).target_cancels[receipt.message_id],receipt.sequence);
+  assert.deepEqual(await f.call("input",{event,cancelled:true}),receipt);
+  await assert.rejects(f.call("input",{event,cancelled:false}),/different input/);
+  assert.equal((await f.call("events")).events.length,1);
+});
+
+test("mixed approval and client results validate atomically and retain their receipt", async () => {
+  const f = await fixture();
+  await f.call("input", { event: input() });
+  const owner = await claim(f);
+  const turn = await start(f, owner);
+  const approval = { id: "permission", name: "approve_tool_call", arguments: { expires_at: new Date(1010000).toISOString() } };
+  const client = { id: "render", name: "render", arguments: {} };
+  await f.call("append", { lease: owner, event: event("tool.call_requested", turn, { tool_calls: [approval, client] }) });
+  await f.call("release", { ...owner, consumed_seq: 3 });
+  const result = { tool_call_id: "render", tool_name: "render", success: true, status: "success", result: [] };
+  const command = {
+    command_id: "mixed", turn_id: turn,
+    approvals: [{ turn_id: turn, request_id: approval.id, decision: "Allow" }],
+    prepared: [{ expected_request: approval, not_after_ms: 1010000, key: "tool_approval/permission", record: "allowed", result: { ...result, tool_call_id: approval.id, tool_name: approval.name }, spoken: input().data.message }],
+    expected_pending: [client], results: [result],
+  };
+  const before = await f.call("events");
+  await assert.rejects(f.call("resolve_waits", { ...command, results: [{ ...result, tool_call_id: "unknown" }] }), /client request changed/);
+  assert.deepEqual(await f.call("events"), before);
+  assert.equal((await f.call("status")).pending.length, 2);
+  await f.call("resolve_waits", command);
+  const after = await f.call("events");
+  assert.equal(after.events.length, before.events.length + 3);
+  assert.equal((await f.call("status")).runnable, true);
+  await f.call("resolve_waits", command);
+  assert.deepEqual(await f.call("events"), after);
+});
+
 test("another authority instance reconstructs pending input from storage", async () => {
   const f = await fixture();
   await f.call("input", { event: input() });

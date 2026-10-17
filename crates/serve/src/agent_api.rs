@@ -211,9 +211,10 @@ async fn sse(
     State(host): State<Arc<Host>>,
     Path((name, id)): Path<(String, String)>,
     query: Query<SseQuery>,
+    headers: axum::http::HeaderMap,
 ) -> ApiResult<Response> {
     confine(&host, &name, &id).await?;
-    Ok(crate::server::sse(State(host), Path(id), query)
+    Ok(crate::server::sse(State(host), Path(id), query, headers)
         .await?
         .into_response())
 }
@@ -259,6 +260,35 @@ pub(crate) async fn any_tool_approvals(
     host.session_row(&id)?;
     // After a restart, the approvals are pending again once the session is.
     host.session(&id).await?;
+    if let Some(status) = host.authoritative_status(&id).await? {
+        if body.command_id.is_some() && body.turn_id.is_none() {
+            return Err(bad_request("command_id requires turn_id"));
+        }
+        if body.command_id.is_none()
+            && body.decisions.iter().any(|answer| {
+                !status
+                    .waiting
+                    .iter()
+                    .any(|call| call.name == "approve_tool_call" && call.id == answer.tool_call_id)
+            })
+        {
+            return Err(ApiError::NotFound("pending approval request".into()).into());
+        }
+        let turn = body
+            .turn_id
+            .or(status.open_turn)
+            .ok_or_else(|| ApiError::Conflict("no open turn".into()))?;
+        let result = host
+            .session(&id)
+            .await?
+            .submit_approvals(
+                body.command_id.unwrap_or_else(uuid::Uuid::new_v4),
+                turn,
+                body.decisions,
+            )
+            .await?;
+        return Ok(Json(result));
+    }
     if body.decisions.is_empty() {
         return Err(bad_request("decisions must not be empty"));
     }

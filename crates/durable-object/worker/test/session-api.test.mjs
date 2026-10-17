@@ -37,6 +37,23 @@ test("API credentials cannot select internal authority operations or another obj
   assert.equal((await sessionApi(request(`/v1/sessions/${session}`,undefined,AUTHORITY_TOKEN),env)).status,401);
   assert.equal(calls.length,0);
 });
+test("agent routes validate the authoritative agent binding before session access",async()=>{
+  const {env,calls}=fixture();
+  env.SESSIONS.get=name=>({fetch:async request=>{
+    const call={name,...await request.json()};calls.push(call);
+    if(call.operation==="scope" && call.body.agent_name!=="counter")return Response.json({error:"not found"},{status:404});
+    return Response.json({name:"counter"});
+  }});
+  assert.equal((await sessionApi(request("/v1/channels/counter"),env)).status,200);
+  assert.equal(calls[0].operation,"card");
+  assert.equal((await sessionApi(request(`/v1/channels/other/sessions/${session}`),env)).status,404);
+  assert.deepEqual(calls.slice(1).map(call=>call.operation),["scope"]);
+  assert.equal((await sessionApi(request(`/v1/channels/counter/sessions/${session}`),env)).status,200);
+  assert.deepEqual(calls.slice(2).map(call=>call.operation),["scope","status"]);
+  assert.equal((await sessionApi(request("/v1/channels/counter/sessions",{id:session,agent_name:"other"}),env)).status,201);
+  assert.equal(calls.at(-1).body.agent_name,"counter");
+  assert.equal((await sessionApi(request("/v1/sessions"),env)).status,405);
+});
 test("cancellation acknowledges a targeted command and preserves retry identity",async()=>{
   const {env,calls}=fixture(); const command=crypto.randomUUID();
   const response=await sessionApi(request(`/v1/sessions/${session}/cancel`,{message_id:message,command_id:command}),env);

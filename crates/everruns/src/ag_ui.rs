@@ -799,7 +799,20 @@ pub enum ResumeOutcome {
 /// let options = AgUiOptions::new().interrupts(Nothing(broadcast::channel(8).0));
 /// # let _ = options;
 /// ```
+#[async_trait::async_trait]
 pub trait InterruptSource: Send + Sync + 'static {
+    /// Read durable interrupts from a remote or transactional authority.
+    async fn query(&self, session_id: SessionId) -> Result<Vec<Interrupt>, AgUiError> {
+        Ok(self.interrupts(session_id))
+    }
+    /// Apply resume commands through an authority, preserving the local gate default.
+    async fn resume_commands(
+        &self,
+        session_id: SessionId,
+        entries: &[ResumeEntry],
+    ) -> Result<ResumeOutcome, AgUiError> {
+        self.resume(session_id, entries)
+    }
     /// The interrupts open on `session_id`, oldest first. Empty when the
     /// session waits on nothing.
     fn interrupts(&self, session_id: SessionId) -> Vec<Interrupt>;
@@ -995,7 +1008,7 @@ impl AgUiStream {
     /// };
     /// let run = session.ag_ui(input).await?;
     /// let sent = run.sent().expect("a user message starts a turn");
-    /// assert_eq!(sent.disposition, SendDisposition::Started);
+    /// assert_eq!(sent.disposition, SendDisposition::Pending);
     /// assert!(sent.wait().await?.success);
     /// # Ok(())
     /// # }
@@ -1147,6 +1160,7 @@ impl Session {
             seed_history,
         } = options;
         let session_id = self.session_id();
+        self.refresh_hosted_calls().await?;
         let frontend_tools = frontend_definitions(&input.tools)?;
         let frontend: HashSet<String> = input.tools.iter().map(|tool| tool.name.clone()).collect();
         let results = trailing_results(&input.messages);
@@ -1204,14 +1218,14 @@ impl Session {
         };
         // Subscribe before anything can happen, so no event of this run and
         // no park is missed.
-        let events = self.events();
+        let events = self.protocol_events().await?;
         let parked = gate.as_ref().map(|gate| gate.subscribe());
         let parked_calls = self.watch_parked_tool_calls();
-        let open_interrupts = || {
-            gate.as_ref()
-                .map(|gate| gate.interrupts(session_id))
-                .unwrap_or_default()
+        let initial_interrupts = match &gate {
+            Some(gate) => gate.query(session_id).await?,
+            None => Vec::new(),
         };
+        let open_interrupts = || initial_interrupts.clone();
 
         let mut sent = None;
         let start = if let Some((_, text)) = trigger {
@@ -1241,7 +1255,7 @@ impl Session {
                 );
             }
             match &gate {
-                Some(gate) => match gate.resume(session_id, &input.resume)? {
+                Some(gate) => match gate.resume_commands(session_id, &input.resume).await? {
                     ResumeOutcome::NothingOpen => Start::Empty,
                     ResumeOutcome::StillOpen(interrupts) => Start::Park(Vec::new(), interrupts),
                     ResumeOutcome::Resumed => Start::Follow,
@@ -1335,6 +1349,12 @@ async fn next_event(mut state: RunState) -> Option<(Event, RunState)> {
         }
         let session_id = state.session.session_id();
         tokio::select! {
+            () = async {
+                if state.session.has_hosted_execution() {everruns_contracts::rt::sleep(std::time::Duration::from_millis(50)).await;} else {std::future::pending().await}
+            } => {
+                if let Err(error)=state.session.refresh_hosted_calls().await {state.projector.fail(RunErrorEvent::new(error.to_string()));}
+                state.interrupt_if_parked().await;
+            },
             next = state.events.recv() => match next {
                 Ok(Some(event)) => state.project(&event),
                 Ok(None) => state.projector.fail(RunErrorEvent::new(
@@ -1343,9 +1363,9 @@ async fn next_event(mut state: RunState) -> Option<(Event, RunState)> {
                 Err(EventStreamError::Lagged { .. }) => state.recover().await,
                 Err(EventStreamError::Unavailable) => state.projector.fail(RunErrorEvent::new("session event authority unavailable")),
             },
-            () = parked_on(&mut state.parked, session_id) => state.interrupt_if_parked(),
+            () = parked_on(&mut state.parked, session_id) => state.interrupt_if_parked().await,
             () = parked_with(&mut state.parked_calls, state.awaiting.as_deref()) => {
-                state.park_frontend_calls();
+                state.park_frontend_calls().await;
             }
         }
     }
@@ -1423,7 +1443,7 @@ impl RunState {
 
     /// The turn parked on the frontend calls it requested: flush what it
     /// emitted, then end the run with them, beside any open interrupt.
-    fn park_frontend_calls(&mut self) {
+    async fn park_frontend_calls(&mut self) {
         let Some(calls) = self.awaiting.take() else {
             return;
         };
@@ -1433,11 +1453,16 @@ impl RunState {
                 return;
             }
         }
-        let interrupts = self
-            .gate
-            .as_ref()
-            .map(|gate| gate.interrupts(self.session.session_id()))
-            .unwrap_or_default();
+        let interrupts = match &self.gate {
+            Some(gate) => match gate.query(self.session.session_id()).await {
+                Ok(interrupts) => interrupts,
+                Err(error) => {
+                    self.projector.fail(RunErrorEvent::new(error.to_string()));
+                    return;
+                }
+            },
+            None => Vec::new(),
+        };
         self.projector.park(calls, interrupts);
     }
 
@@ -1461,9 +1486,15 @@ impl RunState {
 
     /// A request parked: flush what the turn already emitted, then end the
     /// run with every open interrupt.
-    fn interrupt_if_parked(&mut self) {
+    async fn interrupt_if_parked(&mut self) {
         let Some(gate) = &self.gate else { return };
-        let interrupts = gate.interrupts(self.session.session_id());
+        let interrupts = match gate.query(self.session.session_id()).await {
+            Ok(interrupts) => interrupts,
+            Err(error) => {
+                self.projector.fail(RunErrorEvent::new(error.to_string()));
+                return;
+            }
+        };
         if interrupts.is_empty() {
             return;
         }

@@ -5,12 +5,25 @@
 //! access is read-only; only a claimed epoch supplies runtime write ports.
 
 mod admission;
+mod configuration;
+#[cfg(not(target_arch = "wasm32"))]
+pub use configuration::DirectoryEnvironmentFactory;
+pub use configuration::{SessionConfiguration, validate_history_seed};
 mod approval;
-pub use approval::{ApprovalCommit, PreparedApproval, ToolApprovalDecision, prepare_approvals};
+pub use approval::{
+    ApprovalCommit, PreparedApproval, ToolApprovalDecision, prepare_approval_submission,
+    prepare_approvals,
+};
 pub(crate) mod execution;
 mod memory;
+mod resolution;
+pub use resolution::{
+    QuestionAnswersRequest, validate_question_answers, validate_tool_resolutions,
+};
+pub(crate) mod query;
 pub use admission::{Admission, AdmissionState, TurnAssignment};
 pub use memory::MemoryHosting;
+pub use query::SessionQuerySnapshot;
 #[cfg(feature = "local")]
 mod sqlite;
 #[cfg(feature = "local")]
@@ -125,7 +138,7 @@ pub struct HostingStatus {
     /// Host intervention is required before execution resumes.
     pub suspended: bool,
     /// Durable diagnostic code when host intervention is required.
-    pub suspension_reason:Option<String>,
+    pub suspension_reason: Option<String>,
     /// Logical turn still open in the journal, including a parked turn.
     pub open_turn: Option<everruns_contracts::typed_id::TurnId>,
     /// Client calls whose durable resolutions remain outstanding.
@@ -150,6 +163,40 @@ impl HostingStatus {
 /// One coherent authority and its activation policy.
 #[async_trait]
 pub trait SessionHosting: Send + Sync + 'static {
+    /// Resolve mixed approvals and client answers on one retained turn in one
+    /// transaction. This is the command boundary for protocol resume batches.
+    async fn resolve_waits(
+        &self,
+        session: SessionId,
+        command: uuid::Uuid,
+        target: everruns_contracts::typed_id::TurnId,
+        approvals: Vec<ApprovalCommit>,
+        results: Vec<ToolCompletedData>,
+    ) -> Result<()>;
+    /// Resolve an Execution API approval batch atomically and retain its response.
+    async fn submit_approvals(
+        &self,
+        session: SessionId,
+        command: uuid::Uuid,
+        turn: everruns_contracts::typed_id::TurnId,
+        decisions: Vec<everruns_contracts::execution_api::ToolApprovalAnswer>,
+    ) -> Result<everruns_contracts::execution_api::SubmitToolApprovalsResponse>;
+    /// Apply an idempotent patch to client configuration under the authority lock.
+    async fn configure(
+        &self,
+        session: SessionId,
+        command: uuid::Uuid,
+        patch: SessionConfiguration,
+    ) -> Result<()>;
+    /// Atomically import prior conversation only while canonical conversation is empty.
+    async fn seed_history(
+        &self,
+        session: SessionId,
+        command: uuid::Uuid,
+        messages: Vec<RuntimeMessage>,
+    ) -> Result<bool>;
+    /// Capture a read boundary and execution settings in one authority transaction.
+    async fn query_snapshot(&self, session: SessionId) -> Result<SessionQuerySnapshot>;
     /// Resolve an opaque event identity without assuming UUID time order.
     /// Persistent plugins should index this lookup. The default pages a
     /// pinned snapshot with bounded memory for small/volatile authorities.
@@ -195,7 +242,12 @@ pub trait SessionHosting: Send + Sync + 'static {
     /// Read binding and scheduling state.
     async fn status(&self, session: SessionId) -> Result<HostingStatus>;
     /// Commits the input, deduplicated receipt and wakeup obligation together.
-    async fn admit(&self, session: SessionId, message: RuntimeMessage) -> Result<AdmissionReceipt>;
+    async fn admit(
+        &self,
+        session: SessionId,
+        message: RuntimeMessage,
+        cancelled: bool,
+    ) -> Result<AdmissionReceipt>;
     /// Reopen an accepted command without submitting its payload again.
     async fn receipt(
         &self,
@@ -235,6 +287,11 @@ pub trait SessionHosting: Send + Sync + 'static {
 /// Write capability scoped to one unexpired authority epoch.
 #[async_trait]
 pub trait SessionEpoch: Send + Sync + 'static {
+    /// Optional local hint for prompt control observation. Remote ownership
+    /// still observes commands on renewal; hints carry no authority.
+    fn renew_poke(&self) -> Option<Arc<tokio::sync::Notify>> {
+        None
+    }
     /// Retain a timer obligation under the current epoch. Its activation is
     /// independent of frontend traffic; only Rust interprets expired waits.
     async fn schedule(&self, wake_at: Option<i64>) -> Result<()>;

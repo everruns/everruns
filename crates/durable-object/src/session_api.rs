@@ -51,6 +51,13 @@ impl SessionApi {
                         _ => 503,
                     };
                 }
+                if let Some(error) = cause.downcast_ref::<AgentLoopError>() {
+                    match error {
+                        AgentLoopError::Configuration(_) => return 400,
+                        AgentLoopError::SessionNotFound(_) => return 404,
+                        _ => {}
+                    }
+                }
             }
         }
         match error {
@@ -64,6 +71,37 @@ impl SessionApi {
     }
 
     pub async fn handle(&self, session: SessionId, operation: &str, body: Value) -> Result<Value> {
+        if operation == "card" {
+            if body["agent_name"]
+                .as_str()
+                .is_some_and(|name| name != self.build.agent)
+            {
+                return Err(crate::client::rejected(404));
+            }
+            use everruns_contracts::execution_api::{
+                AgentCard, AgentCardAuth, AgentCardInput, AgentCardLinks,
+            };
+            return Ok(json!(AgentCard {
+                name: self.build.agent.clone(),
+                description: None,
+                streaming: true,
+                input: AgentCardInput::TEXT,
+                auth: vec![AgentCardAuth::AgentKey],
+                conversation_starters: Vec::new(),
+                links: AgentCardLinks {
+                    sessions: format!("/v1/channels/{}/sessions", self.build.agent),
+                    ag_ui: None,
+                    a2a: None
+                }
+            }));
+        }
+        if operation == "scope" {
+            let binding = self.engine.session_binding(session).await?;
+            if body["agent_name"].as_str() != Some(binding.behavior.agent.as_str()) {
+                return Err(crate::client::rejected(404));
+            }
+            return Ok(json!({}));
+        }
         if operation == "create" {
             if body
                 .get("agent_name")
@@ -251,6 +289,44 @@ impl SessionApi {
                 Ok(json!(handle.pending_tools().await.map_err(|e| {
                     AgentLoopError::Internal(anyhow::Error::new(e))
                 })?))
+            }
+            "answer_questions" => {
+                let request: everruns::hosting::QuestionAnswersRequest =
+                    serde_json::from_value(body)
+                        .map_err(|error| AgentLoopError::config(error.to_string()))?;
+                let status = request.status;
+                handle
+                    .answer_questions(request)
+                    .await
+                    .map_err(|error| AgentLoopError::Internal(anyhow::Error::new(error)))?;
+                let phase = self.engine.session_status(session).await?;
+                Ok(json!({"status":status,"answered_by":"user","session_status":phase.phase()}))
+            }
+            "submit_approvals" => {
+                let request: everruns_contracts::execution_api::SubmitToolApprovalsRequest =
+                    serde_json::from_value(body)
+                        .map_err(|error| AgentLoopError::config(error.to_string()))?;
+                if request.command_id.is_some() && request.turn_id.is_none() {
+                    return Err(AgentLoopError::config("command_id requires turn_id"));
+                }
+                let target = match request.turn_id {
+                    Some(turn) => turn,
+                    None => self
+                        .engine
+                        .session_status(session)
+                        .await?
+                        .open_turn
+                        .ok_or_else(|| AgentLoopError::config("no open turn"))?,
+                };
+                let result = handle
+                    .submit_approvals(
+                        request.command_id.unwrap_or_else(uuid::Uuid::new_v4),
+                        target,
+                        request.decisions,
+                    )
+                    .await
+                    .map_err(|error| AgentLoopError::Internal(anyhow::Error::new(error)))?;
+                Ok(json!(result))
             }
             "approve" => {
                 let command = serde_json::from_value(body["command_id"].clone())

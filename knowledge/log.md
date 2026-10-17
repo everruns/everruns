@@ -14,6 +14,18 @@
   retain the framework driver and server connection APIs. See
   [Providers](foundations/providers.md) and [Models and providers](ui/models-and-providers.md).
 
+* **Engine session hosting implementation.** Default memory, native SQLite and
+  Durable Object profiles now share Framework admission, lifecycle receipts,
+  exact-turn approvals/client results, authority queries and actor execution.
+  serve and celld use ordinary registered Agents and the same Engine. Recover
+  native containers and replicated authority owners without client requests;
+  distinguish journal durability from explicit workspace/compute services.
+  Scope declared secret names to app discovery so retained build hashes cannot
+  change when unrelated code declares a secret. See
+  [Engine-Owned Durable Sessions](framework/engine-durable-sessions.md) and
+  [Durable Object qualification](framework/durable-object-native.md).
+  The announcement publication hold remains in force.
+
 ## 2026-10-16
 
 * **Platform operating skills.** Share product, CLI, and agent-authoring skills

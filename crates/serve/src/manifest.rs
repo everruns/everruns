@@ -191,9 +191,10 @@ impl Manifest {
         }
         // Connections and channels name their secrets while being built.
         secrets.extend(
-            crate::connection::declared_secrets()
-                .into_iter()
-                .map(str::to_string),
+            inner
+                .declared_secrets
+                .iter()
+                .map(|name| (*name).to_string()),
         );
 
         let mut routes = vec![
@@ -324,7 +325,11 @@ pub(crate) fn build_id(app: &App) -> String {
 // A manifest identifies declarations/assets, but cannot distinguish two tool
 // implementations with the same signature. Durable bindings also pin the
 // executable. Operators may supply an immutable artifact id via SERVE_BUILD_ID.
-pub(crate) fn execution_build_id(app: &App) -> crate::Result<String> {
+pub(crate) fn execution_build_id(
+    app: &App,
+    assets: &std::collections::HashMap<String, String>,
+    instructions: &std::collections::HashMap<String, String>,
+) -> crate::Result<String> {
     use sha2::{Digest, Sha256};
     use std::io::Read;
     static EXECUTABLE: std::sync::OnceLock<Result<[u8; 32], String>> = std::sync::OnceLock::new();
@@ -349,6 +354,10 @@ pub(crate) fn execution_build_id(app: &App) -> crate::Result<String> {
     let mut digest = Sha256::new();
     digest.update(executable);
     digest.update(build_id(app).as_bytes());
+    let assets: std::collections::BTreeMap<_, _> = assets.iter().collect();
+    digest.update(serde_json::to_vec(&assets)?);
+    let instructions: std::collections::BTreeMap<_, _> = instructions.iter().collect();
+    digest.update(serde_json::to_vec(&instructions)?);
     Ok(format!("e{}", hex::encode(digest.finalize())))
 }
 

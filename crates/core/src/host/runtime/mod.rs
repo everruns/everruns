@@ -185,6 +185,7 @@ pub struct CapabilityDelta {
 /// `build()` returns an [`InProcessRuntime`] that can execute turns in-process
 /// without the durable engine or the control-plane server.
 pub struct InProcessRuntimeBuilder {
+    initialize_session: bool,
     host_composition: HostComposition,
     /// Provider registered at build time (replacing a same-name one) whose model
     /// becomes the default when nothing else set one ([`Self::provider_with_default_model`]).
@@ -235,6 +236,7 @@ impl InProcessRuntimeBuilder {
     ///   default model via [`Self::default_model`].
     pub fn new() -> Self {
         Self {
+            initialize_session: true,
             host_composition: HostComposition::builder()
                 .capability_registry(crate::host::runtime_capability_registry())
                 .driver_registry(DriverRegistry::new())
@@ -262,6 +264,13 @@ impl InProcessRuntimeBuilder {
             plugin_warnings: Vec::new(),
             waits_on_person: None,
         }
+    }
+
+    /// Assemble context against query-local metadata without authoring the
+    /// canonical first-session event. Pair with a read-only event log.
+    pub fn for_context_query(mut self) -> Self {
+        self.initialize_session = false;
+        self
     }
 
     /// Set the auth provider used to acquire credentials for scoped MCP
@@ -698,8 +707,10 @@ impl InProcessRuntimeBuilder {
             parked_turns: ParkedTurns::default(),
             waits_on_person: self.waits_on_person,
         };
-        for session in &self.sessions {
-            runtime.ensure_session_started(session).await?;
+        if self.initialize_session {
+            for session in &self.sessions {
+                runtime.ensure_session_started(session).await?;
+            }
         }
         Ok(runtime)
     }

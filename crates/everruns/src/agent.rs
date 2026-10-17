@@ -489,6 +489,16 @@ impl Agent {
         }
     }
 
+    /// Reopen a separate durable directory workspace for each session. The
+    /// host must preserve `root` independently of the session journal.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn directory_environment_factory(
+        &self,
+        root: impl Into<PathBuf>,
+    ) -> impl crate::hosting::EnvironmentFactory {
+        crate::hosting::DirectoryEnvironmentFactory::new(root)
+    }
+
     pub(crate) async fn default_session_environment(
         &self,
         session_id: SessionId,
@@ -614,13 +624,52 @@ impl Agent {
 
     pub(crate) async fn build_runtime_with_backends(
         &self,
-        mut backends: HostBackends,
+        backends: HostBackends,
         session_id: SessionId,
         environment: Option<Environment>,
         bound_harness: Option<&crate::Harness>,
         event_sink: Option<Arc<dyn EventSink>>,
         hook_state: Option<Arc<crate::hooks::HookRunState>>,
     ) -> Result<InProcessRuntime, everruns_contracts::error::AgentLoopError> {
+        self.runtime_builder(
+            backends,
+            session_id,
+            environment,
+            bound_harness,
+            event_sink,
+            hook_state,
+        )
+        .await?
+        .build()
+        .await
+    }
+
+    pub(crate) async fn build_context_runtime(
+        &self,
+        backends: HostBackends,
+        session: SessionId,
+        environment: Environment,
+        harness: Option<&crate::Harness>,
+    ) -> Result<InProcessRuntime, everruns_contracts::error::AgentLoopError> {
+        self.runtime_builder(backends, session, Some(environment), harness, None, None)
+            .await?
+            .for_context_query()
+            .build()
+            .await
+    }
+
+    async fn runtime_builder(
+        &self,
+        mut backends: HostBackends,
+        session_id: SessionId,
+        environment: Option<Environment>,
+        bound_harness: Option<&crate::Harness>,
+        event_sink: Option<Arc<dyn EventSink>>,
+        hook_state: Option<Arc<crate::hooks::HookRunState>>,
+    ) -> Result<
+        everruns_core::host::InProcessRuntimeBuilder,
+        everruns_contracts::error::AgentLoopError,
+    > {
         backends = crate::batteries::runtime_backends(backends);
         let hook_capability = hook_state.and_then(|state| state.capability());
         let mut capabilities = self.capabilities.clone();
@@ -809,8 +858,7 @@ impl Agent {
         if let Some(capability) = hook_capability {
             builder = builder.capability(capability);
         }
-        builder = builder.provider(self.provider.clone());
-        builder.build().await
+        Ok(builder.provider(self.provider.clone()))
     }
 }
 

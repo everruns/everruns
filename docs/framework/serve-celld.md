@@ -32,8 +32,12 @@ when retrying uncertain replies. Creation acknowledges the committed binding;
 a successful send acknowledges durable admission. Turn assignment and completion
 are observed separately. Disconnecting an event reader does not cancel work.
 
-OS tools need a separately provisioned workspace at `SERVE_WORKSPACE_DIR`.
-Session journal durability does not preserve ephemeral container files. The local
+`SERVE_WORKSPACE_DIR` reopens separate workspace directories by session. OS tools
+also need an explicit sandbox adapter through `serve_celld::Options::microvm`;
+remote workspace/compute services can be supplied through `Options::environment`.
+Commands must be isolated from the Engine process and its authority credentials.
+The adapter never enables an uncontained shell. Session journal durability does
+not preserve ephemeral container files. The local
 catalog/cache can be reconstructed from authority binding metadata. Channel inbox,
 outbox and scheduling guarantees require separately supported host services.
 

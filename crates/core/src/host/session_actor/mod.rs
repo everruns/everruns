@@ -46,6 +46,16 @@ pub enum Phase {
 }
 
 /// The hosts a session actor's turns run on.
+/// Result of an application's pre-turn gate. Rejection is already retained
+/// by the host before the shared driver advances the rejected input cursor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InputPreparation {
+    /// Planning may begin under the current epoch.
+    Ready,
+    /// The command has a durable rejection receipt; no model/tool may use it.
+    Rejected,
+}
+
 #[async_trait]
 pub trait ActorHosts: Send + Sync + 'static {
     type Host: RuntimeHostAdapter + Clone + Send + Sync + 'static;
@@ -79,8 +89,8 @@ pub trait ActorHosts: Send + Sync + 'static {
         _host: &Self::Host,
         _drive: &TurnDrive,
         _input: Option<&crate::RuntimeMessage>,
-    ) -> everruns_contracts::error::Result<()> {
-        Ok(())
+    ) -> everruns_contracts::error::Result<InputPreparation> {
+        Ok(InputPreparation::Ready)
     }
 
     /// Record assignment before a reason can consume admitted steering.

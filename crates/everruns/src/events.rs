@@ -843,7 +843,9 @@ impl EventStream {
                         // Canonical events use the cursor reader, so a local
                         // notification cannot skip an unseen journal gap.
                         Ok(event) if event.sequence().is_none() => return Ok(Some(event)),
-                        Ok(_) | Err(_) => {
+                        Err(broadcast::error::RecvError::Closed) => return Ok(None),
+                        Err(broadcast::error::RecvError::Lagged(missed)) => return Err(EventStreamError::Lagged { missed }),
+                        Ok(_) => {
                             everruns_contracts::rt::sleep(std::time::Duration::from_millis(50)).await;
                             continue;
                         }
@@ -872,6 +874,9 @@ impl EventStream {
         }
         loop {
             match self.rx.try_recv() {
+                // Canonical delivery for hosted streams must follow the
+                // authority cursor. Local notifications can arrive out of order.
+                Ok(event) if self.authority.is_some() && event.sequence().is_some() => continue,
                 Ok(event) if self.is_replayed(&event) => continue,
                 Ok(event) => return Ok(Some(event)),
                 Err(broadcast::error::TryRecvError::Lagged(missed)) => {

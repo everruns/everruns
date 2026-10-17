@@ -30,6 +30,12 @@ pub enum AdmissionState {
         /// Unresolved calls, in their canonical order.
         calls: Vec<crate::ToolCall>,
     },
+    /// The pre-effect gate rejected this exact input. A new command may retry
+    /// a known failed preparation; uncertain effects remain suspended.
+    Rejected {
+        /// Typed application gate error retained by the authority.
+        failure: crate::HookFailure,
+    },
     /// Runtime termination and awaited lifecycle finalization committed.
     Complete {
         /// Finalized Framework outcome.
@@ -71,6 +77,16 @@ impl Admission {
 
     /// Read current progress without starting execution.
     pub async fn state(&self) -> Result<AdmissionState> {
+        if let Some(rejected) = self
+            .hosting
+            .record(self.session, &format!("rejected/{}", self.message_id()))
+            .await?
+        {
+            let failure = serde_json::from_value(rejected["failure"].clone()).map_err(|_| {
+                everruns_contracts::error::AgentLoopError::store("invalid input rejection receipt")
+            })?;
+            return Ok(AdmissionState::Rejected { failure });
+        }
         if let Some(assignment) = self.assignment().await? {
             if let Some(outcome) = self
                 .hosting
@@ -110,6 +126,7 @@ impl Admission {
             match self.state().await? {
                 AdmissionState::Complete { turn } => return Ok(turn),
                 AdmissionState::Suspended => return Err(RunError::Suspended),
+                AdmissionState::Rejected { failure } => return Err(RunError::Hook(failure)),
                 _ => everruns_contracts::rt::sleep(Duration::from_millis(50)).await,
             }
         }

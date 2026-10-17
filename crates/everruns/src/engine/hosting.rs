@@ -13,6 +13,7 @@ pub(super) struct Registration {
 impl EngineBuilder {
     /// Select the coherent session authority, admission and activation profile.
     pub fn hosting(mut self, profile: impl SessionHosting) -> Self {
+        self.volatile_default = false;
         self.hosting = Some(Arc::new(profile));
         self
     }
@@ -20,6 +21,8 @@ impl EngineBuilder {
     /// Retain executable behavior under an immutable, secret-free build key.
     /// Registration is configuration: changing behavior requires a new key.
     pub fn register(mut self, build: AgentBuild, agent: Agent) -> Self {
+        // THREAT[TM-DURABLE-012]: retained identities name trusted host code;
+        // an existing key cannot be rebound to a different executable Agent.
         assert!(
             !self.registry.contains_key(&build),
             "duplicate agent build registration"
@@ -59,6 +62,63 @@ impl EngineBuilder {
 }
 
 impl Engine {
+    pub(crate) async fn inspect_hosted(&self, session: SessionId) -> Result<crate::SessionContext> {
+        let snapshot = self.profile()?.query_snapshot(session).await?;
+        self.cache_hosted(session, snapshot.binding.clone())?;
+        let registration = self.registration(&snapshot.binding.behavior)?;
+        let environment = if snapshot.binding.environment.is_some() {
+            self.hosted_environment(session).await?
+        } else {
+            registration
+                .agent
+                .default_session_environment(session)
+                .await
+                .map_err(|error| AgentLoopError::config(error.to_string()))?
+        };
+        let mut backends = self.profile()?.reader(session);
+        backends.event_log = Arc::new(crate::hosting::query::InputFilterLog::new(
+            backends.event_log,
+            snapshot.rejected_inputs.into_iter().collect(),
+        ));
+        backends.event_log = Arc::new(crate::hosting::query::SnapshotLog::new(
+            backends.event_log,
+            session,
+            snapshot.high_watermark,
+        ));
+        let metadata = HostBackends::in_memory().session_store;
+        backends.session_store = metadata.clone();
+        let runtime = registration
+            .agent
+            .build_context_runtime(
+                backends,
+                session,
+                environment,
+                registration.harness.as_ref(),
+            )
+            .await?;
+        if let Some(mut existing) = snapshot.execution {
+            let seeded = metadata
+                .get_session(session)
+                .await?
+                .ok_or_else(|| AgentLoopError::store("query metadata was not initialized"))?;
+            // These are query-local association ids for the pinned definitions;
+            // mutable settings remain from the captured authority record.
+            existing.harness_id = seeded.harness_id;
+            existing.agent_id = seeded.agent_id;
+            metadata.add_session(existing).await?;
+        }
+        let mut record = metadata
+            .get_session(session)
+            .await?
+            .ok_or_else(|| AgentLoopError::store("query metadata missing"))?;
+        snapshot.configuration.apply(&mut record);
+        metadata.add_session(record).await?;
+        Ok(crate::SessionContext::from_runtime(
+            runtime.load_context(session).await?,
+            registration.agent.plugin_warnings(),
+        ))
+    }
+
     /// Whether creation and admission use a coherent session authority.
     pub fn has_session_hosting(&self) -> bool {
         self.inner.hosting.is_some()
@@ -137,7 +197,18 @@ impl Engine {
         &self,
         session: SessionId,
     ) -> Result<crate::Environment> {
-        let binding = self.session_binding(session).await?;
+        let local_binding = self
+            .inner
+            .sessions
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(&session)
+            .filter(|entry| entry.creation.is_some())
+            .and_then(|entry| entry.durable_binding.clone());
+        let binding = match local_binding {
+            Some(binding) => binding,
+            None => self.session_binding(session).await?,
+        };
         let registration = self.registration(&binding.behavior)?;
         let Some((reference, factory)) = registration.environment else {
             return Err(AgentLoopError::config(
@@ -292,6 +363,8 @@ impl Engine {
                     harness: registration.harness,
                     state: None,
                     durable_binding: Some(binding),
+                    provisional: false,
+                    creation: None,
                 },
             );
         }
@@ -321,6 +394,8 @@ impl Engine {
                     harness,
                     state: None,
                     durable_binding: Some(status.binding),
+                    provisional: false,
+                    creation: None,
                 });
         }
         if let Some(state) = self.state(session) {
@@ -386,5 +461,126 @@ impl Engine {
             }
             ran = true;
         }
+    }
+}
+
+impl Engine {
+    pub(super) fn is_hosted(&self, session: SessionId) -> bool {
+        self.inner
+            .sessions
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(&session)
+            .is_none_or(|entry| entry.durable_binding.is_some())
+    }
+
+    pub(super) fn create_volatile(&self, agent: Agent) -> Session {
+        let session = SessionId::new();
+        let build = AgentBuild::new(agent.name(), format!("process-{session}"));
+        let reference = format!("process-environment-{session}");
+        let factory = agent.environment_factory();
+        self.register_agent_with_environment(
+            build.clone(),
+            agent.clone(),
+            None,
+            &reference,
+            factory,
+        )
+        .expect("fresh process registration");
+        self.inner
+            .sessions
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(
+                session,
+                EngineSessionEntry {
+                    agent: Some(agent),
+                    harness: None,
+                    state: None,
+                    durable_binding: Some(SessionBinding {
+                        framework: 1,
+                        behavior: build,
+                        harness: None,
+                        environment: Some(reference),
+                        metadata: serde_json::Value::Null,
+                    }),
+                    provisional: true,
+                    creation: Some(Arc::new(OnceCell::new())),
+                },
+            );
+        let handle = Session::new(self.binding(session), None, self.inner.observers.clone());
+        self.remember_state(session, &handle);
+        handle
+    }
+
+    pub(super) async fn ensure_hosted_created(&self, session: SessionId) -> Result<()> {
+        let creation = self
+            .inner
+            .sessions
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(&session)
+            .and_then(|entry| entry.creation.clone());
+        if let Some(creation) = creation {
+            creation
+                .get_or_try_init(|| async {
+                    let binding = {
+                        let mut sessions = self
+                            .inner
+                            .sessions
+                            .lock()
+                            .unwrap_or_else(|p| p.into_inner());
+                        let entry = sessions
+                            .get_mut(&session)
+                            .ok_or_else(|| AgentLoopError::SessionNotFound(session))?;
+                        entry.provisional = false;
+                        entry
+                            .durable_binding
+                            .clone()
+                            .ok_or_else(|| AgentLoopError::config("missing provisional binding"))?
+                    };
+                    self.profile()?.create(session, &binding).await
+                })
+                .await?;
+            Ok(())
+        } else {
+            self.profile()?.status(session).await.map(|_| ())
+        }
+    }
+
+    pub(super) fn bind_volatile_environment(
+        &self,
+        session: SessionId,
+        environment: crate::Environment,
+    ) -> std::result::Result<bool, SessionEnvironmentError> {
+        let mut sessions = self
+            .inner
+            .sessions
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let entry = sessions
+            .get_mut(&session)
+            .ok_or(SessionEnvironmentError::Unavailable)?;
+        if !entry.provisional {
+            return Ok(false);
+        }
+        let binding = entry
+            .durable_binding
+            .as_mut()
+            .ok_or(SessionEnvironmentError::Unavailable)?;
+        let reference = format!("process-environment-{session}");
+        let factory = Arc::new(move |_| {
+            let environment = environment.clone();
+            async move { Ok(environment) }
+        });
+        self.inner
+            .registry
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get_mut(&binding.behavior)
+            .ok_or(SessionEnvironmentError::Unavailable)?
+            .environment = Some((reference.clone(), factory));
+        binding.environment = Some(reference);
+        Ok(true)
     }
 }

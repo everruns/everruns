@@ -2,6 +2,9 @@
 //! request and commit the decision, answer and wakeup in one transaction.
 use super::*;
 pub use everruns_contracts::execution_api::ToolApprovalDecision;
+use everruns_contracts::execution_api::{
+    SubmitToolApprovalsResponse, ToolApprovalAnswer, ToolApprovalResolution,
+};
 use everruns_contracts::{
     error::AgentLoopError,
     tool_approval_types::{
@@ -9,6 +12,77 @@ use everruns_contracts::{
         one_off_decision_storage_key,
     },
 };
+
+/// Expand an Execution API batch, rejecting omitted requests, before one commit.
+pub fn prepare_approval_submission(
+    decisions: &[ToolApprovalAnswer],
+    pending: &[crate::ToolCall],
+    turn: everruns_contracts::typed_id::TurnId,
+) -> Result<(Vec<ApprovalCommit>, SubmitToolApprovalsResponse)> {
+    let mut seen = std::collections::HashSet::new();
+    if decisions.is_empty()
+        || decisions.len() > 64
+        || decisions
+            .iter()
+            .any(|answer| !seen.insert(&answer.tool_call_id))
+    {
+        return Err(AgentLoopError::config("invalid approval decisions"));
+    }
+    let requested: Vec<_> = pending
+        .iter()
+        .filter_map(|call| {
+            ToolApprovalRequired::from_request_call(&call.id, &call.name, &call.arguments)
+                .map(|request| (call, request))
+        })
+        .collect();
+    if decisions.iter().any(|answer| {
+        !requested
+            .iter()
+            .any(|(call, _)| call.id == answer.tool_call_id)
+    }) {
+        return Err(AgentLoopError::config(
+            "approval request is no longer pending",
+        ));
+    }
+    let mut approvals = Vec::new();
+    let mut resolved = Vec::new();
+    for (call, request) in requested {
+        let explicit = decisions
+            .iter()
+            .find(|answer| answer.tool_call_id == call.id)
+            .map(|answer| answer.decision);
+        let decision = explicit.unwrap_or(ToolApprovalDecision::Reject);
+        let outcome = match explicit {
+            Some(ToolApprovalDecision::Allow) => "allow",
+            Some(ToolApprovalDecision::AllowAlways) => "allow_always",
+            Some(ToolApprovalDecision::Reject) => "reject",
+            Some(ToolApprovalDecision::RejectAlways) => "reject_always",
+            None => "not_approved",
+        };
+        approvals.push(ApprovalCommit {
+            turn_id: turn,
+            request_id: call.id.clone(),
+            decision,
+        });
+        resolved.push(ToolApprovalResolution {
+            tool_call_id: call.id.clone(),
+            tool: request.tool,
+            outcome: outcome.into(),
+        });
+    }
+    let status = if pending.len() == approvals.len() {
+        "active"
+    } else {
+        "waitingfortoolresults"
+    };
+    Ok((
+        approvals,
+        SubmitToolApprovalsResponse {
+            resolved,
+            status: status.into(),
+        },
+    ))
+}
 
 /// A decision targeting the exact canonical request, never client-supplied
 /// arguments or a free-form permission record.
