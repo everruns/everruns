@@ -1,5 +1,5 @@
 ---
-title: "Five more providers: Mistral, Fireworks, Vercel, Cloudflare, MAI"
+title: "New providers: Mistral, Fireworks, Vercel, Cloudflare, MAI"
 description: "Yolop setup and --provider now reach Mistral, Fireworks, Vercel, Cloudflare, and MAI, with Google on the native Gemini driver."
 date: 2026-10-16
 kind: feature
