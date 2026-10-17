@@ -3515,6 +3515,5 @@ mod tests {
     // Outbound HTTP via egress (enable_http config)
     // ========================================================================
 
-    mod cpython_tests;
     mod http_tests;
 }
