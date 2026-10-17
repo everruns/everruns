@@ -223,12 +223,15 @@ the `handle_tools_call` augmentation).
 
 ## Public Skills extension
 
-The endpoint distributes two maintained MCP workflow skills from [`skills/`](../../skills/)
+The endpoint distributes four maintained product and workflow skills from [`skills/`](../../skills/)
 through the official [Skills extension](https://modelcontextprotocol.io/extensions/skills/overview).
-[`everruns-mcp`](../../skills/everruns-mcp/SKILL.md) guides platform operation;
+[`everruns`](../../skills/everruns/SKILL.md) introduces the product;
+[`everruns-cli`](../../skills/everruns-cli/SKILL.md) owns command usage and examples;
+[`everruns-mcp`](../../skills/everruns-mcp/SKILL.md) guides connection setup, MCP transport, and platform operation;
 [`everruns-agent-authoring`](../../skills/everruns-agent-authoring/SKILL.md) guides
-agent definition changes. Both are actionable using only the connected endpoint.
-The Rust Framework skill targets local application development and stays separately
+agent definition changes. CLI guidance distinguishes installed-client conveniences
+from the server command catalog; MCP-only work needs no local CLI.
+The `everruns-framework` skill targets local Rust application development and stays separately
 installable. Organization-owned Skills registry records and contributor workflows
 also have different audiences and owners.
 

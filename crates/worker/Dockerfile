@@ -27,6 +27,7 @@ COPY vendor vendor
 COPY crates crates
 COPY integrations integrations
 COPY docs docs
+COPY skills skills
 
 RUN cargo chef prepare --recipe-path recipe.json
 
@@ -45,6 +46,7 @@ COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
 COPY integrations integrations
 COPY docs docs
+COPY skills skills
 
 RUN cargo build --release -p everruns-worker
 

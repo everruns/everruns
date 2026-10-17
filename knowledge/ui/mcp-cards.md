@@ -290,15 +290,11 @@ Only `agent_get_card` ships in the first iteration.
 
 ## Plugin Surface
 
-The `everruns` plugin exposes a slash command for the new tool:
-
-- `commands/agent-card.md` → calls `agent_get_card` with a positional
-  agent ID or name (resolved via `query` if not a valid `agent_…` ID).
-
-The skill (`plugins/everruns/skills/everruns/SKILL.md`) documents
-the `ui://` resource URI shape so coding agents know to surface the card
-resource alongside textual replies in MCP-UI-aware hosts, and to fall back
-to `get_agent` JSON otherwise.
+The [coding-agent plugin](https://github.com/everruns/plugins) distributes the
+shared [MCP workflow skill](../../skills/everruns-mcp/SKILL.md). It covers the
+optional `everruns_home` and `agent_get_card` views; ordinary text tools remain
+available when the host cannot render MCP Apps. Product orientation belongs in
+the general `everruns` skill.
 
 ## Open Questions
 

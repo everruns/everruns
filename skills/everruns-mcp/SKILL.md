@@ -1,11 +1,11 @@
 ---
 name: everruns-mcp
-description: Use the Everruns MCP endpoint to find agents, run and continue sessions, inspect results, and manage platform resources. Use for work through a connected Everruns MCP server; for authoring agents, also load everruns-agent-authoring. Rust embedding belongs to the everruns skill.
+description: Connect to and use the Everruns MCP endpoint to find agents, run and continue sessions, inspect results, and manage platform resources. Use for MCP connection setup and work through an Everruns MCP server; for authoring agents, also load everruns-agent-authoring. Use everruns-cli for command usage and examples, everruns for product concepts, and everruns-framework for Rust development.
 license: MIT
-compatibility: A connected Everruns MCP server with OAuth or a personal access token. Skills discovery requires MCP 2026-07-28.
+compatibility: An MCP client and an Everruns server, using OAuth or a personal access token. Skills discovery requires MCP 2026-07-28.
 metadata:
   category: platform
-  version: "1.0"
+  version: "1.3"
   docs: https://everruns.com/docs/features/mcp/
 ---
 
@@ -14,6 +14,42 @@ metadata:
 Use the connected server's tools and resources. A local Everruns installation
 or shell is unnecessary: `query` and `execute` run the `everruns` command tree
 inside the server's sandbox. Tool names may carry a client-assigned prefix.
+
+For command-tree usage and scripting examples, load
+`skill://everruns-cli/SKILL.md` through the host's skill loader. General product
+concepts and documentation links are in `skill://everruns/SKILL.md`. The MCP
+identity and transport rules below still apply.
+
+## Connect and load guidance
+
+Reuse an existing host connection when it targets the requested deployment.
+Otherwise, add `https://app.everruns.com/mcp` for Everruns Cloud, or `/mcp` on
+the user's self-hosted origin. Preserve the deployment the user selected.
+
+Use the host's OAuth connection flow. Discover the authorization server from
+`/.well-known/oauth-protected-resource/mcp` on that deployment, then read its
+authorization-server metadata for current endpoints. Where supported, register
+through the advertised `registration_endpoint`, request the `mcp` scope, and
+use authorization code with PKCE `S256`. A human approves access in a browser.
+Refresh expired access tokens through the host; keep credentials out of chat.
+For detailed Cloud authentication guidance, see
+[auth.md](https://everruns.com/auth.md). A self-hosted deployment's own discovery
+and authentication guidance take precedence for that deployment.
+
+The MCP server exposes these four shared skills through `skills/list` and
+`skills/get` under protocol `2026-07-28`:
+
+| Skill URI | Purpose |
+|---|---|
+| `skill://everruns/SKILL.md` | Product concepts, documentation, and companion skills. |
+| `skill://everruns-cli/SKILL.md` | Command usage, examples, and scripting. |
+| `skill://everruns-agent-authoring/SKILL.md` | Agent design, harnesses, capabilities, and verification. |
+| `skill://everruns-mcp/SKILL.md` | Connection setup and MCP workflows, including this guide. |
+
+Use the host's skill loader to activate them. File content is also available
+through `resources/read`, including for older protocol versions; fetching a file
+alone does not activate a skill. Trust the connected server's catalog for the
+guidance available in its deployed version.
 
 ## Select the organization and operation
 
@@ -36,12 +72,17 @@ For example, after discovering its usage:
 ```
 
 The command sandbox has no filesystem redirection. Keep intermediate JSON in
-variables or pipes, and copy `bash_usage` rather than probing `--help`.
+variables or pipes. Follow the returned usage and help guidance: commands with
+a `cli` spelling support command-tree help; flat-only builtins use `bash_usage`.
 
 Keep output targeted. Read-only resource catalogs at `everruns://agents`,
 `everruns://harnesses`, `everruns://models`, and `everruns://capabilities` provide
 summaries; use the discovered get/list commands when you need details or more
 than the catalog's bounded listing. Do not guess IDs, fields, or flags.
+
+When offered, `everruns_home` opens the interactive organization panel and
+`agent_get_card` shows an agent summary card. Ordinary tools work even when the
+host cannot render these panels.
 
 ## Run and continue a session
 

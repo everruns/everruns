@@ -16,6 +16,14 @@
 
 ## 2026-10-16
 
+* **Platform operating skills.** Share product, CLI, and agent-authoring skills
+  through the Platform capability; publish the general and CLI guides alongside
+  MCP workflows. Move Rust development guidance to `everruns-framework`. Distribute the five
+  shared skills through the coding-agent plugin and keep the general guide
+  independent of its host, with an index of companion workflows. See
+  [Capabilities](execution/capabilities.md), [Platform Chat](harnesses/platform-chat.md),
+  and [MCP](integrations/mcp.md).
+
 * **Durable Object announcement withdrawn.** Remove the premature public entry.
   Engine-owned Framework/serve/celld implementation and qualification must finish
   before explicit user approval of a replacement announcement. The publication
