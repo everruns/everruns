@@ -428,7 +428,7 @@ impl Tool for BashTool {
         let builder = install_observability_hooks(builder, context.session_id);
         let (builder, redactor) = http::configure(builder, self.enable_http, context).await;
         let builder = install_cli_tree(builder, context);
-        let mut bash = builder.build();
+        let mut bash = builder.cpython().build();
         if let Some(held) = tools_in_shell::preflight(context, bash.analyze(command).ok()).await {
             return ToolExecutionResult::success(held);
         }
@@ -654,7 +654,7 @@ impl BackgroundExecutableTool for BashTool {
         let builder = install_observability_hooks(builder, context.session_id);
         let (builder, redactor) = http::configure(builder, self.enable_http, &context).await;
         let builder = install_cli_tree(builder, &context);
-        let mut bash = builder.build();
+        let mut bash = builder.cpython().build();
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<(String, String)>(128);
         let (partial_tx, partial_rx) = tokio::sync::mpsc::channel::<(String, String)>(128);
@@ -3515,5 +3515,6 @@ mod tests {
     // Outbound HTTP via egress (enable_http config)
     // ========================================================================
 
+    mod cpython_tests;
     mod http_tests;
 }
