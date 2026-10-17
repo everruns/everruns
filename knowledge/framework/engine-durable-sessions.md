@@ -444,9 +444,10 @@ Implement in reviewable stages, with a runnable proof at every step:
    current behavior into the shared session driver and pin compatibility tests
    for hooks, steering, cancellation, waits and observation before adding DO.
 2. Introduce trusted agent/build registration, durable creation/admission and
-   reconstructible outcome handles. Adapt the existing PostgreSQL actor authority
-   through neutral contracts and qualify native durable Engine execution. Keep
-   server/control-plane records outside the Framework dependency graph.
+   reconstructible outcome handles. The selected embedded native profile is a
+   single-domain transactional SQLite authority with independent startup supervision.
+   The platform's PostgreSQL actor host remains a separate consumer of the same
+   core driver; its control-plane records stay outside the Framework dependency graph.
 3. Port the complete minimal Framework facade to Wasm: Engine, Agent, Session,
    tools, hooks, Harness, events and observers. Gate native I/O and use the
    existing portable task/time and host-HTTP facilities. A core-only Wasm build

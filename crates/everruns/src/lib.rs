@@ -329,7 +329,7 @@ pub use everruns_core::host::{
 };
 
 // --- Portable message, model, and platform types ------------------------
-pub use everruns_core::turn::TurnStopReason;
+pub use everruns_contracts::turn::TurnStopReason;
 // `MessageRole` is the role on stored and inspected session messages
 // (`SessionMessage`, `ContextMessage`) — the common path. The wire message and
 // role that travel on a direct model call live in [`llm`], so both keep the
@@ -461,7 +461,7 @@ pub mod prelude {
     #[allow(deprecated)]
     #[deprecated(note = "use WorkspaceBackend and WorkspaceBackendId")]
     pub use crate::{WorkspaceProvider, WorkspaceProviderId};
-    pub use everruns_core::turn::TurnStopReason;
+    pub use everruns_contracts::turn::TurnStopReason;
     pub use everruns_core::{ContentPart, InputMessage, RuntimeMessageRole as MessageRole};
 }
 

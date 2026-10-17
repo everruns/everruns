@@ -256,6 +256,7 @@ everruns-llmsim = { path = "../drivers/llmsim", features = ["host"] }
 # example reaches them directly, which is also how an embedding host would.
 everruns-drivers = { path = "../drivers/drivers", features = ["cloudflare", "vercel"] }
 everruns-test-support = { path = "../test-support", features = ["fixtures"] }
+everruns-integrations = { path = "../integrations", default-features = false, features = ["brave-search"] }
 tokio = { workspace = true, features = ["macros", "net", "process", "rt-multi-thread", "time", "test-util"] }
 # `ServiceExt::oneshot` drives the `ag-ui-axum` router in tests.
 tower = { workspace = true, features = ["util"] }

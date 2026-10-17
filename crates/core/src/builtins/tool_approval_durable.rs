@@ -125,9 +125,10 @@ pub fn approval_fingerprint(tool_call: &ToolCall) -> String {
     hex
 }
 
-pub use everruns_contracts::tool_approval_types::{
-    ONE_OFF_DECISION_TTL_SECONDS, StoredToolApproval, always_decision_storage_key,
-    one_off_decision_storage_key,
+#[cfg(test)]
+use everruns_contracts::tool_approval_types::ONE_OFF_DECISION_TTL_SECONDS;
+use everruns_contracts::tool_approval_types::{
+    StoredToolApproval, always_decision_storage_key, one_off_decision_storage_key,
 };
 
 /// [`ToolApprover`] for hosted runtimes, backed by session storage.

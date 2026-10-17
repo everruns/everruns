@@ -2970,6 +2970,7 @@ version = "0.1.0"
 dependencies = [
  "everruns",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

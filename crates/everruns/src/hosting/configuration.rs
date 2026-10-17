@@ -58,19 +58,18 @@ impl SessionConfiguration {
                 "session configuration exceeds 1 MiB",
             ));
         }
-        if let Some(tools) = &self.client_tools {
-            if tools.len() > 64
+        if let Some(tools) = &self.client_tools
+            && (tools.len() > 64
                 || tools.iter().any(|tool| {
                     !matches!(
                         tool,
                         everruns_contracts::tool_types::ToolDefinition::ClientSide(_)
                     )
-                })
-            {
-                return Err(AgentLoopError::config(
-                    "session configuration accepts at most 64 client tools",
-                ));
-            }
+                }))
+        {
+            return Err(AgentLoopError::config(
+                "session configuration accepts at most 64 client tools",
+            ));
         }
         Ok(())
     }

@@ -76,6 +76,10 @@ binding, concrete in-process runtime, stores, or platform DTOs. The `engine` fea
 planning; it is the lower-level host kernel, not an application-pluggable
 Engine implementation.
 
+Neutral persisted turn outcomes and approval records live in `everruns-contracts`.
+Core algorithms and hosts import those owners directly; the Framework preserves
+its application-facing exports without adding compatibility owners to the kernel.
+
 There is no Agent-owned compatibility engine and no `Agent::session` or
 `Agent::resume` path in 0.18. Embedded applications retain an Engine and call
 `engine.create(agent)` or `engine.resume(session_id)`. Because Agent behavior

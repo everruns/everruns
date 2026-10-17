@@ -25,7 +25,6 @@ crates/core/src/guardrail_checks.rs
 crates/core/src/host/observability/braintrust.rs
 crates/core/src/host/runtime/mod.rs
 crates/drivers/drivers/src/anthropic/driver.rs
-crates/drivers/llmsim/src/lib.rs
 crates/durable/src/persistence/memory.rs
 crates/durable/tests/postgres_integration_test.rs
 crates/everruns/tests/host/integration/runtime_host_test.rs

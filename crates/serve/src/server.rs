@@ -700,15 +700,16 @@ pub(crate) async fn sse(
     Query(mut query): Query<SseQuery>,
     headers: HeaderMap,
 ) -> ApiResult<Sse<impl Stream<Item = Result<Event, Infallible>>>> {
-    if query.since_id.is_none() && query.after_sequence.is_none() {
-        if let Some(value) = headers.get("last-event-id") {
-            query.since_id = Some(
-                value
-                    .to_str()
-                    .map_err(|_| bad_request("invalid Last-Event-ID"))?
-                    .to_owned(),
-            );
-        }
+    if query.since_id.is_none()
+        && query.after_sequence.is_none()
+        && let Some(value) = headers.get("last-event-id")
+    {
+        query.since_id = Some(
+            value
+                .to_str()
+                .map_err(|_| bad_request("invalid Last-Event-ID"))?
+                .to_owned(),
+        );
     }
     if query.since_id.is_some() && query.after_sequence.is_some() {
         return Err(bad_request(

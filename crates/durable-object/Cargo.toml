@@ -33,7 +33,7 @@ tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-everruns = { path = "../everruns", default-features = false, features = ["openai"] }
+everruns = { path = "../everruns", default-features = false, features = ["openai", "builtins"] }
 everruns-llmsim = { path = "../drivers/llmsim", features = ["host"] }
 tower = { workspace = true, features = ["util"] }
 

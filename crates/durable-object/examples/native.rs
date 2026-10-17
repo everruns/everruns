@@ -2,7 +2,7 @@
 use everruns::{Engine, Model, OpenAI, hosting::AgentBuild};
 use everruns_durable_object::{AuthorityClient, Executor, ObjectHosting, SessionBinding};
 
-#[path = "../../../examples/durable-object-agent/src/agent.rs"]
+#[path = "shared/agent.rs"]
 mod agent;
 
 #[tokio::main]

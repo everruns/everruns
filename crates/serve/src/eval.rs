@@ -225,7 +225,10 @@ impl EvalCx {
         tokio::pin!(deadline);
         let outcome = loop {
             tokio::select! {
-                outcome = completion.join_next() => break outcome.expect("one outcome observer")??,
+                outcome = completion.join_next() => {
+                    let outcome = outcome.ok_or_else(|| anyhow!("outcome observer ended"))?;
+                    break outcome??;
+                },
                 () = &mut deadline => bail!("turn did not finish within {TURN_TIMEOUT:?}"),
                 notice = notices.recv() => match notice {
                     Ok(Notice::ApprovalRequested(view)) if view.session_id == session => {

@@ -68,11 +68,11 @@ still used by platform hosts and the explicit legacy facade lane.
 
 ## Decision
 
-### One entry point: `TurnBackend`
+### Internal turn delegation: `TurnBackend`
 
 [`TurnBackend`](../../crates/core/src/host/turn_backend.rs) in core's host is
-the one place a host hands a turn to whatever runs it, for the facade session
-actor and the platform server alike: start a turn, cancel it, and ask whether a
+the one place a host hands a turn to whatever runs it, for the explicit legacy facade session
+actor and the platform server: start a turn, cancel it, and ask whether a
 session runs one and how many run. `Execution` stays the inner turn interface;
 a backend never plans, it decides where planned steps run and how durably.
 
@@ -297,9 +297,11 @@ because nothing ran it. The option is recorded in
 
 ## Success Bars
 
-- Every facade turn, including steering, cancellation, parked client-side
-  tool calls and interrupted-turn resumption, runs through `TurnBackend`, with
-  existing session tests unchanged.
+- Default and registered Framework sessions run through the shared session actor
+  with authority-owned commands and outcomes; their Engine conformance suite covers
+  steering, cancellation, client-tool waits, lifecycle recovery and observation.
+- Explicit legacy facade turns retain the internal `TurnBackend` delegation
+  contract and its separate conformance suite.
 - The conformance suite,
   [`tests/backend_conformance/`](../../crates/everruns/tests/backend_conformance/main.rs)
   in the facade, runs its scenarios (single turn, tool loop, steering versus

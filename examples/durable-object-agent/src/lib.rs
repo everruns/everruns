@@ -9,6 +9,7 @@ use serde_json::json;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
+#[path = "../../../crates/durable-object/examples/shared/agent.rs"]
 mod agent;
 mod fetch;
 

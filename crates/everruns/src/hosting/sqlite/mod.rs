@@ -21,14 +21,28 @@ use std::{
     sync::{Mutex, RwLock},
 };
 
+type ProactiveAttempts =
+    Arc<Mutex<HashMap<(SessionId, String, String), everruns_core::ProactiveCompactionAttempt>>>;
+
+// Separate branches let SQLite seek both recovery obligations without scanning
+// idle session history. UNION also deduplicates a runnable session with a due timer.
+const DISCOVER_RUNNABLE: &str = "
+    SELECT session FROM framework_authority
+    WHERE json_extract(control,'$.runnable')=1 AND json_extract(control,'$.suspended')=0
+        AND json_extract(control,'$.expires')<=?1
+    UNION
+    SELECT session FROM framework_authority
+    WHERE json_extract(control,'$.wake_at')<=?1 AND json_extract(control,'$.suspended')=0
+        AND json_extract(control,'$.expires')<=?1
+    LIMIT 64";
+
 /// Transactional embedded session authority. Multiple connections/processes
 /// may share one local database. A host must run [`supervise`](Self::supervise)
 /// on startup; the SQLite file and its WAL must survive executor loss.
 #[derive(Clone)]
 pub struct SqliteHosting {
     db: Arc<Mutex<Connection>>,
-    proactive:
-        Arc<Mutex<HashMap<(SessionId, String, String), everruns_core::ProactiveCompactionAttempt>>>,
+    proactive: ProactiveAttempts,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -96,6 +110,8 @@ impl SqliteHosting {
         db.busy_timeout(Duration::from_secs(5)).map_err(error)?;
         db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
             CREATE TABLE IF NOT EXISTS framework_authority(session TEXT PRIMARY KEY,control TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS framework_runnable ON framework_authority(json_extract(control,'$.expires')) WHERE json_extract(control,'$.runnable')=1 AND json_extract(control,'$.suspended')=0;
+            CREATE INDEX IF NOT EXISTS framework_timers ON framework_authority(json_extract(control,'$.wake_at'),json_extract(control,'$.expires')) WHERE json_extract(control,'$.suspended')=0 AND json_extract(control,'$.wake_at') IS NOT NULL;
             CREATE TABLE IF NOT EXISTS framework_events(session TEXT NOT NULL,seq INTEGER NOT NULL,type TEXT NOT NULL,turn_id TEXT,identity TEXT,value TEXT NOT NULL,PRIMARY KEY(session,seq),UNIQUE(session,identity));
             CREATE INDEX IF NOT EXISTS framework_event_ids ON framework_events(session,json_extract(value,'$.id'));
             CREATE INDEX IF NOT EXISTS framework_event_turns ON framework_events(session,type,seq);
@@ -167,9 +183,9 @@ impl SqliteHosting {
                     .db
                     .lock()
                     .map_err(|_| error("authority database lock poisoned"))?;
-                let mut query = db.prepare("SELECT session FROM framework_authority WHERE (json_extract(control,'$.runnable')=1 OR json_extract(control,'$.wake_at')<=?) AND json_extract(control,'$.suspended')=0 AND json_extract(control,'$.expires')<=? LIMIT 64").map_err(error)?;
+                let mut query = db.prepare(DISCOVER_RUNNABLE).map_err(error)?;
                 query
-                    .query_map([now() as i64, now() as i64], |row| row.get::<_, String>(0))
+                    .query_map([now() as i64], |row| row.get::<_, String>(0))
                     .map_err(error)?
                     .map(|row| row.map_err(error)?.parse().map_err(error))
                     .collect::<Result<_>>()?
@@ -882,3 +898,6 @@ impl SessionHosting for SqliteHosting {
         true
     }
 }
+
+#[cfg(test)]
+mod tests;

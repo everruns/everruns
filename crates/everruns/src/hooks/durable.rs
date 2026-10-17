@@ -106,13 +106,12 @@ impl HookRunState {
         Ok(failures)
     }
     pub(super) async fn record_durable_failure(&self, id: &str, failure: &HookFailure) {
-        if let Some(epoch) = &self.epoch {
-            if let Err(error) = epoch
+        if let Some(epoch) = &self.epoch
+            && let Err(error) = epoch
                 .commit(&format!("failure/{id}"), json!(failure), true)
                 .await
-            {
-                tracing::warn!(%error, "Lifecycle failure receipt could not be committed");
-            }
+        {
+            tracing::warn!(%error, "Lifecycle failure receipt could not be committed");
         }
     }
     pub(crate) fn durable(hooks: LifecycleHooks, epoch: Arc<dyn SessionEpoch>) -> Arc<Self> {

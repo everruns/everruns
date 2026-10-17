@@ -33,7 +33,7 @@ use crate::host::runtime_host::{
     execute_reason_activity_with_prompt_messages,
 };
 use crate::host::turn_strategy::{self, resolve_pause_hints};
-use crate::turn::TurnStopReason;
+use everruns_contracts::turn::TurnStopReason;
 
 /// Summary of one driven turn, as [`drive_turn`] returns it.
 #[derive(Debug, Clone)]

@@ -540,10 +540,10 @@ impl SessionHosting for MemoryHosting {
         }
         let mut fingerprint =
             serde_json::to_value(&message).map_err(|_| AgentLoopError::config("invalid input"))?;
-        fingerprint.as_object_mut().map(|object| {
+        if let Some(object) = fingerprint.as_object_mut() {
             object.remove("created_at");
             object.remove("updated_at");
-        });
+        }
         if cancelled {
             fingerprint = json!({"message":fingerprint,"cancelled":true});
         }

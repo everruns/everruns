@@ -8,8 +8,8 @@
 
 use crate::engine::{ActInput, ExecutionContext, ReasonResult};
 use crate::events::{TokenUsage, TurnCompletedData};
-use crate::turn::TurnStopReason;
 use chrono::{DateTime, Utc};
+use everruns_contracts::turn::TurnStopReason;
 use everruns_contracts::typed_id::{
     AgentId, ExecId, HarnessId, MessageId, SessionId, TurnId, WorkspaceId,
 };

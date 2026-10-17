@@ -239,7 +239,7 @@ pub struct StoredToolApproval {
     pub turn_id: Option<crate::typed_id::TurnId>,
     /// Tool the answer is for, re-checked on read.
     pub tool: String,
-    /// The approved call's [`approval_fingerprint`]; `None` for an "always"
+    /// The approved call's canonical fingerprint; `None` for an "always"
     /// rule, which covers every call of the tool in the session.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fingerprint: Option<String>,

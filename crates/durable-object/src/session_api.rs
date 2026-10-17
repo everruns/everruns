@@ -221,9 +221,9 @@ impl SessionApi {
                                 || types.iter().any(|kind| kind == event.event_type()))
                             && !exclude.iter().any(|kind| kind == event.event_type())
                         {
-                            if events.len() == limit {
-                                let (_, size): (_, usize) =
-                                    events.pop_front().expect("deque is full");
+                            if events.len() == limit
+                                && let Some((_, size)) = events.pop_front()
+                            {
                                 bytes -= size;
                             }
                             let value = everruns_contracts::execution_api::public_event(
