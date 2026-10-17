@@ -57,7 +57,7 @@ impl OpenResponsesRequestExtension for PlanRequest {
                 )
             }) {
                 return Err(AgentLoopError::llm(
-                    "This tool is unavailable with the ChatGPT plan. Use a local tool or choose an API provider.",
+                    "This tool is unavailable with the ChatGPT Plan. Use a local tool or choose an API provider.",
                 ));
             }
             // The plan route accepts client-executed tools inside namespaces.
@@ -153,7 +153,7 @@ impl ChatDriver for ChatGptChatDriver {
         }) {
             return Err(AgentLoopError::llm_kind(
                 everruns_contracts::LlmErrorKind::InvalidRequest,
-                "This hosted tool is unavailable with the ChatGPT plan. Use a local tool or choose an API provider.",
+                "This hosted tool is unavailable with the ChatGPT Plan. Use a local tool or choose an API provider.",
             ));
         }
         let mut config = config.clone();
@@ -231,7 +231,7 @@ pub fn descriptor() -> DriverDescriptor {
             .auth(BearerAuth::new(config.api_key.clone().unwrap_or_default()))
             .into_boxed_driver()
     });
-    descriptor.display_name = "ChatGPT plan".into();
+    descriptor.display_name = "ChatGPT Plan".into();
     descriptor.credential_schema = CredentialFormSchema::api_key(
         "",
         "Connect with your ChatGPT account. Credentials are managed by the host.",

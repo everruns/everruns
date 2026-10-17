@@ -1,5 +1,12 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-17
+
+* **ChatGPT Plan UI removal.** Remove the provider and its models from Platform
+  setup and selection until a suitable web OAuth client and callback exist;
+  retain the framework driver and server connection APIs. See
+  [Providers](foundations/providers.md) and [Models and providers](ui/models-and-providers.md).
+
 ## 2026-10-16
 
 * **Chaos actor log boundaries.** Include the shared core driver in the harness debug

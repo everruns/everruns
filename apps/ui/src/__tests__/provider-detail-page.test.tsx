@@ -120,6 +120,21 @@ describe("ProviderDetailPage", () => {
     );
   });
 
+  it("does not show a ChatGPT Plan provider through a saved detail URL", async () => {
+    mockUseProvider.mockReturnValue({
+      data: { ...mockProvider, provider_type: "chatgpt" },
+      isLoading: false,
+      error: null,
+    });
+    await act(async () => {
+      render(<ProviderDetailPage params={Promise.resolve({ providerId: "provider-1" })} />, {
+        wrapper,
+      });
+    });
+    expect(screen.getByText("Provider not found")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("OpenAI Production")).not.toBeInTheDocument();
+  });
+
   it("saves provider name changes", async () => {
     await act(async () => {
       render(<ProviderDetailPage params={Promise.resolve({ providerId: "provider-1" })} />, {
