@@ -12,6 +12,11 @@ tags:
 
 # Durable Execution Guarantees and Backend Qualification
 
+The [Engine-owned sessions proposal](engine-durable-sessions.md) applies these
+durability requirements to the public Framework API. Qualification through a
+low-level authority client alone does not establish Engine/Session or serve
+parity; those paths require the same failure tests through their ordinary APIs.
+
 Implementation update: the first native executor profile is now implemented; see
 [Native Execution with Durable Object Authority](durable-object-native.md) for
 current scope and qualification. The broader design below remains a proposal.

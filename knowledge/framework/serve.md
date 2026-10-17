@@ -183,6 +183,12 @@ runtime.
   with step-level durability, is the other shape: see
   [The Execution Kernel in a JavaScript Isolate](wasm-kernel.md).
 
+The proposed [Engine-owned durable session migration](engine-durable-sessions.md#celld-examples-and-integration-are-part-of-the-change)
+replaces celld's snapshot/request-replay session durability with the Engine DO
+profile. It includes the hosting crate, Worker, examples and conformance tests.
+The description above remains the current implementation until that migration
+lands; native containers remain useful for tools requiring OS services.
+
 ## Rejected
 
 - **Runtime filesystem scanning, eve-style.** Not possible for compiled Rust,

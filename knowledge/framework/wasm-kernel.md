@@ -63,6 +63,12 @@ own storage.
   SSE and portable deadlines. Native non-chat services and WebSockets are
   outside this boundary.
 
+The proposed [Engine-owned celld migration](engine-durable-sessions.md#celld-examples-and-integration-are-part-of-the-change)
+replaces the application example's custom step machine with the public Framework
+Engine and shares the agent module with the Cloudflare target. Kernel portability
+alone does not meet that integration bar. The following section describes the
+existing example, not the proposed application architecture.
+
 ## Original celld-engine example
 
 The following decisions describe the original custom step machine. The shared

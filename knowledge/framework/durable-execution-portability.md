@@ -13,6 +13,12 @@ tags:
 
 # Portable Durable Agent Execution
 
+The revised [Engine-owned sessions proposal](engine-durable-sessions.md)
+supersedes this document's application integration recommendation. DO must run
+through the public Framework Engine/Session path, including admission, lifecycle
+and observation. The source assessment below is the original investigation;
+sharing a core host alone does not satisfy the revised Framework success bar.
+
 Implementation update: the first native executor profile is now implemented; see
 [Native Execution with Durable Object Authority](durable-object-native.md) for
 current scope and qualification. The broader design below remains a proposal.

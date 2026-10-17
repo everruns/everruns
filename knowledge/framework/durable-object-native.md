@@ -16,6 +16,13 @@ reuse the same Rust host and session driver from
 [Portable Durable Agent Execution](durable-execution-portability.md). Placement
 changes the injected transport and services, not agent execution semantics.
 
+The [Engine-owned sessions proposal](engine-durable-sessions.md) revises the
+Framework integration target. The current adapter shares the runtime but enters
+through a core host factory; the Wasm example does not construct a public
+`everruns::Engine`. Framework sends and serve's ordinary routes therefore do not
+yet gain DO authority from this adapter. The proposed integration makes Engine
+own the full session contract, including durable admission and lifecycle hooks.
+
 ## Decision
 
 One authority owns a session's admitted input, canonical journal, execution epoch,

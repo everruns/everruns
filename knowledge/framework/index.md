@@ -10,6 +10,7 @@
 * [API Stability](api-stability.md) - Stable versus alpha markers, promises, and the marking convention.
 * [serve (experimental)](serve.md) - Why the experimental serve crates pair Topcoat's API shape with eve's hosting model, and what is still open.
 * [Execution Backends](execution-backends.md) - The experimental TurnBackend seam, shared log recovery, native session actors, and retirement of the per-step durable backend.
+* [Engine-Owned Durable Sessions](engine-durable-sessions.md) - Proposed Engine/Session hosting boundary, durable admission handles, shared execution and native/DO/serve integration.
 * [Portable Durable Agent Execution](durable-execution-portability.md) - Draft architecture for shared runtime execution over native actors, Cloudflare Durable Objects and celld, with deployment alternatives and a phased recommendation.
 * [Durable Execution Guarantees and Backend Qualification](durable-execution-guarantees.md) - Proposed admission, activation, fencing, operation recovery, wait and versioning contracts, with backend qualification scenarios.
 * [The Execution Kernel in a JavaScript Isolate](wasm-kernel.md) - Why provider, core and engine build for wasm32, how time and tasks port, and the step-commit model of the celld engine cell.

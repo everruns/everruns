@@ -35,6 +35,13 @@
   return paths clear at desktop and mobile sizes.
   See [Diagram Specification](docs/diagrams.md).
 
+* **Engine-owned durable sessions proposed.** Require the Framework Engine path
+  for DO, with coherent session hosting, durable admission/outcome handles, shared
+  lifecycle execution and serve integration. Include the celld examples, hosting
+  crate and recovery CI migration. Distinguish this target from the
+  implemented core-host proof. See
+  [Engine-Owned Durable Sessions](framework/engine-durable-sessions.md).
+
 * **Chaos actor log boundaries.** Include the shared core driver in the harness debug
   filter so lease releases and completed activations remain visible to overlap checks.
   See [Load Testing](operations/load-testing.md#chaos-harness).

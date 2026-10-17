@@ -57,6 +57,11 @@ The server's entry (a server-only runner trait) and the facade's session actor
 different surfaces, so durability was a property of which product you run, not
 a choice an embedder makes.
 
+The proposed [Engine-owned session hosting boundary](engine-durable-sessions.md)
+extends above the current turn seam. It covers creation, admission, lifecycle,
+reads and activation, which a turn factory alone cannot make durable. This
+document continues to describe the implemented turn backend and actor paths.
+
 ## Decision
 
 ### One entry point: `TurnBackend`
