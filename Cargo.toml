@@ -57,6 +57,7 @@ members = [
 ]
 
 exclude = [
+    "vendor/postgresql_archive",
     "research/infinity_context",
     "research/lua-vs-bash",
     "examples/weekend-concierge-host",
@@ -362,3 +363,7 @@ codegen-units = 256
 # must stay actionable. line-tables-only keeps that signal at modest cost.
 debug = "line-tables-only"
 strip = false
+
+# Upstream archive0.21 still selects vulnerable ZIP8; see vendor patch provenance.
+[patch.crates-io]
+postgresql_archive = { path = "vendor/postgresql_archive" }

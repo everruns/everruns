@@ -1,5 +1,13 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-17
+
+* **PostgreSQL archive compatibility patch.** Select patched ZIP9 through a
+  checksum-attributed upstream copy while the published PostgreSQL dependency
+  still selects ZIP8. Preserve extraction policy and ordinary advisory/license
+  gates; consumers with separate workspace roots select the patch explicitly.
+  See [Security Testing](security/security-testing.md).
+
 ## 2026-10-16
 
 * **Durable Object announcement withdrawn.** Remove the premature public entry.

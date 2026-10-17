@@ -2656,7 +2656,7 @@ dependencies = [
  "uuid",
  "web-time",
  "wiremock",
- "zip 9.0.4",
+ "zip",
 ]
 
 [[package]]
@@ -3198,7 +3198,7 @@ dependencies = [
  "utoipa",
  "uuid",
  "wiremock",
- "zip 9.0.4",
+ "zip",
 ]
 
 [[package]]
@@ -6020,8 +6020,6 @@ dependencies = [
 [[package]]
 name = "postgresql_archive"
 version = "0.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "274b4eeb875f1196cc577a69b17c3018a3b189d4017122648b1465066b8b08c1"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -6043,7 +6041,7 @@ dependencies = [
  "tempfile",
  "tracing",
  "url",
- "zip 8.6.0",
+ "zip",
 ]
 
 [[package]]
@@ -9834,20 +9832,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.9",
-]
-
-[[package]]
-name = "zip"
-version = "8.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d04a6b5381502aa6087c94c669499eb1602eb9c5e8198e534de571f7154809b"
-dependencies = [
- "crc32fast",
- "flate2",
- "indexmap",
- "memchr",
- "typed-path",
- "zopfli",
 ]
 
 [[package]]
