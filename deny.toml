@@ -13,8 +13,15 @@ unmaintained = "none"
 # affected crate over ignoring; only ignore when no upstream fix path exists and
 # the advisory is not reachable in our usage.
 ignore = [
-    # Empty: every advisory in the tree must be fixed by upgrading, not ignored.
-    # Entries here need a justification comment and a removal condition.
+    # postgresql_archive 0.21.0 requires zip 8 for the dev/test-only Zonky
+    # PostgreSQL binaries and has no compatible release using zip 9. Its ZIP
+    # paths use ZipArchive::by_index and copy entry bytes; neither calls
+    # ZipArchive::extract nor ZipStreamReader::extract, the vulnerable APIs.
+    # Remove these exceptions when postgresql_archive can use zip >= 9, or if
+    # its ZIP handling starts calling either extraction API.
+    "RUSTSEC-2026-0367",
+    "RUSTSEC-2026-0368",
+    "RUSTSEC-2026-0369",
 ]
 
 [licenses]

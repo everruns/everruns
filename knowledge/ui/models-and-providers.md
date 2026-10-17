@@ -63,10 +63,10 @@ service. The provider record itself is described in
   on its row. The decision default accepts calibrated models only. When system
   decisions use the org's own decision model there is no fallback to deployment
   keys, and the row says so.
-- **Managed and personal providers.** Host-managed providers keep their
-  credential and catalog with the host, so credentials are read-only; choosing
-  which of their models to enable stays with the org. A personal ChatGPT provider
-  is visible only to its owner and is skipped by shared defaults.
+- **Managed providers.** Host-managed providers keep their credential and
+  catalog with the host, so credentials are read-only; choosing which of their
+  models to enable stays with the org. The framework's ChatGPT Plan driver is
+  excluded from Platform provider and model lists, connect setup, and defaults.
 
 ## Limits
 

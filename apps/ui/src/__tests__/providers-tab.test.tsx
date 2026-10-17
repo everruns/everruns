@@ -41,11 +41,6 @@ jest.mock("@/hooks/use-providers", () => ({
   }),
 }));
 
-jest.mock("@/hooks/use-chatgpt-connection", () => ({
-  useChatGptConnection: () => mockConnection,
-}));
-
-const mockConnection = { data: { email: "me@example.com" } };
 let mockOrg: Record<string, unknown> = {};
 jest.mock("@/hooks/use-organizations", () => ({
   useOrganization: () => ({ data: mockOrg, isLoading: false, error: null }),
@@ -162,12 +157,12 @@ describe("ProvidersTab", () => {
     expect(screen.queryByRole("button", { name: "Connect provider" })).not.toBeInTheDocument();
   });
 
-  it("labels a personal ChatGPT provider with its owner's sign-in", () => {
+  it("omits an existing ChatGPT Plan provider from the platform registry", () => {
     renderTab({
       providers: [provider({ id: "p-chatgpt", name: "ChatGPT", provider_type: "chatgpt" })],
     });
-    expect(screen.getByText("Personal")).toBeInTheDocument();
-    expect(screen.getByText("You · me@example.com")).toBeInTheDocument();
+    expect(screen.queryByText("ChatGPT")).not.toBeInTheDocument();
+    expect(screen.queryByText("Personal")).not.toBeInTheDocument();
   });
 });
 
