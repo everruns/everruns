@@ -105,6 +105,11 @@ const { data: events } = await api(`/sessions/${session}/events?limit=256`);
 const outcome = await api(`/sessions/${session}/admissions/${input.data.message.id}`);
 assert.equal(outcome.status,"complete","Framework finalization must survive owner loss");
 assert.equal(outcome.turn.success,true);
+assert.equal(
+  await good("event_sequence", { event_id: events[0].id }),
+  events[0].sequence,
+  "opaque event cursors resolve through the authenticated authority route",
+);
 assert.ok(
   events.some((e) => e.type === "turn.completed"),
   "the stored alarm completed recovery without client requests",
