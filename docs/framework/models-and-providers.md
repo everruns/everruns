@@ -111,7 +111,7 @@ The set below is what ships today. The boundary is open, so a
 | Driver | Crate | Wire protocol | Services | Model discovery |
 | --- | --- | --- | --- | --- |
 | OpenAI | `everruns-drivers` (`openai`) | OpenAI Responses, OpenAI Decisions API | chat, embeddings, realtime, decisions | yes |
-| ChatGPT plan | `everruns-drivers` (`chatgpt`) | Stateless Responses + open-source OAuth | chat | account-visible models |
+| ChatGPT Plan | `everruns-drivers` (`chatgpt`) | Stateless Responses + open-source OAuth | chat | account-visible models |
 | OpenAI (Chat Completions) | `everruns-drivers` (`openai`) | OpenAI Chat Completions | chat | yes |
 | Azure OpenAI | `everruns-drivers` (`openai`) | OpenAI Responses | chat | yes |
 | Anthropic | `everruns-drivers` (`anthropic`) | Anthropic Messages | chat | yes |
@@ -135,9 +135,10 @@ typed events, which is why swapping a provider does not change application
 code.
 
 The environment variables each API driver reads are in [Credentials](#credentials).
-ChatGPT plan connections use host-owned OAuth credentials; see [ChatGPT plan](/features/chatgpt/).
+ChatGPT Plan connections use host-owned OAuth credentials; see [ChatGPT Plan](/features/chatgpt/).
 The optional `codex` SDK feature provides the legacy Codex backend for hosts such
-as Yolop. Everruns Platform registers the public ChatGPT plan route.
+as Yolop. The Platform UI does not offer ChatGPT Plan because Everruns does not
+have a registered web OAuth client and callback for that flow.
 
 ### Beyond chat
 

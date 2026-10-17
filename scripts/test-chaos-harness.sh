@@ -11,9 +11,11 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 sys.path.insert(0, "scripts/chaos")
 import topology  # noqa: E402
+import run as chaos_run  # noqa: E402
 from check import Report, actor_worker_overlap  # noqa: E402
 from load import Driver, SessionRun  # noqa: E402
 
@@ -85,6 +87,14 @@ class SharedEventDeliveryTests(unittest.TestCase):
 
 
 class ActorOverlapTests(unittest.TestCase):
+    def test_default_filter_captures_shared_actor_boundaries(self):
+        with patch.object(sys, "argv", ["chaos", "--server-bin", "/bin/true",
+                                       "--worker-bin", "/bin/true"]):
+            args = chaos_run.parse_args()
+        directives = args.rust_log.split(",")
+        self.assertIn("everruns_core::host::session_actor=debug", directives)
+        self.assertIn("everruns_worker::actor_runtime=debug", directives)
+
     def report(self, release, active_after_handoff=False):
         sid = "session_" + "a" * 32
         def line(second, message):

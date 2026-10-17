@@ -27,7 +27,7 @@ fn published() -> Vec<(DriverId, &'static str, &'static [ServiceKind], bool)> {
         ),
         (
             DriverId::external("chatgpt"),
-            "ChatGPT plan",
+            "ChatGPT Plan",
             &[ServiceKind::Chat],
             true,
         ),

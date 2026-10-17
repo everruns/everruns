@@ -26,6 +26,7 @@ pub mod openai_agents_api_runtime;
 pub mod platform;
 mod platform_docs;
 pub mod platform_management;
+mod platform_skills;
 pub mod poppy_client;
 pub mod research;
 mod sandbox_workspace;

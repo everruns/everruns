@@ -36,7 +36,6 @@ const NATIVE_TYPES: { type: string; label: string }[] = [
   { type: "gemini", label: "Gemini" },
   { type: "openrouter", label: "OpenRouter" },
   { type: "azure_openai", label: "Azure OpenAI" },
-  { type: "chatgpt", label: "ChatGPT" },
 ];
 
 const TEST_QUERY = "everruns agent platform";

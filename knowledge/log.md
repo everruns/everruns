@@ -1,6 +1,43 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-17
+
+* **PostgreSQL archive compatibility patch.** Select patched ZIP9 through a
+  checksum-attributed upstream copy while the published PostgreSQL dependency
+  still selects ZIP8. Preserve extraction policy and ordinary advisory/license
+  gates without ZIP exceptions; consumers with separate workspace roots select
+  the patch explicitly.
+  See [Security Testing](security/security-testing.md).
+
+* **ChatGPT Plan UI removal.** Remove the provider and its models from Platform
+  setup and selection until a suitable web OAuth client and callback exist;
+  retain the framework driver and server connection APIs. See
+  [Providers](foundations/providers.md) and [Models and providers](ui/models-and-providers.md).
+
 ## 2026-10-16
+
+* **Platform operating skills.** Share product, CLI, and agent-authoring skills
+  through the Platform capability; publish the general and CLI guides alongside
+  MCP workflows. Move Rust development guidance to `everruns-framework`. Distribute the five
+  shared skills through the coding-agent plugin and keep the general guide
+  independent of its host, with an index of companion workflows. See
+  [Capabilities](execution/capabilities.md), [Platform Chat](harnesses/platform-chat.md),
+  and [MCP](integrations/mcp.md).
+
+* **Durable Object announcement withdrawn.** Remove the premature public entry.
+  Engine-owned Framework/serve/celld implementation and qualification must finish
+  before explicit user approval of a replacement announcement. The publication
+  hold is recorded in root `AGENTS.md` and honored by the ship workflow.
+
+* **Documentation diagrams.** Mermaid fences render in the Everruns diagram
+  palette with readable source fallback. The Durable Object authority flow uses
+  responsive hand-authored SVGs and one colocated Mermaid source to keep its
+  return paths clear at desktop and mobile sizes.
+  See [Diagram Specification](docs/diagrams.md).
+
+* **Chaos actor log boundaries.** Include the shared core driver in the harness debug
+  filter so lease releases and completed activations remain visible to overlap checks.
+  See [Load Testing](operations/load-testing.md#chaos-harness).
 
 * **Coding-agent dialog finalized.** Focus setup on one copyable prompt and
   supported agent marks; keep approval management in Settings. The public
@@ -10,6 +47,9 @@
 * **Public changelog eligibility.** Require meaningful user impact; exclude cosmetic
   polish, typo fixes, and routine docs upkeep. Apply significance only after eligibility
   and record a reason when skipping a visible change. See [Public Changelog](docs/changelog.md).
+
+* **Agent failure investigation.** Added failure-time filtering, recovered-session history,
+  outcome badges and terminal-event links into Trace. See [Agents Home](ui/agents-home.md).
 
 * **Provider drivers through host fetch.** Shared OpenAI-compatible and
   OpenRouter chat protocols run in WASM with host HTTP, portable deadlines and
@@ -39,6 +79,9 @@
   alternatives, failure semantics and qualification gates. See
   [Portable Durable Agent Execution](framework/durable-execution-portability.md)
   and [Durable Execution Guarantees](framework/durable-execution-guarantees.md).
+
+* Agent Sessions includes archived history to match its count; session cards show channel,
+  creation time and the last conversational-message timestamp.
 
 ## 2026-10-15
 

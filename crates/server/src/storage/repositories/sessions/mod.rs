@@ -1,5 +1,6 @@
 // PostgreSQL repository: Sessions (instance of agentic loop), Pinned Sessions
 
+pub mod failures;
 pub(super) mod rows;
 use rows::*;
 
@@ -28,6 +29,12 @@ const SESSION_COLUMNS: &str = "id, org_id, workspace_id, app_id, channel_id, tri
      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, \
      forked_from_session_id, forked_from_sequence, \
      blueprint_id, blueprint_config, archived_at, COALESCE((SELECT es.next_sequence - 1 - es.removed_count FROM event_sequences es WHERE es.session_id = id), 0)::BIGINT AS event_count, task_count";
+
+// Conversational activity is shared by ordinary and failed-turn session cards.
+const LAST_MESSAGE_AT: &str = "(SELECT e.ts FROM events e
+    WHERE e.session_id = sessions.id
+      AND e.event_type IN ('input.message', 'output.message.completed')
+    ORDER BY e.sequence DESC LIMIT 1)";
 
 /// SQL mirror of `crate::domains::sessions::record::SessionActivity::derive` — the list filters in
 /// the database while the in-memory backend filters in Rust. Both must change
@@ -520,7 +527,8 @@ impl Database {
         let limit_idx = plan.next_param_idx;
         let offset_idx = plan.next_param_idx + 1;
         let select_sql = format!(
-            r#"SELECT {SESSION_COLUMNS}
+            r#"SELECT {SESSION_COLUMNS},
+                {LAST_MESSAGE_AT} AS last_message_at
             FROM sessions {where_clause}
             ORDER BY {order_by}
             LIMIT ${limit_idx} OFFSET ${offset_idx}"#,

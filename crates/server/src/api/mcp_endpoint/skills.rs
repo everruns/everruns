@@ -1,4 +1,4 @@
-//! MCP operating skills, embedded from the build-time allowlist in `skills/`.
+//! Product and MCP operating skills, embedded from the build-time allowlist in `skills/`.
 //! Framework skills, contributor workflows, and organization-owned registry
 //! records are outside this catalog.
 

@@ -481,11 +481,14 @@ attempt generation, so cancellation/deletion cannot be undone by a late callback
 Rotation persists the full token pair before using it. Disconnect revokes before
 clearing; failure retains the grant. Registration survives reconnect.
 
-The UI extends the existing Providers Connect grid and account-detail cards;
-private ownership replaces API-key management for this provider. Remote hosts
-use the shared loopback helper and protected credential transfer, with validated
-installation, signature, nonce, issuing client, and subject. See the
-[public workflow](../../docs/features/chatgpt.md).
+The framework driver and server connection APIs remain available, but the
+Platform UI hides ChatGPT Plan from provider setup, provider pages, and model
+selection. Everruns has no registered web OAuth client and callback for this
+flow. OpenAI's [open-source plan flow](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)
+requires a `127.0.0.1` callback; remote browser users cannot reach a server's
+loopback listener. The framework's local helper and protected credential transfer
+remain available to hosts, with validated installation, signature, nonce, issuing
+client, and subject. See the [framework guide](../../docs/features/chatgpt.md).
 
 Yolop consumes the same driver package and credential types. Its settings
 adapter supplies a cross-process lease and an atomic compare-and-save so an

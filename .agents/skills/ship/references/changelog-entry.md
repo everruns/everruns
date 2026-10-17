@@ -8,6 +8,12 @@ CLI, Yolop, Mira, Bashkit). Intent, taxonomy and rules:
 
 ## Does this PR owe an entry?
 
+Honor an explicit user publication hold before applying the default eligibility rules.
+Keep the entry and announcement assets out of public content until the user-specified
+conditions and approval are met. Continue authorized implementation and record
+`Changelog: withheld pending user approval after implementation` in the PR body.
+Do not treat completion, CI, merge or release as the user's publication approval.
+
 - It completes a meaningful change to what users can do, how the product behaves, or what
   users must change: **yes**, if it meets the linked policy's impact criteria.
 - Cosmetic polish (including docs badge colors), typo fixes, routine documentation upkeep:

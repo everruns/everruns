@@ -1,9 +1,13 @@
 ---
 title: Durable Object authority (experimental)
 description: Run ordinary Everruns Rust agents with durable admission, leases, event logs and alarm-driven recovery owned by a Durable Object.
+slug: framework/durable-objects
 sidebar:
   order: 4
 ---
+
+import desktopDiagram from "./durable-objects.svg?url&no-inline";
+import mobileDiagram from "./durable-objects-mobile.svg?url&no-inline";
 
 > **Experimental, source-only.** Native and Wasm placements are available in the
 > repository. Validate your deployment platform and storage before production use.
@@ -13,14 +17,13 @@ alarm. A native Rust executor or an object’s Wasm isolate runs your ordinary a
 the platform worker use the same Rust session actor driver, turn loop, providers,
 tools and recovery decisions. JavaScript handles authority and activation.
 
-```mermaid
-flowchart LR
-  A[Authenticated application] -->|Admit input| D[Durable Object]
-  D -->|Alarm activation| E[Native executor or Wasm host]
-  E -->|Fenced journal and state| D
-  E --> R[Shared Everruns runtime]
-  R --> T[Providers and tools]
-```
+<picture className="er-responsive-diagram">
+  <source media="(max-width: 40rem)" srcSet={mobileDiagram} />
+  <img
+    src={desktopDiagram}
+    alt="Durable Object authority: an authenticated application admits input to a Durable Object, whose alarm activates a native executor or Wasm host. The executor writes fenced journal and state back to the object, and runs the shared Everruns runtime with providers and tools."
+  />
+</picture>
 
 The object commits input and its alarm together before acknowledging admission.
 If the executor dies, the alarm checks its lease and activates a replacement.

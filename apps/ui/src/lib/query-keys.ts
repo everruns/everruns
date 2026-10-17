@@ -67,8 +67,13 @@ export const queryKeys = {
   sessions: {
     all: () => ["sessions"] as const,
     scoped: (org?: string) => ["session", org] as const,
-    list: (org?: string, agentId?: string, offset?: number, limit?: number) =>
-      ["sessions", org, agentId ?? "all", offset ?? 0, limit ?? 20] as const,
+    list: (
+      org?: string,
+      agentId?: string,
+      offset?: number,
+      limit?: number,
+      includeArchived = false,
+    ) => ["sessions", org, agentId ?? "all", offset ?? 0, limit ?? 20, includeArchived] as const,
     byAgent: (agentId: string) => ["sessions", "agent", agentId] as const,
     /**
      * The filtered operational list (EVE-853). `filters` is the serialized

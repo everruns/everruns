@@ -281,7 +281,9 @@ Hosts provide the browser opener and an implementation of
 persists the full rotated pair before producing authentication headers. Hosts
 with writers outside that lease must implement atomic `compare_and_save`.
 `chatgpt::login::LoginAttempt` handles loopback PKCE and verified dynamic
-registration; credentials and registration are host-owned.
+registration; credentials and registration are host-owned. Embedders can call
+`LoginAttempt::with_success_page_html` to replace the default plain-text
+login-complete response with their own HTML page.
 
 The `chatgpt-login` example provides a private-file handoff for remote self-hosted
 installations. See [ChatGPT plan](https://everruns.com/docs/features/chatgpt/).

@@ -407,7 +407,50 @@ describe("AgentPage layout", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: /Sessions/ }));
     expect(screen.getByText("Session with GPT-4o")).toBeInTheDocument();
-    expect(mockUseSessions).toHaveBeenCalledWith("agent-1", { offset: 0, limit: 20 });
+    expect(mockUseSessions).toHaveBeenCalledWith("agent-1", {
+      offset: 0,
+      limit: 20,
+      includeArchived: true,
+    });
+  });
+
+  it("shows all seven counted sessions, including the six archived ones", async () => {
+    mockUseAgent.mockReturnValue({ data: { ...mockAgent, session_count: 7 }, isLoading: false });
+    mockUseSessions.mockReturnValue({
+      data: {
+        data: Array.from({ length: 7 }, (_, index) => ({
+          ...mockSession,
+          id: `session-${index}`,
+          title: `Conversation ${index + 1}`,
+          archived_at: index === 0 ? null : mockSession.updated_at,
+        })),
+        total: 7,
+      },
+      isLoading: false,
+    });
+    await renderPage();
+    fireEvent.click(screen.getByRole("tab", { name: /Sessions/ }));
+
+    expect(screen.getAllByText(/^Conversation \d$/)).toHaveLength(7);
+    expect(screen.getAllByText("Archived")).toHaveLength(6);
+    expect(screen.getByText("7 sessions · Includes archived sessions")).toBeInTheDocument();
+  });
+
+  it("keeps archived history included when paging through sessions", async () => {
+    mockUseSessions.mockReturnValue({
+      data: { data: [mockSession], total: 21 },
+      isLoading: false,
+    });
+    await renderPage();
+    fireEvent.click(screen.getByRole("tab", { name: /Sessions/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    expect(mockUseSessions).toHaveBeenLastCalledWith("agent-1", {
+      offset: 20,
+      limit: 20,
+      includeArchived: true,
+    });
+    expect(screen.getByText("Showing 21-21 of 21 sessions")).toBeInTheDocument();
   });
 
   it("writes the selected tab into the URL so a refresh keeps it", async () => {

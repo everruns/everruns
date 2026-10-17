@@ -31,7 +31,9 @@ directly, then read instructions and supporting files with `resources/read`.
 
 | Skill | Use it for |
 |---|---|
-| `skill://everruns-mcp/SKILL.md` | Finding agents, running sessions, inspecting results, and managing resources through MCP |
+| `skill://everruns/SKILL.md` | Product concepts, getting started, and documentation links |
+| `skill://everruns-cli/SKILL.md` | Command usage and examples across CLI, session shell, and MCP |
+| `skill://everruns-mcp/SKILL.md` | Connection setup, finding agents, running sessions, inspecting results, and managing resources through MCP |
 | `skill://everruns-agent-authoring/SKILL.md` | Creating or revising agent definitions, selecting capabilities and harnesses, and verifying behavior |
 
 Each entry preserves all authored frontmatter and includes every file's URI,

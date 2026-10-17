@@ -12623,6 +12623,60 @@
   },
   {
     "category": "agents",
+    "cli": "agents failures list",
+    "description": "List sessions with failed turns. Filters by failure time and includes older, recovered, and archived sessions, matching agent activity. Returns the latest matching failure per session.",
+    "input_schema": {
+      "properties": {
+        "after": {
+          "description": "Exclusive lower bound on failure time; defaults to 24 hours before `before`.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "agent_id": {
+          "type": "string"
+        },
+        "before": {
+          "description": "Inclusive upper bound, normally the Agents activity response's generated_at.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "int32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "offset": {
+          "format": "int32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_agent_failures",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/failures",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "agents",
     "cli": "agents health-checks list",
     "description": "List recent health check runs for an agent.",
     "input_schema": {

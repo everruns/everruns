@@ -783,6 +783,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/failures": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List sessions with failed turns
+     * @description List sessions with failed turns. Filters by failure time and includes older, recovered, and archived sessions, matching agent activity. Returns the latest matching failure per session.
+     */
+    get: operations["list_agent_failures"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/github": {
     parameters: {
       query?: never;
@@ -7991,6 +8011,11 @@ export interface components {
        */
       hours: number;
       totals: components["schemas"]["AgentActivityTotals"];
+      /**
+       * Format: date-time
+       * @description Exact exclusive lower bound of the run and failure window.
+       */
+      window_start: string;
     };
     /** @description Org-wide totals for the page masthead. */
     AgentActivityTotals: {
@@ -8394,6 +8419,34 @@ export interface components {
        *     replaced.
        */
       trigger: Record<string, unknown>;
+    };
+    AgentFailedSession: {
+      error?: string | null;
+      /** Format: date-time */
+      failed_at: string;
+      /** Format: int64 */
+      failed_turns: number;
+      /**
+       * Format: int32
+       * @description Sequence of the latest terminal failure in the requested window.
+       */
+      failure_sequence: number;
+      session: components["schemas"]["Session"];
+    };
+    AgentFailureSessions: {
+      /** Format: date-time */
+      after: string;
+      /** Format: date-time */
+      before: string;
+      data: components["schemas"]["AgentFailedSession"][];
+      /** Format: int64 */
+      failed_turns: number;
+      /** Format: int32 */
+      limit: number;
+      /** Format: int32 */
+      offset: number;
+      /** Format: int64 */
+      total_sessions: number;
     };
     /** @description Result of disconnecting an agent from GitHub. */
     AgentGitHubDisconnect: {
@@ -20924,6 +20977,14 @@ export interface components {
          */
         is_pinned?: boolean | null;
         /**
+         * Format: date-time
+         * @description Timestamp of the latest input or completed assistant message.
+         *     Populated on session lists; session edits and tool events do not advance it.
+         */
+        last_message_at?: string | null;
+        /** @description Outcome of the latest terminal turn, distinguishing cancellation from failure. */
+        last_turn_status?: string | null;
+        /**
          * @description Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).
          * @example en-US
          */
@@ -21519,6 +21580,14 @@ export interface components {
          * @example false
          */
         is_pinned?: boolean | null;
+        /**
+         * Format: date-time
+         * @description Timestamp of the latest input or completed assistant message.
+         *     Populated on session lists; session edits and tool events do not advance it.
+         */
+        last_message_at?: string | null;
+        /** @description Outcome of the latest terminal turn, distinguishing cancellation from failure. */
+        last_turn_status?: string | null;
         /**
          * @description Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).
          * @example en-US
@@ -24589,6 +24658,14 @@ export interface components {
        * @example false
        */
       is_pinned?: boolean | null;
+      /**
+       * Format: date-time
+       * @description Timestamp of the latest input or completed assistant message.
+       *     Populated on session lists; session edits and tool events do not advance it.
+       */
+      last_message_at?: string | null;
+      /** @description Outcome of the latest terminal turn, distinguishing cancellation from failure. */
+      last_turn_status?: string | null;
       /**
        * @description Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).
        * @example en-US
@@ -30318,6 +30395,14 @@ export interface components {
        */
       is_pinned?: boolean | null;
       /**
+       * Format: date-time
+       * @description Timestamp of the latest input or completed assistant message.
+       *     Populated on session lists; session edits and tool events do not advance it.
+       */
+      last_message_at?: string | null;
+      /** @description Outcome of the latest terminal turn, distinguishing cancellation from failure. */
+      last_turn_status?: string | null;
+      /**
        * @description Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).
        * @example en-US
        */
@@ -32772,6 +32857,36 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_agent_failures: {
+    parameters: {
+      query?: {
+        /** @description Exclusive lower bound on failure time; defaults to 24 hours before `before`. */
+        after?: string;
+        /** @description Inclusive upper bound, normally the Agents activity response's generated_at. */
+        before?: string;
+        offset?: number;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentFailureSessions"];
         };
       };
     };
