@@ -303,7 +303,7 @@ impl SessionApi {
                 Ok(json!({"status":status,"answered_by":"user","session_status":phase.phase()}))
             }
             "submit_approvals" => {
-                let request: everruns_contracts::execution_api::SubmitToolApprovalsRequest =
+                let request: everruns_contracts::execution_api::SubmitToolApprovalsCommand =
                     serde_json::from_value(body)
                         .map_err(|error| AgentLoopError::config(error.to_string()))?;
                 if request.command_id.is_some() && request.turn_id.is_none() {
@@ -322,7 +322,7 @@ impl SessionApi {
                     .submit_approvals(
                         request.command_id.unwrap_or_else(uuid::Uuid::new_v4),
                         target,
-                        request.decisions,
+                        request.request.decisions,
                     )
                     .await
                     .map_err(|error| AgentLoopError::Internal(anyhow::Error::new(error)))?;

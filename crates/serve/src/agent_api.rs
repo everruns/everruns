@@ -23,7 +23,7 @@ use axum_extra::extract::Query;
 use everruns::approval::ApprovalDecision;
 use everruns::execution_api::{
     AgentCard, AgentCardInput, AgentCardLinks, CreateAgentSessionRequest,
-    SubmitToolApprovalsRequest, SubmitToolApprovalsResponse, ToolApprovalDecision,
+    SubmitToolApprovalsCommand, SubmitToolApprovalsResponse, ToolApprovalDecision,
     ToolApprovalResolution,
 };
 use serde::Deserialize;
@@ -261,7 +261,7 @@ async fn question_answers(
 async fn tool_approvals(
     State(host): State<Arc<Host>>,
     Path((name, id)): Path<(String, String)>,
-    body: Json<SubmitToolApprovalsRequest>,
+    body: Json<SubmitToolApprovalsCommand>,
 ) -> ApiResult<Json<SubmitToolApprovalsResponse>> {
     confine(&host, &name, &id).await?;
     any_tool_approvals(State(host), Path(id), body).await
@@ -276,16 +276,19 @@ async fn tool_approvals(
 pub(crate) async fn any_tool_approvals(
     State(host): State<Arc<Host>>,
     Path(id): Path<String>,
-    Json(body): Json<SubmitToolApprovalsRequest>,
+    Json(command): Json<SubmitToolApprovalsCommand>,
 ) -> ApiResult<Json<SubmitToolApprovalsResponse>> {
+    let command_id = command.command_id;
+    let turn_id = command.turn_id;
+    let body = command.request;
     host.session_row(&id)?;
     // After a restart, the approvals are pending again once the session is.
     host.session(&id).await?;
     if let Some(status) = host.authoritative_status(&id).await? {
-        if body.command_id.is_some() && body.turn_id.is_none() {
+        if command_id.is_some() && turn_id.is_none() {
             return Err(bad_request("command_id requires turn_id"));
         }
-        if body.command_id.is_none()
+        if command_id.is_none()
             && body.decisions.iter().any(|answer| {
                 !status
                     .waiting
@@ -295,15 +298,14 @@ pub(crate) async fn any_tool_approvals(
         {
             return Err(ApiError::NotFound("pending approval request".into()).into());
         }
-        let turn = body
-            .turn_id
+        let turn = turn_id
             .or(status.open_turn)
             .ok_or_else(|| ApiError::Conflict("no open turn".into()))?;
         let result = host
             .session(&id)
             .await?
             .submit_approvals(
-                body.command_id.unwrap_or_else(uuid::Uuid::new_v4),
+                command_id.unwrap_or_else(uuid::Uuid::new_v4),
                 turn,
                 body.decisions,
             )

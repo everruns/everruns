@@ -1,11 +1,24 @@
 # everruns-serve-celld
 
+> Run ordinary serve applications on celld with per-session Engine-owned durable authority.
+
+Part of the [Everruns](https://everruns.com) ecosystem.
+
 Experimental native [serve](../serve) hosting over per-session celld Durable
 Objects. Applications keep ordinary serve declarations. The adapter selects
 `everruns::Engine` with `ObjectHosting` and exposes that same Engine at the
 independently authenticated `/execute` activation endpoint.
 
+## Quick Example
+
 ```rust
+use serve::prelude::*;
+
+#[agent]
+fn assistant() -> Agent {
+    Agent::builder().model("openai/gpt-6.1-sol").instructions("Answer concisely.").build()
+}
+
 #[tokio::main]
 async fn main() -> serve::Result {
     serve_celld::start(serve::App::builder().discover().build()).await
@@ -32,8 +45,24 @@ services. The adapter must isolate commands from the Engine process, other sessi
 and privileged authority credentials. A directory or the executor container alone
 does not provide that isolation; the adapter never enables an uncontained shell.
 
-See the [example](../../examples/serve/celld) and
-[Engine hosting architecture](../../knowledge/framework/engine-durable-sessions.md).
+See the [example](https://github.com/everruns/everruns/tree/main/examples/serve/celld) and
+[Engine hosting architecture](https://everruns.com/docs/framework/architecture/).
 The Engine profile migration and platform qualification are in progress; these
 changes do not qualify production storage, unsupported host services or channel
 outbox durability.
+
+## What It Provides
+
+- The ordinary serve `/v1` API and a separately authenticated Engine `/execute` endpoint.
+- Stable per-session DO bindings and reconstructible catalog projections.
+- Explicit Environment and sandbox adapters, independent of journal durability.
+
+## Documentation
+
+- [serve on celld](https://everruns.com/docs/framework/serve-celld/)
+- [API reference](https://docs.rs/everruns-serve-celld)
+- [Durable Object hosting](https://everruns.com/docs/framework/durable-objects/)
+
+## License
+
+MIT. See [LICENSE](https://github.com/everruns/everruns/blob/main/LICENSE).

@@ -5,6 +5,22 @@
 //! OS tools use a separately provisioned workspace. Container disk is ephemeral
 //! unless the operator supplies persistent storage at `SERVE_WORKSPACE_DIR`.
 
+//! Part of the [Everruns](https://everruns.com) ecosystem.
+//!
+//! ```no_run
+//! use serve::prelude::*;
+//!
+//! #[agent]
+//! fn assistant() -> Agent {
+//!     Agent::builder().model("openai/gpt-6.1-sol").instructions("Answer concisely.").build()
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() -> serve::Result {
+//!     serve_celld::start(serve::App::builder().discover().build()).await
+//! }
+//! ```
+
 use anyhow::Context;
 use axum::Router;
 use clap::Parser;

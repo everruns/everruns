@@ -1,10 +1,52 @@
-# Durable Object authority (experimental)
+# everruns-durable-object
+
+> Coherent session hosting for ordinary Everruns Agents on native executors and Wasm Durable Objects.
+
+Part of the [Everruns](https://everruns.com) ecosystem.
 
 An experimental native and Wasm execution profile: a Durable Object owns admission, the
 canonical session log, leases and alarms. Ordinary Everruns Rust agents run on an
 external executor or inside an object’s Wasm isolate using the same actor driver
 as the platform worker. No planner
 or tool loop is reimplemented in JavaScript.
+
+## What It Provides
+
+- One per-session authority for binding, admission, commands, canonical events and wakeups.
+- Epoch-fenced runtime ports and exact-turn approval/client-result commands.
+- The same Framework Engine and shared actor driver on native and Wasm placements.
+
+## Quick Example
+
+Enable `everruns/openai` in the application. Configure the Worker and its
+independent Engine executor as described below, then admit an ordinary Agent input:
+
+```rust,no_run
+use everruns::{Agent, Engine, MessageId, OpenAI, SessionId, hosting::AgentBuild};
+use everruns_durable_object::{AuthorityClient, ObjectHosting};
+
+# #[cfg(feature = "native")]
+# async fn submit() -> Result<(), Box<dyn std::error::Error>> {
+let client = AuthorityClient::new(
+    "https://authority.example.com", "tenant", "replace-with-a-long-random-service-secret",
+)?;
+let agent = Agent::builder()
+    .instructions("Answer concisely.")
+    .provider(OpenAI::from_env()?)
+    .model("gpt-6.1-sol")
+    .build()?;
+let build = AgentBuild::new("assistant", "immutable-build-v1");
+let engine = Engine::builder()
+    .hosting(ObjectHosting::new(client))
+    .register(build.clone(), agent)
+    .build();
+let session = engine.create_registered(SessionId::new(), &build).await?;
+let receipt = session.send_with_id(MessageId::new(), "Hello.").await?;
+println!("admitted {}", receipt.message_id);
+# Ok(())
+# }
+# fn main() {}
+```
 
 ## Run locally
 
@@ -58,7 +100,7 @@ It needs free ports 8789 and 8790; logs are retained under the printed `/tmp` pa
 For Wasm builds and platform qualification, see the
 [Wasm application](../../examples/durable-object-agent/README.md). Local workerd
 coverage does not establish production Cloudflare or cloud-bucket guarantees.
-See [the architecture](../../knowledge/framework/durable-object-native.md).
+See the [hosting guide](https://everruns.com/docs/framework/durable-objects/).
 
 ## Extension ports
 
@@ -68,3 +110,13 @@ HTTP implementation and Wasm `ObjectTransport` implement the same protocol.
 ports. Only a claimed epoch supplies canonical write access; frontend bundles
 are read-only. Native and Wasm placements invoke the shared `SessionActorDriver`
 through Engine. No application host factory assembles a core runtime.
+
+## Documentation
+
+- [Durable Object hosting](https://everruns.com/docs/framework/durable-objects/)
+- [API reference](https://docs.rs/everruns-durable-object)
+- [Framework architecture](https://everruns.com/docs/framework/architecture/)
+
+## License
+
+MIT. See [LICENSE](https://github.com/everruns/everruns/blob/main/LICENSE).
