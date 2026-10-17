@@ -156,7 +156,13 @@ async fn object_waits_reopen_and_mixed_resolution_is_atomic() {
             .unwrap()
             .success
     );
-    let after = session.events_after(0).await.unwrap().len();
+    let canonical = session.events_after(0).await.unwrap();
+    let first = &canonical[0];
+    assert_eq!(
+        session.event_sequence(&first.event_id).await.unwrap(),
+        first.sequence()
+    );
+    let after = canonical.len();
     session
         .resolve_waits(command, turn, decisions, vec![result])
         .await

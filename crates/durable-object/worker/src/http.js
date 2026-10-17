@@ -25,7 +25,7 @@ export async function authenticate(request, token) {
 
 export function address(request, env) {
   const match = new URL(request.url).pathname.match(
-    /^\/tenants\/([a-zA-Z0-9_-]{1,128})\/sessions\/(session_[a-f0-9]{32})\/([a-z]+)$/,
+    /^\/tenants\/([a-zA-Z0-9_-]{1,128})\/sessions\/(session_[a-f0-9]{32})\/([a-z][a-z_]{0,63})$/,
   );
   requireValue(
     match && match[1] === env.TENANT_ID,

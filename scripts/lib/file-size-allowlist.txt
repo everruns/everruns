@@ -31,7 +31,7 @@ crates/everruns/tests/host/integration/runtime_host_test.rs
 crates/server/src/api/common.rs
 crates/server/src/api/durable.rs
 crates/server/src/api/mcp_endpoint/mod.rs
-crates/server/src/atif.rs
+crates/server/src/atif/mod.rs
 crates/server/src/auth/mcp_oauth/mod.rs
 crates/server/src/auth/routes/mod.rs
 crates/server/src/worker_link/direct_worker_adapters/mod.rs
