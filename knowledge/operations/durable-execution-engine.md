@@ -390,7 +390,11 @@ production and DEV_MODE alike; the worker side is
   by two lease lives); inside a command transaction that wait runs after the
   commit, when the holder can first see the request, still before the command
   answers. Past the bound the answer means "acknowledged": the request stays
-  on the row for the holder, or the next one, to record.
+  on the row for the holder, or the next one, to record. A backend error does
+  not transfer event ownership to the API: session and channel cancellation
+  return the error without synthesizing terminal events or idling the session.
+  Otherwise a worker completing while the API waits for a connection can leave
+  both completion and cancellation in the same turn's log.
 - **Poison guard.** `attempts` counts leases since the last release. A lease
   that finds more than `DURABLE_NO_PROGRESS_SEAL_THRESHOLD` (default 3) seals
   the turn instead of running it: a user-facing processing error,

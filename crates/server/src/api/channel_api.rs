@@ -159,6 +159,7 @@ pub(crate) async fn cancel_session_turn_for(
         Ok(false) => {}
         Err(err) => {
             tracing::warn!(session_id = %session_id, error = %err, "{reason}: cancel failed");
+            return Err(err.into());
         }
     }
 
