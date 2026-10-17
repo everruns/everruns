@@ -15,7 +15,7 @@ FEATURES = {
     'everruns-drivers': ['all'], 'everruns-llmsim': ['all'],
     'everruns': ['all'], 'everruns-docs-snippets': ['all'],
     'everruns-test-support': ['all'],
-    'everruns-capabilities': ['hosted-integration-catalog', 'environment-capabilities'],
+    'everruns-capabilities': ['hosted-integration-catalog', 'environment-capabilities', 'portable-builtins'],
     'everruns-integrations': ['bashkit', 'brave-search', 'brave-search-hosted', 'browserless',
         'cursor', 'daytona', 'daytona-test-util', 'docker', 'duckduckgo', 'e2b', 'filesystem',
         'github', 'lua', 'openai-decisions', 'openai-image', 'openrouter', 'parallel',
