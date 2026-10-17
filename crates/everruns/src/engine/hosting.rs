@@ -396,6 +396,7 @@ impl Engine {
                     agent: Some(registration.agent),
                     harness: registration.harness,
                     state: None,
+                    selected_environment: None,
                     durable_binding: Some(binding),
                     provisional: false,
                     creation: None,
@@ -427,6 +428,7 @@ impl Engine {
                     agent: None,
                     harness,
                     state: None,
+                    selected_environment: None,
                     durable_binding: Some(status.binding),
                     provisional: false,
                     creation: None,
@@ -435,7 +437,20 @@ impl Engine {
         if let Some(state) = self.state(session) {
             return Ok(Session::from_inner(state));
         }
-        let handle = Session::new(self.binding(session), None, self.inner.observers.clone());
+        // Synchronous process-local sessions retain their selected Environment
+        // across frontend handle loss. Remote readers must not require it.
+        let environment = self
+            .inner
+            .sessions
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(&session)
+            .and_then(|entry| entry.selected_environment.clone());
+        let handle = Session::new(
+            self.binding(session),
+            environment,
+            self.inner.observers.clone(),
+        );
         self.remember_state(session, &handle);
         Ok(handle)
     }
@@ -531,6 +546,7 @@ impl Engine {
                     agent: Some(agent),
                     harness: None,
                     state: None,
+                    selected_environment: None,
                     durable_binding: Some(SessionBinding {
                         framework: 1,
                         behavior: build,
@@ -598,10 +614,16 @@ impl Engine {
         if !entry.provisional {
             return Ok(false);
         }
+        entry
+            .agent
+            .as_ref()
+            .ok_or(SessionEnvironmentError::Unavailable)?
+            .validate_session_environment(&environment)?;
         let binding = entry
             .durable_binding
             .as_mut()
             .ok_or(SessionEnvironmentError::Unavailable)?;
+        entry.selected_environment = Some(environment.clone());
         let reference = format!("process-environment-{session}");
         let factory = Arc::new(move |_| {
             let environment = environment.clone();

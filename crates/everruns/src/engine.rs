@@ -219,6 +219,8 @@ struct EngineSessionEntry {
     agent: Option<Agent>,
     harness: Option<Harness>,
     state: Option<Weak<crate::session::SessionInner>>,
+    /// Selected only after successful negotiation on a volatile convenience handle.
+    selected_environment: Option<Environment>,
     durable_binding: Option<crate::hosting::SessionBinding>,
     /// Only synchronous volatile convenience handles may configure before their
     /// first authority I/O. A started creation freezes even after reply loss.
@@ -421,6 +423,7 @@ impl Engine {
                 agent: Some(agent),
                 harness,
                 state: None,
+                selected_environment: None,
                 durable_binding: None,
                 provisional: false,
                 creation: None,
@@ -591,6 +594,7 @@ impl Engine {
                     agent: Some(agent),
                     harness: None,
                     state: None,
+                    selected_environment: None,
                     durable_binding: None,
                     provisional: false,
                     creation: None,
@@ -935,13 +939,22 @@ impl SessionExecution for EngineSessionExecution {
                 .hosted_environment(self.session_id)
                 .await
                 .map_err(|_| SessionEnvironmentError::Unavailable)?;
-            return if retained.workspace_head().workspace_id()
-                == environment.workspace_head().workspace_id()
-            {
-                Ok(())
-            } else {
-                Err(SessionEnvironmentError::AlreadyBound)
-            };
+            if retained.workspace_head().binding() != environment.workspace_head().binding() {
+                return Err(SessionEnvironmentError::AlreadyBound);
+            }
+            let mut sessions = self
+                .engine
+                .inner
+                .sessions
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            let entry = sessions
+                .get_mut(&self.session_id)
+                .ok_or(SessionEnvironmentError::Unavailable)?;
+            if entry.creation.is_some() {
+                entry.selected_environment = Some(environment.clone());
+            }
+            return Ok(());
         }
         let agent = self.agent_snapshot();
         let backends = self

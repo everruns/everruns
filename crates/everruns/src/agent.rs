@@ -469,14 +469,25 @@ impl Agent {
         session_id: SessionId,
         environment: &Environment,
     ) -> Result<(), crate::SessionEnvironmentError> {
+        self.validate_session_environment(environment)?;
         let head = environment.workspace_head();
-        if !self.state.remember_backend(head.backend()) {
-            return Err(legacy_workspace_provider_conflict());
-        }
         binding_store
             .bind(session_id, head.binding())
             .await
             .map_err(crate::SessionEnvironmentError::from)?;
+        Ok(())
+    }
+
+    pub(crate) fn validate_session_environment(
+        &self,
+        environment: &Environment,
+    ) -> Result<(), crate::SessionEnvironmentError> {
+        if !self
+            .state
+            .remember_backend(environment.workspace_head().backend())
+        {
+            return Err(legacy_workspace_provider_conflict());
+        }
         Ok(())
     }
 

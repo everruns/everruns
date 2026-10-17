@@ -160,7 +160,8 @@ runtime.
   `sandbox = "microvm"` it supplies a host shell rooted at the session
   workspace through `ServerBuilder::microvm`: the per-session microVM is the
   isolation boundary, and stacking bashkit inside it would only remove real
-  tools.
+  tools. The adapter's explicit workspace remains selected when the session
+  journal uses SQLite; the journal's default workspace must not replace it.
 - **celld uses one DO authority per Framework session.** The native adapter selects
   `ObjectHosting` beneath the ordinary serve Engine and authenticates `/execute`
   separately from the user API. Container restart reconstructs retained behavior;

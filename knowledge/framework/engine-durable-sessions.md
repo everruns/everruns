@@ -127,6 +127,14 @@ silently select another authority through its legacy local/custom-backend settin
 Workspace selection remains an Environment concern, separate from journal and
 activation ownership.
 
+Synchronous memory sessions retain their selected Environment across frontend
+handle loss and resume. Default Environment factories reopen one head per
+session across validation, frontend access and activations. Binding still validates
+workspace backend identity;
+choosing a hosting profile does not permit a conflicting backend to take over
+the session's head. Remote history readers remain independent of Environment
+reconstruction.
+
 ## One profile, several implementations
 
 A profile is a validated composition, not an independently swappable event store,

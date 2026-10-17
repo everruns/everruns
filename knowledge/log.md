@@ -23,7 +23,9 @@
   Scope declared secret names to app discovery so retained build hashes cannot
   change when unrelated code declares a secret. Interruption queries and resume
   handles now use authority ownership and the original admission; transport
-  qualification includes mixed wait resolution and opaque cursor routes. See
+  qualification includes mixed wait resolution and opaque cursor routes. Preserve
+  memory session workspace bindings and the AgentCore adapter’s mounted workspace
+  independently of SQLite journal placement. See
   [Engine-Owned Durable Sessions](framework/engine-durable-sessions.md) and
   [Durable Object qualification](framework/durable-object-native.md).
   The announcement publication hold remains in force.
