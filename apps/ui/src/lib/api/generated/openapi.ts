@@ -26120,7 +26120,7 @@ export interface components {
       display_name?: string | null;
       /**
        * Format: int64
-       * @description Duration of the tool call in milliseconds
+       * @description Wall-clock duration of the tool call in milliseconds
        */
       duration_ms?: number | null;
       /** @description Error message if failed */
@@ -26153,6 +26153,14 @@ export interface components {
       tool_name: string;
       /** @description Stable fingerprint of tool name + normalized result/error. */
       tool_result_fingerprint?: string | null;
+      /**
+       * Format: int64
+       * @description Actual worker-thread CPU nanoseconds consumed while polling the invoked
+       *     tool executor future, including clock-bracketing overhead. Excludes async
+       *     waiting, child processes, separately spawned/blocking tasks and remote
+       *     compute. Missing means unobserved/unsupported, not zero or total tool CPU.
+       */
+      worker_thread_cpu_ns?: number | null;
     };
     /** @description Tool definition in agent configuration */
     ToolDefinition:

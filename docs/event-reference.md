@@ -564,7 +564,8 @@ Emitted when individual tool execution completes.
 | `result` | ContentPart[]? | Result content |
 | `error` | string? | Error message |
 | `severity` | string? | `issue` when the call failed; absent on success. See [Issues and errors](#issues-and-errors) |
-| `duration_ms` | integer? | Duration |
+| `duration_ms` | integer? | Wall-clock duration |
+| `worker_thread_cpu_ns` | integer? | Observed worker-thread CPU during executor-future polls; absent means unknown |
 | `executed_arguments` | JSON? | Arguments the tool actually ran with. Present only when a `pre_tool_use` hook rewrote the arguments the model sent (those stay on `tool.started`). Values under credential-named keys such as `password`, `access_token`, or `Authorization` read `[REDACTED]`, and credential-looking text inside other values (bearer tokens, common provider API keys, URL user info) is replaced with `[REDACTED]`. Larger than 8 KiB serialized, it is a truncated JSON string. |
 | `executed_arguments_truncated` | boolean? | `true` when `executed_arguments` is truncated |
 
@@ -581,6 +582,12 @@ Emitted when individual tool execution completes.
   }
 }
 ```
+
+Native Linux/macOS hosts measure CPU only while polling the invoked tool executor
+future, including clock-bracketing overhead. Async waits, hooks, child processes,
+separately spawned/blocking work and remote compute are outside this scope.
+Unsupported or failed observations are absent, not zero. This is not total tool
+CPU, and `duration_ms` remains elapsed wall time.
 
 ### Issues and errors
 

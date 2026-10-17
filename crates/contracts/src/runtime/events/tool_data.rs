@@ -290,9 +290,16 @@ pub struct ToolCompletedData {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 
-    /// Duration of the tool call in milliseconds
+    /// Wall-clock duration of the tool call in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
+
+    /// Actual worker-thread CPU nanoseconds consumed while polling the invoked
+    /// tool executor future, including clock-bracketing overhead. Excludes async
+    /// waiting, child processes, separately spawned/blocking tasks and remote
+    /// compute. Missing means unobserved/unsupported, not zero or total tool CPU.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worker_thread_cpu_ns: Option<u64>,
 
     /// Capability that contributed the tool definition, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -351,6 +358,7 @@ impl ToolCompletedData {
             result: Some(result),
             error: None,
             duration_ms,
+            worker_thread_cpu_ns: None,
             capability_id: None,
             capability_name: None,
             narration: None,
@@ -380,6 +388,7 @@ impl ToolCompletedData {
             result: None,
             error: Some(error),
             duration_ms,
+            worker_thread_cpu_ns: None,
             capability_id: None,
             capability_name: None,
             narration: None,
@@ -388,6 +397,12 @@ impl ToolCompletedData {
             acted_as: None,
             details: None,
         }
+    }
+
+    /// Attach the host's executor-poll CPU observation without changing elapsed time.
+    pub fn with_worker_thread_cpu_ns(mut self, cpu_ns: Option<u64>) -> Self {
+        self.worker_thread_cpu_ns = cpu_ns;
+        self
     }
 
     /// Set display name on this event data
@@ -848,5 +863,21 @@ mod executed_arguments_tests {
             &preview[preview.len() - 16..]
         );
         assert!(preview.ends_with(" [REDACTE"));
+    }
+}
+
+#[cfg(test)]
+mod cpu_observation_tests {
+    use super::*;
+    #[test]
+    fn absent_legacy_cpu_is_unknown_and_measured_zero_is_preserved() {
+        let data = ToolCompletedData::success("call".into(), "tool".into(), vec![], Some(500));
+        let legacy = serde_json::to_value(&data).unwrap();
+        assert!(legacy.get("worker_thread_cpu_ns").is_none());
+        let restored: ToolCompletedData = serde_json::from_value(legacy).unwrap();
+        assert_eq!(restored.worker_thread_cpu_ns, None);
+        let measured = serde_json::to_value(data.with_worker_thread_cpu_ns(Some(0))).unwrap();
+        assert_eq!(measured["worker_thread_cpu_ns"], 0);
+        assert_eq!(measured["duration_ms"], 500);
     }
 }

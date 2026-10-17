@@ -51,6 +51,24 @@ The Responses protocol (OpenAI, OpenRouter) sends tool-result images as `input_i
 
 **ToolRegistry:** Manages multiple tools and implements `ToolExecutor` trait. See `crates/core/src/tools.rs` for `ToolRegistry` and its builder pattern.
 
+### Worker CPU observations
+
+Native hosts on Linux and macOS attach an optional actual current-thread CPU
+observation to completed, invoked executor futures. The portable engine accepts
+an injected clock and samples only around each future poll, on the thread doing
+that poll. Summing within-poll deltas excludes async suspension and remains valid
+when a task migrates between threads. CPU-bound tools are observed inside their
+spawned task, not while the caller awaits its join. Wall duration is unchanged.
+
+The observation covers executor-future polling plus clock-bracketing overhead.
+It excludes hooks outside execution, separately spawned or blocking work, child
+processes and remote/provider/sandbox CPU; it is not total tool CPU. A blocked,
+replayed, client-side or abruptly cancelled invocation has no invented sample.
+Unsupported clocks, failed reads, reversed counters or overflow produce unknown,
+not zero or a partial sum. See the event contract and `execution/cpu_time.rs` for
+the field and observation algorithm. This is generic telemetry, with no tariff or
+billing policy in OSS.
+
 ### Tool Hints
 
 `ToolHints` provides semantic metadata about a tool's behavioral properties. See `crates/contracts/src/tool_types.rs` for the struct definition. The behavioral hints are all `Option<bool>`, `None` means unspecified.
