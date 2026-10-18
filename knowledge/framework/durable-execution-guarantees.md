@@ -12,9 +12,15 @@ tags:
 
 # Durable Execution Guarantees and Backend Qualification
 
-Implementation update: the first native executor profile is now implemented; see
-[Native Execution with Durable Object Authority](durable-object-native.md) for
-current scope and qualification. The broader design below remains a proposal.
+The [Engine-owned sessions proposal](engine-durable-sessions.md) applies these
+durability requirements to the public Framework API. Qualification through a
+low-level authority client alone does not establish Engine/Session or serve
+parity; those paths require the same failure tests through their ordinary APIs.
+
+Implementation update: Engine-owned memory, native SQLite and Durable Object
+profiles are implemented. See [Engine-Owned Durable Sessions](engine-durable-sessions.md)
+and [Shared Execution with Durable Object Authority](durable-object-native.md)
+for current scope and qualification. The broader design below remains a proposal.
 
 **Status: draft proposal, 2026-10-16.** Companion to
 [Portable Durable Agent Execution](durable-execution-portability.md), which owns

@@ -216,13 +216,19 @@ impl EvalCx {
         let mut notices = host.notices.subscribe();
         let pending = host.send(session, text).await?;
         let mut record = TurnRecord::default();
-        let wait = pending.wait();
-        tokio::pin!(wait);
+        // Approval handling queries the same authority as outcome observation.
+        // Keep the observer independently polled while answering a notice, and
+        // abort it on timeout or early return when the JoinSet is dropped.
+        let mut completion = tokio::task::JoinSet::new();
+        completion.spawn(async move { pending.wait().await });
         let deadline = tokio::time::sleep(TURN_TIMEOUT);
         tokio::pin!(deadline);
         let outcome = loop {
             tokio::select! {
-                outcome = &mut wait => break outcome?,
+                outcome = completion.join_next() => {
+                    let outcome = outcome.ok_or_else(|| anyhow!("outcome observer ended"))?;
+                    break outcome??;
+                },
                 () = &mut deadline => bail!("turn did not finish within {TURN_TIMEOUT:?}"),
                 notice = notices.recv() => match notice {
                     Ok(Notice::ApprovalRequested(view)) if view.session_id == session => {
@@ -232,7 +238,7 @@ impl EvalCx {
                             session,
                             &view.tool_call_id,
                             self.on_approval == OnApproval::Approve,
-                        );
+                        ).await;
                     }
                     Ok(Notice::QuestionAsked { session_id, tool_call_id, questions })
                         if session_id == session =>
@@ -244,7 +250,7 @@ impl EvalCx {
                             Some(&tool_call_id),
                             Status::Answered,
                             outcome.answers,
-                        );
+                        ).await;
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                         bail!("host shut down mid-turn")
@@ -360,12 +366,24 @@ fn is_terminal(event: &Value) -> bool {
 
 /// Tool names from canonical `tool.started` events, in order.
 fn tools_called(events: &[Value]) -> Vec<String> {
-    events
-        .iter()
-        .filter(|event| event["type"] == "tool.started")
-        .filter_map(|event| event["data"]["tool_call"]["name"].as_str())
-        .map(str::to_string)
-        .collect()
+    let mut tools = Vec::new();
+    for event in events {
+        if event["type"] == "tool.started" {
+            if let Some(name) = event["data"]["tool_call"]["name"].as_str() {
+                tools.push(name.to_string());
+            }
+        } else if event["type"] == "tool.call_requested" {
+            for call in event["data"]["tool_calls"].as_array().into_iter().flatten() {
+                if let Some(name) = call["name"]
+                    .as_str()
+                    .filter(|name| *name != "approve_tool_call")
+                {
+                    tools.push(name.to_string());
+                }
+            }
+        }
+    }
+    tools
 }
 
 /// What the agent last said in the turn (commentary is not an answer).

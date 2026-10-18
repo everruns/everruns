@@ -93,7 +93,29 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             lease.clone(),
             self.renew_poke.clone(),
         )));
-        let finish = self.run_leased(&lease, &actor).await;
+        let mut finish = self.run_leased(&lease, &actor).await;
+        if matches!(finish, Ok(Finish::Release)) && !lease.is_lost() {
+            let signals = Self::signals(&lease);
+            let host = self.hosts.host(
+                HostTurn {
+                    org_id: actor.org_id,
+                    session_id: actor.session_id,
+                    agent_id: None,
+                    input_message_id: None,
+                },
+                &signals,
+            );
+            if let Err(error) = async {
+                self.hosts.flush(&host).await?;
+                self.hosts
+                    .checkpoint(&host, &lease.read_tail().await?)
+                    .await
+            }
+            .await
+            {
+                finish = Err(error);
+            }
+        }
         // Lease-release replies may arrive after another holder takes over;
         // record the execution boundary before that administrative RPC.
         tracing::debug!(session_id = %actor.session_id, "Actor turn execution finished");
@@ -159,6 +181,7 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             &signals,
         );
         let tail = lease.read_tail().await?;
+        self.hosts.checkpoint(&setup, &tail).await?;
         let started_at = tail
             .first()
             .filter(|event| event.event_type == crate::TURN_STARTED)
@@ -206,18 +229,49 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             let resolved = setup
                 .load_resolved_turn_for_execution(org_id, session_id, input.message_id)
                 .await?;
+            let input_message = resolved
+                .messages
+                .iter()
+                .find(|message| message.id == input.message_id)
+                .cloned();
             let snapshot = resolved.snapshot;
             let drive = TurnDrive::new(
                 session_id,
                 org_id,
-                TurnId::new(),
+                self.hosts
+                    .fresh_turn_id(input.message_id, TurnId::new())
+                    .await?,
                 input.message_id,
                 snapshot.harness_id,
                 snapshot.agent_id,
                 snapshot.workspace_id,
             );
             let host = self.turn_host(&drive, &signals);
+            self.hosts
+                .inputs_consumed(&drive, &[input.message_id])
+                .await?;
+            lease.renew().await?;
+            if !lease.cancel_requested() {
+                let mut stop = signals.stop.clone();
+                tokio::select! {
+                    biased;
+                    _=stop.wait_for(|stop|*stop)=>{},
+                    result=self.hosts.before_turn(&host,&drive,input_message.as_ref())=> {
+                        if result?==super::InputPreparation::Rejected {
+                            // The host durably settled the input without starting a
+                            // turn. It is safe to commit past the fresh-input guard.
+                            lease.turn_stored();
+                            lease.advance(input.sequence);
+                            return Ok(Finish::Release);
+                        }
+                    },
+                }
+            }
+            if lease.is_lost() {
+                return Ok(Finish::Expire);
+            }
             let (execution, plan) = turn_entry_plan(&host, &drive).await?;
+            lease.renew().await?;
             return self.drive(lease, &host, drive, execution, plan).await;
         };
 
@@ -332,6 +386,8 @@ impl<H: ActorHosts> SessionActorDriver<H> {
         // error in the same poll: the lease is gone either way.
         if lease.is_lost() {
             stopped = Stopped::Lost;
+        } else if lease.cancel_requested() {
+            stopped = Stopped::Cancel;
         } else if let Stopped::Done(Err(error)) = &stopped
             && session_deleted(lease, error).await
         {

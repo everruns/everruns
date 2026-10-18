@@ -120,8 +120,8 @@ impl Database {
 
         let row = sqlx::query_as::<_, OrganizationSettingsRow>(
             sql!(r#"
-            INSERT INTO organization_settings (org_id, default_model_id, default_harness_id, base_harness_id, default_provider_per_service, system_decisions)
-            VALUES ($1, $2, $4, $6, COALESCE($9, '{}'::jsonb), COALESCE($10, 'deployment'))
+            INSERT INTO organization_settings (org_id, default_model_id, default_harness_id, base_harness_id, default_provider_per_service, system_decisions, small_model_id)
+            VALUES ($1, $2, $4, $6, COALESCE($9, '{}'::jsonb), COALESCE($10, 'deployment'), $11)
             ON CONFLICT (org_id) DO UPDATE SET
                 default_model_id = CASE
                     WHEN $3 THEN $2
@@ -140,6 +140,7 @@ impl Database {
                     ELSE organization_settings.default_provider_per_service
                 END,
                 system_decisions = COALESCE($10, organization_settings.system_decisions),
+                small_model_id = CASE WHEN $12 THEN $11 ELSE organization_settings.small_model_id END,
                 updated_at = NOW()
             RETURNING {OrganizationSettingsRow}
             "#),
@@ -154,6 +155,8 @@ impl Database {
         .bind(default_providers_changed)
         .bind(default_providers_json)
         .bind(input.system_decisions.map(crate::storage::SystemDecisions::as_str))
+        .bind(input.small_model_id.clone().into_value().map(|id| id.uuid()))
+        .bind(input.small_model_id.is_changed())
         .fetch_one(&self.pool)
         .await?;
         Ok(row)

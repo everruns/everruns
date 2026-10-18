@@ -32,6 +32,7 @@ Fundamental capabilities for file operations, command execution, web access, ses
 | [Tools in Shell](/capabilities/tools-in-shell/) | `tools_in_shell` | 1 (`tools`, hidden from the model; it is the shell command) |
 | [Host Shell](/capabilities/host-shell/) | `host_shell` | 1 (Framework-only) |
 | [Session](/capabilities/session/) | `session` | 2 |
+| [Automatic session titles](/capabilities/automatic-session-titles/) | `automatic_session_titles` | 0 |
 | [Storage](/capabilities/session-storage/) | `session_storage` | 2 |
 | [Web Fetch](/capabilities/web-fetch/) | `web_fetch` | 1 |
 | [Web Search](/capabilities/web-search/) | `web_search` | 1 |

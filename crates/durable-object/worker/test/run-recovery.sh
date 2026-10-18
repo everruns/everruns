@@ -35,3 +35,5 @@ cd "$PROJECT_ROOT"
 echo "Authority evidence: $RUN_DIR/authority.log"
 cargo test --locked -p everruns-durable-object --test recovery \
   a_killed_native_executor_recovers_from_do_without_resending_input -- --ignored --exact --nocapture
+
+cargo test --locked -p everruns-durable-object --test conformance -- --ignored --nocapture

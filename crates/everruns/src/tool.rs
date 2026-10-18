@@ -68,6 +68,39 @@ use serde_json::Value;
 /// without a library user importing any core type.
 pub struct ToolResponse(ToolExecutionResult);
 
+/// A caller's durable answer to one outstanding client tool request.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct ToolAnswer {
+    /// The exact requested call identity.
+    pub tool_call_id: String,
+    /// Tool name, checked against the outstanding request.
+    pub tool_name: String,
+    /// Structured result returned to the agent.
+    pub result: Value,
+    /// A model-visible error, when the requested operation failed.
+    pub error: Option<String>,
+}
+
+impl ToolAnswer {
+    pub(crate) fn into_event_data(self) -> everruns_core::events::ToolCompletedData {
+        match self.error {
+            Some(error) => everruns_core::events::ToolCompletedData::failure(
+                self.tool_call_id,
+                self.tool_name,
+                "error".into(),
+                error,
+                None,
+            ),
+            None => everruns_core::events::ToolCompletedData::success(
+                self.tool_call_id,
+                self.tool_name,
+                vec![crate::ContentPart::tool_result_text(&self.result)],
+                None,
+            ),
+        }
+    }
+}
+
 impl ToolResponse {
     /// A successful result carrying a JSON value.
     pub fn json(value: impl Into<Value>) -> Self {
@@ -155,6 +188,37 @@ struct ToolCallContextInner {
 }
 
 impl ToolCallContext {
+    /// Read a session-owned value from the selected Engine authority.
+    pub async fn get_value(&self, key: &str) -> Result<Option<String>, String> {
+        if everruns_core::host::is_internal_session_kv_key(key) {
+            return Err("session key is reserved for host control".into());
+        }
+        self.inner
+            .context
+            .storage_store
+            .as_ref()
+            .ok_or("session storage is unavailable")?
+            .get_value(self.session_id(), key)
+            .await
+            .map_err(|_| "session value read failed".to_string())
+    }
+
+    /// Commit a session-owned value under the current execution epoch.
+    /// A read followed by a write is not a transaction; tools sharing a
+    /// read/modify/write key must declare the same concurrency class.
+    pub async fn set_value(&self, key: &str, value: &str) -> Result<(), String> {
+        if everruns_core::host::is_internal_session_kv_key(key) {
+            return Err("session key is reserved for host control".into());
+        }
+        self.inner
+            .context
+            .storage_store
+            .as_ref()
+            .ok_or("session storage is unavailable")?
+            .set_value(self.session_id(), key, value)
+            .await
+            .map_err(|_| "session value write failed".to_string())
+    }
     fn from_core(tool_name: &str, context: &everruns_core::tool_context::ToolContext) -> Self {
         Self {
             inner: Arc::new(ToolCallContextInner {
@@ -244,6 +308,7 @@ pub struct FunctionTool {
     handler: HandlerFn,
     approval: Option<ApprovalPredicate>,
     idempotent: bool,
+    concurrency_class: Option<String>,
 }
 
 impl FunctionTool {
@@ -281,6 +346,7 @@ impl FunctionTool {
             handler,
             approval: None,
             idempotent: false,
+            concurrency_class: None,
         }
     }
 
@@ -333,6 +399,7 @@ impl FunctionTool {
             handler,
             approval: None,
             idempotent: false,
+            concurrency_class: None,
         }
     }
 
@@ -380,6 +447,13 @@ impl FunctionTool {
     /// [`stability`](crate::stability).
     pub fn idempotent(mut self) -> Self {
         self.idempotent = true;
+        self
+    }
+
+    /// Serialize effects that share a session resource. Tools using the same
+    /// class cannot overlap within a session, including parallel tool batches.
+    pub fn concurrency_class(mut self, class: impl Into<String>) -> Self {
+        self.concurrency_class = Some(class.into());
         self
     }
 
@@ -431,7 +505,10 @@ impl CoreTool for FunctionTool {
     }
 
     fn hints(&self) -> everruns_contracts::tool_types::ToolHints {
-        let hints = everruns_contracts::tool_types::ToolHints::default();
+        let mut hints = everruns_contracts::tool_types::ToolHints::default();
+        if let Some(class) = &self.concurrency_class {
+            hints = hints.with_concurrency_class(class);
+        }
         if self.idempotent {
             hints
                 .with_side_effect_class(everruns_contracts::tool_types::SideEffectClass::Idempotent)
@@ -559,6 +636,9 @@ impl IntoTool for FunctionTool {
 /// common intersection of provider tool-name rules. Returns a human-readable
 /// reason on rejection.
 pub(crate) fn validate_tool_name(name: &str) -> Result<(), String> {
+    if name == everruns_contracts::tool_types::APPROVE_TOOL_CALL_TOOL {
+        return Err("tool name is reserved for Framework control".into());
+    }
     if name.is_empty() {
         return Err("tool name must not be empty".to_string());
     }
@@ -799,6 +879,9 @@ mod tests {
         assert!(validate_tool_name("has space").is_err());
         assert!(validate_tool_name("dot.name").is_err());
         assert!(validate_tool_name(&"x".repeat(65)).is_err());
+        assert!(
+            validate_tool_name(everruns_contracts::tool_types::APPROVE_TOOL_CALL_TOOL).is_err()
+        );
     }
 
     #[test]

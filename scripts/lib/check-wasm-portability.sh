@@ -3,10 +3,8 @@
 # followed by the core `engine` feature) builds for wasm32-unknown-unknown, so it can run
 # inside a JavaScript isolate such as a celld or Cloudflare Durable Object.
 #
-# 1. `cargo check` the kernel, then its pure engine module for wasm32.
-# 2. The engine-in-a-cell example (examples/celld-engine, its own workspace):
-#    native tests of its step machine, and a wasm32 check of the Durable
-#    Object itself.
+# Check neutral contracts, providers, the public Framework facade and the
+# shared Engine application. Celld imports that same application module.
 #
 # What breaks it: a dependency that needs threads, sockets or an OS clock
 # (Tokio's `full` feature, mio, aws-lc), or `std::time::Instant::now`, which
@@ -38,9 +36,8 @@ cargo check --locked --target "$TARGET" --no-default-features \
   -p everruns-durable-object --features wasm
 cargo check --locked --manifest-path examples/durable-object-agent/Cargo.toml --target "$TARGET"
 
-EXAMPLE=examples/celld-engine/Cargo.toml
-echo "3. $EXAMPLE: native tests, then $TARGET"
-cargo test --locked --manifest-path "$EXAMPLE"
-cargo check --locked --manifest-path "$EXAMPLE" --target "$TARGET"
+echo "3. public Framework Engine, Agent, Session, tools, hooks and Harness for $TARGET"
+cargo check --locked --target "$TARGET" --no-default-features \
+  -p everruns --features macros,capabilities,builtins
 
-echo "Wasm portability guard passed: the kernel and the engine cell build for $TARGET."
+echo "Wasm portability guard passed: public Framework and shared application build for $TARGET."

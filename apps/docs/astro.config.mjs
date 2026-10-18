@@ -487,6 +487,7 @@ export default defineConfig({
                         { label: "Tools in Shell", slug: "capabilities/tools-in-shell" },
                         { label: "Host Shell", slug: "capabilities/host-shell" },
                         { label: "Session", slug: "capabilities/session" },
+                        { label: "Automatic session titles", slug: "capabilities/automatic-session-titles" },
                         { label: "Session Storage", slug: "capabilities/session-storage" },
                         { label: "Web Fetch", slug: "capabilities/web-fetch" },
                         { label: "Web Search", slug: "capabilities/web-search" },

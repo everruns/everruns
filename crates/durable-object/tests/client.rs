@@ -5,9 +5,7 @@ use axum::{
     http::{Request, StatusCode},
 };
 use everruns_contracts::typed_id::SessionId;
-use everruns_core::host::{
-    EventCursor, EventReadLimit, EventReadRequest, EventReader, InProcessRuntime,
-};
+use everruns_core::host::{EventCursor, EventReadLimit, EventReadRequest, EventReader};
 use everruns_durable_object::{AuthorityClient, Executor, SessionBinding};
 use std::sync::Arc;
 use tower::ServiceExt;
@@ -45,14 +43,23 @@ async fn cross_session_reads_fail_before_a_network_request() {
 async fn unauthorized_or_wrong_build_activations_never_reconstruct_agent_code() {
     let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let seen = calls.clone();
-    let factory = move |_, _| {
-        seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        async {
-            Err::<InProcessRuntime, _>(everruns_contracts::error::AgentLoopError::config(
-                "unexpected activation",
-            ))
-        }
-    };
+    let engine = everruns::Engine::builder()
+        .hosting(everruns_durable_object::ObjectHosting::new(
+            AuthorityClient::new("http://127.0.0.1:1", "test", TOKEN).unwrap(),
+        ))
+        .register(
+            everruns::hosting::AgentBuild::new("test", "v1"),
+            everruns::Agent::builder()
+                .instructions("test")
+                .model(everruns::Model::simulated("test"))
+                .on_agent_start(move |_| {
+                    seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    async {}
+                })
+                .build()
+                .unwrap(),
+        )
+        .build();
     assert!(
         Executor::new(
             AuthorityClient::new("http://127.0.0.1:1", "test", TOKEN).unwrap(),
@@ -61,7 +68,7 @@ async fn unauthorized_or_wrong_build_activations_never_reconstruct_agent_code() 
                 build_id: "v1".into()
             },
             TOKEN,
-            factory.clone(),
+            engine.clone(),
             1,
         )
         .is_err(),
@@ -74,7 +81,7 @@ async fn unauthorized_or_wrong_build_activations_never_reconstruct_agent_code() 
             build_id: "v1".into(),
         },
         EXECUTOR_TOKEN,
-        factory,
+        engine,
         1,
     )
     .unwrap();

@@ -1,16 +1,19 @@
 #![allow(deprecated)] // Built-in backends emit legacy errors during their deprecation window.
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use everruns_contracts::typed_id::{SessionId, WorkspaceId};
 use everruns_core::host::{
-    Environment, InMemorySessionFileStore, RealDiskFileStore, Workspace, WorkspaceBackend,
-    WorkspaceBackendId, WorkspaceBinding, WorkspaceCheckpoint, WorkspaceDescriptor, WorkspaceDiff,
-    WorkspaceError, WorkspaceHeadAccess, WorkspaceHeadDescriptor, WorkspaceHeadId,
-    WorkspaceHeadRequest, WorkspaceHeadResource, WorkspaceHeadStatus,
+    Environment, InMemorySessionFileStore, Workspace, WorkspaceBackend, WorkspaceBackendId,
+    WorkspaceBinding, WorkspaceCheckpoint, WorkspaceDescriptor, WorkspaceDiff, WorkspaceError,
+    WorkspaceHeadDescriptor, WorkspaceHeadId, WorkspaceHeadRequest, WorkspaceHeadResource,
+    WorkspaceHeadStatus,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use everruns_core::host::{RealDiskFileStore, WorkspaceHeadAccess};
 use everruns_core::session_files::SessionFileSystem;
 use uuid::Uuid;
 
@@ -18,6 +21,7 @@ pub(crate) struct DefaultWorkspace {
     backend: Arc<dyn WorkspaceBackend>,
     locator: &'static str,
     shared: bool,
+    environments: Arc<Mutex<HashMap<SessionId, Arc<tokio::sync::OnceCell<Environment>>>>>,
 }
 
 impl DefaultWorkspace {
@@ -26,14 +30,17 @@ impl DefaultWorkspace {
             backend: Arc::new(DefaultMemoryWorkspaceBackend::new()),
             locator: "memory",
             shared: false,
+            environments: Arc::default(),
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn directory(root: PathBuf) -> Self {
         Self {
             backend: Arc::new(DefaultDirectoryWorkspaceBackend { root }),
             locator: "directory",
             shared: true,
+            environments: Arc::default(),
         }
     }
 
@@ -42,6 +49,25 @@ impl DefaultWorkspace {
     }
 
     pub(crate) async fn environment(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Environment, WorkspaceError> {
+        // The hosting factory may open a session for validation, frontend
+        // access and several activations. All must select the same head.
+        let selected = self
+            .environments
+            .lock()
+            .map_err(|_| WorkspaceError::Provider("workspace state is unavailable".into()))?
+            .entry(session_id)
+            .or_default()
+            .clone();
+        selected
+            .get_or_try_init(|| self.create_environment(session_id))
+            .await
+            .cloned()
+    }
+
+    async fn create_environment(
         &self,
         session_id: SessionId,
     ) -> Result<Environment, WorkspaceError> {
@@ -66,17 +92,21 @@ impl Clone for DefaultWorkspace {
             backend: self.backend.clone(),
             locator: self.locator,
             shared: self.shared,
+            environments: self.environments.clone(),
         }
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 const DIRECTORY_BACKEND_ID: &str = "everruns.framework.directory.v1";
 const MEMORY_BACKEND_ID: &str = "everruns.framework.memory.v1";
 
+#[cfg(not(target_arch = "wasm32"))]
 struct DefaultDirectoryWorkspaceBackend {
     root: PathBuf,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl DefaultDirectoryWorkspaceBackend {
     fn backend_id() -> WorkspaceBackendId {
         WorkspaceBackendId::new(DIRECTORY_BACKEND_ID).expect("static backend id is valid")
@@ -160,6 +190,7 @@ impl DefaultDirectoryWorkspaceBackend {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[async_trait]
 impl WorkspaceBackend for DefaultDirectoryWorkspaceBackend {
     fn id(&self) -> WorkspaceBackendId {

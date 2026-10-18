@@ -22,6 +22,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../../../..");
 const run = mkdtempSync(join(tmpdir(), "everruns-celld-qualification."));
 const config = join(here, `fleet-${process.pid}.generated.json`);
+const native = process.env.CELLD_QUALIFY_NATIVE === "1";
+const nativeBootstrap=join(here,`native-fleet-${process.pid}.generated.js`);
 const children = [];
 const servers = [];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -195,6 +197,12 @@ try {
   ];
   const fixture = JSON.parse(readFileSync(join(here, "qualification.json"), "utf8"));
   fixture.vars.AUTHORITY_TOKEN = "authority-test-token-at-least-32-bytes";
+  const nativePort=native?await freePort():null;
+  if(native) {
+    writeFileSync(nativeBootstrap,`export {default,SessionAuthority,ServeExecutor} from ${JSON.stringify(resolve(root,"examples/serve/celld/worker/src/index.js"))};\n`);
+    fixture.main=`native-fleet-${process.pid}.generated.js`;
+    fixture.vars={TENANT_ID:"test",SERVE_URL:`http://127.0.0.1:${nativePort}`,AUTHORITY_TOKEN:"synthetic-authority-credential-at-least-32-bytes",EXECUTOR_TOKEN:"synthetic-executor-credential-at-least-32-bytes",API_TOKEN:"synthetic-api-credential-at-least-32-bytes"};
+  }
   writeFileSync(config, JSON.stringify(fixture));
   const deploy = start("celld", ["deploy", config, ...fleet, "--json"], "deploy");
   await exit(deploy);
@@ -260,11 +268,12 @@ try {
     }),
   );
   const signal = join(run, "effect.json");
-  const check = start(process.execPath, [join(here, "qualify-isolate.mjs")], "proof", {
+  const check = start(process.execPath, [native?resolve(root,"examples/serve/celld/worker/test/e2e.mjs"):join(here, "qualify-isolate.mjs")], "proof", {
     DO_QUALIFY_URL: `http://127.0.0.1:${gateway}`,
     DO_QUALIFY_BACKEND: "celld-0.6.2-three-node",
     DO_QUALIFY_SIGNAL_PATH: signal,
     DO_QUALIFY_NO_CLIENT_MS: "45000",
+    ...(native?{SERVE_TEST_AUTHORITY_URL:`http://127.0.0.1:${gateway}`,SERVE_TEST_NATIVE_PORT:String(nativePort),SERVE_TEST_OWNER_LOSS_SIGNAL:signal,SERVE_TEST_NO_CLIENT_MS:"45000",SERVE_TEST_KILL_EXECUTOR:"false",SERVE_TEST_TOOL_DELAY_MS:"10000"}:{}),
   });
   await until("tool effect", () => {
     if (check.exitCode !== null) throw new Error(readFileSync(join(run, "proof.log"), "utf8"));
@@ -300,4 +309,5 @@ try {
     server.close();
   }
   if (existsSync(config)) unlinkSync(config);
+  if (existsSync(nativeBootstrap)) unlinkSync(nativeBootstrap);
 }

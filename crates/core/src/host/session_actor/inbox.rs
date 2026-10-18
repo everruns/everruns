@@ -54,6 +54,13 @@ impl<H: ActorHosts> TurnInbox for ActorInbox<'_, H> {
         self.lease.turn_stored();
         self.refresh().await;
         let inputs = self.lease.take_inputs().await?;
+        self.hosts.inputs_consumed(self.drive, &inputs).await?;
+        if !inputs.is_empty() {
+            self.refresh().await;
+        }
+        if self.lease.cancel_requested() {
+            return Err(AgentLoopError::store("turn cancellation accepted"));
+        }
         self.hosts.begin_phase(self.host, self.drive, Phase::Reason);
         Ok(inputs)
     }
@@ -76,6 +83,13 @@ impl<H: ActorHosts> TurnInbox for ActorInbox<'_, H> {
         self.lease.turn_stored();
         self.refresh().await;
         let inputs = self.lease.take_inputs().await?;
+        self.hosts.inputs_consumed(self.drive, &inputs).await?;
+        if !inputs.is_empty() {
+            self.refresh().await;
+        }
+        if self.lease.cancel_requested() {
+            return Err(AgentLoopError::store("turn cancellation accepted"));
+        }
         Ok(PendingInput::new(inputs.len(), inputs))
     }
 

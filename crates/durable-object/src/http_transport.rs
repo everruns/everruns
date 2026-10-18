@@ -77,10 +77,7 @@ impl AuthorityTransport for HttpAuthorityTransport {
             ));
         }
         if !response.status().is_success() {
-            return Err(AgentLoopError::store(format!(
-                "authority {operation} rejected ({})",
-                response.status().as_u16()
-            )));
+            return Err(crate::client::rejected(response.status().as_u16()));
         }
         let mut bytes = Vec::new();
         while let Some(chunk) = response

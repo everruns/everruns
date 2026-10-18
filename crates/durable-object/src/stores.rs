@@ -223,7 +223,16 @@ impl SessionActorStore for Authority {
 impl SessionStore for Authority {
     async fn get_session(&self, session_id: SessionId) -> Result<Option<ExecutionSession>> {
         self.check_session(session_id)?;
-        self.store("session", "get", "record", Value::Null).await
+        #[derive(Deserialize)]
+        struct ExecutionView {
+            execution: Option<ExecutionSession>,
+            configuration: everruns::hosting::SessionConfiguration,
+        }
+        let mut view: ExecutionView = self.call("execution", json!({})).await?;
+        if let Some(record) = view.execution.as_mut() {
+            view.configuration.apply(record);
+        }
+        Ok(view.execution)
     }
 }
 

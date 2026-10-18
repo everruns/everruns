@@ -1,6 +1,6 @@
 // Run against workerd, an actual Cloudflare test deployment, or a celld fleet.
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 const base = process.env.DO_QUALIFY_URL;
 const token = process.env.DO_QUALIFY_TOKEN ?? "authority-test-token-at-least-32-bytes";
@@ -12,6 +12,13 @@ const binding = JSON.parse(
   ),
 );
 const session = `session_${randomUUID().replaceAll("-", "")}`;
+const apiToken = createHash("sha256").update(`${token}:api`).digest("hex");
+async function api(path,method="GET",body) {
+  const response = await fetch(`${base}/v1${path}`, {method,headers:{authorization:`Bearer ${apiToken}`,"content-type":"application/json"},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(15000)});
+  const value = await response.json();
+  assert.ok(response.ok,`${method} ${path}: ${response.status} ${JSON.stringify(value)}`);
+  return value;
+}
 async function call(op, body = {}, options = {}) {
   const response = await fetch(
     `${base}/tenants/${options.tenant ?? tenant}/sessions/${session}/${op}`,
@@ -50,7 +57,7 @@ await until("authenticated endpoint ready", async () => {
   return false;
 });
 assert.equal((await call("status", {}, { tenant: "other" })).response.status, 404);
-await good("bind", { binding });
+await api("/sessions","POST",{id:session});
 assert.equal(
   (await call("bind", { binding: { ...binding, build_id: "wrong-build" } })).response.status,
   409,
@@ -69,8 +76,9 @@ const input = {
     },
   },
 };
-const accepted = await good("input", { event: input });
-assert.deepEqual(await good("input", { event: input }), accepted);
+const send = {message_id:input.data.message.id,message:{role:"user",content:input.data.message.content}};
+const accepted = await api(`/sessions/${session}/messages`,"POST",send);
+assert.deepEqual(await api(`/sessions/${session}/messages`,"POST",send), accepted);
 await until(
   "committed tool effect",
   async () =>
@@ -93,7 +101,15 @@ if (process.env.DO_QUALIFY_SIGNAL_PATH) {
 }
 // No application requests during recovery: a read must not supply activation.
 await new Promise((r) => setTimeout(r, Number(process.env.DO_QUALIFY_NO_CLIENT_MS ?? 20000)));
-const { events } = await good("events", { limit: 256 });
+const { data: events } = await api(`/sessions/${session}/events?limit=256`);
+const outcome = await api(`/sessions/${session}/admissions/${input.data.message.id}`);
+assert.equal(outcome.status,"complete","Framework finalization must survive owner loss");
+assert.equal(outcome.turn.success,true);
+assert.equal(
+  await good("event_sequence", { event_id: events[0].id }),
+  events[0].sequence,
+  "opaque event cursors resolve through the authenticated authority route",
+);
 assert.ok(
   events.some((e) => e.type === "turn.completed"),
   "the stored alarm completed recovery without client requests",
@@ -117,6 +133,8 @@ console.log(
   JSON.stringify({
     backend: process.env.DO_QUALIFY_BACKEND ?? "workerd",
     placement: "wasm",
+    entry: "everruns::Engine / Session",
+    framework_finalized: true,
     admissions: 1,
     turns: 1,
     effects: 1,

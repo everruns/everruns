@@ -11,6 +11,18 @@ use everruns_core::host::session_actor::store::{ActorFence, LeasedActor, actor_l
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
+#[derive(Debug)]
+pub(crate) struct AuthorityRejection(pub u16);
+impl std::fmt::Display for AuthorityRejection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "authority rejected operation ({})", self.0)
+    }
+}
+impl std::error::Error for AuthorityRejection {}
+pub(crate) fn rejected(status: u16) -> AgentLoopError {
+    AgentLoopError::Internal(anyhow::Error::new(AuthorityRejection(status)))
+}
+
 /// Authority RPC supplied by a native HTTP client or an isolate-local object bridge.
 #[async_trait::async_trait]
 pub trait AuthorityTransport: Send + Sync + 'static {

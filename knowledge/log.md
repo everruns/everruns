@@ -2,6 +2,8 @@
 
 ## 2026-10-17
 
+* **Automatic session titles and Small model.** Add opt-in naming outside the turn path, sparse persistent admission, explicit-title priority, and an independent organization small-model selection. See [Session titles](runtime-resources/session-titles.md).
+
 * **PostgreSQL archive compatibility patch.** Select patched ZIP9 through a
   checksum-attributed upstream copy while the published PostgreSQL dependency
   still selects ZIP8. Preserve extraction policy and ordinary advisory/license
@@ -13,6 +15,22 @@
   setup and selection until a suitable web OAuth client and callback exist;
   retain the framework driver and server connection APIs. See
   [Providers](foundations/providers.md) and [Models and providers](ui/models-and-providers.md).
+
+* **Engine session hosting implementation.** Default memory, native SQLite and
+  Durable Object profiles now share Framework admission, lifecycle receipts,
+  exact-turn approvals/client results, authority queries and actor execution.
+  serve and celld use ordinary registered Agents and the same Engine. Recover
+  native containers and replicated authority owners without client requests;
+  distinguish journal durability from explicit workspace/compute services.
+  Scope declared secret names to app discovery so retained build hashes cannot
+  change when unrelated code declares a secret. Interruption queries and resume
+  handles now use authority ownership and the original admission; transport
+  qualification includes mixed wait resolution and opaque cursor routes. Preserve
+  memory session workspace bindings and the AgentCore adapter’s mounted workspace
+  independently of SQLite journal placement. See
+  [Engine-Owned Durable Sessions](framework/engine-durable-sessions.md) and
+  [Durable Object qualification](framework/durable-object-native.md).
+  The announcement publication hold remains in force.
 
 ## 2026-10-16
 
@@ -34,6 +52,13 @@
   responsive hand-authored SVGs and one colocated Mermaid source to keep its
   return paths clear at desktop and mobile sizes.
   See [Diagram Specification](docs/diagrams.md).
+
+* **Engine-owned durable sessions proposed.** Require the Framework Engine path
+  for DO, with coherent session hosting, durable admission/outcome handles, shared
+  lifecycle execution and serve integration. Include the celld examples, hosting
+  crate and recovery CI migration. Distinguish this target from the
+  implemented core-host proof. See
+  [Engine-Owned Durable Sessions](framework/engine-durable-sessions.md).
 
 * **Chaos actor log boundaries.** Include the shared core driver in the harness debug
   filter so lease releases and completed activations remain visible to overlap checks.
