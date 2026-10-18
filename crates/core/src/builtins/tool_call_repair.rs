@@ -394,8 +394,9 @@ fn strip_trailing_commas(input: &str) -> String {
 }
 
 /// Coerce string-typed values for known schema keys to the declared primitive
-/// type when unambiguous (`integer`, `number`, `boolean`). Unknown keys and
-/// values that do not cleanly convert are left untouched.
+/// type when unambiguous (`integer`, `number`, `boolean`), and drop optional
+/// keys a model filled with a null placeholder the schema does not accept.
+/// Unknown keys and values that do not cleanly convert are left untouched.
 fn coerce_known_keys(value: Value, schema: Option<&Value>) -> Value {
     let Value::Object(mut obj) = value else {
         return value;
@@ -406,6 +407,26 @@ fn coerce_known_keys(value: Value, schema: Option<&Value>) -> Value {
     else {
         return Value::Object(obj);
     };
+    let required: Vec<&str> = schema
+        .and_then(|s| s.get("required"))
+        .and_then(Value::as_array)
+        .map(|keys| keys.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+
+    // Some models spell "leave this out" as `null` or the string "null" for every
+    // optional parameter, and strict MCP servers reject the whole call (seen with
+    // `visti_send` and `fields: null`). Omitting an optional key is what the model
+    // meant, so drop it. A required key, or one whose schema accepts the value, is
+    // kept: only an unambiguous placeholder goes.
+    props.iter().for_each(|(key, prop_schema)| {
+        if !required.contains(&key.as_str())
+            && obj
+                .get(key)
+                .is_some_and(|current| is_null_placeholder(current, prop_schema))
+        {
+            obj.remove(key);
+        }
+    });
 
     for (key, prop_schema) in props {
         let Some(declared) = prop_schema.get("type").and_then(Value::as_str) else {
@@ -432,6 +453,32 @@ fn coerce_known_keys(value: Value, schema: Option<&Value>) -> Value {
         }
     }
     Value::Object(obj)
+}
+
+/// True when `value` is a null placeholder `prop_schema` would reject: JSON `null`
+/// where the schema does not allow null, or the string `"null"` where a string
+/// is not accepted (a non-string type, or an enum without `"null"`). A schema
+/// with no `type` accepts anything, so nothing counts as a placeholder there.
+fn is_null_placeholder(value: &Value, prop_schema: &Value) -> bool {
+    let types: Vec<&str> = match prop_schema.get("type") {
+        Some(Value::String(declared)) => vec![declared.as_str()],
+        Some(Value::Array(declared)) => declared.iter().filter_map(Value::as_str).collect(),
+        _ => return false,
+    };
+    if value.is_null() {
+        let nullable = prop_schema.get("nullable").and_then(Value::as_bool) == Some(true);
+        return !nullable && !types.contains(&"null");
+    }
+    if value.as_str() != Some("null") {
+        return false;
+    }
+    if !types.contains(&"string") {
+        return true;
+    }
+    prop_schema
+        .get("enum")
+        .and_then(Value::as_array)
+        .is_some_and(|allowed| !allowed.iter().any(|v| v.as_str() == Some("null")))
 }
 
 /// Per-agent config for the tool-call-repair capability.
@@ -920,6 +967,44 @@ mod tests {
         assert_eq!(
             salvage_tool_arguments(&raw, Some(&schema())),
             SalvageResult::Repaired(json!({ "path": "/foo", "limit": 7 }))
+        );
+    }
+
+    #[test]
+    fn optional_null_placeholders_are_dropped() {
+        let schema = json!({
+            "type": "object",
+            "required": ["title", "links"],
+            "properties": {
+                "title": {"type": "string"},
+                "channel": {"type": "string"},
+                "color": {"type": "string", "enum": ["red", "green"]},
+                "fields": {"type": "array"},
+                "links": {"type": "array"},
+                "note": {"type": ["string", "null"]},
+                "count": {"type": "integer"},
+                "extra": {}
+            }
+        });
+        let raw = json!({
+            "title": "Main CI",
+            "channel": "null",
+            "color": "null",
+            "fields": null,
+            "links": null,
+            "note": null,
+            "count": "null",
+            "extra": null
+        });
+        assert_eq!(
+            salvage_tool_arguments(&raw, Some(&schema)),
+            SalvageResult::Repaired(json!({
+                "title": "Main CI",
+                "channel": "null",
+                "links": null,
+                "note": null,
+                "extra": null
+            }))
         );
     }
 
