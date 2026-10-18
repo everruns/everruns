@@ -704,7 +704,10 @@ async fn native_startup_discovers_a_parked_approval_deadline_without_client_wake
         .await
         .unwrap();
         let now = everruns_contracts::rt::utc_now();
-        let deadline = now + chrono::Duration::milliseconds(150);
+        // The deadline must still be in the future at the pre-restart `runnable` assertion:
+        // any authority transaction at or past `wake_at` marks the session runnable. A
+        // 150ms margin was exhausted by setup on contended CI runners (EVE-1294).
+        let deadline = now + chrono::Duration::seconds(3);
         let request = everruns::ToolCall {
             id: "tool_approval_original".into(),
             name: "approve_tool_call".into(),
@@ -750,7 +753,8 @@ async fn native_startup_discovers_a_parked_approval_deadline_without_client_wake
     let supervisor = tokio::spawn(async move { profile.supervise(host, stop).await });
     let session = replacement.resume(id).await.unwrap();
     let admission = session.admission(message).await.unwrap().unwrap();
-    let outcome = tokio::time::timeout(std::time::Duration::from_secs(5), admission.wait())
+    // Covers the 3s deadline plus supervised recovery on a slow runner.
+    let outcome = tokio::time::timeout(std::time::Duration::from_secs(30), admission.wait())
         .await
         .unwrap()
         .unwrap();
@@ -902,8 +906,9 @@ async fn native_process_loss_preserves_admission_and_finalization() {
     drop(owner);
     let replacement = spawn("replacement");
     // No client calls at all while the independent startup supervisor discovers
-    // the expired lease and finalizes the outcome after a real process kill.
-    tokio::time::sleep(std::time::Duration::from_secs(12)).await;
+    // the expired lease (default 10s TTL) and finalizes the outcome after a real
+    // process kill. Poll read-only state instead of guessing a fixed sleep: a 12s
+    // sleep left ~2s for process startup and supervision on a contended runner.
     let profile =
         everruns::hosting::SqliteHosting::open(directory.path().join("authority.db")).unwrap();
     let reader = Engine::builder()
@@ -913,8 +918,19 @@ async fn native_process_loss_preserves_admission_and_finalization() {
         .await
         .unwrap();
     let admission = reader.admission(message).await.unwrap().unwrap();
-    let AdmissionState::Complete { turn: outcome } = admission.state().await.unwrap() else {
-        panic!("replacement process did not finalize independently")
+    let state = tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        loop {
+            let state = admission.state().await.unwrap();
+            if matches!(state, AdmissionState::Complete { .. }) {
+                break state;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .expect("replacement process did not finalize independently");
+    let AdmissionState::Complete { turn: outcome } = state else {
+        unreachable!()
     };
     assert_eq!(outcome.response, "finished");
     assert!(outcome.success);
