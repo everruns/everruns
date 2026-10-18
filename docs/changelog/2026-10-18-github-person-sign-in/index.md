@@ -24,4 +24,5 @@ After:  GET /v1/user/connections/github/authorize → sign in to GitHub (acts as
 Existing shared App installations move to organization links: each one becomes a link in the
 organization of whoever installed it first, and an agent that used one now uses that link. If you
 connected GitHub for yourself before this change, connect it again to act as yourself. Org admins
-manage links in **Settings > Organization > Everruns GitHub App**.
+manage links in **Settings > Organization > Everruns GitHub App**. See
+[Summarize GitHub pull requests](/how-to/summarize-github-pull-requests/).
