@@ -1,217 +1,181 @@
 ---
 title: Durable multiplayer chat on Cloudflare
-description: Build a shared chat room with the Everruns engine, SQLite-backed Durable Objects, forks, scheduled work, and a recoverable history-search subagent.
+description: Build a shared chat room with ordinary Everruns Agents and Engine sessions inside Cloudflare Durable Objects, with forks, reminders and history search.
 appliesTo: [framework]
 ---
 
-This walkthrough recreates the behavior of Earendil's
-[Pi Durable on Cloudflare tutorial](https://earendil.com/posts/pi-durable-on-cloudflare/)
-with the Everruns execution kernel. A room contains several conversations,
-every participant sees the same committed messages, and work continues after a
-browser disconnects or the Worker restarts.
+This walkthrough recreates
+[Earendil's multiplayer chat tutorial](https://earendil.com/posts/pi-durable-on-cloudflare/)
+with ordinary Everruns Framework Agents. Conversations and search children run
+inside native Cloudflare Durable Objects. SQLite journals and durable alarms keep
+their work independent of connected browsers.
 
-The implementation is in
-[`examples/cloudflare-durable-chat`](https://github.com/everruns/everruns/tree/main/examples/cloudflare-durable-chat).
-The Everruns WASM engine runs directly inside a Cloudflare Durable Object,
-using its native SQLite, alarms and hibernatable WebSockets. The application
-is an independently built package with no celld runtime or
-sibling-example dependency. Wrangler runs the same Worker locally and deploys
-it to Cloudflare.
-
-**Experimental advanced host example.** This uses `everruns-core`'s portable
-Reason/Act kernel directly. The `everruns` application facade and its native
-`LocalConfig` storage are not compiled into the Worker. For native applications,
-start with [Framework sessions](/framework/sessions/).
+The independently built
+[chat example](https://github.com/everruns/everruns/tree/main/examples/cloudflare-durable-chat)
+uses the shared Engine session-hosting profile and OpenRouter driver. It has no
+celld dependency, external executor or container. This is experimental hosting;
+read [Durable Object hosting](/framework/durable-objects/) for its guarantees.
 
 ## Run the chat
 
-Clone the whole Everruns repository: the example uses local workspace crates.
-Install Rust, Node.js 22 or newer, and the build tool:
+Clone the whole repository because the example uses local workspace crates.
+Install Rust 1.96 and Node.js 24, then:
 
 ```sh
 git clone https://github.com/everruns/everruns.git
 cd everruns/examples/cloudflare-durable-chat
 rustup target add wasm32-unknown-unknown
-cargo install worker-build --version 0.8.7 --locked
+cargo install wasm-bindgen-cli --version 0.2.129 --locked
 npm ci
-worker-build --release
+npm run build
 cp .dev.vars.example .dev.vars
 ```
 
-Put your OpenRouter API key in `.dev.vars`, then start Wrangler:
+Set `OPENROUTER_API_KEY` in `.dev.vars`, and set `AUTHORITY_TOKEN` to an independent
+random secret of at least 32 characters. Start the local Worker:
 
 ```sh
 npm run dev
 ```
 
-Open the printed local URL. Choose a display name and create a conversation
-with the **+** button. **Copy room link** gives you a URL to open in another
-browser. Both participants can send messages, and the assistant answers queued
-messages in order within each conversation. Other conversations can run at the
-same time.
+The default model is
+[Muse Spark 1.3 Contributor](https://openrouter.ai/meta/muse-spark-1.3-contributor)
+through OpenRouter. Provider charges apply; Contributor uses submitted data for
+training. `MODEL` and `OPENROUTER_BASE_URL` are deployment settings.
 
-The default is [Muse Spark 1.3 Contributor](https://openrouter.ai/meta/muse-spark-1.3-contributor)
-through OpenRouter (`meta/muse-spark-1.3-contributor`). Set `MODEL` or
-`OPENROUTER_BASE_URL` in `.dev.vars` to use another Chat Completions model.
-Requests cap output at 4,096 tokens unless the engine supplies an explicit limit.
-Provider charges apply; the Contributor model uses submitted data for training.
+Open the local URL, choose a name and create a conversation. Copy the room link
+into another browser. Both participants see committed messages. Record a decision
+in one conversation and ask about it in another to exercise the search child.
+Ask for a reminder in 30 seconds, close the browsers, and return after the deadline.
 
-## One room, one Durable Object
+## Framework execution, application services
 
-The Worker routes `/rooms/<name>/...` to the `ROOMS` binding using
-`id_from_name`. The browser creates an opaque room ID and puts it in the shared
-URL. Different names address separate SQLite databases.
+```mermaid
+flowchart TB
+  Browser[Shared chat browsers] --> Room[ChatRoom Durable Object]
+  Room -->|Stable admission IDs| Session[ChatSession Durable Object]
+  Session --> Engine[Everruns Engine and ObjectHosting]
+  Engine --> Actor[Shared actor execution and recovery]
+  Actor --> Driver[Shared OpenRouter driver]
+  Driver --> Fetch[Host fetch transport]
+  Actor -->|Application tools| Room
+  Room -->|Independent Framework session| Child[History-search ChatSession]
+```
 
-| Original tutorial | Everruns example |
-| --- | --- |
-| Pi harness per shared session | `ChatRoom` Durable Object, with a `Room` host |
-| Pi conversation | One `ConversationEngine` with its own Everruns session ID, events, turn and inbox |
-| Model and tool tasks | Everruns `ReasonAtom` and `ActAtom` steps |
-| Task-owned search conversation | Child `ConversationEngine` owned by the parent's stable tool execution key |
-| Pi task deadlines | Persisted schedules, projected onto the Durable Object alarm |
-| PartySocket and React | Native hibernatable WebSockets and a dependency-free browser client |
+A room is addressed through `/rooms/<name>/...`. Its conversation directory,
+receipts and reminder outbox live in the room DO. Each conversation is a separate
+Framework session DO with its own authority journal, immutable agent/build
+binding, execution epoch and alarm.
 
-The main files are:
+The app registers two ordinary Agents: `durable-chat` and `history-search`.
+Both use `Engine::builder().hosting(ObjectHosting::new(...))`. The child has only
+the search tool; the main agent has scheduling and history-search tools.
+Framework owns the model/tool loop, lifecycle, event history, interruption
+recovery, iteration limits and completion metadata. The application does not
+assemble core runtime backends or author canonical agent events.
 
-- `src/engine.rs`: the shared engine step machine and canonical event projection.
-- `src/chat.rs`: conversations, receipts, forks, schedules and tools.
-- `src/worker.rs`: SQLite, WebSocket handlers, routing and alarms.
-- `src/chat.html`: the browser interface and reconnect queue.
+The shared OpenRouter driver handles Responses request encoding, streaming,
+provider options, retries, error mapping and usage metadata. The host adapter
+supplies `fetch`, bounded response bytes, cancellation, endpoint policy and the
+server-side credential. No example-local provider protocol is maintained.
 
-The small host keeps room state in a JSON document in one SQLite row. A
-synchronous read/modify/write never crosses an `await`, and a single SQLite
-statement is its atomic commit. That makes the durability boundaries easy to
-follow, at the cost of rewriting the room document on each mutation. It is a
-learning implementation for small rooms, not a scalable storage adapter.
+## Accept commands without losing work
 
-## Commit messages and retry commands
+Every create, fork, send and schedule cancellation includes a stable `request_id`.
+The room stores a command fingerprint and receipt. A matching retry returns the
+same receipt; reusing the ID for another command is rejected.
 
-Every create, fork, send or schedule-cancel command has a `request_id`.
-`Room::command` saves the command's receipt in the same write as its mutation.
-A retry with the same ID and input gets that receipt back; reusing the ID for
-other input is rejected.
+Before accepting a mutation, the room arms its alarm. It then commits the receipt
+and outbox intent in one SQLite document update, without yielding between them.
+The room alarm delivers pending intents through Framework. Message delivery uses
+`Session::send_with_id` with an identity derived from the durable outbox entry.
+A crash after admission but before deleting the outbox entry resends the same
+identity, so Framework deduplicates it.
 
-The browser saves unacknowledged commands in `sessionStorage`. A reconnect or
-reload resends them with their original IDs. It replaces its transcript from a
-fresh committed snapshot, so missing a WebSocket update loses no history.
-Different tabs have separate pending queues.
+The room receipt acknowledges a durable delivery obligation. Framework's own
+admission receipt is the authority for session execution. A room outbox is
+application delivery state; it does not replace the actor journal.
 
-Messages first enter a conversation's durable inbox. When the conversation is
-ready, `ConversationEngine::step` opens the next turn, records its input, and consumes the
-inbox entry together. Messages posted during a turn wait behind it.
+## Fork a committed prefix
 
-## Fork from an earlier message
+A fork reads canonical events through Framework and selects committed user and
+assistant messages through the chosen boundary. It creates another registered
+session and uses the validated empty-history seed port to import that prefix.
+Pending tools, schedules and execution ownership are not inherited. A tool-call
+message cannot be used as a fork boundary.
 
-Select **Fork here** beside a committed user message or final assistant reply.
-The fork copies the committed event prefix through that message, assigns a new
-session ID, and starts with no active turn, queued messages or schedules. Later
-changes to either conversation do not change the other.
+The room's event projection serves rendering, search and fork selection.
+Framework constructs model context from the session's canonical history.
 
-This sample copies history rather than sharing it structurally. It refuses a
-fork at an assistant tool-call message, which would otherwise leave an
-unfinished tool exchange in the new context.
+## Schedule reminders without a browser
 
-## Survive a lost Worker
+The scheduling tool persists an instruction, deadline and optional recurrence.
+Its receipt is keyed by Framework's tool execution identity, so retrying the same
+operation returns the existing schedule. The room alarm advances a due occurrence
+and records its delivery intent in the same write. Delivery enters the target
+session through normal Framework admission.
 
-A turn alternates between Reason and Act:
+An occurrence has a stable message identity. Repeated delivery after a crash does
+not create another admission. Missed recurring ticks collapse into one follow-up.
+Cancellation disables future occurrences; it does not retract an already admitted
+instruction.
 
-1. Reason calls the model and records its completed response.
-2. If it requested tools, Act executes the tool batch and records results.
-3. The next Reason reads those results, until a response ends the turn.
+Schedules are an explicit application service here. A durable session journal
+alone does not provide a scheduler or room directory.
 
-A step stages canonical events as uncommitted. It commits those events and the
-next turn position together. If the Worker stops before the commit, recovery
-discards only that step's uncommitted events and repeats the step. A committed
-model call is not repeated when a later tool step is lost.
+## Recover a history-search child
 
-Before starting a step, the host persists a recovery alarm. The alarm can
-restart work even with no connected browsers. `running` prevents overlapping
-alarm handlers within the same isolate; persisted turns and inboxes determine
-what a fresh isolate resumes.
+`search_history` creates a child keyed by the parent tool execution identity.
+That identity distinguishes different assistant tool-call messages even when a
+provider reuses a call ID. The child is an ordinary Framework session with its
+own durable admission and alarm. It can query room history through
+`search_conversations`, returning conversation IDs and sequence numbers.
 
-WebSockets use `accept_web_socket`, allowing the object to hibernate between
-events. Display names and selected conversations live in socket attachments.
-They survive hibernation and are used to rebuild presence. The host sends
-committed snapshots and change notifications; token deltas are not streamed.
+A parent interrupted while waiting can repeat this idempotent tool. It finds the
+same child and reads its reconstructible admission outcome; it does not create
+another child. Framework handles the interrupted tool and actor recovery. The
+room only stores application ownership and delivery state.
 
-## Wake for scheduled work
+Search children and search-generated assistant answers are excluded from future
+search evidence. Retrieved transcripts are untrusted evidence, not instructions.
 
-Ask: **“In 30 seconds, remind us to review the launch.”** Close both browsers,
-wait, and reopen the room. The follow-up appears without a client submitting
-another message. A recurring request can say **“Remind us every minute.”**
-Use **Cancel** in the sidebar to stop future occurrences.
-
-The `schedule` tool stores an instruction, deadline and optional interval. Its
-key includes the session and the assistant tool-call message, so replaying an
-interrupted Act step reuses the existing schedule. A later model request may
-reuse a provider tool-call ID without colliding with the old schedule.
-
-A Durable Object has one alarm. The host chooses the earliest schedule deadline
-or the recovery deadline for active work. When an occurrence is due, it queues
-the instruction and advances or deactivates the schedule in one commit.
-Duplicate alarm deliveries therefore cannot queue that occurrence twice.
-Recurring ticks missed during downtime collapse into one follow-up.
-
-## Search through a durable child conversation
-
-Try this sequence:
-
-1. Tell the assistant: **“We chose PostgreSQL for the event store.”**
-2. Create a second conversation.
-3. Ask: **“What did we decide about the event store?”**
-4. Select **History search** in the sidebar to inspect the child's search and answer.
-
-The parent has `search_history`; the child has only `search_conversations`.
-The parent tool creates the child once under its stable execution key. If that
-tool is replayed, it finds the child, resumes its unfinished engine step, and
-returns its final answer. Raw matches stay in the child's transcript.
-
-Search uses case-insensitive substring matching across this room's top-level
-user and assistant messages. It excludes search children and assistant replies
-produced by previous history searches, so generated search answers do not
-become evidence for later searches. The child is asked to cite conversation IDs
-and message sequence numbers and to treat transcripts as untrusted evidence.
-
-## Verify recovery
-
-From the example directory:
+## Deploy and verify
 
 ```sh
-cargo test
 npm run build
 npm test
-# This includes a hosting-boundary audit of dependencies and built exports.
-```
-
-The native tests drop a step's future mid-flight and reopen persisted state.
-The end-to-end test runs actual workerd, SQLite, WebSockets and alarms. It kills
-the runtime during a child model request and before a scheduled deadline,
-restarts it, and waits for the test model to receive requests before any client
-reconnects. Scripted model responses are used only in tests.
-
-## Deploy and limits
-
-```sh
+npx wrangler deploy --dry-run
 npx wrangler login
 npm run deploy
-npx wrangler secret put CHAT_ACCESS_TOKEN
+npx wrangler secret put AUTHORITY_TOKEN
 npx wrangler secret put OPENROUTER_API_KEY
+npx wrangler secret put CHAT_ACCESS_TOKEN
 ```
 
-The optional `CHAT_ACCESS_TOKEN` secret protects every route, including WebSocket upgrades. Open `/?access=YOUR_KEY`: the page sets an HttpOnly cookie
-for API and WebSocket requests. The copied invitation URL includes the key,
-so a second browser can join. API clients may instead send the key as a Bearer
-credential. Keep invitation URLs private.
+Use independent random authority and shared-access keys. With the optional
+`CHAT_ACCESS_TOKEN`, open `/?access=YOUR_KEY`; the browser receives an HttpOnly,
+Secure, SameSite cookie for HTTP and WebSocket access. The room gateway never
+exposes privileged authority endpoints or the provider credential.
 
-Without that secret the demo is open. For a production service, replace the
-shared key with individual authentication, room authorization and rate limits.
-Anyone with a room invitation can read and steer that room using your provider
-key. Display names are labels, not verified identities.
+The tests use real workerd and synthetic provider responses, confined to tests.
+They cover shared sockets, receipts, forks and isolation, process death during
+search, and scheduled wakeup after restart without reconnecting a client.
+A separate audit checks resolved dependencies and requires shared Framework
+hosting and driver code.
 
-The browser client is intentionally small. There is no automatic compaction,
-full-text index, retention policy or production quota system. Commands have
-small admission limits to keep the demo manageable. A fork copies its prefix;
-the room document is read and rewritten in full. External tools may run again
-if their Act step was interrupted, so any added side effects need their own
-idempotency or reconciliation. Weather lookup is not included; use a reminder
-for the scheduling exercise instead of expecting current weather data.
+## Storage and deployment limits
+
+An existing deployment retains its ChatRoom namespace. On first access the old
+room payload is backed up, settled user/assistant text is imported through
+Framework, and queued messages retain their original identities. Unfinished
+legacy tool calls are not replayed under the new runtime. Room receipts and
+schedule metadata remain available.
+
+A build ID hashes application and runtime inputs. Retain matching immutable
+builds while sessions depend on them; incompatible activation suspends the
+session instead of silently changing its executable definition.
+
+Rooms use a JSON metadata document without automatic compaction. Shared access
+is not individual identity or tenant authorization, and deployers own production
+budget controls. Additional external tools need idempotency or reconciliation.
+The browser displays committed snapshots; it does not render token streaming.

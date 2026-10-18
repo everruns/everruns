@@ -181,6 +181,7 @@
 * **MCP OAuth consent redirects.** Let the browser complete client-controlled
   callback chains after approval and require a browser check with a second
   callback hop. See [MCP](integrations/mcp.md).
+* **Framework-hosted multiplayer chat.** Replace the demo's custom runner and protocol driver with Engine/ObjectHosting and shared OpenRouter execution. Room services retain durable delivery intents, stable tool ownership and a legacy-history migration. See [The isolate host](framework/wasm-kernel.md). The durable architecture publication hold remains in force.
 
 ## 2026-10-17
 
