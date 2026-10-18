@@ -305,7 +305,7 @@ async fn start_target_connection_inner(
     };
     query.mode = Some("virtual_user".into());
     if provider == "github" {
-        return Err(refused_virtual_user_install());
+        return github_authorize_inner(state, authority, jar, query.return_to).await;
     }
     authorize_connection_inner(state, authority, jar, provider, query).await
 }

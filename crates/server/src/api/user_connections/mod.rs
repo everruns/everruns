@@ -434,8 +434,22 @@ async fn list_connectors_for_org(state: &AppState, org_id: i64) -> Json<Vec<Prov
     let mut providers = Vec::new();
     let feature_flags = org_feature_flags(state, org_id).await;
 
-    // GitHub is not listed: since step 3b nobody installs the shared App on
-    // their own connection; org admins link it in Settings > Organization.
+    // GitHub: a person's own sign-in (D1); the shared App's installations are
+    // linked by org admins in Settings > Organization instead.
+    if state.auth_config.github_connection.is_some() {
+        providers.push(ProviderResponse {
+            provider_id: "github".to_string(),
+            display_name: "GitHub".to_string(),
+            description: "Act on GitHub as yourself".to_string(),
+            icon: "github".to_string(),
+            icon_url: None,
+            icons: Vec::new(),
+            slug: None,
+            connection_type: "oauth".to_string(),
+            capabilities: Vec::new(),
+            form_schema: None,
+        });
+    }
 
     // Platform-registered providers (API-key based)
     for provider in state.connectors.list() {

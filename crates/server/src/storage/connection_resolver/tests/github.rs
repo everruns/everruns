@@ -98,7 +98,9 @@ async fn github_setup(owner_kind: &str) -> (McpFixture, MockServer) {
 }
 
 fn github_resolver(fixture: &McpFixture, github: &MockServer) -> DbConnectionResolver {
-    let shared = GitHubAppTokenMinter::new("5".to_string(), test_key());
+    let shared = GitHubAppTokenMinter::new("5".to_string(), test_key()).with_user_client(
+        crate::github_user_token::GitHubUserClient::new(Some("Iv1.test"), Some("secret")),
+    );
     DbConnectionResolver::with_oauth_refresh(
         fixture.db.clone(),
         fixture.encryption.clone(),
@@ -112,7 +114,7 @@ fn github_resolver(fixture: &McpFixture, github: &MockServer) -> DbConnectionRes
     .with_github_apps_api(crate::github_apps::GitHubAppApi::new(
         crate::github_apps::GitHubEndpoints {
             api_url: github.uri(),
-            web_url: "https://github.com".to_string(),
+            web_url: github.uri(),
         },
     ))
     .bound_to_input_message(INPUT_MESSAGE)
@@ -153,6 +155,93 @@ async fn each_identity_answers_only_for_itself_with_a_narrowed_token() {
     );
     assert_eq!(
         resolve(&fixture, &github, McpServerActsAs::None).await,
+        None
+    );
+}
+
+/// Expire the person's token and give it a refresh token.
+async fn expire_person_token(fixture: &McpFixture) {
+    let person = VirtualUserId::from_uuid(fixture.user_id);
+    let row = fixture
+        .db
+        .get_virtual_user_connection(person, "github")
+        .await
+        .unwrap()
+        .unwrap();
+    fixture
+        .db
+        .upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
+            virtual_user_id: person,
+            provider: row.provider,
+            connection_type: row.connection_type,
+            provider_user_id: row.provider_user_id,
+            provider_username: row.provider_username,
+            access_token_encrypted: row.access_token_encrypted,
+            refresh_token_encrypted: Some(fixture.encryption.encrypt_string("ghr_old").unwrap()),
+            scopes: None,
+            expires_at: Some(Utc::now() - chrono::Duration::minutes(1)),
+            installation_id: None,
+            provider_metadata: None,
+        })
+        .await
+        .unwrap();
+}
+
+/// THREAT[TM-GITHUB-008]: an expired person token is refreshed through the
+/// App's OAuth client and stored rotated; a refused refresh yields no token
+/// rather than the stale one.
+#[tokio::test]
+async fn an_expired_person_token_is_refreshed_and_a_refused_refresh_yields_none() {
+    let (fixture, github) = github_setup(ATTENDED).await;
+    expire_person_token(&fixture).await;
+    Mock::given(method("POST"))
+        .and(path("/login/oauth/access_token"))
+        .and(wiremock::matchers::body_partial_json(serde_json::json!({
+            "client_id": "Iv1.test",
+            "grant_type": "refresh_token",
+            "refresh_token": "ghr_old",
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "access_token": "ghu_new", "expires_in": 28800, "refresh_token": "ghr_new",
+        })))
+        .up_to_n_times(1)
+        .mount(&github)
+        .await;
+    assert_eq!(
+        resolve(&fixture, &github, McpServerActsAs::User).await,
+        Some(("ghu_new".to_string(), McpServerActsAs::User))
+    );
+    let row = fixture
+        .db
+        .get_virtual_user_connection(VirtualUserId::from_uuid(fixture.user_id), "github")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        fixture
+            .encryption
+            .decrypt_to_string(row.refresh_token_encrypted.as_deref().unwrap())
+            .unwrap(),
+        "ghr_new"
+    );
+    assert!(row.expires_at.unwrap() > Utc::now() + chrono::Duration::hours(7));
+    // The fresh token is used as is, without another refresh.
+    assert_eq!(
+        resolve(&fixture, &github, McpServerActsAs::User).await,
+        Some(("ghu_new".to_string(), McpServerActsAs::User))
+    );
+
+    expire_person_token(&fixture).await;
+    Mock::given(method("POST"))
+        .and(path("/login/oauth/access_token"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({ "error": "bad_refresh_token" })),
+        )
+        .mount(&github)
+        .await;
+    assert_eq!(
+        resolve(&fixture, &github, McpServerActsAs::User).await,
         None
     );
 }

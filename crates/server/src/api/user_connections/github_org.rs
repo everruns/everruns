@@ -296,14 +296,14 @@ pub(super) async fn store_org_link(
     }
 }
 
-/// The answer to a request to install the shared App on a virtual user's own
-/// connection, a person's or an agent's: installations are the org's, linked by
-/// an org admin, and an agent then chooses one (D3, step 3b).
-pub(super) fn refused_virtual_user_install() -> (StatusCode, String) {
+/// The answer to installing the shared App on a virtual user's own connection,
+/// a person's or an agent's: installations are the org's, linked by an org
+/// admin, and an agent then chooses one (D3, step 3b). People sign in instead.
+pub(super) fn refused_shared_app_install() -> (StatusCode, String) {
     (
         StatusCode::BAD_REQUEST,
-        "The Everruns GitHub App is installed for the whole organization: an org admin links \
-         an installation in Settings > Organization, then choose \"Use the Everruns app\" on an \
+        "Agents use the Everruns GitHub App through the organization: an org admin links an \
+         installation in Settings > Organization, then choose \"Use the Everruns app\" on the \
          agent's GitHub section"
             .into(),
     )

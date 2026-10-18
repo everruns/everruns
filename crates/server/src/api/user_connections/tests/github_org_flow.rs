@@ -11,7 +11,7 @@ use crate::auth::backend::AuthBackend;
 use crate::auth::middleware::{AuthError, AuthMethod, OrgAdmin, OrgContext};
 use crate::auth::routes::AuthConfigResponse;
 use crate::domains::organizations::record::OrgMembership;
-use crate::storage::CreateOrganizationRow;
+use crate::storage::{CreateOrganizationRow, CreateVirtualUserRow};
 use axum::body::Body;
 use axum::http::Request;
 use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID};
@@ -550,11 +550,33 @@ async fn members_cannot_attach_the_shared_app_to_an_agent_directly() {
     let github = MockServer::start().await;
     let state = github_state(&github).await;
     let user_id = user_with_role(&state, OrgRole::Member).await;
-    let error = github_authorize(ConnectionUser {
-        id: user_id,
-        org_id: DEFAULT_ORG_ID,
-        management_user_id: user_id,
-    })
+    let service = VirtualUserId::new();
+    state
+        .db
+        .create_virtual_user(CreateVirtualUserRow {
+            usage: "service".to_string(),
+            org_id: DEFAULT_ORG_ID,
+            id: service,
+            name: "reviewer".to_string(),
+            description: None,
+            avatar_url: None,
+            locale: None,
+            timezone: None,
+        })
+        .await
+        .unwrap();
+    let error = github_authorize_inner(
+        state.clone(),
+        OAuthAuthority {
+            org_id: DEFAULT_ORG_ID,
+            caller: None,
+            target_id: service.uuid(),
+            management_user_id: Some(user_id),
+            runtime_credential: None,
+        },
+        CookieJar::new(),
+        None,
+    )
     .await
     .unwrap_err();
     assert_eq!(error.0, StatusCode::BAD_REQUEST);

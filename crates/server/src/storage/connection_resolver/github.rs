@@ -258,16 +258,12 @@ impl DbConnectionResolver {
     ) -> Result<Option<ScopedGitHubToken>> {
         let installation_id = match (GitHubIdentityKind::of(&row), row.installation_id) {
             (GitHubIdentityKind::Person, _) => {
-                // A stored OAuth token (a person's own login) cannot be
-                // narrowed; it reaches what the person can.
-                return row
-                    .access_token_encrypted
-                    .as_deref()
-                    .map(|value| {
-                        self.decrypt(value, "connection token")
-                            .map(|token| (token, None))
-                    })
-                    .transpose();
+                // A person's own token cannot be narrowed; it reaches what
+                // the person can.
+                return Ok(self
+                    .person_github_token(row)
+                    .await?
+                    .map(|token| (token, None)));
             }
             (_, Some(installation_id)) => installation_id,
             (_, None) => return Ok(None),
@@ -280,6 +276,97 @@ impl DbConnectionResolver {
             .await
             .map(|credential| Some(credential.into_credential()))
             .map_err(|e| AgentLoopError::store(format!("Failed to mint GitHub token: {e}")))
+    }
+}
+
+impl DbConnectionResolver {
+    /// A person's own GitHub token (D1), refreshed when it is about to expire.
+    /// Refreshing is single-flight per connection, because GitHub rotates the
+    /// refresh token on use. A failed refresh reads as no token, so the use
+    /// asks the person to connect GitHub again.
+    async fn person_github_token(&self, row: VirtualUserConnectionRow) -> Result<Option<String>> {
+        let fresh = |row: &VirtualUserConnectionRow| {
+            row.expires_at
+                .is_none_or(|expiry| expiry > Utc::now() + OAUTH_REFRESH_SKEW)
+        };
+        let Some(access_token) = row.access_token_encrypted.as_deref() else {
+            return Ok(None);
+        };
+        if fresh(&row) {
+            return self.decrypt(access_token, "GitHub token").map(Some);
+        }
+        let Some(client) = self
+            .github_app
+            .as_ref()
+            .and_then(|minter| minter.user_client.clone())
+        else {
+            return Ok(None);
+        };
+        let lock = self
+            .refresh_locks
+            .get_with(format!("github-person:{}", row.id), || {
+                Arc::new(Mutex::new(()))
+            });
+        let _guard = lock.lock().await;
+        // Another use may have refreshed it while this one waited.
+        let Some(row) = self
+            .db
+            .get_virtual_user_connection(row.virtual_user_id, PROVIDER)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+            .filter(|current| current.id == row.id)
+        else {
+            return Ok(None);
+        };
+        if fresh(&row) {
+            return row
+                .access_token_encrypted
+                .as_deref()
+                .map(|value| self.decrypt(value, "GitHub token"))
+                .transpose();
+        }
+        let Some(refresh_token) = row.refresh_token_encrypted.as_deref() else {
+            return Ok(None);
+        };
+        let refresh_token = self.decrypt(refresh_token, "GitHub refresh token")?;
+        let token = match crate::github_user_token::GitHubUserTokens::new(
+            self.github_apps.endpoints().clone(),
+        )
+        .refresh(&client, &refresh_token)
+        .await
+        {
+            Ok(token) => token,
+            Err(e) => {
+                tracing::warn!(connection_id = %row.id, error = %e, "GitHub token refresh failed");
+                return Ok(None);
+            }
+        };
+        let encrypt = |value: &str| {
+            self.encryption
+                .encrypt_string(value)
+                .map_err(|e| AgentLoopError::store(format!("Failed to encrypt GitHub token: {e}")))
+        };
+        self.db
+            .upsert_virtual_user_connection(crate::storage::CreateVirtualUserConnectionRow {
+                virtual_user_id: row.virtual_user_id,
+                provider: row.provider,
+                connection_type: row.connection_type,
+                provider_user_id: row.provider_user_id,
+                provider_username: row.provider_username,
+                access_token_encrypted: Some(encrypt(&token.access_token)?),
+                // GitHub always rotates it; keep the old one only if it did not.
+                refresh_token_encrypted: match token.refresh_token.as_deref() {
+                    Some(value) => Some(encrypt(value)?),
+                    None => row.refresh_token_encrypted,
+                },
+                scopes: row.scopes,
+                expires_at: token.expires_at,
+                installation_id: None,
+                provider_metadata: row.provider_metadata,
+            })
+            .await
+            .map_err(|e| AgentLoopError::store(format!("Failed to store GitHub token: {e}")))?;
+        Ok(Some(token.access_token))
     }
 }
 

@@ -951,56 +951,159 @@ mod github_installation_ownership {
             .to_string()
     }
 
-    /// Step 3b: nobody installs the shared App on their own connection, and a
-    /// setup state from that older flow cannot store one either.
+    /// A member of the default org, and their own virtual user.
+    async fn person(state: &AppState) -> (ResolvedOrg, Uuid) {
+        let user_id = state.db.create_test_user(Uuid::now_v7()).await;
+        state
+            .db
+            .add_organization_member(everruns_core::DEFAULT_ORG_ID, user_id, "member")
+            .await
+            .unwrap();
+        let target = state
+            .db
+            .default_virtual_user(everruns_core::DEFAULT_ORG_ID, user_id)
+            .await
+            .unwrap()
+            .id
+            .uuid();
+        (test_org(user_id), target)
+    }
+
+    async fn start_sign_in(
+        state: &AppState,
+        org: &ResolvedOrg,
+        target: Uuid,
+    ) -> (CookieJar, String) {
+        let (jar, redirect) = github_authorize_inner(
+            state.clone(),
+            OAuthAuthority {
+                org_id: org.org_id,
+                caller: None,
+                target_id: target,
+                management_user_id: org.user_id,
+                runtime_credential: None,
+            },
+            CookieJar::new(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(location(redirect).contains("/login/oauth/authorize?client_id=Iv1.test&state="));
+        let setup_state = pending_state(&jar, "github").state;
+        (jar, setup_state)
+    }
+
+    async fn finish(
+        state: &AppState,
+        org: &ResolvedOrg,
+        jar: CookieJar,
+        setup_state: String,
+        installation_id: Option<i64>,
+        code: Option<&str>,
+    ) -> Result<String, (StatusCode, String)> {
+        github_callback(
+            State(state.clone()),
+            Ok(org.clone()),
+            jar,
+            Query(GitHubInstallationCallbackQuery {
+                installation_id,
+                setup_action: installation_id.map(|_| "install".to_string()),
+                state: Some(setup_state),
+                code: code.map(str::to_string),
+            }),
+        )
+        .await
+        .map(|(_, redirect)| location(redirect))
+    }
+
+    /// Step 4 (D1): a person signs in as themselves; the connection holds
+    /// their user token and the account GitHub reads back, no installation.
     #[tokio::test]
-    async fn nobody_installs_the_shared_app_on_their_own_connection() {
+    async fn a_person_signs_in_and_keeps_their_own_token() {
+        let github = MockServer::start().await;
+        mock_github(&github).await;
+        Mock::given(method("GET"))
+            .and(path("/user"))
+            .and(header("authorization", "Bearer owner-token"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({ "id": 31, "login": "octo" })),
+            )
+            .mount(&github)
+            .await;
+        let state = github_state(&github).await;
+        let (org, target) = person(&state).await;
+
+        // A rejected code stores nothing.
+        let (jar, setup_state) = start_sign_in(&state, &org, target).await;
+        let error = finish(&state, &org, jar, setup_state, None, Some("expired-code"))
+            .await
+            .unwrap_err();
+        assert_eq!(error.0, StatusCode::BAD_REQUEST);
+        assert!(
+            state
+                .db
+                .get_user_connection(target, "github")
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        let (jar, setup_state) = start_sign_in(&state, &org, target).await;
+        let back = finish(&state, &org, jar, setup_state, None, Some("owner-code"))
+            .await
+            .unwrap();
+        assert!(
+            back.ends_with("/settings/connections?connected=github"),
+            "{back}"
+        );
+        let row = state
+            .db
+            .get_user_connection(target, "github")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.provider_username.as_deref(), Some("octo"));
+        assert_eq!(row.provider_user_id.as_deref(), Some("31"));
+        assert_eq!(row.installation_id, None);
+        let encryption = state.encryption.as_ref().unwrap();
+        assert_eq!(
+            encryption
+                .decrypt_to_string(row.access_token_encrypted.as_deref().unwrap())
+                .unwrap(),
+            "owner-token"
+        );
+    }
+
+    /// Step 3b: a setup state from the older install flow cannot put an
+    /// installation on a person's own connection, and an agent never signs in.
+    #[tokio::test]
+    async fn no_installation_lands_on_a_virtual_users_own_connection() {
         let github = MockServer::start().await;
         mock_github(&github).await;
         let state = github_state(&github).await;
-        let user_id = state.db.create_test_user(Uuid::now_v7()).await;
+        let (org, target) = person(&state).await;
 
-        let error = github_authorize(ConnectionUser {
-            id: user_id,
-            org_id: everruns_core::DEFAULT_ORG_ID,
-            management_user_id: user_id,
-        })
-        .await
-        .unwrap_err();
-        assert_eq!(error.0, StatusCode::BAD_REQUEST);
-        assert!(error.1.contains("Settings > Organization"), "{}", error.1);
-
-        let pending = PendingOAuthState {
-            state: "legacy-setup".into(),
-            org_id: everruns_core::DEFAULT_ORG_ID,
-            management_user_id: Some(user_id),
-            runtime_credential: None,
-            provider: "github".into(),
-            return_to: "/settings/connections".into(),
-            mode: "virtual_user".into(),
-            session_id: None,
-            agent_id: None,
-            virtual_user_id: None,
-            popup: false,
-            code_verifier: String::new(),
-            github_installation_id: None,
-        };
-        register_pending_setup(&state, &pending).await.unwrap();
-        let jar = CookieJar::new().add(github_setup_cookie(&pending).unwrap());
-        let error = github_callback(
-            State(state.clone()),
-            Ok(test_org(user_id)),
+        let (jar, setup_state) = start_sign_in(&state, &org, target).await;
+        let error = finish(
+            &state,
+            &org,
             jar,
-            Query(GitHubInstallationCallbackQuery {
-                installation_id: Some(VICTIM_INSTALLATION),
-                setup_action: Some("install".to_string()),
-                state: Some(pending.state.clone()),
-                code: Some("owner-code".to_string()),
-            }),
+            setup_state,
+            Some(VICTIM_INSTALLATION),
+            Some("owner-code"),
         )
         .await
         .unwrap_err();
         assert_eq!(error.0, StatusCode::BAD_REQUEST);
+        assert!(
+            state
+                .db
+                .get_user_connection(target, "github")
+                .await
+                .unwrap()
+                .is_none()
+        );
         assert!(
             state
                 .db

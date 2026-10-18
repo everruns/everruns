@@ -112,6 +112,7 @@ pub mod valkey;
 // Per-agent GitHub Apps: manifest creation, installation, token minting
 pub mod github_apps;
 mod github_installation_token;
+pub mod github_user_token;
 
 // Channel-specific plumbing (Slack: delivery, actions, events, install)
 pub mod channels;

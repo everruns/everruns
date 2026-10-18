@@ -356,11 +356,22 @@ Each step is one PR unless noted, and leaves everything working.
    gone, nobody can install the shared App on their own connection any more
    (person and agent alike: an admin links it), and GitHub is no longer
    listed among a person's connections until step 4 gives people their own
-   sign-in. A source sync whose owner has no GitHub connection of their own
+   sign-in (3b and step 4 ship in one release). A source sync whose owner has no GitHub connection of their own
    reads through the org's link for the repository's account, the `service`
    use on the org identity this design names for syncs.
 4. **Person connection** (D1, D5): store and refresh the user token; GitHub
    MCP `user` uses it after the endpoint check.
+   Done: connecting GitHub as a person is the shared App's user
+   authorization (`/login/oauth/authorize`, no installation step). The
+   callback exchanges the code, reads the account from `GET /user`, and stores
+   the `ghu_` token, its refresh token and expiry on the person's `oauth` row
+   without an installation (`crates/server/src/github_user_token.rs`). A
+   setup state or callback that names an installation is refused, so a state
+   issued before 3b cannot store one. The resolver refreshes an expired token
+   single-flight per connection and stores the rotated pair; a refused
+   refresh yields no token, never the stale one, and the person signs in
+   again. Not done: D5 is unverified, so the GitHub MCP preset keeps its own
+   OAuth client for `user`.
 5. **GitHub channel** (D8) on the channel host, with the manifest additions.
 6. **Sandbox repositories**: repositories and access level on the sandbox
    template, injected at the egress proxy (Modal, saas egress proxy) or
