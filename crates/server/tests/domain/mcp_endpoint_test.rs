@@ -3458,13 +3458,11 @@ async fn test_oauth_authorize_confirm_needs_no_csrf_cookie() {
     );
 }
 
-/// The consent page must carry its own CSP whose `form-action` allows every
-/// hop of the confirm POST's redirect chain: Chrome checks each hop, so both
-/// the global `form-action 'self'` and allowing only the callback origin (when
-/// Cursor's `www.cursor.com` 308s on to `cursor.com`) make the click silently
-/// do nothing. See `security_headers::oauth_consent_page_csp`.
+/// Browsers apply `form-action` to every hop of the confirm POST's redirect
+/// chain. The registered callback can redirect again to an unknown origin or
+/// loopback port, so this page must not carry that directive.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_oauth_authorize_page_csp_allows_redirect_origin() {
+async fn test_oauth_authorize_page_csp_does_not_block_callback_redirects() {
     let server = TestServer::in_memory().await;
     let (client_id, _) = register_oauth_client(&server).await;
 
@@ -3476,9 +3474,11 @@ async fn test_oauth_authorize_page_csp_allows_redirect_origin() {
         .get("content-security-policy")
         .and_then(|v| v.to_str().ok())
         .expect("consent page must set its own content-security-policy");
+    assert!(!csp.contains("form-action"), "got: {csp}");
+    assert!(csp.contains("frame-ancestors 'none'"), "got: {csp}");
     assert!(
-        csp.ends_with("form-action 'self' https: http://localhost:9999"),
-        "form-action must allow https hops and the loopback callback origin, got: {csp}"
+        page.text()
+            .contains(r#"<form method="post" action="/oauth/authorize">"#)
     );
 }
 

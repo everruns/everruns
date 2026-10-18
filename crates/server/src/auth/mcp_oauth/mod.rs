@@ -575,10 +575,10 @@ async fn oauth_authorize(
         serde_json::json!({"client_id": query.client_id}),
     );
     let mut response = Html(confirm_page).into_response();
-    // Extend `form-action` so the confirm POST's redirect chain is not blocked.
-    if let Ok(csp) = axum::http::HeaderValue::from_str(
-        &crate::security_headers::oauth_consent_page_csp(&query.redirect_uri),
-    ) {
+    // The callback redirect chain needs this consent-page CSP override.
+    if let Ok(csp) =
+        axum::http::HeaderValue::from_str(crate::security_headers::oauth_consent_page_csp())
+    {
         response
             .headers_mut()
             .insert(axum::http::header::CONTENT_SECURITY_POLICY, csp);

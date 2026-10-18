@@ -969,7 +969,7 @@ Applied via `SetResponseHeaderLayer` (`if_not_present`) in `app_builder/http_lay
 - `X-Content-Type-Options: nosniff`, prevents MIME sniffing
 - `Referrer-Policy: strict-origin-when-cross-origin`, limits referrer leakage
 - `Permissions-Policy` disables unused browser device APIs. Default: `camera=(), microphone=(), geolocation=()`. When the `voice` feature flag is enabled, microphone is narrowed to same-origin use: `camera=(), microphone=(self), geolocation=()`.
-- `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; frame-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'` (`frame-src` permits the PDF preview `data:` iframe, TM-WEB-011, while keeping `about:srcdoc` previews under `'self'`)
+- `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; frame-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'` (`frame-src` permits the PDF preview `data:` iframe, TM-WEB-011, while keeping `about:srcdoc` previews under `'self'`). The MCP OAuth consent response keeps every other directive but omits `form-action`: browsers apply it to client-controlled callback redirects after the signed approval POST. The page has a same-origin form, no scripts, and escaped client values; all other pages retain the baseline rule.
 
 ## 13. AI Agent Behavior (TM-AGENT)
 
