@@ -75,8 +75,12 @@ async fn userless_session_binds_session_user_template_to_sole_org_account() {
         org_id: DEFAULT_ORG_ID,
         name: name.to_string(),
         provider: "daytona".to_string(),
-        access_token_encrypted: vec![1],
+        connection_type: None,
+        access_token_encrypted: Some(vec![1]),
+        provider_user_id: None,
         provider_username: None,
+        scopes: None,
+        installation_id: None,
         provider_metadata: None,
     };
 
