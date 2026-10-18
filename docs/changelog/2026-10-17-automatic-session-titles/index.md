@@ -15,6 +15,10 @@ session. Under **Models → Defaults**, choose a shared **Small model** for
 lightweight work. Capability settings can inherit that default, use the session
 model, or pin a model and provider.
 
+![Small model default selected independently of the main chat model](./small-model@2x.png)
+
+![Automatic session titles settings with model selection and topic-based retitling](./automatic-titles@2x.png)
+
 **In code:** Attach the capability without enabling title tools:
 
 ```json
