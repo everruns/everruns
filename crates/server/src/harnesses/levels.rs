@@ -35,11 +35,10 @@ pub fn definition(preset: BuiltInHarnessPreset) -> BuiltInHarnessDefinition {
         preset.name(),
         display_name,
         description,
-        if preset == BuiltInHarnessPreset::Base {
-            "You are a helpful assistant."
-        } else {
-            ""
-        },
+        // No level carries a generic persona line. Prepended to an agent's own
+        // prompt it contradicted it; when no layer supplies a prompt,
+        // `RuntimeAgentBuilder::from_overlay` falls back to one.
+        "",
     )
     .with_icon(icon)
     .with_tags([preset.name(), "built-in"])

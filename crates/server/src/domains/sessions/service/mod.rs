@@ -272,3 +272,5 @@ mod tests_mounts_tests;
 mod tests_sessions;
 #[cfg(test)]
 mod tests_support;
+#[cfg(test)]
+mod tests_userless_sandbox;
