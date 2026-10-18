@@ -564,8 +564,13 @@ async fn native_independent_connections_fence_all_canonical_state_after_expiry()
     let id = SessionId::new();
     let session = engine.create_registered(id, &build()).await.unwrap();
     session.send("hello").await.unwrap();
+    // The first owner's in-lease write races its wall-clock lease, so the lease must
+    // comfortably outlive one SQLite transaction on a loaded CI runner (a 5ms lease
+    // expired before the write landed). The replacement then polls until the lease
+    // has actually lapsed instead of guessing a fixed sleep.
+    let lease = std::time::Duration::from_millis(500);
     let stale = first
-        .claim(id, "first-owner", std::time::Duration::from_millis(5))
+        .claim(id, "first-owner", lease)
         .await
         .unwrap()
         .unwrap();
@@ -576,12 +581,21 @@ async fn native_independent_connections_fence_all_canonical_state_after_expiry()
         .set_value(id, "counter", "1")
         .await
         .unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(15)).await;
-    let current = second
-        .claim(id, "replacement", std::time::Duration::from_secs(10))
-        .await
-        .unwrap()
-        .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let current = loop {
+        if let Some(current) = second
+            .claim(id, "replacement", std::time::Duration::from_secs(10))
+            .await
+            .unwrap()
+        {
+            break current;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "first owner's lease never expired"
+        );
+        tokio::time::sleep(lease / 10).await;
+    };
     assert!(current.actor.fence > stale.actor.fence);
     assert!(
         stale
