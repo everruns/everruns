@@ -88,7 +88,8 @@ impl ProxyConfig {
     pub fn from_env() -> anyhow::Result<Self> {
         // Decision: refuse to start without a strong secret. A proxy that
         // accepts any token would be an open relay on the tenant address.
-        let secret = std::env::var(everruns_core::host::EGRESS_PROXY_SECRET_ENV).unwrap_or_default();
+        let secret =
+            std::env::var(everruns_core::host::EGRESS_PROXY_SECRET_ENV).unwrap_or_default();
         if secret.len() < MIN_PROXY_SECRET_LEN {
             anyhow::bail!(
                 "EVERRUNS_EGRESS_PROXY_SECRET must be set to at least {MIN_PROXY_SECRET_LEN} bytes"

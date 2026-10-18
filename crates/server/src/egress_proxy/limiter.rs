@@ -308,6 +308,10 @@ mod tests {
         assert_eq!(share(1, 4), 1);
         assert_eq!(share(600, 2), 300);
         // An unset cap stays unset however many replicas share it.
-        assert!(limiter.admit("org_b", "a.example", &OrgLimits::unlimited(), T0).is_ok());
+        assert!(
+            limiter
+                .admit("org_b", "a.example", &OrgLimits::unlimited(), T0)
+                .is_ok()
+        );
     }
 }

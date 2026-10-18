@@ -32,8 +32,8 @@ use tokio::net::{TcpListener, TcpSocket, TcpStream};
 use super::address::{self, AddressPolicy, ResolveError};
 use super::limiter::Limiter;
 use super::limits::LimitsCache;
-use everruns_core::host::{ProxyTokenError, verify_proxy_authorization};
 use super::usage::UsageAggregator;
+use everruns_core::host::{ProxyTokenError, verify_proxy_authorization};
 
 /// Largest request head the proxy reads.
 const MAX_HEAD: usize = 16 * 1024;

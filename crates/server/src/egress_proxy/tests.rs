@@ -199,7 +199,12 @@ async fn connect_tunnels_and_counts_bytes_each_way() {
 async fn plain_http_is_forwarded_without_proxy_credentials() {
     let seen = Arc::new(Mutex::new(String::new()));
     let origin = http_server(seen.clone()).await;
-    let h = start(OrgLimits::unlimited(), AddressPolicy::AllowLoopbackForTests, 1_000).await;
+    let h = start(
+        OrgLimits::unlimited(),
+        AddressPolicy::AllowLoopbackForTests,
+        1_000,
+    )
+    .await;
 
     let mut stream = TcpStream::connect(h.proxy_addr).await.expect("connect");
     let request = format!(
@@ -250,11 +255,9 @@ async fn a_token_minted_by_the_egress_service_is_admitted() {
         org_id: Some(ORG.parse().expect("org id")),
         session_id: None,
     };
-    let auth = reqwest::header::HeaderValue::from_str(&format!(
-        "Bearer {}",
-        minted.token(Some(&scope))
-    ))
-    .expect("header");
+    let auth =
+        reqwest::header::HeaderValue::from_str(&format!("Bearer {}", minted.token(Some(&scope))))
+            .expect("header");
     let client = reqwest::Client::builder()
         .proxy(
             reqwest::Proxy::all(format!("http://{}", h.proxy_addr))
@@ -270,7 +273,11 @@ async fn a_token_minted_by_the_egress_service_is_admitted() {
         .expect("proxied request");
     assert_eq!(response.status(), 200);
     assert_eq!(response.text().await.expect("body"), "hello");
-    assert!(seen.lock().expect("lock").starts_with("GET /minted HTTP/1.1"));
+    assert!(
+        seen.lock()
+            .expect("lock")
+            .starts_with("GET /minted HTTP/1.1")
+    );
 
     let (_, _, requests) = settled_bytes(&h.usage).await;
     assert_eq!(requests, 1);
@@ -372,7 +379,10 @@ async fn bad_expired_or_missing_tokens_get_407() {
         1_000,
     )
     .await;
-    let expired = format!("Bearer {}", sign_proxy_token(SECRET, ORG, "-", unix_now() - 1));
+    let expired = format!(
+        "Bearer {}",
+        sign_proxy_token(SECRET, ORG, "-", unix_now() - 1)
+    );
     let forged = format!(
         "Bearer {}",
         sign_proxy_token(

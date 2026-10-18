@@ -215,9 +215,7 @@ pub fn verify_proxy_authorization(
     now_unix: i64,
 ) -> Result<ProxyClaims, ProxyTokenError> {
     let header = header.ok_or(ProxyTokenError::Missing)?.trim();
-    let (scheme, token) = header
-        .split_once(' ')
-        .ok_or(ProxyTokenError::Malformed)?;
+    let (scheme, token) = header.split_once(' ').ok_or(ProxyTokenError::Malformed)?;
     if !scheme.eq_ignore_ascii_case("bearer") {
         return Err(ProxyTokenError::Malformed);
     }
