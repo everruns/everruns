@@ -93,6 +93,14 @@ export const sideChatNavigation: NavigationItem[] = [
 
 export const defaultOperationalNavigation: NavigationItem[] = [
   {
+    name: "Monitoring",
+    href: "/monitoring",
+    icon: DurableIcon,
+    flag: "monitoring",
+    experimental: true,
+    keywords: ["execution", "actors", "leases", "monitor"],
+  },
+  {
     name: "Sessions",
     href: "/sessions",
     icon: SessionIcon,
@@ -205,7 +213,13 @@ export const defaultBottomNavigation: NavigationItem[] = [
 ];
 
 export const defaultDurableNavigation: NavigationItem[] = [
-  { name: "Overview", href: "/durable", icon: DurableIcon, exact: true },
+  {
+    name: "Monitoring",
+    href: "/durable",
+    icon: DurableIcon,
+    exact: true,
+    keywords: ["fleet", "workers", "actors", "leases", "monitor"],
+  },
   { name: "Workers", href: "/durable/workers", icon: WorkerIcon },
   { name: "Workflows", href: "/durable/workflows", icon: WorkflowIcon },
   { name: "Queues", href: "/durable/queues", icon: QueueIcon },

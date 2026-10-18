@@ -214,6 +214,28 @@ async fn ordinary_sessions_select_a_permanent_head_before_execution() {
 }
 
 #[tokio::test]
+async fn an_unstarted_session_selects_its_head_after_resume() {
+    let engine = InMemoryEngine::new();
+    let agent = Agent::builder()
+        .instructions("Be concise.")
+        .model(Model::simulated("ok"))
+        .build()
+        .unwrap();
+    let session = engine.create(agent);
+    let session_id = session.session_id();
+    drop(session);
+
+    let resumed = engine.resume(session_id).await.unwrap();
+    assert!(resumed.workspace_head().is_none());
+    resumed.start().await.unwrap();
+    let head_id = resumed.workspace_head().unwrap().id();
+    drop(resumed);
+
+    let reopened = engine.resume(session_id).await.unwrap();
+    assert_eq!(reopened.workspace_head().unwrap().id(), head_id);
+}
+
+#[tokio::test]
 async fn workspace_shorthand_is_one_explicitly_shared_reopenable_head() {
     let root = tempfile::tempdir().unwrap();
     let agent = Agent::builder()

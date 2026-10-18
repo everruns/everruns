@@ -39,6 +39,7 @@ pub mod execution_features;
 pub mod execution_loading;
 pub mod feature_flag_grade;
 pub mod finalized_tool_calls;
+mod github_credential;
 pub mod harness_definition;
 pub mod hook_executor;
 pub mod image_services;
@@ -119,8 +120,8 @@ pub use self::capability_mcp_server::{
 pub use self::channel::{
     ChannelAgentSurface, ChannelDeliveryAdapter, ChannelStreamDelivery, ChannelViewContext,
     DeliveryContext as ChannelDeliveryContext, DeliveryResult as ChannelDeliveryResult,
-    InboundAttachment, InboundChannelEvent, OutboundChannelMessage, Participant, SessionBinding,
-    ThreadContext,
+    InboundAttachment, InboundChannelEvent, OutboundChannelMessage, Participant, RemoteCredential,
+    SessionBinding, ThreadContext,
 };
 pub use self::command_host::{
     CommandHost, CommandTurnContext, DisabledCommandHost, SessionCompletion,
@@ -182,6 +183,7 @@ pub use self::feature_flag_grade::{FeatureFlagDefinition, FeatureFlagGrade};
 pub use self::finalized_tool_calls::{
     FinalizedToolCallRejection, FinalizedToolCallsContext, FinalizedToolCallsHook,
 };
+pub use self::github_credential::GitHubInstallationScope;
 pub use self::harness_definition::HarnessDefinition;
 pub use self::image_services::{ImageResolver, ResolvedImage};
 pub use self::leased_resource::{
@@ -265,12 +267,13 @@ pub use self::session_services::{
     SecretInfo, SecretScope, SessionResourceRegistry, SessionStorageStore,
 };
 pub use self::session_task::{
-    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
-    SessionTaskState, SessionTaskUpdate, TASK_KIND_AGENT_HANDOFF, TASK_KIND_BACKGROUND_TOOL,
-    TASK_KIND_EXTERNAL_AG_UI, TASK_KIND_EXTERNAL_AGENT, TASK_KIND_MONITOR, TASK_KIND_SESSION,
-    TASK_KIND_SUBAGENT, TaskArtifact, TaskError, TaskExecutor, TaskExecutorPlugin,
-    TaskInputRequest, TaskLinks, TaskMessage, TaskMessageDirection, TaskMessagePart, TaskProgress,
-    TaskSink, TaskWakePolicy, apply_task_update, find_task_executor,
+    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRecoveryGuard,
+    SessionTaskRegistry, SessionTaskState, SessionTaskUpdate, TASK_KIND_AGENT_HANDOFF,
+    TASK_KIND_BACKGROUND_TOOL, TASK_KIND_EXTERNAL_AG_UI, TASK_KIND_EXTERNAL_AGENT,
+    TASK_KIND_MONITOR, TASK_KIND_SESSION, TASK_KIND_SUBAGENT, TaskArtifact, TaskError,
+    TaskExecutor, TaskExecutorPlugin, TaskInputRequest, TaskLinks, TaskMessage,
+    TaskMessageDirection, TaskMessagePart, TaskOwnership, TaskProgress, TaskSink, TaskWakePolicy,
+    apply_task_update, find_task_executor, recover_orphaned_task,
 };
 pub use self::skill::{
     ParsedSkillMd, SkillContent, SkillFileEntry, SkillValidationResult, parse_skill_md,

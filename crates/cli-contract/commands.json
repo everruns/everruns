@@ -864,6 +864,13 @@
         "help": "Maximum number of LLM iterations per turn for this agent."
       },
       {
+        "field": "max_output_tokens",
+        "long": "max-output-tokens",
+        "kind": "integer",
+        "required": false,
+        "help": "Ceiling on output tokens per model response (sent as `max_tokens`). Omit to use the provider ..."
+      },
+      {
         "field": "mcpServers",
         "long": "mcpServers",
         "kind": "json",
@@ -1262,6 +1269,58 @@
     ]
   },
   {
+    "wire_name": "list_agent_failures",
+    "path": [
+      "agents",
+      "failures"
+    ],
+    "verb": "list",
+    "description": "List sessions with failed turns. Filters by failure time and includes older, recovered, and archived sessions, matching agent activity. Returns the latest matching failure per session.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/failures",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent",
+        "position": 1,
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "after",
+        "long": "after",
+        "kind": "string",
+        "required": false,
+        "help": "Exclusive lower bound on failure time; defaults to 24 hours before `before`."
+      },
+      {
+        "field": "before",
+        "long": "before",
+        "kind": "string",
+        "required": false,
+        "help": "Inclusive upper bound, normally the Agents activity response's generated_at."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find an agent's failed turns, including sessions that later recovered",
+        "command": "everruns agents failures list agent_01h9 --limit 20"
+      }
+    ]
+  },
+  {
     "wire_name": "get_agent",
     "path": [
       "agents"
@@ -1380,6 +1439,39 @@
       {
         "intent": "Check whether an agent's GitHub App is installed and on which account",
         "command": "everruns agents github get --agent-id agent_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "use_agent_everruns_app",
+    "path": [
+      "agents",
+      "github"
+    ],
+    "verb": "use-everruns-app",
+    "description": "Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/github/everruns-app",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      },
+      {
+        "field": "connection_id",
+        "long": "connection-id",
+        "kind": "string",
+        "required": true,
+        "help": "Connection id of one of the org's linked installations, from the agent's GitHub status (`ever..."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Let an agent act as the Everruns app through the org's acme installation",
+        "command": "everruns agents github use-everruns-app --agent-id agent_01h9 --connection-id 0190f5a2-7c1e-7a3b-9d2e-4f5a6b7c8d9e --reason 'Use the shared app for the reviewer'"
       }
     ]
   },
@@ -2457,6 +2549,13 @@
         "help": "Maximum number of LLM iterations per turn for this agent."
       },
       {
+        "field": "max_output_tokens",
+        "long": "max-output-tokens",
+        "kind": "integer",
+        "required": false,
+        "help": "Ceiling on output tokens per model response (sent as `max_tokens`). Omit to leave unchanged; ..."
+      },
+      {
         "field": "mcpServers",
         "long": "mcpServers",
         "kind": "json",
@@ -2540,6 +2639,10 @@
       {
         "intent": "Rename an agent, leaving the rest of it alone",
         "command": "everruns agents update agent_01h9 --name triage-v2 --reason 'Rename after the triage split'"
+      },
+      {
+        "intent": "Cap each model response so calls fit a low provider balance",
+        "command": "everruns agents update agent_01h9 --max-output-tokens 4096 --reason 'Provider said it can only afford fewer tokens'"
       }
     ]
   },
@@ -2635,6 +2738,13 @@
         "kind": "integer",
         "required": false,
         "help": "Maximum number of LLM iterations per turn for this agent."
+      },
+      {
+        "field": "max_output_tokens",
+        "long": "max-output-tokens",
+        "kind": "integer",
+        "required": false,
+        "help": "Ceiling on output tokens per model response (sent as `max_tokens`). Omit to use the provider ..."
       },
       {
         "field": "mcpServers",
@@ -10288,13 +10398,6 @@
         "kind": "string",
         "required": false,
         "help": "Optional resident virtual user used for unattended/background execution."
-      },
-      {
-        "field": "workspace_id",
-        "long": "workspace-id",
-        "kind": "string",
-        "required": false,
-        "help": "Attach this session to an existing Workspace (format: `wsp_<32-hex>`) instead of auto-creatin..."
       }
     ],
     "examples": [
@@ -13567,38 +13670,6 @@
       {
         "intent": "Change a virtual user's display name",
         "command": "everruns virtual-users update identity_01h9 --name triage-bot --reason 'Match the team naming'"
-      }
-    ]
-  },
-  {
-    "wire_name": "create_workspace",
-    "path": [
-      "workspaces"
-    ],
-    "verb": "create",
-    "description": "Create a new Workspace in the current organization.",
-    "method": "POST",
-    "http_path": "/v1/workspaces",
-    "args": [
-      {
-        "field": "description",
-        "long": "description",
-        "kind": "string",
-        "required": false,
-        "help": "Optional human-readable description."
-      },
-      {
-        "field": "name",
-        "long": "name",
-        "kind": "string",
-        "required": true,
-        "help": "Human-readable workspace name."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Create a workspace to group related sessions and files",
-        "command": "everruns workspaces create --name platform-team --description 'Platform team sandbox work' --reason 'Separate team resources'"
       }
     ]
   },

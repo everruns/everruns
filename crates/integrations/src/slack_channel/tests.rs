@@ -107,6 +107,62 @@ async fn mention_only_ignores_plain_messages_bots_and_edits() {
 }
 
 #[tokio::test]
+async fn files_are_downloaded_from_slack_with_the_bot_token() {
+    let mut body = mention("see attached");
+    body["event"]["files"] = json!([
+        {"name": "report.pdf", "mimetype": "application/pdf", "size": 42,
+         "url_private": "https://files.slack.com/files-pri/T1-F1/report.pdf",
+         "url_private_download": "https://files.slack.com/files-pri/T1-F1/download/report.pdf"},
+        {"name": "Plan", "mimetype": "application/vnd.google-apps.document", "is_external": true,
+         "url_private": "https://docs.google.com/document/d/1",
+         "permalink": "https://example.slack.com/files/U7/F2/plan"},
+    ]);
+    let request = signed(&body, SECRET, unix_now());
+    let Inbound::Message(message) = Slack::new("xoxb-test", SECRET)
+        .receive(&request)
+        .await
+        .unwrap()
+    else {
+        panic!("expected a message")
+    };
+    let [first, second] = message.event.attachments.as_slice() else {
+        panic!("expected two attachments")
+    };
+    let InboundAttachment::Remote {
+        url,
+        name,
+        size,
+        credential: Some(credential),
+        ..
+    } = first
+    else {
+        panic!("expected a download, got {first:?}")
+    };
+    assert_eq!(
+        url,
+        "https://files.slack.com/files-pri/T1-F1/download/report.pdf"
+    );
+    assert_eq!(name.as_deref(), Some("report.pdf"));
+    assert_eq!(*size, Some(42));
+    assert_eq!(credential.host, "files.slack.com");
+    assert_eq!(credential.authorization, "Bearer xoxb-test");
+    assert!(matches!(
+        second,
+        InboundAttachment::FileDescription { name, .. }
+            if name == "Plan (https://example.slack.com/files/U7/F2/plan)"
+    ));
+
+    // Without a bot token there is nothing to download with.
+    let Inbound::Message(message) = Slack::new("", SECRET).receive(&request).await.unwrap() else {
+        panic!("expected a message")
+    };
+    assert!(matches!(
+        &message.event.attachments[0],
+        InboundAttachment::FileDescription { name, .. } if name == "report.pdf"
+    ));
+}
+
+#[tokio::test]
 async fn replies_post_in_the_thread_with_the_bot_token() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

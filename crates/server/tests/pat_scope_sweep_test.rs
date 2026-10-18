@@ -20,9 +20,11 @@
 //! event (rollout step 4).
 //!
 //! A dedicated single-test binary because the production builder reads
-//! process environment, which is installed before Tokio starts.
+//! process environment, which is installed before the server runtime starts.
 //! Run with: `cargo test -p everruns-server --test pat_scope_sweep_test`
-//! (needs `DATABASE_URL` or the local test database).
+//! The fixture owns a migrated database on the selected native or external cluster.
+
+mod test_harness;
 
 use std::collections::BTreeSet;
 use std::time::Duration;
@@ -42,19 +44,12 @@ use everruns_server::storage::{
 };
 use utoipa::OpenApi;
 
-fn database_url() -> String {
-    std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-        let port = std::env::var("DB_PORT").unwrap_or_else(|_| "9332".to_string());
-        format!("postgres://everruns:everruns@localhost:{port}/everruns_test")
-    })
-}
-
-fn configure_server_environment() {
+fn configure_server_environment(database_url: &str) {
     // SAFETY: this integration binary contains one synchronous test. It sets
-    // every variable before constructing Tokio, and no sibling test can run in
+    // every variable before constructing the server runtime, and no sibling test can run in
     // this process.
     unsafe {
-        std::env::set_var("DATABASE_URL", database_url());
+        std::env::set_var("DATABASE_URL", database_url);
         std::env::set_var("DEPLOYMENT_GRADE", "dev");
         std::env::set_var("AUTH_MODE", "full");
         std::env::set_var("AUTH_JWT_SECRET", "pat-scope-sweep-test-secret-0123456789");
@@ -192,6 +187,7 @@ const NOT_DENIED_BY_THE_EXTRACTOR: &[(&str, &str, &str)] = &[
     ("GET", "/v1/e/{}/slack/oauth/callback", CALLBACK),
     ("GET", "/v1/github/app-manifest/callback", CALLBACK),
     ("GET", "/v1/github/apps/{}/setup", CALLBACK),
+    ("GET", "/v1/slack/workspaces/oauth/callback", CALLBACK),
     ("GET", "/v1/user/connections/github/callback", CALLBACK),
     ("GET", "/v1/user/connections/{}/callback", CALLBACK),
     // Documented but not routed in this configuration.
@@ -815,7 +811,8 @@ async fn creation(port: u16, db: &StorageBackend) {
 
 #[test]
 fn pat_scopes_hold_on_every_route_of_the_real_router() {
-    configure_server_environment();
+    let database = test_harness::database_before_server_environment();
+    configure_server_environment(database.url());
     let port = free_port();
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()

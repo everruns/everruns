@@ -1,5 +1,180 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-18
+
+* **MCP OAuth consent redirects.** Let the browser complete client-controlled
+  callback chains after approval and require a browser check with a second
+  callback hop. See [MCP](integrations/mcp.md).
+
+## 2026-10-17
+
+* **Automatic session titles and Small model.** Add opt-in naming outside the turn path, sparse persistent admission, explicit-title priority, and an independent organization small-model selection. See [Session titles](runtime-resources/session-titles.md).
+
+* **PostgreSQL archive compatibility patch.** Select patched ZIP9 through a
+  checksum-attributed upstream copy while the published PostgreSQL dependency
+  still selects ZIP8. Preserve extraction policy and ordinary advisory/license
+  gates without ZIP exceptions; consumers with separate workspace roots select
+  the patch explicitly.
+  See [Security Testing](security/security-testing.md).
+
+* **ChatGPT Plan UI removal.** Remove the provider and its models from Platform
+  setup and selection until a suitable web OAuth client and callback exist;
+  retain the framework driver and server connection APIs. See
+  [Providers](foundations/providers.md) and [Models and providers](ui/models-and-providers.md).
+
+* **Engine session hosting implementation.** Default memory, native SQLite and
+  Durable Object profiles now share Framework admission, lifecycle receipts,
+  exact-turn approvals/client results, authority queries and actor execution.
+  serve and celld use ordinary registered Agents and the same Engine. Recover
+  native containers and replicated authority owners without client requests;
+  distinguish journal durability from explicit workspace/compute services.
+  Scope declared secret names to app discovery so retained build hashes cannot
+  change when unrelated code declares a secret. Interruption queries and resume
+  handles now use authority ownership and the original admission; transport
+  qualification includes mixed wait resolution and opaque cursor routes. Preserve
+  memory session workspace bindings and the AgentCore adapter’s mounted workspace
+  independently of SQLite journal placement. See
+  [Engine-Owned Durable Sessions](framework/engine-durable-sessions.md) and
+  [Durable Object qualification](framework/durable-object-native.md).
+  The announcement publication hold remains in force.
+
+## 2026-10-16
+
+* **Platform operating skills.** Share product, CLI, and agent-authoring skills
+  through the Platform capability; publish the general and CLI guides alongside
+  MCP workflows. Move Rust development guidance to `everruns-framework`. Distribute the five
+  shared skills through the coding-agent plugin and keep the general guide
+  independent of its host, with an index of companion workflows. See
+  [Capabilities](execution/capabilities.md), [Platform Chat](harnesses/platform-chat.md),
+  and [MCP](integrations/mcp.md).
+
+* **Durable Object announcement withdrawn.** Remove the premature public entry.
+  Engine-owned Framework/serve/celld implementation and qualification must finish
+  before explicit user approval of a replacement announcement. The publication
+  hold is recorded in root `AGENTS.md` and honored by the ship workflow.
+
+* **Documentation diagrams.** Mermaid fences render in the Everruns diagram
+  palette with readable source fallback. The Durable Object authority flow uses
+  responsive hand-authored SVGs and one colocated Mermaid source to keep its
+  return paths clear at desktop and mobile sizes.
+  See [Diagram Specification](docs/diagrams.md).
+
+* **Engine-owned durable sessions proposed.** Require the Framework Engine path
+  for DO, with coherent session hosting, durable admission/outcome handles, shared
+  lifecycle execution and serve integration. Include the celld examples, hosting
+  crate and recovery CI migration. Distinguish this target from the
+  implemented core-host proof. See
+  [Engine-Owned Durable Sessions](framework/engine-durable-sessions.md).
+
+* **Chaos actor log boundaries.** Include the shared core driver in the harness debug
+  filter so lease releases and completed activations remain visible to overlap checks.
+  See [Load Testing](operations/load-testing.md#chaos-harness).
+
+* **Coding-agent dialog finalized.** Focus setup on one copyable prompt and
+  supported agent marks; keep approval management in Settings. The public
+  changelog describes only the approved final design. See
+  [Coding Agent Onboarding](ui/coding-agent-onboarding.md).
+
+* **Public changelog eligibility.** Require meaningful user impact; exclude cosmetic
+  polish, typo fixes, and routine docs upkeep. Apply significance only after eligibility
+  and record a reason when skipping a visible change. See [Public Changelog](docs/changelog.md).
+
+* **Agent failure investigation.** Added failure-time filtering, recovered-session history,
+  outcome badges and terminal-event links into Trace. See [Agents Home](ui/agents-home.md).
+
+* **Provider drivers through host fetch.** Shared OpenAI-compatible and
+  OpenRouter chat protocols run in WASM with host HTTP, portable deadlines and
+  workerd Worker/Durable Object tool-round-trip coverage. See
+  [The Execution Kernel in a JavaScript Isolate](framework/wasm-kernel.md).
+
+* **Coding-agent onboarding.** One setup prompt from the user menu, Agents empty
+  state and onboarding Done, with deployment-aware MCP instructions and explicit
+  provider prerequisites. See [Coding Agent Onboarding](ui/coding-agent-onboarding.md).
+
+* **User MCP approval policy.** Add and enable follow shared Tool Approval modes;
+  management adds no hard gate when approval is absent or off. See
+  [User MCP servers](integrations/user-mcp-servers.md) and
+  [Tool Approval](execution/tool-approval.md).
+
+* **Shipping completes follow-ups.** Require implementation of work needed for
+  the requested outcome before shipping; defer only for concrete blockers or
+  explicit user exclusions. See [Shipping](project/shipping.md).
+
+* **Portable Durable Object execution.** Share the session actor driver across native
+  workers, HTTP executors and Wasm isolates, expose Framework/serve host seams,
+  and qualify alarm-driven recovery on workerd and the Cloudflare service. See
+  [Shared Execution with Durable Object Authority](framework/durable-object-native.md).
+
+* **Portable durable execution investigation.** Add proposals for a shared Rust
+  execution host across native actors and Durable Objects, with deployment
+  alternatives, failure semantics and qualification gates. See
+  [Portable Durable Agent Execution](framework/durable-execution-portability.md)
+  and [Durable Execution Guarantees](framework/durable-execution-guarantees.md).
+
+* Agent Sessions includes archived history to match its count; session cards show channel,
+  creation time and the last conversational-message timestamp.
+
+## 2026-10-15
+
+* **Optional idle session following.** Client-driven UI embeddings can suspend
+  settled event streams and replay on activity while continuous following remains
+  the default. See [Events](execution/events.md).
+
+## 2026-10-14
+
+* **PACT account walkthrough.** Published the scoped-consent demo and added it to
+  the PACT/Poppy pages and changelog. MCP discovery uses a matching session grant's
+  user identity. See [Product Video Knowledge](docs/product-videos.md).
+
+* **Slack landing page**: Added the integration overview with English conversation
+  examples, the public demo, Agent-building steps and links to the detailed reference.
+
+* **Server-owned PostgreSQL and tiered CI.** Remove the private PostgreSQL utility
+  crate; server storage owns native dev/test support. CI uses focused PR tests,
+  coalesced main batches, nightly feature/provider coverage, and exact-revision
+  release validation. See [CI Build Time](project/ci-build-time.md) and
+  [Embedded PostgreSQL](project/embedded-postgresql.md).
+
+* **Product videos**: Linked the canonical landing-repo recording and publication
+  guide and the dedicated Everruns channel; added the public Slack walkthrough
+  to the existing DM and scheduled-briefing changelog entries.
+
+* **Hosted search permits.** Add lazy per-call financial admission with stable
+  engine identity, fenced start, sanitized outcome callbacks, replay and a
+  bounded journal receipt. Keep billing metadata on the hosted invocation;
+  ordinary provider drivers retain their existing contract. See
+  [Web Search](integrations/web-search.md).
+
+## 2026-10-13
+
+* **Embedded PostgreSQL uses the lifecycle library.** Dev mode and tests use
+  `postgresql_embedded`; the local adapter retains process-wide sharing, owner-exit
+  cleanup, and template copies. Embedded callers run as non-root users. See
+  [Embedded PostgreSQL](project/embedded-postgresql.md).
+
+* **Feature announcement copy.** Recorded the headline rule in
+  [Brand Specification](ui/brand.md#feature-announcement-copy) and linked it
+  from the public changelog's visual guidance.
+
+* **Web search: the deployment's own search.** A host can offer one search
+  provider it pays for to every organization (`HostedWebSearch`), under the
+  plan id `hosted`: in Automatic after the organization's accounts and before
+  free search, movable in the Automatic order, refusable per search through a
+  gate. See [Web Search](integrations/web-search.md).
+* **Actor-based design: the old turn model is a dismissed option.** Dismissed
+  Options records turns as queued, checkpointed steps (`everruns-durable-engine`,
+  the facade `durable` feature) with why session actors replaced it, and Load
+  Testing's AG-UI latency notes name the actor pickup instead of the deleted turn
+  workflow logs. See [Dismissed Options](project/dismissed-options.md) and
+  [Load Testing](operations/load-testing.md).
+* **Web search providers eval.** `evals/web-search-providers` grades every
+  provider's results for 59 agent-style queries through the shipped drivers.
+  Ceramic answers 49% (none time-sensitive) and is ruled out as the hosted
+  default; Brave, Parallel and Exa answer 98 to 100%. The run also found a
+  panic in the HTML entity decoder Brave and free search share, on text with
+  an `&` a few characters before a multibyte character; fixed. See
+  [Web Search](integrations/web-search.md).
+
 ## 2026-10-12
 
 * **Actor-based design step 7: the per-step turn path is gone.** Platform
@@ -48,6 +223,19 @@
   label with that path on every attachment, a deterministic attachment list
   after compaction, one-at-a-time resolution. See
   [Session Attachments](runtime-resources/session-attachments.md).
+* **Local profile task recovery.** Atomic task updates and guarded ownership
+  checks settle orphaned local attempts without replaying commands. Terminal wakes
+  survive interrupted delivery; owner-process loss remains an unverified execution
+  outcome rather than proof of cancellation. See
+  [Session Tasks](runtime-resources/session-tasks.md) and
+  [Background Execution](execution/background-execution.md).
+* **Local session reliability.** MCP authentication rejections pause discovery;
+  failed calls recover schemas from the transcript; strict provider omissions
+  round-trip before approval; daily usage limits preserve their reset time.
+  See [Runtime MCP](integrations/runtime-mcp.md),
+  [Tool Search](execution/tool-search.md), [LLM Drivers](foundations/llm-drivers.md)
+  and [Error Disclosure](execution/error-disclosure.md).
+
 * **PAT scopes step 4: read-only tokens can be created.** Creation accepts
   `[]`, `["*"]` or `["read"]` and nothing else; the token page has a Full
   access / Read-only picker and shows each token's scope; `GET /v1/auth/me`

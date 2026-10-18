@@ -14,6 +14,15 @@ The Everruns documentation site provides user-facing documentation for operators
 
 ## Requirements
 
+### Integration landing pages
+
+The [Slack landing page](../../docs/integrations/slack.mdx) introduces building
+and publishing an Agent with realistic English examples and the public demo.
+It is distinct from the detailed [Slack reference](../../docs/capabilities/slack.md).
+The integration route is a page, not an alias to the capability reference.
+Examples reconstructed or translated from captures must say so; raw recordings
+and unrelated messages stay out of published assets.
+
 ### Site Structure
 
 1. **Content Location**: `docs/` in the repository root
@@ -90,6 +99,32 @@ menu, since the tabs carry it on wider screens. Slate tokens and Geist live in
 The Reference tab must remain active for all `/api/` pages, including nested
 OpenAPI-generated routes such as `/api/operations/*` and `/api/operations/tags/*`.
 
+### API reference
+
+The reference leads with the caller-facing Agent API, followed by collapsed
+management domains. Its group landing pages explain what a caller can do;
+operation pages place schemas beside request and response examples. The
+existing operation and tag URLs remain durable. Every new canonical group
+and operation page must be in the sitemap and have a Markdown twin; any
+retired documentation URL needs a permanent redirect through the docs Worker.
+
+Grouping, readable labels, support, audience, availability and migration
+guidance come from the exported OpenAPI document, owned by the
+[documentation modifier](../../crates/server/src/openapi/documentation.rs).
+The renderer must not promote an unclassified operation to supported by
+default. Support describes compatibility; audience describes who the API is
+for, and neither changes authorization. Current public APIs are Preview
+unless explicitly Experimental; Stable is reserved for an announced
+compatibility commitment. Deprecated routes stay discoverable and name a
+successor when one exists; an unannounced removal date must not be invented.
+
+Use the existing schema renderer for references, alternatives, examples,
+callbacks and security requirements. Keep the API navigation focused on the
+reference and preserve the site's Slate styling. Endpoint search loads a
+static index on demand and bounds displayed matches so browsing never becomes
+another full operation dump. The [build verifier](../../apps/docs/scripts/verify-api-reference.mjs)
+checks route, sitemap, Markdown, migration and search coverage.
+
 ### Content Requirements
 
 `docs/` is public product documentation. It must not contain research proposals,
@@ -110,6 +145,9 @@ hero: ../images/section/visual.png  # Optional: hero image for social card
 - `title` and `description` are required
 - `hero` is optional, relative path to an image that will be composited into the page's OG social card (see [Social Card Images](#social-card-images-og-images))
 - `appliesTo` is optional: any of `framework`, `platform`, `cloud`. `PageTitle.astro` renders it as an "Applies to" badge row under the title. Set it on capability, feature, and how-to pages, and only after checking availability in code: `framework` means the default Framework capability registry or an `everruns` Cargo feature; `platform` and `cloud` share the server registry, except that plugins behind a dev-grade feature flag are never on Cloud. A page without the field shows no row, which is better than a wrong one
+
+Unavailable targets keep muted gray labels and borders without strikethroughs; the
+badge row indicates applicability without making other products look deprecated.
 
 #### Notebook-Backed Tutorials
 
@@ -221,7 +259,11 @@ sites build and deploy independently and no request passes through both.
    path, query included, to the same path under https://everruns.com/docs. A
    Worker route rather than a zone redirect rule, because the deploy token
    manages Worker routes and the redirect stays tested in the repo. It stays
-   forever: published crate docs, plugins and old posts link the old host
+   forever: published crate docs, plugins and old posts link the old host.
+   A route fires only on a proxied hostname, so docs.everruns.com keeps a
+   proxied placeholder DNS record (`AAAA 100::`, discard address, added
+   2026-10-13 after the old Pages project and its CNAME were deleted).
+   Deleting that record takes every old link down
 5. `apps/docs/scripts/check-live.mjs` checks every sitemap page and its
    Markdown twin, the agent files, content negotiation and, with `--old`, each
    old URL's redirect. It runs after every deploy and daily
@@ -321,9 +363,15 @@ costs the reader twice.
 
 Page titles (rendered as `<title>Title | Everruns</title>`) must not exceed 70 characters total.
 
-- Starlight appends ` | Everruns` (12 chars), so page titles must be ≤57 chars
-- For API pages, route middleware strips the `METHOD /path - ` prefix from OpenAPI summaries to shorten titles
-- When writing OpenAPI `summary` doc comments in Rust, the description after the `METHOD /path - ` prefix should be ≤57 chars
+- Starlight appends ` | Everruns` (12 chars), so page titles should be ≤57 chars;
+  `routeData.ts` drops the suffix from a title that would still run over, and
+  `verify-seo.mjs` fails the build on any title over 70
+- API pages are titled by the OpenAPI summary, which the server keeps to ≤58
+  chars (`MAX_SUMMARY` in `crates/server/src/openapi/documentation.rs`, enforced
+  by its test). The server strips a `METHOD /path - ` prefix, takes the first
+  sentence, and moves the full text into the operation description, which the
+  page shows as its lede. A `#[command]` whose first sentence is still too long
+  sets `summary = "..."`; a hand-written handler puts a short first doc line
 
 A title is the page's name, not a keyword string. Prefer the name a reader would say out loud
 ("Daytona"), not the search phrase it might match ("Daytona Cloud Sandbox Capability for Agents").
@@ -409,6 +457,14 @@ SEO improvements for auto-generated pages are handled by Starlight route middlew
    where it fits in 160 characters
 
 Generated descriptions are held to the same house style as hand-authored ones above.
+
+#### Analytics
+
+Every docs page loads the same Google tag as everruns.com (`apps/docs/src/google-tag.js`,
+inlined into the head) and fires the landing site's event names
+(`cloud_signup_click`, `github_click`, `subscribe`), so conversions from docs readers are
+counted with the landing site's. Keep the tag id and event names in step with
+everruns/landing `src/components/GoogleTag.astro`.
 
 #### Build Verification
 

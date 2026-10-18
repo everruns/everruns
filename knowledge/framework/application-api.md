@@ -66,21 +66,36 @@ The Framework owns value-first configuration for:
 
 The application execution boundary is the concrete `everruns::Engine`.
 `InMemoryEngine` remains a source-compatible alias, not a second
-implementation. `Agent` is immutable behavior; an Engine owns Agent snapshots,
-the session catalog, and the backend bundle needed to execute and resume those
-sessions. `Session` is engine-bound and does not expose its private execution
+implementation. `Agent` is immutable behavior; Engine retains executable builds
+and delegates session identity, commands, canonical state and activation to one
+coherent session hosting profile. Memory is the default; SQLite and Durable
+Object profiles share the same Framework lifecycle and core actor driver. See
+[Engine-owned durable sessions](engine-durable-sessions.md). `Session` is engine-bound and does not expose its private execution
 binding, concrete in-process runtime, stores, or platform DTOs. The `engine` feature of
 `everruns-core` owns shared Input/Reason/Act execution and turn
 planning; it is the lower-level host kernel, not an application-pluggable
 Engine implementation.
+
+Accepted hosted work outlives frontend handles. Interruption inspection reads
+canonical state and authority-clock ownership through the query runtime; a live
+epoch or durable client wait is not an interrupted executor. Explicit resumption
+reuses the original admission and existing activation obligation, without another
+turn loop or a forced ownership change. See the
+[session interruption adapter](../../crates/everruns/src/session/interrupted.rs).
+
+Neutral persisted turn outcomes and approval records live in `everruns-contracts`.
+Core algorithms and hosts import those owners directly; the Framework preserves
+its application-facing exports without adding compatibility owners to the kernel.
 
 There is no Agent-owned compatibility engine and no `Agent::session` or
 `Agent::resume` path in 0.18. Embedded applications retain an Engine and call
 `engine.create(agent)` or `engine.resume(session_id)`. Because Agent behavior
 may contain process-local provider drivers, function handlers, and hook
 closures, local persistence never serializes it. After a process restart, an
-application reconstructs that trusted behavior and explicitly attaches it to a
-new `Engine` before resuming the persisted session. Attachment verifies
+application reconstructs that trusted behavior. Coherent profiles register the
+exact retained Agent/Harness/Environment references before activation; missing
+code leaves history readable and suspends execution. Explicit legacy local
+profiles attach behavior to a new Engine before resume. Legacy attachment verifies
 the ID against the Agent-configured local session catalog; canonical events do
 not confer session identity. A session created with an explicit Harness also
 requires the application to deserialize its portable Harness definition and
@@ -130,7 +145,7 @@ records, which belong to `everruns-server`.
 
 The inventory covers the public [repository README](../../README.md),
 [core README](../../crates/core/README.md),
-[Everruns skill](../../skills/everruns/SKILL.md), and
+[Everruns Framework skill](../../skills/everruns-framework/SKILL.md), and
 [custom backends guide](../../docs/framework/custom-backends.md). It also includes
 the in-process, inspection, real-disk, plugin, mount, and Lua examples
 under [the host examples](../../crates/everruns/examples/advanced/in_process_runtime.rs)
@@ -329,9 +344,9 @@ it from the driver descriptor they were built from.
   writable message store.
 - A Framework session has at most one active turn. Sending while that turn still
   accepts input steers it; sending after its terminal boundary starts the next
-  turn. The acceptance receipt is authoritative for that timing-dependent
-  decision, and blocking request/response remains convenience over send plus
-  wait rather than a separate execution mode.
+  turn. Admission precedes that timing-dependent assignment, so its receipt may
+  report pending; an authoritative assignment records the eventual decision.
+  Blocking request/response remains convenience over send plus wait.
 - The host log owns coherent append and bounded snapshot replay. In-memory
   durability is process-lifetime only; JSONL acknowledges only a flushed and
   synchronized canonical envelope. Any projection index is rebuildable.
@@ -406,7 +421,7 @@ entrypoints.
 - `crates/everruns/tests/facade/session_work.rs`
 - `crates/everruns/tests/facade/lifecycle_hooks.rs`
 - `examples/coding-cli/tests/application_parity.rs`
-- `crates/core/src/host/runtime.rs`
+- `crates/core/src/host/runtime/mod.rs`
 - `crates/core/src/host/events.rs`
 - `crates/core/src/host/mod.rs`
 - `crates/everruns/src/local/`

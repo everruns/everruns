@@ -98,6 +98,15 @@ when needed) alongside its own estimated cost. Budgets debit the actual cost whe
 present and fall back to the estimate otherwise, so spend tracking and
 [budgeting](/capabilities/budgeting/) reflect what OpenRouter actually charged.
 
+## Low balance
+
+When a request does not set a token limit, OpenRouter reserves the model's full
+output limit against your credits and rejects the call with HTTP 402 ("can only
+afford N tokens") if the balance cannot cover it. Set **Max output tokens** on
+the agent (`max_output_tokens` in the API, `--max-output-tokens` in the CLI) to
+a value below that number so each call fits. Everruns sends it as `max_tokens`
+and never asks for more than the model's own output limit.
+
 ## Logs, traces, and observability
 
 Everruns forwards its session id to OpenRouter, so every generation from one

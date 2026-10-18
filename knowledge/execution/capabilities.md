@@ -561,6 +561,19 @@ See [egress.md](../operations/egress.md) and [network-access.md](../operations/n
 
 Capabilities may ship reusable skills in code via `contribute_skills() -> Vec<SkillContribution>` (default empty). Each `SkillContribution` carries a name, description, SKILL.md body, bundled files, and invocability flags. During capability collection each contribution is normalized into a read-only mount at `/.agents/skills/{name}/` containing a reconstructed `SKILL.md` plus bundled files. The portable `skills` capability in `everruns-core` (`builtins` feature) then discovers and serves them through the same VFS scan used for filesystem and registry skills, no parallel pipeline, no special-case prompt injection, and `/slash` invocability + `disable-model-invocation` flags are honored through the same frontmatter. See `knowledge/project/skills-registry.md` for the discovery/activation contract and `crates/contracts/src/runtime/capabilities/skill_contribution.rs` for the neutral contribution values and mount normalization.
 
+The hosted `platform` capability contributes the maintained `everruns`,
+`everruns-cli`, and `everruns-agent-authoring` product skills and depends on the
+`skills` loader. Both shell and three-tool surfaces receive the same authored
+content through read-only mounts, without organization registry rows. Its
+always-present interface guidance keeps external MCP examples from switching a
+session away from its organization-bound command surface. Workspace builds embed
+the allowlisted source trees. API and worker source image builds include the
+authored tree before compiling, so both binaries embed the same guides without
+a runtime checkout or fetch. Standalone crate builds without repository skills
+omit that content, matching the optional embedded-docs boundary. See the
+[contribution implementation](../../crates/capabilities/src/capabilities/platform_skills.rs)
+and [canonical skills](../../skills/).
+
 ### Capability Dependencies
 
 Capabilities can declare dependencies on other capabilities. When a capability is selected, its dependencies are automatically resolved and applied.
@@ -678,7 +691,7 @@ harness rows.
 - **`retired`** is the removal. The implementation is deleted down to an
   identity-only shell: no tools, prompt, mounts, dependencies, or hooks. The ID
   stays registered on purpose — an unregistered ID fails
-  `RuntimeAgent` activation (`crates/core/src/host/runtime.rs`), whereas a retired one
+  `RuntimeAgent` activation (`crates/core/src/host/runtime/mod.rs`), whereas a retired one
   resolves to a no-op, so an agent that still references it keeps running. It is
   hidden from `list_capabilities` unless `include_retired` is set, which is how
   management UIs still name the stale attachment and offer to remove it.
@@ -807,13 +820,13 @@ This ensures bash and FileSystem capability share the same file namespace.
 
 - **ID**: `session_storage`
 - **Purpose**: Session-scoped key/value storage and encrypted secret storage
-- **Tools**: `kv_store` (set/get/delete/list), `secret_store` (encrypted, same ops)
+- **Tools**: `kv_store` (set/get/delete/list), `secret_store` (encrypted, write-only: set/delete/list)
 
 ##### Design Decision: Consolidated Tools
 
 Two tools consolidate 8 operations (4 per storage type) to reduce tool count:
 - `kv_store` with `operation` parameter (set/get/delete/list) for key/value storage
-- `secret_store` with `operation` parameter (set/get/delete/list) for encrypted secrets
+- `secret_store` with `operation` parameter (set/delete/list) for encrypted secrets; values are never returned to the model (TM-AGENT-038), capabilities read the secrets they own server-side
 
 ##### Design Decision: Key/Value vs Secrets
 

@@ -5,6 +5,8 @@
 // and the export-openapi binary (for static spec generation).
 
 mod channel_aliases;
+mod documentation;
+use documentation::DocumentationMetadata;
 
 use crate::api;
 use crate::api::{ListResponse, PaginatedResponse};
@@ -114,7 +116,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
 /// OpenAPI documentation for the Everruns API
 #[derive(OpenApi)]
 #[openapi(
-    modifiers(&SdkMetadata),
+    modifiers(&SdkMetadata, &DocumentationMetadata),
     servers(
         (url = "https://app.everruns.com/api", description = "Production API"),
     ),
@@ -152,6 +154,9 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::organization_connections::update_connection,
         api::organization_connections::delete_connection,
         api::organization_connections::verify_connection,
+        api::user_connections::github_org::list_links,
+        api::user_connections::github_org::authorize_link,
+        api::user_connections::github_org::unlink,
         api::search_providers::list_search_providers,
         api::search_providers::preview_search_plan,
         api::runtime_auth::exchange,
@@ -344,6 +349,13 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::mcp_servers::delete_mcp_server,
         // Durable schedules
         api::durable::durable_config,
+        api::monitoring::monitoring_config,
+        api::monitoring::get_monitoring,
+        api::monitoring::get_fleet_monitoring,
+        api::monitoring::list_monitoring_actors,
+        api::monitoring::list_fleet_monitoring_actors,
+        api::monitoring::get_monitoring_actor,
+        api::monitoring::get_fleet_monitoring_actor,
         api::durable::get_health,
         api::durable::get_metrics_timeseries,
         api::durable::cancel_workflow,
@@ -437,7 +449,6 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         // `/v1/workspaces/{workspace_id}/fs/*` (or the per-session alias
         // when one is needed for ergonomics).
         api::workspaces::list_workspaces,
-        api::workspaces::create_workspace,
         api::workspaces::get_workspace,
         api::workspaces::update_workspace,
         api::workspaces::delete_workspace,
@@ -672,6 +683,16 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::models::CreateModelRequest,
             api::models::UpdateModelRequest,
             CapabilityInfo,
+            api::monitoring::MonitoringSnapshot,
+            api::monitoring::MonitoringPhase,
+            api::monitoring::MonitoringCohort,
+            api::monitoring::MonitoringOwnership,
+            api::monitoring::MonitoringWorker,
+            api::monitoring::MonitoringActor,
+            api::monitoring::MonitoringActorPage,
+            api::monitoring::MonitoringActorDetail,
+            api::monitoring::MonitoringLeaseEvent,
+            api::monitoring::MonitoringStep,
             ListResponse<CapabilityInfo>,
             domains::capabilities::types::GuardrailsDryRunRequest,
             domains::capabilities::types::GuardrailsDryRunHit,
@@ -711,6 +732,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::sandbox_templates::ReviseSandboxTemplateRequest,
             api::organization_connections::SaveOrganizationConnectionRequest,
             api::organization_connections::OrganizationConnectionResponse,
+            api::user_connections::github_org::EverrunsAppLinks,
+            api::user_connections::github_org::EverrunsAppLink,
             api::search_providers::SearchProviderCatalog,
             api::search_providers::BuiltInSearchProvider,
             api::search_providers::NativeSearchProvider,
@@ -792,7 +815,6 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::memory::ListMemoriesQuery,
             api::memory::MemoryResponse,
             api::workspaces::WorkspaceResponse,
-            api::workspaces::CreateWorkspaceRequest,
             api::workspaces::UpdateWorkspaceRequest,
             api::workspaces::ListWorkspacesQuery,
             // Workspace virtual filesystem (reuses session_files request/response types).

@@ -26,17 +26,20 @@ change is ready; do not walk this file as a fixed checklist.
    [`references/security-review.md`](references/security-review.md).
 5. **Sync artifacts** the change actually affects: `knowledge/`, `knowledge/security/threat-model.md`, `AGENTS.md`,
    `knowledge/test-cases/`, `apps/docs/`, OpenAPI exports. When the PR completes a user-facing
-   feature or fix, its changelog entry with screenshots is part of the change; when it changes an
-   older entry's behavior, that entry is updated. See
+   change that meets the public changelog's impact criteria, its entry with screenshots is part
+   of the change; when it changes an older entry's behavior, that entry is updated. See
    [`references/changelog-entry.md`](references/changelog-entry.md).
+   Honor explicit user publication holds before creating or reinstating an entry or its assets.
 6. **Smoke test the affected flows** end to end. For a coding-agent stack, follow the canonical
    startup contract in the root `AGENTS.md`; it includes the DB-backed infrastructure required for
    database, migration, infra, or API integration risk.
    Stop anything you started. Docs- or config-only changes may skip this with a stated reason.
-7. **Decide follow-ups explicitly.** Prefer implementing in-scope work now. List anything deferred
-   under **Follow-ups** in the PR body with a one-line rationale, or state "No follow-ups." — a
-   reader must be able to tell "nothing left" from "agent forgot". File Linear issues (OSS/EVE) for
-   non-trivial deferrals.
+7. **Build the follow-ups.** Complete implementation, tests, integration and documentation needed
+   for the requested outcome before shipping. Follow-ups discovered during the work belong in
+   the implementation; creating issues or listing future work does not complete them. Defer only
+   for a concrete blocker you cannot resolve safely, or when the user explicitly excludes the work.
+   Under **Follow-ups** in the PR body, record any such blocker and its impact, or state
+   "No follow-ups." Do not replace authorized implementation with Linear issue creation.
 8. **Open the PR and merge** — see [`references/pr-and-merge.md`](references/pr-and-merge.md).
 
 ## Migrations

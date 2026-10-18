@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { Suspense } from "react";
 import AgentPage from "@/app/(main)/agents/[agentId]/page";
 import type { Agent, Session } from "@/lib/api/types";
@@ -407,7 +407,50 @@ describe("AgentPage layout", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: /Sessions/ }));
     expect(screen.getByText("Session with GPT-4o")).toBeInTheDocument();
-    expect(mockUseSessions).toHaveBeenCalledWith("agent-1", { offset: 0, limit: 20 });
+    expect(mockUseSessions).toHaveBeenCalledWith("agent-1", {
+      offset: 0,
+      limit: 20,
+      includeArchived: true,
+    });
+  });
+
+  it("shows all seven counted sessions, including the six archived ones", async () => {
+    mockUseAgent.mockReturnValue({ data: { ...mockAgent, session_count: 7 }, isLoading: false });
+    mockUseSessions.mockReturnValue({
+      data: {
+        data: Array.from({ length: 7 }, (_, index) => ({
+          ...mockSession,
+          id: `session-${index}`,
+          title: `Conversation ${index + 1}`,
+          archived_at: index === 0 ? null : mockSession.updated_at,
+        })),
+        total: 7,
+      },
+      isLoading: false,
+    });
+    await renderPage();
+    fireEvent.click(screen.getByRole("tab", { name: /Sessions/ }));
+
+    expect(screen.getAllByText(/^Conversation \d$/)).toHaveLength(7);
+    expect(screen.getAllByText("Archived")).toHaveLength(6);
+    expect(screen.getByText("7 sessions · Includes archived sessions")).toBeInTheDocument();
+  });
+
+  it("keeps archived history included when paging through sessions", async () => {
+    mockUseSessions.mockReturnValue({
+      data: { data: [mockSession], total: 21 },
+      isLoading: false,
+    });
+    await renderPage();
+    fireEvent.click(screen.getByRole("tab", { name: /Sessions/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    expect(mockUseSessions).toHaveBeenLastCalledWith("agent-1", {
+      offset: 20,
+      limit: 20,
+      includeArchived: true,
+    });
+    expect(screen.getByText("Showing 21-21 of 21 sessions")).toBeInTheDocument();
   });
 
   it("writes the selected tab into the URL so a refresh keeps it", async () => {
@@ -522,7 +565,44 @@ describe("AgentPage edit mode", () => {
     expect(request).not.toHaveProperty("network_access");
     expect(request).not.toHaveProperty("harness_id");
     expect(request).not.toHaveProperty("initial_files");
+    expect(request).not.toHaveProperty("max_output_tokens");
     expect(screen.queryByText("Editing")).not.toBeInTheDocument();
+  });
+
+  it("sends a max output tokens ceiling and clears it back to the provider default", async () => {
+    await renderPage();
+    expect(
+      screen.getByText("Lower this if the provider says it can only afford fewer tokens."),
+    ).toBeInTheDocument();
+
+    const field = screen.getByLabelText("Max output tokens");
+    expect(field).toHaveAttribute("placeholder", "Provider default");
+    fireEvent.change(field, { target: { value: "4096" } });
+    expect(screen.getByText("Editing")).toBeInTheDocument();
+    await save();
+    expect(mockUpdate.mock.calls[0][0].request.max_output_tokens).toBe(4096);
+
+    mockUpdate.mockClear();
+    mockUseAgent.mockReturnValue({
+      data: { ...mockAgent, max_output_tokens: 2048 },
+      isLoading: false,
+    });
+    cleanup();
+    await renderPage();
+    expect(screen.getByLabelText("Max output tokens")).toHaveValue(2048);
+    fireEvent.change(screen.getByLabelText("Max output tokens"), { target: { value: "" } });
+    await save();
+    expect(mockUpdate.mock.calls[0][0].request.max_output_tokens).toBeNull();
+  });
+
+  it("rejects a zero max output tokens ceiling instead of saving", async () => {
+    await renderPage();
+    fireEvent.change(screen.getByLabelText("Max output tokens"), { target: { value: "0" } });
+    await save();
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Max output tokens")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("Enter a whole number of at least 1")).toBeInTheDocument();
   });
 
   it("feeds unsaved prompt text to the checks and applies their fixes", async () => {

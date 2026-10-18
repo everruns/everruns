@@ -6,6 +6,7 @@ kind: feature
 significance: major
 products: [platform, cloud, cli]
 surfaces: [ui, api, cli]
+release: "0.48.0"
 links:
   docs: [/features/ui/#sessions, /reference/cli/sessions/]
   prs: [everruns/everruns#4467, everruns/everruns#4481, everruns/everruns#4500, everruns/everruns#4503, everruns/everruns#4504, everruns/everruns#4556]

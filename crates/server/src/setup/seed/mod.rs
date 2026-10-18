@@ -57,9 +57,8 @@ mod seed_ids {
     pub const SHELL_ASSISTANT_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000105);
     pub const DATA_ANALYST_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000106);
     pub const E2B_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_00000000010f);
-    pub const DENO_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_000000000110);
     pub const SPRITES_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_000000000111);
-    // 0x…0109: retired Cloud Cost & Security Auditor demo agent (EVE-875). Do not reuse. 0x…0118: Modal Coder, in seed/agents.rs (this file may not grow).
+    // 0x…0109: retired Cloud Cost & Security Auditor demo agent (EVE-875). Do not reuse. 0x…0110: retired Deno Coder demo agent. Do not reuse. 0x…0118: Modal Coder, in seed/agents.rs (this file may not grow).
     pub const PLATFORM_MANAGER_AGENT: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010a);
     pub const WEB_RESEARCHER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010b);
@@ -159,7 +158,7 @@ mod seed_ids {
     pub const GEMINI_25_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000601);
     pub const GEMINI_25_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000602);
     pub const GEMINI_20_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000603);
-
+    pub const GEMINI_4_ARGON: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000060b);
     // Bedrock Models (0x700-0x7FF)
     pub const BEDROCK_CLAUDE_OPUS_5_5: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000705);

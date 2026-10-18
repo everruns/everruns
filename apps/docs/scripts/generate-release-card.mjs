@@ -50,8 +50,8 @@ export function validateReleaseCard(value, expectedVersion) {
   const headline = lines(value.headline, "headline", { min: 1, max: 2, lineLength: 24 });
   const summary = lines(value.summary, "summary", { min: 1, max: 3, lineLength: 48 });
 
-  if (!Array.isArray(value.highlights) || value.highlights.length < 1 || value.highlights.length > 3) {
-    fail("highlights must contain 1-3 items");
+  if (!Array.isArray(value.highlights) || value.highlights.length < 1 || value.highlights.length > 4) {
+    fail("highlights must contain 1-4 items");
   }
   const highlights = value.highlights.map((item, index) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) fail(`highlights[${index}] must be an object`);
@@ -117,6 +117,40 @@ function releaseLabel(card) {
   return `RELEASE  ·  ${month} ${card.date.slice(0, 4)}  ·  V${card.version}`;
 }
 
+// Character limits cannot tell "durable sessions." from "Agent API, search.": glyph widths
+// differ, and a headline within 24 characters still ran into the highlights column (0.48.0).
+// So rendered lines are measured with the same renderer that draws the card.
+const TEXT_STYLE = `
+      .headline { font-family: Arial, Helvetica, sans-serif; font-size: 152px; font-weight: 700; letter-spacing: -7px; fill: #F4F3EF; }
+      .summary { font-family: Arial, Helvetica, sans-serif; font-size: 46px; font-weight: 400; letter-spacing: -1px; fill: #A8B0BE; }
+      .item-title { font-family: Arial, Helvetica, sans-serif; font-size: 41px; font-weight: 700; letter-spacing: -1px; fill: #F4F3EF; }
+      .item-copy { font-family: Arial, Helvetica, sans-serif; font-size: 34px; font-weight: 400; fill: #A8B0BE; }`;
+
+// Widest each text class may render, in card pixels: headline and summary end before the
+// highlight numbers (x=1415), highlight text ends at the right margin (x=2285).
+const MAX_WIDTH = { headline: 1165, summary: 1165, "item-title": 715, "item-copy": 715 };
+
+export function cardTextLines(card) {
+  return [
+    ...card.headline.map((text) => ({ cls: "headline", text })),
+    ...card.summary.map((text) => ({ cls: "summary", text })),
+    ...card.highlights.flatMap((item, index) => [
+      { cls: "item-title", text: item.title, field: `highlights[${index}].title` },
+      ...wrap(item.description, 47).map((text) => ({ cls: "item-copy", text, field: `highlights[${index}].description` })),
+    ]),
+  ];
+}
+
+export async function checkRenderedWidths(card, sharp) {
+  for (const { cls, text, field } of cardTextLines(card)) {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="3000" height="300"><style>${TEXT_STYLE}</style><text x="20" y="200" class="${cls}">${escapeXml(text)}</text></svg>`;
+    const { info } = await sharp(Buffer.from(svg)).trim().png().toBuffer({ resolveWithObject: true });
+    if (info.width > MAX_WIDTH[cls]) {
+      fail(`${field ?? cls} "${text}" renders ${info.width}px wide, more than ${MAX_WIDTH[cls]}px; shorten it`);
+    }
+  }
+}
+
 export function releaseCardSvg(card) {
   const headline = card.headline
     .map((line, index) => `<text x="210" y="${535 + index * 170}" class="headline">${escapeXml(line)}</text>`)
@@ -126,8 +160,10 @@ export function releaseCardSvg(card) {
     .map((line, index) => `<text x="210" y="${summaryStart + index * 68}" class="summary">${escapeXml(line)}</text>`)
     .join("\n    ");
 
-  const itemGap = card.highlights.length === 1 ? 0 : 250;
-  const itemsStart = card.highlights.length === 1 ? 570 : card.highlights.length === 2 ? 465 : 395;
+  const count = card.highlights.length;
+  // Four items need a tighter gap to stay above the footer rule at y=1186.
+  const itemGap = count === 1 ? 0 : count === 4 ? 205 : 250;
+  const itemsStart = [570, 465, 395, 330][count - 1];
   const highlights = card.highlights
     .map((item, index) => {
       const y = itemsStart + index * itemGap;
@@ -209,6 +245,8 @@ async function main() {
   const input = path.resolve(args.input);
   const card = readReleaseCard(input, args.expectedVersion);
   validateChangelog(card, readFileSync(path.resolve(args.changelog), "utf8"));
+  const { default: sharp } = await import("sharp");
+  await checkRenderedWidths(card, sharp);
   if (args.check) {
     console.log(`release card v${card.version} is valid`);
     return;
@@ -217,7 +255,6 @@ async function main() {
   const svg = releaseCardSvg(card);
   if (args.svgOutput) writeFileSync(path.resolve(args.svgOutput), svg);
 
-  const { default: sharp } = await import("sharp");
   const output = path.resolve(args.output);
   await sharp(Buffer.from(svg)).png().toFile(output);
   console.log(`generated ${output}`);

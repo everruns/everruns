@@ -129,6 +129,9 @@ pub struct SessionRow {
     pub updated_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
+    /// List-only projection from the latest conversational event, not updated_at.
+    #[sqlx(default)]
+    pub last_message_at: Option<DateTime<Utc>>,
     /// Cumulative input tokens for all LLM calls in this session
     #[sqlx(default)]
     pub total_input_tokens: i64,

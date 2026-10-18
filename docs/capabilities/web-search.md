@@ -21,7 +21,7 @@ no key and no setup; a Conversation agent adds it on the agent.
 | Setting | What answers | Cost |
 |---|---|---|
 | **Organization default** (`org_default`) | The organization's default provider (see below); Automatic for a new organization | Depends on the provider |
-| **Automatic** (`auto`) | The organization's Automatic order: the model's own search, then the organization's search accounts, then free search | Depends on the provider that answers |
+| **Automatic** (`auto`) | The organization's Automatic order: the model's own search, then the organization's search accounts, then the deployment's own search when it offers one, then free search | Depends on the provider that answers |
 | **Model provider search** (`native`) | The model's own search, on OpenAI, Anthropic, Gemini and OpenRouter models that have it (see below). Other models use free search. | Billed by the model provider |
 | **Brave Search** (`brave`) | The Brave Search API with a user, session or application key, else the organization's first Brave account | Billed on the Brave key |
 | **Parallel** (`parallel`) | The Parallel Search API (`fast` mode) with a user, session or application key, else the organization's first Parallel account | Billed on the Parallel key, about $1 per 1,000 searches |
@@ -41,7 +41,7 @@ and the organization's current defaults, so a session that switches models keeps
 
 | Model provider | Native search |
 |---|---|
-| OpenAI, Azure OpenAI, ChatGPT plan | OpenAI web search, on models that have it (GPT-4o, GPT-4.1, GPT-5 and later, o3, o4-mini) |
+| OpenAI, Azure OpenAI, ChatGPT Plan (framework hosts) | OpenAI web search, on models that have it (GPT-4o, GPT-4.1, GPT-5 and later, o3, o4-mini) |
 | OpenRouter | The model vendor's own search, on models OpenRouter runs it for (OpenAI GPT-4.1 and GPT-5 and later, Claude, Gemini 3, Grok 4, Perplexity) |
 | Anthropic | Anthropic web search, on Claude 3.5 Haiku, Claude 3.7 Sonnet and Claude 4 and later, up to 5 searches per model call |
 | Gemini | Grounding with Google Search, on Gemini 2.0 Flash, 2.5 and 3 and later, when `web_search` is the agent's only tool |
@@ -71,7 +71,8 @@ them already turns on its provider's search, that configuration is used.
 
 - **Providers**: a card per way the organization can search. **Model provider search** lists which
   connected model providers offer it and its price; each search account shows whether its key is
-  set and its place in Automatic; **Free search** is always there. Admins connect an account with
+  set and its place in Automatic; a deployment that pays for a search provider itself (Everruns
+  search on Everruns Cloud) shows it with its price; **Free search** is always there. Admins connect an account with
   **Connect search provider**, and test, rotate or disconnect it from its card.
 - **Defaults**: the default provider, the Automatic order (move entries up or down; free search
   stays last), **Allow model provider search** with its cost, what happens when a provider fails,
@@ -100,7 +101,7 @@ key never reaches the agent.
 | Field | Default | Description |
 |---|---|---|
 | `provider` | `auto` | What `org_default` agents use: `auto`, `native`, `brave`, `parallel`, `account` (with `account_id`) or `free` |
-| `automatic_order` | `["native", "free"]` | Order of Automatic: `native` and search account ids. Free search is always last; entries left out keep their place (native first, other accounts after the listed ones) |
+| `automatic_order` | `["native", "free"]` | Order of Automatic: `native`, search account ids and `hosted` (the deployment's own search, when it offers one). Free search is always last; entries left out keep their place (native first, other accounts after the listed ones, `hosted` just before free search) |
 | `allow_native` | `true` | Whether agents may use the model provider's own search (billed by the model provider) |
 | `fallback` | `next` | Fallback for agents that do not set their own |
 | `results_per_search` | 8 | Results per search when neither the model nor the agent asks, 1 to 20 |

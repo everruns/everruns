@@ -128,6 +128,33 @@ pub trait TurnBackend: Send + Sync {
     async fn active_count(&self) -> usize;
 }
 
+/// Builds a session's experimental execution backend around its assembled host.
+///
+/// A factory changes execution placement without rebuilding agent behavior.
+/// Implementations must preserve the runtime's canonical log and lifecycle.
+pub trait TurnBackendFactory: Send + Sync {
+    fn create(
+        &self,
+        runtime: InProcessRuntime,
+        leases: Arc<dyn super::SessionLeases>,
+    ) -> Result<Arc<dyn TurnBackend>>;
+}
+
+impl<F> TurnBackendFactory for F
+where
+    F: Fn(InProcessRuntime, Arc<dyn super::SessionLeases>) -> Result<Arc<dyn TurnBackend>>
+        + Send
+        + Sync,
+{
+    fn create(
+        &self,
+        runtime: InProcessRuntime,
+        leases: Arc<dyn super::SessionLeases>,
+    ) -> Result<Arc<dyn TurnBackend>> {
+        self(runtime, leases)
+    }
+}
+
 /// What starts or continues a turn.
 ///
 /// **Experimental**, with [`TurnBackend`].

@@ -395,22 +395,14 @@ Daytona to Bashkit cannot work at all. What makes a Daytona worktree useful is
 installed packages, caches, compiled artifacts, and running processes; Bashkit
 runs no native binaries, so the files would arrive somewhere that cannot use
 them. Bashkit to Daytona is coherent, but it is only "copy these bytes into a
-fresh machine", which is what creating a session against the same Workspace
-already does. A switch operation, its transfer modes, a new link relation, and a
+fresh machine", which is what forking the session already does. A switch operation, its transfer modes, a new link relation, and a
 mid-session tool-schema refresh buy one direction of one pair, badly.
 
-The honest mechanism already exists. A Workspace outlives any one session, and
-`POST /v1/sessions` takes `workspace_id`, so a new session on a different
-environment binds the same files. Where the conversation matters too, fork the
-session (see [Forking sessions](../runtime-resources/forking-sessions.md)) and
-give the fork a different environment.
-
-```http
-POST /v1/sessions
-{ "agent_name": "coding",
-  "environment": { "use": "build" },
-  "workspace_id": "wsp_01933b5a00007000800000000000001" }
-```
+The honest mechanism already exists: fork the session (see
+[Forking sessions](../runtime-resources/forking-sessions.md)) and give the fork a
+different environment. The fork copies the conversation and the workspace files
+into a new session. (Attaching a new session to an existing Workspace by
+`workspace_id` is retired; see [Workspace](../runtime-resources/workspace.md).)
 
 This states plainly what a switch would have blurred: files come with you,
 machine state does not. Nothing carries installed packages, caches, background
@@ -748,7 +740,6 @@ POST /v1/sessions
 {
   "harness_name": "coding",
   "title": "Rename the config module",
-  "workspace_id": "wsp_01933b5a00007000800000000000001",
   "environment": {
     "target": { "kind": "vfs", "provider": "bashkit" },
     "containment": { "level": "isolated", "network": { "mode": "deny" } },
@@ -757,10 +748,9 @@ POST /v1/sessions
 }
 ```
 
-The existing `workspace_id` field keeps its meaning and binds the working
-filesystem. For Bashkit the environment's filesystem *is* that workspace, which
-is the point: no second filesystem, no split brain between `read_file` and
-`bash`.
+The session's own workspace is the working filesystem. For Bashkit the
+environment's filesystem *is* that workspace, which is the point: no second
+filesystem, no split brain between `read_file` and `bash`.
 
 Response:
 
@@ -879,8 +869,7 @@ GET /v1/sessions/{session_id}/sandbox
 `pause`, `resume`, and `delete` reuse existing rels, so the closed vocabulary in
 [API Conventions](../execution/api-conventions.md) needs no new word. There is
 deliberately no switch endpoint: a session's environment is fixed once it
-starts, and moving work elsewhere is a new session against the same
-`workspace_id`.
+starts, and moving work elsewhere is a fork with a different environment.
 
 ### Targets this deployment can actually offer
 
@@ -982,7 +971,7 @@ model-facing control tool. Exit: two sessions bound to one Workspace, one on
 Bashkit and one on Daytona, read and write the same files.
 
 **P3, machine target and consolidation.** SSH or daemon transport, then port
-E2B, Deno, Sprites, and container behind the driver contract as already planned.
+E2B, Sprites, and container behind the driver contract as already planned.
 
 **Done, kernel containment.** Yolop's Seatbelt and Landlock providers are
 `everruns_core::host::containment`, and `HostCompute::contained` makes them

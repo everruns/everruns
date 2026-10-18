@@ -205,15 +205,15 @@ impl Command for CreateSession {
             &req.capabilities,
         )?;
 
-        // Attaching a session to an existing workspace grants the session (and
-        // its agent) read/write access to that workspace's files, so require
-        // WORKSPACE_MANAGE on the caller — SESSION_MANAGE alone must not be a
-        // path to a workspace the caller cannot otherwise manage. The service
-        // additionally validates the target exists, is active, and is in-org.
+        // Attaching a session to an existing workspace is retired: every session
+        // gets its own. The only gate was the org-wide workspace permission, so
+        // an admin could point a new session on any agent at another session's
+        // files. Refuse loudly rather than ignore, so a caller relying on shared
+        // files learns it no longer works.
         if req.workspace_id.is_some() {
-            crate::domains::workspaces::WORKSPACE_MANAGE
-                .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
-                .map_err(|e| CommandError::forbidden(e.to_string()))?;
+            return Err(CommandError::bad_request(
+                crate::domains::sessions::types::WORKSPACE_ATTACH_RETIRED,
+            ));
         }
 
         // A chat thread is an ordinary session created here (EVE-852), so the
@@ -1033,7 +1033,11 @@ impl Command for CancelSession {
             Ok(recorded_by_worker) => recorded_by_worker,
             Err(error) => {
                 tracing::error!(session_id = %session_id, error = %error, "Failed to cancel the session's turn");
-                false
+                // An unacknowledged request does not transfer terminal-event
+                // ownership: the worker may still complete the turn.
+                return Err(CommandError::internal(anyhow::anyhow!(
+                    "Failed to cancel the session's turn"
+                )));
             }
         };
         if recorded_by_worker {

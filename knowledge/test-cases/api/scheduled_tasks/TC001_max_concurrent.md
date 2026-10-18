@@ -17,7 +17,7 @@ Verify that the max_concurrent setting prevents overlapping executions when a pr
 ## Preconditions
 
 - A workflow type exists that takes significant time to complete (e.g., has a sleep/delay)
-- API server is running with scheduler enabled
+- Canonical stack is running; caller has platform-user access with scheduler enabled
 
 ## Test Data
 
@@ -26,7 +26,7 @@ Verify that the max_concurrent setting prevents overlapping executions when a pr
 | Schedule Name | slow-task |
 | Cron Expression | * * * * * |
 | Target Type | workflow |
-| Workflow Type | slow_echo (or similar that takes >60s) |
+| Workflow Type | A registered harmless target that takes longer than one minute |
 | Max Concurrent | 1 |
 
 ## Steps

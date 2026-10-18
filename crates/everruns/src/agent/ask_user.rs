@@ -1,6 +1,17 @@
 use super::AgentBuilder;
 
 impl AgentBuilder {
+    /// Park structured questions durably for a client to answer through
+    /// [`Session::pending_tools`](crate::Session::pending_tools) and
+    /// [`Session::resolve_tools`](crate::Session::resolve_tools).
+    pub fn client_questions(mut self) -> Self {
+        self.capabilities.push(
+            crate::CapabilityRef::new(everruns_core::builtins::ASK_USER_CAPABILITY_ID).into(),
+        );
+        self.ask_user = Some(everruns_core::builtins::AskUserCapability::client_side());
+        self.client_questions = true;
+        self
+    }
     /// Enable `ask_user` with an in-process host responder.
     ///
     /// The responder runs inside the tool call, so the turn does not park for

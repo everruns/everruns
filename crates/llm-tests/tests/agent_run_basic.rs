@@ -129,7 +129,9 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
             let model = config.model().expect("model set (checked above)");
             let runner = InMemoryAgenticLoop::builder()
                 .agent_name("Time Agent")
-                .system_prompt("When asked about time, use get_current_time tool first.")
+                // See TIME_TOOL_QUESTION: the `<facts>` block already answers
+                // a bare "What time is it?".
+                .system_prompt(TIME_TOOL_SYSTEM_PROMPT)
                 .model(model)
                 .driver_registry(all_providers_registry())
                 .capability(CurrentTimeCapability)
@@ -137,7 +139,7 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
                 .build()
                 .await
                 .unwrap();
-            runner.run_turn("What time is it?").await.unwrap()
+            runner.run_turn(TIME_TOOL_QUESTION).await.unwrap()
         }
     ) else {
         return;

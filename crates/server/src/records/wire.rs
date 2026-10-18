@@ -60,6 +60,7 @@ pub fn proto_agent_to_schema(
         "created_at": value.created_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
         "updated_at": value.updated_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
         "parallel_tool_calls": value.parallel_tool_calls,
+        "max_output_tokens": value.max_tokens.filter(|tokens| *tokens > 0),
         "communication": value.communication.as_deref().unwrap_or("direct"),
     });
     serde_json::from_value(json).map_err(ConversionError::from)
@@ -79,7 +80,7 @@ pub fn schema_agent_to_proto(value: &crate::domains::agents::record::Agent) -> p
             .default_model_id
             .map(|id| uuid_to_proto_uuid(id.uuid())),
         temperature: None,
-        max_tokens: None,
+        max_tokens: value.max_output_tokens,
         status: value.status.to_string(),
         created_at: Some(datetime_to_proto_timestamp(value.created_at)),
         updated_at: Some(datetime_to_proto_timestamp(value.updated_at)),

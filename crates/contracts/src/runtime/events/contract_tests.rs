@@ -134,6 +134,7 @@ fn snapshot_turn_started() {
 #[test]
 fn snapshot_turn_completed() {
     let data = TurnCompletedData {
+        termination_reason: None,
         issue_count: None,
         turn_id: test_turn_id(),
         iterations: 3,
@@ -265,6 +266,7 @@ fn snapshot_tool_started() {
         tool_call_fingerprint: None,
         display_name: None,
         narration: None,
+        side_effect_class: None,
     };
     with_settings!({
         sort_maps => true,
@@ -564,6 +566,7 @@ fn tool_started_display_name_serialization() {
         tool_call_fingerprint: None,
         display_name: Some("Bash".to_string()),
         narration: None,
+        side_effect_class: None,
     };
 
     let json = serde_json::to_value(&data).unwrap();
@@ -724,6 +727,7 @@ fn representative_event_payloads_preserve_wire_identity() {
         (
             "turn.completed",
             TurnCompletedData {
+                termination_reason: None,
                 issue_count: None,
                 turn_id: test_turn_id(),
                 iterations: 1,
@@ -880,6 +884,7 @@ fn representative_event_payloads_preserve_wire_identity() {
                 tool_call_fingerprint: None,
                 display_name: Some("Lookup".into()),
                 narration: None,
+                side_effect_class: None,
             }
             .into(),
         ),

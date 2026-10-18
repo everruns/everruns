@@ -310,8 +310,10 @@ production and DEV_MODE alike; the worker side is
 - **One turn per lease.** The worker folds the log's tail from the latest
   `turn.started`. An open turn is resumed: unfinished calls rerun when their
   tool declares that safe (pure, idempotent, client-side, approval-gated,
-  `ask_user`, or a synthetic person-facing call) and are otherwise settled as
-  `interrupted`; an open turn whose answer is already in the log is completed
+  `ask_user`, or a synthetic person-facing call) or never started, and are
+  otherwise settled as `interrupted`. An at-most-once call does not run until
+  its `tool.started` is stored (the worker's write-behind queue does not hold
+  it), so a log without one proves the call never ran; an open turn whose answer is already in the log is completed
   without another model call. With no open turn, the first unconsumed input
   starts a fresh turn through core's `turn_entry_plan`, the entry step the
   in-process runtime uses. A closed latest turn whose terminal event has no
@@ -388,7 +390,11 @@ production and DEV_MODE alike; the worker side is
   by two lease lives); inside a command transaction that wait runs after the
   commit, when the holder can first see the request, still before the command
   answers. Past the bound the answer means "acknowledged": the request stays
-  on the row for the holder, or the next one, to record.
+  on the row for the holder, or the next one, to record. A backend error does
+  not transfer event ownership to the API: session and channel cancellation
+  return the error without synthesizing terminal events or idling the session.
+  Otherwise a worker completing while the API waits for a connection can leave
+  both completion and cancellation in the same turn's log.
 - **Poison guard.** `attempts` counts leases since the last release. A lease
   that finds more than `DURABLE_NO_PROGRESS_SEAL_THRESHOLD` (default 3) seals
   the turn instead of running it: a user-facing processing error,
@@ -484,7 +490,11 @@ tasks from the DLQ. Sealed tasks already carry the seal reason and counters via
 
 ### Metrics Dashboard
 
-Real-time metrics on the durable overview page via SSE streaming. Shows last 15 minutes, zero-backfilled. Four chart panels: Workflow Status, Task Status, Throughput, System Load. See `crates/server/src/api/durable.rs` for `MetricsPoint` fields and the ring-buffer collector.
+The durable landing page is [Monitoring](monitoring.md), showing session-actor
+execution, worker ownership, and lease health. Generic queue/workflow metrics
+remain available through the durable metrics API and Prometheus. They describe
+background activities, not platform turn throughput. Source contracts and the
+ring-buffer collector remain in `crates/server/src/api/durable.rs`.
 
 ### System Health Counters
 

@@ -111,7 +111,7 @@ The set below is what ships today. The boundary is open, so a
 | Driver | Crate | Wire protocol | Services | Model discovery |
 | --- | --- | --- | --- | --- |
 | OpenAI | `everruns-drivers` (`openai`) | OpenAI Responses, OpenAI Decisions API | chat, embeddings, realtime, decisions | yes |
-| ChatGPT plan | `everruns-drivers` (`chatgpt`) | Stateless Responses + open-source OAuth | chat | account-visible models |
+| ChatGPT Plan | `everruns-drivers` (`chatgpt`) | Stateless Responses + open-source OAuth | chat | account-visible models |
 | OpenAI (Chat Completions) | `everruns-drivers` (`openai`) | OpenAI Chat Completions | chat | yes |
 | Azure OpenAI | `everruns-drivers` (`openai`) | OpenAI Responses | chat | yes |
 | Anthropic | `everruns-drivers` (`anthropic`) | Anthropic Messages | chat | yes |
@@ -135,9 +135,10 @@ typed events, which is why swapping a provider does not change application
 code.
 
 The environment variables each API driver reads are in [Credentials](#credentials).
-ChatGPT plan connections use host-owned OAuth credentials; see [ChatGPT plan](/features/chatgpt/).
+ChatGPT Plan connections use host-owned OAuth credentials; see [ChatGPT Plan](/features/chatgpt/).
 The optional `codex` SDK feature provides the legacy Codex backend for hosts such
-as Yolop. Everruns Platform registers the public ChatGPT plan route.
+as Yolop. The Platform UI does not offer ChatGPT Plan because Everruns does not
+have a registered web OAuth client and callback for that flow.
 
 ### Beyond chat
 
@@ -472,6 +473,54 @@ driver says it has no catalog. See [Custom providers](#custom-providers).
 The runnable version of this section is
 [`model_catalog.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/model_catalog.rs),
 which runs offline without an API key.
+
+## WASM and host fetch
+
+The Chat Completions and Responses protocol drivers, plus OpenAI and OpenRouter
+chat drivers, build for `wasm32-unknown-unknown`. Enable `http` on
+`everruns-contracts`, or `openai` / `openrouter` on `everruns-drivers`. The native
+socket and TLS dependencies are excluded on that target.
+
+Supply an `HttpTransport` backed by your host's `fetch`. It receives the encoded
+method, URL, headers and body, and returns the HTTP status, headers and a lazy
+byte stream. The existing driver still owns provider options, tool replay,
+request encoding, response parsing, SSE, retry policy and error classification.
+
+```rust
+use std::sync::Arc;
+use everruns_contracts::{BearerAuth, Provider};
+use everruns_contracts::http_transport::HttpTransport;
+use everruns_drivers::openrouter::OpenRouterChatDriver;
+
+fn provider(api_key: String, host_fetch: Arc<dyn HttpTransport>) -> Provider {
+    Provider::new(
+        "openrouter",
+        OpenRouterChatDriver::new().with_transport(host_fetch),
+    )
+    .base_url("https://openrouter.ai/api/v1")
+    .auth(BearerAuth::new(api_key))
+}
+```
+
+The same `.with_transport(...)` method is available on `OpenAIChatDriver`,
+`OpenAICompletionsChatDriver`, `OpenAIProtocolChatDriver` and
+`OpenResponsesProtocolChatDriver`. Native applications may also inject a
+transport; otherwise they keep the shared HTTP client. WASM requires an adapter
+and reports an error if none is supplied.
+
+The adapter owns endpoint and DNS policy, redirect refusal, network timeouts,
+and cancellation when a request or response stream is dropped. Treat it as
+trusted application code: it handles provider credentials. Return response
+headers before consuming the body and stream bytes incrementally. Host JS
+futures must be wrapped for the single-threaded WASM `Send` contract. OpenAI
+WebSocket, realtime, speech, embeddings and decision transports remain native;
+this support covers HTTP chat.
+
+The [Workers/Durable Object fetch adapter](https://github.com/everruns/everruns/blob/main/examples/durable-object-agent/src/fetch.rs)
+shows exact bytes, manual redirects, cancellation and read deadlines. The
+[workerd integration tests](https://github.com/everruns/everruns/tree/main/tests/wasm-providers)
+run model/tool/model exchanges in both a Worker and a Durable Object without
+reimplementing either provider protocol.
 
 ## Custom providers
 

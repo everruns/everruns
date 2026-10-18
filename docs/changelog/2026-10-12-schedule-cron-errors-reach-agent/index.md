@@ -6,6 +6,7 @@ kind: fix
 significance: minor
 products: [platform, cloud, framework]
 surfaces: [api, code]
+release: "0.48.0"
 links:
   docs: [/capabilities/session-schedules/]
   prs: [everruns/everruns#4615]
@@ -22,3 +23,9 @@ Sunday evenings, are read the same way everywhere, including in embedded
 Framework schedules. The 5-minute minimum interval now also applies to them.
 
 See [Session schedules](/capabilities/session-schedules/). [#4615](https://github.com/everruns/everruns/pull/4615)
+
+## Update 2026-10-14
+
+[Recurring cron interval validation](/changelog/2026-10-14-session-cron-interval-validation/)
+now rejects invalid cron and expressions without enough future occurrences to
+verify their minimum interval. Admission and trigger calculation share one parser.

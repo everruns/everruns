@@ -6,6 +6,7 @@ kind: feature
 significance: minor
 products: [platform, cloud, cli]
 surfaces: [cli, agent, api]
+release: "0.48.0"
 links:
   docs: [/reference/cli/agents/]
 ---

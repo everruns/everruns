@@ -8,7 +8,7 @@ use everruns_core::mcp::{
 };
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::ToolExecutionResult;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 /// An in-memory list for one person.
 #[derive(Default)]
@@ -210,6 +210,11 @@ fn settings_default_and_validate() {
 #[test]
 fn manage_tools_only_with_manage_and_add_enable_need_approval() {
     assert!(UserMcpCapability.tools_with_config(&json!({})).is_empty());
+    assert!(
+        UserMcpCapability
+            .tools_with_config(&json!({"manage": false}))
+            .is_empty()
+    );
     let tools = UserMcpCapability.tools_with_config(&json!({"manage": true}));
     let mut names: Vec<_> = tools.iter().map(|tool| tool.name().to_string()).collect();
     names.sort();
@@ -238,6 +243,29 @@ fn manage_tools_only_with_manage_and_add_enable_need_approval() {
             assert_ne!(tool.hints().destructive, Some(true), "{}", tool.name());
             assert_ne!(tool.hints().open_world, Some(true), "{}", tool.name());
         }
+    }
+}
+
+#[test]
+fn model_definitions_follow_management_and_url_configuration() {
+    for config in [
+        json!({}),
+        json!({"manage": false}),
+        json!({"connect": true}),
+        json!({"manage": true}),
+        json!({"manage": true, "allow_custom_urls": true}),
+    ] {
+        let expected: Vec<_> = UserMcpCapability
+            .tools_with_config(&config)
+            .iter()
+            .map(|tool| tool.to_definition())
+            .collect();
+        let definitions = UserMcpCapability.tool_definitions_with_config(&config);
+        assert_eq!(
+            serde_json::to_value(definitions).unwrap(),
+            serde_json::to_value(expected).unwrap(),
+            "model-facing and executable tools disagree for {config}",
+        );
     }
 }
 
@@ -508,35 +536,111 @@ async fn connect_in_chat_never_returns_the_settings_link_instead_of_a_card() {
     }
 }
 
-#[cfg(feature = "portable-builtins")]
 #[tokio::test]
-async fn manage_holds_add_and_enable_for_approval() {
-    use everruns_contracts::tool_types::ToolCall;
+async fn add_and_enable_follow_shared_approval_modes() {
+    use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
+    use everruns_core::builtins::{ApprovalDecision, ToolApprovalCapability, ToolApprover};
     use everruns_core::tool_hooks::PreToolUseDecision;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
-    assert!(
-        UserMcpCapability
-            .pre_tool_use_hooks_with_config(&json!({}))
-            .is_empty()
-    );
-    let hooks = UserMcpCapability.pre_tool_use_hooks_with_config(&json!({"manage": true}));
-    assert_eq!(hooks.len(), 1);
-    let context = ToolContext::new(SessionId::new());
-    for tool in UserMcpCapability.tools_with_config(&json!({"manage": true})) {
-        let call = ToolCall {
-            id: format!("call_{}", tool.name()),
-            name: tool.name().to_string(),
-            arguments: json!({"name": "linear"}),
-        };
-        let decision = hooks[0]
-            .before_exec(call, &tool.to_definition(), &context)
-            .await;
-        let ran = matches!(decision, PreToolUseDecision::Continue(_));
-        assert_eq!(
-            ran,
-            !USER_MCP_APPROVAL_TOOLS.contains(&tool.name()),
-            "{}",
-            tool.name()
-        );
+    struct Approver {
+        decision: ApprovalDecision,
+        asked: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl ToolApprover for Approver {
+        async fn approve(
+            &self,
+            _: SessionId,
+            _: &ToolCall,
+            _: &ToolDefinition,
+        ) -> ApprovalDecision {
+            self.asked.fetch_add(1, Ordering::SeqCst);
+            self.decision
+        }
+    }
+
+    for mode in [None, Some("off"), Some("normal"), Some("protective")] {
+        for answer in [
+            ApprovalDecision::Allow,
+            ApprovalDecision::Reject,
+            ApprovalDecision::Deferred,
+        ] {
+            for name in ["add_user_mcp_server", "enable_user_mcp_server"] {
+                let approver = Arc::new(Approver {
+                    decision: answer,
+                    asked: AtomicUsize::new(0),
+                });
+                let config = json!({"manage": true});
+                let mut hooks = UserMcpCapability.pre_tool_use_hooks_with_config(&config);
+                if let Some(mode) = mode {
+                    hooks.extend(
+                        ToolApprovalCapability::new(approver.clone())
+                            .pre_tool_use_hooks_with_config(&json!({"mode": mode})),
+                    );
+                }
+                let store = Arc::new(MemoryStore::default());
+                // Enabling must change an existing, disabled entry.
+                if name == "enable_user_mcp_server" {
+                    tool(config.clone(), "add_user_mcp_server")
+                        .execute_with_context(json!({"catalog": "linear"}), &context(store.clone()))
+                        .await;
+                    store.set_enabled("linear", false).await.unwrap();
+                }
+                let context = context(store.clone());
+                let tool = tool(config, name);
+                let mut call = ToolCall {
+                    id: "call_mcp".into(),
+                    name: name.into(),
+                    arguments: if name == "add_user_mcp_server" {
+                        json!({"catalog": "linear"})
+                    } else {
+                        json!({"name": "linear"})
+                    },
+                };
+                let gated = matches!(mode, Some("normal" | "protective"));
+                let should_run = !gated || answer == ApprovalDecision::Allow;
+                let mut ran = true;
+                for hook in hooks {
+                    match hook
+                        .before_exec(call.clone(), &tool.to_definition(), &context)
+                        .await
+                    {
+                        PreToolUseDecision::Continue(next) => call = next,
+                        decision => {
+                            assert!(!should_run, "{name}: {mode:?}, {answer:?}: {decision:?}");
+                            assert_eq!(
+                                matches!(decision, PreToolUseDecision::Defer { .. }),
+                                answer == ApprovalDecision::Deferred,
+                            );
+                            ran = false;
+                            break;
+                        }
+                    }
+                }
+                assert_eq!(ran, should_run, "{name}: {mode:?}, {answer:?}");
+                if ran {
+                    let result = tool.execute_with_context(call.arguments, &context).await;
+                    assert!(result.is_success(), "{name}: {result:?}");
+                }
+                assert_eq!(approver.asked.load(Ordering::SeqCst), usize::from(gated));
+                let entries = store.entries.lock().unwrap();
+                assert_eq!(
+                    entries.len(),
+                    if name == "enable_user_mcp_server" {
+                        1
+                    } else {
+                        usize::from(should_run)
+                    },
+                    "{name}: {mode:?}, {answer:?}",
+                );
+                assert_eq!(
+                    entries.iter().any(|(_, entry)| entry.enabled),
+                    should_run,
+                    "{name}: {mode:?}, {answer:?}",
+                );
+            }
+        }
     }
 }

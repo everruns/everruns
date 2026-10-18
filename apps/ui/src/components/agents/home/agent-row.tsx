@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useId } from "react";
 import { CalendarClock, Webhook, Zap } from "lucide-react";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { ChannelIcon } from "@/components/agents/channels/channel-icon";
@@ -24,6 +25,8 @@ import type {
   AgentTriggerSummary,
 } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { agentFailureHref } from "@/lib/agent-failures";
 
 const TRIGGER_ICON: Record<string, typeof Zap> = {
   schedule: CalendarClock,
@@ -65,12 +68,17 @@ export function AgentRow({
   agent,
   activity,
   attention,
+  activityGeneratedAt,
+  activityWindowStart,
 }: {
   agent: Agent;
   activity: AgentActivity | undefined;
   attention: AttentionItem[];
+  activityGeneratedAt?: string;
+  activityWindowStart?: string;
 }) {
   const name = getDisplayName(agent);
+  const tooltipId = useId();
   const now = agentNow(agent, activity);
   const channels = (agent.channels ?? []).filter((channel) => channel.channel_type !== "schedule");
   const triggers: AgentTriggerSummary[] = activity?.triggers ?? [];
@@ -165,17 +173,38 @@ export function AgentRow({
       </div>
 
       <div className="min-w-0">
-        <RunBars
-          buckets={activity?.hourly ?? EMPTY_BUCKETS}
-          label={`${runs} ${pluralize(runs, "run")} in the last 24 hours, ${failed} failed`}
-        />
+        <Tooltip>
+          <TooltipTrigger
+            aria-describedby={tooltipId}
+            className="block w-full cursor-help outline-offset-2 focus-visible:outline-2 focus-visible:outline-ring"
+          >
+            <RunBars
+              buckets={activity?.hourly ?? EMPTY_BUCKETS}
+              label={`${runs} ${pluralize(runs, "run")} in the last 24 hours, ${failed} failed`}
+            />
+          </TooltipTrigger>
+          <TooltipContent id={tooltipId} role="tooltip">
+            <p>Last 24 hours</p>
+            <p className="text-xs text-muted-foreground">Each bar is 1 hour</p>
+          </TooltipContent>
+        </Tooltip>
         <p className="mt-1 text-xs text-muted-foreground">
-          {runs === 0 ? (
+          {runs === 0 && failed === 0 ? (
             "No runs"
           ) : (
             <>
               {runs} {pluralize(runs, "run")}
-              {failed > 0 && <span className="text-destructive"> · {failed} failed</span>}
+              {failed > 0 && activityGeneratedAt && (
+                <>
+                  {" · "}
+                  <Link
+                    href={agentFailureHref(agent.id, activityGeneratedAt, activityWindowStart)}
+                    className="text-destructive underline underline-offset-2"
+                  >
+                    {failed} failed
+                  </Link>
+                </>
+              )}
             </>
           )}
         </p>

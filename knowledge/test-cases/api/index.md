@@ -1,14 +1,16 @@
 # API test cases
 
-* [Agent instructions](agent_instructions/) - 6 manual API cases.
-* [Agents](agents/) - 7 manual API cases.
-* [FCP](fcp/) - 4 manual API cases.
-* [Global search](global_search/) - 3 manual API cases.
-* [Knowledge bases](knowledge_bases/) - 1 manual API case.
-* [Leased resources](leased_resources/) - 1 manual API case.
-* [Machine payments](machine_payments/) - 2 manual API cases.
-* [Org creation](org_creation/) - 3 manual API cases.
-* [Research agent](research_agent/) - 1 manual API case.
-* [Scheduled tasks](scheduled_tasks/) - 8 manual API cases.
-* [Sessions](sessions/) - 8 manual API cases.
-* [Subagents](subagents/) - 5 manual API cases.
+* [Agent instructions](agent_instructions/) - Manual API cases.
+* [Auth](auth/) - Credential, tenant, permission, scope, refresh, and deployment-mode cases.
+* [Agents](agents/) - Manual API cases.
+* [FCP](fcp/) - Manual API cases.
+* [Global search](global_search/) - Manual API cases.
+* [Knowledge bases](knowledge_bases/) - Manual API cases.
+* [Leased resources](leased_resources/) - Manual API cases.
+* [Machine payments](machine_payments/) - Manual API cases.
+* [Org creation](org_creation/) - Manual API cases.
+* [Research agent](research_agent/) - Manual API cases.
+* [Scheduled tasks](scheduled_tasks/) - Manual API cases.
+* [Session storage](session_storage/) - Secret lifecycle, metadata redaction, validation, and isolation.
+* [Sessions](sessions/) - Manual API cases.
+* [Subagents](subagents/) - Manual API cases.

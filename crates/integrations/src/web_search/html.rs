@@ -151,7 +151,13 @@ pub(super) fn decode_entities(input: &str) -> String {
     while let Some(amp) = rest.find('&') {
         out.push_str(&rest[..amp]);
         rest = &rest[amp..];
-        let Some(semi) = rest[..rest.len().min(12)].find(';') else {
+        // Entities are short; look for the `;` in the next few characters
+        // (not bytes: slicing a byte count can split a multibyte character).
+        let Some(semi) = rest
+            .char_indices()
+            .take_while(|(i, _)| *i < 12)
+            .find_map(|(i, c)| (c == ';').then_some(i))
+        else {
             out.push('&');
             rest = &rest[1..];
             continue;
@@ -230,5 +236,13 @@ mod tests {
             decode_entities("&#39;x&#x27; &lt;y&gt; &unknown; a&b"),
             "'x' <y> &unknown; a&b"
         );
+    }
+
+    #[test]
+    fn an_ampersand_before_multibyte_text_does_not_panic() {
+        // The en dash spans bytes 10..13 after the `&`, so a 12-byte window
+        // used to end inside it.
+        assert_eq!(decode_entities("a&bcdefghij– x"), "a&bcdefghij– x");
+        assert_eq!(decode_entities("a&b – c&amp;d"), "a&b – c&d");
     }
 }

@@ -360,6 +360,11 @@ pub struct ToolContext {
     /// The tool call ID for the current execution (set by ActAtom).
     /// Used by tools to emit correlated progress events.
     pub tool_call_id: Option<String>,
+    /// Idempotency key for the current call (set by ActAtom; see
+    /// [`ExecutionContext::tool_call_idempotency_key`](crate::runtime::ExecutionContext::tool_call_idempotency_key)).
+    /// Stable across a resume, so a tool that forwards it lets the far side
+    /// drop a repeat of a call it already ran.
+    pub idempotency_key: Option<String>,
     /// Optional capability registry for blueprint lookups.
     pub capability_registry: Option<crate::runtime::capabilities::CapabilityRegistry>,
 
@@ -466,6 +471,7 @@ impl ToolContext {
             event_emitter: None,
             event_context: None,
             tool_call_id: None,
+            idempotency_key: None,
             capability_registry: None,
             tool_registry: None,
             visible_tool_names: None,
@@ -509,6 +515,7 @@ impl ToolContext {
             event_emitter: services.event_emitter.clone(),
             event_context: None,
             tool_call_id: None,
+            idempotency_key: None,
             capability_registry: services.capability_registry.clone(),
             tool_registry: services.tool_registry.clone(),
             visible_tool_names: None,

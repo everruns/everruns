@@ -170,7 +170,7 @@ curl -s localhost:3000/v1/channels/support
 ```
 
 ```json
-{"name":"support","description":"Answers questions about orders.","streaming":true,"input":{"text":true,"images":false,"files":false},"auth":[],"links":{"sessions":"/v1/channels/support/sessions"}}
+{"name":"support","description":"Answers questions about orders.","streaming":true,"input":{"text":true,"images":true,"files":true},"auth":[],"links":{"sessions":"/v1/channels/support/sessions"}}
 ```
 
 Start a session, send a message, and follow the session's events:
@@ -366,7 +366,8 @@ approvals.
 
 The same client code works against an agent hosted on Everruns: point
 `EVERRUNS_AGENT_URL` at the agent's Agent API channel and use an agent key. See
-[Call your agent from code](/how-to/call-your-agent-from-code/).
+[Call your agent from code](/how-to/call-your-agent-from-code/) and the
+[Agent API](/features/agent-api/) reference.
 
 ## Next steps
 

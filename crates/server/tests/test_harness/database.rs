@@ -1,10 +1,10 @@
-//! Databases for server tests: the shared Postgres-mode database and the
-//! private per-test copies on the process's embedded PostgreSQL.
+//! Private database fixtures and the shared raw-pool migration database.
 
 use std::sync::Arc;
 
 use everruns_server::storage::test_database::{
-    TestDatabase, create_database_migrated_before, create_migrated_database, create_test_database,
+    TestDatabase, create_database_migrated_before, create_migrated_database,
+    create_migrated_test_database, create_test_database,
 };
 use everruns_server::storage::{Database, StorageBackend};
 use sqlx::PgPool;
@@ -76,6 +76,31 @@ pub async fn isolated_test_database() -> IsolatedDatabase {
     IsolatedDatabase { pool, database }
 }
 
+/// Product-seeded API tests use a private migrated database in both modes.
+pub async fn isolated_postgres_database() -> IsolatedDatabase {
+    let (pool, database) = create_migrated_test_database();
+    IsolatedDatabase { pool, database }
+}
+
+/// Prepare a private database before a single-test binary configures process
+/// environment. Join the temporary runtime and close its pool first: creating a
+/// lazy pool outside Tokio would leave a persistent maintenance runtime alive.
+pub fn database_before_server_environment() -> Arc<TestDatabase> {
+    std::thread::spawn(|| {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("build database fixture runtime")
+            .block_on(async {
+                let (pool, database) = create_migrated_test_database();
+                pool.close().await;
+                database
+            })
+    })
+    .join()
+    .expect("prepare database before configuring environment")
+}
+
 /// A database of its own on the embedded cluster, migrated up to but not
 /// including `version`, for tests that convert pre-migration data with that
 /// migration. Slower than [`isolated_test_database`]: it runs the migrations
@@ -84,5 +109,54 @@ pub async fn database_migrated_before(version: i64) -> IsolatedDatabase {
     let (pool, database) = create_database_migrated_before(version)
         .await
         .expect("create partially migrated test database");
+    IsolatedDatabase { pool, database }
+}
+
+/// Product seeding is fixture preparation, not part of every API assertion.
+/// Keep a disconnected template per grade and fixture mode, then copy it for
+/// each server. Every server still owns its rows, pools, counters, and cleanup;
+/// tests of seeding itself continue to use fresh unseeded databases.
+pub async fn seeded_database(
+    mode: super::TestMode,
+    grade: everruns_core::DeploymentGrade,
+    host: &everruns_core::host::HostComposition,
+    harnesses: &[everruns_server::domains::harnesses::record::BuiltInHarnessDefinition],
+) -> IsolatedDatabase {
+    use everruns_core::DeploymentGrade;
+    use everruns_server::setup::seed::{SeedAuthContext, seed_all_with_host_composition};
+    use tokio::sync::OnceCell;
+    static TEMPLATES: [OnceCell<Arc<TestDatabase>>; 8] = [const { OnceCell::const_new() }; 8];
+    let grade_index = match grade {
+        DeploymentGrade::Dev => 0,
+        DeploymentGrade::Poc => 1,
+        DeploymentGrade::Preview => 2,
+        DeploymentGrade::Prod => 3,
+    };
+    let mode_index = match mode {
+        super::TestMode::InMemory => 0,
+        super::TestMode::Postgres => 4,
+    };
+    let template = TEMPLATES[grade_index + mode_index]
+        .get_or_init(|| async {
+            let database = match mode {
+                super::TestMode::InMemory => isolated_test_database().await,
+                super::TestMode::Postgres => isolated_postgres_database().await,
+            };
+            seed_all_with_host_composition(
+                &database.backend(),
+                grade,
+                &SeedAuthContext::default(),
+                host,
+                harnesses,
+            )
+            .await
+            .expect("seed API fixture template");
+            // PostgreSQL refuses a template with active connections. Await all
+            // pool shutdown work before publishing it to other test runtimes.
+            database.pool.close().await;
+            database.database
+        })
+        .await;
+    let (pool, database) = template.copy().await.expect("copy seeded API fixture");
     IsolatedDatabase { pool, database }
 }

@@ -22,10 +22,11 @@ use super::config::WebSearchConfig;
 use super::free::FreeSearchDriver;
 use super::http::DirectEgress;
 use super::plan::{
-    PlanDrivers, PlanInputs, ResolvedPlan, SearchOutcome, plan_steps, resolve_plan, run_plan,
+    PlanDrivers, PlanEntry, PlanInputs, ResolvedPlan, SearchOutcome, plan_steps, resolve_plan,
+    run_plan,
 };
 use super::{
-    BRAVE_SEARCH_API_KEY, BRAVE_SEARCH_CONNECTION_PROVIDER, PARALLEL_API_KEY,
+    BRAVE_SEARCH_API_KEY, BRAVE_SEARCH_CONNECTION_PROVIDER, HOSTED_SEARCH_ID, PARALLEL_API_KEY,
     PARALLEL_CONNECTION_PROVIDER,
 };
 
@@ -48,11 +49,13 @@ struct Arguments {
     topic: SearchTopic,
 }
 
-/// Application-owned keys (Framework, serve), used when the session has none.
+/// Application-owned keys (Framework, serve), used when the session has none,
+/// and the deployment's own search (hosted).
 #[derive(Clone, Default)]
 pub(super) struct AppKeys {
     pub(super) brave: Option<String>,
     pub(super) parallel: Option<String>,
+    pub(super) hosted: Option<super::HostedWebSearch>,
 }
 
 pub(super) struct WebSearchTool {
@@ -191,6 +194,7 @@ impl WebSearchTool {
             model_has_native: false,
             brave_key: brave_key.is_some(),
             parallel_key: parallel_key.is_some(),
+            hosted: self.app_keys.hosted.is_some(),
         });
         if request.limit == 0 {
             request.limit = plan.limit;
@@ -221,6 +225,12 @@ impl WebSearchTool {
                 .unwrap_or_default(),
             _ => Vec::new(),
         };
+        let hosted_call = match &self.app_keys.hosted {
+            Some(hosted) if plan.entries.contains(&PlanEntry::Hosted) => {
+                Some(hosted.driver_for_context(context))
+            }
+            _ => None,
+        };
         let drivers = PlanDrivers {
             free: self.free.clone(),
             brave: brave_key.and_then(|key| {
@@ -230,6 +240,9 @@ impl WebSearchTool {
             parallel: parallel_key
                 .and_then(|key| self.bases.driver(PARALLEL_CONNECTION_PROVIDER, key, None)),
             accounts,
+            hosted: hosted_call.clone().map(|driver| {
+                driver as Arc<dyn everruns_contracts::runtime::web_search::SearchDriver>
+            }),
         };
         let steps = plan_steps(&plan, &drivers);
         let search_context = SearchContext {
@@ -239,7 +252,25 @@ impl WebSearchTool {
             network_access: context.and_then(|context| context.network_access.clone()),
         };
         let outcome = run_plan(&steps, &request, &search_context).await;
-        self.result(&request, &plan, outcome)
+        let answered = outcome
+            .answered_by
+            .as_ref()
+            .is_some_and(|(id, _)| id == HOSTED_SEARCH_ID);
+        let billing = hosted_call
+            .as_ref()
+            .and_then(|driver| driver.billing_reference())
+            .map(|reference| {
+                json!({
+                    "permit_id": reference,
+                    "call_key": context.and_then(|context| context.idempotency_key.as_ref()),
+                    "answered": answered,
+                    // Sanitized response and engine identity repair a lost callback.
+                    // They stay in event details, never the model-facing result.
+                    "response": outcome.response.as_ref().filter(|response| answered &&
+                        serde_json::to_vec(response).is_ok_and(|bytes| bytes.len() <= 64 * 1024)),
+                })
+            });
+        self.result(&request, &plan, outcome, billing)
     }
 
     fn result(
@@ -247,6 +278,7 @@ impl WebSearchTool {
         request: &SearchRequest,
         plan: &ResolvedPlan,
         outcome: SearchOutcome,
+        billing: Option<Value>,
     ) -> ToolExecutionResult {
         let notes = outcome.fallback_notes();
         let results: Vec<Value> = outcome
@@ -275,6 +307,9 @@ impl WebSearchTool {
             "attempts": outcome.attempts,
             "results": results,
         });
+        if let Some(billing) = billing {
+            details["hosted_billing"] = billing;
+        }
         let mut model = json!({ "query": request.query, "results": results });
         let Some(response) = outcome.response else {
             // Kept a success so the details (and every raw response) reach the

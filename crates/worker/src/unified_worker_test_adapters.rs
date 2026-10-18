@@ -331,7 +331,10 @@ impl crate::actor_lease_store::ActorLeaseStore for IdleActorLeaseStore {
     ) -> CoreResult<Vec<crate::actor_lease_store::LeasedActor>> {
         Ok(Vec::new())
     }
+}
 
+#[async_trait::async_trait]
+impl crate::actor_lease_store::SessionActorStore for IdleActorLeaseStore {
     async fn renew_actor_lease(
         &self,
         _session_id: everruns_contracts::typed_id::SessionId,

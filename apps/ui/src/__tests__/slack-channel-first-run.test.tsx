@@ -292,6 +292,23 @@ describe("Slack channel first run", () => {
     expect(screen.queryByLabelText(/paste it here/)).not.toBeInTheDocument();
   });
 
+  it("offers one Slack approval instead of a token when the deployment has a manager app", () => {
+    mockWorkspaces = [];
+    render(
+      <ChannelForm
+        state={getDefaultChannelFormState("slack")}
+        onChange={jest.fn()}
+        mode="new"
+        slackInstallCapability={{ ...mockSlackCapability, connected: false, manager_app: true }}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /Connect with Slack/ })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/paste it here/)).not.toBeInTheDocument();
+    // The token path stays one click away for workspaces the consent does not reach.
+    fireEvent.click(screen.getByRole("button", { name: "Use a configuration token instead" }));
+    expect(screen.getByLabelText(/paste it here/)).toHaveAttribute("type", "password");
+  });
+
   it("distinguishes reconnect-required from first-time setup", () => {
     mockWorkspaces = [workspace("T1", "Acme", "reconnect_required")];
     render(

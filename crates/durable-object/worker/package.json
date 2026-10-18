@@ -1,0 +1,16 @@
+{
+  "name": "everruns-session-authority",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test --test-isolation=none test/*.test.mjs",
+    "test:recovery": "bash test/run-recovery.sh",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test:isolate": "node test/run-isolate.mjs",
+    "test:celld": "node test/qualify-celld.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "4.151.1"
+  }
+}

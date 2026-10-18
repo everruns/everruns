@@ -216,6 +216,7 @@ impl UserConnectionResolver for MapConnectionResolver {
     ) -> Result<Option<everruns_contracts::runtime::McpResolvedCredential>> {
         Ok(self.0.get("github").cloned().map(|token| {
             everruns_contracts::runtime::McpResolvedCredential {
+                github_installation_scope: None,
                 token,
                 acted_as: everruns_contracts::runtime::mcp_server::McpServerActsAs::Service,
             }

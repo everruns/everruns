@@ -1,0 +1,7 @@
+---
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import type { ApiGroup } from "../lib/api-reference";
+interface Props { group: ApiGroup }
+const { group } = Astro.props;
+---
+<StarlightPage frontmatter={{ title: `${group.name} reference`, description: `${group.description} Browse endpoint requests, responses and support levels.`.slice(0, 160), tableOfContents: false }} />

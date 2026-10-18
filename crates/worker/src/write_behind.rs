@@ -56,6 +56,12 @@
 // Decision: `output.message.started` carrying reasoning state is not queued. It
 // is persisted before the provider call so an interrupted worker can resume,
 // and its caller fails the phase when that store fails.
+//
+// Decision: the `tool.started` of an `AtMostOnce` call is not queued. It is
+// stored before the tool runs, so a log without it proves the call never ran
+// and resume may run it instead of settling it as interrupted; the act does
+// not run the call when that store fails. Safe calls (pure, idempotent) keep
+// the queued start: resume runs them again either way.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -63,6 +69,7 @@ use std::time::Duration;
 use crate::actor_lease_store::{ActorLeaseLost, actor_lease_lost, is_actor_lease_lost};
 use crate::core::{Event, EventData, EventRequest};
 use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::tool_types::SideEffectClass;
 use everruns_contracts::typed_id::{EventId, SessionId};
 use std::future::Future;
 use std::pin::Pin;
@@ -177,6 +184,11 @@ impl WriteBehind {
     pub fn queues(request: &EventRequest) -> bool {
         if let EventData::OutputMessageStarted(data) = &request.data
             && data.reasoning_state.is_some()
+        {
+            return false;
+        }
+        if let EventData::ToolStarted(data) = &request.data
+            && data.side_effect_class == Some(SideEffectClass::AtMostOnce)
         {
             return false;
         }
@@ -580,5 +592,39 @@ mod tests {
         let mut completed = started(None);
         completed.event_type = crate::core::events::OUTPUT_MESSAGE_COMPLETED.to_string();
         assert!(!WriteBehind::queues(&completed));
+    }
+
+    #[test]
+    fn at_most_once_tool_starts_are_stored_before_the_tool_runs() {
+        use crate::core::{EventContext, ToolStartedData};
+        use everruns_contracts::tool_types::ToolCall;
+        use everruns_contracts::typed_id::SessionId;
+
+        let started = |side_effect_class| {
+            EventRequest::new(
+                SessionId::new(),
+                EventContext::empty(),
+                ToolStartedData {
+                    tool_call: ToolCall {
+                        id: "call_1".to_string(),
+                        name: "send_email".to_string(),
+                        arguments: serde_json::json!({}),
+                    },
+                    tool_call_fingerprint: None,
+                    display_name: None,
+                    narration: None,
+                    side_effect_class,
+                },
+            )
+        };
+        assert!(!WriteBehind::queues(&started(Some(
+            SideEffectClass::AtMostOnce
+        ))));
+        assert!(WriteBehind::queues(&started(Some(SideEffectClass::Pure))));
+        assert!(WriteBehind::queues(&started(Some(
+            SideEffectClass::Idempotent
+        ))));
+        // An unknown tool runs nothing; its start may be queued.
+        assert!(WriteBehind::queues(&started(None)));
     }
 }

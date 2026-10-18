@@ -45,6 +45,8 @@ pub(super) struct A2aTurnRequest {
     pub params: Value,
     /// Concatenated text parts from `params.message.parts` (newline-joined).
     pub text: String,
+    /// The message's file parts, stored as attachments by the channel host.
+    pub files: Vec<everruns_contracts::runtime::channel::InboundAttachment>,
     pub message_id: Option<String>,
     pub task_id: String,
     pub context_id: Option<String>,
@@ -118,7 +120,7 @@ where
         },
     });
     let text = render_message_template(&config.message, &template_context);
-    if text.trim().is_empty() {
+    if text.trim().is_empty() && req.files.is_empty() {
         return Err(CommandError::bad_request(
             "Rendered invocation message is empty",
         ));
@@ -176,6 +178,14 @@ where
     }
     let mut message = InputMessage::user(text);
     message.metadata = Some(metadata);
+    message.content.extend(
+        state
+            .channels
+            .host
+            .attachment_parts(&resolved, None, &req.files, None)
+            .await
+            .map_err(channel_command_error)?,
+    );
     let turn = state
         .channels
         .host

@@ -48,9 +48,11 @@ Agent definitions and their configuration.
 | [`agents credentials create`](#agents-credentials-create) | Create a write-only Agent credential setup requirement: one attached MCP tool parameter, or an HTTP API the agent's shell calls with $ENV_NAME (the value is injected only into requests to the bound URL). |
 | [`agents exposures resume`](#agents-exposures-resume) | Let an agent's live channels accept traffic again. |
 | [`agents exposures suspend`](#agents-exposures-suspend) | Stop every channel on an agent from accepting traffic. |
+| [`agents failures list`](#agents-failures-list) | List sessions with failed turns. |
 | [`agents github connect`](#agents-github-connect) | Start connecting an agent to GitHub through its own GitHub App. |
 | [`agents github disconnect`](#agents-github-disconnect) | Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. |
 | [`agents github get`](#agents-github-get) | Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks. |
+| [`agents github use-everruns-app`](#agents-github-use-everruns-app) | Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. |
 | [`agents health-checks get`](#agents-health-checks-get) | Get a single agent health check run with its results. |
 | [`agents health-checks list`](#agents-health-checks-list) | List recent health check runs for an agent. |
 | [`agents health-checks trigger`](#agents-health-checks-trigger) | Run a behavioral health check (generated smoke tests) against an agent. |
@@ -379,6 +381,7 @@ everruns agents upsert [OPTIONS] --name <name> --system-prompt <system_prompt> [
 | `--initial-files <INITIAL_FILES>` | Starter files copied into each new session for this agent. |
 | `--intro-markdown <INTRO_MARKDOWN>` | Markdown intro shown as an intro box on a fresh Platform Chat thread. Images are allowed. |
 | `--max-iterations <MAX_ITERATIONS>` | Maximum number of LLM iterations per turn for this agent. |
+| `--max-output-tokens <MAX_OUTPUT_TOKENS>` | Ceiling on output tokens per model response (sent as `max_tokens`). Omit to use the provider ... |
 | `--mcpServers <MCPSERVERS>` |  |
 | `--name <NAME>` | Required. Name, unique per org. |
 | `--network-access <NETWORK_ACCESS>` |  |
@@ -817,6 +820,29 @@ Example:
 everruns agents exposures suspend agent_01h9 --reason 'Pause while the prompt is fixed'
 ```
 
+## agents failures list
+
+List sessions with failed turns. Filters by failure time and includes older, recovered, and archived sessions, matching agent activity. Returns the latest matching failure per session.
+
+```bash
+everruns agents failures list [OPTIONS] [AGENT]
+```
+
+| Flag | Description |
+|---|---|
+| `--agent <AGENT_ID>` |  |
+| `--after <AFTER>` | Exclusive lower bound on failure time; defaults to 24 hours before `before`. |
+| `--before <BEFORE>` | Inclusive upper bound, normally the Agents activity response's generated_at. |
+| `--limit <LIMIT>` |  |
+| `--offset <OFFSET>` |  |
+
+Example:
+
+```bash
+# Find an agent's failed turns, including sessions that later recovered
+everruns agents failures list agent_01h9 --limit 20
+```
+
 ## agents github connect
 
 Start connecting an agent to GitHub through its own GitHub App. Returns `install` with a URL to open in a browser when the App exists, or `create_app` when GitHub must first create it, which needs the web UI (Agent > Integrations > Connect GitHub).
@@ -877,6 +903,26 @@ Example:
 ```bash
 # Check whether an agent's GitHub App is installed and on which account
 everruns agents github get --agent-id agent_01h9
+```
+
+## agents github use-everruns-app
+
+Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first.
+
+```bash
+everruns agents github use-everruns-app [OPTIONS] --agent-id <agent_id> --connection-id <connection_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier. |
+| `--connection-id <CONNECTION_ID>` | Required. Connection id of one of the org's linked installations, from the agent's GitHub status (`ever... |
+
+Example:
+
+```bash
+# Let an agent act as the Everruns app through the org's acme installation
+everruns agents github use-everruns-app --agent-id agent_01h9 --connection-id 0190f5a2-7c1e-7a3b-9d2e-4f5a6b7c8d9e --reason 'Use the shared app for the reviewer'
 ```
 
 ## agents health-checks get

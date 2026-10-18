@@ -1,7 +1,7 @@
 ---
 type: Test Case
 title: "TC001: Auto-Switch Organisation from Direct Resource Link"
-description: "Verify that following a direct link to a top-level resource (session, agent, app, harness, eval, agent identity) owned by an organisation the user is a member of but has **not** currently selected causes the UI to tra..."
+description: "Verify member-only organization switching from current resource detail links without revealing non-member resources."
 tags:
   - everruns
   - test-case
@@ -13,7 +13,7 @@ tags:
 ## Description
 
 Verify that following a direct link to a top-level resource (session, agent,
-app, harness, eval, agent identity) owned by an organisation the user is a
+harness, eval, virtual user) owned by an organisation the user is a
 member of but has **not** currently selected causes the UI to transparently
 switch to the owning org and render the resource — instead of showing a
 "not found" screen.
@@ -32,7 +32,7 @@ belongs to.
   **Org B**.
 - Org A has at least one visible session. Capture its ID (for example
   `session_019db85695a8785e87e8203109109343`) and its URL, e.g.
-  `/sessions/session_019db85695a8785e87e8203109109343/chat`.
+  `/sessions/session_019db85695a8785e87e8203109109343/trace`.
 - The browser's currently selected org (the `everruns_org` cookie + sidebar
   switcher) is **Org B** — NOT the owner of the captured session.
 
@@ -42,24 +42,23 @@ belongs to.
 |------------------------|------------------------------------------------------------|
 | Owning org             | Org A                                                      |
 | Currently selected org | Org B                                                      |
-| Direct link            | `/sessions/<session_id_owned_by_A>/chat`                   |
+| Direct link            | `/sessions/<session_id_owned_by_A>/trace`                   |
 | Expected result        | Page renders the session; sidebar shows Org A as selected. |
 
 ## Steps
 
 1. Confirm the sidebar org switcher shows **Org B** as current.
 2. Navigate the browser directly to the captured URL
-   `/sessions/<session_id_owned_by_A>/chat` (e.g. paste into the address bar
+   `/sessions/<session_id_owned_by_A>/trace` (e.g. paste into the address bar
    and press Enter, or click an external link that points there).
 3. Wait for the page to settle (loading skeleton disappears).
 
 ## Expected Result
 
 - The sidebar org switcher now shows **Org A** as the current organisation.
-- The session detail page renders normally — chat view, title, metadata are
-  all visible.
+- The read-only session Trace, title, and metadata render normally.
 - The URL in the address bar is unchanged (still the original
-  `/sessions/<id>/chat` — no redirect to `/sessions`).
+  `/sessions/<id>/trace` — no redirect to `/sessions`).
 - No "Session not found" error is displayed.
 - Opening DevTools → Network, the sequence of requests shows (order may vary
   slightly):
@@ -74,7 +73,7 @@ belongs to.
 The following variants verify the enumeration guarantee is preserved:
 
 1. **Unknown session ID** — navigate to
-   `/sessions/session_00000000000000000000000000000000/chat`. Expected: page
+   `/sessions/session_00000000000000000000000000000000/trace`. Expected: page
    shows "Session not found" and `GET /api/v1/resolve-org?id=...` returns
    **404**. No org switch occurs.
 2. **Session owned by a non-member org** — log in as a user who is NOT a
@@ -91,12 +90,11 @@ Repeat step 2 with each of the following direct URL shapes to confirm the
 fallback works for every top-level entity with a detail route. Each case
 should switch to the owning org and render the detail view — the fallback is
 installed once in the shared CRUD detail hook (`useDetail`) and in
-`useSession` / `useAgentIdentity`, so all of the below should behave
+`useSession` / `useVirtualUser`, so all of the below should behave
 identically.
 
 - `/agents/<agent_id>`
-- `/agent-identities/<identity_id>`
-- `/apps/<app_id>`
+- `/virtual-users/<identity_id>`
 - `/evals/<eval_id>`
 - `/harnesses/<harness_id>`
-- `/sessions/<session_id>/chat`
+- `/sessions/<session_id>/trace`

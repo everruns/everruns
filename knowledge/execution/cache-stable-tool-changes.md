@@ -138,6 +138,25 @@ in the first place (see [OpenAI](#openai-responses)). And hosted tool search
 does not make MCP tools that arrive later cheap: they still have to arrive
 through `additional_tools`, not `tools`.
 
+### Gemini implicit-cache contract (2026-10-12, EVE-1258)
+
+Google's [GenerateContent caching contract](https://ai.google.dev/gemini-api/docs/generate-content/caching)
+does not guarantee implicit-cache savings for an individual request. Six
+bounded synthetic calls confirmed that byte-identical requests can report
+no hit or a partial hit below the former 80% live-test gate. An appended
+conversation with unchanged system and tools also reported no hit. These
+probes establish the limit of the metric, not the correctness of every
+runtime request.
+
+The owned correctness contract is preserving the serialized system and tool
+definitions during a held removal while refusing to execute the removed
+tool. The [Gemini loopback contract test](../../crates/llm-tests/tests/tool_search_test/gemini_tool_removal_wire.rs)
+exercises both through the runtime and driver with cache usage omitted. The
+[live removal test](../../crates/llm-tests/tests/tool_search_test.rs) still checks
+successful turns, the arithmetic answer, deferred removal, and cache-eligible
+input size; it reports Gemini cache usage without imposing a per-call hit
+percentage. The existing OpenRouter percentage gate remains.
+
 ## State of the art
 
 | Who | What they do |
@@ -169,7 +188,7 @@ Context is rebuilt on every reasoning step (`crates/core/src/runtime_context.rs`
 | MCP `tools/list`: scoped servers without a preset are fetched live on every turn load; a failed fetch silently drops the server's tools; order is whatever the server returns | `crates/server/src/domains/mcp_servers/scoped_mcp/`, `crates/core/src/host/mcp_cache.rs` | live, or caches with TTL |
 | Host tools that come and go (`report_result` with child tasks, coordinator and worker tools, MCP resource tools) | `crates/capabilities/src/host_extension.rs`, `crates/core/src/host/host/reason_surface.rs` | recomputed each step |
 | AG-UI frontend tools replaced per run (order-sensitive compare) | `crates/server/src/channels/ag_ui/mod.rs` | session record |
-| Capability switched on or off in a session (yolop `/ext`, in-process overlay), agent or harness edits, a model override that changes `auto_tool_search` resolution | `crates/core/src/host/runtime.rs` | session and agent records |
+| Capability switched on or off in a session (yolop `/ext`, in-process overlay), agent or harness edits, a model override that changes `auto_tool_search` resolution | `crates/core/src/host/runtime/mod.rs` | session and agent records |
 | `tools_in_shell` and Lua code mode rewrite the `bash` / `lua` description with the hidden-tool catalogue | `crates/integrations/src/bashkit/tools_in_shell/`, `lua/code_mode.rs` | recomputed each step |
 | Hosted Claude search switches on when the count crosses the threshold, which reshapes `tools` | `crates/drivers/drivers/src/anthropic/driver.rs` | recomputed each step |
 
@@ -364,7 +383,9 @@ therefore rewrites the system prompt.
   and that the fallback produces exactly today's requests elsewhere.
 - Live `llm-tests` cases per provider asserting the cached share stays above
   90% across a reveal and an MCP attach, which is the gate for setting the
-  profile flag.
+  profile flag. This is a performance adoption bar for inline support, not a
+  guaranteed hit rate for Gemini's best-effort implicit caching in fallback
+  mode; its owned correctness gate is the loopback contract above.
 
 ## Plan
 
@@ -417,9 +438,48 @@ Each step is one PR and leaves `main` working.
    mid-session ride in the change's `note` instead of the system prompt;
    compaction and trimming re-baseline; the infinity-context notice and
    compaction summary stop being folded into top-level `system`.
+   Done: a baseline entry also records the system prompt
+   (`ToolChanges::system_prompt`); later parts (split on blank lines, the
+   `<system-prompt>` wrapper ignored) that a capability adds become the entry's
+   `note`, and inline requests send the epoch's prompt
+   (`LlmCallConfig::system_prompt_baseline`). A part that changes or
+   disappears sends the current prompt, as before. Live
+   (`test_prompt_text_added_mid_session_keeps_prompt_cache`, how-to inserted
+   ahead of 2-4k tokens of capability text): Sonnet 5.5 read 4405 of 4551,
+   GPT-6 Luna 2478 of 2481, and both followed the added text; without the
+   prompt baseline they read 714 and 0. Compaction and trimming needed
+   nothing: a checkpoint cuts the stored entries, so the next request records
+   a new baseline, and a trimmed entry withholds the baseline (fallback). The
+   infinity-context notice already sits after the anchored head, so it stays a
+   mid-conversation message; only the compaction summary folds into `system`,
+   once per compaction, which rewrites the prefix anyway.
 7. **yolop** adopts it (its reveal-gated memory how-to moves into the `note`).
 8. **Fallback experiments**: cold-moment batching, then the schema-in-result
-   eval.
+   eval. Done for batching, removals only: on a model with neither inline
+   parameter, a request whose only change is a removal holds it while the
+   last answer is younger than the cache lifetime (the 1h retention, else 5
+   minutes on Anthropic and Bedrock, else 30; overstating only holds longer).
+   The removal is not recorded, the held definitions go back into `tools` in
+   their declared places, and a call to one fails like any undeclared tool
+   because the act step runs only the agent's current tools. It goes out with
+   the next addition, redefinition or note, or after the idle gap; compaction
+   and a model switch re-baseline anyway. Redefinitions are not held: a stale
+   schema would make calls fail. Live
+   (`test_tool_removal_waits_for_a_cold_cache`, OpenRouter GPT-6 Luna): the
+   call after a capability is switched off read 2646 of 2649 cached tokens,
+   0 without the hold. Only first-party Anthropic and OpenAI count as inline:
+   a gateway serving the same model resolves to the same profile but sends the
+   full tool list.
+   Done for schema-in-result, kept opt-in: `tool_search` config
+   `{"reveal": "in_result"}` keeps the stub listed and the model calls from the
+   search result's schema; the act step validates every call against the
+   registered schema either way. The study (`evals/tool-search-reveal`, 8
+   cases x 3 trials per arm, OpenRouter) found no loss on GPT-6 Luna (24/24
+   correct, 24/24 first try in both arms) or Mistral Large 4 (24/24 correct in
+   both; first try 17/24 redefine, 21/24 in_result), but Muse Spark 1.3 fell
+   from 24/24 to 0/24: against a property-less stub it sends every number,
+   boolean and object as a JSON string and never recovers. A per-model default
+   would need a profile flag; until someone asks, agents opt in.
 
 ## Open questions
 

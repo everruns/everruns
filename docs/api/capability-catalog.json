@@ -138,6 +138,21 @@
       "tools": []
     },
     {
+      "category": "Session",
+      "dependencies": [],
+      "docs_slug": "automatic-session-titles",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "automatic_session_titles",
+      "name": "Automatic session titles",
+      "status": "available",
+      "tools": []
+    },
+    {
       "category": "Execution",
       "dependencies": [],
       "docs_slug": null,
@@ -573,32 +588,6 @@
         "daytona_manage_sandbox",
         "daytona_read_file",
         "daytona_write_file"
-      ]
-    },
-    {
-      "category": "Sandboxes",
-      "dependencies": [
-        "session_storage"
-      ],
-      "docs_slug": null,
-      "feature_flag": null,
-      "features": [
-        "leased_resources"
-      ],
-      "grades": [
-        "prod",
-        "dev"
-      ],
-      "id": "deno",
-      "name": "Deno Sandboxes",
-      "status": "available",
-      "tools": [
-        "deno_create_sandbox",
-        "deno_exec",
-        "deno_list_sandboxes",
-        "deno_manage_sandbox",
-        "deno_read_file",
-        "deno_write_file"
       ]
     },
     {
@@ -1126,6 +1115,7 @@
     {
       "category": "Platform",
       "dependencies": [
+        "skills",
         "session_file_system"
       ],
       "docs_slug": "platform",

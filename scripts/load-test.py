@@ -22,6 +22,7 @@ and per scenario, plus errors and sessions that never went idle.
 
 import argparse
 import asyncio
+from contextlib import AsyncExitStack
 import json
 import os
 import random
@@ -29,7 +30,12 @@ import time
 
 import httpx
 
-DEFAULT_MIX = "chat-short=5,research-3-tools=3,long-answer=1,thinking=1"
+DEFAULT_MIX = "chat-short=5,file-research=3,long-answer=1,thinking=1"
+
+RESEARCH_NOTES = "# Research notes\n\n" + (
+    "The runtime stores session events durably, streams replies, and distributes turns across workers.\n"
+    * 40
+)
 
 
 def parse_mix(text):
@@ -50,9 +56,18 @@ def pct(values, p):
 def summary(rows):
     out = {"turns": len(rows)}
     for key in ("turn", "first", "post"):
-        for p in (50, 90, 99):
-            out[f"{key}_p{p}"] = pct([r[key] for r in rows if r[key] is not None], p)
+        values = [r[key] for r in rows if r[key] is not None]
+        for p in (50, 90, 95, 99):
+            out[f"{key}_p{p}"] = pct(values, p)
+        out[f"{key}_avg"] = round(sum(values) / len(values), 2) if values else None
     return out
+
+
+async def validate_simulated_model(client, api, model_id):
+    model = (await client.get(f"{api}/v1/models/{model_id}")).raise_for_status().json()
+    provider = (await client.get(f"{api}/v1/providers/{model['provider_id']}")).raise_for_status().json()
+    if provider["provider_type"] != "llmsim" or not model["enabled"]:
+        raise ValueError("Load testing requires an enabled llmsim model")
 
 
 class Session:
@@ -62,6 +77,8 @@ class Session:
         self.client, self.api, self.id = client, api, session_id
         self.events = asyncio.Queue()
         self.last_id = None
+        self.connected = asyncio.Event()
+        self.stream_errors = 0
         self.reader = asyncio.create_task(self.read())
 
     async def read(self):
@@ -72,6 +89,8 @@ class Session:
                 async with self.client.stream(
                     "GET", f"{self.api}/v1/sessions/{self.id}/sse", params=params, timeout=None
                 ) as resp:
+                    resp.raise_for_status()
+                    self.connected.set()
                     event = None
                     async for line in resp.aiter_lines():
                         if line.startswith("id:"):
@@ -82,7 +101,7 @@ class Session:
                             await self.events.put((event, time.perf_counter()))
                             event = None
             except (httpx.HTTPError, asyncio.TimeoutError):
-                pass
+                self.stream_errors += 1
             await asyncio.sleep(0.5)
 
     async def turn(self, text, timeout):
@@ -113,11 +132,13 @@ async def run(args):
         headers["Authorization"] = "Bearer " + os.environ["EVERRUNS_API_KEY"]
     if os.environ.get("EVERRUNS_ORG_ID"):
         headers["X-Org-Id"] = os.environ["EVERRUNS_ORG_ID"]
-    limits = httpx.Limits(max_connections=args.sessions * 2 + 20)
-    rows, errors, stuck = [], [], []
+    rows, errors, stuck, sessions = [], [], [], []
     ready, go = [0], asyncio.Event()
 
-    async with httpx.AsyncClient(timeout=120, limits=limits, headers=headers) as client:
+    async with AsyncExitStack() as stack:
+        client = await stack.enter_async_context(httpx.AsyncClient(timeout=120, headers=headers))
+        # Fail before creating work if the supplied model can call a real provider.
+        await validate_simulated_model(client, args.api, args.model)
         harnesses = (await client.get(f"{args.api}/v1/harnesses")).raise_for_status().json()["data"]
         harness = next((h["id"] for h in harnesses if h.get("name") == args.harness), harnesses[0]["id"])
         agent = (
@@ -131,7 +152,17 @@ async def run(args):
             )
         ).raise_for_status().json()["id"]
 
+        # httpcore assigns queued requests by scanning the pool. A single pool
+        # with thousands of SSE connections stalls the generator's event loop
+        # during bursts, inflating client latency and delaying metrics samples.
+        shard_size = 100
+        clients = [await stack.enter_async_context(httpx.AsyncClient(
+            timeout=120, headers=headers,
+            limits=httpx.Limits(max_connections=shard_size * 2 + 20),
+        )) for _ in range((args.sessions + shard_size - 1) // shard_size)]
+
         async def one(i):
+            client = clients[i // shard_size]
             rng = random.Random(f"{args.seed}-{i}")
             session = None
             try:
@@ -140,8 +171,17 @@ async def run(args):
                     f"{args.api}/v1/sessions",
                     json={"harness_id": harness, "agent_id": agent, "model_id": args.model, "title": f"load test {i}"},
                 )
-                session = Session(client, args.api, created.raise_for_status().json()["id"])
-                await asyncio.sleep(0.3)
+                session_id = created.raise_for_status().json()["id"]
+                if "file-research" in names:
+                    # Seed each session's own VFS before timing turns. Explicit
+                    # local tools avoid random tools with invalid or external inputs.
+                    (await client.post(
+                        f"{args.api}/v1/sessions/{session_id}/fs/load-test/research.md",
+                        json={"content": RESEARCH_NOTES, "encoding": "text"},
+                    )).raise_for_status()
+                session = Session(client, args.api, session_id)
+                sessions.append(session)
+                await asyncio.wait_for(session.connected.wait(), args.turn_timeout)
             except Exception as e:  # noqa: BLE001 - report every failure kind
                 errors.append(f"create: {e!r}"[:200])
             ready[0] += 1
@@ -149,6 +189,9 @@ async def run(args):
                 go.set()
             await go.wait()
             if session is None:
+                return
+            if not session.connected.is_set():
+                session.reader.cancel()
                 return
             for m in range(args.messages):
                 name = rng.choices(names, weights)[0]
@@ -168,8 +211,10 @@ async def run(args):
         await go.wait()
         started = time.perf_counter()
         await asyncio.gather(*tasks)
+        await asyncio.gather(*(session.reader for session in sessions), return_exceptions=True)
         elapsed = time.perf_counter() - started
 
+    passed = len(rows) == args.sessions * args.messages and not errors and not stuck
     print(
         json.dumps(
             {
@@ -178,14 +223,18 @@ async def run(args):
                 "mix": args.mix,
                 "turns_per_s": round(len(rows) / elapsed, 2),
                 "errors": len(errors),
+                "passed": passed,
                 "error_sample": errors[:3],
                 "stuck": stuck[:5],
+                "stuck_count": len(stuck),
+                "stream_errors": sum(session.stream_errors for session in sessions),
                 **summary(rows),
                 "by_scenario": {n: summary([r for r in rows if r["scenario"] == n]) for n in names},
             },
             indent=2,
         )
     )
+    return passed
 
 
 def main():
@@ -201,7 +250,7 @@ def main():
     p.add_argument("--harness", default="generic")
     p.add_argument("--seed", default="0")
     p.add_argument("--turn-timeout", type=float, default=120)
-    asyncio.run(run(p.parse_args()))
+    raise SystemExit(0 if asyncio.run(run(p.parse_args())) else 1)
 
 
 if __name__ == "__main__":

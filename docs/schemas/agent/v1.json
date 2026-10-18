@@ -230,6 +230,16 @@
           "minimum": 1,
           "maximum": 1000
         },
+        "max_output_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32",
+          "description": "Ceiling on output tokens per model response. Omission keeps the provider default.",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
         "mcpServers": {
           "type": "object",
           "description": "Named scoped MCP definitions. Credential placeholders require explicit host bindings.",

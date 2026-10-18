@@ -504,6 +504,7 @@ impl SessionService {
             locale: row.locale,
             preview: None,        // Populated separately in list()
             output_preview: None, // Populated separately in list()
+            last_message_at: row.last_message_at,
             tags: row.tags,
             model_id: row.model_id,
             capabilities,
@@ -524,6 +525,7 @@ impl SessionService {
                 row.last_turn_status.as_deref(),
             ),
             run_summary: row.run_summary.clone(),
+            last_turn_status: row.last_turn_status,
             created_at: row.created_at,
             updated_at: row.updated_at,
             started_at: row.started_at,

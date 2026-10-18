@@ -1,0 +1,8 @@
+flowchart LR
+  accTitle: Durable Object authority
+  accDescr: A Framework Engine admits input to a Durable Object, whose alarm activates a native or Wasm Engine executor. The executor writes fenced journal and state back to the object, and runs the shared Everruns runtime with providers and tools.
+  A[Framework Engine / Session] -->|Admit input| D[Durable Object]
+  D -->|Alarm activation| E[Native or Wasm Engine executor]
+  E -->|Fenced journal and state| D
+  E --> R[Shared Everruns runtime]
+  R --> T[Providers and tools]

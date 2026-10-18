@@ -4,6 +4,7 @@
 // re-exported here, so callers name them as `crate::storage::*`.
 
 mod agent_activity;
+pub use sessions::failures::{AgentFailureTotals, FailedSessionRow};
 mod agent_channels;
 pub use agent_channels::conversion::{
     ApiEndpointChannelRow, ConvertedApiChannelRow, LockedApiEndpointChannel,
@@ -34,6 +35,7 @@ pub use budgets::rows::*;
 mod compaction_checkpoints;
 pub use compaction_checkpoints::rows::*;
 mod virtual_user_connections;
+pub use virtual_user_connections::github_everruns_app::EverrunsAppOrgLink;
 pub use virtual_user_connections::rows::*;
 mod virtual_users;
 pub use advisory_locks::ADVISORY_LOCK_WAIT;
@@ -81,7 +83,9 @@ mod message_feedback;
 pub use message_feedback::rows::*;
 mod memory;
 pub use memory::rows::*;
+mod monitoring;
 mod notifications;
+pub use monitoring::*;
 pub use notifications::rows::*;
 mod oauth_grants;
 pub use oauth_grants::OAUTH_GRANT_ACCESS_READ_AND_RUN;

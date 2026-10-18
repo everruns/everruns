@@ -13,6 +13,7 @@ import type { FeatureFlags } from "@/lib/api/types";
 import { useOrg } from "@/providers/org-provider";
 
 const DEFAULT_FLAGS: FeatureFlags = {
+  monitoring: false,
   chat_threads: false,
   evals: false,
   skills: false,
@@ -59,6 +60,7 @@ function FeatureFlagsLoader({ children }: { children: ReactNode }) {
       ...(activeQuery.data ?? DEFAULT_FLAGS),
       // Deployment availability is not adoption: only the org-effective flag enables this UI.
       chat_threads: !!orgId && (activeQuery.data?.chat_threads ?? false),
+      monitoring: !!orgId && (activeQuery.data?.monitoring ?? false),
     },
     isLoading: activeQuery.isLoading,
   };

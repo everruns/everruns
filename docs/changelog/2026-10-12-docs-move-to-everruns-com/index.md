@@ -6,6 +6,7 @@ kind: improvement
 significance: notable
 products: [cloud, platform, framework]
 surfaces: [agent]
+release: "0.48.0"
 links:
   docs: [/getting-started/use-in-ai-tools/]
   prs: [everruns/everruns#4596]

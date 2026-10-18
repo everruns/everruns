@@ -105,6 +105,8 @@ pub struct AgentActivityTotals {
 #[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
 pub struct AgentActivityOverview {
     pub generated_at: DateTime<Utc>,
+    /// Exact exclusive lower bound of the run and failure window.
+    pub window_start: DateTime<Utc>,
     /// Hours covered by `AgentActivity.hourly`.
     pub hours: u32,
     /// Days covered by `ChannelActivity.daily`.
@@ -210,6 +212,7 @@ pub fn build_overview(
         .filter(|agent| {
             agent.running_sessions > 0
                 || agent.runs > 0
+                || agent.failed > 0
                 || agent.last_turn_at.is_some()
                 || !agent.triggers.is_empty()
         })
@@ -226,6 +229,7 @@ pub fn build_overview(
 
     AgentActivityOverview {
         generated_at: now,
+        window_start: now - chrono::Duration::hours(i64::from(AGENT_ACTIVITY_HOURS)),
         hours: hours as u32,
         days: days as u32,
         totals,

@@ -47,6 +47,13 @@ the absolute `resets_at` unix timestamp as an `error_fields` value for clients
 to localize, and `is_transient_error_message` treats it as non-transient so the
 human-readable message surfaces immediately instead of after pointless retries.
 
+OpenRouter's daily free-model cap is also a usage limit. Recognize its explicit
+`openrouter_free_tier_daily` source and legacy `free-models-per-day` marker;
+minute caps and upstream shared-pool throttles stay transient. Its embedded
+`X-RateLimit-Reset` header is an absolute timestamp in milliseconds and becomes
+the same reset field used by other usage limits. Chat, Responses, and compaction
+requests stop short retries when the body reports an exhausted usage limit.
+
 Provider account attestation gates are a fourth case, `provider_attestation_required`
 (EVE-952). OpenRouter refuses some models with a `403` until the account completes a
 confirmation such as 18+ age verification; by status alone that is indistinguishable

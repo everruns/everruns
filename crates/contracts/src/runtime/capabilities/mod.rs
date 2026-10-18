@@ -116,7 +116,7 @@ pub const AGENT_RUN_KEY_PREFIX: &str = "agent_run:";
 /// KV key prefix for durable tool-approval decisions (EVE-1140). Owned by the
 /// `tool_approval` capability in `everruns_contracts::runtime::builtins`; defined here so the
 /// session-storage internal-prefix reservation holds without enabling `builtins`.
-pub const TOOL_APPROVAL_KV_PREFIX: &str = "tool_approval/";
+pub use crate::tool_approval_types::TOOL_APPROVAL_KV_PREFIX;
 /// KV key prefix for a person's consent to an MCP URL mode elicitation
 /// (EVE-1141). Owned by the MCP client crate; defined here so
 /// the session-storage internal-prefix reservation holds without that crate.
@@ -187,6 +187,9 @@ pub struct ToolDisclosure {
     /// Tools whose full schema the model loaded. An entry ending in `__` is a
     /// tool-name prefix covering every tool of a revealed MCP server.
     pub revealed: std::collections::BTreeSet<String>,
+    /// Failed known tool calls need authoritative schemas for recovery,
+    /// including when ordinary search reveals stay only in the result.
+    pub failed: std::collections::BTreeSet<String>,
 }
 
 impl SystemPromptContext {

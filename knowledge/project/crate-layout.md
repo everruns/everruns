@@ -25,8 +25,7 @@ Release-by-release migration history belongs in the changelog.
 - Control-plane records (agent, harness, session rows, organizations, billing, audit)
   exist only in `crates/server/`.
 - Only the server, `everruns-durable`, and the `everruns` facade open application
-  database connections. `everruns-pg-embedded` may create and drop isolated DEV_MODE
-  and test databases, but does not read application tables.
+  database connections. Server storage also owns isolated DEV_MODE and test databases.
 - A library host (yolop, `everruns-serve`, a user's app) builds against `everruns` or
   `everruns-core` plus `everruns-contracts`, and never sees a control-plane type.
 - Integrations implement contracts and do not depend on core or platform crates.
@@ -47,7 +46,7 @@ layer, never upward.
 | | `everruns-capabilities` | hosted capabilities (subagents, session tasks, background runs, knowledge, container sandbox) | yes |
 | | `everruns-drivers` (+ `everruns-llmsim`) | model drivers, one feature per vendor | yes |
 | `crates/integrations/` | `everruns-integrations` | maintained integrations, selected by feature | yes |
-| `crates/integrations-experimental/` | `everruns-integrations-experimental` | Deno and Sprites, selected by feature | yes |
+| `crates/integrations-experimental/` | `everruns-integrations-experimental` | Sprites, selected by feature | yes |
 | | `everruns-durable` | durable workflow primitives and their own Postgres store | yes |
 | Foundation | `everruns-contracts` | provider and capability SPIs, model profiles, typed ids, runtime view types, connector, store, sandbox, and vector-store traits; the runtime SPI (capability, tool, tool context, session, message, event) behind its `runtime` feature | yes |
 
@@ -98,9 +97,7 @@ the store only through the control plane's gRPC service.
 [`check-database-driver-isolation.sh`](../../scripts/lib/check-database-driver-isolation.sh)
 rejects normal and build dependencies on database drivers outside these owners,
 including optional and renamed edges. Contracts' optional typed-id codecs are the
-only exception and cannot construct a connection. `everruns-pg-embedded`, the
-server's throwaway DEV_MODE and test cluster, may connect to create and drop databases;
-it reads no tables. Embedded hosts (the facade's `local` feature, the serve
+only exception and cannot construct a connection. Embedded hosts (the facade's `local` feature, the serve
 hosts) keep their own schemas and shared query callbacks, but open SQLite handles
 through `everruns::sqlite`, behind the facade's `local` feature. It used to be
 durable's `sqlite` module; owning it in durable made the facade's `local` feature

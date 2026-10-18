@@ -839,6 +839,26 @@ fn test_gemini_unknown_model() {
     assert!(profile.is_none());
 }
 
+#[test]
+fn argon_profile_allows_long_decode_and_exposes_only_supported_thinking_levels() {
+    let profile = get_model_profile("gemini", "gemini-4-argon").unwrap();
+    assert_eq!(profile.name, "Gemini 4 Argon");
+    assert!(!profile.temperature);
+    assert!(profile.reasoning && profile.tool_call && profile.attachment);
+    let limits = profile.limits.unwrap();
+    assert_eq!((limits.context, limits.output), (1_048_576, 1_048_576));
+    let effort = profile.reasoning_effort.unwrap();
+    assert_eq!(effort.default, ReasoningEffort::Medium);
+    assert_eq!(
+        effort.values.iter().map(|v| v.value).collect::<Vec<_>>(),
+        vec![
+            ReasoningEffort::Low,
+            ReasoningEffort::Medium,
+            ReasoningEffort::High
+        ]
+    );
+}
+
 // Newly added flagship model profiles
 
 // Claude `[1m]` twin tests live in `profiles_claude_tests.rs`.

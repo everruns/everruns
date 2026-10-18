@@ -78,6 +78,9 @@ pub struct AgentRow {
     /// Request-level parallel tool calling preference (EVE-598)
     #[sqlx(default)]
     pub parallel_tool_calls: Option<bool>,
+    /// Per-response output token ceiling (`max_tokens`)
+    #[sqlx(default)]
+    pub max_output_tokens: Option<i32>,
     /// How the agent talks: `direct` or `explicit`.
     #[sqlx(default)]
     pub communication: String,
@@ -137,12 +140,49 @@ pub struct CreateAgentRow {
     pub max_iterations: Option<i32>,
     /// Request-level parallel tool calling preference (EVE-598)
     pub parallel_tool_calls: Option<bool>,
+    /// Per-response output token ceiling (`max_tokens`)
+    pub max_output_tokens: Option<i32>,
     /// How the agent talks.
     pub communication: Communication,
     pub environments: Option<serde_json::Value>,
     /// Platform-supplied agent. Only org bootstrap sets this; every API-facing
     /// creation path leaves it false.
     pub is_built_in: bool,
+}
+
+impl CreateAgentRow {
+    /// A row with identity, prompt and harness set and every optional field
+    /// empty; callers override the rest with struct update syntax.
+    pub fn new(
+        public_id: impl Into<String>,
+        name: impl Into<String>,
+        system_prompt: impl Into<String>,
+        harness_id: HarnessId,
+    ) -> Self {
+        Self {
+            public_id: public_id.into(),
+            name: name.into(),
+            display_name: None,
+            description: None,
+            intro_markdown: None,
+            short_description: None,
+            starters: serde_json::json!([]),
+            system_prompt: system_prompt.into(),
+            default_model_id: None,
+            harness_id,
+            tags: Vec::new(),
+            initial_files: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            max_output_tokens: None,
+            communication: Communication::default(),
+            environments: None,
+            is_built_in: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -176,6 +216,8 @@ pub struct UpdateAgent {
     /// Request-level parallel tool calling preference (EVE-598).
     /// None = don't change, Some(None) = set to NULL, Some(Some(v)) = set to v
     pub parallel_tool_calls: Option<Option<bool>>,
+    /// None = don't change, Some(None) = clear, Some(Some(v)) = set to v
+    pub max_output_tokens: Option<Option<i32>>,
     /// How the agent talks. None = don't change.
     pub communication: Option<Communication>,
     pub environments: Option<Option<serde_json::Value>>,
@@ -273,6 +315,9 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_contracts::Capabil
             .and_then(|v| serde_json::from_value(v).ok()),
         max_iterations: crate::max_iterations::from_db(row.max_iterations),
         parallel_tool_calls: row.parallel_tool_calls,
+        max_output_tokens: crate::domains::agents::max_output_tokens::from_db(
+            row.max_output_tokens,
+        ),
         communication: Communication::from_str_opt(&row.communication).unwrap_or_default(),
         tools: serde_json::from_value(row.tools).unwrap_or_default(),
         status: AgentStatus::from(row.status.as_str()),

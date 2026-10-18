@@ -294,6 +294,10 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("GET", "/v1/durable/executions/{execution_id}", Read),
     ("GET", "/v1/durable/health", Read),
     ("GET", "/v1/durable/metrics/timeseries", Read),
+    // Diagnostics retain the previous fail-closed behavior for scoped PATs.
+    ("GET", "/v1/durable/monitoring", Never),
+    ("GET", "/v1/durable/monitoring/actors", Never),
+    ("GET", "/v1/durable/monitoring/actors/{session_id}", Never),
     ("GET", "/v1/durable/schedules", Read),
     ("POST", "/v1/durable/schedules", Write),
     ("DELETE", "/v1/durable/schedules/{schedule_id}", Write),
@@ -450,6 +454,11 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("DELETE", "/v1/models/{id}", Write),
     ("GET", "/v1/models/{id}", Read),
     ("PATCH", "/v1/models/{id}", Write),
+    // Organization adoption does not expand a credential's scope.
+    ("GET", "/v1/monitoring", Never),
+    ("GET", "/v1/monitoring/actors", Never),
+    ("GET", "/v1/monitoring/actors/{session_id}", Never),
+    ("GET", "/v1/monitoring/config", Never),
     ("GET", "/v1/orgs", Read),
     ("POST", "/v1/orgs", Never),
     ("GET", "/v1/orgs/{org}", Read),
@@ -459,6 +468,14 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("GET", "/v1/orgs/{org}/feature-flags/platform", Read),
     ("PATCH", "/v1/orgs/{org}/feature-flags/platform", Write),
     ("GET", "/v1/orgs/{org}/feature-flags/settings", Read),
+    // Linking the shared GitHub App is a browser install flow, like connect.
+    ("GET", "/v1/orgs/{org}/github/everruns-app", Read),
+    ("GET", "/v1/orgs/{org}/github/everruns-app/authorize", Never),
+    (
+        "DELETE",
+        "/v1/orgs/{org}/github/everruns-app/{connection_id}",
+        Write,
+    ),
     ("POST", "/v1/orgs/{org}/onboarding/complete", Write),
     ("GET", "/v1/orgs/{org}/organization-connections", Read),
     (
@@ -769,7 +786,6 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ),
     ("GET", "/v1/virtual-users/{identity_id}/sessions", Read),
     ("GET", "/v1/workspaces", Read),
-    ("POST", "/v1/workspaces", Write),
     ("DELETE", "/v1/workspaces/{workspace_id}", Write),
     ("GET", "/v1/workspaces/{workspace_id}", Read),
     ("PATCH", "/v1/workspaces/{workspace_id}", Write),
@@ -862,6 +878,8 @@ pub const UNDOCUMENTED_ROUTES: &[(&str, &str, RouteAccess)] = &[
     ),
     ("GET", "/v1/slack/install", Never),
     ("POST", "/v1/slack/workspaces", Never),
+    ("POST", "/v1/slack/workspaces/oauth", Never),
+    ("GET", "/v1/slack/workspaces/oauth/callback", Never),
     ("POST", "/v1/channels/{channel_id}/slack/install", Never),
     ("POST", "/v1/e/{channel_id}/slack/install", Never),
     (

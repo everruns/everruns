@@ -52,6 +52,7 @@ use crate::storage::{EncryptionService, StorageBackend};
 pub mod agent_card;
 pub use push::A2aPushListener;
 pub(crate) mod ask_user;
+mod files;
 mod http_json;
 mod pact;
 mod pact_delegated;
@@ -155,6 +156,18 @@ impl ChannelA2aState {
             replay_store,
             frontend_url,
         }
+    }
+
+    /// Download the file parts messages link to through `egress`.
+    pub fn with_egress(mut self, egress: Arc<dyn everruns_core::EgressService>) -> Self {
+        self.channels = crate::channels::host::ServerChannels::with_egress(
+            self.db.clone(),
+            self.encryption.clone(),
+            self.session_service.clone(),
+            self.message_service.clone(),
+            egress,
+        );
+        self
     }
 }
 
@@ -681,6 +694,8 @@ fn session_belongs_to_a2a_channel(
 /// `messageId`, and `contextId` we propagate through the session template.
 struct ParsedMessage {
     text: String,
+    /// File parts, for the channel host's attachment intake.
+    files: Vec<everruns_contracts::runtime::channel::InboundAttachment>,
     role: Option<String>,
     message_id: Option<String>,
     context_id: Option<String>,
@@ -725,11 +740,15 @@ fn parse_message_params(params: &Value) -> Result<ParsedMessage, &'static str> {
     let answer = ask_user::parse_ask_user_answer_part(&parts).map_err(
         |_| "Invalid params: message.parts carries a malformed everruns/ask_user_answer data part",
     )?;
-    if answer.is_none() && text.trim().is_empty() {
-        return Err("Invalid params: message.parts must contain at least one non-empty text part");
+    let files = files::file_attachments(&parts);
+    if answer.is_none() && text.trim().is_empty() && files.is_empty() {
+        return Err(
+            "Invalid params: message.parts must contain a non-empty text part or a file part",
+        );
     }
     Ok(ParsedMessage {
         text,
+        files,
         role: message
             .get("role")
             .and_then(Value::as_str)
@@ -812,6 +831,7 @@ async fn handle_message_send(
             channel_id: ctx.channel_id,
             params: parsed.params,
             text: parsed_msg.text,
+            files: parsed_msg.files,
             message_id: parsed_msg.message_id,
             task_id: Uuid::now_v7().to_string(),
             context_id: parsed_msg.context_id,
@@ -1066,15 +1086,14 @@ async fn cancel_a2a_session_turn(
     use everruns_core::events::{EventRequest, InputMessageData, TurnCancelledData};
     use everruns_core::message::RuntimeMessage;
 
-    // Best-effort cancel of the active workflow run. Errors are logged but
-    // not surfaced — the turn-cancelled event is what tasks/get keys off.
     // A worker running the turn records the cancel itself; see
-    // `crate::turns::ActorTurnBackend`.
+    // `crate::turns::ActorTurnBackend`. An error leaves that ownership intact.
     match state.message_service.runner().cancel(session_id).await {
         Ok(true) => return Ok(()),
         Ok(false) => {}
         Err(err) => {
             tracing::warn!(session_id = %session_id, error = %err, "A2A tasks/cancel: cancel failed");
+            return Err(err.into());
         }
     }
 
@@ -1182,6 +1201,7 @@ async fn handle_message_stream(
             channel_id: ctx.channel_id,
             params: parsed.params,
             text: parsed_msg.text,
+            files: parsed_msg.files,
             message_id: parsed_msg.message_id,
             // Request tracing only; the streamed task id is the session id.
             task_id: Uuid::now_v7().to_string(),

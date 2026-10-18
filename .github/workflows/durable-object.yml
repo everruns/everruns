@@ -1,0 +1,178 @@
+name: Durable Object Recovery
+
+on:
+  pull_request:
+    paths:
+      - 'crates/core/**'
+      - 'crates/contracts/**'
+      - 'crates/everruns/**'
+      - 'scripts/lib/check-session-hosting-boundary.py'
+      - 'crates/serve/**'
+      - 'crates/worker/**'
+      - 'examples/durable-object-agent/**'
+      - 'examples/celld-engine/**'
+      - 'examples/serve/celld/**'
+      - 'crates/serve-celld/**'
+      - 'crates/durable-object/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/durable-object.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'crates/core/**'
+      - 'crates/contracts/**'
+      - 'crates/everruns/**'
+      - 'scripts/lib/check-session-hosting-boundary.py'
+      - 'crates/serve/**'
+      - 'crates/worker/**'
+      - 'examples/durable-object-agent/**'
+      - 'examples/celld-engine/**'
+      - 'examples/serve/celld/**'
+      - 'crates/serve-celld/**'
+      - 'crates/durable-object/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/durable-object.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+      CARGO_INCREMENTAL: '0'
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: durable-object
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install pinned Worker toolchain
+        working-directory: crates/durable-object/worker
+        run: npm ci
+      - name: Test authority transactions and races
+        working-directory: crates/durable-object/worker
+        run: npm test
+      - name: Test Framework authority conformance on memory and SQLite
+        run: |
+          cargo test --locked -p everruns --no-default-features --features local,hosting-conformance --test hosted_sessions
+          cargo test --locked -p everruns --no-default-features --features local,hosting-conformance --test host hosting_conformance
+      - name: Test native Engine host adapters
+        run: |
+          python3 scripts/lib/check-session-hosting-boundary.py
+          cargo test --locked --manifest-path crates/durable-object/Cargo.toml
+      - name: Test ordinary serve registration and catalog reconstruction
+        run: cargo test --locked -p everruns-serve --lib execution_host_tests
+      - name: Test native executor crash recovery on workerd
+        working-directory: crates/durable-object/worker
+        run: npm run test:recovery
+      - name: Preserve native recovery failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: native-object-recovery
+          path: /tmp/everruns-object-recovery.*/authority.log
+          if-no-files-found: ignore
+
+  native-container-recovery:
+    # Match the qualification image's libc; a newer runner's linked binary
+    # cannot be assumed to run in an older runtime image.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CARGO_INCREMENTAL: '0'
+      WRANGLER_SEND_METRICS: 'false'
+      SERVE_TEST_CONTAINER_IMAGE: ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: durable-object-native-container
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install pinned celld qualification tools
+        run: |
+          npm ci --prefix crates/durable-object/worker
+          npm ci --prefix examples/serve/celld/worker
+          cargo install s3s-fs --version 0.14.1 --features binary --locked
+          curl --fail --location --retry 3 https://github.com/denoland/celld/releases/download/v0.6.2/celld-x86_64-unknown-linux-gnu.gz -o /tmp/celld.gz
+          echo 'ce0ee3552cc8d55dde3998dc3b1b0c8f547bbcb4bc803d2a94842368b047646c  /tmp/celld.gz' | sha256sum --check
+          gzip --decompress --stdout /tmp/celld.gz > "$HOME/.cargo/bin/celld"
+          chmod +x "$HOME/.cargo/bin/celld"
+          docker pull "$SERVE_TEST_CONTAINER_IMAGE"
+      - name: Build the ordinary serve application
+        run: cargo build --locked -p serve-example-celld
+      - name: Lose a native Engine container without client recovery traffic
+        run: node examples/serve/celld/worker/test/e2e.mjs
+      - name: Lose the replicated authority owner while native Engine executes
+        env:
+          CELLD_QUALIFY_NATIVE: '1'
+        run: node crates/durable-object/worker/test/qualify-celld.mjs
+      - name: Preserve native placement failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: native-container-object-recovery
+          path: |
+            /tmp/everruns-serve-celld-engine.*/*.log
+            /tmp/everruns-celld-qualification.*/*.log
+          if-no-files-found: ignore
+
+  isolate-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CARGO_INCREMENTAL: '0'
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: durable-object-wasm
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install pinned Worker and qualification tools
+        run: |
+          npm ci --prefix crates/durable-object/worker
+          cargo install wasm-bindgen-cli --version 0.2.129 --locked
+          cargo install s3s-fs --version 0.14.1 --features binary --locked
+          curl --fail --location --retry 3 https://github.com/denoland/celld/releases/download/v0.6.2/celld-x86_64-unknown-linux-gnu.gz -o /tmp/celld.gz
+          echo 'ce0ee3552cc8d55dde3998dc3b1b0c8f547bbcb4bc803d2a94842368b047646c  /tmp/celld.gz' | sha256sum --check
+          gzip --decompress --stdout /tmp/celld.gz > "$HOME/.cargo/bin/celld"
+          chmod +x "$HOME/.cargo/bin/celld"
+      - name: Check the portable public Framework facade
+        run: cargo check --locked -p everruns --no-default-features --features macros,capabilities,builtins --target wasm32-unknown-unknown
+      - name: Build the ordinary Framework application for Wasm
+        run: bash examples/durable-object-agent/build.sh
+      - name: Test isolate loss and autonomous alarm recovery on workerd
+        working-directory: crates/durable-object/worker
+        run: npm run test:isolate
+      - name: Test owner node loss in a three-node celld fleet
+        working-directory: crates/durable-object/worker
+        run: npm run test:celld
+      - name: Preserve isolate recovery failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: isolate-object-recovery
+          path: |
+            /tmp/everruns-wasm-recovery.*/workerd.log
+            /tmp/everruns-celld-qualification.*/*.log
+          if-no-files-found: ignore

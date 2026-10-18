@@ -6,6 +6,7 @@ kind: feature
 significance: major
 products: [platform, cloud]
 surfaces: [ui, api, agent]
+release: "0.48.0"
 links:
   docs: [/features/user-mcp-servers/, /capabilities/user-mcp-servers/]
   prs: [everruns/everruns#4295, everruns/everruns#4315, everruns/everruns#4343, everruns/everruns#4345, everruns/everruns#4381, everruns/everruns#4383, everruns/everruns#4496]
@@ -19,9 +20,17 @@ button lists a conversation's chat-only servers.
 
 **For agents:** with the **User MCP Servers** capability (`user_mcp`), each turn
 adds the enabled servers of the person chatting. Platform Chat has it on, with
-`manage` so it can add and connect servers mid-conversation after approval.
+`manage` so it can add and connect servers mid-conversation under the agent's
+approval policy.
 Personal servers load their tools on demand unless you turn off **Load tools on
 demand**.
 
 See [User MCP servers](/features/user-mcp-servers/), the
 [capability](/capabilities/user-mcp-servers/) and [#4295](https://github.com/everruns/everruns/pull/4295), [#4315](https://github.com/everruns/everruns/pull/4315), [#4345](https://github.com/everruns/everruns/pull/4345), [#4381](https://github.com/everruns/everruns/pull/4381), [#4496](https://github.com/everruns/everruns/pull/4496).
+
+## Update 2026-10-16
+
+Adding or enabling a personal MCP server now follows the agent's shared
+[Tool Approval](/capabilities/tool-approval/) mode. Normal and protective modes
+ask first; absent or off permits autonomous management. OAuth consent remains
+separate. See [the fix](/changelog/2026-10-16-user-mcp-approval-policy/).

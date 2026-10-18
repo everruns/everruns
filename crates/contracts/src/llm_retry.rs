@@ -204,7 +204,7 @@ impl RateLimitInfo {
 
     /// Parse rate limit info from Anthropic response headers
     #[cfg(feature = "http")]
-    pub fn from_anthropic_headers(headers: &reqwest::header::HeaderMap) -> Self {
+    pub fn from_anthropic_headers(headers: &http::header::HeaderMap) -> Self {
         let mut info = Self::default();
 
         // Try non-standard retry-after-ms header first (milliseconds)
@@ -265,7 +265,7 @@ impl RateLimitInfo {
 
     /// Parse rate limit info from OpenAI-compatible response headers.
     #[cfg(feature = "http")]
-    pub fn from_openai_headers(headers: &reqwest::header::HeaderMap) -> Self {
+    pub fn from_openai_headers(headers: &http::header::HeaderMap) -> Self {
         let mut info = Self::default();
 
         // Try non-standard retry-after-ms header first (milliseconds)
@@ -416,8 +416,8 @@ impl RetryMetadata {
 
 /// Check if an HTTP status code is a rate limit error (429)
 #[cfg(feature = "http")]
-pub fn is_rate_limit_status(status: reqwest::StatusCode) -> bool {
-    status == reqwest::StatusCode::TOO_MANY_REQUESTS
+pub fn is_rate_limit_status(status: http::StatusCode) -> bool {
+    status == http::StatusCode::TOO_MANY_REQUESTS
 }
 
 /// Check if an error is a transient error that should be retried.
@@ -428,7 +428,7 @@ pub fn is_rate_limit_status(status: reqwest::StatusCode) -> bool {
 /// - 429 Too Many Requests (rate limit)
 /// - 5xx Server errors (except 501 Not Implemented)
 #[cfg(feature = "http")]
-pub fn is_transient_error(status: reqwest::StatusCode) -> bool {
+pub fn is_transient_error(status: http::StatusCode) -> bool {
     is_transient_status(status.as_u16())
 }
 
@@ -452,14 +452,14 @@ fn is_transient_status(status: u16) -> bool {
 /// returning an HTTP status — so it must be retried alongside the 429/5xx path
 /// (see `is_transient_error`).
 #[cfg(feature = "http")]
-pub fn is_transient_send_error(err: &reqwest::Error) -> bool {
-    err.is_connect() || err.is_timeout() || err.is_request()
+pub fn is_transient_send_error(err: &impl crate::http_transport::TransportFailure) -> bool {
+    err.retry_send()
 }
 
 /// Build the user-facing message for a request that failed to send, noting how
 /// many retries were exhausted so it mirrors the HTTP-status error path.
 #[cfg(feature = "http")]
-pub fn send_error_message(err: &reqwest::Error, attempts: u32) -> String {
+pub fn send_error_message(err: &impl std::fmt::Display, attempts: u32) -> String {
     if attempts > 0 {
         format!("Failed to send request: {err} (after {attempts} retries)")
     } else {
@@ -542,10 +542,10 @@ pub fn is_transient_stream_error(error: &crate::driver_registry::LlmStreamError)
 /// that must propagate immediately (e.g. an auth-header failure) from a
 /// `reqwest` transport error that should be classified for transient retry.
 #[cfg(feature = "http")]
-pub enum SendOutcome {
+pub enum SendOutcome<E> {
     /// A `reqwest` send error (connection/TLS/timeout). Classified via
     /// [`is_transient_send_error`] for retry.
-    Send(reqwest::Error),
+    Send(E),
     /// A non-transport error that must abort the loop immediately (e.g. an
     /// `ProviderAuth` failure resolved per attempt).
     Fatal(AgentLoopError),
@@ -590,19 +590,21 @@ pub enum RetryDecision {
 /// On success returns the `reqwest::Response` plus the accumulated
 /// [`RetryMetadata`].
 #[cfg(feature = "http")]
-pub async fn retry_request<S, SFut, C, CFut, E>(
+pub async fn retry_request<S, SFut, C, CFut, E, R, T>(
     config: &LlmRetryConfig,
     driver_name: &str,
     mut send: S,
     mut classify: C,
     send_error: E,
-) -> Result<(reqwest::Response, RetryMetadata), AgentLoopError>
+) -> Result<(R, RetryMetadata), AgentLoopError>
 where
     S: FnMut() -> SFut,
-    SFut: Future<Output = Result<reqwest::Response, SendOutcome>>,
-    C: FnMut(reqwest::Response, u32, bool) -> CFut,
+    SFut: Future<Output = Result<R, SendOutcome<T>>>,
+    R: crate::http_transport::HttpStatus,
+    T: crate::http_transport::TransportFailure,
+    C: FnMut(R, u32, bool) -> CFut,
     CFut: Future<Output = RetryDecision>,
-    E: Fn(&reqwest::Error, u32) -> AgentLoopError,
+    E: Fn(&T, u32) -> AgentLoopError,
 {
     let mut retry_metadata = RetryMetadata::default();
     let mut retry_started_at = None;
@@ -633,7 +635,7 @@ where
             if remaining.is_zero() {
                 return Err(budget_exhausted(&retry_metadata));
             }
-            match tokio::time::timeout(remaining, send()).await {
+            match crate::rt::timeout(remaining, send()).await {
                 Ok(result) => result,
                 Err(_) => return Err(budget_exhausted(&retry_metadata)),
             }
@@ -665,7 +667,7 @@ where
                         "transient connection error sending request, retrying"
                     );
                     retry_metadata.record_retry(wait_duration, None);
-                    tokio::time::sleep(wait_duration).await;
+                    crate::rt::sleep(wait_duration).await;
                     continue;
                 }
                 if is_transient_send_error(&e) {
@@ -709,7 +711,7 @@ where
                     "rate limit or transient error, retrying"
                 );
                 retry_metadata.record_retry(wait, rate_limit_info);
-                tokio::time::sleep(wait).await;
+                crate::rt::sleep(wait).await;
                 continue;
             }
             RetryDecision::RetryNow => continue,
@@ -757,7 +759,7 @@ mod tests {
             ..Default::default()
         };
         let mut calls = 0;
-        let error = retry_request(
+        let error = retry_request::<_, _, _, _, _, reqwest::Response, reqwest::Error>(
             &config,
             "TestDriver",
             || {
@@ -941,23 +943,21 @@ mod tests {
     #[test]
     fn test_is_transient_error_matches_official_sdks() {
         // Official SDKs retry on: 408, 409, 429, 5xx (except 501)
-        assert!(is_transient_error(reqwest::StatusCode::REQUEST_TIMEOUT)); // 408
-        assert!(is_transient_error(reqwest::StatusCode::CONFLICT)); // 409
-        assert!(is_transient_error(reqwest::StatusCode::TOO_MANY_REQUESTS)); // 429
-        assert!(is_transient_error(
-            reqwest::StatusCode::INTERNAL_SERVER_ERROR
-        )); // 500
-        assert!(is_transient_error(reqwest::StatusCode::BAD_GATEWAY)); // 502
-        assert!(is_transient_error(reqwest::StatusCode::SERVICE_UNAVAILABLE)); // 503
-        assert!(is_transient_error(reqwest::StatusCode::GATEWAY_TIMEOUT)); // 504
+        assert!(is_transient_error(http::StatusCode::REQUEST_TIMEOUT)); // 408
+        assert!(is_transient_error(http::StatusCode::CONFLICT)); // 409
+        assert!(is_transient_error(http::StatusCode::TOO_MANY_REQUESTS)); // 429
+        assert!(is_transient_error(http::StatusCode::INTERNAL_SERVER_ERROR)); // 500
+        assert!(is_transient_error(http::StatusCode::BAD_GATEWAY)); // 502
+        assert!(is_transient_error(http::StatusCode::SERVICE_UNAVAILABLE)); // 503
+        assert!(is_transient_error(http::StatusCode::GATEWAY_TIMEOUT)); // 504
 
         // Not transient
-        assert!(!is_transient_error(reqwest::StatusCode::OK));
-        assert!(!is_transient_error(reqwest::StatusCode::BAD_REQUEST)); // 400
-        assert!(!is_transient_error(reqwest::StatusCode::UNAUTHORIZED)); // 401
-        assert!(!is_transient_error(reqwest::StatusCode::FORBIDDEN)); // 403
-        assert!(!is_transient_error(reqwest::StatusCode::NOT_FOUND)); // 404
-        assert!(!is_transient_error(reqwest::StatusCode::NOT_IMPLEMENTED)); // 501
+        assert!(!is_transient_error(http::StatusCode::OK));
+        assert!(!is_transient_error(http::StatusCode::BAD_REQUEST)); // 400
+        assert!(!is_transient_error(http::StatusCode::UNAUTHORIZED)); // 401
+        assert!(!is_transient_error(http::StatusCode::FORBIDDEN)); // 403
+        assert!(!is_transient_error(http::StatusCode::NOT_FOUND)); // 404
+        assert!(!is_transient_error(http::StatusCode::NOT_IMPLEMENTED)); // 501
     }
 
     #[test]
@@ -1058,7 +1058,7 @@ mod tests {
     #[tokio::test]
     async fn test_retry_request_success_first_try() {
         let config = fast_config(2);
-        let (resp, meta) = retry_request(
+        let (resp, meta) = retry_request::<_, _, _, _, _, reqwest::Response, reqwest::Error>(
             &config,
             "TestDriver",
             || async { Ok(fake_response(200, "ok")) },
@@ -1087,7 +1087,7 @@ mod tests {
         let config = fast_config(3);
         let calls = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
         let calls_send = calls.clone();
-        let (resp, meta) = retry_request(
+        let (resp, meta) = retry_request::<_, _, _, _, _, reqwest::Response, reqwest::Error>(
             &config,
             "TestDriver",
             move || {
@@ -1123,7 +1123,7 @@ mod tests {
     #[tokio::test]
     async fn test_retry_request_terminal_decision_propagates() {
         let config = fast_config(2);
-        let result = retry_request(
+        let result = retry_request::<_, _, _, _, _, reqwest::Response, reqwest::Error>(
             &config,
             "TestDriver",
             || async { Ok(fake_response(400, "bad request")) },
@@ -1148,7 +1148,7 @@ mod tests {
         let config = fast_config(2);
         let calls = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
         let calls_send = calls.clone();
-        let (resp, meta) = retry_request(
+        let (resp, meta) = retry_request::<_, _, _, _, _, reqwest::Response, reqwest::Error>(
             &config,
             "TestDriver",
             move || {
@@ -1204,7 +1204,7 @@ mod tests {
                 .expect_err("closed port")
         };
 
-        let result = retry_request(
+        let result = retry_request::<_, _, _, _, _, reqwest::Response, reqwest::Error>(
             &config,
             "TestDriver",
             move || async move { Err(SendOutcome::Send(make_err().await)) },
@@ -1224,7 +1224,7 @@ mod tests {
     #[tokio::test]
     async fn test_retry_request_fatal_send_propagates_immediately() {
         let config = fast_config(3);
-        let result = retry_request(
+        let result = retry_request::<_, _, _, _, _, reqwest::Response, reqwest::Error>(
             &config,
             "TestDriver",
             || async { Err(SendOutcome::Fatal(AgentLoopError::config("auth failed"))) },
@@ -1256,7 +1256,7 @@ mod tests {
 
     #[test]
     fn openai_remaining_tokens_rejects_out_of_range_values() {
-        let mut valid = reqwest::header::HeaderMap::new();
+        let mut valid = http::header::HeaderMap::new();
         valid.insert(
             "x-ratelimit-remaining-tokens",
             "4294967295".parse().unwrap(),
@@ -1266,7 +1266,7 @@ mod tests {
             Some(u32::MAX)
         );
         for value in ["4294967296", "9223372036854775807", "-1", "invalid"] {
-            let mut headers = reqwest::header::HeaderMap::new();
+            let mut headers = http::header::HeaderMap::new();
             headers.insert("x-ratelimit-remaining-tokens", value.parse().unwrap());
             let info = RateLimitInfo::from_openai_headers(&headers);
             assert_eq!(info.tokens_remaining, None, "{value}");
@@ -1287,7 +1287,7 @@ mod tests {
                 max_retry_elapsed: Duration::from_secs(2),
                 ..fast_config(3)
             };
-            retry_request(
+            retry_request::<_, _, _, _, _, reqwest::Response, reqwest::Error>(
                 &config,
                 "TestDriver",
                 move || {
@@ -1336,7 +1336,7 @@ mod tests {
         for (parse, names, token_class) in [
             (
                 RateLimitInfo::from_anthropic_headers
-                    as fn(&reqwest::header::HeaderMap) -> RateLimitInfo,
+                    as fn(&http::header::HeaderMap) -> RateLimitInfo,
                 [
                     "anthropic-ratelimit-requests-remaining",
                     "anthropic-ratelimit-tokens-remaining",
@@ -1346,8 +1346,7 @@ mod tests {
                 RateLimitType::InputTokens,
             ),
             (
-                RateLimitInfo::from_openai_headers
-                    as fn(&reqwest::header::HeaderMap) -> RateLimitInfo,
+                RateLimitInfo::from_openai_headers as fn(&http::header::HeaderMap) -> RateLimitInfo,
                 [
                     "x-ratelimit-remaining-requests",
                     "x-ratelimit-remaining-tokens",
@@ -1357,7 +1356,7 @@ mod tests {
                 RateLimitType::TotalTokens,
             ),
         ] {
-            let mut headers = reqwest::header::HeaderMap::new();
+            let mut headers = http::header::HeaderMap::new();
             for (name, value) in [
                 ("retry-after-ms", "1001"),
                 ("retry-after", "9"),

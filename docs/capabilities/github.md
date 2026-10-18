@@ -51,12 +51,24 @@ It returns `path`, `head_sha`, `base_ref` and `base_sha`; `depth` (default 100)
 sets how much history is fetched. It needs the Managed Sandbox
 (`session_sandbox`) capability on a Sandbox Worker, and says so otherwise.
 
-The sandbox never keeps a GitHub credential. The tool hands a token with
+Checkout requires a GitHub App installation. The trusted resolver must supply
+installation-mint evidence that the token covers exactly this repository,
+grants only **Contents: read**, **Pull requests: read** and GitHub's implicit
+**Metadata: read**, and expires within one hour. Missing evidence, personal
+OAuth tokens and `GITHUB_TOKEN` session-secret fallbacks are refused before any
+credential reaches the sandbox. This also fails closed with older control planes.
+For personal-token workflows, use `github_get_pull_request` and
+`github_get_pull_request_diff` to review on the trusted host, or connect an App
+installation for checkout.
+
+The tool hands the admitted token with
 **Contents: read** and **Pull requests: read** for that one repository to a
 single `git fetch` through a temporary file it removes before returning, so the
 token is not in `.git/config`, in later `bash` commands, or in sandbox
 checkpoints. Plain `git fetch` in `bash` therefore works only for public
 repositories; call the tool again to refresh a checkout.
+Concurrent code in the sandbox can read the temporary file; the enforced
+repository, permission and expiry limits bound this accepted exposure.
 
 ### Reviews without repeats
 
@@ -92,7 +104,9 @@ The tools act on GitHub as the identity `acts_as` names; only
 
 - `agent` (default) uses the agent's own GitHub connection: its GitHub App when
   you connected one, so comments are posted as the agent's bot and the tools
-  reach only the repositories the App is installed on. Use it for bots, and for
+  reach only the repositories the App is installed on. An agent that chose
+  **Use the Everruns app** acts as the shared Everruns App's bot on the account
+  an org admin linked. Use it for bots, and for
   anything triggered without a person.
 - `person` uses the GitHub connection of the person talking to the agent. Use it
   for a personal agent. A triggered run has no person, so it gets nothing.

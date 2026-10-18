@@ -220,6 +220,10 @@ impl RuntimeAgentBuilder {
             builder = builder.parallel_tool_calls(Some(explicit));
         }
 
+        if let Some(tokens) = layer.max_output_tokens {
+            builder = builder.max_tokens(tokens);
+        }
+
         if let Some(communication) = layer.communication {
             builder = builder.communication(communication);
         }
@@ -1042,6 +1046,7 @@ mod tests {
                 max_iterations: Some(0),
                 network_access: Some(policy.clone()),
                 parallel_tool_calls: explicit_parallel,
+                max_output_tokens: Some(3000),
                 ..Default::default()
             };
             let agent = RuntimeAgentBuilder::from_overlay(layer, &registry, &test_ctx())
@@ -1056,6 +1061,7 @@ mod tests {
             assert_eq!(agent.max_iterations, 0);
             assert_eq!(agent.network_access, Some(policy));
             assert_eq!(agent.parallel_tool_calls, Some(expected_parallel));
+            assert_eq!(agent.max_tokens, Some(3000));
             assert_eq!(
                 serde_json::to_value(agent.tool_search.unwrap()).unwrap(),
                 serde_json::json!({"enabled":true,"threshold":37})

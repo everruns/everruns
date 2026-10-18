@@ -172,7 +172,7 @@ never sent to the model, so the agent browses the files with `read_file` or
 the shell.
 
 - **Bomb limits** in
-  [`zip_attachments.rs`](../../crates/server/src/domains/messages/zip_attachments.rs):
+  [`attachment_zip.rs`](../../crates/core/src/host/attachment_zip.rs):
   1,000 files, 100 MiB unpacked, 25 MiB per file, and a 100:1 compression
   ratio, all measured while reading rather than trusted from the archive's
   headers.
@@ -188,29 +188,57 @@ the shell.
 
 ### 2. One intake path for every surface
 
-A core `AttachmentIntake` in the channel runtime turns whatever a surface
-received into stored attachments plus reference parts. Its input is bytes, a
-`data:` URL, or a URL with an optional channel fetcher.
+The channel host's attachment intake
+([`attachments.rs`](../../crates/core/src/channel_runtime/attachments.rs))
+turns whatever a surface received into stored attachments. A channel hands it
+each file as bytes or as a URL to download; the host's session port stores it
+(the server makes it an org upload, which message creation then copies into
+`/attachments`). Surfaces that are not channels use the same
+`AttachmentIntake` with their own store: the execution API and the MCP tools
+store files as uploads of the caller's org
+([`intake.rs`](../../crates/server/src/domains/messages/intake.rs)).
 
-- **Channel fetchers** download files that need the channel's own credential,
-  such as Slack `url_private` with the bot token (`files:read` scope).
-- **Public URLs** are fetched by Everruns, not handed to the provider:
-  `https` only, through the existing safe-URL validation, 30 second timeout.
-- **Policy** per channel with defaults: 25 MiB per file, 10 files per message,
-  allowed media types. The media type is checked against the bytes; a file
-  whose bytes contradict a declared image or PDF type is stored as
-  `application/octet-stream` and sent as a label only.
-- **Failures become notes.** A file that cannot be stored becomes a text part
+- **Downloads** go through the host's egress service, scoped to the channel's
+  org: `https` only, DNS-pinned, 30 second timeout, at most 3 redirects, the
+  body counted while it streams. A channel credential (Slack's bot token for
+  `url_private_download`, which needs `files:read`) is sent only to its own
+  host, never to wherever a redirect points.
+- **Policy**: 25 MiB per file and 10 files per message by default
+  (`AttachmentPolicy`, set per host; a surface may pass a stricter one, as
+  Public Chat does). The media type is checked against
+  the bytes: a declared image, PDF or zip type the bytes contradict is stored
+  as `application/octet-stream` and sent as a label only.
+- **Failures become notes.** A file that cannot be taken becomes a text part
   such as `[Attachment report.pdf not received: 40 MB is over the 25 MB
   limit]`. Operators see the underlying error in logs.
+- **Hosts with no upload store** (the Framework, serve) keep each file in the
+  session's own files instead: `Session::attach` writes it read-only to
+  `/attachments/<id>/<name>` (unpacking a zip next to it) and the message
+  refers to it by id; when a request is built, the file is read back from
+  that path ([`attachment_files.rs`](../../crates/core/src/host/attachment_files.rs)).
+  No index is kept: the path is the record, so the file lasts as long as the
+  session's storage. The channel host tells the store which session a file is
+  for; the server's store ignores it, since its uploads are org-scoped.
 
 | Surface | Change |
 |---|---|
-| Slack (server and embedded) | Every file in the triggering message goes through the Slack fetcher. Remote files (Google Drive and similar) keep their link in the text. |
-| AG-UI, Public Chat | Inline binary, image and document input parts go through intake instead of `to_text()`; `imageIds` keeps working. Public Chat uses a stricter default policy. |
-| A2A, PACT | `FilePart` with bytes or URI goes through intake. |
-| Agent execution API, MCP `session_send_message`, serve | Accept file parts like REST messages. |
+| Slack (server) | Done: every file in the triggering message is downloaded with the bot token. Remote files (Google Drive and similar) keep their link in the text. Embedded Slack (Framework) downloads the same way through the runtime egress (`ChannelsBuilder::egress` overrides it); files are kept in the session's own files with `Session::attach`. |
+| AG-UI, Public Chat | Done: image, audio, video and document parts of the trigger message go through intake (inline data, `data:` URLs, downloads); a provider file handle is described by its id; `imageIds` keeps working. Public Chat visitors are anonymous, so it takes at most 3 files of up to 10 MiB, inline only: a URL part becomes a note instead of a download made on the visitor's behalf ([`AttachmentPolicy::anonymous`](../../crates/core/src/channel_runtime/attachments.rs)). |
+| A2A | Done: 0.3 `file` parts and 1.0 `raw` / `url` parts go through intake. PACT stays text only: PACT 1.0 §4.1 requires `CONTENT_TYPE_NOT_SUPPORTED` for any part that is not text. |
+| Agent execution API, MCP `agent_run` / `session_send_message` | Done: a `files` list (base64 `data` or `url` per file) goes through intake. Upload ids are refused on the execution API, since a caller has no upload route and ids are scoped to the org. The card advertises images and files. |
+| serve | Done: `POST /v1/sessions/{id}/messages` (and the agent's own `/v1/channels/{agent}/sessions/{id}/messages`) takes the same `files` list as the execution API, through the same intake; each file is kept with `Session::attach`. Channel files (Slack) are kept the same way. The card advertises images and files. |
 | Webhook, Poppy, voice | Unchanged; they carry no files today. |
+
+### Browser delivery boundary
+
+Attachment types describe what the agent can read; they do not grant browser
+execution on the application's origin. The general
+[files download endpoint](../../crates/server/src/api/files.rs) delivers every
+stored file as an inert download, including existing rows and files from any
+intake surface. Original bytes and media metadata remain available through
+storage and file listings. Authentication, organization scoping and global
+security headers still apply. Active previews use the existing isolated
+[HTML preview boundary](../../crates/server/src/api/session_files.rs).
 
 ### 3. Every attachment carries a label
 

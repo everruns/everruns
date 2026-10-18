@@ -84,6 +84,58 @@ fn sanitize(value: &str, max_chars: usize) -> String {
     cleaned.trim_start_matches('.').to_string()
 }
 
+/// Media type the bytes themselves show, for the types the model reads
+/// natively or the host unpacks: PNG, JPEG, GIF, WebP, PDF and zip.
+pub fn sniff_media_type(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("image/png")
+    } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("image/jpeg")
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        Some("image/gif")
+    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        Some("image/webp")
+    } else if bytes.starts_with(b"%PDF-") {
+        Some("application/pdf")
+    } else if bytes.starts_with(b"PK\x03\x04") {
+        Some(ZIP_MEDIA_TYPE)
+    } else {
+        None
+    }
+}
+
+/// Media type to store an attachment under, checked against its bytes.
+///
+/// The bytes win when they show a known type. A declared image, PDF or zip
+/// type the bytes contradict becomes `application/octet-stream`, so the model
+/// is never sent bytes under a type they are not. Other declared types (a CSV,
+/// a Word file) are kept: the model only gets their label.
+pub fn verified_media_type(declared: Option<&str>, bytes: &[u8]) -> String {
+    if let Some(sniffed) = sniff_media_type(bytes) {
+        return sniffed.to_string();
+    }
+    let declared = declared
+        .map(|value| {
+            value
+                .split(';')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_ascii_lowercase()
+        })
+        .filter(|value| !value.is_empty() && value.contains('/'));
+    match declared {
+        Some(value)
+            if !(value.starts_with("image/")
+                || value == "application/pdf"
+                || value == ZIP_MEDIA_TYPE) =>
+        {
+            value
+        }
+        _ => "application/octet-stream".to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,5 +208,31 @@ mod tests {
         );
         assert!(is_attachment_label(&label));
         assert!(!is_attachment_label("Attached file somewhere else"));
+    }
+
+    #[test]
+    fn media_type_comes_from_the_bytes() {
+        assert_eq!(sniff_media_type(b"%PDF-1.7"), Some("application/pdf"));
+        assert_eq!(
+            sniff_media_type(b"RIFF\0\0\0\0WEBPVP8 "),
+            Some("image/webp")
+        );
+        assert_eq!(sniff_media_type(b"a,b\n"), None);
+        assert_eq!(
+            verified_media_type(Some("image/png"), b"%PDF-1.7"),
+            "application/pdf"
+        );
+        assert_eq!(
+            verified_media_type(Some("image/png"), b"not a png"),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            verified_media_type(Some("text/csv; charset=utf-8"), b"a,b\n"),
+            "text/csv"
+        );
+        assert_eq!(
+            verified_media_type(None, b"a,b\n"),
+            "application/octet-stream"
+        );
     }
 }

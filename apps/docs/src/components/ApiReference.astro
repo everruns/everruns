@@ -1,0 +1,137 @@
+---
+import { getSchemaRouteFromPathname } from "starlight-openapi/route";
+import { getOperationSnippets } from "starlight-openapi/snippet";
+import { getParametersByLocation } from "starlight-openapi/parameter";
+import Parameters from "starlight-openapi/components/parameter/Parameters";
+import RequestBody from "starlight-openapi/components/RequestBody";
+import Response from "starlight-openapi/components/response/Response";
+import Security from "starlight-openapi/components/security/Security";
+import Callbacks from "starlight-openapi/components/callback/Callbacks";
+import ExternalDocs from "starlight-openapi/components/ExternalDocs";
+import Md from "starlight-openapi/components/Md";
+import { allGroups, apiPage, byId, groupHref, groupOperations, operations, operationTitle, tagName, spec } from "../lib/api-reference";
+import { docsPath } from "../lib/site";
+import ApiSidebar from "./ApiSidebar.astro";
+import ApiSupport from "./ApiSupport.astro";
+import ApiSamples from "./ApiSamples.astro";
+import "../styles/api-reference.css";
+
+const page = apiPage(Astro.url.pathname);
+const op = page.operation;
+const group = op ? allGroups.find(g => g.id === (op.deprecated ? "deprecated" : op.docs.group))! : page.group!;
+const groupOps = page.tag ? operations.filter(o => o.tag === page.tag) : groupOperations(group.id);
+const route = getSchemaRouteFromPathname(Astro.url.pathname);
+const detail = route?.props.type === "operation" ? route.props : undefined;
+const firstSession = getSchemaRouteFromPathname(docsPath("/api/operations/agent_api_create_session/"));
+const introDetail = firstSession?.props.type === "operation" ? firstSession.props : undefined;
+const snippets = detail ? getOperationSnippets(detail.schema, detail.operation) : introDetail && group.id === "agent-api" ? getOperationSnippets(introDetail.schema, introDetail.operation) : undefined;
+const replacement = op && byId.get(op.operation["x-superseded-by"]);
+const agentOverview = !op && group.id === "agent-api";
+const title = op ? operationTitle(op) : page.tag ? `${tagName(page.tag)} API` : agentOverview ? "Call your agent." : group.name;
+const responses = detail ? Object.entries(detail.operation.operation.responses ?? {}) : [];
+const subgroups = [...new Set(groupOps.map(o => tagName(o.tag)))];
+const resourceId = (name: string) => `resource-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+---
+<div class="api-reference" data-api-reference>
+  <aside class="api-nav"><details class="api-nav-details" open><summary>API navigation</summary><ApiSidebar currentGroup={group.id} operation={op} /></details></aside>
+  <main class="api-main" id="_top" data-pagefind-body>
+    <nav class="api-breadcrumb" aria-label="Breadcrumb"><a href={docsPath("/")}>Docs</a><span>/</span><a href={docsPath("/api/")}>API reference</a><span>/</span><a href={groupHref(group.id)}>{group.name}</a>{op && <><span>/</span><span aria-current="page">{op.title.replace(/\.$/, "")}</span></>}</nav>
+    {op?.deprecated && <div class="api-deprecation" role="note"><strong>Deprecated route</strong><Md text={op.operation["x-deprecation"]?.migration} />{replacement && <a href={replacement.href}>Open replacement: {replacement.method} {replacement.path} →</a>}<p>{op.operation["x-deprecation"]?.sunset ? `Removal date: ${op.operation["x-deprecation"].sunset}` : "Removal date: not announced."}</p></div>}
+    <header class="api-page-heading">
+      {!op && <p class="api-kicker">{agentOverview ? "Agent API" : "Management API"}</p>}
+      <div class="api-title"><h1>{title}</h1>{(op || agentOverview) && <span class="api-badge" data-support={op?.deprecated ? "deprecated" : op?.docs.support ?? "preview"}>{op?.deprecated ? "Deprecated" : (op?.docs.support ?? "preview").replace(/^./, c => c.toUpperCase())}</span>}</div>
+      <div class="api-lede"><Md text={op?.operation.description ?? group.description} /></div>
+      {op && <p class="api-meta"><span>{op.docs.audience === "internal" ? "Internal operator API" : "Public API"}</span><span>{op.docs.availability}</span></p>}
+    </header>
+    {agentOverview && <><p class="api-meta"><span>Agent-scoped credentials</span><span>Live event streaming</span><span>Python · TypeScript · Rust</span></p><div class="api-actions"><a class="api-primary" href={byId.get("agent_api_create_session")!.href}>Start a session →</a><a href={docsPath("/features/agent-api/")}>Authentication & usage guide ↗</a></div><div class="api-journey">{[{id:"agent_api_create_session",title:"Start a session",text:"Create a conversation on one agent."},{id:"agent_api_send_message",title:"Send a message",text:"Start a turn or steer one in progress."},{id:"agent_api_stream_events",title:"Follow events",text:"Stream results, questions and approvals."}].map((step, i) => <a href={byId.get(step.id)!.href}><span>0{i + 1}</span><h2>{step.title}</h2><p>{step.text}</p></a>)}</div></>}
+    {op && detail ? <div class="api-operation-columns">
+      <div class="api-details sl-markdown-content">
+        <div class="api-endpoint"><span class="api-method" data-method={op.method}>{op.method}</span><code>{op.path}</code></div>
+        <Security operation={detail.operation.operation} schema={detail.schema} />
+        {!detail.operation.operation.security && <p>See <a href={docsPath("/sre/runbooks/authentication/")}>authentication</a> for credentials and permissions.</p>}
+        <Parameters parameters={getParametersByLocation(detail.operation.operation.parameters, detail.operation.pathItem.parameters)} />
+        <RequestBody operation={detail.operation.operation} schema={detail.schema} />
+        <section class="api-responses" id="responses"><h2>Responses</h2>{responses.map(([status, response]) => <details open={Number(status) >= 200 && Number(status) < 300}><summary><span>{status}</span>{response.description}</summary><Response name={status} operation={detail.operation.operation} response={response} schema={detail.schema} level={3} prefix={`response-${status}`} /></details>)}</section>
+        <Callbacks operation={detail.operation.operation} schema={detail.schema} />
+        <ExternalDocs docs={detail.operation.operation.externalDocs} />
+      </div>
+      <div><ApiSamples operation={op} snippets={snippets} />{op.docs.group === "agent-api" && <p class="api-related"><a href={docsPath("/features/agent-api/#safe-retries")}>Safe retries</a> · <a href={docsPath("/features/agent-api/#streaming")}>Streaming & reconnection</a></p>}</div>
+    </div> : <div class:list={["api-overview-columns", { "api-wide-list": !agentOverview }]}>
+      <section class="api-catalog" data-api-catalog>
+        <div class="api-catalog-head"><h2>{agentOverview ? "Endpoints" : "Browse endpoints"}</h2><label>Support <select data-api-support aria-label="Filter support level"><option value="all">All levels</option><option value="stable">Stable</option><option value="preview">Preview</option><option value="experimental">Experimental</option></select></label></div>
+        {subgroups.length > 1 && <nav class="api-resources" aria-label="Resources in this group"><a href="#api-endpoints">All resources</a>{subgroups.map(name => <a href={`#${resourceId(name)}`}>{name}</a>)}</nav>}
+        <div id="api-endpoints">{subgroups.map(name => <section class="api-resource-section" id={resourceId(name)} data-api-resource><h3>{name}</h3>{groupOps.filter(o => tagName(o.tag) === name).map(operation => <a class="api-endpoint-row" href={operation.href} data-api-row data-api-support-level={operation.docs.support} data-api-audience={operation.docs.audience} hidden={operation.docs.audience === "internal"}><span class="api-method" data-method={operation.method}>{operation.method}</span><span><strong>{operationTitle(operation)}</strong><code>{operation.path}</code></span><span class="api-badge" data-support={operation.deprecated ? "deprecated" : operation.docs.support}>{operation.deprecated ? "Deprecated" : operation.docs.support.replace(/^./, c => c.toUpperCase())}</span></a>)}</section>)}</div>
+        <p class="api-empty" data-api-empty hidden>No matching endpoints.</p>
+      </section>
+      {agentOverview && introDetail && <div><ApiSamples operation={byId.get("agent_api_create_session")!} snippets={snippets} /><p class="api-related"><a href={groupHref("deprecated")}>Migrating from /v1/e/? View deprecated routes →</a></p></div>}
+    </div>}
+    <section class="api-global-search" data-api-results hidden aria-live="polite"><h2>Matching endpoints</h2><div data-api-matches></div><p data-api-search-status></p></section>
+    {!op && <ApiSupport />}
+    {agentOverview && <section class="api-support" id="agentcredential"><h2>Agent credentials</h2><Md text={spec.components.securitySchemes.AgentCredential.description} /><p><a href={docsPath("/features/agent-api/#authentication")}>Authentication and end-user guide →</a></p></section>}
+  </main>
+</div>
+<script>
+  import { docsPath } from "../lib/site";
+  type Entry = { title:string; path:string; id:string; method:string; href:string; support:string; deprecated:boolean; audience:string };
+  const root = document.querySelector<HTMLElement>("[data-api-reference]");
+  if (root) {
+    const internal = root.querySelector<HTMLInputElement>("[data-api-internal]")!;
+    const support = root.querySelector<HTMLSelectElement>("[data-api-support]");
+    const search = root.querySelector<HTMLInputElement>("[data-api-search]")!;
+    let index: Promise<Entry[]> | undefined;
+    const find = async (query: string) => {
+      const results = root.querySelector<HTMLElement>("[data-api-results]")!;
+      const status = results.querySelector<HTMLElement>("[data-api-search-status]")!;
+      if (!query) { results.hidden = true; return; }
+      results.hidden = false;
+      status.textContent = "Searching…";
+      try {
+        index ??= fetch(docsPath("/api/search.json")).then(response => {
+          if (!response.ok) throw new Error("Search index unavailable");
+          return response.json();
+        });
+        const entries = await index;
+        if (query !== search.value.trim().toLowerCase()) return;
+        const level = support?.value ?? "all";
+        const matches = entries.filter(e => `${e.title} ${e.path} ${e.id}`.toLowerCase().includes(query) && (internal.checked || e.audience !== "internal") && (level === "all" || e.support === level));
+        const container = results.querySelector<HTMLElement>("[data-api-matches]")!;
+        container.replaceChildren();
+        // A broad search must not recreate the original 500-operation dump.
+        for (const entry of matches.slice(0, 50)) {
+          const link = document.createElement("a"); link.className = "api-endpoint-row"; link.href = entry.href;
+          const method = document.createElement("span"); method.className = "api-method"; method.dataset.method = entry.method; method.textContent = entry.method;
+          const label = document.createElement("span");
+          const title = document.createElement("strong"); title.textContent = entry.title;
+          const path = document.createElement("code"); path.textContent = entry.path;
+          label.append(title, path);
+          const badge = document.createElement("span"); badge.className = "api-badge"; badge.dataset.support = entry.deprecated ? "deprecated" : entry.support; badge.textContent = entry.deprecated ? "Deprecated" : entry.support.replace(/^./, c => c.toUpperCase());
+          link.append(method, label, badge); container.append(link);
+        }
+        status.textContent = matches.length > 50 ? `Showing 50 of ${matches.length} matches. Refine your search.` : matches.length ? `${matches.length} matching endpoints` : "No matching endpoints.";
+      } catch {
+        index = undefined;
+        status.textContent = "Endpoint search is unavailable. Browse the API groups or try again.";
+      }
+    };
+    const filter = () => {
+      const level = support?.value ?? "all";
+      for (const row of root.querySelectorAll<HTMLElement>("[data-api-row]")) row.hidden = (!internal.checked && row.dataset.apiAudience === "internal") || (level !== "all" && row.dataset.apiSupportLevel !== level);
+      for (const resource of root.querySelectorAll<HTMLElement>("[data-api-resource]")) {
+        resource.hidden = !resource.querySelector("[data-api-row]:not([hidden])");
+        const anchor = root.querySelector<HTMLAnchorElement>(`a[href="#${resource.id}"]`);
+        if (anchor) anchor.hidden = resource.hidden;
+      }
+      for (const count of root.querySelectorAll<HTMLElement>("[data-api-public-count]")) count.textContent = (internal.checked ? count.dataset.apiTotalCount : count.dataset.apiPublicCount) ?? "";
+      const empty = root.querySelector<HTMLElement>("[data-api-empty]");
+      if (empty) empty.hidden = !!root.querySelector("[data-api-row]:not([hidden])");
+      const query = search.value.trim().toLowerCase();
+      void find(query);
+      const catalog = root.querySelector<HTMLElement>("[data-api-catalog]");
+      if (catalog) catalog.hidden = !!query;
+    };
+    search.addEventListener("input", filter);
+    internal.addEventListener("change", filter);
+    support?.addEventListener("change", filter);
+    filter();
+  }
+</script>

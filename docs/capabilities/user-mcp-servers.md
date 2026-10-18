@@ -52,19 +52,25 @@ Added only when `manage` is on. They act on the list of the person who sent
 the message, the same list as **Settings > My MCP servers**, and never on the
 organization catalog.
 
-| Tool | What it does | Asks the person first |
+| Tool | What it does | Shared approval |
 |---|---|---|
 | `list_user_mcp_servers` | Lists the person's servers and those added to this conversation only: enabled, signed in, and whether this agent skips one because its own server has the same name | No |
-| `add_user_mcp_server` | Adds a catalog server (`{"catalog": "linear"}`), or a server by URL when `allow_custom_urls` is on. With `"scope": "chat"` it is added to this conversation only | Yes |
-| `remove_user_mcp_server` | Removes a server, from this conversation or from the list | No |
-| `enable_user_mcp_server` | Turns a server on | Yes |
-| `disable_user_mcp_server` | Turns a server off without removing it | No |
+| `add_user_mcp_server` | Adds a catalog server (`{"catalog": "linear"}`), or a server by URL when `allow_custom_urls` is on. With `"scope": "chat"` it is added to this conversation only | In normal/protective mode |
+| `remove_user_mcp_server` | Removes a server, from this conversation or from the list | In protective mode |
+| `enable_user_mcp_server` | Turns a server on | In normal/protective mode |
+| `disable_user_mcp_server` | Turns a server off without removing it | In protective mode |
 | `connect_mcp_server` | Shows the person a Connect card for a server that needs a sign-in | No |
 
-`add_user_mcp_server` and `enable_user_mcp_server` wait for the person to
-approve them in chat (the card shows the call, such as the catalog name or URL), whether or not the
-agent has [Tool Approval](/capabilities/tool-approval/) on. `remove` and
-`disable` only take tools away and run without asking.
+`add_user_mcp_server` and `enable_user_mcp_server` declare that they require
+approval through the agent's shared [Tool Approval](/capabilities/tool-approval/)
+policy. With `tool_approval` enabled in `normal` or `protective` mode, they wait
+for approval in chat. With the capability absent or its mode set to `off`,
+they run without a hard approval gate. `user_mcp` adds no separate gate or
+approval setting. Other management tools follow the same mode and their tool
+hints; `remove` and `disable` only take tools away.
+
+OAuth sign-in remains a separate authorization step, regardless of the tool
+approval mode.
 
 A server added or enabled in a turn is usable from the person's next message.
 
@@ -75,7 +81,7 @@ conversation instead of the person's list. It joins every later turn of this
 conversation, loads on demand like the person's other servers, and never
 appears in **Settings > My MCP servers** or in their other conversations.
 `remove_user_mcp_server` takes it away from the next message. The same rules
-apply as for the list: approval first, catalog servers only unless
+apply as for the list: the shared approval policy, catalog servers only unless
 `allow_custom_urls` is on, and no keys or headers. A catalog server signs in as
 the person, as it would from their list. A custom server that signs in with
 OAuth cannot be added this way, because its sign-in needs the list entry; add
@@ -130,6 +136,7 @@ person's login. Tool approval and the agent's other guardrails apply to these
 tools as to any MCP tool.
 
 With `manage`, adding a server is how a prompt injection would try to send the
-person's data somewhere new. That is why adding and enabling always wait for
-the person's approval, custom URLs are off by default, and every URL goes
-through the same address checks as the API.
+person's data somewhere new. Enable Tool Approval in `normal` or `protective`
+mode to hold add and enable calls for the person's approval. Leaving approval
+absent or off allows these calls to run autonomously. Custom URLs remain off
+by default, and every URL goes through the same address checks as the API.

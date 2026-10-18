@@ -1,0 +1,19 @@
+# Mira host config for the tool_search reveal study. Picked up by the `mira`
+# CLI when run from this directory.
+
+# `mira run` with no --bin/--launcher uses this. NOTE: top-level keys must
+# appear before the first [section] header, or TOML nests them under it.
+default_launcher = "tool_search_reveal"
+
+[results]
+dir = "./results"
+
+[environment]
+enabled = true
+
+[launchers.tool_search_reveal]
+bin = "tool_search_reveal"
+
+# Two cases, both arms: `mira run --preset smoke`.
+[presets.smoke]
+tag = "smoke"

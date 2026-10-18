@@ -23,7 +23,7 @@ use axum_extra::extract::Query;
 use everruns::approval::ApprovalDecision;
 use everruns::execution_api::{
     AgentCard, AgentCardInput, AgentCardLinks, CreateAgentSessionRequest,
-    SubmitToolApprovalsRequest, SubmitToolApprovalsResponse, ToolApprovalDecision,
+    SubmitToolApprovalsCommand, SubmitToolApprovalsResponse, ToolApprovalDecision,
     ToolApprovalResolution,
 };
 use serde::Deserialize;
@@ -80,9 +80,21 @@ fn top_level<'a>(host: &'a Host, name: &str) -> ApiResult<&'a AgentEntry> {
 }
 
 /// 404 unless session `id` runs agent `name`.
-fn confine(host: &Host, name: &str, id: &str) -> ApiResult<()> {
+async fn confine(host: &Host, name: &str, id: &str) -> ApiResult<()> {
     top_level(host, name)?;
-    if host.session_row(id)?.agent != name {
+    host.session(id).await?;
+    // THREAT[TM-DURABLE-012]: catalog rows are projections, never the
+    // authorization source for the immutable session/agent association.
+    let agent = if host.engine.has_session_hosting() {
+        host.engine
+            .session_binding(id.parse()?)
+            .await?
+            .behavior
+            .agent
+    } else {
+        host.session_row(id)?.agent
+    };
+    if agent != name {
         return Err(ApiError::NotFound(format!("session {id}")).into());
     }
     Ok(())
@@ -115,7 +127,8 @@ pub(crate) async fn card(
         name: name.clone(),
         description,
         streaming: true,
-        input: AgentCardInput::TEXT,
+        // Images and other files come in a message's `files`.
+        input: AgentCardInput::ALL,
         // The methods `auth` enforces; empty while the API is open.
         auth: host.auth().map(|auth| auth.card()).unwrap_or_default(),
         conversation_starters: Vec::new(),
@@ -127,26 +140,37 @@ pub(crate) async fn card(
     }))
 }
 
+#[derive(Deserialize, Default)]
+struct CreateSessionBody {
+    #[serde(flatten)]
+    request: CreateAgentSessionRequest,
+    // Serve extension shared with the Workers gateway: retain across a lost
+    // creation response, without changing the Platform request contract.
+    #[serde(default)]
+    id: Option<everruns::SessionId>,
+}
+
 async fn create_session(
     State(host): State<Arc<Host>>,
     Path(name): Path<String>,
-    body: Option<Json<CreateAgentSessionRequest>>,
+    body: Option<Json<CreateSessionBody>>,
 ) -> ApiResult<Response> {
     top_level(&host, &name)?;
     let body = body.map(|b| b.0).unwrap_or_default();
     let id = host
         .create_session(NewSession {
+            id: body.id,
             agent: Some(name.clone()),
-            title: body.title,
+            title: body.request.title,
             tags: Vec::new(),
             hints: None,
-            metadata: body.metadata,
+            metadata: body.request.metadata,
         })
         .await?;
     Ok((
         StatusCode::CREATED,
         [(header::LOCATION, format!("{}/sessions/{id}", base(&name)))],
-        Json(crate::server::session_json(&host, &id)?),
+        Json(crate::server::session_json(&host, &id).await?),
     )
         .into_response())
 }
@@ -171,11 +195,10 @@ async fn list_sessions(
             "limit must be between 1 and {MAX_LIST_LIMIT}"
         )));
     }
-    let data = host
-        .session_ids_for_agent(&name, limit)?
-        .iter()
-        .map(|id| crate::server::session_json(&host, id))
-        .collect::<crate::Result<Vec<_>>>()?;
+    let mut data = Vec::new();
+    for id in host.session_ids_for_agent(&name, limit)? {
+        data.push(crate::server::session_json(&host, &id).await?);
+    }
     Ok(Json(json!({ "data": data })))
 }
 
@@ -183,7 +206,7 @@ async fn get_session(
     State(host): State<Arc<Host>>,
     Path((name, id)): Path<(String, String)>,
 ) -> ApiResult<Json<Value>> {
-    confine(&host, &name, &id)?;
+    confine(&host, &name, &id).await?;
     crate::server::get_session(State(host), Path(id)).await
 }
 
@@ -192,25 +215,27 @@ async fn create_message(
     Path((name, id)): Path<(String, String)>,
     body: Json<CreateMessageBody>,
 ) -> ApiResult<Response> {
-    confine(&host, &name, &id)?;
+    confine(&host, &name, &id).await?;
     crate::server::create_message(State(host), Path(id), body).await
 }
 
 async fn cancel(
     State(host): State<Arc<Host>>,
     Path((name, id)): Path<(String, String)>,
-) -> ApiResult<Json<Value>> {
-    confine(&host, &name, &id)?;
-    crate::server::cancel(State(host), Path(id)).await
+    body: Option<Json<Option<crate::server::CancelBody>>>,
+) -> ApiResult<Response> {
+    confine(&host, &name, &id).await?;
+    crate::server::cancel(State(host), Path(id), body).await
 }
 
 async fn sse(
     State(host): State<Arc<Host>>,
     Path((name, id)): Path<(String, String)>,
     query: Query<SseQuery>,
+    headers: axum::http::HeaderMap,
 ) -> ApiResult<Response> {
-    confine(&host, &name, &id)?;
-    Ok(crate::server::sse(State(host), Path(id), query)
+    confine(&host, &name, &id).await?;
+    Ok(crate::server::sse(State(host), Path(id), query, headers)
         .await?
         .into_response())
 }
@@ -220,7 +245,7 @@ async fn list_events(
     Path((name, id)): Path<(String, String)>,
     query: Query<ListQuery>,
 ) -> ApiResult<Response> {
-    confine(&host, &name, &id)?;
+    confine(&host, &name, &id).await?;
     crate::server::list_events(State(host), Path(id), query).await
 }
 
@@ -229,16 +254,16 @@ async fn question_answers(
     Path((name, id)): Path<(String, String)>,
     body: Json<QuestionAnswersBody>,
 ) -> ApiResult<Json<Value>> {
-    confine(&host, &name, &id)?;
+    confine(&host, &name, &id).await?;
     crate::server::question_answers(State(host), Path(id), body).await
 }
 
 async fn tool_approvals(
     State(host): State<Arc<Host>>,
     Path((name, id)): Path<(String, String)>,
-    body: Json<SubmitToolApprovalsRequest>,
+    body: Json<SubmitToolApprovalsCommand>,
 ) -> ApiResult<Json<SubmitToolApprovalsResponse>> {
-    confine(&host, &name, &id)?;
+    confine(&host, &name, &id).await?;
     any_tool_approvals(State(host), Path(id), body).await
 }
 
@@ -251,11 +276,42 @@ async fn tool_approvals(
 pub(crate) async fn any_tool_approvals(
     State(host): State<Arc<Host>>,
     Path(id): Path<String>,
-    Json(body): Json<SubmitToolApprovalsRequest>,
+    Json(command): Json<SubmitToolApprovalsCommand>,
 ) -> ApiResult<Json<SubmitToolApprovalsResponse>> {
+    let command_id = command.command_id;
+    let turn_id = command.turn_id;
+    let body = command.request;
     host.session_row(&id)?;
     // After a restart, the approvals are pending again once the session is.
     host.session(&id).await?;
+    if let Some(status) = host.authoritative_status(&id).await? {
+        if command_id.is_some() && turn_id.is_none() {
+            return Err(bad_request("command_id requires turn_id"));
+        }
+        if command_id.is_none()
+            && body.decisions.iter().any(|answer| {
+                !status
+                    .waiting
+                    .iter()
+                    .any(|call| call.name == "approve_tool_call" && call.id == answer.tool_call_id)
+            })
+        {
+            return Err(ApiError::NotFound("pending approval request".into()).into());
+        }
+        let turn = turn_id
+            .or(status.open_turn)
+            .ok_or_else(|| ApiError::Conflict("no open turn".into()))?;
+        let result = host
+            .session(&id)
+            .await?
+            .submit_approvals(
+                command_id.unwrap_or_else(uuid::Uuid::new_v4),
+                turn,
+                body.decisions,
+            )
+            .await?;
+        return Ok(Json(result));
+    }
     if body.decisions.is_empty() {
         return Err(bad_request("decisions must not be empty"));
     }
@@ -302,6 +358,7 @@ pub(crate) async fn any_tool_approvals(
         // Settled meanwhile by another caller: that answer stands.
         if host
             .decide_approval(&id, &view.tool_call_id, decision)
+            .await
             .is_ok()
         {
             resolved.push(ToolApprovalResolution {

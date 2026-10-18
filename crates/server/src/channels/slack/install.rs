@@ -14,6 +14,12 @@
 //! * `GET /v1/channels/{channel_id}/slack/oauth/callback` cannot be: Slack redirects
 //!   the operator's browser to it and carries none of our auth. It is
 //!   protected by the single-use `install_state` nonce instead.
+//!
+//! The organization's workspace connection itself comes from a pasted
+//! configuration token, or, on a deployment with a Slack manager app, from one
+//! OAuth consent (`/v1/slack/workspaces/oauth`, EVE-1102). Its callback is
+//! unauthenticated for the same reason. A per-transaction browser cookie and a
+//! durable single-use ledger bind its encrypted, expiring state to the start.
 
 use crate::domains::agent_channels::record::ChannelType;
 use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
@@ -30,6 +36,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+
+use super::manager_connect::{begin_manager_connect, finish_manager_connect};
 
 use super::events::SlackState;
 use crate::api::common::ErrorResponse;
@@ -75,12 +83,17 @@ pub struct SlackWorkspace {
     pub team_name: Option<String>,
     /// `connected` or `reconnect_required`.
     pub status: &'static str,
+    /// `config_token` or `manager_app`: how it was connected, and so how the
+    /// UI offers to reconnect it.
+    pub connected_with: &'static str,
     pub connected_at: chrono::DateTime<chrono::Utc>,
 }
 
 impl From<OrgSlackConnectionRow> for SlackWorkspace {
     fn from(row: OrgSlackConnectionRow) -> Self {
+        let connected_with = row.grant_kind().as_str();
         Self {
+            connected_with,
             id: row.id,
             team_id: row.team_id,
             team_name: row.team_name,
@@ -203,7 +216,9 @@ fn pick_workspace(
     }
 }
 
-fn require_org_admin(org: &ResolvedOrg) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+pub(super) fn require_org_admin(
+    org: &ResolvedOrg,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     if org.role.has_permission(everruns_core::OrgRole::Admin) {
         Ok(())
     } else {
@@ -272,6 +287,11 @@ pub fn routes(state: SlackInstallState) -> Router {
             "/v1/slack/workspaces",
             get(list_workspaces).post(connect_workspace),
         )
+        .route("/v1/slack/workspaces/oauth", post(begin_manager_connect))
+        .route(
+            "/v1/slack/workspaces/oauth/callback",
+            get(finish_manager_connect),
+        )
         .route("/v1/slack/workspaces/{id}", delete(disconnect_workspace))
         .route("/v1/slack/workspaces/{id}/test", post(test_workspace))
         .route(
@@ -296,6 +316,9 @@ pub struct SlackInstallCapability {
     pub connected: bool,
     pub reconnect_required: bool,
     pub can_manage: bool,
+    /// Workspaces connect by Slack consent through this deployment's manager
+    /// app, rather than only by a pasted configuration token.
+    pub manager_app: bool,
 }
 
 async fn install_capability(
@@ -318,6 +341,10 @@ async fn install_capability(
         reconnect_required: status.reconnect_required,
         can_manage: state.connection_manager.is_some()
             && org.role.has_permission(everruns_core::OrgRole::Admin),
+        manager_app: state
+            .connection_manager
+            .as_ref()
+            .is_some_and(|manager| manager.manager_app_configured()),
     }))
 }
 #[derive(Serialize)]
@@ -571,9 +598,9 @@ fn authorize_url(
 
 #[derive(Deserialize)]
 pub struct CallbackQuery {
-    code: Option<String>,
-    state: Option<String>,
-    error: Option<String>,
+    pub(super) code: Option<String>,
+    pub(super) state: Option<String>,
+    pub(super) error: Option<String>,
 }
 
 /// GET /v1/channels/{channel_id}/slack/oauth/callback
@@ -901,7 +928,9 @@ async fn persist(
     })
 }
 
-fn provisioning_error_response(error: SlackProvisioningError) -> (StatusCode, Json<ErrorResponse>) {
+pub(super) fn provisioning_error_response(
+    error: SlackProvisioningError,
+) -> (StatusCode, Json<ErrorResponse>) {
     match error {
         // Not a failure: it is the self-hosted steady state. 501 rather than
         // 500 so the UI can tell "this deployment does not do one-click" from
@@ -974,6 +1003,7 @@ fn urlencoding_encode(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::manager_connect::{manager_redirect_uri, slack_error_code};
     use super::*;
     use crate::storage::StorageBackend;
     fn resolved_org(role: everruns_core::OrgRole) -> ResolvedOrg {
@@ -1024,9 +1054,28 @@ mod tests {
             access_token_expires_at: None,
             state: "connected".to_string(),
             token_generation: 1,
+            grant_kind: "config_token".to_string(),
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         }
+    }
+
+    #[test]
+    fn only_slack_shaped_error_codes_are_reflected_into_the_settings_url() {
+        assert_eq!(slack_error_code("access_denied"), Some("access_denied"));
+        assert_eq!(slack_error_code("missing_scope"), Some("missing_scope"));
+        assert_eq!(slack_error_code(""), None);
+        assert_eq!(slack_error_code("x&slack_connect=ok"), None);
+        assert_eq!(slack_error_code("<script>"), None);
+        assert_eq!(slack_error_code(&"a".repeat(65)), None);
+    }
+
+    #[test]
+    fn manager_consent_returns_to_a_fixed_callback_under_the_api_base() {
+        assert_eq!(
+            manager_redirect_uri("https://api.example.com/api/"),
+            "https://api.example.com/api/v1/slack/workspaces/oauth/callback"
+        );
     }
 
     #[test]

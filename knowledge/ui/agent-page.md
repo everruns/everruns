@@ -52,6 +52,10 @@ someone finishing a new agent. Both mostly touch a small set of fields; the rest
   stay under Integrations (EVE-1009). History, Manager notes and archive/delete live in the header
   [Entity Actions Menu](entity-actions-menu.md), replacing the danger-zone card. Old
   `?tab=mcp` and `?tab=credentials` links open the matching sheet; `?tab=versions` opens History.
+- **The Sessions tab is the agent's full history.** It includes archived sessions because the
+  tab badge counts them, and marks those cards as Archived. The ordinary Sessions and Chats
+  lists still hide archived sessions by default. Cards show the source/channel, creation time,
+  and latest conversational-message time; a session edit or tool event is not a new message.
 - **Checks sit next to what they check.** In edit mode prompt findings render under the prompt
   editor; the behavioral health check is a More row.
 - **Button tiers.** Gold is only **Test in Playground**. It opens Playground setup with the Agent

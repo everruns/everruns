@@ -87,7 +87,7 @@ Streaming content uses delta events with accumulated state:
 }
 ```
 
-Deltas are batched at ~100ms to reduce volume.
+Deltas are batched at ~100ms to reduce volume. When a provider stream breaks after some text, the runtime retries it under the same `message_id`: it emits `output.message.started` for that message again, and `accumulated` starts over. Render `accumulated`, or clear the text you added up on a repeated `output.message.started`.
 
 ## Forward-compatibility
 
@@ -106,6 +106,37 @@ Your deserializer should ignore unknown fields, ignore unknown event types, and 
 
 - [Stream events with the SDK](/how-to/stream-events/), the convenient path (Python, Rust, TypeScript).
 - [Consume events via raw SSE](/how-to/stream-events/#with-raw-sse), protocol-level, when the SDK isn't available.
+
+## Optional idle following in the React UI client
+
+The UI client follows session events continuously by default. Keep this behavior
+for schedules, channels, shared sessions, and applications that need immediate
+updates from other clients.
+
+An embedding that drives its own session can opt in to idle suspension:
+
+```tsx
+const { data: events, isSuspended, resume } = useEvents(sessionId, {
+  followIdle: false,
+});
+```
+
+The hook closes SSE only after the session is settled, all background tasks are
+terminal, and its durable cursor matches the server tail. Active turns, parked
+tools, pending approvals, sign-ins, and tasks awaiting input keep following.
+An unavailable state check keeps the connection open.
+
+The UI client's message, tool-result, question-answer, approval, and consent APIs
+reopen the stream before their request and keep it live until the request ends.
+Custom resume or write operations should use `withSessionActivity(sessionId,
+async () => { /* perform the operation */ })` from
+`everruns-ui/lib/session-activity`. The hook also exposes `resume()` to catch up
+explicitly and catches up on browser focus or network recovery. Replay uses the
+last durable cursor and deduplicates already displayed events.
+
+While suspended, events from other clients wait until the next wake-up. Other
+subscriptions, including the task list's independent stream, are unaffected.
+This option makes no measured resource or cost savings claim.
 
 ## See also
 

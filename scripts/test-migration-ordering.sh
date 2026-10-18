@@ -51,6 +51,8 @@ expect fail "two timestamped files share a version" \
 expect fail "new file with the retired NNN_ numbering" "$(fixture retired 221_new.sql)" "retired NNN_"
 expect fail "timestamp before the baseline" "$(fixture early 20261010120000_x.sql)" "lowest version"
 expect fail "invalid timestamp" "$(fixture badts 20261340000000_x.sql)" "not a valid UTC timestamp"
+expect fail "invalid calendar day" "$(fixture badday 20261131000000_x.sql)" "not a valid UTC timestamp"
+expect fail "invalid clock time" "$(fixture badtime 20261012240000_x.sql)" "not a valid UTC timestamp"
 expect fail "uppercase description" "$(fixture upper 20261011210512_AddWidgets.sql)" "does not match"
 expect fail "too-short prefix" "$(fixture short 2026101121_x.sql)" "does not match"
 
@@ -68,6 +70,15 @@ extra="$(fixture extra)"
 expect fail "file added to the frozen legacy history" "$extra" "exactly 001"
 
 expect pass "repository migrations" "$PROJECT_ROOT/crates/server/migrations"
+
+# BSD date has no GNU -d option; migration validation must not rely on it.
+mkdir -p "$tmp/bsd-date"
+cat >"$tmp/bsd-date/date" <<'SH'
+#!/usr/bin/env bash
+exit 1
+SH
+chmod +x "$tmp/bsd-date/date"
+PATH="$tmp/bsd-date:$PATH" expect pass "valid timestamps without GNU date" "$(fixture portable 20261012080000_x.sql)"
 
 if [ "$failures" -ne 0 ]; then
   echo "$failures migration ordering test(s) failed"

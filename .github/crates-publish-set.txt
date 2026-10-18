@@ -18,7 +18,6 @@ everruns-macros
 everruns-serve
 everruns-serve-agentcore
 everruns-serve-build
-everruns-serve-celld
 everruns-serve-macros
 everruns-test-support
 everruns-turbopuffer

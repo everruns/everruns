@@ -15,7 +15,9 @@ use async_trait::async_trait;
 use base64::Engine as _;
 use bashkit::ExecResult;
 use everruns_contracts::runtime::mcp_deferred::reveal_deferred_mcp_server;
-use everruns_contracts::runtime::mcp_proxy::{McpServerTools, build_mcp_proxy_tools};
+use everruns_contracts::runtime::mcp_proxy::{
+    McpServerTools, ScopedMcpToolInvoker, build_mcp_proxy_tools,
+};
 use everruns_contracts::runtime::saved_scripts::{SavedScript, SavedScripts};
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::tool_types::{ToolCall, ToolResult, ToolResultImage};
@@ -339,6 +341,8 @@ impl ToolsBuiltin {
             }
         };
         self.reveal(pending).await;
+        // Keep the parent turn's guard while narrowing to the newly listed tools.
+        let invoker = Arc::new(ScopedMcpToolInvoker::new(&definitions, invoker));
         let tools = build_mcp_proxy_tools(&definitions, invoker)
             .into_iter()
             .map(Arc::from)

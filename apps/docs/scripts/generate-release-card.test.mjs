@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  checkRenderedWidths,
   releaseCardSvg,
   validateChangelog,
   validateReleaseCard,
@@ -102,4 +103,23 @@ test("escapes user-controlled SVG text", () => {
   assert.match(svg, /Files &amp; tools/);
   assert.match(svg, /Use &lt;guarded&gt; input\./);
   assert.doesNotMatch(svg, /Use <guarded>/);
+});
+
+test("accepts up to four highlights", () => {
+  const item = validCard.highlights[0];
+  assert.equal(validateReleaseCard({ ...validCard, highlights: [item, item, item, item] }).highlights.length, 4);
+  assert.throws(
+    () => validateReleaseCard({ ...validCard, highlights: [item, item, item, item, item] }),
+    /highlights must contain 1-4 items/,
+  );
+});
+
+test("rejects a headline that renders wider than its column", async () => {
+  const { default: sharp } = await import("sharp");
+  await checkRenderedWidths(validateReleaseCard({ ...validCard, headline: ["Actor model,", "Agent API."] }), sharp);
+  // 20 characters, under the character limit, yet wider than the headline column.
+  await assert.rejects(
+    checkRenderedWidths(validateReleaseCard({ ...validCard, headline: ["Agents you can call,"] }), sharp),
+    /headline "Agents you can call," renders \d+px wide/,
+  );
 });

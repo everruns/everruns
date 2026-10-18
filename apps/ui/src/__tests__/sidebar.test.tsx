@@ -69,7 +69,7 @@ jest.mock("@/hooks/use-organizations", () => ({
 }));
 
 jest.mock("@/components/layout/mcp-connect-button", () => ({
-  McpConnectButton: () => <button type="button" aria-label="Connect via MCP" />,
+  McpConnectButton: () => <button type="button" aria-label="Connect your coding agent" />,
   McpConnectDialog: ({ open }: { open: boolean }) =>
     open ? (
       <div role="dialog" aria-label="MCP connection details">
@@ -78,7 +78,7 @@ jest.mock("@/components/layout/mcp-connect-button", () => ({
     ) : null,
   McpConnectMenuItem: ({ onSelect }: { onSelect: () => void }) => (
     <button role="menuitem" onClick={onSelect}>
-      Connect via MCP
+      Connect your coding agent
     </button>
   ),
 }));
@@ -200,9 +200,9 @@ describe("Sidebar", () => {
 
     expect(brandRow).not.toBeNull();
     expect(within(searchRow).getByRole("button", { name: /search/i })).toBeInTheDocument();
-    expect(within(brandRow!).queryByLabelText("Connect via MCP")).not.toBeInTheDocument();
+    expect(within(brandRow!).queryByLabelText("Connect your coding agent")).not.toBeInTheDocument();
     expect(within(brandRow!).queryByLabelText("Notifications")).not.toBeInTheDocument();
-    expect(within(searchRow).queryByLabelText("Connect via MCP")).not.toBeInTheDocument();
+    expect(within(searchRow).queryByLabelText("Connect your coding agent")).not.toBeInTheDocument();
     expect(within(searchRow).queryByLabelText("Notifications")).not.toBeInTheDocument();
   });
 
@@ -226,7 +226,7 @@ describe("Sidebar", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /test user/i }));
     expect(screen.getByText("Notifications")).toBeInTheDocument();
-    expect(screen.getByText("Connect via MCP")).toBeInTheDocument();
+    expect(screen.getByText("Connect your coding agent")).toBeInTheDocument();
   });
 
   it("renders a local identity menu with applicable actions in no-auth mode", async () => {
@@ -249,13 +249,17 @@ describe("Sidebar", () => {
 
     fireEvent.click(trigger);
     expect(screen.getByRole("menuitem", { name: "Profile" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Connect via MCP" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Changelog" })).toHaveAttribute(
+      "href",
+      "https://everruns.com/docs/changelog/",
+    );
+    expect(screen.getByRole("menuitem", { name: "Connect your coding agent" })).toBeInTheDocument();
     expect(
       screen.queryByRole("menuitem", { name: /personal access tokens/i }),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /sign out/i })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Connect via MCP" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Connect your coding agent" }));
     expect(
       await screen.findByRole("dialog", { name: /mcp connection details/i }),
     ).toBeInTheDocument();
@@ -276,7 +280,7 @@ describe("Sidebar", () => {
     render(<Sidebar />);
     fireEvent.click(screen.getByRole("button", { name: /anonymous/i }));
 
-    expect(screen.getByRole("menuitem", { name: "Connect via MCP" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Connect your coding agent" })).toBeInTheDocument();
   });
 
   it("preserves authentication-only actions in authenticated mode", () => {
@@ -296,7 +300,7 @@ describe("Sidebar", () => {
 
     expect(screen.getByRole("menuitem", { name: /personal access tokens/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /sign out/i })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Connect via MCP" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Connect your coding agent" })).toBeInTheDocument();
   });
 
   it("renders only the version when no current user is available", () => {
@@ -347,6 +351,28 @@ describe("Sidebar", () => {
 
     expect(open).toHaveBeenCalledWith("https://everruns.com/docs", "_blank", "noopener,noreferrer");
     open.mockRestore();
+  });
+
+  it("links the Changelog menu item to the public changelog", () => {
+    mockUseAuth.mockReturnValue({
+      user: { name: "Test User", email: "test@example.com", avatar_url: null },
+      requiresAuth: true,
+      isAuthenticated: true,
+      config: { mode: "password" },
+      isLoading: false,
+      logout: jest.fn(),
+      logoutPending: false,
+      createOrganization: undefined,
+    });
+
+    render(<Sidebar />);
+
+    fireEvent.click(screen.getByRole("button", { name: /test user/i }));
+    const changelog = screen.getByRole("menuitem", { name: "Changelog" });
+
+    expect(changelog).toHaveAttribute("href", "https://everruns.com/docs/changelog/");
+    expect(changelog).toHaveAttribute("target", "_blank");
+    expect(changelog).toHaveAttribute("rel", "noopener noreferrer");
   });
 
   it("renders all navigation items", () => {
@@ -592,7 +618,7 @@ describe("Sidebar", () => {
   it("hides Durable Execution navigation items by default (collapsed)", () => {
     render(<Sidebar />);
 
-    expect(screen.queryByText("Overview")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Monitoring" })).not.toBeInTheDocument();
     expect(screen.queryByText("Workers")).not.toBeInTheDocument();
     expect(screen.queryByText("Workflows")).not.toBeInTheDocument();
     expect(screen.queryByText("Schedules")).not.toBeInTheDocument();
@@ -604,7 +630,7 @@ describe("Sidebar", () => {
     const toggle = screen.getByRole("button", { name: /durable execution/i });
     fireEvent.click(toggle);
 
-    expect(screen.getByText("Overview")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Monitoring" })).toHaveAttribute("href", "/durable");
     expect(screen.getByText("Workers")).toBeInTheDocument();
     expect(screen.getByText("Workflows")).toBeInTheDocument();
     expect(screen.getByText("Schedules")).toBeInTheDocument();

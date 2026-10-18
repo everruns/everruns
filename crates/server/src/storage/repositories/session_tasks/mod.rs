@@ -196,6 +196,15 @@ impl Database {
         };
 
         let mut task = row.to_task()?;
+        if update.expected_recovery.as_ref().is_some_and(|guard| {
+            !guard.matches(&task)
+                || update
+                    .expected_attempt
+                    .is_some_and(|attempt| attempt != task.attempt)
+        }) {
+            tx.rollback().await?;
+            return Ok(None);
+        }
         apply_task_update(&mut task, update, chrono::Utc::now());
         let updated = SessionTaskRow::from_task(&task)?;
 

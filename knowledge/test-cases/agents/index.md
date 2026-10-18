@@ -6,3 +6,6 @@
 * [Image generation](image_generation/) - 1 manual Agent workflow case.
 * [OKF data analyst](okf_data_analyst/) - 1 manual Agent workflow case.
 * [Platform chat](platform_chat/) - 5 manual Agent workflow cases.
+
+* [MCP recovery](mcp_recovery/) - Listing failure, successful removal, and caller isolation.
+* [User MCP](user_mcp/) - Personal MCP management and shared approval policy.

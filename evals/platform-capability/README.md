@@ -47,9 +47,10 @@ organization through `execute`.
 
 The case talks to the `platform-chat` agent (`agent_name`) with the
 `setup_connection` hint, registers the `linear` catalog entry if it is missing
-(`ensure_catalog_mcp`), presses **Allow** on the approval card for `add`
-(`approve_tool_calls`), and ends at the Connect card instead of waiting for a
-sign-in nobody will complete. It adds `linear` to the API key owner's own list,
+(`ensure_catalog_mcp`), presses **Allow** if the shared approval policy produces
+an approval card for `add` (`approve_tool_calls`), and ends at the separate
+Connect card instead of waiting for a sign-in nobody will complete. With hard
+approval absent or off, adding needs no approval card. It adds `linear` to the API key owner's own list,
 so a rerun finds it already there, which the tool reports as success. It needs
 the live server (`requires_live`); the offline subject scores it N/A.
 

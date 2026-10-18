@@ -304,7 +304,14 @@ Each step is one PR unless noted, and leaves everything working.
    asks for `contents: read, pull_requests: read` on the pull request's
    repository and passes the token through the `SandboxWorkspace` tool-context
    extension (`exec_with_secret_file`), which the worker installs when the
-   session has `session_sandbox`. Pushing from the sandbox stays with step 6.
+   session has `session_sandbox`. Sandbox delivery additionally requires scope
+   evidence from the authenticated installation mint response, preserved across
+   the worker boundary. The checkout admission contract verifies repository,
+   read-only permissions and a remaining lifetime of at most one hour; personal
+   tokens, session-secret fallbacks and legacy responses without evidence are
+   refused. See [admission](../../crates/contracts/src/runtime/github_credential.rs)
+   and [checkout](../../crates/integrations/src/github/checkout.rs).
+   Pushing from the sandbox stays with step 6.
 2. **GitHub section on the agent page** (D7), name rules and avatar step (D2).
    Coordinate with the Yolop PR Reviewer thread's org picker, which lands first.
    Done: the agent's Integrations tab has a **GitHub** section between Channels
@@ -319,6 +326,31 @@ Each step is one PR unless noted, and leaves everything working.
 3. **Shared App at org level** (D3): org opt-in, deployment webhook route by
    installation id, agent choice between own App and shared App, migration of
    person-held installations.
+   Done (3a): an org admin links a shared App installation from Settings >
+   Organization (`GET /v1/orgs/{org}/github/everruns-app`, `.../authorize`,
+   `DELETE .../{connection_id}`, `api/user_connections/github_org.rs`). The
+   link is an organization connection with `connection_type = everruns_app`,
+   proven by the same GitHub user authorization as a person's install; the
+   callback re-checks admin, and an installation linked to another org is
+   refused (partial unique index on `installation_id`). Generic org
+   connection lists skip `github` rows, so links never reach sandboxes or web
+   search. An agent without an identity chooses its own App (recommended) or
+   "Use the Everruns app" on a link of its org (`UseAgentEverrunsApp`, which
+   needs agent and identity management); its service virtual user then holds
+   an `everruns_app` row with the installation and
+   `provider_metadata.org_connection_id`, and shows as `<shared slug>[bot]`.
+   The `everruns_app` kind is now named by `connection_type`, while an
+   `oauth` row with an installation still reads as one until 3b. The shared
+   App's webhook (`POST /v1/github/everruns-app/webhook`, HMAC with
+   `GITHUB_APP_WEBHOOK_SECRET`, fails closed when unset) routes by
+   installation id to the linked org and only to agents that chose it;
+   `installation.deleted` removes the link and its choices,
+   `new_permissions_accepted` refreshes scopes. Unlinking and disconnecting
+   never uninstall on GitHub, and nothing falls back to the shared App. The
+   member path to attach an installation to an agent's service virtual user
+   is closed. Left for 3b: migrating person-held installations (including
+   legacy `oauth` rows on agents, which no longer show as connected) and
+   their cleanup.
 4. **Person connection** (D1, D5): store and refresh the user token; GitHub
    MCP `user` uses it after the endpoint check.
 5. **GitHub channel** (D8) on the channel host, with the manifest additions.

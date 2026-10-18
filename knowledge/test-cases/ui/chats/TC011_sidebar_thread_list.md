@@ -17,7 +17,7 @@ that the list does not re-order under the cursor while the pointer is inside it.
 
 ## Preconditions
 
-- Server running (`just start-dev`)
+- Canonical stack running (see root `AGENTS.md`)
 - User logged in
 - At least seven side chat threads exist for the current user
 

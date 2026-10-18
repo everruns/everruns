@@ -176,6 +176,11 @@ pub struct UpdateOrganizationRequest {
     #[serde(default, deserialize_with = "double_option")]
     #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
     pub default_model_id: Option<Option<everruns_contracts::typed_id::ModelId>>,
+    /// Shared small chat model for lightweight work. Omit to preserve the selection;
+    /// pass null to clear it. Does not change the main chat or decision default.
+    #[serde(default, deserialize_with = "double_option")]
+    #[schema(value_type = Option<String>)]
+    pub small_model_id: Option<Option<everruns_contracts::typed_id::ModelId>>,
     /// Default harness to preselect in the UI for new sessions.
     /// Mutually exclusive with `default_harness_name`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -603,6 +608,7 @@ pub async fn update_organization(
     let UpdateOrganizationRequest {
         name,
         default_model_id,
+        small_model_id,
         mut default_harness_id,
         default_harness_name,
         base_harness_id,
@@ -640,7 +646,13 @@ pub async fn update_organization(
     }
 
     // Validate referenced IDs exist (skip if already resolved from name)
-    if let Some(Some(model_id)) = default_model_id.as_ref() {
+    for (selection, label) in [
+        (default_model_id.as_ref(), "Default model"),
+        (small_model_id.as_ref(), "Small model"),
+    ] {
+        let Some(Some(model_id)) = selection else {
+            continue;
+        };
         // Verify the model exists and is enabled
         let model = state
             .db
@@ -652,13 +664,15 @@ pub async fn update_organization(
             })?;
         crate::domains::models::catalog::require_chat(model.provider_metadata.as_ref()).map_err(
             |_| {
-                ErrorResponse::new("Default model must be a chat model")
+                ErrorResponse::new(format!("{label} must be a chat model"))
                     .into_response(StatusCode::BAD_REQUEST)
             },
         )?;
         if !model.enabled {
-            return Err(ErrorResponse::new("Default model must be an enabled model")
-                .into_response(StatusCode::BAD_REQUEST));
+            return Err(
+                ErrorResponse::new(format!("{label} must be an enabled model"))
+                    .into_response(StatusCode::BAD_REQUEST),
+            );
         }
         if model.provider_type == "chatgpt" {
             return Err(
@@ -740,6 +754,7 @@ pub async fn update_organization(
         .ok_or_not_found_json("Organization")?;
 
     if default_model_id.is_some()
+        || small_model_id.is_some()
         || default_harness_id.is_some()
         || base_harness_id.is_some()
         || default_provider_per_service.is_some()
@@ -754,6 +769,11 @@ pub async fn update_organization(
                         None => UpdateField::Unchanged,
                         Some(None) => UpdateField::Clear,
                         Some(Some(model_id)) => UpdateField::Set(model_id),
+                    },
+                    small_model_id: match small_model_id {
+                        None => UpdateField::Unchanged,
+                        Some(None) => UpdateField::Clear,
+                        Some(Some(id)) => UpdateField::Set(id),
                     },
                     default_harness_id: default_harness_id
                         .map_or(UpdateField::Unchanged, UpdateField::Set),
@@ -927,6 +947,7 @@ async fn build_organization_response(
         id: org.public_id,
         name: org.name,
         default_model_id: settings.as_ref().and_then(|s| s.default_model_id),
+        small_model_id: settings.as_ref().and_then(|s| s.small_model_id),
         default_harness_id: settings.as_ref().and_then(|s| s.default_harness_id),
         base_harness_id: settings.as_ref().and_then(|s| s.base_harness_id),
         default_provider_per_service: settings

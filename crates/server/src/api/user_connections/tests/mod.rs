@@ -194,6 +194,7 @@ async fn identity_oauth_fixture(configured: bool) -> (AppState, ResolvedOrg, Uui
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
                 communication: Default::default(),
                 environments: None,
                 is_built_in: false,
@@ -843,10 +844,10 @@ mod github_installation_ownership {
     use wiremock::matchers::{body_partial_json, header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    const VICTIM_INSTALLATION: i64 = 4242;
-    const ATTACKER_INSTALLATION: i64 = 1717;
+    pub(super) const VICTIM_INSTALLATION: i64 = 4242;
+    pub(super) const ATTACKER_INSTALLATION: i64 = 1717;
 
-    async fn github_state(github: &MockServer) -> AppState {
+    pub(super) async fn github_state(github: &MockServer) -> AppState {
         let db = Arc::new(StorageBackend::test_database());
         let encryption = Arc::new(EncryptionService::new(TEST_KEY, &[]).unwrap());
         let auth_config = AuthConfig {
@@ -862,6 +863,7 @@ mod github_installation_ownership {
                     .into(),
                 client_id: Some("Iv1.test".into()),
                 client_secret: Some("client-secret".into()),
+                webhook_secret: None,
                 endpoints: GitHubEndpoints {
                     api_url: github.uri(),
                     web_url: github.uri(),
@@ -887,7 +889,7 @@ mod github_installation_ownership {
 
     /// GitHub as seen by the App JWT (both installations exist) and by each
     /// GitHub user's token (each user can only access their own installation).
-    async fn mock_github(github: &MockServer) {
+    pub(super) async fn mock_github(github: &MockServer) {
         for id in [VICTIM_INSTALLATION, ATTACKER_INSTALLATION] {
             Mock::given(method("GET"))
                 .and(path(format!("/app/installations/{id}")))
@@ -1018,7 +1020,7 @@ mod github_installation_ownership {
         .await
     }
 
-    fn location(redirect: Redirect) -> String {
+    pub(super) fn location(redirect: Redirect) -> String {
         redirect
             .into_response()
             .headers()
@@ -1465,3 +1467,4 @@ async fn user_mcp_server_oauth_is_hidden_from_other_people() {
 mod catalog_listing_flow;
 mod connect_errors_flow;
 mod connection_check_flow;
+mod github_org_flow;

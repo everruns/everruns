@@ -16,8 +16,8 @@ Verify that a session can override the agent's default model and that the overri
 
 ## Preconditions
 
-- API server running locally (`just start-dev`) or a deployed API is available
-- Set `BASE_URL` to the API origin (for example, `http://localhost:9300`)
+- Canonical local stack (see root `AGENTS.md`) or a dedicated test deployment is available
+- Set `BASE_URL` to the selected proxy origin (for example, `http://localhost:27100`); requests below append `/api`
 - For authenticated deployments, configure `curl` with the required authorization and organization headers
 - LLM API keys configured
 - At least two models available (check `GET /v1/models`)

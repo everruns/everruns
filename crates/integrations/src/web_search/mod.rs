@@ -27,6 +27,7 @@ mod cloudflare_connector;
 mod config;
 mod framework;
 mod free;
+mod hosted;
 mod html;
 mod http;
 mod parallel;
@@ -40,6 +41,11 @@ pub use cloudflare_connector::CloudflareWebSearchConnector;
 pub use config::{FallbackMode, ProviderSetting, WebSearchConfig};
 pub use framework::WebSearch;
 pub use free::{FreeSearchDriver, FreeSearchEndpoints};
+pub use hosted::{
+    HOSTED_SEARCH_ID, HostedSearchAdmission, HostedSearchCall, HostedSearchCompletion,
+    HostedSearchGate, HostedSearchInvocation, HostedSearchPermit, HostedSearchPermitGate,
+    HostedWebSearch,
+};
 pub use parallel::ParallelSearchDriver;
 pub use plan::{
     Attempt, PlanDrivers, PlanEntry, PlanInputs, PlanStep, ResolvedPlan, SearchOutcome, plan_steps,
@@ -79,7 +85,8 @@ pub const CONNECTOR_PLUGINS: &[everruns_contracts::connector::ConnectorPlugin] =
 /// keys only from the session's connections and secrets. A Framework
 /// application can hand it application-owned keys ([`Self::with_brave_key`],
 /// [`Self::with_parallel_key`], [`Self::from_env`]); keys never enter
-/// capability config.
+/// capability config. A deployment that pays for a search provider itself
+/// offers it to every organization with [`Self::and_hosted`].
 #[derive(Clone, Default)]
 pub struct WebSearchCapability {
     keys: tool::AppKeys,
@@ -119,8 +126,22 @@ impl WebSearchCapability {
             keys: tool::AppKeys {
                 brave: std::env::var(BRAVE_SEARCH_API_KEY).ok().and_then(non_empty),
                 parallel: std::env::var(PARALLEL_API_KEY).ok().and_then(non_empty),
+                hosted: None,
             },
         }
+    }
+
+    /// Offer the deployment's own search to every organization: Automatic
+    /// tries it after the organization's accounts and before free search,
+    /// and an organization can move it in its Automatic order.
+    pub fn and_hosted(mut self, hosted: HostedWebSearch) -> Self {
+        self.keys.hosted = Some(hosted);
+        self
+    }
+
+    /// The deployment's own search, when it offers one.
+    pub fn hosted(&self) -> Option<&HostedWebSearch> {
+        self.keys.hosted.as_ref()
     }
 }
 

@@ -14,8 +14,8 @@ tags:
 
 ## Problem
 
-A Bashkit agent that calls a regular HTTP API needs a key. Today the only
-route is a session secret that the model reads with `secret_store get`
+A Bashkit agent that calls a regular HTTP API needs a key. Before bound
+secrets the only route was a session secret that the model read with `secret_store get`
 ([session storage](../../crates/core/src/host/session_services/capabilities/session_storage.rs))
 and pastes into a curl command or a file. The key then lives in the
 transcript, tool events, traces, the workspace and the Files view. Session
@@ -51,7 +51,9 @@ hop. Elsewhere the placeholder goes out unchanged and is worthless.
 ### Rules
 
 - **Write-only.** No API, tool or internal command returns a bound value.
-  `secret_store get` refuses a bound name and points at `$NAME`;
+  `secret_store get` refuses a bound name and points at `$NAME`; since
+  2026-10-13 it refuses every name, so no session secret reaches the model
+  (TM-AGENT-038);
   `secret_store list` shows name, URL and auth so the model knows what to use.
 - **Agent scope.** An agent-scoped bound secret is an agent credential of kind
   `http`, next to the MCP tool-parameter kind on the agent's **Credentials**

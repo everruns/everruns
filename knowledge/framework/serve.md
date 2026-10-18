@@ -61,7 +61,7 @@ runtime.
 - **A thin layer over `everruns::Engine`.** The durable log is the engine's
   (`Session::events_after` / `events_from`); serve authors no events. Tools
   are `FunctionTool::with_context`, approvals are the runtime's per-tool gate
-  (`needs_approval` + `AgentBuilder::approver`), questions are the built-in
+  (`needs_approval` + durable approval commands), questions are the built-in
   `ask_user` capability. serve's own SQLite keeps only the session catalog
   (agent, build, title, tags, metadata) and the channel host's state
   (thread bindings, seen message keys, pending replies).
@@ -79,15 +79,15 @@ runtime.
   reporting, the way a compiler does, instead of stopping at the first.
 - **The binary produces the manifest.** Only the linked binary knows what was
   registered, so the manifest comes from `app manifest`, not from `build.rs`.
-  `build_id` hashes the manifest plus the embedded assets, so a prompt edit is
-  a new build.
-- **The binary is the behavior.** A session records the build it started on.
-  Resuming a session means rebuilding its agent from the same registrations,
-  then calling `Engine::attach` and `Engine::resume` over the everruns local
-  store. `start` answers `409` with the owning build for a foreign session, so
-  a router can send it back to that build; `dev` resumes it anyway. This
-  removes the existing need for applications to reattach behavior after a
-  restart.
+  the declaration hash covers the manifest and embedded assets. Durable execution
+  additionally pins the executable and the frozen live asset snapshot.
+- **The binary is the behavior.** Registered Engine builds pin the executable,
+  manifest and frozen instructions/assets. Secret names are captured during that
+  app's discovery; unrelated declarations cannot change its build hash. A session
+  retains its Agent/Harness/Environment references. The catalog is rebuildable,
+  cannot rebind behavior or grant access through another agent's URL, and history
+  stays readable when the retained executable is unavailable. Activation suspends
+  rather than silently falling back to the current build.
 - **Resume by cursor, not by token.** Unlike eve's continuation token, a
   client resumes with the server's cursors: `since_id` (an event id) or
   `after_sequence` (a durable sequence). Both address the engine's canonical
@@ -95,23 +95,14 @@ runtime.
 - **Apps name models; hosts own keys.** `provider/model` strings resolve
   through a gateway. Without one, `dev` and evals fall back to per-agent
   simulator scripts, so examples and evals run offline and deterministically.
-- **Approvals and questions are the runtime's.** A predicate over the
-  macro-generated argument struct becomes `FunctionTool::needs_approval`;
-  serve's approver parks the call, keyed by session and tool call id, until
-  the server's batch `POST …/tool-approvals` answers it (or the serve-only
-  `POST …/approvals/{tool_call_id}`, one call at a time). `ask_user` questions are parked the same way and answered
-  through the server's `/question-answers`. There is no canonical event for a
-  pending request, so the session lists them (`pending_approvals`,
-  `pending_questions`) and reports `waitingfortoolresults`. Parked requests
-  live in memory; the event log is what survives a restart. When a session
-  comes back, the host asks the engine (`Session::interrupted_turn`) for a
-  turn the old process cut off, and resumes it
-  (`Session::resume_interrupted_turn`): calls that waited on a person run
-  again and park again under the same tool call ids, idempotent calls run
-  again, and every other call is recorded as interrupted, never re-run. Boot
-  resumes, in the background, every session active within the last 7 days,
-  so a cut-off turn carries on without a client reading it first; older
-  sessions resume when next read. The runtime passes the model no deny note.
+- **Approvals and questions are the runtime's.** Coherent Engine profiles persist
+  pending calls and resolve them with exact-turn, deduplicated authority commands.
+  Batch validation precedes every write; omitted approval decisions deny and
+  mixed AG-UI resume batches commit atomically. The model receives the canonical
+  decision/error. Pending requests survive frontend or executor loss without
+  replaying approval callbacks. Native persistent serve starts SQLite's independent
+  authority supervisor; DO placement relies on stored alarms. Legacy local-store
+  integrations retain their older re-parking behavior.
 - **App schedules survive a restart.** `dev` and `start` record each
   `#[schedule]` occurrence before running it. On boot, an occurrence that fell
   due while the host was down runs once, right away; several missed
@@ -169,18 +160,23 @@ runtime.
   `sandbox = "microvm"` it supplies a host shell rooted at the session
   workspace through `ServerBuilder::microvm`: the per-session microVM is the
   isolation boundary, and stacking bashkit inside it would only remove real
-  tools.
-- **celld keeps durability in the cell, not the container.** A celld container
-  loses its disk whenever its Durable Object moves, so
-  `everruns-serve-celld` only makes serve's state portable (a tar snapshot,
-  SQLite through the backup API) and observable (boot id, busy). The
-  supervising Durable Object holds the snapshot and a journal of mutating
-  requests, and replays the journal into a fresh container. Turn-level, not
-  event-level: a replayed turn repeats its model and tool calls. Session
-  creation is not journaled, because serve mints the id, so it is
-  acknowledged only after a snapshot. Running the engine inside the cell,
-  with step-level durability, is the other shape: see
-  [The Execution Kernel in a JavaScript Isolate](wasm-kernel.md).
+  tools. The adapter's explicit workspace remains selected when the session
+  journal uses SQLite; the journal's default workspace must not replace it.
+- **celld uses one DO authority per Framework session.** The native adapter selects
+  `ObjectHosting` beneath the ordinary serve Engine and authenticates `/execute`
+  separately from the user API. Container restart reconstructs retained behavior;
+  it does not restore canonical snapshots or replay HTTP requests. The isolate
+  example imports the same Framework Agent/Engine Wasm application as Cloudflare.
+  Container disk remains a separate workspace concern. Untrusted OS commands need
+  an explicit isolated sandbox adapter protecting Engine credentials and other
+  sessions; a directory or the executor container alone is insufficient.
+
+Explicit external hosting refuses channels, schedules and child-agent declarations
+before listening until their required independent host services are provided.
+Native serve retains its existing channel/schedule services; selecting a session
+profile alone never establishes cross-object inbox/outbox durability. See
+[Engine-owned sessions](engine-durable-sessions.md) for the integration contract
+and [DO qualification](durable-object-native.md) for tested failure domains.
 
 ## Rejected
 
@@ -199,8 +195,8 @@ runtime.
   `everruns` itself?
 - Per-build routing and draining in a real host. The PoC defines the contract
   (`build_id`, `409` with `x-serve-build`) but does no routing.
-- "Always" approval decisions and subagent requests across restarts, and a
-  deny note the model can read.
+- Cross-object child-agent services and parent wait/cancel aggregation; external
+  profiles currently refuse that declaration rather than promise durable delivery.
 - Per-caller session isolation once auth is on, and which further server
   routes (message listing, `tool-results`) a
   serve app should answer so every client works unchanged.

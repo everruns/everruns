@@ -23,7 +23,7 @@
 
 use async_trait::async_trait;
 use futures::StreamExt;
-use reqwest::header::HeaderMap;
+use http::header::HeaderMap;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
@@ -98,8 +98,17 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             &replaced,
         )
         .then_some(super::tool_changes::InlineToolChanges { hosted_search });
+        // Inline mode sends the epoch's system prompt too; prompt text added
+        // since rides in the changes' notes.
+        let sent = crate::tool_changes::with_system_prompt(
+            &messages,
+            config
+                .system_prompt_baseline
+                .as_deref()
+                .filter(|_| inline_tool_changes.is_some()),
+        );
         let (instructions, transcript_input_items) =
-            Self::build_input_with_changes(&messages, supports_phases, inline_tool_changes);
+            Self::build_input_with_changes(&sent, supports_phases, inline_tool_changes);
         let computer_call_ids = if native_computer.is_some() {
             super::computer::computer_call_ids(&transcript_input_items)
         } else {
@@ -309,7 +318,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         // retry recognises the response an earlier attempt left running.
         let background_responses = background.then(|| {
             super::background::BackgroundResponses::new(
-                self.client(),
+                self.http_client(),
                 endpoint,
                 &api_url,
                 &extension_headers,
@@ -329,7 +338,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         // transient send failures) are handled inside the per-attempt send.
         // Opt-in WebSocket transport (see `websocket.rs`). `None` means it was
         // not wanted or failed before committing, and the call goes over SSE.
-        #[cfg(feature = "responses-websocket")]
+        #[cfg(all(feature = "responses-websocket", not(target_arch = "wasm32")))]
         let websocket_stream = match reattached {
             None if self.websocket.wants(config, background) => {
                 super::websocket_transport::open_stream(
@@ -343,7 +352,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             }
             _ => None,
         };
-        #[cfg(not(feature = "responses-websocket"))]
+        #[cfg(any(not(feature = "responses-websocket"), target_arch = "wasm32"))]
         let websocket_stream: Option<crate::stream_reconnect::SseStream> = None;
 
         let first_connect = match (reattached, websocket_stream) {
@@ -904,6 +913,22 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 batch.push(item);
                 futures::stream::iter(batch)
             }));
+
+        // Strict decoding uses null to represent an omitted optional field.
+        // Restore our own wire conversion before the runtime records a call or
+        // binds approval to its arguments. Deferred/non-strict stubs stay intact.
+        let argument_tools = config.tools.clone();
+        let converted_stream: LlmResponseStream = Box::pin(converted_stream.map(move |event| {
+            event.map(|mut event| {
+                if let LlmStreamEvent::ToolCalls(calls) = &mut event {
+                    crate::tool_schema_compat::restore_strict_openai_tool_calls(
+                        &argument_tools,
+                        calls,
+                    );
+                }
+                event
+            })
+        }));
 
         if required_completion {
             return Ok(Box::pin(converted_stream.chain(futures::stream::once(

@@ -261,6 +261,7 @@ callback binds the claimed installation to a fresh single-use state and redirect
 | `GITHUB_APP_SETUP_URL` | Post-install callback URL (default: `{AUTH_BASE_URL}/v1/user/connections/github/callback`) |
 | `GITHUB_APP_CLIENT_ID` | The App's OAuth client ID. Required: setup fails closed without it |
 | `GITHUB_APP_CLIENT_SECRET` | The App's OAuth client secret. Required: setup fails closed without it |
+| `GITHUB_APP_WEBHOOK_SECRET` | Webhook secret of the shared App. Deliveries to `/v1/github/everruns-app/webhook` are refused while it is unset |
 
 ### GitHub App Setup
 
@@ -277,7 +278,7 @@ Create a GitHub App:
    | **Request user authorization (OAuth) during installation** | Optional; checked saves one redirect |
    | **Setup URL** (Post installation) | `https://<domain>/api/v1/user/connections/github/callback` |
    | **Redirect on update** | Checked |
-   | **Webhook → Active** | Unchecked |
+   | **Webhook → Active** | Checked when agents use the shared App through org links: URL `https://<domain>/api/v1/github/everruns-app/webhook`, secret → `GITHUB_APP_WEBHOOK_SECRET` |
    | **Repository permissions** | `Contents: Read & write` (or `Read-only` for clone-only) |
    | **Where can this be installed?** | `Any account` |
 

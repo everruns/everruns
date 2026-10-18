@@ -27,16 +27,22 @@ use uuid::Uuid;
 use super::channel_webhooks::ChannelWebhookState;
 use super::common::ErrorResponse;
 use crate::domains::agent_triggers::events::TriggerEventOutcome;
-use crate::domains::agent_triggers::github::{GitHubDelivery, dispatch_github_delivery};
+use crate::domains::agent_triggers::github::{
+    GitHubDelivery, GitHubDeliveryRecipients, dispatch_github_delivery,
+};
 use crate::middleware::RequestId;
 use crate::security::constant_time_eq;
 
-const MAX_DELIVERY_ID_LEN: usize = 128;
-const MAX_EVENT_NAME_LEN: usize = 64;
+pub(super) const MAX_DELIVERY_ID_LEN: usize = 128;
+pub(super) const MAX_EVENT_NAME_LEN: usize = 64;
 
 pub fn routes(state: ChannelWebhookState) -> Router {
     Router::new()
         .route("/v1/github/apps/{app_row_id}/webhook", post(receive))
+        .route(
+            "/v1/github/everruns-app/webhook",
+            post(super::github_everruns_app_webhook::receive),
+        )
         .with_state(state)
 }
 
@@ -49,14 +55,14 @@ pub struct GitHubWebhookResponse {
     pub failed: usize,
 }
 
-type ApiError = (StatusCode, Json<ErrorResponse>);
+pub(super) type ApiError = (StatusCode, Json<ErrorResponse>);
 
-fn error(status: StatusCode, message: &str) -> ApiError {
+pub(super) fn error(status: StatusCode, message: &str) -> ApiError {
     ErrorResponse::new(message.to_string()).into_response(status)
 }
 
 /// Verify `sha256=<hex>` over the raw body.
-fn signature_valid(secret: &[u8], body: &[u8], header: Option<&str>) -> bool {
+pub(super) fn signature_valid(secret: &[u8], body: &[u8], header: Option<&str>) -> bool {
     let Some(presented) = header
         .and_then(|value| value.strip_prefix("sha256="))
         .and_then(|hex_sig| hex::decode(hex_sig).ok())
@@ -73,7 +79,7 @@ fn signature_valid(secret: &[u8], body: &[u8], header: Option<&str>) -> bool {
     constant_time_eq(&mac.finalize().into_bytes(), &presented)
 }
 
-fn header<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
+pub(super) fn header<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
     headers.get(name).and_then(|value| value.to_str().ok())
 }
 
@@ -138,7 +144,7 @@ async fn receive(
         &state.db,
         &state.session_service,
         &state.message_service,
-        &app,
+        &GitHubDeliveryRecipients::agent_app(&app),
         &GitHubDelivery {
             event,
             delivery_id,
@@ -152,6 +158,13 @@ async fn receive(
         error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error")
     })?;
 
+    Ok((StatusCode::ACCEPTED, Json(tally(results))))
+}
+
+/// Count what a delivery did, per outcome.
+pub(super) fn tally(
+    results: Vec<crate::domains::agent_triggers::github::GitHubDispatch>,
+) -> GitHubWebhookResponse {
     let mut response = GitHubWebhookResponse::default();
     for result in results {
         match result.outcome {
@@ -161,7 +174,7 @@ async fn receive(
             Err(_) => response.failed += 1,
         }
     }
-    Ok((StatusCode::ACCEPTED, Json(response)))
+    response
 }
 
 /// The user uninstalled the App on GitHub: drop the identity's connection so

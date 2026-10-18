@@ -137,6 +137,7 @@ pub struct AgentDraftResult {
     category = "agents",
     description = "Revise an agent draft from a conversation with the agent builder. \
                    Returns the draft only; nothing is created.",
+    summary = "Revise an agent draft with the agent builder",
     method = "POST",
     path = "/v1/agents/draft",
     policy = AGENT_MANAGE,

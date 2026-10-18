@@ -35,6 +35,17 @@ replaced the Exposures page. Definitions (prompt, model, harness) stay on the
   events the session counters and the active-turn limit use. "Active turns" is sessions with
   `status = 'active'`, so it matches the limit it is shown against; "Agents running" counts the
   agents behind them.
+- **The compact list stays without column headers.** Hovering or keyboard-focusing the run
+  chart explains its last-24-hours window and one-hour bars. Only the plain, underlined failure
+  count links to the agent's Sessions tab; there is no arrow or separate latest-failure action.
+  The link preserves the activity snapshot's exact bounds. A failure remains visible even if
+  its turn started before that window.
+- **Failure history is independent of current outcome.** The Sessions tab filters by terminal
+  failure time, includes old, archived and subsequently recovered sessions, and reports failed
+  turns separately from affected sessions. It uses the same committed terminal events as the
+  activity count rather than the asynchronous trace index. Each card shows its latest matching
+  error and links by event sequence into Trace. Cancellations and recovered tool errors do not
+  count as failed turns. See [Session Source and List Facets](../runtime-resources/session-source-and-facets.md).
 - **One read for the activity.** `GET /v1/agents/activity` returns every agent's load, 24 hourly
   buckets, active triggers, and every channel's 7 daily session buckets, so the busiest orgs do not
   get an N+1 page. Channel configuration still comes from each agent's channel list: Apps are

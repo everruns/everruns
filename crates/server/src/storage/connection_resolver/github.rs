@@ -10,16 +10,24 @@
 //! when its identity created one, otherwise the deployment's shared App.
 
 use super::*;
-use crate::github_apps::{AppCredentials, GITHUB_APP_CONNECTION_TYPE, TokenScope};
+use crate::github_apps::{
+    AppCredentials, EVERRUNS_APP_CONNECTION_TYPE, GITHUB_APP_CONNECTION_TYPE, TokenScope,
+};
 use everruns_contracts::runtime::{GitHubAccess, McpResolvedCredential};
 use everruns_core::McpServerActsAs;
 
 const PROVIDER: &str = "github";
+type ScopedGitHubToken = (
+    String,
+    Option<everruns_contracts::runtime::GitHubInstallationScope>,
+);
 
 /// Which of the three GitHub identities (D1) a connection is. Derived from the
-/// row rather than stored in its own column: `connection_type` already marks an
-/// agent App's installation, any other installation belongs to the shared
-/// Everruns App, and a row without one holds a person's own token.
+/// row rather than stored in its own column: `connection_type` marks an agent
+/// App's installation (`github_app`) and a shared App installation an org
+/// admin linked (`everruns_app`, D3). Rows stored before D3 (`oauth` with an
+/// installation) are still the shared App's until 3b migrates them, and a row
+/// without an installation holds a person's own token.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GitHubIdentityKind {
     AgentApp,
@@ -31,7 +39,9 @@ impl GitHubIdentityKind {
     pub(crate) fn of(row: &VirtualUserConnectionRow) -> Self {
         if row.connection_type == GITHUB_APP_CONNECTION_TYPE {
             Self::AgentApp
-        } else if row.installation_id.is_some() {
+        } else if row.connection_type == EVERRUNS_APP_CONNECTION_TYPE
+            || row.installation_id.is_some()
+        {
             Self::EverrunsApp
         } else {
             Self::Person
@@ -164,13 +174,14 @@ impl DbConnectionResolver {
             let Some(row) = row else {
                 continue;
             };
-            if let Some(token) = self
-                .scoped_github_token(OAuthScope::Session(session), row, &token_scope)
+            if let Some((token, github_installation_scope)) = self
+                .scoped_github_credential(OAuthScope::Session(session), row, &token_scope)
                 .await?
             {
                 return Ok(Some(McpResolvedCredential {
                     token,
                     acted_as: *identity,
+                    github_installation_scope,
                 }));
             }
         }
@@ -206,6 +217,18 @@ impl DbConnectionResolver {
         row: VirtualUserConnectionRow,
         token_scope: &TokenScope,
     ) -> Result<Option<String>> {
+        Ok(self
+            .scoped_github_credential(scope, row, token_scope)
+            .await?
+            .map(|(token, _)| token))
+    }
+
+    async fn scoped_github_credential(
+        &self,
+        scope: OAuthScope,
+        row: VirtualUserConnectionRow,
+        token_scope: &TokenScope,
+    ) -> Result<Option<ScopedGitHubToken>> {
         let installation_id = match (GitHubIdentityKind::of(&row), row.installation_id) {
             (GitHubIdentityKind::Person, _) => {
                 // A stored OAuth token (a person's own login) cannot be
@@ -213,7 +236,10 @@ impl DbConnectionResolver {
                 return row
                     .access_token_encrypted
                     .as_deref()
-                    .map(|value| self.decrypt(value, "connection token"))
+                    .map(|value| {
+                        self.decrypt(value, "connection token")
+                            .map(|token| (token, None))
+                    })
                     .transpose();
             }
             (_, Some(installation_id)) => installation_id,
@@ -223,9 +249,9 @@ impl DbConnectionResolver {
             return Ok(None);
         };
         self.github_apps
-            .mint_scoped_installation_token(&credentials, installation_id, token_scope)
+            .mint_scoped_installation_credential(&credentials, installation_id, token_scope)
             .await
-            .map(Some)
+            .map(|credential| Some(credential.into_credential()))
             .map_err(|e| AgentLoopError::store(format!("Failed to mint GitHub token: {e}")))
     }
 }
@@ -298,6 +324,10 @@ mod tests {
         );
         assert_eq!(
             GitHubIdentityKind::of(&row("oauth", Some(1))),
+            GitHubIdentityKind::EverrunsApp
+        );
+        assert_eq!(
+            GitHubIdentityKind::of(&row(EVERRUNS_APP_CONNECTION_TYPE, Some(1))),
             GitHubIdentityKind::EverrunsApp
         );
         assert_eq!(

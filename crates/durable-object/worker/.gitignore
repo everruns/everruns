@@ -1,0 +1,6 @@
+.dev.vars
+.dev.vars.*
+.wrangler/
+node_modules/
+test/*.generated.json
+test/*.generated.js

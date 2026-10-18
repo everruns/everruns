@@ -238,6 +238,12 @@ pub struct ToolStartedData {
     /// Human-readable narration for timeline rendering
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub narration: Option<String>,
+    /// How many times the call may safely run, from its tool's definition;
+    /// `None` when the tool is unknown. A host stores the `tool.started` of
+    /// an `AtMostOnce` call before the tool runs, so a log without it proves
+    /// the call never ran and resume may run it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub side_effect_class: Option<crate::tool_types::SideEffectClass>,
 }
 
 /// Data for tool.completed event

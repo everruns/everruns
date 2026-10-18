@@ -19,6 +19,7 @@ import {
   unpinSession,
   archiveSession,
   unarchiveSession,
+  type SessionListFilters,
 } from "@/lib/api/sessions";
 import { DEFAULT_EXCLUDED_EVENTS, getSseUrl, listEventsPaginated } from "@/lib/api/events";
 import { queryKeys } from "@/lib/query-keys";
@@ -41,6 +42,9 @@ import { useOrg } from "@/providers/org-provider";
 import { useLocale } from "@/providers/locale-provider";
 import { createReconnectTracker } from "@/lib/sse-reconnect";
 import { createEventStream, type EventStreamLike } from "@/lib/event-stream";
+import { listSessionTasks } from "@/lib/api/session-tasks";
+import { isTerminalTaskState } from "@/lib/api/types";
+import { subscribeSessionActivity } from "@/lib/session-activity";
 import { useResourceOrgFallback } from "./use-resource-org-fallback";
 
 /**
@@ -50,14 +54,20 @@ import { useResourceOrgFallback } from "./use-resource-org-fallback";
  */
 export function useSessions(
   agentId?: string,
-  params?: PaginationParams,
+  params?: PaginationParams & Pick<SessionListFilters, "includeArchived">,
   options: { enabled?: boolean } = {},
 ) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
   const query = useQuery({
-    queryKey: queryKeys.sessions.list(org, agentId, params?.offset ?? 0, params?.limit ?? 20),
+    queryKey: queryKeys.sessions.list(
+      org,
+      agentId,
+      params?.offset ?? 0,
+      params?.limit ?? 20,
+      params?.includeArchived ?? false,
+    ),
     queryFn: () => listSessions({ ...params, agentId }),
     enabled: !!org && (options.enabled ?? true),
   });
@@ -405,6 +415,8 @@ const SSE_EVENT_TYPES = [
   "reason.item",
   "context.compacted",
   "session.model.changed",
+  "task.created",
+  "task.updated",
 ];
 
 /** Default page size for paginated event loading */
@@ -417,6 +429,22 @@ const EVENT_PAGE_SIZE = 200;
  */
 const MAX_EVENTS_IN_MEMORY = 5_000;
 
+function isSettledTail(events: Event[], settled = false): boolean {
+  for (const event of events) {
+    if (event.type === "session.idled" || event.type === "session.started") settled = true;
+    else if (!["task.created", "task.updated", "session.model.changed"].includes(event.type)) {
+      settled = false;
+    }
+  }
+  return settled;
+}
+
+export interface UseEventsOptions {
+  enabled?: boolean;
+  /** Close settled idle streams. Opt in only when external updates may wait until resume/focus. */
+  followIdle?: boolean;
+}
+
 /**
  * Fetch events for a session using paginated REST + SSE.
  *
@@ -427,7 +455,7 @@ const MAX_EVENTS_IN_MEMORY = 5_000;
  *
  * Pagination uses X-Total-Count header for scroll estimation.
  */
-export function useEvents(sessionId: string | undefined, options?: { enabled?: boolean }) {
+export function useEvents(sessionId: string | undefined, options?: UseEventsOptions) {
   const { currentOrg } = useOrg();
   const org = currentOrg?.public_id;
 
@@ -439,6 +467,11 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
   const lastEventIdRef = useRef<string | null>(null);
   const reconnectRef = useRef(createReconnectTracker());
   const isEnabled = options?.enabled !== false;
+  const followIdle = options?.followIdle !== false;
+  const [isSuspended, setIsSuspended] = useState(false);
+  const resumeRef = useRef<() => void>(() => {});
+  const resume = useCallback(() => resumeRef.current(), []);
+  const settledTailRef = useRef(false);
 
   // Track events by ID to avoid duplicates
   const eventIdsRef = useRef<Set<string>>(new Set());
@@ -454,7 +487,7 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
   }, [events]);
 
   // Track whether initial REST fetch has completed
-  const [restLoaded, setRestLoaded] = useState(false);
+  const [restLoaded, setRestLoaded] = useState<string | null>(null);
 
   // Dedup in-flight REST fetches for the same (org, sessionId) pair (EVE-159)
   const fetchingKeyRef = useRef<string | null>(null);
@@ -482,7 +515,9 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
     lastEventIdRef.current = null;
     eventIdsRef.current.clear();
     reconnectRef.current = createReconnectTracker();
-    setRestLoaded(false);
+    setRestLoaded(null);
+    setIsSuspended(false);
+    settledTailRef.current = false;
     fetchingKeyRef.current = null;
     setTotalNonDeltaCount(undefined);
     oldestLoadedSequenceRef.current = undefined;
@@ -501,6 +536,7 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
     fetchingKeyRef.current = key;
 
     let cancelled = false;
+    let completed = false;
 
     async function fetchInitialEvents() {
       try {
@@ -511,6 +547,7 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
         if (cancelled) return;
 
         const batch = result.events;
+        settledTailRef.current = batch.length === 0 || isSettledTail(batch);
         if (batch.length > 0) {
           for (const e of batch) {
             eventIdsRef.current.add(e.id);
@@ -536,16 +573,18 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
       }
 
       if (!cancelled) {
+        completed = true;
         setIsLoading(false);
-        setRestLoaded(true);
+        setRestLoaded(key);
       }
     }
 
     fetchInitialEvents();
     return () => {
       cancelled = true;
-      // Allow re-fetch if effect re-runs after cleanup
-      if (fetchingKeyRef.current === key) {
+      // A completed snapshot stays valid across disabling. Refetching it while
+      // SSE resumes could overwrite events already appended by the new stream.
+      if (!completed && fetchingKeyRef.current === key) {
         fetchingKeyRef.current = null;
       }
     };
@@ -597,12 +636,62 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
   // Step 2: SSE for live updates (starts after REST completes)
   // SSE is unfiltered — picks up deltas for in-flight streaming messages naturally
   useEffect(() => {
-    if (!org || !sessionId || !isEnabled || !restLoaded) {
+    if (!org || !sessionId || !isEnabled || restLoaded !== `${org}:${sessionId}`) {
       return;
     }
 
-    const connectSSE = () => {
+    let disposed = false;
+    let revision = 0;
+    let pendingActions = 0;
+    let checkingIdle = false;
+    let checkAgain = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const close = () => {
+      clearTimeout(retryTimer);
       cleanup();
+      revision += 1;
+    };
+
+    // connected precedes replay. Verify the durable server tail as well as
+    // actual session/task state so an old idled event cannot cut off catch-up.
+    const checkIdle = async () => {
+      if (followIdle || disposed || pendingActions || !settledTailRef.current) return;
+      if (checkingIdle) {
+        checkAgain = true;
+        return;
+      }
+      checkingIdle = true;
+      const checkedRevision = revision;
+      try {
+        const [session, tasks, tail] = await Promise.all([
+          getSession(sessionId),
+          listSessionTasks(sessionId),
+          listEventsPaginated(sessionId, { limit: 1 }),
+        ]);
+        if (disposed || checkedRevision !== revision || pendingActions) return;
+        if (session.status !== "idle" && session.status !== "started") return;
+        if (tasks.some((task) => !isTerminalTaskState(task.state))) return;
+        if ((tail.events.at(-1)?.id ?? null) !== lastEventIdRef.current) return;
+        close();
+        setIsSuspended(true);
+        setIsReconnecting(false);
+        setError(null);
+      } catch {
+        // Uncertain state must keep following, especially parked client tools.
+      } finally {
+        checkingIdle = false;
+        if (checkAgain) {
+          checkAgain = false;
+          void checkIdle();
+        }
+      }
+    };
+
+    const connectSSE = () => {
+      if (disposed) return;
+      close();
+      setIsSuspended(false);
 
       // No event id yet means the REST snapshot was empty (a fresh session) or
       // failed: resume from sequence 0 so the server replays everything written
@@ -613,41 +702,47 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
       );
       const eventSource = createEventStream(sseUrl, { withCredentials: true });
       eventSourceRef.current = eventSource;
+      const isCurrent = () => !disposed && eventSourceRef.current === eventSource;
 
       eventSource.addEventListener("connected", () => {
+        if (!isCurrent()) return;
         reconnectRef.current.reset();
         setError(null);
         setIsReconnecting(false);
+        void checkIdle();
       });
 
       eventSource.addEventListener("disconnecting", (messageEvent) => {
+        if (!isCurrent()) return;
         try {
           const data = JSON.parse(messageEvent.data);
           const retryMs = reconnectRef.current.onGraceful(data.retry_ms ?? 100);
-          cleanup();
+          close();
           setIsReconnecting(true);
-          setTimeout(() => {
-            if (isEnabled) connectSSE();
-          }, retryMs);
+          retryTimer = setTimeout(connectSSE, retryMs);
         } catch {
-          cleanup();
+          close();
           setIsReconnecting(true);
-          if (isEnabled) connectSSE();
+          connectSSE();
         }
       });
 
       eventSource.onopen = () => {
+        if (!isCurrent()) return;
         setError(null);
       };
 
       for (const eventType of SSE_EVENT_TYPES) {
         eventSource.addEventListener(eventType, (messageEvent) => {
+          if (!isCurrent()) return;
           try {
             const event: Event = JSON.parse(messageEvent.data);
 
             if (eventIdsRef.current.has(event.id)) return;
 
             eventIdsRef.current.add(event.id);
+            revision += 1;
+            settledTailRef.current = isSettledTail([event], settledTailRef.current);
             // Resume only from stored events. Deltas are ephemeral (no
             // sequence): reconnecting with one as `since_id` matches nothing,
             // so durable events missed during the gap were never replayed.
@@ -662,6 +757,7 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
                 ? next.slice(next.length - MAX_EVENTS_IN_MEMORY)
                 : next;
             });
+            void checkIdle();
           } catch (e) {
             console.error("Failed to parse SSE event:", e);
           }
@@ -669,7 +765,8 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
       }
 
       eventSource.onerror = () => {
-        cleanup();
+        if (!isCurrent()) return;
+        close();
         const delayMs = reconnectRef.current.onError();
         if (delayMs === null) {
           setError(new Error("SSE connection failed after max retries"));
@@ -678,21 +775,44 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
         }
         setError(new Error("SSE connection error, reconnecting..."));
         setIsReconnecting(true);
-        setTimeout(() => {
-          if (isEnabled) connectSSE();
-        }, delayMs);
+        retryTimer = setTimeout(connectSSE, delayMs);
       };
     };
 
-    connectSSE();
+    resumeRef.current = connectSSE;
+    const unsubscribe = followIdle
+      ? () => {}
+      : subscribeSessionActivity(sessionId, (pending) => {
+          pendingActions = pending;
+          revision += 1;
+          if (pending && !eventSourceRef.current) connectSSE();
+          if (!pending) void checkIdle();
+        });
+    const wake = () => {
+      if (!eventSourceRef.current) connectSSE();
+    };
+    if (!followIdle) {
+      window.addEventListener("focus", wake);
+      window.addEventListener("online", wake);
+    }
+    if (!eventSourceRef.current) connectSSE();
 
-    return cleanup;
-  }, [org, sessionId, isEnabled, restLoaded, cleanup]);
+    return () => {
+      disposed = true;
+      unsubscribe();
+      window.removeEventListener("focus", wake);
+      window.removeEventListener("online", wake);
+      resumeRef.current = () => {};
+      close();
+    };
+  }, [org, sessionId, isEnabled, restLoaded, followIdle, cleanup]);
 
   return {
     data: events,
     isLoading,
     isReconnecting,
+    isSuspended,
+    resume,
     error,
     // Pagination
     hasMore,

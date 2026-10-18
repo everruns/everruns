@@ -1,5 +1,6 @@
 import {
   CRON_MIN_INTERVAL_SECONDS,
+  describeCronExpression,
   getCronIntervalSeconds,
   isSupportedCronExpression,
 } from "@/components/apps/cron-label";
@@ -41,5 +42,30 @@ describe("isSupportedCronExpression", () => {
 
   it("rejects an invalid expression", () => {
     expect(isSupportedCronExpression("bad")).toBe(false);
+  });
+});
+
+// EVE-1260: the server's `cron` crate numbers 7-field weekdays 1-7 from Sunday;
+// 5-field cron is standard (0-6 from Sunday). The preview must say what runs.
+describe("describeCronExpression weekdays", () => {
+  it("reads 7-field weekdays the cron crate's way", () => {
+    expect(describeCronExpression("0 0 9 * * 2-6 *")).toBe("At 09:00 AM, Monday through Friday");
+    expect(describeCronExpression("0 0 9 * * 1-5 *")).toBe("At 09:00 AM, Sunday through Thursday");
+    expect(describeCronExpression("0 0 18 * * 1 *")).toBe("At 06:00 PM, only on Sunday");
+  });
+
+  it("keeps 5-field weekdays standard", () => {
+    expect(describeCronExpression("0 9 * * 1-5")).toBe("At 09:00 AM, Monday through Friday");
+    expect(describeCronExpression("0 18 * * 0")).toBe("At 06:00 PM, only on Sunday");
+  });
+
+  it("rejects a 7-field weekday the server rejects", () => {
+    expect(isSupportedCronExpression("0 0 9 * * 0 *")).toBe(false);
+  });
+
+  it("previews 7-field named weekdays unchanged", () => {
+    expect(describeCronExpression("0 0 9 * * MON-FRI *")).toBe(
+      "At 09:00 AM, Monday through Friday",
+    );
   });
 });

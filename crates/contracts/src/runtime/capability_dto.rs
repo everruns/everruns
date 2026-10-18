@@ -203,6 +203,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "session_schedule" => Some("session-schedules"),
         "session_storage" => Some("session-storage"),
         "session" => Some("session"),
+        "automatic_session_titles" => Some("automatic-session-titles"),
         "session_sql_database" => Some("sql-database"),
         "slack" => Some("slack"),
         "subagents" => Some("sub-agents"),

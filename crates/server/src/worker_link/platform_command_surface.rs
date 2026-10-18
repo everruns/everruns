@@ -436,6 +436,7 @@ mod tests {
 
     fn all_flags() -> crate::records::FeatureFlags {
         crate::records::FeatureFlags {
+            monitoring: true,
             docker_capability: true,
             container_sandbox: true,
             lua: true,
@@ -462,6 +463,7 @@ mod tests {
         discover(
             arguments,
             &crate::records::FeatureFlags {
+                monitoring: false,
                 docker_capability: true,
                 container_sandbox: true,
                 lua: true,

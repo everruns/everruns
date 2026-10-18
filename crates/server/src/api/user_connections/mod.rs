@@ -235,7 +235,7 @@ pub struct CreateApiKeyConnectionRequest {
     /// Provider API key, encrypted before storage.
     #[schema(example = "example-api-key")]
     pub api_key: String,
-    /// Additional provider-specific form fields (e.g. org_slug for Deno personal tokens).
+    /// Additional provider-specific form fields (e.g. org_slug for provider personal tokens).
     #[serde(flatten)]
     pub extra_fields: std::collections::HashMap<String, serde_json::Value>,
 }
@@ -371,7 +371,8 @@ pub fn routes(state: AppState) -> Router {
             get(connection_oauth_callback),
         )
         .route("/v1/connection-callbacks/github", get(github_callback))
-        .with_state(state)
+        .with_state(state.clone())
+        .merge(github_org::routes(state))
 }
 
 // ============================================================================
@@ -412,7 +413,7 @@ pub async fn list_connectors(
 ) -> Json<Vec<ProviderResponse>> {
     list_connectors_for_org(&state, org.org_id).await
 }
-#[utoipa::path(summary = "List providers available to this runtime account and endpoint.", get, path="/v1/connection-providers", responses((status=200,description="Available connection providers",body=Vec<ProviderResponse>)),tag="virtual-users")]
+#[utoipa::path(summary = "List providers available to this runtime", description = "List providers available to this runtime account and endpoint.", get, path="/v1/connection-providers", responses((status=200,description="Available connection providers",body=Vec<ProviderResponse>)),tag="virtual-users")]
 async fn list_runtime_connectors(
     State(state): State<AppState>,
     account: crate::auth::runtime::RuntimeAccount,
@@ -1470,7 +1471,9 @@ async fn list_signed_in_catalog_server(
     }
 }
 
+pub(crate) mod github_org;
 mod github_setup;
+use github_org::*;
 use github_setup::*;
 pub(crate) mod runtime_accounts;
 pub use runtime_accounts::ConnectionSetupResponse;

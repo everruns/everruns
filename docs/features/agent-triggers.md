@@ -20,7 +20,7 @@ The rest of this page covers schedule triggers.
 1. Open the agent.
 2. Select the **Integrations** tab.
 3. Select **Add trigger**.
-4. Choose a preset or enter a 5-field cron expression (or a 7-field expression whose year is `*`), then enter an IANA timezone. The editor shows the schedule in human-readable form and previews the next eight runs. The default timezone is `UTC`.
+4. Choose a preset or enter a 5-field cron expression (or a 7-field expression whose year is `*`), then enter an IANA timezone. In 5-field cron, weekdays count 0-6 from Sunday (7 is also Sunday), so `0 9 * * 1-5` runs Monday through Friday. A 7-field expression counts weekdays 1-7 from Sunday, so its Monday through Friday is `2-6` (or `MON-FRI`). The editor shows the schedule in human-readable form and previews the next eight runs. The default timezone is `UTC`.
 5. Choose a session mode:
    - **Shared session** reuses one durable session for this trigger. Use it when later runs should see the trigger's previous conversation.
    - **New session per run** creates a fresh session every time. Use it when each run should be isolated.

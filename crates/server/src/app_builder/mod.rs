@@ -176,6 +176,7 @@ pub struct ServerAppBuilder {
     host_composition: Option<HostComposition>,
     built_in_harnesses: Option<Vec<crate::domains::harnesses::record::BuiltInHarnessDefinition>>,
     connector_registry: Option<everruns_contracts::connector::ConnectorRegistry>,
+    hosted_web_search: Option<everruns_integrations::web_search::HostedWebSearch>,
     email_sender: Option<Arc<dyn crate::records::email::EmailSender>>,
     slack_app_provisioner: Option<
         Arc<dyn crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner>,
@@ -200,6 +201,7 @@ impl ServerAppBuilder {
             host_composition: None,
             built_in_harnesses: None,
             connector_registry: None,
+            hosted_web_search: None,
             email_sender: None,
             slack_app_provisioner: None,
             extra_routes: Vec::new(),
@@ -236,6 +238,16 @@ impl ServerAppBuilder {
     /// Replace the default OSS runtime surface with an explicit platform definition.
     pub fn host_composition(mut self, host_composition: HostComposition) -> Self {
         self.host_composition = Some(host_composition);
+        self
+    }
+
+    /// List the deployment's own search in the Web search catalog and plan preview; the
+    /// worker offers it through `WebSearchCapability::and_hosted`.
+    pub fn hosted_web_search(
+        mut self,
+        hosted: everruns_integrations::web_search::HostedWebSearch,
+    ) -> Self {
+        self.hosted_web_search = Some(hosted);
         self
     }
 
@@ -522,12 +534,18 @@ impl ServerAppBuilder {
         // =====================================================================
         // Phase 4: Event listeners & domain/infra helpers
         // =====================================================================
+        let driver_registry = Arc::new(host_composition.driver_registry().clone());
+        let provider_resolver = Arc::new(
+            services::ProviderResolverService::new(db.clone(), encryption.clone())
+                .with_driver_registry((*driver_registry).clone()),
+        );
         let listeners::Listeners {
             event_listeners,
             budget_service,
             mcp_events,
             mcp_event_triggers,
             thread_turns,
+            automatic_titles,
             session_sandbox_service,
             notification_service,
             observer_wake,
@@ -538,6 +556,7 @@ impl ServerAppBuilder {
                 host_composition: host_composition.clone(),
                 auth_state: auth_state.clone(),
                 auth_config: auth_config.clone(),
+                provider_resolver: provider_resolver.clone(),
                 observers_enabled: feature_flags.observers,
                 prometheus_enabled: prometheus_handle.is_some(),
             },
@@ -567,6 +586,7 @@ impl ServerAppBuilder {
             event_listeners.clone(),
         ));
         thread_turns.bind_registry(&db, &event_service, &runner);
+        automatic_titles.bind_events(&event_service);
         let background_event_service = Arc::new(services::EventService::with_listeners(
             background_db.clone(),
             event_delivery.clone(),
@@ -686,11 +706,6 @@ impl ServerAppBuilder {
             notification_broadcaster,
             auth: auth_state.clone(),
         };
-        let driver_registry = Arc::new(host_composition.driver_registry().clone());
-        let provider_resolver = Arc::new(
-            services::ProviderResolverService::new(db.clone(), encryption.clone())
-                .with_driver_registry((*driver_registry).clone()),
-        );
 
         // Now that the LLM stack exists, spawn the observer scoring worker with
         // an LLM-judge client backed by the org's own configured providers.
@@ -815,7 +830,8 @@ impl ServerAppBuilder {
             encryption.clone(),
             auth_state.clone(),
             connector_registry.clone(),
-        );
+        )
+        .with_hosted_web_search(self.hosted_web_search.clone());
         let eval_run_ctx = Arc::new(crate::domains::evals::runner::EvalRunContext {
             db: db.clone(),
             session_service: Arc::new(
@@ -898,6 +914,7 @@ impl ServerAppBuilder {
             frontend_url: auth_config.frontend_url.clone(),
             public_chat_enabled: feature_flags.public_chat,
             mcp_event_triggers: mcp_event_triggers.clone(),
+            egress: host_composition.egress_service(),
         });
         let (channel_api_routes, channel_root_routes) = channel_states.into_routes();
         let session_files_state = api::session_files::AppState::new(
@@ -1081,20 +1098,7 @@ impl ServerAppBuilder {
         );
         let http_signing_keys_state = api::http_signing_keys::AppState::from_env();
 
-        if !self.config.api_prefix.is_empty() {
-            tracing::info!(
-                prefix = %self.config.api_prefix,
-                "API prefix configured"
-            );
-        }
-        if self.config.cors_origins.is_empty() {
-            tracing::info!("CORS not configured (same-origin requests only)");
-        } else {
-            tracing::info!(
-                origins = ?self.config.cors_origins,
-                "CORS origins configured"
-            );
-        }
+        http_layers::log_configuration(&self.config);
         // Phase 6: Build API router.
         let mut api_routes = Router::new()
             .merge(api::agent_examples::routes(agent_examples_state))
@@ -1139,6 +1143,10 @@ impl ServerAppBuilder {
             .merge(api::users::routes(api_state.clone()))
             .merge(api::resolver::routes(api_state.clone()))
             .merge(api::durable::routes(durable_state))
+            .merge(api::monitoring::routes(api::monitoring::AppState::new(
+                db.clone(),
+                auth_state.clone(),
+            )))
             .merge(schedules_state)
             .merge(api::files::routes(api_state.clone()))
             .merge(api::images::routes(api_state.clone()))

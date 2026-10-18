@@ -92,6 +92,7 @@ pub async fn tool_context_for_ctx(
         tools: serde_json::from_value(session_row.tools.clone()).unwrap_or_default(),
         max_iterations: max_iterations::from_db(session_row.max_iterations),
         parallel_tool_calls: session_row.parallel_tool_calls,
+        max_output_tokens: None,
         mcp_servers: serde_json::from_value(session_row.mcp_servers.clone()).unwrap_or_default(),
         communication: None,
     };

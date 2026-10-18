@@ -38,6 +38,7 @@ export const queryKeys = {
   },
 
   agentGithub: {
+    all: ["agent-github"] as const,
     status: (agentId: string) => ["agent-github", agentId, "status"] as const,
     repositories: (identityId: string) => ["agent-github", identityId, "repositories"] as const,
   },
@@ -66,8 +67,13 @@ export const queryKeys = {
   sessions: {
     all: () => ["sessions"] as const,
     scoped: (org?: string) => ["session", org] as const,
-    list: (org?: string, agentId?: string, offset?: number, limit?: number) =>
-      ["sessions", org, agentId ?? "all", offset ?? 0, limit ?? 20] as const,
+    list: (
+      org?: string,
+      agentId?: string,
+      offset?: number,
+      limit?: number,
+      includeArchived = false,
+    ) => ["sessions", org, agentId ?? "all", offset ?? 0, limit ?? 20, includeArchived] as const,
     byAgent: (agentId: string) => ["sessions", "agent", agentId] as const,
     /**
      * The filtered operational list (EVE-853). `filters` is the serialized
@@ -198,6 +204,7 @@ export const queryKeys = {
     members: (orgId: string) => ["organization", orgId, "members"] as const,
     invitations: (orgId: string) => ["organization", orgId, "invitations"] as const,
     egressAllowlist: (orgId: string) => ["organization", orgId, "egress-allowlist"] as const,
+    everrunsGithubApp: (orgId: string) => ["organization", orgId, "everruns-github-app"] as const,
   },
 
   invitations: {

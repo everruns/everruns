@@ -293,7 +293,7 @@ During exec, a background heartbeat task calls `touch_sandbox_lease` every 3 min
 
 ### Shell profile sourcing in exec
 
-Daytona sessions use a bare (non-login) shell. Unlike E2B and Deno, which spawn `bash -l -c` per command and get automatic profile sourcing, Daytona's persistent session never sources login profiles. Tools installed mid-session (e.g. `rustup` writing `~/.cargo/env`, `nvm` writing `~/.nvm/nvm.sh`) aren't visible in `PATH` on subsequent commands.
+Daytona sessions use a bare (non-login) shell. Unlike E2B, which spawns `bash -l -c` per command and gets automatic profile sourcing, Daytona's persistent session never sources login profiles. Tools installed mid-session (e.g. `rustup` writing `~/.cargo/env`, `nvm` writing `~/.nvm/nvm.sh`) aren't visible in `PATH` on subsequent commands.
 
 Three fixes were considered:
 

@@ -1,0 +1,723 @@
+//! One leased session actor: run its turn (fresh or resumed from the log),
+//! or end it (cancel, poison seal), then give the lease back.
+//!
+//! Decisions:
+//! - The log decides. The tail from the latest `turn.started` is folded: an
+//!   open turn is resumed (`resume_open_turn`, with unfinished calls settled
+//!   or rerun by what their tools declare), an open turn that already has its
+//!   answer is completed, and with no open turn the first unconsumed input
+//!   starts a fresh turn through the same entry step the in-process runtime
+//!   uses (`turn_entry_plan`). One turn per lease: a release that leaves the
+//!   actor runnable (input arrived as the turn ended) wakes the next lease.
+//! - Lease loss stops the turn where it is: the drive is dropped, events
+//!   still queued are dropped, and nothing is released. The new holder folds
+//!   the log and goes on. Every append carries the lease's fence and the
+//!   control plane refuses a stale one in the insert's transaction, so a
+//!   write already in flight when the lease was lost does not land either;
+//!   the refusal itself is a way the holder learns of the loss.
+//! - A retryable failure (a store or transport error) also lets the lease
+//!   expire, after storing what the turn emitted: the next lease resumes from
+//!   the log, and the TTL is the backoff. A non-retryable one fails the turn
+//!   (user-facing message, `turn.failed`, idle) and releases.
+//! - A deleted session (EVE-1235) stops the turn like a lost lease, but
+//!   quietly: its actor row went with it, so there is nothing to fail, record
+//!   or release, and a renew or append that finds it gone is not a fault.
+//! - Poison guard: a lease that finds more attempts than the threshold (each
+//!   lease counts one; any release resets the count) seals the turn instead of
+//!   running it, so a turn that kills its worker cannot loop forever.
+//! - Cancel: the holder records it (single writer; the server does not when
+//!   a live holder runs the actor). The drive is dropped first, and the
+//!   cancel is recorded only while the turn is still open in the log, so a
+//!   turn ends with exactly one terminal event. A cancel ends only the turn
+//!   it targets (see `lease.rs`): one left pending by a holder that recorded
+//!   it and died before releasing does not end the next message's turn.
+//! - Input that reaches a turn parked on a person resolves the pause, as the
+//!   server's message intake does for a session it sees waiting: the pending
+//!   calls are settled as cancelled and the turn goes on to the input. Without
+//!   it, a message that landed while the turn was still running and then
+//!   parked would leave the actor runnable on a turn that can only park again.
+
+use std::sync::Arc;
+
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::typed_id::{MessageId, TurnId};
+use everruns_contracts::user_facing_error::{
+    UserFacingError, UserFacingErrorContext, classify_runtime_error_message, codes,
+};
+
+use super::inbox::ActorInbox;
+use super::lease::{Lease, renew_loop, sequence, turn_input};
+use super::store::{ActorRelease, LeasedActor};
+use super::{ActorHosts, HostTurn, SessionActorDriver, TurnSignals};
+use crate::RuntimeMessage;
+use crate::events::{
+    Event, EventContext, EventData, EventRequest, InputMessageData, OutputMessageCompletedData,
+    ToolCompletedData, TurnCancelledData,
+};
+use crate::host::{
+    InProcessExecution, OpenTurn, RuntimeHostAdapter, RuntimeSessionLifecycle, TurnDrive,
+    TurnLogFold, drive_turn, resume_entry_plan, resume_open_turn, turn_entry_plan,
+};
+
+/// Seal reason recorded on `turn.sealed` by the poison guard.
+pub const NO_PROGRESS_SEAL_REASON: &str = "no_progress";
+
+/// How a lease ends.
+enum Finish {
+    /// Release, consuming input up to the cursor.
+    Release,
+    /// Keep the lease until it expires: lost, or a retryable failure.
+    Expire,
+}
+
+/// Aborts the renewer when the actor's run ends, however it ends.
+struct AbortOnDrop(everruns_contracts::rt::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+impl<H: ActorHosts> SessionActorDriver<H> {
+    /// Run the leased `actor` to the end of one turn and release it.
+    pub async fn run_actor(&self, actor: LeasedActor) {
+        let lease = Arc::new(Lease::new(
+            self.store.clone(),
+            self.config.holder.clone(),
+            &actor,
+            self.config.lease_ttl,
+            self.config.journal_page,
+        ));
+        let renewer = AbortOnDrop(everruns_contracts::rt::spawn(renew_loop(
+            lease.clone(),
+            self.renew_poke.clone(),
+        )));
+        let mut finish = self.run_leased(&lease, &actor).await;
+        if matches!(finish, Ok(Finish::Release)) && !lease.is_lost() {
+            let signals = Self::signals(&lease);
+            let host = self.hosts.host(
+                HostTurn {
+                    org_id: actor.org_id,
+                    session_id: actor.session_id,
+                    agent_id: None,
+                    input_message_id: None,
+                },
+                &signals,
+            );
+            if let Err(error) = async {
+                self.hosts.flush(&host).await?;
+                self.hosts
+                    .checkpoint(&host, &lease.read_tail().await?)
+                    .await
+            }
+            .await
+            {
+                finish = Err(error);
+            }
+        }
+        // Lease-release replies may arrive after another holder takes over;
+        // record the execution boundary before that administrative RPC.
+        tracing::debug!(session_id = %actor.session_id, "Actor turn execution finished");
+        drop(renewer);
+        match finish {
+            Ok(Finish::Release) if !lease.is_lost() => match lease.release().await {
+                Ok(ActorRelease::Released { still_runnable }) => {
+                    tracing::debug!(session_id = %actor.session_id, still_runnable, "Actor released");
+                }
+                Ok(ActorRelease::LeaseLost) => {
+                    if matches!(lease.renew().await, Err(AgentLoopError::SessionNotFound(_))) {
+                        // Deleted as the turn ended (EVE-1235).
+                        tracing::info!(session_id = %actor.session_id, "Session deleted, stopping turn");
+                    } else {
+                        tracing::warn!(session_id = %actor.session_id, "Actor lease lost before release");
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(session_id = %actor.session_id, error = %error, "Actor release failed; the lease will expire");
+                }
+            },
+            Ok(_) => {}
+            Err(error) if session_deleted(&lease, &error).await => {
+                tracing::info!(session_id = %actor.session_id, "Session deleted, stopping turn");
+            }
+            Err(error) => {
+                tracing::warn!(session_id = %actor.session_id, error = %error, "Actor turn failed; the lease will expire and the turn resumes from the log");
+            }
+        }
+    }
+
+    fn signals(lease: &Lease) -> TurnSignals {
+        // Tools stop on either signal; `cancel` alone means the person asked.
+        let (stop_tx, stop) = tokio::sync::watch::channel(false);
+        let (mut lost, mut cancel) = (lease.lost(), lease.cancel());
+        let cancel_view = lease.cancel();
+        everruns_contracts::rt::spawn(async move {
+            tokio::select! {
+                _ = lost.wait_for(|lost| *lost) => {}
+                _ = cancel.wait_for(|cancel| *cancel) => {}
+                () = stop_tx.closed() => return,
+            }
+            let _ = stop_tx.send(true);
+        });
+        TurnSignals {
+            stop,
+            cancel: cancel_view,
+            fence: Some(lease.fence()),
+        }
+    }
+
+    async fn run_leased(&self, lease: &Lease, actor: &LeasedActor) -> Result<Finish> {
+        let org_id = actor.org_id;
+        let session_id = actor.session_id;
+        let signals = Self::signals(lease);
+        let setup = self.hosts.host(
+            HostTurn {
+                org_id,
+                session_id,
+                agent_id: None,
+                input_message_id: None,
+            },
+            &signals,
+        );
+        let tail = lease.read_tail().await?;
+        self.hosts.checkpoint(&setup, &tail).await?;
+        let started_at = tail
+            .first()
+            .filter(|event| event.event_type == crate::TURN_STARTED)
+            .and_then(|event| event.sequence)
+            .map(i64::from);
+        let open =
+            TurnLogFold::from_events(tail.clone()).filter(|turn| turn.session_id() == session_id);
+        if let (Some(_), Some(sequence)) = (&open, started_at) {
+            lease.advance(sequence);
+        }
+
+        if actor.attempts > self.config.poison_attempts {
+            self.seal(lease, &setup, org_id, open, actor.next_input_seq)
+                .await?;
+            return Ok(Finish::Release);
+        }
+
+        let Some(turn) = open else {
+            // The latest turn is closed. Its holder may have died between the
+            // turn's terminal event and `session.idled` (chaos harness: the
+            // session stayed `active` with nothing running), and before a
+            // renew committed the cursor over its input (the input would run
+            // a second turn). Finish both here, idempotently: the log says
+            // whether the idle and the input are still owed.
+            let closed = unidled_turn(&tail);
+            if let Some((turn_id, input_message_id)) = closed {
+                RuntimeSessionLifecycle::new(setup.clone(), org_id, session_id)
+                    .emit_session_idled(turn_id, input_message_id, None, None)
+                    .await?;
+            }
+            let mut fresh = lease.fresh_input(actor.next_input_seq).await?;
+            if let Some(found) = fresh
+                && closed_input(&tail) == Some(found.message_id)
+            {
+                lease.advance(found.sequence);
+                fresh = lease.fresh_input(actor.next_input_seq).await?;
+            }
+            let Some(input) = fresh else {
+                // A mark with nothing to run (its input was consumed).
+                lease.advance(lease.inbox_seq());
+                return Ok(Finish::Release);
+            };
+            lease.start_fresh(input.sequence);
+            lease.begin_turn(input.sequence);
+            let resolved = setup
+                .load_resolved_turn_for_execution(org_id, session_id, input.message_id)
+                .await?;
+            let input_message = resolved
+                .messages
+                .iter()
+                .find(|message| message.id == input.message_id)
+                .cloned();
+            let snapshot = resolved.snapshot;
+            let drive = TurnDrive::new(
+                session_id,
+                org_id,
+                self.hosts
+                    .fresh_turn_id(input.message_id, TurnId::new())
+                    .await?,
+                input.message_id,
+                snapshot.harness_id,
+                snapshot.agent_id,
+                snapshot.workspace_id,
+            );
+            let host = self.turn_host(&drive, &signals);
+            self.hosts
+                .inputs_consumed(&drive, &[input.message_id])
+                .await?;
+            lease.renew().await?;
+            if !lease.cancel_requested() {
+                let mut stop = signals.stop.clone();
+                tokio::select! {
+                    biased;
+                    _=stop.wait_for(|stop|*stop)=>{},
+                    result=self.hosts.before_turn(&host,&drive,input_message.as_ref())=> {
+                        if result?==super::InputPreparation::Rejected {
+                            // The host durably settled the input without starting a
+                            // turn. It is safe to commit past the fresh-input guard.
+                            lease.turn_stored();
+                            lease.advance(input.sequence);
+                            return Ok(Finish::Release);
+                        }
+                    },
+                }
+            }
+            if lease.is_lost() {
+                return Ok(Finish::Expire);
+            }
+            let (execution, plan) = turn_entry_plan(&host, &drive).await?;
+            lease.renew().await?;
+            return self.drive(lease, &host, drive, execution, plan).await;
+        };
+
+        lease.begin_turn(
+            lease
+                .open_turn_input(turn.input_message_id(), started_at)
+                .await?,
+        );
+        if lease.cancel_requested() {
+            let drive = self.open_drive(&setup, org_id, &turn).await?;
+            self.record_cancel(lease, &setup, &drive).await?;
+            return Ok(Finish::Release);
+        }
+        if turn.is_answered() {
+            let drive = self.open_drive(&setup, org_id, &turn).await?;
+            let lifecycle = RuntimeSessionLifecycle::new(setup.clone(), org_id, session_id);
+            lifecycle
+                .turn_completed(
+                    turn.turn_id(),
+                    turn.input_message_id(),
+                    turn.reasons(),
+                    turn.usage().cloned(),
+                    None,
+                )
+                .await?;
+            lifecycle
+                .fire_turn_end_hooks(drive.harness_id, drive.agent_id, drive.turn_id, true)
+                .await;
+            lease.skip_to_next_input().await?;
+            return Ok(Finish::Release);
+        }
+        let turn = if settle_pause_for_input(lease, &setup, &turn, &tail).await? {
+            match TurnLogFold::from_events(lease.read_tail().await?) {
+                Some(turn) => turn,
+                None => return Ok(Finish::Release),
+            }
+        } else {
+            turn
+        };
+        let drive = self.open_drive(&setup, org_id, &turn).await?;
+        let host = self.turn_host(&drive, &signals);
+        let waits_on_person = self.hosts.waits_on_person();
+        let Some((state, act)) =
+            resume_open_turn(&host, org_id, turn, waits_on_person.as_deref()).await?
+        else {
+            return Ok(Finish::Release);
+        };
+        let plan = resume_entry_plan(&state, act);
+        self.drive(lease, &host, drive, InProcessExecution::new(state), plan)
+            .await
+    }
+
+    /// The identity of the open `turn`, with the session's harness, agent and
+    /// workspace.
+    async fn open_drive(&self, host: &H::Host, org_id: i64, turn: &OpenTurn) -> Result<TurnDrive> {
+        let snapshot = host
+            .load_resolved_turn(org_id, turn.session_id())
+            .await?
+            .snapshot;
+        Ok(TurnDrive::new(
+            turn.session_id(),
+            org_id,
+            turn.turn_id(),
+            turn.input_message_id(),
+            snapshot.harness_id,
+            snapshot.agent_id,
+            snapshot.workspace_id,
+        ))
+    }
+
+    fn turn_host(&self, drive: &TurnDrive, signals: &TurnSignals) -> H::Host {
+        self.hosts.host(
+            HostTurn {
+                org_id: drive.org_id,
+                session_id: drive.session_id,
+                agent_id: drive.agent_id,
+                input_message_id: Some(drive.input_message_id),
+            },
+            signals,
+        )
+    }
+
+    async fn drive(
+        &self,
+        lease: &Lease,
+        host: &H::Host,
+        drive: TurnDrive,
+        execution: InProcessExecution,
+        plan: crate::engine::TurnPlan,
+    ) -> Result<Finish> {
+        let inbox = ActorInbox {
+            lease,
+            hosts: &*self.hosts,
+            host,
+            drive: &drive,
+        };
+        let (mut lost, mut cancel) = (lease.lost(), lease.cancel());
+        enum Stopped {
+            Lost,
+            Cancel,
+            Deleted,
+            Done(Result<crate::host::TurnResult>),
+        }
+        let mut stopped = tokio::select! {
+            biased;
+            _ = lost.wait_for(|lost| *lost) => Stopped::Lost,
+            _ = cancel.wait_for(|cancel| *cancel) => Stopped::Cancel,
+            result = drive_turn(host, &inbox, drive.clone(), execution, plan) => Stopped::Done(result),
+        };
+        // A refused append (the control plane found another holder's fence)
+        // flips the lease lost from inside the drive, which then returns its
+        // error in the same poll: the lease is gone either way.
+        if lease.is_lost() {
+            stopped = Stopped::Lost;
+        } else if lease.cancel_requested() {
+            stopped = Stopped::Cancel;
+        } else if let Stopped::Done(Err(error)) = &stopped
+            && session_deleted(lease, error).await
+        {
+            stopped = Stopped::Deleted;
+        }
+        // Every way the drive ended but a lost lease or a deleted session
+        // waits for the turn's queued events first. A queued store that gave
+        // up left a gap in the host's write-behind log: the turn ends
+        // as on a retryable failure, without committing its input or writing
+        // anything more, and the next holder resumes from the log.
+        let flushed = match &stopped {
+            Stopped::Cancel | Stopped::Done(_) => self.hosts.flush(host).await,
+            Stopped::Lost | Stopped::Deleted => Ok(()),
+        };
+        let finish = match (stopped, flushed) {
+            (Stopped::Lost, _) => {
+                self.hosts.abandon(host);
+                Finish::Expire
+            }
+            (Stopped::Deleted, _) => {
+                tracing::info!(
+                    session_id = %drive.session_id,
+                    turn_id = %drive.turn_id,
+                    "Session deleted, stopping turn"
+                );
+                self.hosts.abandon(host);
+                Finish::Expire
+            }
+            (_, Err(error)) => {
+                tracing::warn!(
+                    session_id = %drive.session_id,
+                    turn_id = %drive.turn_id,
+                    error = %error,
+                    "Actor turn's queued events were not stored; the lease will expire and the turn resumes from the log"
+                );
+                Finish::Expire
+            }
+            (Stopped::Cancel, Ok(())) => {
+                lease.turn_stored();
+                self.record_cancel(lease, host, &drive).await?;
+                Finish::Release
+            }
+            (Stopped::Done(Ok(_)), Ok(())) => {
+                lease.turn_stored();
+                lease.skip_to_next_input().await?;
+                Finish::Release
+            }
+            (Stopped::Done(Err(error)), Ok(())) if error.is_non_retryable() => {
+                lease.turn_stored();
+                self.record_failure(host, &drive, &error).await?;
+                lease.skip_to_next_input().await?;
+                Finish::Release
+            }
+            (Stopped::Done(Err(error)), Ok(())) => {
+                tracing::warn!(
+                    session_id = %drive.session_id,
+                    turn_id = %drive.turn_id,
+                    error = %error,
+                    "Actor turn hit a retryable failure; the lease will expire and the turn resumes from the log"
+                );
+                Finish::Expire
+            }
+        };
+        self.hosts.turn_ended(&drive).await;
+        Ok(finish)
+    }
+
+    /// Record the cancel of `drive`'s turn, if the log still has it open:
+    /// `turn.cancelled`, the person's request as part of the turn, and the
+    /// session idled. Consumes the input that was pending when the cancel was
+    /// requested, as the server's withdraw does; input sent after it starts
+    /// the next turn.
+    async fn record_cancel(&self, lease: &Lease, host: &H::Host, drive: &TurnDrive) -> Result<()> {
+        let still_open = TurnLogFold::from_events(lease.read_tail().await?)
+            .is_some_and(|turn| turn.turn_id() == drive.turn_id);
+        if still_open {
+            let context = EventContext::turn(drive.turn_id, drive.input_message_id);
+            let emitter = host.event_emitter();
+            emitter
+                .emit(EventRequest::new(
+                    drive.session_id,
+                    context.clone(),
+                    TurnCancelledData {
+                        turn_id: drive.turn_id,
+                        reason: Some("User requested cancellation".to_string()),
+                        usage: None,
+                    },
+                ))
+                .await?;
+            emitter
+                .emit(EventRequest::new(
+                    drive.session_id,
+                    context,
+                    InputMessageData::new(RuntimeMessage::user(
+                        "User requested to cancel the work.",
+                    )),
+                ))
+                .await?;
+            RuntimeSessionLifecycle::new(host.clone(), drive.org_id, drive.session_id)
+                .emit_session_idled(drive.turn_id, drive.input_message_id, None, None)
+                .await?;
+        }
+        lease.advance(lease.cancelled_inbox());
+        Ok(())
+    }
+
+    /// Fail `drive`'s turn on a non-retryable error: a user-facing message,
+    /// `turn.failed`, the session idled, and the `turn_end` hooks.
+    async fn record_failure(
+        &self,
+        host: &H::Host,
+        drive: &TurnDrive,
+        error: &AgentLoopError,
+    ) -> Result<()> {
+        tracing::error!(
+            session_id = %drive.session_id,
+            turn_id = %drive.turn_id,
+            error = %error,
+            "Actor turn failed"
+        );
+        let user_error =
+            classify_runtime_error_message(&error.to_string(), &UserFacingErrorContext::default());
+        let shown = user_error.fallback_message();
+        assistant_error(host, drive, &shown, &user_error).await?;
+        let lifecycle = RuntimeSessionLifecycle::new(host.clone(), drive.org_id, drive.session_id);
+        lifecycle
+            .turn_failed(
+                drive.turn_id,
+                drive.input_message_id,
+                &shown,
+                Some(&user_error),
+            )
+            .await?;
+        lifecycle
+            .fire_turn_end_hooks(drive.harness_id, drive.agent_id, drive.turn_id, false)
+            .await;
+        Ok(())
+    }
+
+    /// Seal the turn whose holders keep dying: the open turn, or the fresh
+    /// input that would start one. Consumes every pending input.
+    async fn seal(
+        &self,
+        lease: &Lease,
+        host: &H::Host,
+        org_id: i64,
+        open: Option<OpenTurn>,
+        next_input_seq: i64,
+    ) -> Result<()> {
+        let session_id = lease.session_id;
+        let sealed: Option<(TurnId, MessageId, u32, _)> = match open {
+            Some(turn) => Some((
+                turn.turn_id(),
+                turn.input_message_id(),
+                turn.reasons(),
+                turn.usage().cloned(),
+            )),
+            None => lease
+                .fresh_input(next_input_seq)
+                .await?
+                .map(|input| (TurnId::new(), input.message_id, 0, None)),
+        };
+        if let Some((turn_id, input_message_id, reasons, usage)) = sealed {
+            tracing::error!(%session_id, %turn_id, "Sealing a session turn that keeps failing without progress");
+            let drive = TurnDrive::new(
+                session_id,
+                org_id,
+                turn_id,
+                input_message_id,
+                Default::default(),
+                None,
+                Default::default(),
+            );
+            assistant_error(
+                host,
+                &drive,
+                "This turn was stopped because it repeatedly failed without making progress.",
+                &UserFacingError::new(codes::PROCESSING_ERROR),
+            )
+            .await?;
+            RuntimeSessionLifecycle::new(host.clone(), org_id, session_id)
+                .turn_sealed(
+                    turn_id,
+                    input_message_id,
+                    NO_PROGRESS_SEAL_REASON,
+                    reasons,
+                    usage,
+                )
+                .await?;
+        }
+        lease.advance(lease.inbox_seq());
+        Ok(())
+    }
+}
+
+/// The calls of the tail's latest client pause (`tool.call_requested`) that
+/// have no result yet.
+fn paused_calls(tail: &[Event]) -> Vec<everruns_contracts::tool_types::ToolCall> {
+    let mut paused = Vec::new();
+    for event in tail {
+        match &event.data {
+            EventData::ToolCallRequested(requested) => paused = requested.tool_calls.clone(),
+            EventData::ToolCompleted(completed) => {
+                paused.retain(|call| call.id != completed.tool_call_id);
+            }
+            _ => {}
+        }
+    }
+    paused
+}
+
+/// When input past the cursor reaches `turn` parked on a person, settle the
+/// pending calls as cancelled under the turn (see the module notes). `true`
+/// when it settled any.
+async fn settle_pause_for_input<A: RuntimeHostAdapter>(
+    lease: &Lease,
+    host: &A,
+    turn: &OpenTurn,
+    tail: &[Event],
+) -> Result<bool> {
+    let input_waiting = tail
+        .iter()
+        .any(|event| turn_input(event).is_some() && sequence(event) > lease.cursor());
+    let paused = paused_calls(tail);
+    if !input_waiting || paused.is_empty() {
+        return Ok(false);
+    }
+    let context = EventContext::turn(turn.turn_id(), turn.input_message_id());
+    let emitter = host.event_emitter();
+    for call in paused {
+        // The same results the server's intake records for a waiting session.
+        let completed = if call.name == everruns_contracts::ASK_USER_TOOL_NAME {
+            let result = crate::builtins::ask_user::AskUserResult {
+                status: crate::builtins::ask_user::AskUserStatus::Cancelled,
+                answered_by: crate::builtins::ask_user::AskUserAnsweredBy::Unattended,
+                answers: Vec::new(),
+            };
+            ToolCompletedData::success(
+                call.id,
+                call.name,
+                vec![crate::ContentPart::tool_result_text(
+                    &serde_json::to_value(result).unwrap_or_default(),
+                )],
+                None,
+            )
+        } else {
+            ToolCompletedData::failure(
+                call.id,
+                call.name,
+                "cancelled".to_string(),
+                "Cancelled because the user sent a message instead".to_string(),
+                None,
+            )
+        };
+        emitter
+            .emit(EventRequest::new(
+                turn.session_id(),
+                context.clone(),
+                completed,
+            ))
+            .await?;
+    }
+    Ok(true)
+}
+
+/// Whether `error` ended the turn because its session was deleted (EVE-1235):
+/// the error says so, or the session is gone when asked. A turn whose session
+/// was deleted under it fails on whatever it reads next (its input message,
+/// the conversation), and those errors do not name the session; the renew
+/// answers for the actor row, which goes only with the session. It runs only
+/// on a failure path, where one more renew is harmless.
+pub(super) async fn session_deleted(lease: &Lease, error: &AgentLoopError) -> bool {
+    matches!(error, AgentLoopError::SessionNotFound(_))
+        || matches!(lease.renew().await, Err(AgentLoopError::SessionNotFound(_)))
+}
+
+/// An assistant message that shows `user_error` in the conversation.
+async fn assistant_error<A: RuntimeHostAdapter>(
+    host: &A,
+    drive: &TurnDrive,
+    shown: &str,
+    user_error: &UserFacingError,
+) -> Result<()> {
+    let mut message = RuntimeMessage::assistant(shown);
+    let mut metadata = std::collections::HashMap::new();
+    user_error.apply_to_message_metadata(&mut metadata);
+    message.metadata = Some(metadata);
+    host.event_emitter()
+        .emit(EventRequest::new(
+            drive.session_id,
+            EventContext::turn(drive.turn_id, drive.input_message_id),
+            OutputMessageCompletedData::new(message).with_user_facing_error(user_error),
+        ))
+        .await?;
+    Ok(())
+}
+
+/// Terminal events: a turn that logged one is closed.
+fn is_turn_terminal(event_type: &str) -> bool {
+    matches!(
+        event_type,
+        crate::events::TURN_COMPLETED
+            | crate::events::TURN_FAILED
+            | crate::events::TURN_CANCELLED
+            | crate::events::TURN_SEALED
+    )
+}
+
+/// The input of the closed turn the tail starts with: its `turn.started`, when
+/// a terminal event follows it.
+fn closed_input(tail: &[Event]) -> Option<MessageId> {
+    let started = tail
+        .first()
+        .filter(|event| event.event_type == crate::TURN_STARTED)?;
+    tail.iter()
+        .any(|event| is_turn_terminal(&event.event_type))
+        .then_some(started.context.input_message_id)
+        .flatten()
+}
+
+/// The turn (id, input) whose terminal event is the tail's last and has no
+/// `session.idled` after it: its holder died before idling the session.
+fn unidled_turn(tail: &[Event]) -> Option<(TurnId, MessageId)> {
+    for event in tail.iter().rev() {
+        if event.event_type == crate::events::SESSION_IDLED {
+            return None;
+        }
+        if is_turn_terminal(&event.event_type) {
+            return event.context.turn_id.zip(event.context.input_message_id);
+        }
+    }
+    None
+}

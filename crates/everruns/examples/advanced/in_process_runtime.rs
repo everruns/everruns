@@ -83,7 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|c| c.name.clone())
         .collect();
     println!("tool calls: {tool_calls:?}");
-    assert!(result.success, "turn should succeed");
+    assert!(result.success, "turn should succeed: {:?}", result.error);
     assert!(
         tool_calls.iter().any(|n| n == "multiply"),
         "expected the agent to call `multiply`, got {tool_calls:?}"
