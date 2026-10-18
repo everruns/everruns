@@ -886,6 +886,22 @@ pub fn classify_live_tool_call(result: &TurnResult, expected_tool: &str) -> Live
     }
 }
 
+// `CurrentTimeCapability` also contributes `current_time` as a dynamic fact, so
+// every request carries a `<facts>` block with the UTC time. A bare "What time
+// is it?" is then correctly answered from that block without the tool: Kimi K3
+// did so on ~25% of turns, which failed the matrix when three retries landed
+// together (EVE-1287). Live tool-call cases therefore ask for something only a
+// call produces: an explicit call with arguments, and its returned value.
+
+/// System prompt for live cases that must exercise `get_current_time`.
+pub const TIME_TOOL_SYSTEM_PROMPT: &str = "You are a helpful assistant. When the user asks \
+you to call a tool, call it before answering; the <facts> block is not a substitute for a \
+tool result.";
+
+/// User turn for live cases that must exercise `get_current_time`.
+pub const TIME_TOOL_QUESTION: &str = "Call the get_current_time tool for the Asia/Tokyo \
+timezone in human format, then tell me what it returned.";
+
 /// Enforce live tool-call contracts after the caller exhausts its sampling retries.
 /// A clean sampling miss is still useful diagnostic evidence, but cannot prove
 /// that the provider serialized the tool definition onto the wire.

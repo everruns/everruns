@@ -75,9 +75,6 @@ async fn generation_called_tool(runner: &InMemoryAgenticLoop, name: &str) -> boo
         })
 }
 
-const TIME_SYSTEM_PROMPT: &str =
-    "You are a helpful assistant. When asked about time, use the get_current_time tool.";
-
 /// Attempts per live turn when the failure is a transient transport/overload
 /// error (e.g. `error decoding response body`), which failed main CI on a
 /// single Opus 5 hiccup. Separate from each test's own sampling-retry loop.
@@ -139,28 +136,27 @@ async fn test_openai_tool_search_with_many_capabilities(#[case] config: Provider
     let mut called_get_current_time = false;
 
     for attempt in 1..=MAX_ATTEMPTS {
-        let Some((runner, result)) =
-            live_turn(&config, "What time is it right now?", |model| async move {
-                InMemoryAgenticLoop::builder()
-                    .agent_name("Tool Search Agent")
-                    .system_prompt(TIME_SYSTEM_PROMPT)
-                    .model(model)
-                    .driver_registry(all_providers_registry())
-                    // Add multiple capabilities to exceed the 15-tool threshold (16 total)
-                    .capability(CurrentTimeCapability) // 1 tool
-                    .capability(TestMathCapability) // 4 tools
-                    .capability(TestWeatherCapability) // 2 tools
-                    .capability(FileSystemCapability) // 6 tools
-                    .capability(SessionCapability) // 2 tools
-                    .capability(StatelessTodoListCapability) // 1 tool
-                    // Enable tool_search
-                    .capability(OpenAiToolSearchCapability::new())
-                    .max_iterations(5)
-                    .build()
-                    .await
-                    .unwrap()
-            })
-            .await
+        let Some((runner, result)) = live_turn(&config, TIME_TOOL_QUESTION, |model| async move {
+            InMemoryAgenticLoop::builder()
+                .agent_name("Tool Search Agent")
+                .system_prompt(TIME_TOOL_SYSTEM_PROMPT)
+                .model(model)
+                .driver_registry(all_providers_registry())
+                // Add multiple capabilities to exceed the 15-tool threshold (16 total)
+                .capability(CurrentTimeCapability) // 1 tool
+                .capability(TestMathCapability) // 4 tools
+                .capability(TestWeatherCapability) // 2 tools
+                .capability(FileSystemCapability) // 6 tools
+                .capability(SessionCapability) // 2 tools
+                .capability(StatelessTodoListCapability) // 1 tool
+                // Enable tool_search
+                .capability(OpenAiToolSearchCapability::new())
+                .max_iterations(5)
+                .build()
+                .await
+                .unwrap()
+        })
+        .await
         else {
             return;
         };
@@ -358,28 +354,27 @@ async fn test_openai_auto_tool_search_resolves_to_hosted(#[case] config: Provide
     let mut called_get_current_time = false;
 
     for attempt in 1..=MAX_ATTEMPTS {
-        let Some((runner, result)) =
-            live_turn(&config, "What time is it right now?", |model| async move {
-                InMemoryAgenticLoop::builder()
-                    .agent_name("Auto Tool Search Agent")
-                    .system_prompt(TIME_SYSTEM_PROMPT)
-                    .model(model)
-                    .driver_registry(all_providers_registry())
-                    // Multiple capabilities to exceed the 15-tool threshold (16 total).
-                    .capability(CurrentTimeCapability) // 1 tool
-                    .capability(TestMathCapability) // 4 tools
-                    .capability(TestWeatherCapability) // 2 tools
-                    .capability(FileSystemCapability) // 6 tools
-                    .capability(SessionCapability) // 2 tools
-                    .capability(StatelessTodoListCapability) // 1 tool
-                    // Model-adaptive: on this OpenAI model this must resolve to hosted.
-                    .capability(AutoToolSearchCapability::new())
-                    .max_iterations(5)
-                    .build()
-                    .await
-                    .unwrap()
-            })
-            .await
+        let Some((runner, result)) = live_turn(&config, TIME_TOOL_QUESTION, |model| async move {
+            InMemoryAgenticLoop::builder()
+                .agent_name("Auto Tool Search Agent")
+                .system_prompt(TIME_TOOL_SYSTEM_PROMPT)
+                .model(model)
+                .driver_registry(all_providers_registry())
+                // Multiple capabilities to exceed the 15-tool threshold (16 total).
+                .capability(CurrentTimeCapability) // 1 tool
+                .capability(TestMathCapability) // 4 tools
+                .capability(TestWeatherCapability) // 2 tools
+                .capability(FileSystemCapability) // 6 tools
+                .capability(SessionCapability) // 2 tools
+                .capability(StatelessTodoListCapability) // 1 tool
+                // Model-adaptive: on this OpenAI model this must resolve to hosted.
+                .capability(AutoToolSearchCapability::new())
+                .max_iterations(5)
+                .build()
+                .await
+                .unwrap()
+        })
+        .await
         else {
             return;
         };
@@ -723,10 +718,10 @@ async fn test_anthropic_opus_hosted_search_calls_bash_contract(
 /// (falls back to standard tool format — no namespaces, no defer_loading)
 #[tokio::test]
 async fn test_gpt54_tool_search_below_threshold_fallback() {
-    let Some((_, result)) = live_turn(&OPENAI_GPT54, "What time is it?", |model| async move {
+    let Some((_, result)) = live_turn(&OPENAI_GPT54, TIME_TOOL_QUESTION, |model| async move {
         InMemoryAgenticLoop::builder()
             .agent_name("Below Threshold Agent")
-            .system_prompt("When asked about time, use the get_current_time tool.")
+            .system_prompt(TIME_TOOL_SYSTEM_PROMPT)
             .model(model)
             .driver_registry(all_providers_registry())
             // Only 1 tool — well below default threshold of 15

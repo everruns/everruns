@@ -260,16 +260,13 @@ async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
         |r: &TurnResult| r.success && r.tool_calls_count > 0,
         {
             let model = config.model().expect("model set (checked above)");
-            // Firm, tool-naming instruction: Fable 5.1 rejects forced
-            // `tool_choice`, and with adaptive thinking on, Fable 5.1 and
-            // Sonnet 5 answered the softer "use ... when asked about time"
-            // wording without calling the tool (3/3 clean sampling misses).
+            // Explicit tool request (TIME_TOOL_QUESTION): Fable 5.1 rejects
+            // forced `tool_choice`, and the `<facts>` block already carries
+            // the UTC time, so a softer time question is legitimately
+            // answered without the tool.
             let runner = InMemoryAgenticLoop::builder()
                 .agent_name("Thinking Time Agent")
-                .system_prompt(
-                    "You have no clock. When asked about the time, always call the \
-                     get_current_time tool first, then answer from its result.",
-                )
+                .system_prompt(TIME_TOOL_SYSTEM_PROMPT)
                 .model(model)
                 .driver_registry(all_providers_registry())
                 .capability(CurrentTimeCapability)
@@ -280,12 +277,7 @@ async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
             let input = InputMessage {
                 external_actor: None,
                 role: RuntimeMessageRole::User,
-                // The user turn also asks for a tool check: with the system
-                // instruction alone, Sonnet 5 still skipped the tool on ~2/7
-                // first attempts at low effort.
-                content: vec![ContentPart::text(
-                    "What's the current time in UTC? Check it with your tool rather than guessing.",
-                )],
+                content: vec![ContentPart::text(TIME_TOOL_QUESTION)],
                 controls: Some(Controls {
                     speed: None,
                     verbosity: None,
