@@ -186,11 +186,19 @@ jobs:
       # must be preloaded. `track=all` also counts statements run inside
       # trigger functions (event inserts fire several), which are a large part
       # of a turn's database work.
+      #
+      # The server logs every statement over 50 ms (COMMIT included) and every
+      # lock wait over 50 ms, and times WAL syncs, for the "PostgreSQL stalls"
+      # step. A concurrency 1 tail on a shared runner has so far been either the
+      # database stalling (a COMMIT waiting ~120 ms on a WAL fsync) or the
+      # platform; these lines say which (EVE-1266). Match them to a scenario by
+      # time: the `Run turn_latency` step prints each scenario's row when it ends.
       - name: Start PostgreSQL with pg_stat_statements
         run: |
           docker run -d --name bench-postgres -p 5432:5432 \
             -e POSTGRES_USER=everruns -e POSTGRES_PASSWORD=everruns -e POSTGRES_DB=everruns_test \
-            mirror.gcr.io/library/postgres:17-alpine -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all
+            mirror.gcr.io/library/postgres:17-alpine -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all \
+            -c log_min_duration_statement=50 -c log_lock_waits=on -c deadlock_timeout=50ms -c track_wal_io_timing=on
           for _ in $(seq 60); do
             docker exec bench-postgres pg_isready -U everruns -d everruns_test && exit 0
             sleep 1
@@ -227,6 +235,23 @@ jobs:
             crates/server/benches/turn_latency_baseline.jsonl > "$RUNNER_TEMP/baseline.jsonl" 2>/dev/null || true
           bash scripts/lib/durable-bench-compare.sh "$RUNNER_TEMP/summary.jsonl" "$RUNNER_TEMP/baseline.jsonl" \
             | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: PostgreSQL stalls
+        if: always()
+        run: |
+          docker logs bench-postgres > "$RUNNER_TEMP/postgres.log" 2>&1 || true
+          # Migrations and the bench's own setup run long statements too; the
+          # timestamps place each line before, in or after a scenario.
+          echo "::group::Statements over 50 ms and lock waits over 50 ms"
+          grep -E 'duration: |still waiting|acquired ' "$RUNNER_TEMP/postgres.log" | cut -c1-300 || true
+          echo "::endgroup::"
+          wal=$(docker exec bench-postgres psql -U everruns -d everruns_test -Atc \
+            "select wal_sync || ' WAL syncs, ' || round(wal_sync_time::numeric) || ' ms syncing' from pg_stat_wal" || true)
+          {
+            echo "PostgreSQL: $(grep -c 'duration: ' "$RUNNER_TEMP/postgres.log" || true) statements over 50 ms" \
+              "($(grep -c 'duration: [0-9.]* ms  statement: COMMIT' "$RUNNER_TEMP/postgres.log" || true) COMMIT)," \
+              "$(grep -c 'still waiting' "$RUNNER_TEMP/postgres.log" || true) lock waits over 50 ms; ${wal:-WAL stats unavailable}."
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload results
         if: always()
