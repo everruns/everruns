@@ -2940,28 +2940,21 @@ dependencies = [
 
 [[package]]
 name = "everruns-durable-object"
-version = "0.48.0"
+version = "0.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "axum",
  "chrono",
  "everruns",
- "everruns-contracts",
- "everruns-core",
- "everruns-llmsim",
- "js-sys",
  "reqwest",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "subtle",
  "tokio",
- "tower",
  "tracing",
  "uuid",
- "wasm-bindgen",
- "wasm-bindgen-futures",
 ]
 
 [[package]]

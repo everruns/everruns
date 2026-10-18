@@ -16,6 +16,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
+python3 scripts/lib/check-session-hosting-boundary.py
+
 TARGET=wasm32-unknown-unknown
 if command -v rustup >/dev/null 2>&1; then
   rustup target add "$TARGET" >/dev/null
@@ -33,7 +35,7 @@ cargo check --locked --target "$TARGET" --no-default-features \
 
 echo "Shared actor execution host and Durable Object transport for $TARGET"
 cargo check --locked --target "$TARGET" --no-default-features \
-  -p everruns-durable-object --features wasm
+  --manifest-path crates/durable-object/Cargo.toml --features wasm
 cargo check --locked --manifest-path examples/durable-object-agent/Cargo.toml --target "$TARGET"
 
 echo "3. public Framework Engine, Agent, Session, tools, hooks and Harness for $TARGET"

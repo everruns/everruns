@@ -1,12 +1,12 @@
 //! Isolate-local authority bridge. Storage and alarms remain owned by the object.
 use crate::{AuthorityClient, AuthorityTransport};
 use async_trait::async_trait;
-use everruns_contracts::{
+use everruns::hosting::spi::actor::actor_lease_lost;
+use everruns::hosting::spi::{
+    AssertSend,
     error::{AgentLoopError, Result},
-    rt::AssertSend,
-    typed_id::SessionId,
+    ids::SessionId,
 };
-use everruns_core::host::session_actor::store::actor_lease_lost;
 use js_sys::{Function, Promise};
 use serde::Deserialize;
 use serde_json::{Value, json};

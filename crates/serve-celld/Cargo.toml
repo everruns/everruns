@@ -7,11 +7,11 @@
 #   runs the same Framework Engine behind ordinary serve routes and activation.
 #   Container replacement neither snapshots nor replays canonical state.
 # - No celld or Cloudflare SDK: the cell talks plain HTTP to the container.
-# - Experimental (Alpha): published as `everruns-serve-celld` at the platform
-#   version, with no compatibility promise.
+# - Source-only reference adapter, outside the product publish set.
 
 [package]
 name = "everruns-serve-celld"
+publish = false
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -19,7 +19,6 @@ license.workspace = true
 authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
-documentation = "https://docs.rs/everruns-serve-celld"
 description = "Native Framework Engine and serve hosting over per-session celld Durable Objects"
 readme = "README.md"
 keywords = ["agent", "celld", "durable-objects", "containers", "ag-ui"]

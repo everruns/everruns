@@ -21,7 +21,7 @@ pub struct SessionQuerySnapshot {
     /// Canonical prefix visible to every read during this query.
     pub high_watermark: i32,
     /// Mutable execution settings as of that prefix, if execution has started.
-    pub execution: Option<everruns_core::ExecutionSession>,
+    pub execution: Option<super::spi::ExecutionSession>,
     /// Inputs explicitly rejected before model/tool dispatch.
     #[serde(default)]
     pub rejected_inputs: Vec<MessageId>,

@@ -1,21 +1,18 @@
 //! Engine session hosting: authority transport and epoch-bound ports only.
 use crate::{Authority, AuthorityClient};
 use async_trait::async_trait;
+use everruns::hosting::spi::{
+    HostBackends, RuntimeMessage,
+    actor::{ActorFence, LeasedActor, SessionActorStore},
+    events::{EventContext, EventRequest, InputMessageData, ToolCompletedData},
+};
+use everruns::hosting::spi::{
+    error::Result,
+    ids::{MessageId, SessionId},
+};
 use everruns::hosting::{
     AdmissionReceipt, HostingStatus, SessionActivation, SessionBinding, SessionEpoch,
     SessionHosting,
-};
-use everruns_contracts::{
-    error::Result,
-    typed_id::{MessageId, SessionId},
-};
-use everruns_core::{
-    RuntimeMessage,
-    events::{EventContext, EventRequest, InputMessageData, ToolCompletedData},
-    host::{
-        HostBackends,
-        session_actor::store::{ActorFence, LeasedActor, SessionActorStore},
-    },
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -40,7 +37,7 @@ impl SessionHosting for ObjectHosting {
         &self,
         session: SessionId,
         command: uuid::Uuid,
-        target: everruns_contracts::typed_id::TurnId,
+        target: everruns::hosting::spi::ids::TurnId,
         approvals: Vec<everruns::hosting::ApprovalCommit>,
         results: Vec<ToolCompletedData>,
     ) -> Result<()> {
@@ -75,7 +72,7 @@ impl SessionHosting for ObjectHosting {
             return Err(crate::client::rejected(409));
         }
         let now = chrono::DateTime::from_timestamp_millis(snapshot.now_ms).ok_or_else(|| {
-            everruns_contracts::error::AgentLoopError::store("invalid authority clock")
+            everruns::hosting::spi::error::AgentLoopError::store("invalid authority clock")
         })?;
         let prepared = if approvals.is_empty() {
             Vec::new()
@@ -86,7 +83,7 @@ impl SessionHosting for ObjectHosting {
             everruns::hosting::validate_tool_resolutions(&results, &snapshot.pending, now)?;
         }
         if prepared.is_empty() && results.is_empty() {
-            return Err(everruns_contracts::error::AgentLoopError::config(
+            return Err(everruns::hosting::spi::error::AgentLoopError::config(
                 "empty wait resolution",
             ));
         }
@@ -102,9 +99,9 @@ impl SessionHosting for ObjectHosting {
         &self,
         session: SessionId,
         command: uuid::Uuid,
-        target: everruns_contracts::typed_id::TurnId,
-        decisions: Vec<everruns_contracts::execution_api::ToolApprovalAnswer>,
-    ) -> Result<everruns_contracts::execution_api::SubmitToolApprovalsResponse> {
+        target: everruns::hosting::spi::ids::TurnId,
+        decisions: Vec<everruns::execution_api::ToolApprovalAnswer>,
+    ) -> Result<everruns::execution_api::SubmitToolApprovalsResponse> {
         let authority = self.client.session(session);
         let fingerprint = json!({"turn_id":target,"decisions":decisions});
         let retained: Option<Value> = authority
@@ -118,7 +115,7 @@ impl SessionHosting for ObjectHosting {
                 return Err(crate::client::rejected(409));
             }
             return serde_json::from_value(retained["value"].clone()).map_err(|_| {
-                everruns_contracts::error::AgentLoopError::store(
+                everruns::hosting::spi::error::AgentLoopError::store(
                     "invalid approval submission receipt",
                 )
             });
@@ -141,7 +138,7 @@ impl SessionHosting for ObjectHosting {
         let (approvals, response) =
             everruns::hosting::prepare_approval_submission(&decisions, &snapshot.pending, target)?;
         let now = chrono::DateTime::from_timestamp_millis(snapshot.now_ms).ok_or_else(|| {
-            everruns_contracts::error::AgentLoopError::store("invalid authority clock")
+            everruns::hosting::spi::error::AgentLoopError::store("invalid authority clock")
         })?;
         let prepared =
             everruns::hosting::prepare_approvals(&approvals, &snapshot.pending, target, now)?;
@@ -170,11 +167,11 @@ impl SessionHosting for ObjectHosting {
         let events: Vec<_> = messages
             .into_iter()
             .map(|message| {
-                if message.role == everruns_core::message::RuntimeMessageRole::Agent {
+                if message.role == everruns::hosting::spi::message::RuntimeMessageRole::Agent {
                     EventRequest::new(
                         session,
                         EventContext::empty(),
-                        everruns_core::events::OutputMessageCompletedData::new(message),
+                        everruns::hosting::spi::events::OutputMessageCompletedData::new(message),
                     )
                 } else {
                     EventRequest::new(
@@ -230,13 +227,13 @@ impl SessionHosting for ObjectHosting {
         let snapshot: Snapshot = authority.call("status", json!({})).await?;
         let turn = serde_json::from_value(
             snapshot.open.ok_or_else(|| {
-                everruns_contracts::error::AgentLoopError::config("session has no open turn")
+                everruns::hosting::spi::error::AgentLoopError::config("session has no open turn")
             })?["turn_id"]
                 .clone(),
         )
-        .map_err(|_| everruns_contracts::error::AgentLoopError::store("invalid open turn"))?;
+        .map_err(|_| everruns::hosting::spi::error::AgentLoopError::store("invalid open turn"))?;
         let now = chrono::DateTime::from_timestamp_millis(snapshot.now_ms).ok_or_else(|| {
-            everruns_contracts::error::AgentLoopError::store("invalid authority clock")
+            everruns::hosting::spi::error::AgentLoopError::store("invalid authority clock")
         })?;
         let prepared =
             everruns::hosting::prepare_approvals(&approvals, &snapshot.pending, turn, now)?;
@@ -334,7 +331,7 @@ impl SessionHosting for ObjectHosting {
         &self,
         session: SessionId,
         command: uuid::Uuid,
-        target: everruns_contracts::typed_id::TurnId,
+        target: everruns::hosting::spi::ids::TurnId,
         results: Vec<ToolCompletedData>,
     ) -> Result<()> {
         let authority = self.client.session(session);
@@ -365,7 +362,7 @@ impl SessionHosting for ObjectHosting {
             return Err(crate::client::rejected(409));
         }
         let now = chrono::DateTime::from_timestamp_millis(status.now_ms).ok_or_else(|| {
-            everruns_contracts::error::AgentLoopError::store("invalid authority clock")
+            everruns::hosting::spi::error::AgentLoopError::store("invalid authority clock")
         })?;
         everruns::hosting::validate_tool_resolutions(&results, &status.pending, now)?;
         let expected: Vec<_> = status

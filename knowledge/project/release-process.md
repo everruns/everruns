@@ -30,6 +30,10 @@ the copy committed in the release's changelog entry. The card is presentation me
 release-notes source: it cannot introduce claims absent from `CHANGELOG.md`. The user reviews the highlights
 and the rendered card before the release PR merges.
 
+The source-only DO hosting reference and celld serve adapter are excluded from
+the publish set. They demonstrate the public Framework hosting SPI and are
+built/qualified from source in CI; Framework does not own vendor DO support.
+
 Each release also publishes a release entry in the public changelog, with the card, and links the
 changelog entries of the features it carries from its `CHANGELOG.md` highlights; feature entries
 get the version stamped. See [Public Changelog](../docs/changelog.md#releases).

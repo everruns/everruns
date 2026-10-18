@@ -117,9 +117,13 @@ library, with the retained application registry and execution role enabled.
 
 The neutral session contracts and shared actor mechanics belong below the
 facade in core/contracts. The coherent profile extension and Agent registry are
-Framework APIs. `everruns-durable-object` implements that extension and depends
-on Framework; Framework must not depend on the DO plugin. The plugin may use core
-internals. Application agent modules import `everruns` only; hosting entrypoints
+Framework APIs. Hosting implementers use the curated
+[public storage/ownership SPI](../../crates/everruns/src/hosting/spi.rs), not direct
+Core/contracts dependencies. The surface preserves Core type identity without
+exposing the actor driver or runtime construction. `everruns-durable-object` is
+an independently resolved, source-only reference, not a product publish-set
+member. The celld serve adapter is likewise source-only. Framework must not
+depend on either integration. Application agent modules import `everruns` only; hosting entrypoints
 may additionally import the hosting plugin. Engine's private `HostBackends`
 construction does not become application configuration. Authority selection moves
 from Agent-local backend configuration to the Engine profile; an Agent must not
@@ -140,7 +144,12 @@ reconstruction.
 A profile is a validated composition, not an independently swappable event store,
 lease store and queue. Its command and commit operations establish the atomicity
 boundary across those concerns. A third-party profile implements the contract
-and runs the same conformance suite; it does not implement agent planning.
+and runs the [opt-in public conformance suite](../../crates/everruns/src/hosting/conformance.rs);
+it does not implement agent planning. Built-in memory/SQLite and the separately
+resolved DO reference run identical scenarios. Storage/Engine conformance does
+not replace deployment-specific process-loss and autonomous-wakeup qualification.
+The [boundary guard](../../scripts/lib/check-session-hosting-boundary.py) enforces
+the dependency direction and the reference workspace isolation.
 
 The minimum responsibilities are session creation/reopening and immutable
 binding; idempotent command admission; bounded snapshot/query and receipt reads;

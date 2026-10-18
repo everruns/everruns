@@ -21,7 +21,6 @@ members = [
     "crates/cli",
     "crates/cli-contract",
     "crates/durable",
-    "crates/durable-object",
     "crates/ard",
     # Integrations, one feature module per vendor (everruns-integrations).
     "crates/integrations",
@@ -57,6 +56,8 @@ members = [
 ]
 
 exclude = [
+    # Independently resolved, source-only hosting reference.
+    "crates/durable-object",
     "vendor/postgresql_archive",
     "research/infinity_context",
     "research/lua-vs-bash",
@@ -250,8 +251,8 @@ everruns = { path = "crates/everruns", version = "0.48.0", default-features = fa
 everruns-macros = { path = "crates/macros", version = "0.48.0" }
 everruns-serve = { path = "crates/serve", version = "0.48.0" }
 everruns-serve-agentcore = { path = "crates/serve-agentcore", version = "0.48.0" }
-everruns-serve-celld = { path = "crates/serve-celld", version = "0.48.0" }
-everruns-durable-object = { path = "crates/durable-object", version = "0.48.0" }
+everruns-serve-celld = { path = "crates/serve-celld" }
+everruns-durable-object = { path = "crates/durable-object" }
 everruns-serve-build = { path = "crates/serve-build", version = "0.48.0" }
 everruns-serve-macros = { path = "crates/serve-macros", version = "0.48.0" }
 everruns-cli-contract = { path = "crates/cli-contract", version = "0.48.0" }

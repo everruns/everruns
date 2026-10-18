@@ -5,7 +5,8 @@ sidebar:
   order: 3
 ---
 
-`everruns-serve-celld` is experimental. It hosts ordinary serve agents through
+`everruns-serve-celld` is a source-only reference adapter, excluded from the
+product publish set. Use the repository example to build it. It hosts ordinary serve agents through
 `everruns::Engine`; the hosting plugin selects celld Durable Objects for session
 authority. Native containers and Wasm isolates use the shared Engine path;
 qualification covers the failure domains described below.
