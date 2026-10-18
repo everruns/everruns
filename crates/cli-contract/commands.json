@@ -2069,6 +2069,20 @@
         "help": "Webhook and MCP event: template for the event subject."
       },
       {
+        "field": "target_binding_key",
+        "long": "target-binding-key",
+        "kind": "string",
+        "required": false,
+        "help": "Schedule only: the conversation on `target_channel_id`, keyed the way the channel binds sessi..."
+      },
+      {
+        "field": "target_channel_id",
+        "long": "target-channel-id",
+        "kind": "string",
+        "required": false,
+        "help": "Schedule only: the agent's channel whose conversation each run speaks in, instead of a sessio..."
+      },
+      {
         "field": "timezone",
         "long": "timezone",
         "kind": "string",
@@ -2430,6 +2444,20 @@
         "kind": "string",
         "required": false,
         "help": "Replacement subject template."
+      },
+      {
+        "field": "target_binding_key",
+        "long": "target-binding-key",
+        "kind": "string",
+        "required": false,
+        "help": "Replacement target conversation; given with `target_channel_id`."
+      },
+      {
+        "field": "target_channel_id",
+        "long": "target-channel-id",
+        "kind": "string",
+        "required": false,
+        "help": "Replacement target channel."
       },
       {
         "field": "timezone",

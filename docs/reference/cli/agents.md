@@ -1134,6 +1134,8 @@ everruns agents triggers create [OPTIONS] --agent-id <agent_id> --message <messa
 | `--script <SCRIPT>` |  |
 | `--session-mode <SESSION_MODE>` | What identity keys a session, for every exposure and every transport. One enum replaces the ... One of `per_thread`, `per_channel`, `per_user`, `shared_session`, `session_per_invocation`. |
 | `--subject-template <SUBJECT_TEMPLATE>` | Webhook and MCP event: template for the event subject. |
+| `--target-binding-key <TARGET_BINDING_KEY>` | Schedule only: the conversation on `target_channel_id`, keyed the way the channel binds sessi... |
+| `--target-channel-id <TARGET_CHANNEL_ID>` | Schedule only: the agent's channel whose conversation each run speaks in, instead of a sessio... |
 | `--timezone <TIMEZONE>` | IANA timezone identifier for cron evaluation (default `UTC`). |
 | `--token <TOKEN>` | Shared secret for webhook triggers. |
 | `--trigger-type <TRIGGER_TYPE>` | The kind of event that fires an agent trigger. One of `schedule`, `webhook`, `github`, `mcp_event`. |
@@ -1251,6 +1253,8 @@ everruns agents triggers update [OPTIONS] --agent-id <agent_id> --trigger-id <tr
 | `--script <SCRIPT>` |  |
 | `--session-mode <SESSION_MODE>` |  |
 | `--subject-template <SUBJECT_TEMPLATE>` | Replacement subject template. |
+| `--target-binding-key <TARGET_BINDING_KEY>` | Replacement target conversation; given with `target_channel_id`. |
+| `--target-channel-id <TARGET_CHANNEL_ID>` | Replacement target channel. |
 | `--timezone <TIMEZONE>` | Replacement IANA timezone identifier. |
 | `--token <TOKEN>` | Replacement webhook token. |
 | `--trigger-id <TRIGGER_ID>` | Required. Agent trigger's prefixed public identifier. |

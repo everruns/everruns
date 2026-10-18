@@ -245,6 +245,7 @@ pub struct DirectWorkerAdapters {
         Option<Arc<everruns_core::host::InMemoryCompactionCheckpointStore>>,
     proactive_compaction_attempts: Arc<everruns_core::ProactiveCompactionAttemptTracker>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
+    channels: Option<Arc<crate::channels::host::ServerChannels>>,
     slack_provisioner: Option<Arc<dyn SlackAppProvisioner>>,
     permission_resolver: Arc<dyn PermissionResolver>,
     pub(crate) virtual_registry:
@@ -288,6 +289,7 @@ impl DirectWorkerAdapters {
             proactive_compaction_attempts: Arc::default(),
             workflow_store: None,
             slack_provisioner: None,
+            channels: None,
             permission_resolver: Arc::new(everruns_core::DefaultPermissionResolver),
             virtual_registry: None,
             org_rate_limiter: None,
@@ -422,14 +424,6 @@ impl DirectWorkerAdapters {
 
     pub fn with_utility_llm_service(mut self, service: Arc<dyn UtilityLlmService>) -> Self {
         self.utility_llm_service = Some(service);
-        self
-    }
-
-    pub fn with_slack_provisioner(
-        mut self,
-        provisioner: Option<Arc<dyn SlackAppProvisioner>>,
-    ) -> Self {
-        self.slack_provisioner = provisioner;
         self
     }
 
@@ -1489,6 +1483,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
             &self.db,
             &session_service,
             &message_service,
+            self.channels.as_deref(),
+            self.encryption.as_ref(),
             org_id,
             agent_id,
             trigger_id,

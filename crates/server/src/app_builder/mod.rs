@@ -983,7 +983,8 @@ impl ServerAppBuilder {
             messages_state.session_service.clone(),
             messages_state.message_service.clone(),
         )
-        .with_mcp_event_triggers(mcp_event_triggers.clone());
+        .with_mcp_event_triggers(mcp_event_triggers.clone())
+        .with_channels(channel_recovery.clone());
         let schedules_state = api::schedules::routes(
             api::schedules::ScheduleAppState::new(
                 db.clone(),
@@ -1067,6 +1068,7 @@ impl ServerAppBuilder {
         .with_elicitation_base_url(mcp_root_url.clone())
         .with_mcp_events(mcp_events)
         .with_slack_provisioner(slack_provisioner.clone())
+        .with_channels(channel_recovery.clone())
         .with_mcp_oauth_checker(Some(api::user_connections::OAuthConnectionChecker::shared(
             user_connections_state.clone(),
         )))
@@ -1380,6 +1382,7 @@ impl ServerAppBuilder {
             org_rate_limiter: org_rate_limiter.clone(),
             virtual_registry: virtual_registry.clone(),
             slack_provisioner: slack_provisioner.clone(),
+            channels: channel_recovery.clone(),
         };
         if !self.config.dev_mode {
             background::spawn_grpc_server(

@@ -332,6 +332,8 @@ pub struct WorkerServiceImpl {
     /// Central org rate limiter for gRPC-backed outbound tool calls.
     org_rate_limiter: Option<Arc<crate::auth::rate_limit::OrgRateLimiter>>,
     /// Active permission resolver for user-scoped command execution over gRPC.
+    /// The channel host targeted schedule triggers run on.
+    channels: Option<Arc<crate::channels::host::ServerChannels>>,
     slack_provisioner: Option<
         Arc<dyn crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner>,
     >,
@@ -483,6 +485,7 @@ impl WorkerServiceImpl {
             budget_service,
             org_rate_limiter: None,
             slack_provisioner: None,
+            channels: None,
             permission_resolver: Arc::new(everruns_core::DefaultPermissionResolver),
             utility_llm_service,
             connector_registry,
@@ -533,6 +536,10 @@ impl WorkerServiceImpl {
         >,
     ) {
         self.slack_provisioner = provisioner;
+    }
+
+    pub fn set_channels(&mut self, channels: Option<Arc<crate::channels::host::ServerChannels>>) {
+        self.channels = channels;
     }
 
     pub fn set_permission_resolver(&mut self, resolver: Arc<dyn PermissionResolver>) {

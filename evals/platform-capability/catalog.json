@@ -3027,6 +3027,22 @@
                 "null"
               ]
             },
+            "target_binding_key": {
+              "description": "Schedule only: the conversation on `target_channel_id`, keyed the way\nthe channel binds sessions: `slack:user:{user_id}` (a direct message)\nor `slack:channel:{channel_id}` (top-level posts).",
+              "example": "slack:user:U0123ABCD",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "target_channel_id": {
+              "description": "Schedule only: the agent's channel whose conversation each run speaks\nin, instead of a session of the trigger's own. Needs\n`target_binding_key`.",
+              "example": "appchan_01933b5a000070008000000000000001",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "timezone": {
               "description": "IANA timezone identifier for cron evaluation (default `UTC`).",
               "example": "UTC",
@@ -19552,6 +19568,22 @@
             "subject_template": {
               "description": "Replacement subject template. An empty string removes it.",
               "example": "{{webhook.json.action}}",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "target_binding_key": {
+              "description": "Replacement target conversation; given with `target_channel_id`.",
+              "example": "slack:user:U0123ABCD",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "target_channel_id": {
+              "description": "Replacement target channel. An empty string removes the target, so\nruns use a session of the trigger's own again.",
+              "example": "appchan_01933b5a000070008000000000000001",
               "type": [
                 "string",
                 "null"
