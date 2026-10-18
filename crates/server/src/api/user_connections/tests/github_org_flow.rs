@@ -11,7 +11,7 @@ use crate::auth::backend::AuthBackend;
 use crate::auth::middleware::{AuthError, AuthMethod, OrgAdmin, OrgContext};
 use crate::auth::routes::AuthConfigResponse;
 use crate::domains::organizations::record::OrgMembership;
-use crate::storage::{CreateOrganizationRow, CreateVirtualUserRow};
+use crate::storage::CreateOrganizationRow;
 use axum::body::Body;
 use axum::http::Request;
 use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID};
@@ -459,52 +459,104 @@ async fn an_installation_belongs_to_one_org() {
     assert!(crate::errors::is_database_unique_violation(&duplicate));
 }
 
+/// THREAT[TM-GITHUB-005]: without a user code the callback detours through
+/// GitHub user authorization; the authorized state is bound to the installation
+/// GitHub reported first, single use, and a rejected code proves nothing.
+#[tokio::test]
+async fn the_authorization_hop_is_bound_to_its_installation_and_single_use() {
+    let github = MockServer::start().await;
+    mock_github(&github).await;
+    let state = github_state(&github).await;
+    let admin = user_with_role(&state, OrgRole::Admin).await;
+    let callback = |jar: CookieJar, setup_state: String, installation_id, code: Option<&str>| {
+        github_callback(
+            State(state.clone()),
+            Ok(ResolvedOrg {
+                user_id: Some(admin),
+                ..test_org(admin)
+            }),
+            jar,
+            Query(GitHubInstallationCallbackQuery {
+                installation_id,
+                setup_action: installation_id.map(|_| "install".to_string()),
+                state: Some(setup_state),
+                code: code.map(str::to_string),
+            }),
+        )
+    };
+    let no_links = || async {
+        state
+            .db
+            .list_everruns_app_links(DEFAULT_ORG_ID)
+            .await
+            .unwrap()
+            .is_empty()
+    };
+
+    let (jar, setup_state) = begin_link(&state, admin).await;
+    let (jar, redirect) = callback(jar, setup_state.clone(), Some(ATTACKER_INSTALLATION), None)
+        .await
+        .unwrap();
+    assert!(location(redirect).starts_with(&format!(
+        "{}/login/oauth/authorize?client_id=Iv1.test&state=",
+        github.uri()
+    )));
+    let authorize_state = pending_state(&jar, "github").state;
+    assert_ne!(authorize_state, setup_state);
+    // Swapping the installation on the way back is rejected...
+    let error = callback(
+        jar.clone(),
+        authorize_state.clone(),
+        Some(VICTIM_INSTALLATION),
+        Some("owner-code"),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error.0, StatusCode::BAD_REQUEST);
+    // ...and the state cannot be replayed afterwards.
+    let error = callback(jar, authorize_state, None, Some("owner-code"))
+        .await
+        .unwrap_err();
+    assert_eq!(error.0, StatusCode::BAD_REQUEST);
+    assert!(no_links().await);
+
+    // A rejected or expired code proves nothing.
+    let (jar, setup_state) = begin_link(&state, admin).await;
+    let error = callback(
+        jar,
+        setup_state,
+        Some(VICTIM_INSTALLATION),
+        Some("expired-code"),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error.0, StatusCode::BAD_REQUEST);
+    assert!(no_links().await);
+
+    // The hop then the owner's code links the installation.
+    let (jar, setup_state) = begin_link(&state, admin).await;
+    let (jar, _) = callback(jar, setup_state, Some(VICTIM_INSTALLATION), None)
+        .await
+        .unwrap();
+    let authorize_state = pending_state(&jar, "github").state;
+    let _ = callback(jar, authorize_state, None, Some("owner-code"))
+        .await
+        .unwrap();
+    assert!(!no_links().await);
+}
+
 #[tokio::test]
 async fn members_cannot_attach_the_shared_app_to_an_agent_directly() {
     let github = MockServer::start().await;
     let state = github_state(&github).await;
     let user_id = user_with_role(&state, OrgRole::Member).await;
-    let service = VirtualUserId::new();
-    state
-        .db
-        .create_virtual_user(CreateVirtualUserRow {
-            usage: "service".to_string(),
-            org_id: DEFAULT_ORG_ID,
-            id: service,
-            name: "reviewer".to_string(),
-            description: None,
-            avatar_url: None,
-            locale: None,
-            timezone: None,
-        })
-        .await
-        .unwrap();
-    let start = |target_id: Uuid| {
-        github_authorize_inner(
-            state.clone(),
-            OAuthAuthority {
-                org_id: DEFAULT_ORG_ID,
-                caller: None,
-                target_id,
-                management_user_id: Some(user_id),
-                runtime_credential: None,
-            },
-            CookieJar::new(),
-            None,
-        )
-    };
-
-    let error = start(service.uuid()).await.unwrap_err();
+    let error = github_authorize(ConnectionUser {
+        id: user_id,
+        org_id: DEFAULT_ORG_ID,
+        management_user_id: user_id,
+    })
+    .await
+    .unwrap_err();
     assert_eq!(error.0, StatusCode::BAD_REQUEST);
     assert!(error.1.contains("Settings > Organization"), "{}", error.1);
-
-    // A person's own connection still starts the install until 3b.
-    let own = state
-        .db
-        .default_virtual_user(DEFAULT_ORG_ID, user_id)
-        .await
-        .unwrap()
-        .id
-        .uuid();
-    assert!(start(own).await.is_ok());
 }

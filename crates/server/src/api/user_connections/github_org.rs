@@ -296,27 +296,15 @@ pub(super) async fn store_org_link(
     }
 }
 
-/// Refuse to attach a shared App installation directly to an agent's service
-/// virtual user: agents act as the shared App only through an org link (D3).
-/// People's own connections are untouched until they move to `person` (3b).
-pub(super) async fn refuse_service_target(
-    state: &AppState,
-    org_id: i64,
-    target_id: uuid::Uuid,
-) -> Result<(), (StatusCode, String)> {
-    let target = state
-        .db
-        .get_virtual_user(org_id, VirtualUserId::from_uuid(target_id))
-        .await
-        .map_err(|e| internal("Failed to load virtual user", e))?;
-    if target.is_some_and(|target| target.usage == "service") {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Agents use the Everruns GitHub App through the organization: an org admin links an \
-             installation in Settings > Organization, then choose \"Use the Everruns app\" on the \
-             agent's GitHub section"
-                .into(),
-        ));
-    }
-    Ok(())
+/// The answer to a request to install the shared App on a virtual user's own
+/// connection, a person's or an agent's: installations are the org's, linked by
+/// an org admin, and an agent then chooses one (D3, step 3b).
+pub(super) fn refused_virtual_user_install() -> (StatusCode, String) {
+    (
+        StatusCode::BAD_REQUEST,
+        "The Everruns GitHub App is installed for the whole organization: an org admin links \
+         an installation in Settings > Organization, then choose \"Use the Everruns app\" on an \
+         agent's GitHub section"
+            .into(),
+    )
 }

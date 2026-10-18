@@ -25,9 +25,9 @@ type ScopedGitHubToken = (
 /// Which of the three GitHub identities (D1) a connection is. Derived from the
 /// row rather than stored in its own column: `connection_type` marks an agent
 /// App's installation (`github_app`) and a shared App installation an org
-/// admin linked (`everruns_app`, D3). Rows stored before D3 (`oauth` with an
-/// installation) are still the shared App's until 3b migrates them, and a row
-/// without an installation holds a person's own token.
+/// admin linked (`everruns_app`, D3); any other row holds a person's own
+/// token. Rows that held a shared App installation before D3 (`oauth` with an
+/// installation) were moved to org links by step 3b's migration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GitHubIdentityKind {
     AgentApp,
@@ -39,9 +39,7 @@ impl GitHubIdentityKind {
     pub(crate) fn of(row: &VirtualUserConnectionRow) -> Self {
         if row.connection_type == GITHUB_APP_CONNECTION_TYPE {
             Self::AgentApp
-        } else if row.connection_type == EVERRUNS_APP_CONNECTION_TYPE
-            || row.installation_id.is_some()
-        {
+        } else if row.connection_type == EVERRUNS_APP_CONNECTION_TYPE {
             Self::EverrunsApp
         } else {
             Self::Person
@@ -197,15 +195,44 @@ impl DbConnectionResolver {
         access: &GitHubAccess,
     ) -> Result<Option<String>> {
         let token_scope = token_scope(access)?;
-        let Some(row) = self
+        if let Some(row) = self
             .db
             .get_virtual_user_connection(VirtualUserId::from_uuid(owner), PROVIDER)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?
+            && let Some(token) = self
+                .scoped_github_token(OAuthScope::Org(org_id), row, &token_scope)
+                .await?
+        {
+            return Ok(Some(token));
+        }
+        // A sync is a service use on the org identity (D3): without a
+        // connection of the owner's own, the org's link for the repository's
+        // account answers. Syncs that relied on a person's own installation
+        // keep working after step 3b moved it to the org.
+        let Some(account) = access
+            .repositories
+            .first()
+            .and_then(|repository| repository.split_once('/'))
+            .map(|(account, _)| account)
         else {
             return Ok(None);
         };
-        self.scoped_github_token(OAuthScope::Org(org_id), row, &token_scope)
+        let Some(link) = self
+            .db
+            .list_everruns_app_links(org_id)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+            .into_iter()
+            .find(|link| {
+                link.provider_username
+                    .as_deref()
+                    .is_some_and(|login| login.eq_ignore_ascii_case(account))
+            })
+        else {
+            return Ok(None);
+        };
+        self.scoped_github_token(OAuthScope::Org(org_id), link, &token_scope)
             .await
     }
 
@@ -324,7 +351,7 @@ mod tests {
         );
         assert_eq!(
             GitHubIdentityKind::of(&row("oauth", Some(1))),
-            GitHubIdentityKind::EverrunsApp
+            GitHubIdentityKind::Person
         );
         assert_eq!(
             GitHubIdentityKind::of(&row(EVERRUNS_APP_CONNECTION_TYPE, Some(1))),

@@ -8,7 +8,8 @@ use wiremock::matchers::{body_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const AGENT_INSTALLATION: i64 = 4242;
-const PERSON_INSTALLATION: i64 = 777;
+/// A shared Everruns App installation, as an org link or an agent's choice.
+const SHARED_INSTALLATION: i64 = 777;
 
 fn test_key() -> String {
     std::fs::read_to_string(format!(
@@ -18,8 +19,8 @@ fn test_key() -> String {
     .unwrap()
 }
 
-/// The agent has its own App installed; the person connected the shared App
-/// (`oauth`, as the setup callback stores it).
+/// The agent has its own App installed; the person has their own GitHub token
+/// (D1), which holds no installation.
 async fn github_setup(owner_kind: &str) -> (McpFixture, MockServer) {
     let fixture = mcp_setup(owner_kind, false, false).await;
     let github = MockServer::start().await;
@@ -29,7 +30,7 @@ async fn github_setup(owner_kind: &str) -> (McpFixture, MockServer) {
     });
     for (installation, token) in [
         (AGENT_INSTALLATION, "ghs_agent"),
-        (PERSON_INSTALLATION, "ghs_person"),
+        (SHARED_INSTALLATION, "ghs_shared"),
     ] {
         Mock::given(method("POST"))
             .and(path(format!(
@@ -61,12 +62,18 @@ async fn github_setup(owner_kind: &str) -> (McpFixture, MockServer) {
         })
         .await
         .unwrap();
-    for (owner, connection_type, installation) in [
-        (fixture.identity_id, "github_app", AGENT_INSTALLATION),
+    for (owner, connection_type, installation, token) in [
+        (
+            fixture.identity_id,
+            "github_app",
+            Some(AGENT_INSTALLATION),
+            None,
+        ),
         (
             VirtualUserId::from_uuid(fixture.user_id),
             "oauth",
-            PERSON_INSTALLATION,
+            None,
+            Some(fixture.encryption.encrypt_string("gho_person").unwrap()),
         ),
     ] {
         fixture
@@ -77,11 +84,11 @@ async fn github_setup(owner_kind: &str) -> (McpFixture, MockServer) {
                 connection_type: connection_type.to_string(),
                 provider_user_id: None,
                 provider_username: Some("acme".to_string()),
-                access_token_encrypted: None,
+                access_token_encrypted: token,
                 refresh_token_encrypted: None,
                 scopes: None,
                 expires_at: None,
-                installation_id: Some(installation),
+                installation_id: installation,
                 provider_metadata: None,
             })
             .await
@@ -138,11 +145,11 @@ async fn each_identity_answers_only_for_itself_with_a_narrowed_token() {
     );
     assert_eq!(
         resolve(&fixture, &github, McpServerActsAs::User).await,
-        Some(("ghs_person".to_string(), McpServerActsAs::User))
+        Some(("gho_person".to_string(), McpServerActsAs::User))
     );
     assert_eq!(
         resolve(&fixture, &github, McpServerActsAs::UserOrService).await,
-        Some(("ghs_person".to_string(), McpServerActsAs::User))
+        Some(("gho_person".to_string(), McpServerActsAs::User))
     );
     assert_eq!(
         resolve(&fixture, &github, McpServerActsAs::None).await,
@@ -183,7 +190,7 @@ async fn a_source_sync_gets_a_read_token_for_its_owner_and_repository() {
     let (fixture, github) = github_setup(UNATTENDED).await;
     for (installation, token) in [
         (AGENT_INSTALLATION, "ghs_agent_sync"),
-        (PERSON_INSTALLATION, "ghs_person_sync"),
+        (SHARED_INSTALLATION, "ghs_shared_sync"),
     ] {
         Mock::given(method("POST"))
             .and(path(format!(
@@ -215,11 +222,44 @@ async fn a_source_sync_gets_a_read_token_for_its_owner_and_repository() {
             .await
             .unwrap()
             .as_deref(),
-        Some("ghs_person_sync")
+        Some("gho_person")
     );
     assert_eq!(
         resolver
             .get_github_token_for_owner(DEFAULT_ORG_ID, Uuid::now_v7(), &read)
+            .await
+            .unwrap(),
+        None
+    );
+
+    // A sync is a service use on the org identity (D3): an owner without a
+    // connection of their own reads through the org's link for the
+    // repository's account, and only that account's.
+    fixture
+        .db
+        .create_organization_connection(crate::storage::CreateOrganizationConnectionRow {
+            org_id: DEFAULT_ORG_ID,
+            name: "Acme".to_string(),
+            provider: "github".to_string(),
+            connection_type: Some(crate::github_apps::EVERRUNS_APP_CONNECTION_TYPE.to_string()),
+            provider_username: Some("Acme".to_string()),
+            installation_id: Some(SHARED_INSTALLATION),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        resolver
+            .get_github_token_for_owner(DEFAULT_ORG_ID, Uuid::now_v7(), &read)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("ghs_shared_sync")
+    );
+    let elsewhere = crate::domains::git_sources::github_read_access("other/app");
+    assert_eq!(
+        resolver
+            .get_github_token_for_owner(DEFAULT_ORG_ID, Uuid::now_v7(), &elsewhere)
             .await
             .unwrap(),
         None
@@ -244,7 +284,7 @@ async fn an_agent_app_installation_never_mints_with_the_shared_app() {
             refresh_token_encrypted: None,
             scopes: None,
             expires_at: None,
-            installation_id: Some(PERSON_INSTALLATION),
+            installation_id: Some(SHARED_INSTALLATION),
             provider_metadata: None,
         })
         .await
@@ -284,14 +324,14 @@ async fn an_everruns_app_row_mints_with_the_shared_key_only() {
             refresh_token_encrypted: None,
             scopes: None,
             expires_at: None,
-            installation_id: Some(PERSON_INSTALLATION),
+            installation_id: Some(SHARED_INSTALLATION),
             provider_metadata: Some(serde_json::json!({ "org_connection_id": Uuid::now_v7() })),
         })
         .await
         .unwrap();
     assert_eq!(
         resolve(&fixture, &github, McpServerActsAs::Service).await,
-        Some(("ghs_person".to_string(), McpServerActsAs::Service))
+        Some(("ghs_shared".to_string(), McpServerActsAs::Service))
     );
 
     let without_shared_app = DbConnectionResolver::with_oauth_refresh(
