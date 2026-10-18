@@ -123,6 +123,11 @@ pub trait ActorHosts: Send + Sync + 'static {
     }
 }
 
+/// Default bound on the phases of a lease that write nothing (setup before a
+/// turn is driven, the flush and checkpoint after it). Generous: setup is a
+/// handful of control-plane reads and the application's start gates.
+pub const DEFAULT_ACTOR_STALL_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+
 /// Configuration of a single-session execution driver.
 #[derive(Debug, Clone)]
 pub struct SessionActorConfig {
@@ -130,6 +135,9 @@ pub struct SessionActorConfig {
     pub lease_ttl: Duration,
     pub poison_attempts: u32,
     pub journal_page: u32,
+    /// How long a lease may sit in a phase that writes nothing before it
+    /// stops renewing and lets the lease expire (the stall watchdog).
+    pub stall_timeout: Duration,
 }
 
 impl SessionActorConfig {
@@ -139,6 +147,7 @@ impl SessionActorConfig {
             lease_ttl: DEFAULT_SESSION_LEASE_TTL,
             poison_attempts: 3,
             journal_page: 256,
+            stall_timeout: DEFAULT_ACTOR_STALL_TIMEOUT,
         }
     }
 }

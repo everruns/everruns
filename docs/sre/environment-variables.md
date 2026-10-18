@@ -21,7 +21,7 @@ a working default; each row links to the section that documents it.
 | [`VALKEY_URL`](#valkey_url) | API | No | Rate limits are per instance. |
 | [`NATS_URL`](#nats_url) | API and workers | No | PostgreSQL `NOTIFY` and in-memory broadcast. |
 | [`STORAGE_*`](#object-storage-s3-compatible-blob-backend) | API | No | File and image bytes stay in PostgreSQL. |
-| [`SERVER_GRPC_ADDRESS`](#server_grpc_address), [`SERVER_GRPC_BIND_ADDR`](#server_grpc_bind_addr), [`WORKER_GRPC_CONNECT_TIMEOUT`](#worker_grpc_connect_timeout), [`WORKER_GRPC_TLS_*`](#worker_grpc_tls_cert) | API or workers | No | Plain gRPC on `127.0.0.1:9001` / `0.0.0.0:9001`. |
+| [`SERVER_GRPC_ADDRESS`](#server_grpc_address), [`SERVER_GRPC_BIND_ADDR`](#server_grpc_bind_addr), [`WORKER_GRPC_CONNECT_TIMEOUT`](#worker_grpc_connect_timeout), [`WORKER_GRPC_REQUEST_TIMEOUT_SECS`](#worker_grpc_request_timeout_secs), [`WORKER_ACTOR_STALL_TIMEOUT_SECS`](#worker_actor_stall_timeout_secs), [`WORKER_GRPC_TLS_*`](#worker_grpc_tls_cert) | API or workers | No | Plain gRPC on `127.0.0.1:9001` / `0.0.0.0:9001`; 120 s per worker call; a stalled session is let go after 5 minutes. |
 | [`DEFAULT_*_API_KEY`](#default-api-keys-development-convenience) | API | No | Providers need keys configured in Models > Providers. |
 | [`UTILITY_*`](#system-model-keys) | API and workers | No | Analyze, Health, and model-backed guardrail checks are unavailable or skipped. |
 | [`SLACK_MANAGER_APP_CLIENT_ID`](#slack-manager-app), [`SLACK_MANAGER_APP_CLIENT_SECRET`](#slack-manager-app) | API | No | Organizations connect Slack workspaces by pasting a configuration token. |
@@ -704,6 +704,41 @@ Timeout in seconds for worker initial connection to control-plane gRPC.
 
 ```bash
 WORKER_GRPC_CONNECT_TIMEOUT=60
+```
+
+### WORKER_GRPC_REQUEST_TIMEOUT_SECS
+
+Deadline in seconds for each worker call to the control-plane gRPC service. A
+call that gets no answer by then fails as a retryable error, and the turn
+resumes from the session log instead of hanging.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No (worker only) |
+| **Default** | `120` |
+
+**Example:**
+
+```bash
+WORKER_GRPC_REQUEST_TIMEOUT_SECS=120
+```
+
+### WORKER_ACTOR_STALL_TIMEOUT_SECS
+
+How long, in seconds, a worker may hold a session while making no progress
+before its turn starts or after it ends. Past it the worker lets the session
+go, and another worker runs the turn; a session that keeps stalling is stopped
+with a processing error.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No (worker only) |
+| **Default** | `300` |
+
+**Example:**
+
+```bash
+WORKER_ACTOR_STALL_TIMEOUT_SECS=300
 ```
 
 ### WORKER_GRPC_TLS_CERT
