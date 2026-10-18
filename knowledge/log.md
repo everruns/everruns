@@ -2,6 +2,11 @@
 
 ## 2026-10-18
 
+* **Tenant egress proxy in OSS.** The proxy moves from SaaS into the server
+  crate as `everruns-egress-proxy`; core owns the token on both sides; caps are
+  off unless configured; hosts plug in limits and usage over two traits or an
+  HTTP control endpoint. See [System allowlist](operations/system-allowlist.md#tenant-egress-proxy).
+
 * **MCP OAuth consent redirects.** Let the browser complete client-controlled
   callback chains after approval and require a browser check with a second
   callback hop. See [MCP](integrations/mcp.md).

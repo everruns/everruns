@@ -25,6 +25,8 @@ a working default; each row links to the section that documents it.
 | [`DEFAULT_*_API_KEY`](#default-api-keys-development-convenience) | API | No | Providers need keys configured in Models > Providers. |
 | [`UTILITY_*`](#system-model-keys) | API and workers | No | Analyze, Health, and model-backed guardrail checks are unavailable or skipped. |
 | [`SLACK_MANAGER_APP_CLIENT_ID`](#slack-manager-app), [`SLACK_MANAGER_APP_CLIENT_SECRET`](#slack-manager-app) | API | No | Organizations connect Slack workspaces by pasting a configuration token. |
+| [`EVERRUNS_EGRESS_*`](#outbound-egress) | API and workers | No | Tenant traffic may reach any public host, directly from the deployment's address. |
+| [`EGRESS_PROXY_*`](#tenant-egress-proxy) | `everruns-egress-proxy` | Only when running the proxy | No proxy. |
 | [`EMAIL_PROVIDER`](#system-email-delivery), [`RESEND_*`](#system-email-delivery) | API | When sending email | Email delivery is disabled. |
 | [`RATE_LIMIT_API_REQUESTS_PER_MINUTE`](#other-server-variables), [`TRUSTED_PROXY_HOPS`](#other-server-variables), [`EXPECTED_INSTANCES`](#other-server-variables), [`EVENT_RETENTION_DAYS`](#other-server-variables), [`SSE_*`](#sse-streaming-configuration) | API | No | 1200 requests per minute, one trusted proxy, one instance, no event archiving, default SSE limits. |
 | [`OTEL_*`](#opentelemetry-configuration), [`EVERRUNS_TRACE_CONVENTIONS`](#everruns_trace_conventions), [`BRAINTRUST_*`](#braintrust-integration) | API and workers | No | Tracing and Braintrust export are off. |
@@ -546,6 +548,39 @@ RESEND_API_KEY=re_...
 - Set these on the control-plane process that performs system email sends.
 - The sender is fixed in code as `Everruns <no-reply@everruns.com>`.
 - The Resend account must have `everruns.com` verified and enabled for sending.
+
+## Outbound egress
+
+These apply to tenant traffic: requests an agent, capability, MCP server or integration chooses. Platform traffic (LLM providers, system email) is not affected. Set the same values on the control plane and workers. See [Outbound traffic](/advanced/physical-architecture/#outbound-traffic).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EVERRUNS_EGRESS_POLICY` | `open` | `open`, `curated-writes` or `curated-all`. An unrecognized value enforces `curated-all`. |
+| `EVERRUNS_EGRESS_OPEN_READS_PER_MINUTE` | `120` | Per-org, per-process limit on reads to hosts outside the allowlist in `curated-writes`. `0` turns those reads off. |
+| `EVERRUNS_EGRESS_REPUTATION` | `off` | `cloudflare-security` checks hosts against Cloudflare's security resolver before connecting; lookups that fail let the request through. |
+| `EVERRUNS_EGRESS_PROXY_URL` | unset | Send tenant traffic through a tenant egress proxy, for example `http://egress-proxy:4750`. |
+| `EVERRUNS_EGRESS_PROXY_SECRET` | unset | Shared with the proxy, at least 32 bytes. With a proxy URL and no usable secret, tenant requests fail rather than leave directly. |
+
+## Tenant egress proxy
+
+Read by the `everruns-egress-proxy` binary. Every cap is off unless set.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EVERRUNS_EGRESS_PROXY_SECRET` | required | Same value as on the control plane and workers, at least 32 bytes. The proxy refuses to start without it. |
+| `EGRESS_PROXY_ADDR` | `0.0.0.0:4750` | Proxy listener. Keep it on the private network. |
+| `EGRESS_PROXY_HEALTH_ADDR` | `0.0.0.0:4751` | Health listener, `GET /healthz`. |
+| `EGRESS_PROXY_ORG_RPM` | no cap | Requests per minute per org. |
+| `EGRESS_PROXY_ORG_HOST_RPM` | no cap | Requests per minute per org to one host. |
+| `EGRESS_PROXY_ORG_CONCURRENCY` | no cap | Open connections per org. |
+| `EGRESS_PROXY_ORG_BYTES_PER_DAY` | no cap | Bytes per org per UTC day. Counted per replica unless a control endpoint reports what was already used. |
+| `EGRESS_PROXY_GLOBAL_PER_HOST_RPM` | no cap | Requests per minute to one host across all orgs. |
+| `EGRESS_PROXY_REPLICAS` | `1` | Replicas sharing the caps; each enforces its share. |
+| `EGRESS_PROXY_BIND_ADDR` | unset | Source IP for outbound connections, when the host has a dedicated tenant address. |
+| `EGRESS_PROXY_INSTANCE` | hostname | Label on usage batches. |
+| `EGRESS_PROXY_CONTROL_URL` | unset | Control endpoint. The proxy asks `GET /internal/egress-proxy/orgs/{org}/limits` (cached 60 s) and posts usage to `POST /internal/egress-proxy/usage`, both with `Authorization: Bearer <secret>`. The `EGRESS_PROXY_ORG_*` caps then apply only while it cannot be reached. |
+
+Usage without a control endpoint is logged once per org, session and minute on the `everruns::egress::usage` target.
 
 ## UI API Proxy Architecture
 

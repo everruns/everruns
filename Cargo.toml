@@ -216,6 +216,7 @@ jsonwebtoken = { version = "11", features = ["aws_lc_rs"] }
 sha2 = "0.11"
 hmac = "0.13"
 hex = "0.4"
+httparse = "1.10"
 # No TLS backend: network access goes through domains/git_fetch.rs on the
 # workspace rustls client, so libgit2 is only an object store and pack indexer.
 # This is what keeps OpenSSL (and the builder image's perl/make) out of the tree.

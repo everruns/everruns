@@ -20,6 +20,10 @@ name = "everruns-migrate"
 path = "src/bin/migrate.rs"
 
 [[bin]]
+name = "everruns-egress-proxy"
+path = "src/bin/egress_proxy.rs"
+
+[[bin]]
 name = "export-openapi"
 path = "src/bin/export_openapi.rs"
 
@@ -36,6 +40,7 @@ mimalloc.workspace = true
 axum.workspace = true
 axum-extra.workspace = true
 tokio.workspace = true
+httparse.workspace = true
 tokio-stream.workspace = true
 tokio-util = { version = "0.7", default-features = false }
 futures.workspace = true

@@ -16,6 +16,18 @@
 //! - With a proxy, the proxy connects to the target, so DNS pinning moves
 //!   there: the proxy must re-resolve and refuse non-public addresses. The
 //!   in-process SSRF check still runs first.
+//! - This file owns the token format on both sides: [`sign_proxy_token`]
+//!   mints and [`verify_proxy_token`] checks, so a format change cannot reach
+//!   one side only. The proxy itself lives in `everruns-server`
+//!   (`everruns-egress-proxy`).
+//! - Verification is strict: anything that is not exactly the shape is
+//!   malformed, never a best-effort guess, because the org in the token is
+//!   what every proxy limit is keyed by. The signature is compared in
+//!   constant time and checked before expiry. A token whose expiry is more
+//!   than [`MAX_PROXY_TOKEN_FUTURE_SECS`] ahead is refused even when signed:
+//!   tokens are minted for five minutes, so a far-future one can only come
+//!   from a bug or a leaked secret, and the cap bounds how long a captured
+//!   token can be replayed.
 
 use crate::{EgressError, EgressRequestKind, EgressResult, EgressScope};
 use sha2::{Digest, Sha256};
@@ -26,8 +38,13 @@ pub const EGRESS_PROXY_URL_ENV: &str = "EVERRUNS_EGRESS_PROXY_URL";
 /// Secret shared with the proxy for signing request tokens (32+ bytes).
 pub const EGRESS_PROXY_SECRET_ENV: &str = "EVERRUNS_EGRESS_PROXY_SECRET";
 
-const MIN_SECRET_LEN: usize = 32;
+/// Shortest proxy secret accepted on either side, in bytes.
+pub const MIN_PROXY_SECRET_LEN: usize = 32;
+const MIN_SECRET_LEN: usize = MIN_PROXY_SECRET_LEN;
 const TOKEN_TTL: Duration = Duration::from_secs(300);
+/// How far ahead of now a token's expiry may be. Covers clock skew between
+/// hosts on top of the five-minute lifetime.
+pub const MAX_PROXY_TOKEN_FUTURE_SECS: i64 = 3_600;
 
 /// The tenant egress proxy and the secret its tokens are signed with.
 #[derive(Clone)]
@@ -134,11 +151,7 @@ impl TenantEgressProxy {
         let session = scope
             .and_then(|scope| scope.session_id.as_ref())
             .map_or_else(|| "-".to_string(), ToString::to_string);
-        let claims = format!("v1.{org}.{session}.{exp}");
-        format!(
-            "{claims}.{}",
-            to_hex(&hmac_sha256(&self.secret, claims.as_bytes()))
-        )
+        sign_proxy_token(&self.secret, &org, &session, exp as i64)
     }
 
     /// A reqwest proxy for one request, authenticated with its token.
@@ -152,6 +165,132 @@ impl TenantEgressProxy {
             .map_err(|error| EgressError::invalid(format!("proxy URL: {error}")))?
             .custom_http_auth(auth))
     }
+}
+
+/// Sign `v1.<org>.<session>.<exp>` with `secret`. `-` stands for a missing
+/// org or session.
+pub fn sign_proxy_token(secret: &[u8], org: &str, session: &str, exp: i64) -> String {
+    let claims = format!("v1.{org}.{session}.{exp}");
+    format!(
+        "{claims}.{}",
+        to_hex(&hmac_sha256(secret, claims.as_bytes()))
+    )
+}
+
+/// Who a proxied request belongs to, as its token says.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProxyClaims {
+    /// `None` for unscoped (`-`) traffic.
+    pub org: Option<String>,
+    /// `None` when the request had no session.
+    pub session: Option<String>,
+    /// Expiry, unix seconds.
+    pub exp: i64,
+}
+
+/// Why a proxy token was refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum ProxyTokenError {
+    /// No `Proxy-Authorization` header.
+    #[error("missing proxy credentials")]
+    Missing,
+    /// Not exactly `Bearer v1.<org>.<session>.<exp>.<sig>`.
+    #[error("malformed proxy token")]
+    Malformed,
+    /// Signed with another secret, or altered.
+    #[error("bad proxy token signature")]
+    BadSignature,
+    /// Past its expiry.
+    #[error("expired proxy token")]
+    Expired,
+    /// Expiry further ahead than [`MAX_PROXY_TOKEN_FUTURE_SECS`].
+    #[error("proxy token expiry too far in the future")]
+    TooFarAhead,
+}
+
+/// Verify the value of a `Proxy-Authorization` header (`Bearer <token>`).
+pub fn verify_proxy_authorization(
+    header: Option<&str>,
+    secret: &[u8],
+    now_unix: i64,
+) -> Result<ProxyClaims, ProxyTokenError> {
+    let header = header.ok_or(ProxyTokenError::Missing)?.trim();
+    let (scheme, token) = header
+        .split_once(' ')
+        .ok_or(ProxyTokenError::Malformed)?;
+    if !scheme.eq_ignore_ascii_case("bearer") {
+        return Err(ProxyTokenError::Malformed);
+    }
+    verify_proxy_token(token.trim(), secret, now_unix)
+}
+
+/// Verify a bare proxy token.
+pub fn verify_proxy_token(
+    token: &str,
+    secret: &[u8],
+    now_unix: i64,
+) -> Result<ProxyClaims, ProxyTokenError> {
+    let parts: Vec<&str> = token.split('.').collect();
+    let [version, org, session, exp, sig] = parts.as_slice() else {
+        return Err(ProxyTokenError::Malformed);
+    };
+    if *version != "v1" || !valid_token_org(org) || !valid_token_session(session) {
+        return Err(ProxyTokenError::Malformed);
+    }
+    if exp.is_empty() || exp.len() > 12 || !exp.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(ProxyTokenError::Malformed);
+    }
+    let exp: i64 = exp.parse().map_err(|_| ProxyTokenError::Malformed)?;
+    if sig.len() != 64 || !sig.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+        return Err(ProxyTokenError::Malformed);
+    }
+
+    // Signature first: nothing about expiry handling is revealed for a token
+    // the caller could not have minted.
+    let claims = &token[..token.len() - 65]; // ".<64 hex>"
+    let expected = to_hex(&hmac_sha256(secret, claims.as_bytes()));
+    if !constant_time_eq(expected.as_bytes(), sig.as_bytes()) {
+        return Err(ProxyTokenError::BadSignature);
+    }
+
+    if exp <= now_unix {
+        return Err(ProxyTokenError::Expired);
+    }
+    if exp - now_unix > MAX_PROXY_TOKEN_FUTURE_SECS {
+        return Err(ProxyTokenError::TooFarAhead);
+    }
+    Ok(ProxyClaims {
+        org: (*org != "-").then(|| org.to_string()),
+        session: (*session != "-").then(|| session.to_string()),
+        exp,
+    })
+}
+
+/// `org_` followed by 32 lowercase hex, or `-`.
+fn valid_token_org(org: &str) -> bool {
+    org == "-"
+        || org.strip_prefix("org_").is_some_and(|hex| {
+            hex.len() == 32 && hex.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+        })
+}
+
+/// A short public session id, or `-`. Only its alphabet matters: it must not
+/// smuggle a separator into the token, logs, or usage keys.
+fn valid_token_session(session: &str) -> bool {
+    session == "-"
+        || (!session.is_empty()
+            && session.len() <= 64
+            && session
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-'))
+}
+
+/// Constant-time byte comparison, for proxy signatures and shared secrets.
+pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
 /// HMAC-SHA256 (RFC 2104) over `sha2`, which core already carries, so the
@@ -226,6 +365,94 @@ mod tests {
             )),
             "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54"
         );
+    }
+
+    const ORG: &str = "org_0123456789abcdef0123456789abcdef";
+    const NOW: i64 = 1_800_000_000;
+
+    #[test]
+    fn a_minted_token_verifies_with_its_scope() {
+        let scope = EgressScope {
+            org_id: Some(ORG.parse().unwrap()),
+            session_id: None,
+        };
+        let token = proxy().token(Some(&scope));
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let claims =
+            verify_proxy_authorization(Some(&format!("Bearer {token}")), SECRET, now).unwrap();
+        assert_eq!(claims.org.as_deref(), Some(ORG));
+        assert_eq!(claims.session, None);
+        assert!(claims.exp > now && claims.exp <= now + 300);
+
+        let unscoped = verify_proxy_token(&proxy().token(None), SECRET, now).unwrap();
+        assert_eq!((unscoped.org, unscoped.session), (None, None));
+    }
+
+    #[test]
+    fn expired_far_future_and_forged_tokens_are_refused() {
+        let token = sign_proxy_token(SECRET, ORG, "session_01", NOW + 300);
+        let claims = verify_proxy_token(&token, SECRET, NOW).unwrap();
+        assert_eq!(claims.session.as_deref(), Some("session_01"));
+        for exp in [NOW - 1, NOW] {
+            let token = sign_proxy_token(SECRET, ORG, "-", exp);
+            assert_eq!(
+                verify_proxy_token(&token, SECRET, NOW),
+                Err(ProxyTokenError::Expired)
+            );
+        }
+        let token = sign_proxy_token(SECRET, ORG, "-", NOW + MAX_PROXY_TOKEN_FUTURE_SECS + 1);
+        assert_eq!(
+            verify_proxy_token(&token, SECRET, NOW),
+            Err(ProxyTokenError::TooFarAhead)
+        );
+        let other = sign_proxy_token(b"another-secret-another-secret-xx", ORG, "-", NOW + 300);
+        assert_eq!(
+            verify_proxy_token(&other, SECRET, NOW),
+            Err(ProxyTokenError::BadSignature)
+        );
+        // Re-pointing a valid token at another org breaks the signature.
+        let good = sign_proxy_token(SECRET, ORG, "-", NOW + 300);
+        let forged = good.replace(ORG, "org_ffffffffffffffffffffffffffffffff");
+        assert_eq!(
+            verify_proxy_token(&forged, SECRET, NOW),
+            Err(ProxyTokenError::BadSignature)
+        );
+    }
+
+    #[test]
+    fn malformed_tokens_and_headers_are_refused() {
+        let good = sign_proxy_token(SECRET, ORG, "-", NOW + 300);
+        for bad in [
+            "",
+            "v1",
+            &good.replace("v1.", "v2."),
+            &good.to_uppercase(),
+            &format!("{good}.extra"),
+            &good.replace(ORG, "org_short"),
+            &good.replace(ORG, "../../etc"),
+        ] {
+            assert_eq!(
+                verify_proxy_token(bad, SECRET, NOW).err(),
+                Some(ProxyTokenError::Malformed),
+                "{bad:?} should be malformed"
+            );
+        }
+        assert_eq!(
+            verify_proxy_authorization(None, SECRET, NOW),
+            Err(ProxyTokenError::Missing)
+        );
+        for header in [format!("Basic {good}"), good.clone()] {
+            assert_eq!(
+                verify_proxy_authorization(Some(&header), SECRET, NOW),
+                Err(ProxyTokenError::Malformed)
+            );
+        }
+        assert!(constant_time_eq(b"abc", b"abc"));
+        assert!(!constant_time_eq(b"abc", b"abd"));
+        assert!(!constant_time_eq(b"abc", b"abcd"));
     }
 
     #[test]
