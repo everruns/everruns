@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "worker-build --release",
+    "build": "bash build.sh",
     "dev": "wrangler dev --local",
     "deploy": "npm run build && wrangler deploy",
-    "test": "npm run check:hosting && node test/chat-e2e.mjs",
+    "test": "node --test test/room-state.test.mjs && npm run check:hosting && node test/chat-e2e.mjs",
     "check:hosting": "node --test test/hosting-contract.mjs"
   },
   "devDependencies": {

@@ -22,10 +22,16 @@ const model = createServer((req, res) => {
   req.on("end", async () => {
     const body = JSON.parse(raw);
     calls.push(body);
-    const last = body.messages.at(-1),
-      names = (body.tools || []).map((t) => t.function.name);
+    const inputs = body.input;
+    const last = inputs.at(-1),
+      names = (body.tools || []).map((t) => t.name);
+    const lastText =
+      typeof last.content === "string"
+        ? last.content
+        : (last.content || []).map((p) => p.text || "").join("");
+    const isResult = last.type === "function_call_output";
     const child = names.includes("search_conversations");
-    if (child && slowSearch && last.role !== "tool") await sleep(3000);
+    if (child && slowSearch && !isResult) await sleep(3000);
     let message;
     const tool = (name, args) => ({
       role: "assistant",
@@ -38,7 +44,7 @@ const model = createServer((req, res) => {
         },
       ],
     });
-    if (last.role === "tool")
+    if (isResult)
       message = {
         role: "assistant",
         content: child
@@ -47,37 +53,96 @@ const model = createServer((req, res) => {
       };
     else if (child)
       message = tool("search_conversations", { query: "PostgreSQL" });
-    else if (last.content.includes("What did"))
+    else if (lastText.includes("What did"))
       message = tool("search_history", {
         question: "What did we decide about the event store?",
       });
-    else if (last.content.includes("Schedule test"))
+    else if (lastText.includes("Schedule test"))
       message = tool("schedule", {
         instruction: "Scheduled follow-up has fired",
         delay_seconds: 4,
       });
-    else
-      message = { role: "assistant", content: "Remembered: " + last.content };
-    res.setHeader("content-type", "application/json");
-    res.end(JSON.stringify({ choices: [{ message }] }));
+    else message = { role: "assistant", content: "Remembered: " + lastText };
+    const output = message.tool_calls?.map((t) => ({
+      type: "function_call",
+      id: t.id,
+      call_id: t.id,
+      status: "completed",
+      name: t.function.name,
+      arguments: t.function.arguments,
+    })) ?? [
+      {
+        type: "message",
+        id: `msg_${calls.length}`,
+        role: "assistant",
+        status: "completed",
+        content: [
+          { type: "output_text", text: message.content, annotations: [] },
+        ],
+      },
+    ];
+    const response = {
+      id: `resp_${calls.length}`,
+      object: "response",
+      status: "completed",
+      model: body.model,
+      output,
+      usage: { input_tokens: 10, output_tokens: 10, total_tokens: 20 },
+    };
+    res.setHeader("content-type", "text/event-stream");
+    const events = [];
+    if (message.tool_calls) {
+      for (const [index, item] of output.entries()) {
+        events.push({
+          type: "response.output_item.added",
+          output_index: index,
+          item: { ...item, status: "in_progress", arguments: "" },
+        });
+        events.push({
+          type: "response.function_call_arguments.delta",
+          output_index: index,
+          item_id: item.id,
+          delta: item.arguments,
+        });
+        events.push({
+          type: "response.output_item.done",
+          output_index: index,
+          item,
+        });
+      }
+    } else
+      events.push({
+        type: "response.output_text.delta",
+        delta: message.content,
+      });
+    events.push({ type: "response.completed", response });
+    res.end(
+      events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""),
+    );
   });
 });
 await new Promise((r) => model.listen(0, "127.0.0.1", r));
 // Construct explicitly: no credentials or mutable files from a developer's checkout.
 const config = {
   name: "everruns-chat-test",
-  main: join(root, "build/worker/shim.mjs"),
+  main: join(root, "test/worker-fixture.js"),
+  compatibility_flags: ["nodejs_compat"],
+  rules: [{ type: "Text", globs: ["**/*.html"], fallthrough: true }],
   compatibility_date: "2026-10-01",
   durable_objects: {
-    bindings: [{ name: "ROOMS", class_name: "ChatRoom" }],
+    bindings: [
+      { name: "ROOMS", class_name: "ChatRoom" },
+      { name: "SESSIONS", class_name: "ChatSession" },
+    ],
   },
-  migrations: [{ tag: "v1", new_sqlite_classes: ["ChatRoom"] }],
+  migrations: [{ tag: "v1", new_sqlite_classes: ["ChatRoom", "ChatSession"] }],
   vars: {
     MODEL: "scripted",
+    TENANT_ID: "chat",
+    AUTHORITY_TOKEN: "test-authority-secret-at-least-32-characters",
     CHAT_ACCESS_TOKEN: "test-access",
     OPENROUTER_API_KEY: "test",
     OPENROUTER_BASE_URL: `http://127.0.0.1:${model.address().port}/v1`,
-    LEASE_MS: "1000",
   },
 };
 await writeFile(join(temp, "wrangler.json"), JSON.stringify(config));
@@ -162,6 +227,11 @@ const send = (id, text, key) =>
 const conversation = (s, id) => s.conversations.find((c) => c.id === id);
 const idle = async (id) => {
   const c = conversation(await state(), id);
+  if (c?.activity.some((e) => e.type === "turn.failed"))
+    throw new Error(
+      "Framework turn failed: " +
+        JSON.stringify(c.activity.find((e) => e.type === "turn.failed").data),
+    );
   return (
     c && !c.turn && !c.queued && c.messages.some((m) => m.role === "agent") && c
   );
@@ -171,7 +241,14 @@ async function socket() {
     base.replace("http", "ws") + "/rooms/shared/socket?access=test-access",
   );
   const messages = [];
-  ws.addEventListener("message", (e) => messages.push(JSON.parse(e.data)));
+  ws.addEventListener("message", (e) => {
+    const message = JSON.parse(e.data);
+    messages.push(message);
+    if (message.type === "changed")
+      state()
+        .then((snapshot) => messages.push(snapshot))
+        .catch(() => {});
+  });
   await new Promise((r, j) => {
     ws.addEventListener("open", r, { once: true });
     ws.addEventListener("error", j, { once: true });
@@ -181,6 +258,106 @@ async function socket() {
 try {
   processHandle = start();
   await until("Worker ready", () => state(), 90000);
+  // Import actual old-format SQLite data; unfinished legacy work is not replayed.
+  const legacyId = "session_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const oldMessage = (id, role, text) => ({
+    id,
+    role,
+    created_at: "2026-10-16T00:00:00Z",
+    content: [{ type: "text", text }],
+  });
+  const prior = oldMessage(
+    "message_11111111111111111111111111111111",
+    "user",
+    "Legacy fact: PostgreSQL",
+  );
+  const reply = oldMessage(
+    "message_22222222222222222222222222222222",
+    "agent",
+    "Remembered legacy fact.",
+  );
+  const pending = oldMessage(
+    "message_33333333333333333333333333333333",
+    "user",
+    "A queued legacy follow-up",
+  );
+  const oldEvents = [
+    [
+      1,
+      JSON.stringify({
+        type: "input.message",
+        sequence: 1,
+        data: { message: prior },
+      }),
+      true,
+    ],
+    [
+      2,
+      JSON.stringify({
+        type: "output.message.completed",
+        sequence: 2,
+        data: { message: reply },
+      }),
+      true,
+    ],
+    [
+      3,
+      JSON.stringify({
+        type: "output.message.completed",
+        sequence: 3,
+        data: {
+          message: oldMessage(
+            "message_44444444444444444444444444444444",
+            "agent",
+            "Uncommitted legacy text",
+          ),
+        },
+      }),
+      false,
+    ],
+  ];
+  await cmd(
+    {
+      type: "__seed_legacy",
+      data: {
+        revision: 1,
+        conversations: {
+          [legacyId]: {
+            title: "Legacy",
+            parent: null,
+            owner: null,
+            events: oldEvents,
+            inbox: [[1, JSON.stringify(pending)]],
+          },
+        },
+        schedules: {},
+        receipts: {},
+      },
+    },
+    "legacy",
+  );
+  const migrated = await until(
+    "legacy history and queued input imported",
+    async () => {
+      const c = conversation(await state("legacy"), legacyId);
+      return c?.ready && !c.turn && !c.queued && c.messages.length === 4 && c;
+    },
+  );
+  assert.deepEqual(
+    migrated.messages.filter((m) => m.role === "user").map((m) => m.id),
+    [prior.id, pending.id],
+  );
+  assert.equal(migrated.messages[1].id, reply.id);
+  const backup = await cmd({ type: "__legacy_backup" }, "legacy");
+  assert.deepEqual(backup.conversations[legacyId].events, oldEvents);
+  assert.equal(
+    calls.filter((c) => c.metadata.session_id === legacyId).length,
+    1,
+    "uncertain admission acknowledgement must not repeat the model turn",
+  );
+  console.log(
+    "chat e2e: legacy SQLite import, backup, and uncertain admission acknowledgement passed",
+  );
   assert.equal((await fetch(base + "/rooms/shared/state")).status, 401);
   assert.equal((await fetch(base + "/cells/private/state")).status, 401);
   assert.equal(
@@ -220,6 +397,13 @@ try {
   await send(first, "We chose PostgreSQL for the event store.", "fact"); // retry same command after disconnect
   const firstState = await until("first turn", () => idle(first));
   assert.equal(firstState.messages.filter((m) => m.role === "user").length, 1);
+  assert.equal(calls.filter((c) => c.metadata.session_id === first).length, 1);
+  const completion = firstState.activity.find(
+    (e) => e.type === "turn.completed",
+  ).data;
+  assert.equal(typeof completion.duration_ms, "number");
+  assert.equal(completion.usage.input_tokens, 10);
+  assert.equal(completion.stop_reason, "stop");
   const boundary = firstState.messages.find((m) => m.role === "agent").sequence;
   const fork = (
     await cmd({
@@ -229,7 +413,11 @@ try {
       sequence: boundary,
     })
   ).conversation;
-  assert.equal(conversation(await state(), fork).messages.length, 2);
+  const forkState = await until("fork imported", async () => {
+    const c = conversation(await state(), fork);
+    return c?.ready && c;
+  });
+  assert.equal(forkState.messages.length, 2);
   assert.equal((await state("isolated")).conversations.length, 0);
   console.log("chat e2e: sockets, receipts, forks and room isolation passed");
   // Restart while the search child is calling the model. No client or GET
@@ -238,9 +426,7 @@ try {
   slowSearch = true;
   await send(question, "What did we decide about the event store?", "search");
   await until("search model started", () =>
-    calls.some((c) =>
-      c.tools?.some((t) => t.function.name === "search_conversations"),
-    ),
+    calls.some((c) => c.tools?.some((t) => t.name === "search_conversations")),
   );
   await kill();
   b.ws.close();
@@ -252,15 +438,32 @@ try {
     () => calls.length > before,
     90000,
   );
-  const answer = await until("search finishes", () => idle(question));
+  await until(
+    "parent resumes after child without clients",
+    () =>
+      calls.some(
+        (c) =>
+          c.tools?.some((t) => t.name === "search_history") &&
+          c.input.at(-1)?.type === "function_call_output",
+      ),
+    90000,
+  );
+  await sleep(2000);
+  const answer = conversation(await state(), question);
+  assert.equal(
+    answer.turn,
+    null,
+    "first read after quiet recovery must find the parent completed",
+  );
+  assert.equal(answer.queued, 0);
   assert.ok(answer.messages.at(-1).text.includes("PostgreSQL"));
   const afterSearch = await state();
   assert.equal(afterSearch.conversations.filter((c) => c.owner).length, 1);
   assert.equal(
     calls.filter(
       (c) =>
-        c.tools?.some((t) => t.function.name === "search_history") &&
-        c.messages.at(-1).content?.includes("Alice: What did"),
+        c.tools?.some((t) => t.name === "search_history") &&
+        JSON.stringify(c.input.at(-1)).includes("Alice: What did"),
     ).length,
     1,
     "committed parent Reason does not repeat",
@@ -280,11 +483,15 @@ try {
     () => calls.length > scheduledBefore,
     90000,
   );
-  await until("scheduled turn ends", async () => {
-    const c = await idle(question);
-    return c?.messages.some((m) => m.text?.includes("[Scheduled instruction]"));
-  });
+  await sleep(2000);
   const final = await state();
+  const scheduled = conversation(final, question);
+  assert.equal(
+    scheduled.turn,
+    null,
+    "first read after quiet timer recovery must find a completed turn",
+  );
+  assert.equal(scheduled.queued, 0);
   assert.equal(
     conversation(final, question).messages.filter(
       (m) => m.role === "user" && m.text.includes("[Scheduled instruction]"),
@@ -295,6 +502,14 @@ try {
     "chat e2e: shared sockets, reconnect deduplication, forks, isolation, search recovery, and scheduled wake after restart passed",
   );
 } catch (e) {
+  await writeFile(
+    "/tmp/everruns-chat-failed-calls.json",
+    JSON.stringify(calls, null, 2),
+  );
+  await writeFile(
+    "/tmp/everruns-chat-failed-state.json",
+    JSON.stringify(await state().catch(() => null), null, 2),
+  );
   console.error(logs.slice(-7000));
 
   throw e;

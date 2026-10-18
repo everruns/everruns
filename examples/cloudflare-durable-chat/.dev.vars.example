@@ -1,1 +1,2 @@
 OPENROUTER_API_KEY=your-openrouter-key
+AUTHORITY_TOKEN=replace-with-an-independent-random-secret-of-at-least-32-characters

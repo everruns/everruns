@@ -3,32 +3,30 @@ name = "everruns-cloudflare-durable-chat"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "Durable multiplayer chat running directly inside a Cloudflare Durable Object"
+description = "Framework Engine multiplayer chat inside Cloudflare Durable Objects"
 
-# Standalone: the Durable Object builds only for wasm32-unknown-unknown with
-# worker-build, and its `worker` dependency has no place in the main workspace.
 [workspace]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+everruns = { path = "../../crates/everruns", default-features = false }
+everruns-contracts = { path = "../../crates/contracts", default-features = false, features = ["runtime", "http"] }
+everruns-drivers = { path = "../../crates/drivers/drivers", default-features = false, features = ["openrouter"] }
+everruns-durable-object = { path = "../../crates/durable-object", default-features = false, features = ["wasm"] }
 async-trait = "0.1"
-everruns-contracts = { path = "../../crates/contracts", default-features = false }
 futures = "0.3"
-serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-
-everruns-core = { path = "../../crates/core", default-features = false, features = ["engine"] }
-[target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3"
 wasm-bindgen = "0.2"
-worker = "0.8.7"
+wasm-bindgen-futures = "0.4"
 
-[dev-dependencies]
-tokio = { version = "1.50", features = ["macros", "rt"] }
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = ["AbortController", "AbortSignal", "Response", "Headers", "ReadableStream", "ReadableStreamDefaultReader"] }
 
 [profile.release]
-opt-level = "s"
+opt-level = "z"
 lto = true
 codegen-units = 1
+strip = "debuginfo"

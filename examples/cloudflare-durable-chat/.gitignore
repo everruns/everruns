@@ -4,3 +4,5 @@
 .wrangler/
 build/
 target/
+pkg/
+worker/build.json
