@@ -1,5 +1,11 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-18
+
+* **MCP OAuth consent redirects.** Let the browser complete client-controlled
+  callback chains after approval and require a browser check with a second
+  callback hop. See [MCP](integrations/mcp.md).
+
 ## 2026-10-17
 
 * **Automatic session titles and Small model.** Add opt-in naming outside the turn path, sparse persistent admission, explicit-title priority, and an independent organization small-model selection. See [Session titles](runtime-resources/session-titles.md).

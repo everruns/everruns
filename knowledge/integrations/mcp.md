@@ -465,6 +465,16 @@ MCP Client → POST /mcp (with Authorization: Bearer <access_token>)
            ← MCP JSON-RPC responses
 ```
 
+The consent page submits to the same-origin authorize endpoint. After approval,
+the browser follows the registered callback and any redirects the client makes
+from it. Browser CSP `form-action` applies to the entire form navigation chain,
+including destinations the authorization server cannot know in advance. The
+consent page therefore omits that directive while retaining the other CSP
+directives and escaping client-supplied text; other pages keep the baseline
+same-origin `form-action` rule. A browser check must follow a callback that
+redirects to a second origin or loopback port, since an HTTP-only assertion of
+the authorization response cannot detect a browser-blocked second hop.
+
 ### Endpoints
 
 #### GET /.well-known/oauth-authorization-server
