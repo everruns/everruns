@@ -8,6 +8,9 @@ workspace = tomllib.loads((ROOT / "Cargo.toml").read_text())["workspace"]
 reference = ROOT / "crates/durable-object"
 host = tomllib.loads((reference / "Cargo.toml").read_text())
 assert "workspace" in host, "hosting reference must resolve independently"
+assert host.get("lints", {}).get("clippy") == workspace["lints"]["clippy"], (
+    "independent hosting reference must preserve the product lint floor"
+)
 assert host["package"].get("publish") is False, "hosting reference is source-only"
 assert "crates/durable-object" not in workspace["members"]
 assert "crates/durable-object" in workspace["exclude"]
