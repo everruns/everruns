@@ -219,8 +219,9 @@ pub async fn authority(profile: &impl SessionHosting) {
             .is_err(),
         "stale epoch wrote session state"
     );
+    let wake_at = profile.status(id).await.unwrap().now_ms + 60_000;
     assert!(
-        lease.epoch.schedule(Some(i64::MAX)).await.is_err(),
+        lease.epoch.schedule(Some(wake_at)).await.is_err(),
         "stale epoch replaced wakeup"
     );
     assert!(
