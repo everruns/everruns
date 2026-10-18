@@ -85,6 +85,8 @@ struct OAuthClientConfig {
 pub struct GitHubAppTokenMinter {
     app_id: String,
     private_key: String,
+    /// The App's OAuth client, which refreshes people's own tokens (D1).
+    user_client: Option<crate::github_user_token::GitHubUserClient>,
 }
 
 impl GitHubAppTokenMinter {
@@ -92,7 +94,16 @@ impl GitHubAppTokenMinter {
         Self {
             app_id,
             private_key,
+            user_client: None,
         }
+    }
+
+    pub fn with_user_client(
+        mut self,
+        client: Option<crate::github_user_token::GitHubUserClient>,
+    ) -> Self {
+        self.user_client = client;
+        self
     }
 
     /// Mint a fresh installation access token (1h TTL).

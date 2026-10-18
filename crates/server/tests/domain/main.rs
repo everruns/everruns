@@ -57,6 +57,7 @@ mod db_pool_isolation_test;
 mod dev_grade;
 mod evals_integration_test;
 mod fcp_integration_test;
+mod github_person_installs_migration_test;
 mod guardrails_integration_test;
 mod llm_model_default_test;
 mod mcp_acts_as_grpc_test;

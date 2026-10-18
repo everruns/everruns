@@ -666,10 +666,10 @@ impl WorkerServiceImpl {
         let private_key = std::env::var("GITHUB_APP_PRIVATE_KEY")
             .ok()
             .filter(|s| !s.is_empty())?;
-        Some(crate::storage::GitHubAppTokenMinter::new(
-            app_id,
-            private_key,
-        ))
+        Some(
+            crate::storage::GitHubAppTokenMinter::new(app_id, private_key)
+                .with_user_client(crate::github_user_token::GitHubUserClient::from_env()),
+        )
     }
 
     /// Get session SQL database store or return unavailable error
