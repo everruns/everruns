@@ -153,6 +153,7 @@ const mockSession: Session = {
 };
 
 const mockUseAgent = jest.fn();
+const mockUseCapabilities = jest.fn();
 const mockUseAgentChannels = jest.fn();
 const mockUseAgentTriggers = jest.fn();
 
@@ -179,7 +180,7 @@ jest.mock("@/hooks", () => ({
   useAgent: (...args: unknown[]) => mockUseAgent(...args),
   useSessions: (...args: unknown[]) => mockUseSessions(...args),
   useCreateSession: () => mutation(mockCreateSession),
-  useCapabilities: () => ({ data: [] }),
+  useCapabilities: () => mockUseCapabilities(),
   useModels: () => ({ data: [] }),
   useExportAgent: () => mutation(),
   useCopyAgent: () => mutation(),
@@ -251,6 +252,7 @@ beforeEach(() => {
   mockCan.mockReturnValue(true);
   mockSearchParams = new URLSearchParams();
   mockUseAgent.mockReturnValue({ data: mockAgent, isLoading: false });
+  mockUseCapabilities.mockReturnValue({ data: [] });
   mockUseAgentChannels.mockReturnValue({ data: [], refetch: jest.fn() });
   mockUseAgentTriggers.mockReturnValue({ data: [] });
   mockUseSessions.mockReturnValue({
@@ -314,6 +316,7 @@ describe("AgentPage layout", () => {
     expect(
       more.getByRole("button", { name: /Service account\s*On first use/ }),
     ).toBeInTheDocument();
+    expect(more.queryByRole("button", { name: /Files/ })).not.toBeInTheDocument();
     expect(more.getByRole("button", { name: /Network access\s*Inherited/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Primary sandbox\s*None/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Health check\s*Not run/ })).toBeInTheDocument();
@@ -327,6 +330,37 @@ describe("AgentPage layout", () => {
     expect(
       screen.getByText("Connections the agent uses for operations configured to act as a service."),
     ).toBeInTheDocument();
+  });
+
+  it("shows Files when the agent has a filesystem or starter files", async () => {
+    mockUseCapabilities.mockReturnValue({
+      data: [
+        { id: "session_file_system", features: ["file_system"] },
+        { id: "skills", dependencies: ["session_file_system"] },
+      ],
+    });
+    mockUseAgent.mockReturnValue({
+      data: { ...mockAgent, capabilities: [{ ref: "skills", config: {} }] },
+      isLoading: false,
+    });
+    await renderPage();
+
+    expect(screen.getByRole("button", { name: /Files\s*None/ })).toBeInTheDocument();
+
+    cleanup();
+    mockUseAgent.mockReturnValue({
+      data: {
+        ...mockAgent,
+        capabilities: [],
+        initial_files: [
+          { path: "/notes.txt", content: "hello", encoding: "text", is_readonly: false },
+        ],
+      },
+      isLoading: false,
+    });
+    await renderPage();
+
+    expect(screen.getByRole("button", { name: /Files\s*1 file/ })).toBeInTheDocument();
   });
 
   it("shows the fixed Bashkit sandbox inherited from the Harness", async () => {
