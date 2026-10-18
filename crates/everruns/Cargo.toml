@@ -4,7 +4,8 @@
 # records.
 # Default features stay offline — session filesystem and package disk I/O are included,
 # while provider, shell, web, Lua, MCP, SQLx, server, and worker integrations
-# remain opt-in. Advanced hosts depend on `everruns-core` with its `host` feature.
+# remain opt-in. Engine hosting adapters use the public `hosting::spi`;
+# separately composed low-level runtimes use `everruns-core/host`.
 
 [package]
 name = "everruns"
@@ -61,6 +62,8 @@ harness = false
 test = true
 
 [features]
+# Opt-in, native test harness for downstream SessionHosting implementations.
+hosting-conformance = ["builtins"]
 # Default features stay offline: the facade includes the contained session
 # filesystem and package disk loading, but activates no provider, shell, web,
 # Lua, MCP, SQLx, server, or worker integrations. Macro and typed capability

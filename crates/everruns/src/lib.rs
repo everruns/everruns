@@ -14,7 +14,9 @@
 //!
 //! `everruns` is the primary Rust library in the
 //! [Everruns](https://everruns.com) ecosystem. Ordinary applications begin
-//! here; advanced execution hosts select the `host`, `engine`, `builtins`, MCP
+//! here. Engine hosting adapters use [`hosting::SessionHosting`] and
+//! [`hosting::spi`] without a direct Core dependency. Separately composed
+//! low-level execution hosts select the `host`, `engine`, `builtins`, MCP
 //! or AG-UI features of [`everruns-core`](https://docs.rs/everruns-core), with
 //! [`everruns-contracts`](https://docs.rs/everruns-contracts) for neutral extension
 //! types and `everruns::batteries` for concrete integration presets.

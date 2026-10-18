@@ -6,8 +6,8 @@ use axum::{
     http::{HeaderMap, StatusCode},
     routing::post,
 };
-use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::typed_id::SessionId;
+use everruns::hosting::spi::error::{AgentLoopError, Result};
+use everruns::hosting::spi::ids::SessionId;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;

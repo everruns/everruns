@@ -257,8 +257,9 @@ applications that deliberately own a higher-level record elsewhere.
 
 For durable admission and independently recoverable execution, choose a coherent
 session authority on Engine. Native `hosting::SqliteHosting` owns one transactional
-database; the experimental `everruns-durable-object` plugin supplies object-backed
-hosting for native or Wasm Engine placement. Register immutable `AgentBuild`
+database; the [session hosting SPI](/framework/hosting/) supports external
+authorities for native or Wasm Engine placement. A source-only Durable Object
+reference demonstrates the extension. Register immutable `AgentBuild`
 identities and retained Environment factories before creating sessions. Start the
 native supervisor or configure platform alarms so recovery does not depend on a
 client reconnecting. See [Durable Object hosting](/framework/durable-objects/).

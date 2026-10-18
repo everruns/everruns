@@ -11,11 +11,16 @@ tags:
 
 # Shared Execution with Durable Object Authority
 
-**Status: implemented, experimental.** Native and Wasm placements enter
+**Status: implemented, source-only experimental reference.** Native and Wasm placements enter
 `everruns::Engine` and execute ordinary Framework Agents through the same shared
 Rust session driver. Placement changes the authority transport and explicit host
 services, rather than the agent runtime. The
 [Engine-owned sessions decision](engine-durable-sessions.md) owns that boundary.
+
+The adapter resolves in its own Cargo workspace using only the Framework
+hosting SPI. Neither it nor the celld serve adapter belongs to the product
+publish set. The Engine architecture supports external authorities; owning a
+Cloudflare service integration is not a Framework responsibility.
 
 ## Decision
 

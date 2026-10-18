@@ -1,49 +1,57 @@
+# Source-only downstream reference: no Core/contracts dependency or product release.
+[workspace]
+resolver = "2"
+
 [package]
 name = "everruns-durable-object"
-version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
-authors.workspace = true
-homepage.workspace = true
-repository.workspace = true
-description = "Experimental Durable Object session authority for native and Wasm Everruns execution"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "MIT"
+rust-version = "1.94.0"
+description = "Reference implementation of the Everruns session hosting SPI"
 readme = "README.md"
 
 [features]
 default = ["native"]
-native = ["dep:axum", "dep:reqwest", "dep:subtle", "everruns-core/host", "tokio/rt-multi-thread", "tokio/net"]
+native = ["dep:axum", "dep:reqwest", "dep:subtle", "tokio/rt-multi-thread", "tokio/net"]
 wasm = ["dep:js-sys", "dep:wasm-bindgen", "dep:wasm-bindgen-futures"]
 
 [dependencies]
-async-trait.workspace = true
-anyhow.workspace = true
-axum = { workspace = true, optional = true }
-chrono.workspace = true
-everruns-contracts = { workspace = true, default-features = false }
-everruns-core = { workspace = true, default-features = false, features = ["actor-runtime"] }
-everruns = { workspace = true, default-features = false }
-reqwest = { workspace = true, features = ["json"], optional = true }
-serde.workspace = true
-serde_json.workspace = true
-sha2.workspace = true
+everruns = { path = "../everruns", default-features = false }
+async-trait = { version = "0.1" }
+anyhow = { version = "1.0" }
+axum = { version = "0.8", features = ["macros"], optional = true }
+chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.13.2", default-features = false, features = ["json", "rustls"], optional = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0" }
+sha2 = { version = "0.11" }
 subtle = { version = "2.6", optional = true }
 tokio = { version = "1.50", default-features = false, features = ["rt", "sync", "time", "macros"] }
-tracing.workspace = true
-uuid.workspace = true
+tracing = { version = "0.1" }
+uuid = { version = "1.11", features = ["v4", "v5", "v7", "serde"] }
 
 [dev-dependencies]
-everruns = { workspace = true, default-features = false, features = ["openai", "builtins"] }
-everruns-llmsim = { workspace = true, features = ["host"] }
-tower = { workspace = true, features = ["util"] }
-
-[lints]
-workspace = true
+everruns = { path = "../everruns", default-features = false, features = ["openai", "builtins", "hosting-conformance"] }
+tower = { version = "0.5", features = ["util"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = { version = "0.3", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
+
+# Preserve the product lint floor despite independent workspace resolution.
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+# Share the product profiles without inheriting its feature resolution.
+[profile.dev]
+debug = 0
+
+[profile.test]
+debug = 0
 
 [[example]]
 name = "native"

@@ -4,8 +4,8 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use everruns_contracts::typed_id::SessionId;
-use everruns_core::host::{EventCursor, EventReadLimit, EventReadRequest, EventReader};
+use everruns::hosting::spi::ids::SessionId;
+use everruns::hosting::spi::{EventCursor, EventReadLimit, EventReadRequest, EventReader};
 use everruns_durable_object::{AuthorityClient, Executor, SessionBinding};
 use std::sync::Arc;
 use tower::ServiceExt;

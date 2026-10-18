@@ -6,6 +6,7 @@ on:
       - 'crates/core/**'
       - 'crates/contracts/**'
       - 'crates/everruns/**'
+      - 'scripts/lib/check-session-hosting-boundary.py'
       - 'crates/serve/**'
       - 'crates/worker/**'
       - 'examples/durable-object-agent/**'
@@ -22,6 +23,7 @@ on:
       - 'crates/core/**'
       - 'crates/contracts/**'
       - 'crates/everruns/**'
+      - 'scripts/lib/check-session-hosting-boundary.py'
       - 'crates/serve/**'
       - 'crates/worker/**'
       - 'examples/durable-object-agent/**'
@@ -41,6 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
       CARGO_INCREMENTAL: '0'
       WRANGLER_SEND_METRICS: 'false'
     steps:
@@ -60,9 +63,13 @@ jobs:
         working-directory: crates/durable-object/worker
         run: npm test
       - name: Test Framework authority conformance on memory and SQLite
-        run: cargo test --locked -p everruns --no-default-features --features local,builtins --test hosted_sessions
+        run: |
+          cargo test --locked -p everruns --no-default-features --features local,hosting-conformance --test hosted_sessions
+          cargo test --locked -p everruns --no-default-features --features local,hosting-conformance --test host hosting_conformance
       - name: Test native Engine host adapters
-        run: cargo test --locked -p everruns-durable-object
+        run: |
+          python3 scripts/lib/check-session-hosting-boundary.py
+          cargo test --locked --manifest-path crates/durable-object/Cargo.toml
       - name: Test ordinary serve registration and catalog reconstruction
         run: cargo test --locked -p everruns-serve --lib execution_host_tests
       - name: Test native executor crash recovery on workerd

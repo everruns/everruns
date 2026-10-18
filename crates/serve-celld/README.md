@@ -4,7 +4,8 @@
 
 Part of the [Everruns](https://everruns.com) ecosystem.
 
-Experimental native [serve](../serve) hosting over per-session celld Durable
+Source-only reference (`publish = false`), built through the repository
+[example](../../examples/serve/celld). Native [serve](../serve) hosting over per-session celld Durable
 Objects. Applications keep ordinary serve declarations. The adapter selects
 `everruns::Engine` with `ObjectHosting` and exposes that same Engine at the
 independently authenticated `/execute` activation endpoint.

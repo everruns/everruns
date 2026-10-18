@@ -4,6 +4,11 @@
 //! wakeup obligation together. It never implements agent planning. Frontend
 //! access is read-only; only a claimed epoch supplies runtime write ports.
 
+/// Reusable host qualification scenarios; never enabled by application defaults.
+#[cfg(all(feature = "hosting-conformance", not(target_arch = "wasm32")))]
+pub mod conformance;
+pub mod spi;
+
 mod admission;
 mod configuration;
 #[cfg(not(target_arch = "wasm32"))]
@@ -30,20 +35,15 @@ mod sqlite;
 pub use sqlite::SqliteHosting;
 
 use async_trait::async_trait;
-use everruns_contracts::{
-    error::Result,
-    typed_id::{MessageId, SessionId},
-};
-use everruns_core::{
-    RuntimeMessage,
-    events::ToolCompletedData,
-    host::{
-        HostBackends,
-        session_actor::store::{ActorFence, LeasedActor, SessionActorStore},
-    },
-};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use spi::{
+    HostBackends, RuntimeMessage,
+    actor::{ActorFence, LeasedActor, SessionActorStore},
+    error::Result,
+    events::ToolCompletedData,
+    ids::{MessageId, SessionId, TurnId},
+};
 use std::{sync::Arc, time::Duration};
 
 /// Trusted host factory for a retained, session-scoped Environment. It may
@@ -142,7 +142,7 @@ pub struct HostingStatus {
     /// Durable diagnostic code when host intervention is required.
     pub suspension_reason: Option<String>,
     /// Logical turn still open in the journal, including a parked turn.
-    pub open_turn: Option<everruns_contracts::typed_id::TurnId>,
+    pub open_turn: Option<TurnId>,
     /// Client calls whose durable resolutions remain outstanding.
     pub waiting: Vec<crate::ToolCall>,
 }
@@ -171,7 +171,7 @@ pub trait SessionHosting: Send + Sync + 'static {
         &self,
         session: SessionId,
         command: uuid::Uuid,
-        target: everruns_contracts::typed_id::TurnId,
+        target: TurnId,
         approvals: Vec<ApprovalCommit>,
         results: Vec<ToolCompletedData>,
     ) -> Result<()>;
@@ -180,9 +180,9 @@ pub trait SessionHosting: Send + Sync + 'static {
         &self,
         session: SessionId,
         command: uuid::Uuid,
-        turn: everruns_contracts::typed_id::TurnId,
-        decisions: Vec<everruns_contracts::execution_api::ToolApprovalAnswer>,
-    ) -> Result<everruns_contracts::execution_api::SubmitToolApprovalsResponse>;
+        turn: TurnId,
+        decisions: Vec<crate::execution_api::ToolApprovalAnswer>,
+    ) -> Result<crate::execution_api::SubmitToolApprovalsResponse>;
     /// Apply an idempotent patch to client configuration under the authority lock.
     async fn configure(
         &self,
@@ -203,22 +203,22 @@ pub trait SessionHosting: Send + Sync + 'static {
     /// Persistent plugins should index this lookup. The default pages a
     /// pinned snapshot with bounded memory for small/volatile authorities.
     async fn event_sequence(&self, session: SessionId, event_id: &str) -> Result<Option<i32>> {
-        use everruns_core::host::{EventReadLimit, EventReadRequest};
+        use spi::{EventReadLimit, EventReadRequest};
         let log = self.reader(session).event_log;
         let mut cursor = None;
         loop {
             let mut query = EventReadRequest::new(
                 session,
-                EventReadLimit::new(256).map_err(|error| {
-                    everruns_contracts::error::AgentLoopError::store(error.to_string())
-                })?,
+                EventReadLimit::new(256)
+                    .map_err(|error| spi::error::AgentLoopError::store(error.to_string()))?,
             );
             if let Some(cursor) = cursor.take() {
                 query = query.with_cursor(cursor);
             }
-            let page = log.read_page(query).await.map_err(|error| {
-                everruns_contracts::error::AgentLoopError::store(error.to_string())
-            })?;
+            let page = log
+                .read_page(query)
+                .await
+                .map_err(|error| spi::error::AgentLoopError::store(error.to_string()))?;
             if let Some(event) = page
                 .events
                 .iter()
@@ -265,7 +265,7 @@ pub trait SessionHosting: Send + Sync + 'static {
         &self,
         session: SessionId,
         command: uuid::Uuid,
-        target: everruns_contracts::typed_id::TurnId,
+        target: TurnId,
         results: Vec<ToolCompletedData>,
     ) -> Result<()>;
     /// Target a retained admission, never whichever turn happens to run later.

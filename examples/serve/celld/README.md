@@ -1,5 +1,8 @@
 # serve with Engine-owned celld sessions
 
+This source-only reference uses the public hosting SPI. The celld and DO adapters
+are not published product dependencies; build this example from the repository.
+
 An ordinary [serve](../../../crates/serve) app with
 [`serve_celld::start`](../../../crates/serve-celld). A per-session Durable Object
 owns canonical state and alarms. A replaceable native container runs the same

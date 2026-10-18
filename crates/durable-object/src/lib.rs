@@ -1,5 +1,6 @@
-//! # everruns-durable-object
+//! # Source-only Durable Object hosting reference
 //!
+//! An independently resolved, unpublished implementation of Framework hosting.
 //! Coherent session authority beneath Framework Engine, part of the
 //! [Everruns](https://everruns.com) ecosystem. Native and Wasm placements run
 //! ordinary Agents through the same actor driver; JavaScript supplies storage,

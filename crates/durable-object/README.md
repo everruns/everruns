@@ -1,4 +1,9 @@
-# everruns-durable-object
+# Durable Object hosting reference
+
+Source-only integration example (`publish = false`), resolved in its own Cargo
+workspace. This package is not a supported Cloudflare product API or a Framework
+dependency. It demonstrates implementing `SessionHosting` using only the public
+`everruns::hosting::spi`, with the agent runtime retained inside Framework.
 
 > Coherent session hosting for ordinary Everruns Agents on native executors and Wasm Durable Objects.
 
@@ -67,7 +72,7 @@ from the repository root, export the same tenant/secrets and run:
 ```sh
 export AUTHORITY_URL=http://127.0.0.1:8787
 export AGENT_BUILD_ID=assistant-v1
-cargo run -p everruns-durable-object --example native
+cargo run --manifest-path crates/durable-object/Cargo.toml --example native
 ```
 
 The example expects `OPENAI_API_KEY`. Its executor listens on loopback port 8790.
@@ -87,6 +92,18 @@ supplies coherent event/session/KV storage. Workspace and other host services
 require explicit supported contracts; a durable journal does not preserve them.
 
 ## Verify
+
+From the repository root:
+
+```sh
+python3 scripts/lib/check-session-hosting-boundary.py
+CARGO_TARGET_DIR="$PWD/target" cargo test --locked --manifest-path crates/durable-object/Cargo.toml
+```
+
+The independent resolution prevents product-workspace feature unification from
+hiding missing SPI dependencies. The workerd harness also runs the same public
+conformance scenarios as the built-in authorities, then qualifies actual process
+loss and independent wakeup delivery.
 
 ```sh
 cd crates/durable-object/worker
@@ -114,7 +131,7 @@ through Engine. No application host factory assembles a core runtime.
 ## Documentation
 
 - [Durable Object hosting](https://everruns.com/docs/framework/durable-objects/)
-- [API reference](https://docs.rs/everruns-durable-object)
+- [Public hosting SPI](https://everruns.com/docs/framework/hosting/)
 - [Framework architecture](https://everruns.com/docs/framework/architecture/)
 
 ## License

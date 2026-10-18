@@ -367,8 +367,9 @@ export default defineConfig({
                     { label: "A2A", slug: "framework/a2a" },
                     { label: "Build a Voice Agent", slug: "framework/voice" },
                     { label: "Serve on AgentCore (experimental)", slug: "framework/serve-agentcore" },
-                    { label: "Serve on celld (experimental)", slug: "framework/serve-celld" },
-                    { label: "Durable Object authority (experimental)", slug: "framework/durable-objects" },
+                    { label: "Serve on celld Reference", slug: "framework/serve-celld" },
+                    { label: "Pluggable Session Hosting", slug: "framework/hosting" },
+                    { label: "Durable Object Reference", slug: "framework/durable-objects" },
                   ],
                 },
                 {

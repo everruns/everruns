@@ -14,10 +14,10 @@ flowchart TD
   App[Framework application or serve] --> Engine[Engine and Session]
   Engine --> Memory[Memory hosting]
   Engine --> SQLite[Native SQLite hosting]
-  Engine --> DO[Durable Object hosting]
+  Engine --> External[External session hosting]
   Memory --> Driver[Shared SessionActorDriver]
   SQLite --> Driver
-  DO --> Driver
+  External --> Driver
   Platform[Platform API and workers] --> Driver
   Driver --> Runtime[Shared Input / Reason / Act runtime]
 ```
@@ -61,8 +61,10 @@ assert_eq!(resumed.session_id(), session_id);
 Framework profiles use the same core `SessionActorDriver`, turn loop and event-log
 recovery. Memory coordinates one process. SQLite commits creation, commands,
 receipts and wakeups in one database and can run an independent native supervisor.
-Durable Object hosting supplies the same authority boundary through object-local
-Wasm or a separately authenticated native Engine executor.
+External hosts implement the [public hosting SPI](/framework/hosting/). The
+source-only Durable Object reference demonstrates object-local Wasm and a
+separately authenticated native Engine executor without a Framework vendor
+dependency.
 
 Admission commits before a send is acknowledged; a turn identity is assigned
 later. Retain command identities across uncertain replies. Dropping a Session,
@@ -85,9 +87,10 @@ worker management and schedules. Agent turns use the shared actor driver.
 - **Native durable Engine:** select `hosting::SqliteHosting`, register the exact
   `AgentBuild` and Environment factory, and start its supervisor for independent
   recovery. SQLite durability covers the configured disk's failure domain.
-- **Durable Object Engine:** select the experimental DO plugin, retain exact
-  builds, and configure platform alarms plus explicit host services. See
-  [Durable Object authority](/framework/durable-objects/).
+- **External durable Engine:** implement `SessionHosting`, retain exact builds,
+  and configure independent activation plus explicit host services. The
+  [Durable Object reference](/framework/durable-objects/) is one source-only
+  implementation, outside the product publish set.
 - **Legacy local storage:** explicit `LocalConfig` and custom host backends retain
   the older facade actor lane and its weaker recovery boundary. Persistent stores
   alone do not provide coherent session hosting or independent activation.
@@ -102,8 +105,8 @@ Resume](/framework/sessions/#history-and-resume) for the exact application lifec
 ## Extension boundaries
 
 Normal applications depend on `everruns`. Engine is concrete. Hosting plugins
-implement `SessionHosting` and supply a coherent authority plus epoch-scoped
-runtime ports. The Framework owns lifecycle execution and outcome projection;
+implement `SessionHosting` using `hosting::spi` and supply a coherent authority
+plus epoch-scoped storage ports. The Framework owns lifecycle execution and outcome projection;
 plugins never implement another agent loop. Providers implement `ChatDriver`.
 
 Advanced core hosts can still compose the experimental `Execution` and internal

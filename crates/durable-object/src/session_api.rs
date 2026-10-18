@@ -1,9 +1,9 @@
 //! Transport-free Workers/session gateway. Every operation enters Framework
 //! Engine/Session; this module maps protocol values and authors no agent events.
+use everruns::hosting::spi::error::{AgentLoopError, Result};
 use everruns::{
     Engine, InputMessage, MessageId, SessionEventCursor, SessionId, hosting::AgentBuild,
 };
-use everruns_contracts::error::{AgentLoopError, Result};
 use serde_json::{Value, json};
 
 #[derive(Debug)]
@@ -25,11 +25,11 @@ impl SessionApi {
     async fn summary(&self, session: SessionId) -> Result<Value> {
         let status = self.engine.session_status(session).await?;
         let phase = status.phase();
-        let approvals:Vec<_>=status.waiting.iter().filter_map(|call|everruns_contracts::tool_approval_types::ToolApprovalRequired::from_request_call(&call.id,&call.name,&call.arguments).map(|request|json!({"tool_call_id":call.id,"tool_name":request.tool,"arguments":request.arguments}))).collect();
+        let approvals:Vec<_>=status.waiting.iter().filter_map(|call|everruns::hosting::spi::approval::ToolApprovalRequired::from_request_call(&call.id,&call.name,&call.arguments).map(|request|json!({"tool_call_id":call.id,"tool_name":request.tool,"arguments":request.arguments}))).collect();
         let questions: Vec<_> = status
             .waiting
             .iter()
-            .filter(|call| call.name == everruns_contracts::ASK_USER_TOOL_NAME)
+            .filter(|call| call.name == everruns::hosting::spi::ASK_USER_TOOL_NAME)
             .map(|call| json!({"tool_call_id":call.id,"questions":call.arguments["questions"]}))
             .collect();
         let metadata = status.binding.metadata;
@@ -78,7 +78,7 @@ impl SessionApi {
             {
                 return Err(crate::client::rejected(404));
             }
-            use everruns_contracts::execution_api::{
+            use everruns::execution_api::{
                 AgentCard, AgentCardAuth, AgentCardInput, AgentCardLinks,
             };
             return Ok(json!(AgentCard {
@@ -226,9 +226,8 @@ impl SessionApi {
                             {
                                 bytes -= size;
                             }
-                            let value = everruns_contracts::execution_api::public_event(
-                                event.canonical_json(),
-                            );
+                            let value =
+                                everruns::execution_api::public_event(event.canonical_json());
                             let size = serde_json::to_vec(&value)
                                 .map_err(|_| AgentLoopError::store("invalid canonical event"))?
                                 .len();
@@ -281,7 +280,7 @@ impl SessionApi {
                     .await
                     .map_err(|e| AgentLoopError::Internal(anyhow::Error::new(e)))?;
                 Ok(
-                    json!({"events":page.events.iter().map(|event|everruns_contracts::execution_api::public_event(event.canonical_json())).collect::<Vec<_>>(),"next_cursor":page.next_cursor,"high_watermark":page.high_watermark}),
+                    json!({"events":page.events.iter().map(|event|everruns::execution_api::public_event(event.canonical_json())).collect::<Vec<_>>(),"next_cursor":page.next_cursor,"high_watermark":page.high_watermark}),
                 )
             }
             "binding" => Ok(json!(self.engine.session_binding(session).await?)),
@@ -303,7 +302,7 @@ impl SessionApi {
                 Ok(json!({"status":status,"answered_by":"user","session_status":phase.phase()}))
             }
             "submit_approvals" => {
-                let request: everruns_contracts::execution_api::SubmitToolApprovalsCommand =
+                let request: everruns::execution_api::SubmitToolApprovalsCommand =
                     serde_json::from_value(body)
                         .map_err(|error| AgentLoopError::config(error.to_string()))?;
                 if request.command_id.is_some() && request.turn_id.is_none() {

@@ -1,5 +1,5 @@
 ---
-title: Durable Object authority (experimental)
+title: Durable Object hosting reference
 description: Run ordinary Everruns Rust agents with durable admission, leases, event logs and alarm-driven recovery owned by a Durable Object.
 slug: framework/durable-objects
 sidebar:
@@ -9,10 +9,12 @@ sidebar:
 import desktopDiagram from "./durable-objects.svg?url&no-inline";
 import mobileDiagram from "./durable-objects-mobile.svg?url&no-inline";
 
-The experimental `everruns-durable-object` plugin supplies coherent session
-hosting beneath `everruns::Engine`. Application code defines ordinary Framework
+The source-only `everruns-durable-object` reference demonstrates the
+[pluggable session hosting SPI](/framework/hosting/) beneath `everruns::Engine`.
+It is independently resolved and is not a published Framework dependency or a
+first-class Cloudflare service integration. Application code defines ordinary Framework
 Agents and uses the same Session API on native execution and Wasm inside an
-object. The profiles and deployment APIs remain experimental; their guarantees
+object. The reference and deployment APIs remain experimental; their guarantees
 cover the failure domains exercised by the qualification tests.
 
 <picture className="er-responsive-diagram">
