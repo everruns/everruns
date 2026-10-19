@@ -23,11 +23,12 @@ Engine application with celld hosting. These surfaces remain experimental; the b
 
 A Durable Object platform (celld, Cloudflare) gives each object a single
 owner, replicated SQLite and durable alarms: a natural home for one agent
-session. Hosting `serve` next to the object in a container
-([serve](serve.md)) keeps durability at turn granularity, because the object
-can only replay whole requests into a process it cannot see inside. Running
-the engine in the object itself lets every engine event land in the object's
-own storage.
+session. A native Engine beside the object and a Wasm Engine inside it both
+write canonical events through the same fenced authority and recover through
+independent wakeups. Placement changes host services, transport overhead and
+failure domains; it does not select a different recovery protocol. See
+[serve](serve.md) for native hosting and
+[shared object execution](durable-object-native.md) for both placements.
 
 ## Decisions
 
@@ -49,8 +50,8 @@ own storage.
   `web_time::Instant` instead.
 - **`Send` contracts stay.** Engine traits require `Send` so native hosts can
   use the multi-thread runtime. JavaScript futures are `!Send`; on the
-  single-threaded wasm target, `rt::AssertSend` (and `worker::send` in the
-  example) marks them `Send` there and only there.
+  single-threaded wasm target, `rt::AssertSend` marks them `Send` there and only
+  there.
 - **Provider protocols use host-owned HTTP.** The shared Chat Completions and
   Responses protocols and OpenAI/OpenRouter chat drivers accept an injected
   transport on native and wasm32. Only the native default links sockets/TLS;
