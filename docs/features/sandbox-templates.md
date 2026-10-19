@@ -44,7 +44,7 @@ provisioned by Everruns and cannot be edited or archived.
 ## Configure an Agent
 
 1. Open **Agents**, then open the Agent.
-2. Under **More**, select **Primary sandbox**.
+2. Under **More**, select **Sandbox**.
 3. Add a Sandbox Template. The Agent stores its exact revision, not a moving pointer.
 4. Choose the policy mode:
    - **Fixed**: every Session gets the single configured Sandbox; Session overrides are rejected.
