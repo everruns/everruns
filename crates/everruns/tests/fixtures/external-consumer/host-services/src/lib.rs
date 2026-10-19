@@ -340,6 +340,8 @@ mod tests {
             }
         }
 
+        // Yolop's custom-backend lane, deprecated until EVE-1298 retires it.
+        #[allow(deprecated)]
         fn agent(driver: &RecordingDriver, backends: HostBackends) -> Agent {
             Agent::builder()
                 .instructions("Answer briefly.")

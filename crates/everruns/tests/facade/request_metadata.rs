@@ -1,6 +1,7 @@
 //! Host provider-request metadata through Engine composition (EVE-1302).
 //! Imports only the public `everruns` API and records the metadata on the
 //! actual provider request, not a host-held copy.
+#![allow(deprecated)] // Exercises the legacy custom-backend lane until its retirement (EVE-1298).
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
