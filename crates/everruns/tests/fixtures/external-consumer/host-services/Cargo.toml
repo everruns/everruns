@@ -13,4 +13,5 @@ everruns = { path = "../../../../../../crates/everruns" }
 serde_json = "1"
 
 [dev-dependencies]
+futures = "0.3"
 tokio = { version = "1.50", features = ["macros", "rt-multi-thread"] }

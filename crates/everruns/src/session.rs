@@ -33,7 +33,8 @@ use actor::SessionActor;
 mod attach;
 mod controls;
 pub use controls::{
-    CapabilityChange, CapabilityRegistrationError, CommandOutput, SessionControlError,
+    COMPLETION_PURPOSE_KEY, CapabilityChange, CapabilityRegistrationError, CommandOutput,
+    CompletionRequest, MAX_COMPLETION_MESSAGES, MAX_COMPLETION_SYSTEM_PROMPTS, SessionControlError,
 };
 pub(crate) use controls::{HostedQuery, LiveControls, register_engine_capability};
 #[cfg(test)]

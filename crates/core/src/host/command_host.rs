@@ -194,6 +194,11 @@ impl StoreCommandHost {
         &self,
         request: SessionCompletionRequest,
     ) -> std::result::Result<PreparedCompletion, SessionCompletionError> {
+        // THREAT[TM-LLM-053]: caller metadata is bounded and can never
+        // stand in for the authority-owned correlation keys.
+        request
+            .validate_metadata()
+            .map_err(SessionCompletionError::InvalidRequest)?;
         let assembled = self
             .assembled()
             .await
@@ -235,7 +240,11 @@ impl StoreCommandHost {
                     threshold: usize::MAX,
                 })
                 .previous_response_id(None)
-                .with_metadata("session_id", self.session_id.to_string());
+                .metadata(crate::command_host::completion_metadata(
+                    &assembled.embedder_metadata,
+                    &request.metadata,
+                    self.session_id,
+                ));
         if let Some(effort) = request
             .controls
             .as_ref()
@@ -243,9 +252,6 @@ impl StoreCommandHost {
             .and_then(|reasoning| reasoning.effort)
         {
             builder = builder.reasoning_effort(effort);
-        }
-        for (key, value) in &request.metadata {
-            builder = builder.with_metadata(key, value);
         }
         Ok(PreparedCompletion {
             llm_messages,

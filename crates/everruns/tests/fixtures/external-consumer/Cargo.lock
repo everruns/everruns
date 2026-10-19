@@ -630,6 +630,7 @@ name = "external-host-services"
 version = "0.0.0"
 dependencies = [
  "everruns",
+ "futures",
  "serde_json",
  "tokio",
 ]
