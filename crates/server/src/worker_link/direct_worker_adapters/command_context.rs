@@ -11,6 +11,23 @@ impl DirectWorkerAdapters {
         self
     }
 
+    pub fn with_slack_provisioner(
+        mut self,
+        provisioner: Option<Arc<dyn SlackAppProvisioner>>,
+    ) -> Self {
+        self.slack_provisioner = provisioner;
+        self
+    }
+
+    /// The channel host targeted schedule triggers run on.
+    pub fn with_channels(
+        mut self,
+        channels: Option<Arc<crate::channels::host::ServerChannels>>,
+    ) -> Self {
+        self.channels = channels;
+        self
+    }
+
     pub(super) fn platform_store_deps(&self) -> DirectPlatformStoreDeps {
         // Standalone adapters (tests, embedders) build their own over the
         // shared resolver; `app_builder` always injects the routes' instances.

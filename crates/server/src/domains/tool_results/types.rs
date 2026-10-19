@@ -23,6 +23,29 @@ pub struct ClientToolResult {
     pub error: Option<String>,
 }
 
+impl ClientToolResult {
+    /// The authority resolves the tool name from its canonical pending calls.
+    pub(crate) fn completed(&self) -> everruns_core::events::ToolCompletedData {
+        use everruns_core::{events::ToolCompletedData, message::ContentPart};
+        if let Some(error) = &self.error {
+            ToolCompletedData::failure(
+                self.tool_call_id.clone(),
+                String::new(),
+                "error".into(),
+                error.clone(),
+                None,
+            )
+        } else {
+            let content = self
+                .result
+                .as_ref()
+                .map(|result| vec![ContentPart::tool_result_text(result)])
+                .unwrap_or_default();
+            ToolCompletedData::success(self.tool_call_id.clone(), String::new(), content, None)
+        }
+    }
+}
+
 /// Request to submit client-side tool results
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct SubmitToolResultsRequest {

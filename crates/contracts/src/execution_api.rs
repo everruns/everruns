@@ -178,6 +178,22 @@ pub struct SubmitToolApprovalsRequest {
     pub decisions: Vec<ToolApprovalAnswer>,
 }
 
+/// Engine-hosted extension of the common approval request. Native Framework
+/// and Workers gateways retain this command; Platform endpoints retain their
+/// own idempotency contract and use `SubmitToolApprovalsRequest`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubmitToolApprovalsCommand {
+    /// The common wire body, flattened so existing callers remain compatible.
+    #[serde(flatten)]
+    pub request: SubmitToolApprovalsRequest,
+    /// Retain when retrying an uncertain response. Requires `turn_id`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command_id: Option<uuid::Uuid>,
+    /// Exact turn that issued the pending batch; call ids may repeat later.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<crate::typed_id::TurnId>,
+}
+
 /// How one pending request was settled.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -201,6 +217,40 @@ pub struct SubmitToolApprovalsResponse {
     /// Session status after the decision.
     #[cfg_attr(feature = "openapi", schema(example = "active"))]
     pub status: String,
+}
+
+/// Public execution envelope, excluding provider-only replay artifacts and
+/// signed/encrypted reasoning payloads. Native and Workers APIs share this view.
+pub fn public_event(event: &serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+    let mut envelope = event.clone();
+    let strip = |content: &mut Value| {
+        if let Some(parts) = content.as_array_mut() {
+            parts.retain(|part| part["type"] != "provider_opaque");
+            for part in parts.iter_mut() {
+                if part["type"] == "reasoning"
+                    && let Some(part) = part.as_object_mut()
+                {
+                    part.remove("signature");
+                    part.remove("encrypted");
+                }
+            }
+        }
+    };
+    if let Some(content) = envelope.pointer_mut("/data/message/content") {
+        strip(content);
+    }
+    if let Some(messages) = envelope
+        .pointer_mut("/data/messages")
+        .and_then(Value::as_array_mut)
+    {
+        for message in messages {
+            if let Some(content) = message.get_mut("content") {
+                strip(content);
+            }
+        }
+    }
+    envelope
 }
 
 #[cfg(test)]

@@ -22,6 +22,12 @@
 //! - A deleted session (EVE-1235) stops the turn like a lost lease, but
 //!   quietly: its actor row went with it, so there is nothing to fail, record
 //!   or release, and a renew or append that finds it gone is not a fault.
+//! - Stall watchdog: setup before the turn is driven and the flush and
+//!   checkpoint after it are bounded (`SessionActorConfig::stall_timeout`, see
+//!   `lease.rs`). Past the bound the lease stops renewing and is lost, the
+//!   stuck phase is dropped, and the lease expires: a holder that hangs where
+//!   it writes nothing costs the bound plus a TTL, then the next lease (and,
+//!   if it keeps hanging, the poison guard) takes over.
 //! - Poison guard: a lease that finds more attempts than the threshold (each
 //!   lease counts one; any release resets the count) seals the turn instead of
 //!   running it, so a turn that kills its worker cannot loop forever.
@@ -82,18 +88,58 @@ impl Drop for AbortOnDrop {
 impl<H: ActorHosts> SessionActorDriver<H> {
     /// Run the leased `actor` to the end of one turn and release it.
     pub async fn run_actor(&self, actor: LeasedActor) {
-        let lease = Arc::new(Lease::new(
-            self.store.clone(),
-            self.config.holder.clone(),
-            &actor,
-            self.config.lease_ttl,
-            self.config.journal_page,
-        ));
+        let lease = Arc::new(
+            Lease::new(
+                self.store.clone(),
+                self.config.holder.clone(),
+                &actor,
+                self.config.lease_ttl,
+                self.config.journal_page,
+            )
+            .with_stall_timeout(self.config.stall_timeout),
+        );
         let renewer = AbortOnDrop(everruns_contracts::rt::spawn(renew_loop(
             lease.clone(),
             self.renew_poke.clone(),
         )));
-        let finish = self.run_leased(&lease, &actor).await;
+        // A fired stall watchdog abandons a setup that never returns: the
+        // lease is already lost and stops renewing (see `lease.rs`). Biased to
+        // the turn, and the watchdog is disarmed while a turn is driven, so a
+        // driven turn is never dropped here.
+        let mut stalled = lease.stalled();
+        let mut finish = tokio::select! {
+            biased;
+            finish = self.run_leased(&lease, &actor) => finish,
+            _ = stalled.wait_for(|stalled| *stalled) => Ok(Finish::Expire),
+        };
+        if matches!(finish, Ok(Finish::Release)) && !lease.is_lost() {
+            lease.arm_watchdog();
+            let signals = Self::signals(&lease);
+            let host = self.hosts.host(
+                HostTurn {
+                    org_id: actor.org_id,
+                    session_id: actor.session_id,
+                    agent_id: None,
+                    input_message_id: None,
+                },
+                &signals,
+            );
+            let mut stalled = lease.stalled();
+            let settled = tokio::select! {
+                biased;
+                settled = async {
+                    self.hosts.flush(&host).await?;
+                    self.hosts
+                        .checkpoint(&host, &lease.read_tail().await?)
+                        .await
+                } => settled,
+                // The lease is lost: nothing is released below.
+                _ = stalled.wait_for(|stalled| *stalled) => Ok(()),
+            };
+            if let Err(error) = settled {
+                finish = Err(error);
+            }
+        }
         // Lease-release replies may arrive after another holder takes over;
         // record the execution boundary before that administrative RPC.
         tracing::debug!(session_id = %actor.session_id, "Actor turn execution finished");
@@ -159,6 +205,7 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             &signals,
         );
         let tail = lease.read_tail().await?;
+        self.hosts.checkpoint(&setup, &tail).await?;
         let started_at = tail
             .first()
             .filter(|event| event.event_type == crate::TURN_STARTED)
@@ -206,18 +253,49 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             let resolved = setup
                 .load_resolved_turn_for_execution(org_id, session_id, input.message_id)
                 .await?;
+            let input_message = resolved
+                .messages
+                .iter()
+                .find(|message| message.id == input.message_id)
+                .cloned();
             let snapshot = resolved.snapshot;
             let drive = TurnDrive::new(
                 session_id,
                 org_id,
-                TurnId::new(),
+                self.hosts
+                    .fresh_turn_id(input.message_id, TurnId::new())
+                    .await?,
                 input.message_id,
                 snapshot.harness_id,
                 snapshot.agent_id,
                 snapshot.workspace_id,
             );
             let host = self.turn_host(&drive, &signals);
+            self.hosts
+                .inputs_consumed(&drive, &[input.message_id])
+                .await?;
+            lease.renew().await?;
+            if !lease.cancel_requested() {
+                let mut stop = signals.stop.clone();
+                tokio::select! {
+                    biased;
+                    _=stop.wait_for(|stop|*stop)=>{},
+                    result=self.hosts.before_turn(&host,&drive,input_message.as_ref())=> {
+                        if result?==super::InputPreparation::Rejected {
+                            // The host durably settled the input without starting a
+                            // turn. It is safe to commit past the fresh-input guard.
+                            lease.turn_stored();
+                            lease.advance(input.sequence);
+                            return Ok(Finish::Release);
+                        }
+                    },
+                }
+            }
+            if lease.is_lost() {
+                return Ok(Finish::Expire);
+            }
             let (execution, plan) = turn_entry_plan(&host, &drive).await?;
+            lease.renew().await?;
             return self.drive(lease, &host, drive, execution, plan).await;
         };
 
@@ -308,6 +386,12 @@ impl<H: ActorHosts> SessionActorDriver<H> {
         execution: InProcessExecution,
         plan: crate::engine::TurnPlan,
     ) -> Result<Finish> {
+        if !lease.disarm_watchdog() {
+            // The watchdog fired as setup ended: the lease is lost.
+            self.hosts.abandon(host);
+            self.hosts.turn_ended(&drive).await;
+            return Ok(Finish::Expire);
+        }
         let inbox = ActorInbox {
             lease,
             hosts: &*self.hosts,
@@ -332,6 +416,8 @@ impl<H: ActorHosts> SessionActorDriver<H> {
         // error in the same poll: the lease is gone either way.
         if lease.is_lost() {
             stopped = Stopped::Lost;
+        } else if lease.cancel_requested() {
+            stopped = Stopped::Cancel;
         } else if let Stopped::Done(Err(error)) = &stopped
             && session_deleted(lease, error).await
         {

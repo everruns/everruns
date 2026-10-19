@@ -183,6 +183,10 @@ session's latest Slack message: inline in a direct message, top-level in a
 `per_channel` channel, and in the thread for a `per_thread` session. A session
 that has never received a Slack message cannot post.
 
+To run on a clock in a conversation from the start, before anyone has written,
+give a schedule trigger a Slack target instead: see
+[Run in a Slack conversation](/features/agent-triggers/#run-in-a-slack-conversation).
+
 The agent pane shows a working status while the turn runs. Approval cards and
 task progress appear independently of the Agent's messages. If a turn ends
 without anything posted to the thread, or an explicit Agent's turn fails or is

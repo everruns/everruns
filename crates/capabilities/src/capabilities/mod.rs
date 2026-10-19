@@ -9,6 +9,7 @@ pub mod a2a_delegation;
 #[cfg(feature = "ag-ui")]
 pub mod ag_ui_delegation;
 pub mod agent_handoff;
+pub mod automatic_session_titles;
 pub mod background_execution;
 pub mod citation_retrieval;
 pub mod citation_verification;
@@ -207,6 +208,7 @@ pub fn register_hosted_capabilities(
     // sandbox provider — so they are composed here rather than shipped by the
     // kernel.
     registry.register(SessionCapability);
+    registry.register(automatic_session_titles::AutomaticSessionTitlesCapability);
     registry.register(SessionStorageCapability);
     registry.register(SessionSqlDatabaseCapability);
     // The provider-neutral Environment profile selects this capability. Keep

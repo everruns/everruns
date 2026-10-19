@@ -23,7 +23,7 @@ use everruns::SendDisposition;
 use everruns::channels::{
     ChannelAgentSurface, ChannelConfig, ChannelDeliveryAdapter, ChannelEventStream, ChannelHost,
     ChannelSessionPort, ChannelStore, ChannelStreamDelivery, DeliveryContext, DeliveryResult,
-    NewChannelSession, OutboundChannelMessage, SendOutcome, session_events,
+    NewChannelSession, OutboundChannelMessage, SendOutcome, SendResolution, session_events,
 };
 use tokio::sync::broadcast;
 
@@ -221,11 +221,28 @@ impl ChannelSessionPort for ServePort {
             .await
             .map_err(session_error)?;
         Ok(match sent.disposition {
+            SendDisposition::Pending => SendOutcome::Pending {
+                input_message_id: sent.message_id,
+            },
             SendDisposition::Steered => SendOutcome::Steered,
             _ => SendOutcome::Started {
                 input_message_id: sent.message_id,
             },
         })
+    }
+
+    async fn resolve_send(
+        &self,
+        _channel: &ChannelConfig,
+        session_id: &str,
+        input: &str,
+    ) -> Result<SendResolution, ChannelError> {
+        let session = self
+            .host()?
+            .session(session_id)
+            .await
+            .map_err(session_error)?;
+        everruns::channels::resolve_send(&session, input).await
     }
 
     async fn events(

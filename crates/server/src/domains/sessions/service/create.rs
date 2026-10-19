@@ -367,9 +367,27 @@ impl SessionService {
         // binding; neither may fall back to a different account.
         if let Some(sandbox) = resolved_sandbox.as_mut() {
             use everruns_contracts::session_sandbox::SessionSandboxCredentialSource;
+            let provider = sandbox.spec.target.provider.clone().unwrap_or_default();
             let credential = &mut sandbox.spec.target.credential;
             match credential.source {
                 SessionSandboxCredentialSource::None => {}
+                SessionSandboxCredentialSource::SessionUser if caller.user_id.is_none() => {
+                    // Trigger and channel ingress start Sessions without a
+                    // person. Rebind to the organization's sole account for the
+                    // provider and pin it, so the snapshot names the account
+                    // that actually pays.
+                    let accounts = self.db.list_organization_connections(org_id).await?;
+                    let account =
+                        crate::domains::sandbox_templates::resolution::sole_organization_account(
+                            &provider,
+                            accounts,
+                            |account| account.provider.as_str(),
+                        )
+                        .map_err(BadRequestError::new)?;
+                    credential.source = SessionSandboxCredentialSource::Organization;
+                    credential.connection_id = Some(account.id);
+                    credential.virtual_user_id = Some(account.virtual_user_id.uuid());
+                }
                 SessionSandboxCredentialSource::SessionUser => {
                     let user_id = caller.user_id.ok_or_else(|| {
                         BadRequestError::new(

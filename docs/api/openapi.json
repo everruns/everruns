@@ -36930,6 +36930,22 @@
             "description": "Webhook and MCP event: template for the event subject. Required for\n`session_mode: per_thread`, which keeps one session per subject.",
             "example": "{{webhook.json.action}}"
           },
+          "target_binding_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Schedule only: the conversation on `target_channel_id`, keyed the way\nthe channel binds sessions: `slack:user:{user_id}` (a direct message)\nor `slack:channel:{channel_id}` (top-level posts).",
+            "example": "slack:user:U0123ABCD"
+          },
+          "target_channel_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Schedule only: the agent's channel whose conversation each run speaks\nin, instead of a session of the trigger's own. Needs\n`target_binding_key`.",
+            "example": "appchan_01933b5a000070008000000000000001"
+          },
           "timezone": {
             "type": "string",
             "description": "IANA timezone identifier for cron evaluation (default `UTC`).",
@@ -47600,6 +47616,13 @@
                   "format": "date-time",
                   "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
                 },
+                "small_model_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional small chat model, independent of the main chat and decision defaults."
+                },
                 "system_decisions": {
                   "$ref": "#/components/schemas/SystemDecisions",
                   "description": "Who answers deployment-owned decision checks: `deployment` (default)\nor `organization` (the org's default decision model)."
@@ -53703,6 +53726,13 @@
             "format": "date-time",
             "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
           },
+          "small_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional small chat model, independent of the main chat and decision defaults."
+          },
           "system_decisions": {
             "$ref": "#/components/schemas/SystemDecisions",
             "description": "Who answers deployment-owned decision checks: `deployment` (default)\nor `organization` (the org's default decision model)."
@@ -59572,9 +59602,38 @@
             "$ref": "#/components/schemas/SessionBinding",
             "description": "Whether invocations reuse a stable session or create a new one."
           },
+          "target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ScheduleTriggerTarget",
+                "description": "Conversation of one of the agent's own channels each run speaks in,\ninstead of a session of the trigger's own. `session_mode` then does\nnot apply: the conversation's binding picks the session."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "timezone": {
             "type": "string",
             "description": "IANA timezone identifier for cron evaluation."
+          }
+        }
+      },
+      "ScheduleTriggerTarget": {
+        "type": "object",
+        "description": "A conversation a schedule trigger runs in: the session a message from that\nconversation would land in, created and bound on the first run.\n\nSlack only. `binding_key` names the conversation the way the channel binds\nit: `slack:user:{user_id}` (a direct message with that person) on a\n`per_user` channel, `slack:channel:{channel_id}` (a top-level post) on a\n`per_channel` one.",
+        "required": [
+          "channel_id",
+          "binding_key"
+        ],
+        "properties": {
+          "binding_key": {
+            "type": "string",
+            "description": "The conversation's binding key on that channel."
+          },
+          "channel_id": {
+            "type": "string",
+            "description": "The agent's channel the conversation belongs to."
           }
         }
       },
@@ -65618,6 +65677,17 @@
             "description": "Normalized finish reason of the turn's final LLM generation (`stop`,\n`length`, `content_filter`, `refusal`, ...). A turn that \"completed\" on\n`length` ended because the model ran out of output budget, not because\nit was done. `None` when the provider reported no reason.",
             "example": "stop"
           },
+          "termination_reason": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TurnStopReason",
+                "description": "Provider-neutral reason execution ended. Persisted with termination so\nhosts can recover the same outcome after losing their in-memory result."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "time_to_first_token_ms": {
             "type": [
               "integer",
@@ -65788,6 +65858,18 @@
             "example": "turn_01933b5a00007000800000000000001"
           }
         }
+      },
+      "TurnStopReason": {
+        "type": "string",
+        "description": "Stable reason a turn stopped, independent of provider-specific strings.",
+        "enum": [
+          "end_turn",
+          "max_tokens",
+          "max_turn_requests",
+          "refusal",
+          "error",
+          "cancelled"
+        ]
       },
       "TurnWaitResponse": {
         "type": "object",
@@ -66288,6 +66370,22 @@
             ],
             "description": "Replacement subject template. An empty string removes it.",
             "example": "{{webhook.json.action}}"
+          },
+          "target_binding_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Replacement target conversation; given with `target_channel_id`.",
+            "example": "slack:user:U0123ABCD"
+          },
+          "target_channel_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Replacement target channel. An empty string removes the target, so\nruns use a session of the trigger's own again.",
+            "example": "appchan_01933b5a000070008000000000000001"
           },
           "timezone": {
             "type": [
@@ -67364,6 +67462,13 @@
             ],
             "description": "The display name of the organization.",
             "example": "Acme Corporation"
+          },
+          "small_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Shared small chat model for lightweight work. Omit to preserve the selection;\npass null to clear it. Does not change the main chat or decision default."
           },
           "system_decisions": {
             "oneOf": [

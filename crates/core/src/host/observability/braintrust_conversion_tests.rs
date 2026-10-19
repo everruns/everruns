@@ -191,6 +191,7 @@ fn test_convert_turn_completed_with_usage() {
     let turn_id = TurnId::new();
 
     let data = TurnCompletedData {
+        termination_reason: None,
         issue_count: None,
         turn_id,
         iterations: 3,
@@ -289,6 +290,7 @@ fn test_turn_events_are_self_referencing_root_spans() {
 
     // Test turn.completed uses same IDs (for merging)
     let completed_data = TurnCompletedData {
+        termination_reason: None,
         issue_count: None,
         turn_id,
         iterations: 1,

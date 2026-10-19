@@ -82,12 +82,14 @@ a narrow column on the right holds the settings:
 
 - **Harness**, **Capabilities** (compact chips, in precedence order), **Default model**, and **Tags**
 - **Updated**, read-only
-- **More**: one row each for Branding, MCP servers, Credentials, Service account, Files, Network
-  access, Primary sandbox, Token usage, and Health check. Each row shows its current value and
-  opens a side sheet. Service account saves immediately.
+- **More**: one row each for Branding, MCP servers, Credentials, Service account, Network
+  access, Sandbox, Token usage, and Health check. **Files** is included when the agent
+  has a filesystem (from its capabilities, a dependency, or the harness) or already has starter
+  files. Each row shows its current value and opens a side sheet. Service account saves
+  immediately.
 
 Tabs: **Agent**, **Preview**, **Integrations** (channels and triggers), **Stats**, and
-**Sessions**.
+**Sessions**. Preview's Files card follows the same filesystem rule.
 
 #### Avatar
 
@@ -120,7 +122,7 @@ Header actions:
 - **More actions**: Copy, Export, Version history, and Archive (or Delete, for an archived agent)
 - **Test in Playground**: open Playground setup with this Agent selected
 
-Use **More > Primary sandbox** to add named Bashkit or Daytona Sandbox Template bindings. Then select the
+Use **More > Sandbox** to add named Bashkit or Daytona Sandbox Template bindings. Then select the
 Agent and Sandbox when starting a **New Playground chat**. Personal Chats always use the
 managed Platform Chat and do not expose a sandbox selector. See [Sandbox Templates]
 (/features/sandbox-templates/) for recovery and lifecycle behavior.
@@ -190,7 +192,7 @@ Each capability card shows:
   rotate its key, sync its models and open its settings. Several providers of
   one kind can be connected under different names; model pickers show
   "Model (Provider name)".
-- **Defaults**: the organization's default model, default decision model,
+- **Defaults**: the organization's default model, Small model for lightweight work, default decision model,
   system decisions source, and default provider for realtime, embeddings,
   images and rerank.
 

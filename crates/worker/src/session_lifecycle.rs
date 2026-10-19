@@ -120,6 +120,7 @@ impl<A: WorkerAdapters> SessionLifecycle<A> {
         self.emit_turn_completed(
             input_message_id,
             TurnCompletedData {
+                termination_reason: None,
                 turn_id,
                 iterations,
                 duration_ms: None,

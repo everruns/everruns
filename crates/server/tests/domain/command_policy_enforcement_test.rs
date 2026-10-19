@@ -798,6 +798,9 @@ const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
     // The escape hatch. Blocking copy would leave built-in agents unusable as
     // a starting point, and the rejection message tells users to copy first.
     "copy_agent",
+    // Creates a fresh agent from a bundled example through CreateAgent, which
+    // never mints a built-in; there is no existing agent to protect.
+    "adopt_agent_example",
     // --- Bindings, not definition -------------------------------------------
     // These live in adjacent domains and never touch the agents row. An org
     // must be able to wire a built-in agent into its own environment; a

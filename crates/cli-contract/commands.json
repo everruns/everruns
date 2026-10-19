@@ -1175,6 +1175,51 @@
     ]
   },
   {
+    "wire_name": "adopt_agent_example",
+    "path": [
+      "agents",
+      "examples"
+    ],
+    "verb": "adopt",
+    "description": "Create an agent from an agent example by name (see list_agent_examples). The agent is named after the example, with a short suffix when that name is taken, and tagged example:<name>. A template's guided setup (GitHub App, connections, trigger) is not run: do those steps next.",
+    "method": "POST",
+    "http_path": "/v1/agents/import",
+    "args": [
+      {
+        "field": "name",
+        "long": "name",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Example name from list_agent_examples, such as `pr-reviewer`."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Start a pull request reviewer from its template",
+        "command": "everruns agents examples adopt pr-reviewer --reason 'Set up PR reviews for the repo'"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_agent_examples",
+    "path": [
+      "agents",
+      "examples"
+    ],
+    "verb": "list",
+    "description": "List adoptable agent examples (blueprints such as pr-reviewer): name, description, harness, capabilities, and the guided setup a template needs after adoption (GitHub App, connections, trigger). Adopt one by name with adopt_agent_example.",
+    "method": "GET",
+    "http_path": "/v1/agent-examples",
+    "args": [],
+    "examples": [
+      {
+        "intent": "Find a ready-made agent to start from instead of writing one by hand",
+        "command": "everruns agents examples list"
+      }
+    ]
+  },
+  {
     "wire_name": "export_agent",
     "path": [
       "agents"
@@ -2069,6 +2114,20 @@
         "help": "Webhook and MCP event: template for the event subject."
       },
       {
+        "field": "target_binding_key",
+        "long": "target-binding-key",
+        "kind": "string",
+        "required": false,
+        "help": "Schedule only: the conversation on `target_channel_id`, keyed the way the channel binds sessi..."
+      },
+      {
+        "field": "target_channel_id",
+        "long": "target-channel-id",
+        "kind": "string",
+        "required": false,
+        "help": "Schedule only: the agent's channel whose conversation each run speaks in, instead of a sessio..."
+      },
+      {
         "field": "timezone",
         "long": "timezone",
         "kind": "string",
@@ -2430,6 +2489,20 @@
         "kind": "string",
         "required": false,
         "help": "Replacement subject template."
+      },
+      {
+        "field": "target_binding_key",
+        "long": "target-binding-key",
+        "kind": "string",
+        "required": false,
+        "help": "Replacement target conversation; given with `target_channel_id`."
+      },
+      {
+        "field": "target_channel_id",
+        "long": "target-channel-id",
+        "kind": "string",
+        "required": false,
+        "help": "Replacement target channel."
       },
       {
         "field": "timezone",
@@ -8100,6 +8173,32 @@
     ]
   },
   {
+    "wire_name": "list_organization_connections",
+    "path": [
+      "orgs",
+      "provider-accounts"
+    ],
+    "verb": "list",
+    "description": "List the organization's provider accounts (sandbox provider accounts such as Daytona or E2B, and web search accounts): id, name, provider, provider username, and timestamps. Metadata only, never credentials. Use an id as a Sandbox Template's connection or a web search account. Organization admins only.",
+    "method": "GET",
+    "http_path": "/v1/orgs/{org}/organization-connections",
+    "args": [
+      {
+        "field": "org",
+        "long": "org",
+        "kind": "string",
+        "required": true,
+        "help": "Organization public ID."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find the sandbox provider account to point a Sandbox Template at",
+        "command": "everruns orgs provider-accounts list --org org_01h9"
+      }
+    ]
+  },
+  {
     "wire_name": "resolve_org",
     "path": [
       "orgs"
@@ -11622,7 +11721,7 @@
       "messages"
     ],
     "verb": "create",
-    "description": "Create a user message in a session and start the next run. The message content is an array of content parts, e.g. --content '[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]'.",
+    "description": "Create a user message in a session and start the next run. Pass the message as one JSON object whose `content` is an array of content parts (there is no separate --content flag), e.g. --message '{\"content\":[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]}'.",
     "method": "POST",
     "http_path": "/v1/sessions/{session_id}/messages",
     "args": [

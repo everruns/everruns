@@ -20,6 +20,19 @@
 
 pub use std::time::Duration;
 
+/// UTC instant supplied by a session authority.
+pub type UtcTimestamp = chrono::DateTime<chrono::Utc>;
+
+/// Current UTC time from the native or isolate host clock.
+pub fn utc_now() -> chrono::DateTime<chrono::Utc> {
+    chrono::Utc::now()
+}
+
+/// Authority/session timestamps on the native or isolate host clock.
+pub fn utc_now_iso() -> String {
+    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+}
+
 /// `wasm32-unknown-unknown`: the isolate target.
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 mod imp {
@@ -103,6 +116,18 @@ mod imp {
     /// The task was aborted before it finished.
     #[derive(Debug)]
     pub struct JoinError(());
+
+    impl JoinError {
+        /// Isolate tasks report cancellation. A Wasm trap aborts the isolate
+        /// rather than unwinding into a recoverable task panic.
+        pub fn is_panic(&self) -> bool {
+            false
+        }
+
+        pub fn is_cancelled(&self) -> bool {
+            true
+        }
+    }
 
     impl fmt::Display for JoinError {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

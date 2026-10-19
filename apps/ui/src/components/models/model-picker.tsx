@@ -19,6 +19,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 export interface ModelPickerProps {
   service?: ModelService;
+  additionalOptions?: { value: string; label: string }[];
   requiredPrimitives?: string[];
   /** Optional ID for the select trigger */
   id?: string;
@@ -46,6 +47,7 @@ export function ModelPicker({
   id,
   service = "chat",
   requiredPrimitives = [],
+  additionalOptions = [],
   value,
   onChange,
   placeholder = "Select a model",
@@ -80,6 +82,7 @@ export function ModelPicker({
       return a.display_name.localeCompare(b.display_name);
     });
 
+  const selectedOption = additionalOptions.find((option) => option.value === value);
   const selectedModel = models.find((m) => m.id === value);
 
   return (
@@ -93,6 +96,7 @@ export function ModelPicker({
           <SelectValue>
             {(() => {
               if (isLoading) return "Loading...";
+              if (selectedOption) return selectedOption.label;
               if (!selectedModel) return placeholder;
               return (
                 <div className="flex items-center gap-2">
@@ -110,6 +114,11 @@ export function ModelPicker({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="none">{placeholder}</SelectItem>
+          {additionalOptions.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
           {sortedModels.map((model) => (
             <ModelSelectItem key={model.id} model={model} showFavoriteToggle={showFavoriteToggle} />
           ))}
@@ -127,6 +136,7 @@ export function ModelPicker({
       {!isLoading &&
         value &&
         value !== "none" &&
+        !selectedOption &&
         !sortedModels.some((model) => model.id === value) && (
           <p role="alert" className="text-xs text-destructive">
             The configured model is unavailable or does not support {service}. Choose a model to

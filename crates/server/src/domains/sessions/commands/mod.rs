@@ -1033,7 +1033,11 @@ impl Command for CancelSession {
             Ok(recorded_by_worker) => recorded_by_worker,
             Err(error) => {
                 tracing::error!(session_id = %session_id, error = %error, "Failed to cancel the session's turn");
-                false
+                // An unacknowledged request does not transfer terminal-event
+                // ownership: the worker may still complete the turn.
+                return Err(CommandError::internal(anyhow::anyhow!(
+                    "Failed to cancel the session's turn"
+                )));
             }
         };
         if recorded_by_worker {

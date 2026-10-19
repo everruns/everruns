@@ -1,15 +1,27 @@
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::typed_id::{MessageId, SessionId};
-use everruns_core::events::{
+use everruns::hosting::spi::AcceptedTurnInput;
+use everruns::hosting::spi::actor::{ActorFence, LeasedActor, actor_lease_lost};
+use everruns::hosting::spi::error::{AgentLoopError, Result};
+use everruns::hosting::spi::events::{
     Event, EventContext, EventRequest, InputMessageData, ToolCompletedData,
 };
-use everruns_core::host::AcceptedTurnInput;
-use everruns_core::host::session_actor::store::{ActorFence, LeasedActor, actor_lease_lost};
+use everruns::hosting::spi::ids::{MessageId, SessionId};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
+
+#[derive(Debug)]
+pub(crate) struct AuthorityRejection(pub u16);
+impl std::fmt::Display for AuthorityRejection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "authority rejected operation ({})", self.0)
+    }
+}
+impl std::error::Error for AuthorityRejection {}
+pub(crate) fn rejected(status: u16) -> AgentLoopError {
+    AgentLoopError::Internal(anyhow::Error::new(AuthorityRejection(status)))
+}
 
 /// Authority RPC supplied by a native HTTP client or an isolate-local object bridge.
 #[async_trait::async_trait]
@@ -106,7 +118,10 @@ pub struct Authority {
     fence: Arc<RwLock<Option<ActorFence>>>,
     pub(crate) proactive: Arc<
         tokio::sync::Mutex<
-            std::collections::HashMap<(String, String), everruns_core::ProactiveCompactionAttempt>,
+            std::collections::HashMap<
+                (String, String),
+                everruns::hosting::spi::ProactiveCompactionAttempt,
+            >,
         >,
     >,
 }
@@ -127,7 +142,10 @@ impl Authority {
 
     /// Submit a caller-retained message identity, including retries after the
     /// caller restarts. Persist the message before sending when that is needed.
-    pub async fn submit(&self, message: everruns_core::RuntimeMessage) -> Result<MessageId> {
+    pub async fn submit(
+        &self,
+        message: everruns::hosting::spi::RuntimeMessage,
+    ) -> Result<MessageId> {
         let id = message.id;
         let event = EventRequest::new(
             self.session_id,

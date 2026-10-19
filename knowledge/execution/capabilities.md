@@ -716,7 +716,7 @@ Each capability declares a `RiskLevel` via the `Capability` trait. The API enfor
 
 High-risk built-in capabilities: `docker_container`, `daytona`, `e2b`, `deno`, `bashkit_shell`, `web_fetch`.
 
-See `crates/contracts/src/runtime/capabilities/mod.rs` for the `RiskLevel` enum and `crates/server/src/api/agents/mod.rs` for `require_admin_for_high_risk()`.
+See `crates/contracts/src/runtime/capabilities/mod.rs` for the `RiskLevel` enum and `crates/server/src/domains/agents/managed.rs` for `check_high_risk_caps()`, which every agent create, update, import, and example adoption runs.
 
 #### Admin-Only Tier Decision (PRs #1485, #1500, EVE-395)
 

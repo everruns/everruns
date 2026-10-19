@@ -16,6 +16,15 @@ pub struct ParkedToolCalls {
     /// The calls the turn waits on, in the order the model made them.
     pub tool_calls: Vec<everruns_contracts::tool_types::ToolCall>,
 }
+impl ParkedToolCalls {
+    /// A canonical waiting view reconstructed by a session authority.
+    pub fn new(turn_id: TurnId, tool_calls: Vec<everruns_contracts::tool_types::ToolCall>) -> Self {
+        Self {
+            turn_id,
+            tool_calls,
+        }
+    }
+}
 
 /// A turn waiting for client-side tool results, with the engine state its
 /// next step resumes from.

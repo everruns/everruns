@@ -23,7 +23,7 @@
 use std::time::Duration;
 use web_time::Instant;
 
-use crate::turn::TurnStopReason;
+use everruns_contracts::turn::TurnStopReason;
 
 /// Default ceiling on automatic continuations for one user request.
 pub const DEFAULT_MAX_CONTINUATION_TURNS: u32 = 6;
