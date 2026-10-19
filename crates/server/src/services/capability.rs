@@ -179,6 +179,7 @@ impl CapabilityService {
                 agent_count: 0,
                 harness_count: 0,
                 docs_slug: None,
+                feature_flag: None,
                 localizations: Default::default(),
             });
         }
@@ -210,6 +211,7 @@ impl CapabilityService {
                 agent_count: 0,
                 harness_count: 0,
                 docs_slug: None,
+                feature_flag: None,
                 localizations: Default::default(),
             });
         }
@@ -378,6 +380,7 @@ impl CapabilityService {
                     agent_count: 0,
                     harness_count: 0,
                     docs_slug: None,
+                    feature_flag: None,
                     localizations: Default::default(),
                 }));
             }
@@ -408,6 +411,7 @@ impl CapabilityService {
                     agent_count: 0,
                     harness_count: 0,
                     docs_slug: None,
+                    feature_flag: None,
                     localizations: Default::default(),
                 }));
             }

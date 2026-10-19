@@ -388,6 +388,24 @@ mod tests {
     }
 
     #[test]
+    fn every_registered_capability_has_name_and_description() {
+        let registry = oss_capability_registry_for_grade(DeploymentGrade::Dev);
+        let mut missing = Vec::new();
+        for capability in registry.list() {
+            let name = capability.name().trim();
+            let description = capability.description().trim();
+            if name.is_empty() || description.is_empty() {
+                missing.push(capability.id().to_string());
+            }
+        }
+        missing.sort();
+        assert!(
+            missing.is_empty(),
+            "capabilities missing name or description: {missing:?}"
+        );
+    }
+
+    #[test]
     fn daytona_capabilities_and_connection_are_ungated() {
         assert_eq!(capability_feature_flag("daytona"), None);
         assert_eq!(connector_feature_flag("daytona"), None);

@@ -29,6 +29,12 @@ export function localizedCapabilityDescription(
   return localizationFor(capability, locale)?.description ?? capability.description;
 }
 
+/** First paragraph, for a list row. The capability page keeps the full text. */
+export function capabilitySummary(description: string): string {
+  const paragraph = description.split(/\n\s*\n/)[0] ?? description;
+  return paragraph.replace(/\s+/g, " ").trim();
+}
+
 /** One-line summary of what the capability's config controls, if any. */
 export function localizedConfigDescription(
   capability: Pick<Capability, "localizations">,

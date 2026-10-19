@@ -783,6 +783,11 @@ export interface Capability {
   /** Slug under https://dev.everruns.com/capabilities/ for the public docs page */
   docs_slug?: string;
   /**
+   * Rollout flag that gates this capability, when one is required.
+   * Present whether or not the flag is on.
+   */
+  feature_flag?: string;
+  /**
    * Localized display strings keyed by lowercase language tag (e.g. "uk").
    * The "en" entry carries only config_description, since the base
    * name/description/config_schema strings are already English.
