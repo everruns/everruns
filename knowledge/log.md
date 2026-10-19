@@ -2,6 +2,12 @@
 
 ## 2026-10-19
 
+* **Session commands and live controls.** Sessions run capability commands,
+  activate Engine-registered capabilities and switch model, effort and MCP
+  servers without a runtime handle; coherent hosting commits them through
+  `configure`, the legacy lane states weaker semantics. See
+  [Application API](framework/application-api.md#session-commands-and-live-controls).
+
 * **Engine keeps session capability overlays.** Runtime reconstruction no longer
   reseeds the session layer from the Agent; hot-enabled capabilities and
   session-owned fields survive restart. See

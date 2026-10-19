@@ -1,14 +1,16 @@
 //! External embedding host (EVE-1296): a curated host capability with a
 //! pre-tool guard and a model-view contribution, composed into an Engine
-//! Session through `everruns::hosting::services` only.
+//! Session through `everruns::hosting::services` only. It also hot-installs
+//! an extension and drives it through the Session control surface (EVE-1297).
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use everruns::hosting::services::{
-    Capability, HostServices, ModelViewContext, ModelViewProvider, PolicyGate, PreToolUseDecision,
-    PreToolUseHook, RuntimeMessage, Tool, ToolCall, ToolContext, ToolDefinition,
-    ToolExecutionResult, async_trait,
+    Capability, CommandDescriptor, CommandExecutionContext, CommandResult, CommandSource,
+    ExecuteCommandRequest, HostServices, ModelViewContext, ModelViewProvider, PolicyGate,
+    PreToolUseDecision, PreToolUseHook, Result, RuntimeMessage, Tool, ToolCall, ToolContext,
+    ToolDefinition, ToolExecutionResult, async_trait,
 };
 use serde_json::{Value, json};
 
@@ -128,6 +130,51 @@ impl Capability for DeployPolicy {
     }
 }
 
+/// An extension installed after startup, with one slash command.
+pub struct Extension;
+
+#[async_trait]
+impl Capability for Extension {
+    fn id(&self) -> &str {
+        "external_extension"
+    }
+
+    fn name(&self) -> &str {
+        "External extension"
+    }
+
+    fn description(&self) -> &str {
+        "Installed while the host runs."
+    }
+
+    fn system_prompt_addition(&self) -> Option<&str> {
+        Some("EXTERNAL_EXTENSION_ACTIVE")
+    }
+
+    fn commands(&self) -> Vec<CommandDescriptor> {
+        vec![CommandDescriptor {
+            name: "hello".into(),
+            description: "Greet from the extension.".into(),
+            source: CommandSource::System,
+            args: Vec::new(),
+        }]
+    }
+
+    async fn execute_command(
+        &self,
+        _request: &ExecuteCommandRequest,
+        context: &CommandExecutionContext,
+    ) -> Result<CommandResult> {
+        let turn = context.host.turn_context().await?;
+        Ok(CommandResult {
+            success: true,
+            message: format!("hello from {}", turn.model),
+            error_code: None,
+            error_fields: None,
+        })
+    }
+}
+
 /// Host services carrying the deploy policy.
 pub fn services(policy: DeployPolicy) -> HostServices {
     HostServices::new().capability(policy)
@@ -185,5 +232,60 @@ mod tests {
             .join("\n");
         assert!(text.contains(VIEW_MARKER));
         assert!(text.contains(BLOCK_REASON));
+    }
+
+    #[tokio::test]
+    async fn a_hot_installed_extension_runs_through_session_controls() {
+        use everruns::{CapabilityRef, ReasoningEffort, SessionControlError};
+
+        let agent = Agent::builder()
+            .instructions("Help.")
+            .model(Model::simulated("done"))
+            .build()
+            .expect("valid agent");
+        let engine = Engine::new();
+        let session = engine.create(agent);
+        assert!(session.commands().await.expect("commands").is_empty());
+
+        engine.register_capability(Extension).expect("register");
+        let change = session
+            .activate_capability(CapabilityRef::new("external_extension"))
+            .await
+            .expect("activate");
+        assert!(change.active);
+        let commands = session.commands().await.expect("commands");
+        assert_eq!(commands[0].name, "hello");
+        let output = session.run_command("/hello", None).await.expect("run");
+        assert_eq!(output.message, "hello from llmsim-model");
+        assert!(
+            session
+                .command_context()
+                .await
+                .expect("context")
+                .instructions
+                .contains("EXTERNAL_EXTENSION_ACTIVE")
+        );
+
+        session.set_model("llmsim-large").await.expect("model");
+        session
+            .set_reasoning_effort(Some(ReasoningEffort::Medium))
+            .await
+            .expect("effort");
+        assert!(matches!(
+            session.set_model(Model::on("unknown", "x")).await,
+            Err(SessionControlError::Rejected(_))
+        ));
+        assert!(session.run("hi").await.expect("turn").success);
+        let review = session
+            .complete_out_of_band(None, "done?")
+            .await
+            .expect("review");
+        assert_eq!(review, "done");
+
+        session
+            .deactivate_capability("external_extension")
+            .await
+            .expect("deactivate");
+        assert!(session.commands().await.expect("commands").is_empty());
     }
 }

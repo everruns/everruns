@@ -207,6 +207,42 @@ using only `everruns`, and the
 [parity test](../../crates/everruns/tests/host/host_services_parity.rs) checks
 the Engine path against direct Core composition.
 
+## Session commands and live controls
+
+A host that drives a Session (Yolop's terminal, print and ACP frontends are
+the first) also dispatches capability slash commands, hot-installs
+extensions and changes model, reasoning effort and MCP servers while a
+session is live (EVE-1297). Handing it the session runtime would let it drive
+a second turn loop beside Engine's, so these are curated
+[Session operations](../../crates/everruns/src/session/controls.rs) instead.
+
+- Commands, context queries and out-of-band review completions run on the
+  runtime the next model call uses (the legacy session's own runtime, or a
+  coherent session's query runtime), so they see the same provider, filters,
+  filesystem and capability chain. They append no canonical events and take
+  no execution ownership. The legacy actor answers them during an active
+  turn, so a tool of that turn can call them without deadlocking its mailbox.
+- Capability code is trusted and registered as an in-process value (Agent,
+  host services or `Engine::register_capability`), never deserialized.
+  Activation is separate and persists only the session overlay of id plus
+  validated configuration.
+- A live model selection is a credential-free provider key and model id the
+  Agent already serves; it never brings provider code, and unavailable
+  selections fail without fallback or state change.
+- Where state lives follows the hosting profile. Coherent hosting commits the
+  capability overlay, model and effort through its `configure` authority
+  operation (extending `SessionConfiguration`). The explicit legacy lane
+  states weaker semantics: its overlay persists in the session record, while
+  model and effort are Engine-held and re-applied by the host after a
+  restart. Live MCP definitions can carry credentials, so they are
+  Engine-held in both.
+
+The [facade tests](../../crates/everruns/tests/facade/session_controls.rs)
+cover dispatch from a running turn, hot install through deactivation,
+ordering against sends, cancellation and teardown, and coherent reconstruction;
+the external host-services fixture drives the same surface with only
+`everruns`.
+
 ## Deliberately low-level host concerns
 
 The following stay on the host side rather than being mirrored into ordinary
@@ -471,3 +507,5 @@ entrypoints.
 - `crates/everruns/src/local/`
 - `crates/everruns/src/hosting/services.rs`
 - `crates/everruns/tests/facade/host_services.rs`
+- `crates/everruns/src/session/controls.rs`
+- `crates/everruns/tests/facade/session_controls.rs`

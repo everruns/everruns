@@ -36,6 +36,41 @@ pub struct CommandInfo {
     pub name: String,
     /// Human-readable description.
     pub description: String,
+    /// Arguments the command accepts, with static completion suggestions.
+    pub arguments: Vec<CommandArgument>,
+}
+
+/// An argument of a [`CommandInfo`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandArgument {
+    /// Argument name.
+    pub name: String,
+    /// Human-readable description.
+    pub description: String,
+    /// Whether the command requires the argument.
+    pub required: bool,
+    /// Suggested values for completion; the command still decides what it
+    /// accepts.
+    pub suggestions: Vec<String>,
+}
+
+impl CommandInfo {
+    pub(crate) fn from_descriptor(command: everruns_core::command::CommandDescriptor) -> Self {
+        Self {
+            name: command.name,
+            description: command.description,
+            arguments: command
+                .args
+                .into_iter()
+                .map(|argument| CommandArgument {
+                    name: argument.name,
+                    description: argument.description,
+                    required: argument.required,
+                    suggestions: argument.suggestions,
+                })
+                .collect(),
+        }
+    }
 }
 
 /// One message in an inspected session context.
@@ -93,10 +128,7 @@ impl SessionContext {
             plugin_warnings,
             commands: commands
                 .into_iter()
-                .map(|command| CommandInfo {
-                    name: command.name,
-                    description: command.description,
-                })
+                .map(CommandInfo::from_descriptor)
                 .collect(),
         }
     }

@@ -57,6 +57,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 mod builder;
+mod commands;
 mod parked;
 mod steering;
 mod turn_entry;
@@ -208,6 +209,8 @@ pub struct InProcessRuntimeBuilder {
     mcp_auth_provider: Option<Arc<dyn crate::mcp::McpAuthProvider>>,
     provider_retry_config: Option<everruns_contracts::llm_retry::LlmRetryConfig>,
     provider_stall_timeout: Option<std::time::Duration>,
+    reasoning_effort_handle: Option<crate::tool_context::ReasoningEffortHandle>,
+    session_reasoning_effort: Option<crate::tool_context::ReasoningEffortHandle>,
     budget_checker: Option<Arc<dyn BudgetChecker>>,
     /// Hydrated capability configs for plugins loaded via [`Self::with_plugin_dir`],
     /// keyed by `plugin:{name}`. Agents and harnesses reference them by that
@@ -260,6 +263,8 @@ impl InProcessRuntimeBuilder {
             mcp_auth_provider: None,
             provider_retry_config: None,
             provider_stall_timeout: None,
+            reasoning_effort_handle: None,
+            session_reasoning_effort: None,
             budget_checker: None,
             plugin_capability_configs: Vec::new(),
             plugin_warnings: Vec::new(),
@@ -618,6 +623,8 @@ impl InProcessRuntimeBuilder {
                 .unwrap_or_else(|| Arc::new(crate::mcp::NoAuthProvider)),
             provider_retry_config: self.provider_retry_config,
             provider_stall_timeout: self.provider_stall_timeout,
+            reasoning_effort_handle: self.reasoning_effort_handle,
+            session_reasoning_effort: self.session_reasoning_effort,
             budget_checker: self.budget_checker,
             #[cfg(feature = "mcp")]
             mcp_discovery_cache: Arc::new(crate::host::mcp_cache::McpDiscoveryCache::new()),
@@ -683,6 +690,8 @@ pub struct InProcessRuntime {
     mcp_auth_provider: Arc<dyn crate::mcp::McpAuthProvider>,
     provider_retry_config: Option<everruns_contracts::llm_retry::LlmRetryConfig>,
     provider_stall_timeout: Option<std::time::Duration>,
+    reasoning_effort_handle: Option<crate::tool_context::ReasoningEffortHandle>,
+    session_reasoning_effort: Option<crate::tool_context::ReasoningEffortHandle>,
     budget_checker: Option<Arc<dyn BudgetChecker>>,
     #[cfg(feature = "mcp")]
     mcp_discovery_cache: Arc<crate::host::mcp_cache::McpDiscoveryCache>,
@@ -1130,82 +1139,6 @@ impl InProcessRuntime {
         }
     }
 
-    /// Execute a system command declared by a registered capability.
-    ///
-    /// Looks up the first capability whose `commands()` includes the named
-    /// command (in capability-resolution order) and delegates to its
-    /// `execute_command`. Returns an error if no capability declares the
-    /// requested name. The coding-CLI example uses this for `/model`
-    /// (provided by `ModelSwitcherCapability`) so the dispatch path stays
-    /// inside the capability instead of the TUI's local `handle_command`
-    /// branches.
-    pub async fn execute_command(
-        &self,
-        session_id: SessionId,
-        request: crate::command::ExecuteCommandRequest,
-    ) -> Result<crate::command::CommandResult> {
-        let ctx = self.load_context(session_id).await?;
-        let registry = self.host_composition.capability_registry();
-        // Context-aware commands (e.g. /btw) get the same store-backed host
-        // facilities the server provides; the already-assembled context seeds
-        // the host so dispatch and execution assemble it once.
-        let host = crate::host::StoreCommandHost::new(
-            session_id,
-            self.harness_store.clone(),
-            self.agent_store.clone(),
-            self.session_store.clone(),
-            self.event_history.clone(),
-            self.provider_store.clone(),
-            (*registry).clone(),
-            self.host_composition.driver_registry().clone(),
-        )
-        .with_file_store(self.file_store.clone())
-        .with_assembled_context(ctx.clone());
-        let exec_ctx = crate::command::CommandExecutionContext::new(session_id, Arc::new(host));
-        for config in &ctx.resolved_capability_configs {
-            let Some(capability) = registry.get(config.capability_id()) else {
-                continue;
-            };
-            if capability.commands().iter().any(|c| c.name == request.name) {
-                return capability.execute_command(&request, &exec_ctx).await;
-            }
-        }
-        Err(AgentLoopError::config(format!(
-            "no capability declares command /{}",
-            request.name
-        )))
-    }
-
-    /// List slash commands available for a session.
-    ///
-    /// Resolves the session's harness/agent capability chain and aggregates
-    /// commands declared via [`Capability::commands`], deduplicated by name
-    /// (first occurrence wins, matching the order of resolved capabilities).
-    /// This is the embedded equivalent of the server's
-    /// `GET /v1/sessions/{id}/commands` system-commands list — skill
-    /// commands are not included here because skills are discovered via the
-    /// platform filesystem rather than the capability registry.
-    pub async fn list_commands(
-        &self,
-        session_id: SessionId,
-    ) -> Result<Vec<crate::command::CommandDescriptor>> {
-        let ctx = self.load_context(session_id).await?;
-        let registry = self.host_composition.capability_registry();
-        let mut seen = std::collections::HashSet::new();
-        let mut commands = Vec::new();
-        for config in &ctx.resolved_capability_configs {
-            let Some(capability) = registry.get(config.capability_id()) else {
-                continue;
-            };
-            for command in capability.commands() {
-                if seen.insert(command.name.clone()) {
-                    commands.push(command);
-                }
-            }
-        }
-        Ok(commands)
-    }
-
     /// Load a session record and fold runtime ARD attachments into its config
     /// layer before capabilities / scoped MCP servers are resolved
     /// (resource_discovery).
@@ -1471,6 +1404,22 @@ impl RuntimeHostAdapter for InProcessRuntime {
 
     fn provider_stall_timeout(&self) -> Option<std::time::Duration> {
         self.provider_stall_timeout
+    }
+
+    fn reasoning_effort_handle(
+        &self,
+        _session_id: SessionId,
+    ) -> Option<crate::tool_context::ReasoningEffortHandle> {
+        self.reasoning_effort_handle.clone()
+    }
+
+    fn session_reasoning_effort(
+        &self,
+        _session_id: SessionId,
+    ) -> Option<everruns_contracts::ReasoningEffort> {
+        self.session_reasoning_effort
+            .as_ref()
+            .and_then(crate::tool_context::ReasoningEffortHandle::get)
     }
 
     fn budget_checker(&self, _: i64, _: Option<AgentId>) -> Option<Arc<dyn BudgetChecker>> {

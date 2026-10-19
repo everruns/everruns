@@ -298,6 +298,14 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Effort each turn's live handle starts from (EVE-1297); `None` lets message controls decide.
+    fn session_reasoning_effort(
+        &self,
+        _session_id: SessionId,
+    ) -> Option<everruns_contracts::ReasoningEffort> {
+        None
+    }
+
     /// Provider stall timeout for the Reason activity (EVE-531).
     /// Default: `None` (use built-in 120s default).
     fn provider_stall_timeout(&self) -> Option<std::time::Duration> {
@@ -921,11 +929,10 @@ pub async fn execute_input_activity<A: RuntimeHostAdapter>(
     org_id: i64,
     input: InputAtomInput,
 ) -> everruns_contracts::error::Result<InputAtomResult> {
-    // The live effort override is turn-scoped. Clear any value left by the
-    // previous turn before ReasonAtom can prefer it over this turn's message
-    // controls.
+    // The live effort override is turn-scoped: reset what the previous turn
+    // left to the session's selection before ReasonAtom prefers it.
     if let Some(handle) = adapter.reasoning_effort_handle(input.context.session_id) {
-        handle.set(None);
+        handle.set(adapter.session_reasoning_effort(input.context.session_id));
     }
 
     RuntimeSessionLifecycle::new(adapter.clone(), org_id, input.context.session_id)

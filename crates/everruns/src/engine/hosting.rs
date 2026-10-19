@@ -64,11 +64,25 @@ impl EngineBuilder {
 }
 
 impl Engine {
-    async fn query_runtime_hosted(
+    /// Engine-held live controls of a hosted session, synchronized with the
+    /// authority's retained model and effort selections (EVE-1297).
+    pub(crate) async fn hosted_live_controls(
         &self,
         session: SessionId,
-    ) -> Result<(everruns_core::host::InProcessRuntime, Agent)> {
+    ) -> Result<Arc<crate::session::LiveControls>> {
         let snapshot = self.profile()?.query_snapshot(session).await?;
+        let live = self.live_controls(session);
+        live.sync_authority(&snapshot.configuration);
+        Ok(live)
+    }
+
+    pub(crate) async fn query_runtime_hosted(
+        &self,
+        session: SessionId,
+    ) -> Result<crate::session::HostedQuery> {
+        let snapshot = self.profile()?.query_snapshot(session).await?;
+        let live = self.live_controls(session);
+        live.sync_authority(&snapshot.configuration);
         self.cache_hosted(session, snapshot.binding.clone())?;
         let registration = self.registration(&snapshot.binding.behavior)?;
         let environment = if snapshot.binding.environment.is_some() {
@@ -99,8 +113,14 @@ impl Engine {
                 session,
                 environment,
                 registration.harness.as_ref(),
+                Some(live.as_ref()),
             )
             .await?;
+        for capability in self.registered_capabilities() {
+            if let Err(error) = crate::session::register_engine_capability(&runtime, &capability) {
+                tracing::warn!(%error, "Engine capability not registered on query runtime");
+            }
+        }
         if let Some(mut existing) = snapshot.execution {
             let seeded = metadata
                 .get_session(session)
@@ -117,16 +137,31 @@ impl Engine {
             .await?
             .ok_or_else(|| AgentLoopError::store("query metadata missing"))?;
         snapshot.configuration.apply(&mut record);
+        // The session layer is the overlay only: Agent capabilities resolve
+        // from the agent layer, and a copy here would look removable.
+        let agent_ids = registration.agent.capability_ids();
+        record
+            .capabilities
+            .retain(|capability| !agent_ids.contains(capability.capability_id()));
+        record.mcp_servers = {
+            let mut servers = record.mcp_servers;
+            live.apply_mcp(&mut servers);
+            servers
+        };
         metadata.add_session(record).await?;
-        Ok((runtime, registration.agent))
+        Ok(crate::session::HostedQuery {
+            runtime,
+            store: metadata,
+            agent: registration.agent,
+        })
     }
 
     pub(crate) async fn inspect_hosted(&self, session: SessionId) -> Result<crate::SessionContext> {
-        let (runtime, agent) = self.query_runtime_hosted(session).await?;
-        let commands = runtime.list_commands(session).await?;
+        let query = self.query_runtime_hosted(session).await?;
+        let commands = query.runtime.list_commands(session).await?;
         Ok(crate::SessionContext::from_runtime(
-            runtime.load_context(session).await?,
-            agent.plugin_warnings(),
+            query.runtime.load_context(session).await?,
+            query.agent.plugin_warnings(),
             commands,
         ))
     }
@@ -144,7 +179,7 @@ impl Engine {
         if status.executing || !status.waiting.is_empty() || !status.runnable {
             return Ok(None);
         }
-        let (runtime, _) = self.query_runtime_hosted(session).await?;
+        let runtime = self.query_runtime_hosted(session).await?.runtime;
         Ok(runtime.interrupted_tool_calls(session).await?.map(|turn| {
             (
                 crate::InterruptedTurn {
