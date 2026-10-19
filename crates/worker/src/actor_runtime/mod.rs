@@ -112,6 +112,11 @@ pub struct ActorRuntimeConfig {
     /// Bound on a lease's phases that write nothing (the stall watchdog,
     /// `WORKER_ACTOR_STALL_TIMEOUT_SECS`).
     pub stall_timeout: Duration,
+    /// Times a lease runs its turn again after a retryable (control-plane)
+    /// failure before it lets the lease expire, off the poison guard's count.
+    pub control_plane_retries: u32,
+    /// Wait before the first such retry; doubles with each one.
+    pub control_plane_backoff: Duration,
 }
 
 impl ActorRuntimeConfig {
@@ -126,6 +131,8 @@ impl ActorRuntimeConfig {
                 "WORKER_ACTOR_STALL_TIMEOUT_SECS",
                 crate::host::session_actor::DEFAULT_ACTOR_STALL_TIMEOUT,
             ),
+            control_plane_retries: crate::host::session_actor::DEFAULT_ACTOR_CONTROL_PLANE_RETRIES,
+            control_plane_backoff: crate::host::session_actor::DEFAULT_ACTOR_CONTROL_PLANE_BACKOFF,
         }
     }
 }
@@ -206,6 +213,8 @@ impl<H: ActorHosts> ActorRuntime<H> {
                 poison_attempts: self.config.poison_attempts,
                 journal_page: self.config.journal_page,
                 stall_timeout: self.config.stall_timeout,
+                control_plane_retries: self.config.control_plane_retries,
+                control_plane_backoff: self.config.control_plane_backoff,
             },
         )
         .with_renew_poke(self.renew_poke.clone())

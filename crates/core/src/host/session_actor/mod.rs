@@ -128,6 +128,13 @@ pub trait ActorHosts: Send + Sync + 'static {
 /// handful of control-plane reads and the application's start gates.
 pub const DEFAULT_ACTOR_STALL_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
+/// Default number of times one lease runs its turn again after a retryable
+/// (control-plane) failure before it lets the lease expire; see `turn.rs`.
+pub const DEFAULT_ACTOR_CONTROL_PLANE_RETRIES: u32 = 5;
+/// Default wait before the first such retry; it doubles with each one, so the
+/// default retries span about 30 s, past a pool or failover blip.
+pub const DEFAULT_ACTOR_CONTROL_PLANE_BACKOFF: Duration = Duration::from_secs(1);
+
 /// Configuration of a single-session execution driver.
 #[derive(Debug, Clone)]
 pub struct SessionActorConfig {
@@ -138,6 +145,11 @@ pub struct SessionActorConfig {
     /// How long a lease may sit in a phase that writes nothing before it
     /// stops renewing and lets the lease expire (the stall watchdog).
     pub stall_timeout: Duration,
+    /// Times one lease runs its turn again after a retryable failure (a store
+    /// or transport error) before it lets the lease expire.
+    pub control_plane_retries: u32,
+    /// Wait before the first such retry; doubles with each one.
+    pub control_plane_backoff: Duration,
 }
 
 impl SessionActorConfig {
@@ -148,6 +160,8 @@ impl SessionActorConfig {
             poison_attempts: 3,
             journal_page: 256,
             stall_timeout: DEFAULT_ACTOR_STALL_TIMEOUT,
+            control_plane_retries: DEFAULT_ACTOR_CONTROL_PLANE_RETRIES,
+            control_plane_backoff: DEFAULT_ACTOR_CONTROL_PLANE_BACKOFF,
         }
     }
 }

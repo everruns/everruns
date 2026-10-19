@@ -337,9 +337,12 @@ production and DEV_MODE alike; the worker side is
   The holder renews every third of the 10-second TTL. A holder whose renew
   finds the fence moved, or that renewed nothing for a whole TTL, has lost the
   lease: it stops the turn, drops its unwritten events and releases nothing.
-  A retryable failure (a store or transport error) also lets the lease
-  expire; the TTL is the backoff before another worker resumes from the log.
-  That includes a control-plane read or write the reason step needs (a pool
+  A retryable failure (a store or transport error) runs the turn again from
+  the log on the same lease, after a doubling backoff (default 5 retries from
+  1 s, about 30 s), once the failed run's queued writes are dropped or stored
+  so none lands behind the retry under the same fence. Only when the retries
+  are spent does the lease expire, with the TTL as the backoff before another
+  worker resumes from the log. That includes a control-plane read or write the reason step needs (a pool
   timeout loading the compaction checkpoint): the reason step returns it
   instead of reporting it as a model failure, so it never becomes a
   `turn.failed` with a provider-error message.
@@ -422,7 +425,17 @@ production and DEV_MODE alike; the worker side is
   `turn.sealed { no_progress }`, `session.idled`, and the pending input
   consumed. A turn that kills its worker cannot loop forever, and the session
   is usable afterwards: the release resets the count, and the next message
-  starts a fresh turn.
+  starts a fresh turn. It counts holder deaths, not failures to reach the
+  control plane: those are retried on the lease (above), so a database blip
+  no longer spends leases. Before EVE-1301 every lease that ended on a
+  retryable error counted, and a pool exhaustion followed by a server kill
+  sealed healthy turns after three of them (chaos harness). A turn whose
+  failures outlast a lease's retries still lets the lease expire and counts
+  an attempt, so the seal stays the bound. Releasing instead of expiring was
+  rejected: release resets the count, so such a turn would never be sealed,
+  and it leaves an open turn with no pending input unrunnable. The reasoning
+  is next to the code in
+  [`turn.rs`](../../crates/core/src/host/session_actor/turn.rs).
 - **Per-org fairness order.** A lease call counts each org's held leases and
   takes actors of orgs under the cap (default 32) first, oldest first; an
   org's actors past it fill only the room left. It orders, it never holds
