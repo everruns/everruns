@@ -187,7 +187,7 @@ impl WorkerServiceImpl {
         let server = match resolved {
             Some(found) => {
                 let secret_bindings =
-                    crate::domains::agents::credentials::resolve_runtime_secret_bindings(
+                    crate::domains::agents::credentials::resolve_runtime_server_secret_bindings(
                         self.db.as_ref(),
                         self.encryption.as_deref(),
                         req.org_id,
@@ -197,9 +197,7 @@ impl WorkerServiceImpl {
                                 input_message_id: i,
                             }
                         }),
-                        found.server.acts_as,
-                        &found.server.name,
-                        &found.server.url,
+                        &found.server,
                     )
                     .await
                     .map_err(|error| {
