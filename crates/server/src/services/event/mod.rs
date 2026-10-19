@@ -555,7 +555,7 @@ impl EventService {
         // Publish to EventDelivery for SSE subscribers
         if let Err(e) = self.event_delivery.publish(&event).await {
             tracing::warn!(
-                error = %e,
+                error = %crate::live_updates::nats::error_chain(&e),
                 event_type = %event.event_type,
                 "Failed to publish ephemeral event to delivery backend"
             );
@@ -637,7 +637,7 @@ impl EventService {
         // Publish to EventDelivery for SSE subscribers
         if let Err(e) = self.event_delivery.publish(event).await {
             tracing::warn!(
-                error = %e,
+                error = %crate::live_updates::nats::error_chain(&e),
                 event_type = %event.event_type,
                 "Failed to publish durable event to delivery backend"
             );
