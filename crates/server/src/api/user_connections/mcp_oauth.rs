@@ -9,10 +9,10 @@ use super::{AppState, mcp_oauth_redirect_uri, parse_and_validate_url, resource_o
 use crate::api::common::{sanitized_bad_gateway, sanitized_internal_error};
 use crate::domains::mcp_servers::{McpServerOAuthSettings, McpServerSettings};
 use crate::kernel_imports::contracts::url_validation::validate_safe_url;
-use crate::oauth_client::egress_oauth_json;
+use crate::oauth_client::{egress_oauth_discovery_json, egress_oauth_json};
 
 #[derive(Debug, Deserialize)]
-struct OAuthProtectedResourceMetadata {
+pub(super) struct OAuthProtectedResourceMetadata {
     #[serde(default)]
     resource: Option<String>,
     #[serde(default)]
@@ -76,8 +76,9 @@ pub(super) async fn ensure_mcp_oauth_registration_via(
         .get_or_insert_with(McpServerOAuthSettings::default);
     let needs_server_discovery =
         oauth.authorization_endpoint.is_none() || oauth.token_endpoint.is_none();
+    // `None` also when the server publishes no protected-resource metadata.
     let resource_metadata = if needs_server_discovery {
-        Some(discover_resource_metadata(egress, &row.url).await?)
+        discover_resource_metadata(egress, &row.url).await?
     } else {
         None
     };
@@ -107,14 +108,7 @@ pub(super) async fn ensure_mcp_oauth_registration_via(
             scopes_supported: oauth.scopes_supported.clone(),
         }
     } else {
-        let resource_metadata = resource_metadata.as_ref().ok_or((
-            StatusCode::BAD_GATEWAY,
-            "OAuth protected-resource metadata missing".to_string(),
-        ))?;
-        let issuer = match resource_metadata.authorization_servers.first().cloned() {
-            Some(issuer) => issuer,
-            None => resource_origin(&parse_and_validate_url(&row.url)?)?,
-        };
+        let issuer = authorization_server_issuer(resource_metadata.as_ref(), &row.url)?;
         validate_safe_url(&issuer).map_err(|e| {
             (
                 StatusCode::BAD_REQUEST,
@@ -129,7 +123,10 @@ pub(super) async fn ensure_mcp_oauth_registration_via(
         oauth.scopes_supported = if !metadata.scopes_supported.is_empty() {
             metadata.scopes_supported.clone()
         } else {
-            resource_metadata.scopes_supported.clone()
+            resource_metadata
+                .as_ref()
+                .map(|resource| resource.scopes_supported.clone())
+                .unwrap_or_default()
         };
         metadata
     };
@@ -169,38 +166,95 @@ pub(super) async fn ensure_mcp_oauth_registration_via(
     Ok((metadata, registration, settings))
 }
 
-async fn discover_resource_metadata(
+/// Protected-resource metadata for the MCP server (RFC 9728), or `None` when
+/// it publishes none.
+///
+/// Candidates, in the MCP authorization spec's order: the path-inserted
+/// document for the endpoint (`/.well-known/oauth-protected-resource/mcp`
+/// for `/mcp`), then the origin's root document. A 404 moves to the next
+/// candidate; any other failure stops discovery. The query is left out: it
+/// can carry a key. Everruns sends no unauthenticated MCP request before
+/// sign-in, so there is no `WWW-Authenticate: resource_metadata` hint to
+/// start from.
+pub(super) async fn discover_resource_metadata(
     egress: &dyn EgressService,
     server_url: &str,
-) -> Result<OAuthProtectedResourceMetadata, (StatusCode, String)> {
+) -> Result<Option<OAuthProtectedResourceMetadata>, (StatusCode, String)> {
     let resource_url = parse_and_validate_url(server_url)?;
     let origin = resource_origin(&resource_url)?;
-    egress_oauth_json(
-        egress,
-        "GET",
-        &format!("{origin}/.well-known/oauth-protected-resource"),
-        &[],
-        Vec::new(),
-    )
-    .await
+    let path = resource_url.path().trim_end_matches('/');
+    let mut candidates = Vec::with_capacity(2);
+    if !path.is_empty() {
+        candidates.push(format!(
+            "{origin}/.well-known/oauth-protected-resource{path}"
+        ));
+    }
+    candidates.push(format!("{origin}/.well-known/oauth-protected-resource"));
+    for candidate in candidates {
+        if let Some(metadata) = egress_oauth_discovery_json(egress, &candidate).await? {
+            return Ok(Some(metadata));
+        }
+    }
+    Ok(None)
 }
 
+/// The authorization server to discover: the first one the protected-resource
+/// metadata names, otherwise (no metadata, or none listed) the MCP server's
+/// own origin, which is where legacy MCP servers host their OAuth.
+pub(super) fn authorization_server_issuer(
+    resource_metadata: Option<&OAuthProtectedResourceMetadata>,
+    server_url: &str,
+) -> Result<String, (StatusCode, String)> {
+    match resource_metadata.and_then(|metadata| metadata.authorization_servers.first()) {
+        Some(issuer) => Ok(issuer.clone()),
+        None => resource_origin(&parse_and_validate_url(server_url)?),
+    }
+}
+
+/// Well-known metadata locations for `issuer`, in the MCP authorization
+/// spec's order: RFC 8414 inserts the segment before an issuer path, OpenID
+/// Connect Discovery appends it after. The path-appended
+/// `oauth-authorization-server` is not in the spec list but is where discovery
+/// looked before; it stays last so presets that relied on it keep working.
+fn authorization_server_metadata_urls(
+    issuer: &reqwest::Url,
+) -> Result<Vec<String>, (StatusCode, String)> {
+    let origin = resource_origin(issuer)?;
+    let path = issuer.path().trim_end_matches('/');
+    Ok(if path.is_empty() {
+        vec![
+            format!("{origin}/.well-known/oauth-authorization-server"),
+            format!("{origin}/.well-known/openid-configuration"),
+        ]
+    } else {
+        vec![
+            format!("{origin}/.well-known/oauth-authorization-server{path}"),
+            format!("{origin}/.well-known/openid-configuration{path}"),
+            format!("{origin}{path}/.well-known/openid-configuration"),
+            format!("{origin}{path}/.well-known/oauth-authorization-server"),
+        ]
+    })
+}
+
+/// Authorization-server metadata for `issuer` (RFC 8414 / OpenID Connect
+/// Discovery). A 404 moves to the next well-known location; any other
+/// failure stops discovery.
 pub(super) async fn discover_oauth_server_metadata(
     egress: &dyn EgressService,
     issuer: &str,
 ) -> Result<OAuthServerMetadata, (StatusCode, String)> {
     let issuer = parse_and_validate_url(issuer)?;
-    let metadata: OAuthServerMetadata = egress_oauth_json(
-        egress,
-        "GET",
-        &format!(
-            "{}/.well-known/oauth-authorization-server",
-            issuer.as_str().trim_end_matches('/')
-        ),
-        &[],
-        Vec::new(),
-    )
-    .await?;
+    let mut discovered = None;
+    for candidate in authorization_server_metadata_urls(&issuer)? {
+        discovered = egress_oauth_discovery_json::<OAuthServerMetadata>(egress, &candidate).await?;
+        if discovered.is_some() {
+            break;
+        }
+    }
+    let metadata = discovered.ok_or((
+        StatusCode::BAD_GATEWAY,
+        "OAuth authorization server publishes no metadata".to_string(),
+    ))?;
     if let Some(discovered_issuer) = metadata.issuer.as_deref() {
         let discovered_issuer = parse_and_validate_url(discovered_issuer)?;
         if discovered_issuer.as_str().trim_end_matches('/') != issuer.as_str().trim_end_matches('/')

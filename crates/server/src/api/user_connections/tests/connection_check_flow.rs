@@ -1,5 +1,6 @@
 //! OAuth catalog presets are checked when they are saved and on "Check again".
 
+use super::oauth_discovery_flow::{RoutedEgress, as_metadata};
 use super::*;
 use crate::domains::common::{Command, Ctx};
 use crate::domains::mcp_servers::record::{McpConnectionCheckStatus, McpServer};
@@ -243,6 +244,82 @@ async fn an_unreachable_sign_in_service_is_recorded_without_its_body() {
     assert_eq!(check.host.as_deref(), Some("8.8.8.8"));
     let recorded = serde_json::to_string(&check).unwrap();
     assert!(!recorded.contains("upstream secret page"), "{recorded}");
+}
+
+// RFC 9728 §3.1: the MCP endpoint `/mcp` publishes its metadata at the
+// path-inserted URL; the root document need not exist.
+#[tokio::test]
+async fn path_inserted_protected_resource_metadata_is_found() {
+    let db = Arc::new(StorageBackend::test_database());
+    let egress = RoutedEgress::default()
+        .route(
+            "GET",
+            "https://8.8.8.8/.well-known/oauth-protected-resource/mcp",
+            serde_json::json!({ "authorization_servers": ["https://1.1.1.1"] }),
+        )
+        .route(
+            "GET",
+            "https://1.1.1.1/.well-known/oauth-authorization-server",
+            as_metadata("https://1.1.1.1"),
+        )
+        .route(
+            "POST",
+            "https://1.1.1.1/register",
+            serde_json::json!({ "client_id": "dyn-client" }),
+        );
+    let state = connections_state(db, Arc::new(egress));
+
+    let server = create(&admin_ctx(&state), "oauth").await;
+
+    assert_eq!(
+        server.connection_check.unwrap().status,
+        McpConnectionCheckStatus::Ready
+    );
+}
+
+// MCP authorization spec, legacy servers: without protected-resource
+// metadata the MCP server's origin is the authorization server.
+#[tokio::test]
+async fn without_protected_resource_metadata_the_origin_is_the_issuer() {
+    let db = Arc::new(StorageBackend::test_database());
+    let egress = RoutedEgress::default()
+        .route(
+            "GET",
+            "https://8.8.8.8/.well-known/oauth-authorization-server",
+            serde_json::json!({
+                "issuer": "https://8.8.8.8",
+                "authorization_endpoint": "https://8.8.8.8/authorize",
+                "token_endpoint": "https://8.8.8.8/token",
+                "registration_endpoint": "https://8.8.8.8/register"
+            }),
+        )
+        .route(
+            "POST",
+            "https://8.8.8.8/register",
+            serde_json::json!({ "client_id": "dyn-client" }),
+        );
+    let state = connections_state(db, Arc::new(egress));
+
+    let server = create(&admin_ctx(&state), "oauth").await;
+
+    assert_eq!(
+        server.clone().connection_check.unwrap().status,
+        McpConnectionCheckStatus::Ready
+    );
+    let oauth = stored_settings(&state, &server).await.oauth.unwrap();
+    assert_eq!(oauth.issuer.as_deref(), Some("https://8.8.8.8"));
+}
+
+#[tokio::test]
+async fn a_server_publishing_no_oauth_metadata_is_unreachable() {
+    let db = Arc::new(StorageBackend::test_database());
+    let state = connections_state(db, Arc::new(RoutedEgress::default()));
+
+    let server = create(&admin_ctx(&state), "oauth").await;
+
+    let check = server.connection_check.unwrap();
+    assert_eq!(check.status, McpConnectionCheckStatus::Unreachable);
+    assert_eq!(check.host.as_deref(), Some("8.8.8.8"));
 }
 
 #[tokio::test]
