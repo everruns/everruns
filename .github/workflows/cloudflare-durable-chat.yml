@@ -1,0 +1,59 @@
+name: Cloudflare Multiplayer Chat
+
+on:
+  pull_request:
+    paths: &chat-paths
+      - "examples/cloudflare-durable-chat/**"
+      - "crates/everruns/**"
+      - "crates/core/**"
+      - "crates/contracts/**"
+      - "crates/drivers/**"
+      - "crates/durable-object/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/cloudflare-durable-chat.yml"
+  push:
+    branches: [main]
+    paths: *chat-paths
+
+permissions:
+  contents: read
+
+jobs:
+  chat-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target/wasm-chat
+      CARGO_INCREMENTAL: "0"
+      WRANGLER_SEND_METRICS: "false"
+    defaults:
+      run:
+        working-directory: examples/cloudflare-durable-chat
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cloudflare-chat-wasm
+          workspaces: examples/cloudflare-durable-chat -> ../../target/wasm-chat
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install pinned Worker toolchain
+        run: |
+          npm ci
+          cargo install wasm-bindgen-cli --version 0.2.129 --locked
+      - name: Build authority commands and the Framework Engine
+        run: npm run build
+      - name: Lint the Wasm integration
+        run: cargo clippy --locked --target wasm32-unknown-unknown --all-targets -- -D warnings
+      - name: Test room semantics and autonomous recovery on workerd
+        run: npm test
+      - name: Check the production Worker bundle
+        run: npx wrangler deploy --dry-run

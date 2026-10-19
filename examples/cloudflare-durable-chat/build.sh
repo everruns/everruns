@@ -5,10 +5,13 @@ PROJECT_ROOT="$(cd "$APP_ROOT/../.." && pwd)"
 if [[ -f /workspace/.tools/activate.sh ]]; then source /workspace/.tools/activate.sh; fi
 : "${CARGO_TARGET_DIR:=$APP_ROOT/target}"
 export CARGO_TARGET_DIR
+# SessionAuthority now runs shared Rust commands inside its storage transaction.
+# Build its Wasm module as well as the Engine application before bundling either.
+bash "$PROJECT_ROOT/crates/durable-object/worker/build-authority.sh"
 BUILD_DIGEST="$(cd "$PROJECT_ROOT"
 {
   find crates/everruns/src crates/core/src crates/contracts/src crates/drivers/drivers/src crates/durable-object/src crates/durable-object/worker/src examples/cloudflare-durable-chat/src examples/cloudflare-durable-chat/worker -type f ! -name build.json -print0
-  printf '%s\0' Cargo.toml Cargo.lock rust-toolchain.toml crates/everruns/Cargo.toml crates/core/Cargo.toml crates/contracts/Cargo.toml crates/drivers/drivers/Cargo.toml crates/durable-object/Cargo.toml examples/cloudflare-durable-chat/Cargo.toml examples/cloudflare-durable-chat/Cargo.lock examples/cloudflare-durable-chat/wrangler.jsonc examples/cloudflare-durable-chat/build.sh
+  printf '%s\0' Cargo.toml Cargo.lock rust-toolchain.toml crates/everruns/Cargo.toml crates/core/Cargo.toml crates/contracts/Cargo.toml crates/drivers/drivers/Cargo.toml crates/durable-object/Cargo.toml crates/durable-object/Cargo.lock crates/durable-object/worker/build-authority.sh examples/cloudflare-durable-chat/Cargo.toml examples/cloudflare-durable-chat/Cargo.lock examples/cloudflare-durable-chat/wrangler.jsonc examples/cloudflare-durable-chat/build.sh
 } | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-24)"
 export AGENT_BUILD_ID="chat-$BUILD_DIGEST"
 cargo build --manifest-path "$APP_ROOT/Cargo.toml" --locked --release --target wasm32-unknown-unknown

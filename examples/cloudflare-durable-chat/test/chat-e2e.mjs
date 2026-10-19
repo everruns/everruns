@@ -418,6 +418,12 @@ try {
     return c?.ready && c;
   });
   assert.equal(forkState.messages.length, 2);
+  await send(fork, "Continue this fork.", "fork-follow-up");
+  await until("fork continues through Engine", () => idle(fork));
+  const forkInput = calls.find((c) => c.metadata.session_id === fork).input;
+  assert.ok(JSON.stringify(forkInput).includes("We chose PostgreSQL"));
+  assert.ok(JSON.stringify(forkInput).includes("Continue this fork."));
+  assert.equal((await idle(first)).messages.length, 2);
   assert.equal((await state("isolated")).conversations.length, 0);
   console.log("chat e2e: sockets, receipts, forks and room isolation passed");
   // Restart while the search child is calling the model. No client or GET
@@ -432,6 +438,10 @@ try {
   b.ws.close();
   slowSearch = false;
   const before = calls.length;
+  // Host configuration may change on restart. Existing sessions must reconstruct
+  // their retained model; only newly created sessions adopt the new default.
+  config.vars.MODEL = "changed-host-model";
+  await writeFile(join(temp, "wrangler.json"), JSON.stringify(config));
   processHandle = start();
   await until(
     "recovery alarm calls model without clients",
@@ -457,6 +467,10 @@ try {
   );
   assert.equal(answer.queued, 0);
   assert.ok(answer.messages.at(-1).text.includes("PostgreSQL"));
+  assert.ok(
+    calls.slice(before).every((c) => c.model === "scripted"),
+    "recovered sessions must keep their original model after host config changes",
+  );
   const afterSearch = await state();
   assert.equal(afterSearch.conversations.filter((c) => c.owner).length, 1);
   assert.equal(
@@ -497,6 +511,14 @@ try {
       (m) => m.role === "user" && m.text.includes("[Scheduled instruction]"),
     ).length,
     1,
+  );
+  const fresh = (await create("create-new-model", "New default")).conversation;
+  await send(fresh, "Use the new default", "new-model");
+  await until("new model turn", () => idle(fresh));
+  assert.equal(
+    calls.find((c) => c.metadata.session_id === fresh).model,
+    "changed-host-model",
+    "new sessions adopt the configured default",
   );
   console.log(
     "chat e2e: shared sockets, reconnect deduplication, forks, isolation, search recovery, and scheduled wake after restart passed",
