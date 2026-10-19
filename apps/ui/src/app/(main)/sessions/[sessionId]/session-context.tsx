@@ -250,6 +250,11 @@ export function SessionProvider({
     // Find the most recent session status event
     for (let i = events.length - 1; i >= 0; i--) {
       const event = events[i];
+      if (event.type === "tool.call_requested") {
+        setLocalStatus("waiting_for_tool_results");
+        setIsWaitingForResponse(false);
+        break;
+      }
       if (event.type === "session.activated") {
         setLocalStatus("active");
         break;

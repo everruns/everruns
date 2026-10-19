@@ -10,7 +10,7 @@ tags:
 ---
 # Bound Secrets
 
-Status: **Approved; scoped access and capture qualification in progress.**
+Status: **Implemented; controlled HTTPS capture and reuse qualified.**
 
 A bound credential combines an encrypted write-only value with a destination
 and placement. The model uses `$NAME`; the host substitutes its value only at
@@ -38,6 +38,9 @@ A use grant never permits management or resharing.
 `credential_bindings` replaces `agent_mcp_secret_bindings` and owns both HTTP
 and MCP parameter values. Typed shared access headers and grants have tenant
 foreign keys. Metadata APIs never return encrypted or plaintext values.
+The shared command tree exposes metadata declaration, listing, revocation and
+explicit grant administration with worked CLI examples. It never accepts a bound
+credential value; secure entry stays on the dedicated authenticated HTTP form.
 
 Legacy agent APIs adapt to this domain. Bound `session_secrets` migrate with
 stable IDs and encrypted bytes to session-wide service bindings, preserving
@@ -118,3 +121,17 @@ field must be declared; a host cannot infer unknown token fields reliably.
 Threats: TM-BASH-030/031/032/033 and TM-AGENT-038 in the
 [threat model](threat-model.md). The common resource contract owns connection
 access; this decision does not migrate memory authorization.
+
+## Qualification
+
+Migration and authorization tests cover preserved encrypted values, exact
+subjects/responders, consent replay, stale revisions, provider narrowing and
+per-send revocation. [UI acceptance](../test-cases/ui/agent_credentials/TC004_scoped_credentials_and_capture.md)
+covers all four owner surfaces and exact-request consent. A disposable HTTPS
+response was captured through the live approval UI, reused across sessions,
+agents and Bashkit, and revoked; events, exports, persisted output and logs
+contained no captured value.
+
+The real Shipmail account acceptance remains blocked on the handoff's auth.md
+URL and authorized account context. Controlled-fixture qualification does not
+claim completion of that provider account flow.

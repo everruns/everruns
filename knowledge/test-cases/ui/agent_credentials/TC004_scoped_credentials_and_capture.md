@@ -31,9 +31,11 @@ tags:
    it. Revoke the grant and verify the next send fails, including within one
    ongoing Bashkit call. Verify expired credentials and stale rotation revisions.
 4. Ask web_fetch to capture several secret fields at virtual-user scope. Confirm
-   the card appears before dispatch and shows source/method, exact request,
+   the card appears before dispatch in both Chat and the session's Approvals
+   page, and the session shows that it is waiting for approval. Confirm source/method, exact request,
    acting identity, each response field/name, owner, destination, placement,
    expiry and whether it replaces a value. Only approve/decline are offered.
+   After approval or decline, neither surface may offer the stale request again.
 5. Approve once and retry the exact call. Confirm all fields save atomically and
    every known literal/JSON/form echo is absent from results, events, traces,
    files and session export. Repeat with missing/duplicate fields, oversize or

@@ -10,7 +10,7 @@ tags:
 ---
 # Scoped Resource Ownership and Access
 
-Status: **Approved for implementation 2026-10-19; qualification in progress.**
+Status: **Implemented 2026-10-19; credential and connection conformance qualified.**
 This contract governs the scoped credential and connection access implementation.
 
 Current scope: connections, credential bindings, and GitHub integration.

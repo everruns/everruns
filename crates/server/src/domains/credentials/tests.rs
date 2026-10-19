@@ -536,11 +536,17 @@ async fn credential_consent_requires_the_proved_person_even_for_an_org_owner() {
     let runtime = context(db.clone());
     let session = new_session(&db).await;
     let alice_id = db.create_test_user(Uuid::now_v7()).await;
+    db.add_organization_member(DEFAULT_ORG_ID, alice_id, "owner")
+        .await
+        .unwrap();
     let alice = db
         .default_virtual_user(DEFAULT_ORG_ID, alice_id)
         .await
         .unwrap();
     let bob_id = db.create_test_user(Uuid::now_v7()).await;
+    db.add_organization_member(DEFAULT_ORG_ID, bob_id, "owner")
+        .await
+        .unwrap();
     let input = Uuid::now_v7();
     db.record_runtime_invocation(
         DEFAULT_ORG_ID,

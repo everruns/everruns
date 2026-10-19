@@ -13,6 +13,8 @@ import type { Agent } from "@/lib/api/types";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 
 interface AgentSelectProps {
+  /** Accessible name for the trigger. */
+  ariaLabel?: string;
   /** Selected agent ID */
   value: string;
   /** Callback when selection changes */
@@ -47,6 +49,7 @@ export function AgentSelect({
   noneLabel = "None",
   className,
   disabled,
+  ariaLabel = "Agent",
 }: AgentSelectProps) {
   const noneValue = "__none__";
   const { data: agents = [] } = useAgents();
@@ -73,7 +76,7 @@ export function AgentSelect({
 
   return (
     <Select value={selectValue} onValueChange={handleChange} disabled={disabled}>
-      <SelectTrigger className={className}>
+      <SelectTrigger className={className} aria-label={ariaLabel}>
         <SelectValue placeholder={placeholder}>{displayValue}</SelectValue>
       </SelectTrigger>
       <SelectContent>

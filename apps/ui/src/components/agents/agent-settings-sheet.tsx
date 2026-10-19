@@ -68,7 +68,7 @@ const SECTIONS: Record<
   },
   credentials: {
     title: "Credentials",
-    description: "Secrets bound to tool parameters for this agent's runs.",
+    description: "Secure access for this agent's tools and API calls.",
     kind: "live",
     wide: true,
   },

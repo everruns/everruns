@@ -272,6 +272,7 @@ function AccessDialog({
           </div>
           {audience === "agent" && (
             <AgentSelect
+              ariaLabel="Agent receiving credential access"
               value={agent}
               onValueChange={setAgent}
               placeholder="Choose an agent"

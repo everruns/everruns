@@ -253,6 +253,8 @@ everruns_core::permissions::Permission::OrgAppsView	variant
 everruns_core::permissions::Permission::OrgAuditLogsView	variant
 everruns_core::permissions::Permission::OrgCapabilitiesManage	variant
 everruns_core::permissions::Permission::OrgCapabilitiesView	variant
+everruns_core::permissions::Permission::OrgCredentialsManage	variant
+everruns_core::permissions::Permission::OrgCredentialsView	variant
 everruns_core::permissions::Permission::OrgHarnessesDangerous	variant
 everruns_core::permissions::Permission::OrgHarnessesManage	variant
 everruns_core::permissions::Permission::OrgHarnessesView	variant

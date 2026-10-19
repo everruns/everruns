@@ -3740,6 +3740,158 @@
     ]
   },
   {
+    "wire_name": "create_scoped_credential",
+    "path": [
+      "credential-bindings"
+    ],
+    "verb": "create",
+    "description": "Declare an HTTP or MCP write-only credential binding. The owner provisions its value in the secure Credentials UI.",
+    "method": "POST",
+    "http_path": "/v1/credential-bindings",
+    "args": [
+      {
+        "field": "binding",
+        "long": "binding",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "label",
+        "long": "label",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "mcp",
+        "long": "mcp",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "owner_id",
+        "long": "owner-id",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "scope",
+        "long": "scope",
+        "kind": "string",
+        "required": true,
+        "choices": [
+          "session",
+          "agent",
+          "virtual_user",
+          "organization"
+        ]
+      },
+      {
+        "field": "source",
+        "long": "source",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "usage",
+        "long": "usage",
+        "kind": "string",
+        "required": true,
+        "choices": [
+          "user",
+          "service"
+        ]
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Declare personal mailbox access without putting a value in the command",
+        "command": "everruns credential-bindings create --scope virtual_user --owner-id me --usage user --name MAIL_TOKEN --label 'Mailbox API' --binding '{\"url\":\"https://mail.example/api\",\"auth\":{\"type\":\"bearer\"}}'"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_scoped_credentials",
+    "path": [
+      "credential-bindings"
+    ],
+    "verb": "list",
+    "description": "List credential metadata for an authorized owner. Values are never returned.",
+    "method": "GET",
+    "http_path": "/v1/credential-bindings",
+    "args": [
+      {
+        "field": "owner_id",
+        "long": "owner-id",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "scope",
+        "long": "scope",
+        "kind": "string",
+        "required": true,
+        "choices": [
+          "session",
+          "agent",
+          "virtual_user",
+          "organization"
+        ]
+      },
+      {
+        "field": "usage",
+        "long": "usage",
+        "kind": "string",
+        "required": true,
+        "choices": [
+          "user",
+          "service"
+        ]
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Review organization credential metadata before granting access",
+        "command": "everruns credential-bindings list --scope organization --usage service"
+      }
+    ]
+  },
+  {
+    "wire_name": "revoke_scoped_credential",
+    "path": [
+      "credential-bindings"
+    ],
+    "verb": "revoke",
+    "description": "Revoke a credential at the observed revision; future sends fail closed.",
+    "method": "DELETE",
+    "http_path": "/v1/credential-bindings/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "revision",
+        "long": "revision",
+        "kind": "integer",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Revoke a credential using the revision returned by the metadata list",
+        "command": "everruns credential-bindings revoke --id 00000000-0000-0000-0000-000000000001 --revision 3"
+      }
+    ]
+  },
+  {
     "wire_name": "get_execution",
     "path": [
       "durable",
@@ -9919,6 +10071,127 @@
       {
         "intent": "Rename a saved report",
         "command": "everruns reports saved update --report-id 0190f8a2-7c1e-7d3a-9b2f-4e5d6c7b8a90 --request '{\"name\":\"Weekly active agents\"}' --reason 'Clearer name'"
+      }
+    ]
+  },
+  {
+    "wire_name": "grant_resource_access",
+    "path": [
+      "resources",
+      "grants"
+    ],
+    "verb": "grant",
+    "description": "Explicitly grant bounded resource use to a consumer. Use does not grant management or resharing.",
+    "method": "POST",
+    "http_path": "/v1/resources/{id}/grants",
+    "args": [
+      {
+        "field": "constraints",
+        "long": "constraints",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "consumer_id",
+        "long": "consumer-id",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "consumer_scope",
+        "long": "consumer-scope",
+        "kind": "string",
+        "required": true,
+        "choices": [
+          "session",
+          "agent",
+          "virtual_user",
+          "organization"
+        ]
+      },
+      {
+        "field": "expires_at",
+        "long": "expires-at",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "usage",
+        "long": "usage",
+        "kind": "string",
+        "required": true,
+        "choices": [
+          "user",
+          "service"
+        ]
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Allow one service agent to use an organization credential",
+        "command": "everruns resources grants grant --id 00000000-0000-0000-0000-000000000001 --consumer-scope agent --consumer-id agent_00000000000000000000000000000002 --usage service"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_resource_grants",
+    "path": [
+      "resources",
+      "grants"
+    ],
+    "verb": "list",
+    "description": "List explicit use grants for an authorized resource owner.",
+    "method": "GET",
+    "http_path": "/v1/resources/{id}/grants",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Review who can use a credential or connection",
+        "command": "everruns resources grants list --id 00000000-0000-0000-0000-000000000001"
+      }
+    ]
+  },
+  {
+    "wire_name": "revoke_resource_grant",
+    "path": [
+      "resources",
+      "grants"
+    ],
+    "verb": "revoke",
+    "description": "Revoke an explicit resource use grant.",
+    "method": "DELETE",
+    "http_path": "/v1/resources/{id}/grants/{grant_id}",
+    "args": [
+      {
+        "field": "grant_id",
+        "long": "grant-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Stop a consumer from using a resource without revoking its other grants",
+        "command": "everruns resources grants revoke --id 00000000-0000-0000-0000-000000000001 --grant-id 00000000-0000-0000-0000-000000000003"
       }
     ]
   },
