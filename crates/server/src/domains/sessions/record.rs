@@ -432,6 +432,10 @@ pub struct Session {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "Here is a Q3 plan covering the three pillars we discussed...")]
     pub output_preview: Option<String>,
+    /// Timestamp of the latest input or completed assistant message.
+    /// Populated on session lists; session edits and tool events do not advance it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_message_at: Option<DateTime<Utc>>,
     /// Tags for organizing and filtering sessions.
     #[serde(default)]
     #[schema(example = json!(["marketing", "q3", "draft"]))]
@@ -498,6 +502,9 @@ pub struct Session {
     /// This is the value the sessions list groups by and the facet rail counts.
     #[serde(default)]
     pub activity: SessionActivity,
+    /// Outcome of the latest terminal turn, distinguishing cancellation from failure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_turn_status: Option<String>,
     /// Generated one-sentence description of what the run did, and where it
     /// failed (EVE-867). Absent until a terminal turn has been summarised, and
     /// always absent for chat threads and for deployments with no utility LLM,
@@ -636,6 +643,7 @@ impl Session {
             locale: execution.locale,
             preview: None,
             output_preview: None,
+            last_message_at: None,
             tags: execution.tags,
             model_id: execution.model_id,
             capabilities: execution.capabilities,
@@ -650,6 +658,7 @@ impl Session {
             status,
             source: SessionSource::Unknown,
             activity,
+            last_turn_status: None,
             // Summaries are generated after a terminal turn, so a session
             // projected from an execution snapshot never carries one.
             run_summary: None,

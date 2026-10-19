@@ -30,8 +30,9 @@ organization account.
 3. Add a Daytona account named `UI smoke Daytona`, enter its API key, and save.
 4. Verify the account appears without exposing its API key.
 5. Open **Sandboxes → Templates** and create or edit a Daytona template.
-6. Set **Account source** to **Organization provider account** and select
-   `UI smoke Daytona`.
+6. Set **Provider account** to **Daytona · Organization account** and select
+   **Daytona · UI smoke Daytona**. With no Daytona organization account, verify
+   the picker shows a link to **Provider accounts** instead of an empty list.
 7. Save, reopen the template, and verify the account choice is preserved.
 8. Return to **Provider Accounts** and try to delete the account.
 9. Verify deletion is refused while the active template references it.

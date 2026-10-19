@@ -82,6 +82,24 @@ check_caddyfile() {
 
   caddy validate --config "$PROJECT_ROOT/local/Caddyfile" --adapter caddyfile >/dev/null
 
+  # The agent API listens on IPv4. Under connection bursts Go's dual-stack
+  # localhost dial can choose the refused IPv6 socket and return HTTP 502.
+  local adapted
+  adapted="$(caddy adapt --config "$PROJECT_ROOT/local/Caddyfile" --adapter caddyfile 2>/dev/null)"
+  python3 -c '
+import json, sys
+def check(value):
+    if isinstance(value, dict):
+        for upstream in value.get("upstreams", []):
+            assert upstream["dial"].startswith("127.0.0.1:"), upstream
+        for child in value.values():
+            check(child)
+    elif isinstance(value, list):
+        for child in value:
+            check(child)
+check(json.load(sys.stdin))
+' <<< "$adapted"
+
   local example_caddyfile
   example_caddyfile="$(mktemp)"
   python3 - <<'PY' "$PROJECT_ROOT/examples/docker-compose-full.yaml" "$example_caddyfile"

@@ -1,0 +1,11 @@
+{
+  "name": "everruns-object-agent",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": { "TENANT_ID": "example", "MODEL": "gpt-6-luna" },
+  "durable_objects": {
+    "bindings": [{ "name": "SESSIONS", "class_name": "SessionAuthority" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SessionAuthority"] }],
+}

@@ -18,6 +18,7 @@ use everruns_contracts::driver_registry::{DriverId, DriverRegistry};
 use everruns_contracts::error::Result;
 use everruns_contracts::model_spec::ModelSpec;
 use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::turn::TurnStopReason;
 use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::ExecutionContext;
 use everruns_core::agent_definition::AgentDefinition;
@@ -37,7 +38,6 @@ use everruns_core::message::RuntimeMessage;
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session::ExecutionSession;
 use everruns_core::tools::{Tool, ToolRegistry, ToolRegistryBuilder};
-use everruns_core::turn::TurnStopReason;
 use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
 
 // ============================================================================

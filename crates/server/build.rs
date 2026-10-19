@@ -16,9 +16,14 @@ fn main() {
 fn embed_skills() {
     let root = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap()).join("../../skills");
     let mut files = Vec::new();
-    // Publish only MCP operating guidance. Framework and contributor skills
+    // Publish only product and platform operating guidance. Framework and contributor skills
     // have different audiences; adding a repo skill must not publish it here.
-    for name in ["everruns-mcp", "everruns-agent-authoring"] {
+    for name in [
+        "everruns",
+        "everruns-cli",
+        "everruns-mcp",
+        "everruns-agent-authoring",
+    ] {
         let dir = root.join(name);
         assert!(
             dir.join("SKILL.md").is_file(),

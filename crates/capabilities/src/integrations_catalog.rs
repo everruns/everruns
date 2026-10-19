@@ -111,12 +111,6 @@ pub const CATALOG: &[CatalogEntry] = &[
         feature_flags: everruns_integrations::daytona::FEATURE_FLAGS,
     },
     CatalogEntry {
-        crate_name: "everruns-integrations-experimental::deno",
-        capabilities: everruns_integrations_experimental::deno::CAPABILITY_PLUGINS,
-        connectors: everruns_integrations_experimental::deno::CONNECTOR_PLUGINS,
-        feature_flags: everruns_integrations_experimental::deno::FEATURE_FLAGS,
-    },
-    CatalogEntry {
         crate_name: "everruns-integrations::docker",
         capabilities: everruns_integrations::docker::CAPABILITY_PLUGINS,
         connectors: &[],
@@ -411,10 +405,6 @@ mod tests {
         assert!(prod.has("daytona"));
         if std::env::var("FEATURE_BROWSERLESS").is_err() {
             assert!(prod.has("browserless"), "browserless is adoption grade");
-        }
-        if std::env::var("FEATURE_DENO").is_err() {
-            assert!(!dev.has("deno"), "deno is off by default");
-            assert!(!prod.has("deno"), "deno is off by default");
         }
     }
 }

@@ -41,6 +41,7 @@ use llmsim::{SimError, SimTurn};
 const BUILTIN: &[&str] = &[
     include_str!("../scenarios/broken-stream.json"),
     include_str!("../scenarios/chat-short.json"),
+    include_str!("../scenarios/file-research.json"),
     include_str!("../scenarios/flaky-429.json"),
     include_str!("../scenarios/long-answer.json"),
     include_str!("../scenarios/parallel-tools.json"),
@@ -89,7 +90,9 @@ pub(crate) fn play(
         .iter()
         .map(|tool| ToolSpec {
             name: tool.name().to_string(),
-            parameters: Some(tool.parameters().clone()),
+            // Simulation generates arguments locally, including for deferred
+            // tools whose provider-facing schema is only a discovery stub.
+            parameters: Some(tool.full_parameters().clone()),
         })
         .collect();
     let resolution = match scenario::resolve(&conversation, &specs, Some(model), &BUILTIN_SET) {
@@ -337,6 +340,7 @@ mod tests {
             [
                 "broken-stream",
                 "chat-short",
+                "file-research",
                 "flaky-429",
                 "long-answer",
                 "parallel-tools",
@@ -346,6 +350,72 @@ mod tests {
                 "thinking",
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn deferred_tools_use_the_original_argument_schema() {
+        let mut tool = read_tool();
+        let ToolDefinition::ClientSide(ref mut definition) = tool else {
+            unreachable!();
+        };
+        definition.full_parameters = Some(definition.parameters.clone());
+        definition.parameters = serde_json::json!({"type": "object", "properties": {}});
+        let messages = [Message::text(
+            MessageRole::User,
+            "Read the repo [[llmsim:research-3-tools speed=0.001]]",
+        )];
+        let events = call(&messages, &[tool], &Attempts::default())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            tool_calls(&events)[0].arguments,
+            serde_json::json!({"path": "."})
+        );
+    }
+
+    #[tokio::test]
+    async fn file_research_uses_explicit_local_fixture_arguments() {
+        let tools: Vec<_> = ["list_directory", "read_file", "stat_file"]
+            .into_iter()
+            .map(|name| {
+                ToolDefinition::function(name, "Local file tool", read_tool().parameters().clone())
+            })
+            .collect();
+        let mut messages = vec![Message::text(
+            MessageRole::User,
+            "Research [[llmsim:file-research speed=0.001]]",
+        )];
+        for names in [
+            vec!["list_directory"],
+            vec!["read_file"],
+            vec!["stat_file", "read_file"],
+        ] {
+            let events = call(&messages, &tools, &Attempts::default())
+                .await
+                .unwrap()
+                .unwrap();
+            let calls = tool_calls(&events);
+            assert_eq!(
+                calls.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+                names
+            );
+            for c in calls {
+                let path = if c.name == "list_directory" {
+                    "/load-test"
+                } else {
+                    "/load-test/research.md"
+                };
+                assert_eq!(c.arguments, serde_json::json!({"path": path}));
+            }
+            record(&mut messages, &events);
+        }
+        let answer = call(&messages, &tools, &Attempts::default())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(tool_calls(&answer).is_empty());
+        assert_eq!(text(&answer).split_whitespace().count(), 600);
     }
 
     #[tokio::test]

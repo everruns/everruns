@@ -195,7 +195,7 @@ async fn pre_cancelled_token_yields_cancelled_stop_reason() {
         .find(|event| matches!(event.kind, SessionEventKind::TurnCancelled))
         .expect("cancellation emits its canonical terminal event");
     assert_eq!(cancelled.turn_id.as_deref(), Some(turn.turn_id.as_str()));
-    assert_eq!(cancelled.data()["reason"], "cancelled by application");
+    assert_eq!(cancelled.data()["reason"], "User requested cancellation");
     assert!(cancelled.sequence().is_some(), "cancellation is durable");
 }
 
@@ -278,19 +278,40 @@ async fn send_routes_to_the_active_turn_and_returns_before_completion() {
         .await
         .expect("send only waits for acceptance")
         .expect("message accepted");
-    assert_eq!(initial.disposition, SendDisposition::Started);
+    assert_eq!(initial.disposition, SendDisposition::Pending);
 
     let latest = session
         .send("Prefer trains")
         .await
         .expect("steering accepted");
-    assert_eq!(latest.disposition, SendDisposition::Steered);
+    assert_eq!(latest.disposition, SendDisposition::Pending);
     assert_eq!(latest.turn_id, initial.turn_id);
 
     let turn = latest.wait().await.expect("active turn completes");
     assert!(turn.success);
-    assert_eq!(turn.turn_id, latest.turn_id);
+    assert_eq!(turn.turn_id, latest.turn().wait().await.unwrap().turn_id);
     assert_eq!(turn.response, "Echo: Prefer trains");
+    let first = session
+        .admission(initial.message_id.parse().unwrap())
+        .await
+        .unwrap()
+        .unwrap()
+        .assignment()
+        .await
+        .unwrap()
+        .unwrap();
+    let second = session
+        .admission(latest.message_id.parse().unwrap())
+        .await
+        .unwrap()
+        .unwrap()
+        .assignment()
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(first.turn_id, second.turn_id);
+    assert!(!first.steered);
+    assert!(second.steered);
 
     let history = session.history().page().await.expect("history available");
     let user_text: Vec<String> = history
@@ -315,9 +336,11 @@ async fn send_after_completion_starts_a_follow_up_turn() {
     initial.wait().await.expect("first completes");
 
     let follow_up = session.send("second").await.expect("follow-up accepted");
-    assert_eq!(follow_up.disposition, SendDisposition::Started);
-    assert_ne!(follow_up.turn_id, initial.turn_id);
-    follow_up.wait().await.expect("follow-up completes");
+    assert_eq!(follow_up.disposition, SendDisposition::Pending);
+    assert!(follow_up.turn_id.is_none());
+    let previous = initial.assignment().await.unwrap().unwrap();
+    let completed = follow_up.wait().await.expect("follow-up completes");
+    assert_ne!(completed.turn_id, previous.turn_id.to_string());
 }
 
 #[tokio::test]
@@ -352,7 +375,8 @@ async fn send_acknowledges_before_turn_start_hooks_finish() {
         .await
         .expect("send acknowledges before execution hooks finish")
         .expect("message accepted");
-    assert_eq!(pending.disposition, SendDisposition::Started);
+    assert_eq!(pending.disposition, SendDisposition::Pending);
+    assert!(pending.turn_id.is_none());
     assert!(pending.wait().await.expect("turn completes").success);
 }
 
@@ -381,6 +405,7 @@ async fn turn_handle_cancellation_emits_a_correlated_terminal_event() {
         .expect("active turn cancelled");
     let turn = steered.wait().await.expect("cancellation is an outcome");
     assert_eq!(turn.stop_reason, TurnStopReason::Cancelled);
+    assert_eq!(pending.wait().await.unwrap().turn_id, turn.turn_id);
 
     loop {
         let event = tokio::time::timeout(Duration::from_secs(1), events.recv())
@@ -389,7 +414,7 @@ async fn turn_handle_cancellation_emits_a_correlated_terminal_event() {
             .expect("event stream is healthy")
             .expect("event stream remains open");
         if event.kind.is_terminal() {
-            assert_eq!(event.turn_id.as_deref(), Some(pending.turn_id.as_str()));
+            assert_eq!(event.turn_id.as_deref(), Some(turn.turn_id.as_str()));
             assert!(matches!(event.kind, SessionEventKind::TurnCancelled));
             break;
         }
@@ -402,7 +427,11 @@ async fn turn_handle_cancellation_emits_a_correlated_terminal_event() {
         .filter(|message| message.role == MessageRole::User)
         .map(|message| message.text())
         .collect();
-    assert_eq!(user_text, ["hi", "include this"]);
+    // Shared actor cancellation records the person's control request in canonical context.
+    assert_eq!(
+        user_text,
+        ["hi", "include this", "User requested to cancel the work."]
+    );
 }
 
 /// A provider stream cut after some text is retried under the same message,

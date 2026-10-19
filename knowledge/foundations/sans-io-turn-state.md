@@ -203,6 +203,6 @@ converge later.
 - `crates/core/src/host/turn_strategy.rs`, `advance_host_execution`, the runtime
   host's thin I/O wrapper over an explicit engine driver, plus host-fact
   resolvers and the lifecycle-effect applier both drivers share
-- `crates/core/src/host/runtime.rs`, `InProcessRuntime::run_turn`, the engine-planned
+- `crates/core/src/host/runtime/mod.rs`, `InProcessRuntime::run_turn`, the engine-planned
   in-process loop (EVE-842)
 - `knowledge/operations/durable-execution-engine.md`, the durable host this converges with

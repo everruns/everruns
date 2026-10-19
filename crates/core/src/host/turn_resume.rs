@@ -60,6 +60,8 @@ use crate::runtime_context::AssembledTurnContext;
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct InterruptedToolCalls {
+    /// Original admitted input, retained across executor replacement.
+    pub input_message_id: MessageId,
     /// The cut-off turn; resuming it keeps this id.
     pub turn_id: TurnId,
     /// The calls without a recorded result, in the order the model made them.
@@ -317,6 +319,7 @@ pub async fn interrupted_tool_calls<A: RuntimeHostAdapter>(
     Ok(decide(adapter, org_id, turn, waits_on_person)
         .await?
         .map(|decision| InterruptedToolCalls {
+            input_message_id: decision.turn.input_message_id,
             turn_id: decision.turn.turn_id,
             tool_calls: decision.turn.unfinished_calls(),
             not_rerun: decision.not_rerun,

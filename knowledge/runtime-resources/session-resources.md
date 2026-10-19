@@ -52,7 +52,7 @@ rather than duplicate.
 
 | Capability       | Registers when                        | kind              | resource_id source         |
 |-----------------|---------------------------------------|--------------------|----------------------------|
-| Sandbox (Daytona, E2B, Deno) | `LeasedResourceStore.upsert_resource` | `sandbox`         | Leased resource public ID  |
+| Sandbox (Daytona, E2B) | `LeasedResourceStore.upsert_resource` | `sandbox`         | Leased resource public ID  |
 | Browser (Browserless)        | `LeasedResourceStore.upsert_resource` | `browser_session` | Leased resource public ID  |
 | Sprites                      | `LeasedResourceStore.upsert_resource` | `sprite`          | Leased resource public ID  |
 | Modal                        | `LeasedResourceStore.upsert_resource` | `sandbox`         | Leased resource public ID  |

@@ -72,7 +72,6 @@ const INTERNAL_SECRET_PREFIXES: &[&str] = &[
     "container_sandbox:",
     "daytona_sandbox:",
     "e2b_sandbox:",
-    "deno_sandbox:",
     "sprites_sprite:",
     "modal_sandbox:",
 ];
@@ -905,7 +904,6 @@ mod tests {
         ));
         assert!(is_internal_session_secret_name("daytona_sandbox:sbx-123"));
         assert!(is_internal_session_secret_name("e2b_sandbox:i-abc"));
-        assert!(is_internal_session_secret_name("deno_sandbox:sb_1"));
         assert!(is_internal_session_secret_name("sprites_sprite:sprite-1"));
         assert!(is_internal_session_secret_name("modal_sandbox:sb-1"));
         assert!(is_internal_session_secret_name("session_sandbox"));
@@ -1114,7 +1112,6 @@ mod tests {
             "container_sandbox:evr-owned-sandbox",
             "daytona_sandbox:sbx-1",
             "e2b_sandbox:i-1",
-            "deno_sandbox:sb_1",
             "sprites_sprite:sprite-1",
             "modal_sandbox:sb-1",
         ] {
@@ -1129,7 +1126,6 @@ mod tests {
             "container_sandbox:evr-owned-sandbox",
             "daytona_sandbox:sbx-1",
             "e2b_sandbox:i-1",
-            "deno_sandbox:sb_1",
             "sprites_sprite:sprite-1",
             "modal_sandbox:sb-1",
         ] {

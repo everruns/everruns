@@ -30,13 +30,19 @@ closer `AGENTS.md` (`apps/ui/`, `crates/server/migrations/`, `plugins/`, `.deeps
   `llmsim` or another simulated model: that belongs in tests, and an example must show real
   agent behavior. Use `gpt-6.1-sol` (or `gpt-6-luna` for a lighter model), never a `gpt-5`
   model.
-- Changelog is part of done. A PR that completes a user-facing feature or fix, or closes a
-  significant incident, adds its public changelog entry (`docs/changelog/<date>-<slug>/`) in the
-  same PR and fills the PR template's `Changelog:` line; a PR that changes behavior an older entry
+- Changelog is part of done. A PR that meets the public changelog's impact criteria adds its
+  entry (`docs/changelog/<date>-<slug>/`) in the same PR and fills the PR template's
+  `Changelog:` line; a PR that changes behavior an older entry
   describes updates that entry. Rules: `knowledge/docs/changelog.md`; how: the ship skill's
   `references/changelog-entry.md`.
 
 ### Gotchas
+
+- Engine-owned durable execution for DO/Cloudflare/celld has an explicit user publication hold.
+  Do not create or reinstate its public changelog entry or announcement assets until the
+  Framework Engine, serve and celld implementation and qualification are complete, and the user
+  explicitly approves the entry afterward. CI, merge and release are not publication approval.
+  Continue implementation without an entry; record the hold in the PR's `Changelog:` line.
 
 - Working-tree changes you did not make are probably another agent's or the user's. Work with
   them, and stage files by name rather than `git add -A`.

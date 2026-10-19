@@ -9,13 +9,13 @@
 
 use chrono::{DateTime, Utc};
 use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::turn::TurnStopReason;
 use everruns_contracts::typed_id::{HarnessId, MessageId, SessionId, TurnId, WorkspaceId};
 use everruns_core::engine::{
     ActOutcome, ActSchedulingFacts, ReasonResult, TurnLifecycleEffect, TurnPlan, TurnState,
     plan_after_act, plan_after_reason, reason_schedules_act,
 };
 use everruns_core::events::TokenUsage;
-use everruns_core::turn::TurnStopReason;
 use serde_json::json;
 use uuid::Uuid;
 

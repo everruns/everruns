@@ -54,6 +54,7 @@ fn test_is_merge_serialization_completed_events() {
 
     // turn.completed should have is_merge = Some(true)
     let turn_data = TurnCompletedData {
+        termination_reason: None,
         issue_count: None,
         turn_id,
         iterations: 1,
@@ -783,6 +784,7 @@ async fn test_on_event_batches_multiple_events_into_one_request() {
         session_id,
         EventContext::turn(turn_id, input_message_id),
         EventData::TurnCompleted(TurnCompletedData {
+            termination_reason: None,
             issue_count: None,
             turn_id,
             iterations: 1,

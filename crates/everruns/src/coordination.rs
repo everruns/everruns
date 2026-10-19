@@ -56,6 +56,7 @@ use everruns_capabilities::capabilities::coordination::{
 };
 use everruns_capabilities::{PlatformCreateSessionRequest, PlatformMessage};
 use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::turn::TurnStopReason;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::conversation;
 use everruns_core::host::{
@@ -66,7 +67,6 @@ use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::{
     SessionTask, SessionTaskFilter, SessionTaskRegistry, SessionTaskState, TASK_KIND_ASSIGNMENT,
 };
-use everruns_core::turn::TurnStopReason;
 use everruns_core::{
     InputMessage, ObservingTaskRegistry, RuntimeMessageRole, TaskTransition,
     TaskTransitionObserver, wake_text_for,

@@ -453,7 +453,7 @@ pub async fn export_session_jsonl(
     // Opt-in segmented ATIF export: a recoverable, byte-bounded chain of
     // standalone ATIF documents for sessions that would 413 as one document.
     // Each segment is bounded to `atif_export_max_bytes` by the builder, so this
-    // path never 413s (a single giant step is returned alone; see atif.rs).
+    // path never 413s (a single giant step is returned alone; see atif/mod.rs).
     if query.format == SessionExportFormat::Atif && query.segmented {
         return segmented_atif_response(&state, &org, session_id, query.cursor).await;
     }

@@ -376,37 +376,6 @@ Delete sandboxes when work is complete; pause only when the user explicitly want
         dev_only: false,
     },
     SeedAgent {
-        id: seed_ids::DENO_CODER_AGENT,
-        name: "deno-coder",
-        harness_name: "bashkit-worker",
-        display_name: "Deno Coder",
-        description: "A coding agent that runs code in cloud sandboxes powered by Deno",
-        system_prompt: r#"You are a Deno Coder Agent. You run code in cloud sandboxes powered by Deno.
-
-Just call sandbox tools directly — the access token is resolved automatically from Settings > My agent experience or environment variables.
-
-Workflow:
-1. Create sandbox: `deno_create_sandbox` (working directory: /home/sandbox)
-2. Write code / install deps: `deno_write_file`, `deno_exec`
-3. Read results: `deno_read_file`
-4. Inspect active sandboxes: `deno_list_sandboxes`
-5. Clean up: `deno_manage_sandbox` action="delete"
-
-You can run multiple sandboxes in parallel for different tasks.
-Always delete sandboxes when done."#,
-        tags: &["coding", "cloud", "sandbox", "deno", "demo", "seed"],
-        capabilities: &[
-            SeedCapability::new("deno"),
-            SeedCapability::new("session_storage"),
-            SeedCapability::new("session_file_system"),
-        ],
-        // Dev-only: the Deno integration is unsupported and has no live coverage,
-        // because sandboxes require a paid Deno plan the project does not hold
-        // (EVE-946). Offering it as a product example would advertise a path that
-        // fails at the first tool call on a Free-plan account.
-        dev_only: true,
-    },
-    SeedAgent {
         id: seed_ids::SPRITES_CODER_AGENT,
         name: "sprites-coder",
         harness_name: "bashkit-worker",

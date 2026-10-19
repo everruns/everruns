@@ -4,6 +4,7 @@ mod http_layers;
 mod integrations;
 mod listeners;
 mod pat_scope;
+use pat_scope::{PersonalAccessTokenRoutesWrapFn, apply_personal_access_token_routes_wrap};
 mod serve;
 
 // Server app builder for composable server configurations
@@ -54,13 +55,15 @@ pub(crate) type MigrationFn =
 type BackgroundTaskFn =
     Box<dyn FnOnce(ServerContext) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
 
-type PersonalAccessTokenRoutesWrapFn = Box<dyn FnOnce(Router) -> Router + Send>;
-
 fn github_app_token_minter(
     auth_config: &auth::AuthConfig,
 ) -> Option<crate::storage::GitHubAppTokenMinter> {
     auth_config.github_connection.as_ref().map(|config| {
         crate::storage::GitHubAppTokenMinter::new(config.app_id.clone(), config.private_key.clone())
+            .with_user_client(crate::github_user_token::GitHubUserClient::new(
+                config.client_id.as_deref(),
+                config.client_secret.as_deref(),
+            ))
     })
 }
 
@@ -98,18 +101,6 @@ fn spawn_background_tasks(
     for task_fn in background_tasks {
         let ctx = server_context.clone();
         supervisor.track("custom_background_task", tokio::spawn(task_fn(ctx)));
-    }
-}
-
-/// Apply the optional personal-access-token-routes wrap closure to the router.
-/// Identity when no wrap is configured.
-fn apply_personal_access_token_routes_wrap(
-    wrap: Option<PersonalAccessTokenRoutesWrapFn>,
-    router: Router,
-) -> Router {
-    match wrap {
-        Some(wrap) => wrap(router),
-        None => router,
     }
 }
 
@@ -534,12 +525,18 @@ impl ServerAppBuilder {
         // =====================================================================
         // Phase 4: Event listeners & domain/infra helpers
         // =====================================================================
+        let driver_registry = Arc::new(host_composition.driver_registry().clone());
+        let provider_resolver = Arc::new(
+            services::ProviderResolverService::new(db.clone(), encryption.clone())
+                .with_driver_registry((*driver_registry).clone()),
+        );
         let listeners::Listeners {
             event_listeners,
             budget_service,
             mcp_events,
             mcp_event_triggers,
             thread_turns,
+            automatic_titles,
             session_sandbox_service,
             notification_service,
             observer_wake,
@@ -550,6 +547,7 @@ impl ServerAppBuilder {
                 host_composition: host_composition.clone(),
                 auth_state: auth_state.clone(),
                 auth_config: auth_config.clone(),
+                provider_resolver: provider_resolver.clone(),
                 observers_enabled: feature_flags.observers,
                 prometheus_enabled: prometheus_handle.is_some(),
             },
@@ -579,6 +577,7 @@ impl ServerAppBuilder {
             event_listeners.clone(),
         ));
         thread_turns.bind_registry(&db, &event_service, &runner);
+        automatic_titles.bind_events(&event_service);
         let background_event_service = Arc::new(services::EventService::with_listeners(
             background_db.clone(),
             event_delivery.clone(),
@@ -698,11 +697,6 @@ impl ServerAppBuilder {
             notification_broadcaster,
             auth: auth_state.clone(),
         };
-        let driver_registry = Arc::new(host_composition.driver_registry().clone());
-        let provider_resolver = Arc::new(
-            services::ProviderResolverService::new(db.clone(), encryption.clone())
-                .with_driver_registry((*driver_registry).clone()),
-        );
 
         // Now that the LLM stack exists, spawn the observer scoring worker with
         // an LLM-judge client backed by the org's own configured providers.
@@ -980,7 +974,8 @@ impl ServerAppBuilder {
             messages_state.session_service.clone(),
             messages_state.message_service.clone(),
         )
-        .with_mcp_event_triggers(mcp_event_triggers.clone());
+        .with_mcp_event_triggers(mcp_event_triggers.clone())
+        .with_channels(channel_recovery.clone());
         let schedules_state = api::schedules::routes(
             api::schedules::ScheduleAppState::new(
                 db.clone(),
@@ -1064,6 +1059,7 @@ impl ServerAppBuilder {
         .with_elicitation_base_url(mcp_root_url.clone())
         .with_mcp_events(mcp_events)
         .with_slack_provisioner(slack_provisioner.clone())
+        .with_channels(channel_recovery.clone())
         .with_mcp_oauth_checker(Some(api::user_connections::OAuthConnectionChecker::shared(
             user_connections_state.clone(),
         )))
@@ -1377,6 +1373,7 @@ impl ServerAppBuilder {
             org_rate_limiter: org_rate_limiter.clone(),
             virtual_registry: virtual_registry.clone(),
             slack_provisioner: slack_provisioner.clone(),
+            channels: channel_recovery.clone(),
         };
         if !self.config.dev_mode {
             background::spawn_grpc_server(

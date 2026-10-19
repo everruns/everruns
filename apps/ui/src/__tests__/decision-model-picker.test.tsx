@@ -80,3 +80,15 @@ test("a saved unavailable binding remains visible with repair guidance", () => {
   expect(screen.getByText("Broken Jev (Account)")).toBeInTheDocument();
   expect(screen.getByRole("alert")).toHaveTextContent("repair");
 });
+
+test("session inheritance has a label and no unavailable-model warning", () => {
+  render(
+    <ModelPicker
+      value="session"
+      onChange={jest.fn()}
+      additionalOptions={[{ value: "session", label: "Use session model" }]}
+    />,
+  );
+  expect(screen.getByTestId("session")).toHaveTextContent("Use session model");
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});

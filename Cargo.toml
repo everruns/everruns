@@ -56,6 +56,9 @@ members = [
 ]
 
 exclude = [
+    # Independently resolved, source-only hosting reference.
+    "crates/durable-object",
+    "vendor/postgresql_archive",
     "research/infinity_context",
     "research/lua-vs-bash",
     "examples/weekend-concierge-host",
@@ -168,7 +171,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # observability feature; scripts/lib/check-observability-isolation.sh enforces it)
 opentelemetry = "0.33"
 opentelemetry_sdk = { version = "0.33", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.33", features = ["http-proto", "reqwest-client"] }
+opentelemetry-otlp = { version = "0.33", features = ["http-proto", "reqwest-blocking-client"] }
 tracing-opentelemetry = "0.34"
 
 # OpenAPI documentation (used by export-openapi binary for spec generation)
@@ -213,6 +216,7 @@ jsonwebtoken = { version = "11", features = ["aws_lc_rs"] }
 sha2 = "0.11"
 hmac = "0.13"
 hex = "0.4"
+httparse = "1.10"
 # No TLS backend: network access goes through domains/git_fetch.rs on the
 # workspace rustls client, so libgit2 is only an object store and pack indexer.
 # This is what keeps OpenSSL (and the builder image's perl/make) out of the tree.
@@ -233,7 +237,7 @@ tokio-tungstenite = { version = "0.30", features = ["rustls-tls-native-roots"] }
 futures-util = "0.3"
 
 # Everruns SDK
-everruns-sdk = "0.2.0"
+everruns-sdk = "0.3.0"
 everruns-core = { path = "crates/core", version = "0.48.0", default-features = false }
 everruns-durable = { path = "crates/durable", version = "0.48.0" }
 everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.48.0", default-features = false }
@@ -248,7 +252,8 @@ everruns = { path = "crates/everruns", version = "0.48.0", default-features = fa
 everruns-macros = { path = "crates/macros", version = "0.48.0" }
 everruns-serve = { path = "crates/serve", version = "0.48.0" }
 everruns-serve-agentcore = { path = "crates/serve-agentcore", version = "0.48.0" }
-everruns-serve-celld = { path = "crates/serve-celld", version = "0.48.0" }
+everruns-serve-celld = { path = "crates/serve-celld" }
+everruns-durable-object = { path = "crates/durable-object" }
 everruns-serve-build = { path = "crates/serve-build", version = "0.48.0" }
 everruns-serve-macros = { path = "crates/serve-macros", version = "0.48.0" }
 everruns-cli-contract = { path = "crates/cli-contract", version = "0.48.0" }
@@ -361,3 +366,7 @@ codegen-units = 256
 # must stay actionable. line-tables-only keeps that signal at modest cost.
 debug = "line-tables-only"
 strip = false
+
+# Upstream archive0.21 still selects vulnerable ZIP8; see vendor patch provenance.
+[patch.crates-io]
+postgresql_archive = { path = "vendor/postgresql_archive" }

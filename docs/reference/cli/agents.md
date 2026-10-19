@@ -46,8 +46,11 @@ Agent definitions and their configuration.
 | [`agents check-rules list`](#agents-check-rules-list) | List the org's agent check rules: built-in rules with their effective enabled/severity, plus custom rules. |
 | [`agents check-rules upsert`](#agents-check-rules-upsert) | Create or update an agent check rule (built-in override or custom rule). |
 | [`agents credentials create`](#agents-credentials-create) | Create a write-only Agent credential setup requirement: one attached MCP tool parameter, or an HTTP API the agent's shell calls with $ENV_NAME (the value is injected only into requests to the bound URL). |
+| [`agents examples adopt`](#agents-examples-adopt) | Create an agent from an agent example by name (see list_agent_examples). |
+| [`agents examples list`](#agents-examples-list) | List adoptable agent examples (blueprints such as pr-reviewer): name, description, harness, capabilities, and the guided setup a template needs after adoption (GitHub App, connections, trigger). |
 | [`agents exposures resume`](#agents-exposures-resume) | Let an agent's live channels accept traffic again. |
 | [`agents exposures suspend`](#agents-exposures-suspend) | Stop every channel on an agent from accepting traffic. |
+| [`agents failures list`](#agents-failures-list) | List sessions with failed turns. |
 | [`agents github connect`](#agents-github-connect) | Start connecting an agent to GitHub through its own GitHub App. |
 | [`agents github disconnect`](#agents-github-disconnect) | Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. |
 | [`agents github get`](#agents-github-get) | Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks. |
@@ -781,6 +784,40 @@ everruns agents credentials create --agent-id agent_01h9 --mcp-server-name visti
 everruns agents credentials create --agent-id agent_01h9 --env-name JEV_API_KEY --url https://api.typesafe.ai --label 'Jev API key' --reason 'Ask Jev for triage decisions'
 ```
 
+## agents examples adopt
+
+Create an agent from an agent example by name (see list_agent_examples). The agent is named after the example, with a short suffix when that name is taken, and tagged example:<name>. A template's guided setup (GitHub App, connections, trigger) is not run: do those steps next.
+
+```bash
+everruns agents examples adopt [OPTIONS] [NAME]
+```
+
+| Flag | Description |
+|---|---|
+| `--name <NAME>` | Example name from list_agent_examples, such as `pr-reviewer`. |
+
+Example:
+
+```bash
+# Start a pull request reviewer from its template
+everruns agents examples adopt pr-reviewer --reason 'Set up PR reviews for the repo'
+```
+
+## agents examples list
+
+List adoptable agent examples (blueprints such as pr-reviewer): name, description, harness, capabilities, and the guided setup a template needs after adoption (GitHub App, connections, trigger). Adopt one by name with adopt_agent_example.
+
+```bash
+everruns agents examples list [OPTIONS]
+```
+
+Example:
+
+```bash
+# Find a ready-made agent to start from instead of writing one by hand
+everruns agents examples list
+```
+
 ## agents exposures resume
 
 Let an agent's live channels accept traffic again.
@@ -817,6 +854,29 @@ Example:
 ```bash
 # Stop an agent answering on its exposed surfaces without deleting it
 everruns agents exposures suspend agent_01h9 --reason 'Pause while the prompt is fixed'
+```
+
+## agents failures list
+
+List sessions with failed turns. Filters by failure time and includes older, recovered, and archived sessions, matching agent activity. Returns the latest matching failure per session.
+
+```bash
+everruns agents failures list [OPTIONS] [AGENT]
+```
+
+| Flag | Description |
+|---|---|
+| `--agent <AGENT_ID>` |  |
+| `--after <AFTER>` | Exclusive lower bound on failure time; defaults to 24 hours before `before`. |
+| `--before <BEFORE>` | Inclusive upper bound, normally the Agents activity response's generated_at. |
+| `--limit <LIMIT>` |  |
+| `--offset <OFFSET>` |  |
+
+Example:
+
+```bash
+# Find an agent's failed turns, including sessions that later recovered
+everruns agents failures list agent_01h9 --limit 20
 ```
 
 ## agents github connect
@@ -1110,6 +1170,8 @@ everruns agents triggers create [OPTIONS] --agent-id <agent_id> --message <messa
 | `--script <SCRIPT>` |  |
 | `--session-mode <SESSION_MODE>` | What identity keys a session, for every exposure and every transport. One enum replaces the ... One of `per_thread`, `per_channel`, `per_user`, `shared_session`, `session_per_invocation`. |
 | `--subject-template <SUBJECT_TEMPLATE>` | Webhook and MCP event: template for the event subject. |
+| `--target-binding-key <TARGET_BINDING_KEY>` | Schedule only: the conversation on `target_channel_id`, keyed the way the channel binds sessi... |
+| `--target-channel-id <TARGET_CHANNEL_ID>` | Schedule only: the agent's channel whose conversation each run speaks in, instead of a sessio... |
 | `--timezone <TIMEZONE>` | IANA timezone identifier for cron evaluation (default `UTC`). |
 | `--token <TOKEN>` | Shared secret for webhook triggers. |
 | `--trigger-type <TRIGGER_TYPE>` | The kind of event that fires an agent trigger. One of `schedule`, `webhook`, `github`, `mcp_event`. |
@@ -1227,6 +1289,8 @@ everruns agents triggers update [OPTIONS] --agent-id <agent_id> --trigger-id <tr
 | `--script <SCRIPT>` |  |
 | `--session-mode <SESSION_MODE>` |  |
 | `--subject-template <SUBJECT_TEMPLATE>` | Replacement subject template. |
+| `--target-binding-key <TARGET_BINDING_KEY>` | Replacement target conversation; given with `target_channel_id`. |
+| `--target-channel-id <TARGET_CHANNEL_ID>` | Replacement target channel. |
 | `--timezone <TIMEZONE>` | Replacement IANA timezone identifier. |
 | `--token <TOKEN>` | Replacement webhook token. |
 | `--trigger-id <TRIGGER_ID>` | Required. Agent trigger's prefixed public identifier. |

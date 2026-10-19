@@ -41,7 +41,7 @@ and the organization's current defaults, so a session that switches models keeps
 
 | Model provider | Native search |
 |---|---|
-| OpenAI, Azure OpenAI, ChatGPT plan | OpenAI web search, on models that have it (GPT-4o, GPT-4.1, GPT-5 and later, o3, o4-mini) |
+| OpenAI, Azure OpenAI, ChatGPT Plan (framework hosts) | OpenAI web search, on models that have it (GPT-4o, GPT-4.1, GPT-5 and later, o3, o4-mini) |
 | OpenRouter | The model vendor's own search, on models OpenRouter runs it for (OpenAI GPT-4.1 and GPT-5 and later, Claude, Gemini 3, Grok 4, Perplexity) |
 | Anthropic | Anthropic web search, on Claude 3.5 Haiku, Claude 3.7 Sonnet and Claude 4 and later, up to 5 searches per model call |
 | Gemini | Grounding with Google Search, on Gemini 2.0 Flash, 2.5 and 3 and later, when `web_search` is the agent's only tool |

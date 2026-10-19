@@ -1,5 +1,6 @@
 # UI test cases
 
+* [Coding-agent onboarding](coding_agent_onboarding/) - Setup prompts, OAuth approval inspection and provider prerequisites.
 * [Admin login](admin_login/) - Manual UI cases.
 * [Agent avatars](agent_avatars/) - Manual UI cases.
 * [Agent chat](agent_chat/) - Manual UI cases.
@@ -20,7 +21,6 @@
 * [Cursor connection](cursor_connection/) - Manual UI cases.
 * [TypeSafe connection](typesafe_connection/) - Manual UI cases.
 * [Daytona connection](daytona_connection/) - Manual UI cases.
-* [Deno connection](deno_connection/) - Manual UI cases.
 * [Modal connection](modal_connection/) - Manual UI cases.
 * [Durable operations](durable_operations/) - Manual UI cases.
 * [Entity identity](entity_identity/) - Manual UI cases.
@@ -58,3 +58,5 @@
 * [Skills](skills/) - Manual UI cases.
 * [Tag editor](tag_editor/) - Manual UI cases.
 * [Webmcp](webmcp/) - Manual UI cases.
+
+* [Automatic session titles](automatic_session_titles/) - Model defaults and explicit naming.

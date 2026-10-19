@@ -13,7 +13,7 @@
 //! non-interactive exec contexts.
 //! Daytona sessions use a bare shell (no login flag), so tools installed
 //! mid-session (e.g. rustup writing ~/.cargo/env) aren't visible in PATH.
-//! Unlike E2B and Deno which spawn `bash -l -c` per command, Daytona's
+//! Unlike E2B, which spawns `bash -l -c` per command, Daytona's
 //! persistent session means even a login shell at creation time wouldn't
 //! pick up later installs. The preamble runs on every exec (~2ms overhead)
 //! and largely eliminates "command not found after install" bugs.

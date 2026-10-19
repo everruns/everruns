@@ -5,6 +5,8 @@
 
 use base64::Engine;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use uuid::Uuid;
 
 use super::{IssuedTokens, SlackApiProvisioner, malformed_response, storage_error};
 use crate::domains::agent_channels::record::slack_provisioning::{
@@ -23,7 +25,7 @@ pub(super) const SLACK_OAUTH_AUTHORIZE_URL: &str = "https://slack.com/oauth/v2/a
 pub(super) const MANAGER_APP_USER_SCOPES: &[&str] =
     &["app_configurations:read", "app_configurations:write"];
 /// How long a started manager-app consent stays valid.
-pub(super) const MANAGER_CONNECT_STATE_TTL: chrono::Duration = chrono::Duration::minutes(30);
+pub(crate) const MANAGER_CONNECT_STATE_TTL: chrono::Duration = chrono::Duration::minutes(30);
 /// Binds a sealed state to this flow, so a state minted for another
 /// encrypted round trip can never be replayed here.
 pub(super) const MANAGER_CONNECT_STATE_PURPOSE: &str = "slack_manager_connect";
@@ -81,13 +83,23 @@ impl SlackManagerApp {
 }
 
 /// State carried through Slack's consent redirect. Encrypted, so it cannot be
-/// forged or altered; it names the organization the grant is stored under.
+/// forged or altered. The ledger binds this payload to a secret that stays in
+/// the initiating browser, never in Slack's redirect URL.
 #[derive(Debug, Serialize, Deserialize)]
-pub(super) struct ManagerConnectState {
+pub(crate) struct ManagerConnectState {
     pub(super) purpose: String,
-    pub(super) org_id: i64,
-    /// Unix seconds after which the state is refused.
-    pub(super) expires_at: i64,
+    pub(crate) org_id: i64,
+    pub(crate) transaction_id: Uuid,
+    pub(super) expires_at: chrono::DateTime<chrono::Utc>,
+}
+
+fn manager_connect_hash(
+    state: &ManagerConnectState,
+    browser_token: &str,
+) -> SlackProvisioningResult<Vec<u8>> {
+    let payload = serde_json::to_vec(&(state, browser_token))
+        .map_err(|_| malformed_response("manager connect state"))?;
+    Ok(Sha256::digest(payload).to_vec())
 }
 
 impl SlackApiProvisioner {
@@ -105,11 +117,12 @@ impl SlackApiProvisioner {
     ///
     /// The manager app has no bot of its own (`scope` is empty); everything it
     /// needs is a user grant over app configuration.
-    pub fn manager_authorize_url(
+    pub(crate) async fn manager_authorize_url(
         &self,
         org_id: i64,
         redirect_uri: &str,
-    ) -> SlackProvisioningResult<String> {
+        browser_token: &str,
+    ) -> SlackProvisioningResult<(String, Uuid)> {
         let manager = self
             .manager_app
             .as_ref()
@@ -117,7 +130,8 @@ impl SlackApiProvisioner {
         let state = ManagerConnectState {
             purpose: MANAGER_CONNECT_STATE_PURPOSE.to_string(),
             org_id,
-            expires_at: (chrono::Utc::now() + MANAGER_CONNECT_STATE_TTL).timestamp(),
+            transaction_id: Uuid::new_v4(),
+            expires_at: chrono::Utc::now() + MANAGER_CONNECT_STATE_TTL,
         };
         let bytes =
             serde_json::to_vec(&state).map_err(|_| malformed_response("manager connect state"))?;
@@ -127,26 +141,59 @@ impl SlackApiProvisioner {
             ))
         })?;
         let sealed = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sealed);
-        Ok(format!(
-            "{SLACK_OAUTH_AUTHORIZE_URL}?client_id={}&scope=&user_scope={}&state={}&redirect_uri={}",
-            urlencoding::encode(&manager.client_id),
-            urlencoding::encode(&MANAGER_APP_USER_SCOPES.join(",")),
-            urlencoding::encode(&sealed),
-            urlencoding::encode(redirect_uri),
+        self.db
+            .register_connection_setup(
+                &state.transaction_id.to_string(),
+                MANAGER_CONNECT_STATE_PURPOSE,
+                &manager_connect_hash(&state, browser_token)?,
+                state.expires_at,
+            )
+            .await
+            .map_err(storage_error)?;
+        Ok((
+            format!(
+                "{SLACK_OAUTH_AUTHORIZE_URL}?client_id={}&scope=&user_scope={}&state={}&redirect_uri={}",
+                urlencoding::encode(&manager.client_id),
+                urlencoding::encode(&MANAGER_APP_USER_SCOPES.join(",")),
+                urlencoding::encode(&sealed),
+                urlencoding::encode(redirect_uri),
+            ),
+            state.transaction_id,
         ))
     }
 
     /// The organization a consent callback's `state` was minted for, or `None`
     /// when it is forged, altered, minted for another flow, or expired.
-    pub fn open_manager_state(&self, sealed: &str) -> Option<i64> {
+    pub(crate) fn open_manager_state(&self, sealed: &str) -> Option<ManagerConnectState> {
+        if sealed.len() > 2048 {
+            return None;
+        }
         let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .decode(sealed.trim())
             .ok()?;
         let state: ManagerConnectState =
             serde_json::from_slice(&self.encryption.decrypt(&bytes).ok()?).ok()?;
-        (state.purpose == MANAGER_CONNECT_STATE_PURPOSE
-            && state.expires_at >= chrono::Utc::now().timestamp())
-        .then_some(state.org_id)
+        (state.purpose == MANAGER_CONNECT_STATE_PURPOSE && state.expires_at > chrono::Utc::now())
+            .then_some(state)
+    }
+
+    /// THREAT[TM-SLACK-014]: wrong browsers cannot consume a pending consent;
+    /// one atomic delete across API replicas wins before any code exchange.
+    /// Consent errors and exchange failures are terminal: start a new consent
+    /// rather than retrying a possibly spent Slack authorization code.
+    pub(crate) async fn consume_manager_state(
+        &self,
+        state: &ManagerConnectState,
+        browser_token: &str,
+    ) -> SlackProvisioningResult<bool> {
+        self.db
+            .consume_connection_setup(
+                &state.transaction_id.to_string(),
+                MANAGER_CONNECT_STATE_PURPOSE,
+                &manager_connect_hash(state, browser_token)?,
+            )
+            .await
+            .map_err(storage_error)
     }
 
     /// Exchange a manager app consent code and store the grant as the

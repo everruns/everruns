@@ -85,6 +85,8 @@ struct OAuthClientConfig {
 pub struct GitHubAppTokenMinter {
     app_id: String,
     private_key: String,
+    /// The App's OAuth client, which refreshes people's own tokens (D1).
+    user_client: Option<crate::github_user_token::GitHubUserClient>,
 }
 
 impl GitHubAppTokenMinter {
@@ -92,7 +94,16 @@ impl GitHubAppTokenMinter {
         Self {
             app_id,
             private_key,
+            user_client: None,
         }
+    }
+
+    pub fn with_user_client(
+        mut self,
+        client: Option<crate::github_user_token::GitHubUserClient>,
+    ) -> Self {
+        self.user_client = client;
+        self
     }
 
     /// Mint a fresh installation access token (1h TTL).
@@ -1077,6 +1088,20 @@ impl UserConnectionResolver for DbConnectionResolver {
         }))
     }
     async fn get_connection_user(&self, s: SessionId, p: &str) -> Result<Option<Uuid>> {
+        if let Some(server) = Self::parse_mcp_oauth_provider(p)
+            && let Some(subject) = self.runtime_subject(s).await?
+            && let Some(grant) = self
+                .db
+                .get_mcp_oauth_session_credentials(s, server)
+                .await
+                .map_err(|e| AgentLoopError::store(e.to_string()))?
+            && grant.virtual_user_id == Some(subject)
+        {
+            // PACT grants belong to this invocation's user without a persistent
+            // connection. Discovery must cache their tools under the same user
+            // whose token get_mcp_connection_token resolves.
+            return Ok(Some(subject.uuid()));
+        }
         Ok(self
             .selected_connection(s, p)
             .await?

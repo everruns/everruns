@@ -626,7 +626,8 @@ pub(crate) async fn run_app_agent_stream(
                 .await
                 .map_err(channel_error)?;
             let input_message_id = match turn.outcome {
-                SendOutcome::Started { input_message_id } => Some(input_message_id),
+                SendOutcome::Started { input_message_id }
+                | SendOutcome::Pending { input_message_id } => Some(input_message_id),
                 SendOutcome::Steered => None,
             };
             (turn.events, input_message_id, None)
@@ -651,6 +652,7 @@ pub(crate) async fn run_app_agent_stream(
                     app.org_id,
                     &session.session,
                     &frontend_names,
+                    &channel_config,
                     tool_results,
                 )
                 .await

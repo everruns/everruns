@@ -122,10 +122,12 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
   const connected = searchParams.get("connected");
   useEffect(() => {
     if (!connected) return;
-    setNotice({
-      kind: "success",
-      text: `${getProviderLabel(connected as DriverId)} connected. Review its models from the provider card.`,
-    });
+    if (connected !== "chatgpt") {
+      setNotice({
+        kind: "success",
+        text: `${getProviderLabel(connected as DriverId)} connected. Review its models from the provider card.`,
+      });
+    }
     const params = new URLSearchParams(searchParams.toString());
     params.delete("connected");
     router.replace(`${pathname}${params.size ? `?${params}` : ""}`, { scroll: false });

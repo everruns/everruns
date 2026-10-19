@@ -428,7 +428,7 @@ impl Tool for BashTool {
         let builder = install_observability_hooks(builder, context.session_id);
         let (builder, redactor) = http::configure(builder, self.enable_http, context).await;
         let builder = install_cli_tree(builder, context);
-        let mut bash = builder.build();
+        let mut bash = builder.cpython().build();
         if let Some(held) = tools_in_shell::preflight(context, bash.analyze(command).ok()).await {
             return ToolExecutionResult::success(held);
         }
@@ -654,7 +654,7 @@ impl BackgroundExecutableTool for BashTool {
         let builder = install_observability_hooks(builder, context.session_id);
         let (builder, redactor) = http::configure(builder, self.enable_http, &context).await;
         let builder = install_cli_tree(builder, &context);
-        let mut bash = builder.build();
+        let mut bash = builder.cpython().build();
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<(String, String)>(128);
         let (partial_tx, partial_rx) = tokio::sync::mpsc::channel::<(String, String)>(128);
@@ -2309,10 +2309,9 @@ mod tests {
         let tool = BashTool::default();
 
         // A nonexistent path resolves but has no file — `cat` fails with a
-        // non-zero exit, not a containment error.
-        let result = tool
-            .execute_with_context(json!({"commands": "cat /etc/passwd"}), &context)
-            .await;
+        // non-zero exit, not a containment error (0.19 seeds /etc/passwd).
+        let params = json!({"commands": "cat /etc/everruns-probe-missing"});
+        let result = tool.execute_with_context(params, &context).await;
 
         match result {
             ToolExecutionResult::Success(output) => {

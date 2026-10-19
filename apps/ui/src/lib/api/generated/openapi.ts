@@ -783,6 +783,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/failures": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List sessions with failed turns
+     * @description List sessions with failed turns. Filters by failure time and includes older, recovered, and archived sessions, matching agent activity. Returns the latest matching failure per session.
+     */
+    get: operations["list_agent_failures"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/github": {
     parameters: {
       query?: never;
@@ -7991,6 +8011,11 @@ export interface components {
        */
       hours: number;
       totals: components["schemas"]["AgentActivityTotals"];
+      /**
+       * Format: date-time
+       * @description Exact exclusive lower bound of the run and failure window.
+       */
+      window_start: string;
     };
     /** @description Org-wide totals for the page masthead. */
     AgentActivityTotals: {
@@ -8394,6 +8419,34 @@ export interface components {
        *     replaced.
        */
       trigger: Record<string, unknown>;
+    };
+    AgentFailedSession: {
+      error?: string | null;
+      /** Format: date-time */
+      failed_at: string;
+      /** Format: int64 */
+      failed_turns: number;
+      /**
+       * Format: int32
+       * @description Sequence of the latest terminal failure in the requested window.
+       */
+      failure_sequence: number;
+      session: components["schemas"]["Session"];
+    };
+    AgentFailureSessions: {
+      /** Format: date-time */
+      after: string;
+      /** Format: date-time */
+      before: string;
+      data: components["schemas"]["AgentFailedSession"][];
+      /** Format: int64 */
+      failed_turns: number;
+      /** Format: int32 */
+      limit: number;
+      /** Format: int32 */
+      offset: number;
+      /** Format: int64 */
+      total_sessions: number;
     };
     /** @description Result of disconnecting an agent from GitHub. */
     AgentGitHubDisconnect: {
@@ -11204,6 +11257,20 @@ export interface components {
        * @example {{webhook.json.action}}
        */
       subject_template?: string | null;
+      /**
+       * @description Schedule only: the conversation on `target_channel_id`, keyed the way
+       *     the channel binds sessions: `slack:user:{user_id}` (a direct message)
+       *     or `slack:channel:{channel_id}` (top-level posts).
+       * @example slack:user:U0123ABCD
+       */
+      target_binding_key?: string | null;
+      /**
+       * @description Schedule only: the agent's channel whose conversation each run speaks
+       *     in, instead of a session of the trigger's own. Needs
+       *     `target_binding_key`.
+       * @example appchan_01933b5a000070008000000000000001
+       */
+      target_channel_id?: string | null;
       /**
        * @description IANA timezone identifier for cron evaluation (default `UTC`).
        * @example UTC
@@ -17288,6 +17355,8 @@ export interface components {
          *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
          */
         onboarding_completed_at?: string | null;
+        /** @description Optional small chat model, independent of the main chat and decision defaults. */
+        small_model_id?: string | null;
         /**
          * @description Who answers deployment-owned decision checks: `deployment` (default)
          *     or `organization` (the org's default decision model).
@@ -20622,6 +20691,8 @@ export interface components {
        *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
        */
       onboarding_completed_at?: string | null;
+      /** @description Optional small chat model, independent of the main chat and decision defaults. */
+      small_model_id?: string | null;
       /**
        * @description Who answers deployment-owned decision checks: `deployment` (default)
        *     or `organization` (the org's default decision model).
@@ -20923,6 +20994,14 @@ export interface components {
          * @example false
          */
         is_pinned?: boolean | null;
+        /**
+         * Format: date-time
+         * @description Timestamp of the latest input or completed assistant message.
+         *     Populated on session lists; session edits and tool events do not advance it.
+         */
+        last_message_at?: string | null;
+        /** @description Outcome of the latest terminal turn, distinguishing cancellation from failure. */
+        last_turn_status?: string | null;
         /**
          * @description Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).
          * @example en-US
@@ -21519,6 +21598,14 @@ export interface components {
          * @example false
          */
         is_pinned?: boolean | null;
+        /**
+         * Format: date-time
+         * @description Timestamp of the latest input or completed assistant message.
+         *     Populated on session lists; session edits and tool events do not advance it.
+         */
+        last_message_at?: string | null;
+        /** @description Outcome of the latest terminal turn, distinguishing cancellation from failure. */
+        last_turn_status?: string | null;
         /**
          * @description Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).
          * @example en-US
@@ -24029,8 +24116,24 @@ export interface components {
       script?: components["schemas"]["ScriptRun"] | null;
       /** @description Whether invocations reuse a stable session or create a new one. */
       session_mode?: components["schemas"]["SessionBinding"];
+      target?: components["schemas"]["ScheduleTriggerTarget"] | null;
       /** @description IANA timezone identifier for cron evaluation. */
       timezone?: string;
+    };
+    /**
+     * @description A conversation a schedule trigger runs in: the session a message from that
+     *     conversation would land in, created and bound on the first run.
+     *
+     *     Slack only. `binding_key` names the conversation the way the channel binds
+     *     it: `slack:user:{user_id}` (a direct message with that person) on a
+     *     `per_user` channel, `slack:channel:{channel_id}` (a top-level post) on a
+     *     `per_channel` one.
+     */
+    ScheduleTriggerTarget: {
+      /** @description The conversation's binding key on that channel. */
+      binding_key: string;
+      /** @description The agent's channel the conversation belongs to. */
+      channel_id: string;
     };
     /** @description Schedules list response */
     SchedulesListResponse: {
@@ -24589,6 +24692,14 @@ export interface components {
        * @example false
        */
       is_pinned?: boolean | null;
+      /**
+       * Format: date-time
+       * @description Timestamp of the latest input or completed assistant message.
+       *     Populated on session lists; session edits and tool events do not advance it.
+       */
+      last_message_at?: string | null;
+      /** @description Outcome of the latest terminal turn, distinguishing cancellation from failure. */
+      last_turn_status?: string | null;
       /**
        * @description Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).
        * @example en-US
@@ -27265,6 +27376,7 @@ export interface components {
        * @example stop
        */
       stop_reason?: string | null;
+      termination_reason?: components["schemas"]["TurnStopReason"] | null;
       /**
        * Format: int64
        * @description First-token latency for the turn, usually from the first LLM generation.
@@ -27361,6 +27473,17 @@ export interface components {
        */
       turn_id: string;
     };
+    /**
+     * @description Stable reason a turn stopped, independent of provider-specific strings.
+     * @enum {string}
+     */
+    TurnStopReason:
+      | "end_turn"
+      | "max_tokens"
+      | "max_turn_requests"
+      | "refusal"
+      | "error"
+      | "cancelled";
     /** @description Waited result for `POST /v1/sessions/{session_id}/messages?wait=true`. */
     TurnWaitResponse: {
       /**
@@ -27618,6 +27741,17 @@ export interface components {
        * @example {{webhook.json.action}}
        */
       subject_template?: string | null;
+      /**
+       * @description Replacement target conversation; given with `target_channel_id`.
+       * @example slack:user:U0123ABCD
+       */
+      target_binding_key?: string | null;
+      /**
+       * @description Replacement target channel. An empty string removes the target, so
+       *     runs use a session of the trigger's own again.
+       * @example appchan_01933b5a000070008000000000000001
+       */
+      target_channel_id?: string | null;
       /**
        * @description Replacement IANA timezone identifier.
        * @example UTC
@@ -28147,6 +28281,11 @@ export interface components {
        * @example Acme Corporation
        */
       name?: string | null;
+      /**
+       * @description Shared small chat model for lightweight work. Omit to preserve the selection;
+       *     pass null to clear it. Does not change the main chat or decision default.
+       */
+      small_model_id?: string | null;
       system_decisions?: components["schemas"]["SystemDecisions"] | null;
       web_search_defaults?: components["schemas"]["WebSearchDefaults"] | null;
     };
@@ -30325,6 +30464,14 @@ export interface components {
        * @example false
        */
       is_pinned?: boolean | null;
+      /**
+       * Format: date-time
+       * @description Timestamp of the latest input or completed assistant message.
+       *     Populated on session lists; session edits and tool events do not advance it.
+       */
+      last_message_at?: string | null;
+      /** @description Outcome of the latest terminal turn, distinguishing cancellation from failure. */
+      last_turn_status?: string | null;
       /**
        * @description Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).
        * @example en-US
@@ -32780,6 +32927,36 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_agent_failures: {
+    parameters: {
+      query?: {
+        /** @description Exclusive lower bound on failure time; defaults to 24 hours before `before`. */
+        after?: string;
+        /** @description Inclusive upper bound, normally the Agents activity response's generated_at. */
+        before?: string;
+        offset?: number;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentFailureSessions"];
         };
       };
     };

@@ -9,16 +9,32 @@
 //! [`Secret::named`] a connection or channel mentions, so the host can ask for
 //! missing ones before the first deploy.
 
+use std::cell::RefCell;
 use std::collections::BTreeSet;
-use std::sync::Mutex;
 
 use anyhow::anyhow;
 
-/// Every secret name mentioned while the app was being discovered.
-static DECLARED: Mutex<BTreeSet<&'static str>> = Mutex::new(BTreeSet::new());
+thread_local! {
+    // Discovery is synchronous. Scope declarations to that app and thread;
+    // unrelated hosts or runtime tool calls must not mutate retained build ids.
+    static DECLARED: RefCell<Vec<BTreeSet<&'static str>>> = const { RefCell::new(Vec::new()) };
+}
 
-pub(crate) fn declared_secrets() -> BTreeSet<&'static str> {
-    DECLARED.lock().map(|set| set.clone()).unwrap_or_default()
+pub(crate) fn capture_secrets<T>(build: impl FnOnce() -> T) -> (T, BTreeSet<&'static str>) {
+    struct Scope;
+    impl Drop for Scope {
+        fn drop(&mut self) {
+            DECLARED.with_borrow_mut(|scopes| {
+                scopes.pop();
+            });
+        }
+    }
+    DECLARED.with_borrow_mut(|scopes| scopes.push(BTreeSet::new()));
+    let scope = Scope;
+    let result = build();
+    let secrets = DECLARED.with_borrow(|scopes| scopes.last().cloned().unwrap_or_default());
+    drop(scope);
+    (result, secrets)
 }
 
 /// A secret provided by the host as an environment variable.
@@ -31,9 +47,11 @@ impl Secret {
     /// Declare a secret. Declaring records it for the manifest; nothing is
     /// read until [`value`](Self::value).
     pub fn named(name: &'static str) -> Self {
-        if let Ok(mut set) = DECLARED.lock() {
-            set.insert(name);
-        }
+        DECLARED.with_borrow_mut(|scopes| {
+            if let Some(set) = scopes.last_mut() {
+                set.insert(name);
+            }
+        });
         Self { name }
     }
 
@@ -98,8 +116,8 @@ mod tests {
 
     #[test]
     fn declaring_a_secret_records_it_without_reading_it() {
-        let secret = Secret::named("SERVE_TEST_DECLARED_ONLY");
-        assert!(declared_secrets().contains("SERVE_TEST_DECLARED_ONLY"));
+        let (secret, names) = capture_secrets(|| Secret::named("SERVE_TEST_DECLARED_ONLY"));
+        assert!(names.contains("SERVE_TEST_DECLARED_ONLY"));
         assert!(!secret.is_present());
         let err = secret.value().unwrap_err().to_string();
         assert!(err.contains("SERVE_TEST_DECLARED_ONLY"), "{err}");

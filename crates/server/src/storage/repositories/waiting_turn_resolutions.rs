@@ -24,7 +24,25 @@ impl Database {
         session_id: SessionId,
         resolution_plan: WaitingTurnResolutionPlan,
     ) -> Result<ClaimWaitingTurnResult> {
-        self.claim_waiting_turn_inner(org_id, session_id, resolution_plan, false)
+        self.claim_waiting_turn_inner(org_id, session_id, resolution_plan, false, None)
+            .await
+    }
+
+    /// Shared Rust validates client results against canonical pending calls
+    /// while the same row lock protects admission of their durable resolution.
+    pub async fn claim_tool_result_command(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        results: Vec<everruns_core::events::ToolCompletedData>,
+    ) -> Result<ClaimWaitingTurnResult> {
+        let plan = WaitingTurnResolutionPlan {
+            kind: "tool_results".into(),
+            events: Vec::new(),
+            session_values: Vec::new(),
+            response: serde_json::json!({}),
+        };
+        self.claim_waiting_turn_inner(org_id, session_id, plan, false, Some(results))
             .await
     }
 
@@ -34,7 +52,7 @@ impl Database {
         session_id: SessionId,
         resolution_plan: WaitingTurnResolutionPlan,
     ) -> Result<ClaimWaitingTurnResult> {
-        self.claim_waiting_turn_inner(org_id, session_id, resolution_plan, true)
+        self.claim_waiting_turn_inner(org_id, session_id, resolution_plan, true, None)
             .await
     }
 
@@ -44,6 +62,7 @@ impl Database {
         session_id: SessionId,
         resolution_plan: WaitingTurnResolutionPlan,
         recover_existing: bool,
+        command_results: Option<Vec<everruns_core::events::ToolCompletedData>>,
     ) -> Result<ClaimWaitingTurnResult> {
         let mut tx = self.pool.begin().await?;
         let row: Option<WaitingTurnResolutionRow> = sqlx::query_as(
@@ -60,6 +79,11 @@ impl Database {
         };
 
         if status == "waiting_for_tool_results" {
+            let resolution_plan = if let Some(results) = command_results {
+                super::session_command::prepare_tool_results(&mut tx, session_id, results).await?
+            } else {
+                resolution_plan
+            };
             let resolution_id = Uuid::now_v7();
             let claim_token = Uuid::now_v7();
             sqlx::query(
@@ -138,9 +162,38 @@ impl Database {
         resolution_id: Uuid,
         claim_token: Uuid,
     ) -> Result<bool> {
+        self.complete_waiting_turn_claim_inner(org_id, session_id, resolution_id, claim_token, true)
+            .await
+    }
+
+    pub async fn park_waiting_turn_claim(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        resolution_id: Uuid,
+        claim_token: Uuid,
+    ) -> Result<bool> {
+        self.complete_waiting_turn_claim_inner(
+            org_id,
+            session_id,
+            resolution_id,
+            claim_token,
+            false,
+        )
+        .await
+    }
+
+    async fn complete_waiting_turn_claim_inner(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        resolution_id: Uuid,
+        claim_token: Uuid,
+        resume: bool,
+    ) -> Result<bool> {
         let completed = sqlx::query(
             "UPDATE sessions SET \
-                 status = CASE WHEN status = $3 THEN 'active' ELSE status END, \
+                 status = CASE WHEN status = $3 OR ($6 = 'waiting_for_tool_results' AND status = 'active') THEN $6 ELSE status END, \
                  turn_resolution_id = NULL, \
                  turn_resolution_claim_token = NULL, turn_resolution_lease_expires_at = NULL, \
                  turn_resolution_plan = NULL, updated_at = NOW() \
@@ -155,6 +208,11 @@ impl Database {
         .bind(RESOLVING_TOOL_RESULTS_STATUS)
         .bind(resolution_id)
         .bind(claim_token)
+        .bind(if resume {
+            "active"
+        } else {
+            "waiting_for_tool_results"
+        })
         .execute(&self.pool)
         .await?;
         Ok(completed.rows_affected() == 1)

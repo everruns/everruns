@@ -24,9 +24,12 @@ agents delete	--context-revision --id --reason <id>
 agents destroy	--context-revision --id --reason <id>
 agents diff	--against --target <file>!
 agents draft	--context-revision --draft --messages! --reason
+agents examples adopt	--context-revision --name --reason <name>
+agents examples list	--context-revision --reason
 agents export	--format --out <agent>!
 agents exposures resume	--agent --context-revision --reason <agent_id>
 agents exposures suspend	--agent --context-revision --reason <agent_id>
+agents failures list	--after --agent --before --context-revision --limit --offset --reason <agent_id>
 agents get	--context-revision --id --reason <id>
 agents github connect	--agent-id! --context-revision --owner-org --reason --return-to
 agents github disconnect	--agent-id! --context-revision --reason
@@ -44,14 +47,14 @@ agents scripts delete	--agent-id! --context-revision --reason --script-id!
 agents scripts get	--agent-id! --context-revision --reason --script-id!
 agents scripts list	--agent-id --context-revision --include-archived --reason <agent_id>
 agents scripts update	--agent-id! --body --context-revision --description --input-schema --reason --script-id!
-agents triggers create	--agent-id! --auth --context-revision --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message! --rate-limit-per-minute --reason --repositories... --script --session-mode --subject-template --timezone --token --trigger-type
+agents triggers create	--agent-id! --auth --context-revision --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message! --rate-limit-per-minute --reason --repositories... --script --session-mode --subject-template --target-binding-key --target-channel-id --timezone --token --trigger-type
 agents triggers delete	--agent-id! --context-revision --reason --trigger-id!
 agents triggers deliveries list	--agent-id! --context-revision --limit --reason --trigger-id!
 agents triggers get	--agent-id! --context-revision --reason --trigger-id!
 agents triggers list	--agent-id --context-revision --include-archived --reason <agent_id>
 agents triggers runs list	--agent-id! --context-revision --reason --trigger-id!
 agents triggers trigger	--agent-id! --context-revision --reason --trigger-id!
-agents triggers update	--agent-id! --auth --context-revision --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message --rate-limit-per-minute --reason --repositories... --script --session-mode --subject-template --timezone --token --trigger-id!
+agents triggers update	--agent-id! --auth --context-revision --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message --rate-limit-per-minute --reason --repositories... --script --session-mode --subject-template --target-binding-key --target-channel-id --timezone --token --trigger-id!
 agents update	--description --file/-f --harness/-H --initial-files-dir --instructions --model --name --reason --tag/-t... --writable <agent_id>
 agents upsert	--capabilities --communication --context-revision --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --max-iterations --max-output-tokens --mcpServers --name! --network-access --parallel-tool-calls --reason --sandbox-policy --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
 agents validate	--remote <file>!
@@ -198,6 +201,7 @@ orgs egress-allowlist grant set	--context-revision --granted --open --org! --rea
 orgs egress-allowlist set	--context-revision --org! --patterns!... --reason
 orgs get	--context-revision --org --reason <org>
 orgs list	--context-revision --reason
+orgs provider-accounts list	--context-revision --org! --reason
 orgs resolve	--context-revision --id! --reason
 orgs select
 payments accounts create	--context-revision --label! --metadata --owner-id! --owner-type! --private-key --public-address --rail! --reason

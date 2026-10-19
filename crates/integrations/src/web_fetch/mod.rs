@@ -458,7 +458,7 @@ impl WebFetchTool {
         // Decision: in-process JavaScript rendering (fetchkit's `render-rakers`)
         // is not enabled. It linked a JS engine and an HTML/CSS selector stack
         // into every binary for an opt-in fetch mode; JS-rendered pages are
-        // served by the browserless and deno integrations instead.
+        // served by the browserless integration instead.
         let mut builder = fetchkit::Tool::builder().enable_save_to_file(enable_save_to_file);
         if let Some(config) = bot_auth {
             builder = builder.bot_auth(config);

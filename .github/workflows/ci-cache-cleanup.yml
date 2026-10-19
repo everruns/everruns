@@ -1,0 +1,31 @@
+name: Closed PR Cache Cleanup
+on:
+  pull_request_target:
+    branches: [main]
+    types: [closed]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: closed-pr-cache-cleanup-${{ github.event.pull_request.number || 'sweep' }}
+  cancel-in-progress: false
+jobs:
+  cleanup:
+    if: github.event_name == 'pull_request_target' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
+      pull-requests: read
+    steps:
+      # THREAT[TM-CI-011]: privileged cleanup executes only trusted main;
+      # no PR checkout, artifacts, scripts or interpolated PR metadata.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Remove caches belonging to verified closed PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/ci/cache_cleanup.py

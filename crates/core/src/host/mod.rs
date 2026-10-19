@@ -67,6 +67,8 @@ mod runtime_context;
 #[path = "host.rs"]
 mod runtime_host;
 mod script_run;
+#[cfg(feature = "actor-runtime")]
+pub mod session_actor;
 mod session_file_system_factory;
 pub mod session_services;
 mod thread_cpu;
@@ -79,7 +81,6 @@ mod workspace;
 
 pub use crate::AssembledTurnContext;
 pub use crate::task_observer::{TaskTransition, TaskTransitionObserver};
-pub use crate::turn::TurnStopReason;
 pub use actor::{
     ActorRunner, DEFAULT_SESSION_LEASE_TTL, InMemorySessionLeases, SessionLease, SessionLeases,
     session_held_elsewhere,
@@ -103,7 +104,11 @@ pub use compute::{HostCompute, HostComputeSession};
 #[cfg(feature = "direct-egress")]
 pub use egress::DirectEgressService;
 #[cfg(feature = "direct-egress")]
-pub use egress_proxy::{EGRESS_PROXY_SECRET_ENV, EGRESS_PROXY_URL_ENV, TenantEgressProxy};
+pub use egress_proxy::{
+    EGRESS_PROXY_SECRET_ENV, EGRESS_PROXY_URL_ENV, MAX_PROXY_TOKEN_FUTURE_SECS,
+    MIN_PROXY_SECRET_LEN, ProxyClaims, ProxyTokenError, TenantEgressProxy, constant_time_eq,
+    sign_proxy_token, verify_proxy_authorization, verify_proxy_token,
+};
 #[cfg(feature = "direct-egress")]
 pub use egress_reputation::{DomainReputation, EGRESS_REPUTATION_ENV};
 pub use events::{
@@ -117,6 +122,7 @@ pub use events::{
 pub use everruns_contracts::error::{
     AgentLoopError, BillingPressureReason, LlmError, LlmErrorKind,
 };
+pub use everruns_contracts::turn::TurnStopReason;
 pub use everruns_contracts::typed_id::WorkspaceId;
 pub use execution_snapshot::{load_execution_snapshot, load_execution_snapshot_for_session};
 pub use extensions::{
@@ -171,7 +177,8 @@ pub use session_services::{
     update_session_title_with_event,
 };
 pub use turn_backend::{
-    InProcessBackend, TurnBackend, TurnInput, TurnRequest, TurnScope, TurnTicket,
+    InProcessBackend, TurnBackend, TurnBackendFactory, TurnInput, TurnRequest, TurnScope,
+    TurnTicket,
 };
 pub use turn_loop::{PendingInput, TurnDrive, TurnInbox, TurnResult, drive_turn, turn_entry_plan};
 pub use turn_resume::{

@@ -23,6 +23,7 @@ struct PortState {
     history: HashMap<String, Vec<DeliveryEvent>>,
     subscribers: HashMap<String, Vec<mpsc::UnboundedSender<DeliveryEvent>>>,
     steer: bool,
+    resolution: Option<SendResolution>,
     discarded: Vec<String>,
     seeded: Vec<(String, Vec<InputMessage>)>,
     controls: Vec<(String, ControlAction)>,
@@ -83,12 +84,33 @@ impl ChannelSessionPort for FakePort {
     ) -> Result<SendOutcome, ChannelError> {
         let mut state = self.state();
         state.sent.push((session_id.to_string(), message));
+        if state.resolution.is_some() {
+            return Ok(SendOutcome::Pending {
+                input_message_id: format!("turn_{}", state.sent.len()),
+            });
+        }
         if state.steer {
             return Ok(SendOutcome::Steered);
         }
         Ok(SendOutcome::Started {
             input_message_id: format!("turn_{}", state.sent.len()),
         })
+    }
+
+    async fn resolve_send(
+        &self,
+        _: &ChannelConfig,
+        _: &str,
+        _: &str,
+    ) -> Result<SendResolution, ChannelError> {
+        Ok(self
+            .state()
+            .resolution
+            .clone()
+            .unwrap_or(SendResolution::Assigned {
+                turn_id: None,
+                steered: false,
+            }))
     }
 
     async fn discard_session(
@@ -324,7 +346,7 @@ fn event(sequence: i64, turn: &str, event_type: &str, data: Value) -> DeliveryEv
         event_type: event_type.into(),
         data,
         input_message_id: Some(turn.into()),
-        turn_id: None,
+        turn_id: Some(format!("logical-{turn}")),
     }
 }
 
@@ -626,6 +648,52 @@ async fn start_opens_a_conversation_from_this_side() {
         f.driver.posts() == vec![("daily".into(), "summary".into())]
     })
     .await;
+}
+
+#[tokio::test]
+async fn send_in_conversation_binds_once_and_delivers_to_the_target() {
+    let f = fixture(SessionBinding::Requester);
+    let (first, outcome) = f
+        .host
+        .send_in_conversation(
+            "support",
+            "test:user:U1",
+            InputMessage::user("Morning briefing"),
+            DeliveryTarget::new("D1", ""),
+        )
+        .await
+        .unwrap();
+    assert!(first.created);
+    assert_eq!(
+        outcome,
+        SendOutcome::Started {
+            input_message_id: "turn_1".into()
+        }
+    );
+    assert_eq!(
+        f.port.state().created[0].binding_key.as_deref(),
+        Some("test:user:U1")
+    );
+    f.port.reply(&first.session_id, "turn_1", "briefing");
+    eventually("the reply", || {
+        f.driver.posts() == vec![(String::new(), "briefing".into())]
+    })
+    .await;
+
+    // The next run, like the next platform message, lands in the same session.
+    let (again, _) = f
+        .host
+        .send_in_conversation(
+            "support",
+            "test:user:U1",
+            InputMessage::user("Weekly review"),
+            DeliveryTarget::new("D1", ""),
+        )
+        .await
+        .unwrap();
+    assert!(!again.created);
+    assert_eq!(again.session_id, first.session_id);
+    assert_eq!(f.port.state().created.len(), 1);
 }
 
 #[test]
@@ -1185,4 +1253,87 @@ async fn a_planner_shapes_each_turn_delivery() {
         *planner.planned.lock().unwrap(),
         vec![("session_1".to_string(), "t1".to_string())]
     );
+}
+
+#[tokio::test]
+async fn deferred_admission_is_acknowledged_and_steering_or_rejection_clears_its_delivery() {
+    for resolution in [
+        SendResolution::Assigned {
+            turn_id: Some("active-turn".into()),
+            steered: true,
+        },
+        SendResolution::Rejected,
+    ] {
+        let f = fixture(SessionBinding::Thread);
+        f.port.state().resolution = Some(SendResolution::Pending);
+        let response = tokio::time::timeout(
+            Duration::from_millis(250),
+            f.host.handle("support", &message("hello", "t1", "m1")),
+        )
+        .await
+        .expect("acknowledgement must not wait for execution");
+        assert_eq!(response.status, 200);
+        eventually("admission delivery to be retained", || {
+            !futures::executor::block_on(f.store.claim_pending("test", DEFAULT_DELIVERY_LEASE))
+                .unwrap()
+                .is_empty()
+        })
+        .await;
+        f.port.state().resolution = Some(resolution);
+        eventually("settled admission delivery to clear", || {
+            futures::executor::block_on(f.store.claim_pending("test", DEFAULT_DELIVERY_LEASE))
+                .unwrap()
+                .is_empty()
+        })
+        .await;
+        assert!(f.driver.posts().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn a_deferred_start_preserves_the_reply_emitted_before_assignment_is_observed() {
+    let f = fixture(SessionBinding::Thread);
+    f.port.state().resolution = Some(SendResolution::Pending);
+    f.host
+        .handle("support", &message("hello", "t1", "m1"))
+        .await;
+    f.port.reply("session_1", "turn_1", "retained reply");
+    f.port.state().resolution = Some(SendResolution::Assigned {
+        turn_id: Some("turn_1".into()),
+        steered: false,
+    });
+    eventually("the buffered reply", || {
+        f.driver.posts() == vec![("t1".into(), "retained reply".into())]
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn deferred_stream_steering_follows_the_assigned_turn_and_skips_other_terminals() {
+    let port = Arc::new(FakePort::default());
+    port.state().resolution = Some(SendResolution::Pending);
+    let host = ChannelHost::builder(port.clone())
+        .stream_channel(ChannelConfig::new("api"), "api")
+        .build();
+    let turn = host
+        .stream_turn("api", "session_1", InputMessage::user("steer"))
+        .await
+        .unwrap();
+    // Both boundaries arrive while the frontend still sees pending admission.
+    port.reply("session_1", "old-turn", "old output");
+    port.reply("session_1", "assigned-turn", "assigned output");
+    port.state().resolution = Some(SendResolution::Assigned {
+        turn_id: Some("logical-assigned-turn".into()),
+        steered: true,
+    });
+    let events = tokio::time::timeout(Duration::from_secs(1), turn.events.collect::<Vec<_>>())
+        .await
+        .expect("assigned turn must close the stream");
+    assert!(!events.is_empty());
+    assert!(
+        events
+            .iter()
+            .all(|event| event.turn_id.as_deref() == Some("logical-assigned-turn"))
+    );
+    assert_eq!(events.last().unwrap().event_type, TURN_COMPLETED);
 }

@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::SessionId;
 use everruns_worker::actor_lease_store::{
-    ActorJournal, ActorLeaseStore, ActorRelease, ActorRenewal, LeasedActor,
+    ActorJournal, ActorLeaseStore, ActorRelease, ActorRenewal, LeasedActor, SessionActorStore,
 };
 
 use super::store_error;
@@ -59,7 +59,10 @@ impl ActorLeaseStore for DirectActorLeaseStore {
             })
             .collect()
     }
+}
 
+#[async_trait]
+impl SessionActorStore for DirectActorLeaseStore {
     async fn renew_actor_lease(
         &self,
         session_id: SessionId,

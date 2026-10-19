@@ -7,6 +7,7 @@ import starlightLlmsTxt from "starlight-llms-txt";
 import starlightLinksValidator from "starlight-links-validator";
 import apiSidebarFix from "./plugins/api-sidebar-fix.ts";
 import remarkStripRustHiddenLines from "./plugins/remark-strip-rust-hidden-lines.ts";
+import remarkMermaidDiagrams from "./plugins/remark-mermaid-diagrams.mjs";
 import rehypeBaseLinks from "./plugins/rehype-base-links.ts";
 import { BASE, SITE, withBase } from "./site.config.mjs";
 import perPageMarkdown from "./integrations/per-page-markdown.mjs";
@@ -53,6 +54,7 @@ export default defineConfig({
       // Hide rustdoc `# ` boilerplate lines in Rust blocks. rustdoc hides
       // them; Starlight would otherwise render the `#` prefixes literally.
       remarkStripRustHiddenLines,
+      remarkMermaidDiagrams,
     ],
     rehypePlugins: [[rehypeBaseLinks, { base: BASE }]],
   },
@@ -87,7 +89,6 @@ export default defineConfig({
     "/integrations/e2b/": "/capabilities/e2b/",
     "/integrations/container-sandbox/": "/capabilities/container-sandbox/",
     "/integrations/browserless/": "/capabilities/browserless/",
-    "/integrations/slack/": "/capabilities/slack/",
     "/framework/supported-providers/": "/framework/models-and-providers/",
     "/framework/custom-providers/": "/framework/models-and-providers/",
     "/framework/model-catalogs/": "/framework/models-and-providers/",
@@ -366,7 +367,9 @@ export default defineConfig({
                     { label: "A2A", slug: "framework/a2a" },
                     { label: "Build a Voice Agent", slug: "framework/voice" },
                     { label: "Serve on AgentCore (experimental)", slug: "framework/serve-agentcore" },
-                    { label: "Serve on celld (experimental)", slug: "framework/serve-celld" },
+                    { label: "Serve on celld Reference", slug: "framework/serve-celld" },
+                    { label: "Pluggable Session Hosting", slug: "framework/hosting" },
+                    { label: "Durable Object Reference", slug: "framework/durable-objects" },
                   ],
                 },
                 {
@@ -485,6 +488,7 @@ export default defineConfig({
                         { label: "Tools in Shell", slug: "capabilities/tools-in-shell" },
                         { label: "Host Shell", slug: "capabilities/host-shell" },
                         { label: "Session", slug: "capabilities/session" },
+                        { label: "Automatic session titles", slug: "capabilities/automatic-session-titles" },
                         { label: "Session Storage", slug: "capabilities/session-storage" },
                         { label: "Web Fetch", slug: "capabilities/web-fetch" },
                         { label: "Web Search", slug: "capabilities/web-search" },
@@ -552,7 +556,7 @@ export default defineConfig({
                       items: [
                         { label: "GitHub", slug: "capabilities/github" },
                         { label: "GitHub Scout", slug: "capabilities/github-scout" },
-                        { label: "Slack", slug: "capabilities/slack" },
+                        { label: "Slack actions", slug: "capabilities/slack" },
                         { label: "User MCP Servers", slug: "capabilities/user-mcp-servers" },
                         { label: "Poppy Personal Agent", slug: "capabilities/poppy-personal-agent" },
                       ],
@@ -603,12 +607,13 @@ export default defineConfig({
                   // Grouped to mirror the category taxonomy in
                   // docs/integrations/index.md. Keep the two in sync when adding
                   // or recategorizing an integration. Vendors with a capability
-                  // page (Daytona, E2B, Browserless, Slack) are listed under
+                  // page (Daytona, E2B, Browserless) are listed under
                   // Capabilities only; the overview links to them. Sidebar
                   // glyphs for each entry live in src/styles/custom.css, keyed
                   // by href.
                   items: [
                     { label: "Overview", slug: "integrations" },
+                    { label: "Messaging", items: [{ label: "Slack", slug: "integrations/slack" }] },
                     {
                       label: "Sandboxes & execution",
                       items: [

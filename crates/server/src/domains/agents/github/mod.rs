@@ -198,8 +198,7 @@ pub(crate) async fn status_for_agent(
         Some(GitHubIdentityKind::Person) | None => app.as_ref().map(|_| AGENT_APP_KIND),
     };
     // Connected means an installation the agent acts through: its own App's,
-    // or a shared App link it chose. A pre-D3 shared App row (`oauth`) on an
-    // agent is reported by kind but not as connected; 3b migrates those.
+    // or a shared App link it chose.
     let connection = any_connection.filter(|c| {
         c.connection_type == GITHUB_APP_CONNECTION_TYPE
             || c.connection_type == EVERRUNS_APP_CONNECTION_TYPE

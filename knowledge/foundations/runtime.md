@@ -69,7 +69,7 @@ own backends through the same contracts.
 ## Public Contract
 
 The public entrypoint is `InProcessRuntimeBuilder` in
-`crates/core/src/host/runtime.rs`.
+`crates/core/src/host/runtime/mod.rs`.
 
 ### Builder responsibilities
 
@@ -370,7 +370,7 @@ externally implementable.
 
 `HostBackends` carries a uniform set of optional, additive backend slots that
 the host forwards into `ActAtom` when present (see
-`crates/core/src/host/runtime.rs` and `crates/core/src/host/runtime_host.rs`):
+`crates/core/src/host/runtime/mod.rs` and `crates/core/src/host/runtime_host.rs`):
 
 - `session_task_registry`, persists background-tool / subagent / monitor task
   lifecycle (`everruns_core::session_task::SessionTaskRegistry`).
@@ -521,7 +521,7 @@ test binaries in `crates/everruns/tests/host/`.
 
 - `crates/core/src/host/mod.rs`
 - `crates/core/src/host/builders.rs`
-- `crates/core/src/host/runtime.rs`
+- `crates/core/src/host/runtime/mod.rs`
 - `crates/core/src/host/runtime_host.rs`
 - `crates/core/src/host/in_memory.rs`
 - `crates/core/src/host/backends.rs`

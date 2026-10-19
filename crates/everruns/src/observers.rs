@@ -8,11 +8,11 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
+use everruns_contracts::rt::JoinHandle;
 #[cfg(any(feature = "otel", feature = "braintrust"))]
 use everruns_core::EventListener as CoreEventListener;
 use everruns_core::events::Event as CoreEvent;
 use tokio::sync::{mpsc, watch};
-use tokio::task::JoinHandle;
 
 use crate::SessionEvent;
 
@@ -163,9 +163,12 @@ impl ListenerTarget {
         }
     }
 
-    async fn flush(&self) {
+    async fn flush(&self) -> Result<(), String> {
         match self {
-            Self::App(listener) => listener.flush().await,
+            Self::App(listener) => {
+                listener.flush().await;
+                Ok(())
+            }
             #[cfg(any(feature = "otel", feature = "braintrust"))]
             Self::Host(listener) => listener.flush().await,
         }
@@ -238,6 +241,8 @@ pub struct ListenerStats {
     pub panics: u64,
     /// Whether the listener completed its most recent shutdown flush.
     pub flushed: bool,
+    /// Exporter failure reported by the most recent shutdown flush.
+    pub flush_error: Option<String>,
 }
 
 /// Snapshot of Engine observer delivery counters.
@@ -279,6 +284,7 @@ struct ListenerCounters {
     dropped: AtomicU64,
     panics: AtomicU64,
     flushed: AtomicBool,
+    flush_error: Mutex<Option<String>>,
     next_warning_ms: AtomicU64,
 }
 
@@ -289,6 +295,7 @@ impl ListenerCounters {
             dropped: AtomicU64::new(0),
             panics: AtomicU64::new(0),
             flushed: AtomicBool::new(false),
+            flush_error: Mutex::new(None),
             next_warning_ms: AtomicU64::new(0),
         }
     }
@@ -300,11 +307,11 @@ async fn finish_shutdown(
     timeout: Duration,
     completion: watch::Sender<Option<ObserverReport>>,
 ) {
-    let deadline = tokio::time::Instant::now().checked_add(timeout);
+    let deadline = everruns_contracts::rt::Instant::now().checked_add(timeout);
     let mut timed_out = false;
     for (slot, mut handle) in handles {
         let outcome = match deadline {
-            Some(deadline) => tokio::time::timeout_at(deadline, &mut handle).await,
+            Some(deadline) => everruns_contracts::rt::timeout_at(deadline, &mut handle).await,
             None => Ok((&mut handle).await),
         };
         match outcome {
@@ -394,7 +401,7 @@ impl ListenerSlot {
         let Some(receiver) = worker.receiver.take() else {
             return;
         };
-        worker.handle = Some(tokio::spawn(drain_listener(
+        worker.handle = Some(everruns_contracts::rt::spawn(drain_listener(
             self.listener.clone(),
             receiver,
             self.counters.clone(),
@@ -482,6 +489,12 @@ impl ListenerSlot {
             dropped: self.counters.dropped.load(Ordering::Relaxed),
             panics: self.counters.panics.load(Ordering::Relaxed),
             flushed: self.counters.flushed.load(Ordering::Relaxed),
+            flush_error: self
+                .counters
+                .flush_error
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone(),
         }
     }
 }
@@ -493,7 +506,7 @@ async fn drain_listener(
 ) {
     while let Some(event) = receiver.recv().await {
         let listener = listener.clone();
-        let mut invocation = AbortOnDrop(tokio::spawn(async move {
+        let mut invocation = AbortOnDrop(everruns_contracts::rt::spawn(async move {
             listener.on_event(&event.event).await
         }));
         match (&mut invocation.0).await {
@@ -508,9 +521,17 @@ async fn drain_listener(
     }
 
     let flush_listener = listener.clone();
-    let mut flush = AbortOnDrop(tokio::spawn(async move { flush_listener.flush().await }));
+    let mut flush = AbortOnDrop(everruns_contracts::rt::spawn(async move {
+        flush_listener.flush().await
+    }));
     match (&mut flush.0).await {
-        Ok(()) => counters.flushed.store(true, Ordering::Relaxed),
+        Ok(Ok(())) => counters.flushed.store(true, Ordering::Relaxed),
+        Ok(Err(error)) => {
+            *counters
+                .flush_error
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) = Some(error);
+        }
         Err(error) if error.is_panic() => {
             counters.panics.fetch_add(1, Ordering::Relaxed);
         }
@@ -619,7 +640,7 @@ impl ObserverDispatcher {
                     .collect();
                 let slots = self.slots.clone();
                 let (sender, completion) = watch::channel(None);
-                tokio::spawn(finish_shutdown(slots, handles, timeout, sender));
+                everruns_contracts::rt::spawn(finish_shutdown(slots, handles, timeout, sender));
                 *shutdown = Some(completion.clone());
                 completion
             }
@@ -730,6 +751,41 @@ mod tests {
         fn name(&self) -> &'static str {
             "recorder"
         }
+    }
+
+    #[cfg(feature = "otel")]
+    #[tokio::test]
+    async fn shutdown_reports_host_flush_failure() {
+        struct FailedFlush;
+        #[async_trait]
+        impl CoreEventListener for FailedFlush {
+            async fn on_event(&self, _: &CoreEvent) {}
+            async fn flush(&self) -> Result<(), String> {
+                Err("synthetic exporter failure".into())
+            }
+        }
+        let dispatcher =
+            ObserverDispatcher::new(vec![ListenerRegistration::Host(Arc::new(FailedFlush))], 8);
+        let session_id = everruns_contracts::typed_id::SessionId::new();
+        let bus = Arc::new(FacadeEventBus::new(session_id, dispatcher.clone()));
+        let emitter = HostEventEmitter::new(Arc::new(InMemoryEventLog::new()), bus);
+        emitter
+            .emit(EventRequest::new(
+                session_id,
+                EventContext::empty(),
+                everruns_core::events::InputMessageData {
+                    message: everruns_core::message::RuntimeMessage::user("synthetic"),
+                },
+            ))
+            .await
+            .unwrap();
+        let report = dispatcher.shutdown(Duration::from_secs(1)).await;
+        assert!(!report.timed_out);
+        assert!(!report.stats.listeners[0].flushed);
+        assert_eq!(
+            report.stats.listeners[0].flush_error.as_deref(),
+            Some("synthetic exporter failure")
+        );
     }
 
     /// An unfiltered host listener, for asserting that the core half is still
@@ -1052,12 +1108,12 @@ mod tests {
             })
             .build();
         let session = engine.create(simple_agent());
-        let run = tokio::spawn(async move { session.run("hello").await });
+        let run = everruns_contracts::rt::spawn(async move { session.run("hello").await });
 
-        tokio::time::timeout(Duration::from_secs(5), entered.notified())
+        everruns_contracts::rt::timeout(Duration::from_secs(5), entered.notified())
             .await
             .expect("listener receives an event");
-        let turn = tokio::time::timeout(Duration::from_secs(5), run)
+        let turn = everruns_contracts::rt::timeout(Duration::from_secs(5), run)
             .await
             .expect("slow listener does not delay the turn")
             .expect("turn task remains healthy")
@@ -1082,17 +1138,21 @@ mod tests {
             })
             .build();
         let session = engine.create(simple_agent());
-        let run = tokio::spawn(async move { session.run("hello").await });
+        let run = everruns_contracts::rt::spawn(async move { session.run("hello").await });
         entered.notified().await;
         run.await
             .expect("turn task remains healthy")
             .expect("turn runs");
 
         let first_engine = engine.clone();
-        let first =
-            tokio::spawn(async move { first_engine.shutdown(Duration::from_secs(5)).await });
-        let second = tokio::spawn(async move { engine.shutdown(Duration::from_secs(5)).await });
-        tokio::time::sleep(Duration::from_millis(20)).await;
+        let first = everruns_contracts::rt::spawn(async move {
+            first_engine.shutdown(Duration::from_secs(5)).await
+        });
+        let second =
+            everruns_contracts::rt::spawn(
+                async move { engine.shutdown(Duration::from_secs(5)).await },
+            );
+        everruns_contracts::rt::sleep(Duration::from_millis(20)).await;
         assert!(!first.is_finished());
         assert!(!second.is_finished());
 
@@ -1215,7 +1275,7 @@ mod tests {
         let report = dispatcher.shutdown(Duration::ZERO).await;
 
         assert!(report.timed_out);
-        tokio::time::timeout(Duration::from_secs(1), cancelled.notified())
+        everruns_contracts::rt::timeout(Duration::from_secs(1), cancelled.notified())
             .await
             .expect("deadline cancels the active listener callback");
     }

@@ -404,7 +404,7 @@ pub fn declared(name: &str) -> Change {
 
     match name {
         // Agents and what hangs off them.
-        "create_agent" | "copy_agent" => on(K::Agent, Created, ID),
+        "create_agent" | "copy_agent" | "adopt_agent_example" => on(K::Agent, Created, ID),
         "import_agent" => on(K::Agent, Imported, ID),
         "update_agent" | "upsert_agent" => on(K::Agent, Updated, ID),
         "delete_agent" | "destroy_agent" => on(K::Agent, Deleted, Param("id")),

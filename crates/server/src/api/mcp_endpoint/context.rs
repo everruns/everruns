@@ -31,6 +31,7 @@ pub(crate) fn domain_context(caller: Caller, state: &AppState) -> crate::domains
     if let Some(store) = &state.sqldb_store {
         ctx = ctx.with_sqldb_store(store.clone());
     }
+    ctx.channels = state.channels.clone();
     with_provider_services(ctx, state).with_workflow_store(state.workflow_store.clone())
 }
 
@@ -111,6 +112,22 @@ impl AppState {
         >,
     ) -> Self {
         self.slack_provisioner = provisioner;
+        self
+    }
+
+    pub fn with_mcp_events(
+        mut self,
+        service: Arc<crate::domains::mcp_servers::events::McpEventsService>,
+    ) -> Self {
+        self.mcp_events = Some(service);
+        self
+    }
+
+    pub fn with_channels(
+        mut self,
+        channels: Option<Arc<crate::channels::host::ServerChannels>>,
+    ) -> Self {
+        self.channels = channels;
         self
     }
 }

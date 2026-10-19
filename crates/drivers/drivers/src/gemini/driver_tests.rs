@@ -30,7 +30,8 @@ async fn long_decode_resumes_only_at_a_safe_checkpoint_and_bills_committed_usage
             chunks.push(Err(driver_helpers::shared_streaming_http_client()
                 .get("http://[invalid")
                 .build()
-                .unwrap_err()));
+                .unwrap_err()
+                .into()));
         }
         let bytes: ByteStream = Box::pin(futures::stream::iter(chunks));
         let context = ContinuationRequest {

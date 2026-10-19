@@ -457,8 +457,11 @@ async fn manager_consent_asks_only_for_app_configuration_and_names_the_org() {
         .manager_authorize_url(
             41,
             "https://api.example.com/v1/slack/workspaces/oauth/callback",
+            "browser-secret",
         )
-        .unwrap();
+        .await
+        .unwrap()
+        .0;
 
     assert!(url.starts_with(SLACK_OAUTH_AUTHORIZE_URL));
     assert_eq!(query_param(&url, "client_id"), "111.222");
@@ -472,7 +475,12 @@ async fn manager_consent_asks_only_for_app_configuration_and_names_the_org() {
         "https://api.example.com/v1/slack/workspaces/oauth/callback"
     );
     let state = query_param(&url, "state");
-    assert_eq!(provisioner.open_manager_state(&state), Some(41));
+    assert_eq!(
+        provisioner
+            .open_manager_state(&state)
+            .map(|state| state.org_id),
+        Some(41)
+    );
 }
 
 #[tokio::test]
@@ -489,33 +497,93 @@ async fn a_forged_altered_foreign_or_expired_connect_state_names_no_org() {
     let valid = seal(&ManagerConnectState {
         purpose: MANAGER_CONNECT_STATE_PURPOSE.to_string(),
         org_id: 41,
-        expires_at: chrono::Utc::now().timestamp() + 60,
+        transaction_id: uuid::Uuid::new_v4(),
+        expires_at: chrono::Utc::now() + chrono::Duration::minutes(1),
     });
-    assert_eq!(provisioner.open_manager_state(&valid), Some(41));
+    assert_eq!(
+        provisioner
+            .open_manager_state(&valid)
+            .map(|state| state.org_id),
+        Some(41)
+    );
 
     let mut altered = valid.into_bytes();
     let last = altered.len() - 2;
     altered[last] = if altered[last] == b'A' { b'B' } else { b'A' };
     assert_eq!(
-        provisioner.open_manager_state(&String::from_utf8(altered).unwrap()),
-        None
-    );
-    assert_eq!(provisioner.open_manager_state("not-a-state"), None);
-    assert_eq!(
-        provisioner.open_manager_state(&seal(&ManagerConnectState {
-            purpose: "github_setup".to_string(),
-            org_id: 41,
-            expires_at: chrono::Utc::now().timestamp() + 60,
-        })),
+        provisioner
+            .open_manager_state(&String::from_utf8(altered).unwrap())
+            .map(|state| state.org_id),
         None
     );
     assert_eq!(
-        provisioner.open_manager_state(&seal(&ManagerConnectState {
-            purpose: MANAGER_CONNECT_STATE_PURPOSE.to_string(),
-            org_id: 41,
-            expires_at: chrono::Utc::now().timestamp() - 1,
-        })),
+        provisioner
+            .open_manager_state("not-a-state")
+            .map(|state| state.org_id),
         None
+    );
+    assert_eq!(
+        provisioner
+            .open_manager_state(&seal(&ManagerConnectState {
+                purpose: "github_setup".to_string(),
+                org_id: 41,
+                transaction_id: uuid::Uuid::new_v4(),
+                expires_at: chrono::Utc::now() + chrono::Duration::minutes(1),
+            }))
+            .map(|state| state.org_id),
+        None
+    );
+    assert_eq!(
+        provisioner
+            .open_manager_state(&seal(&ManagerConnectState {
+                purpose: MANAGER_CONNECT_STATE_PURPOSE.to_string(),
+                org_id: 41,
+                transaction_id: uuid::Uuid::new_v4(),
+                expires_at: chrono::Utc::now() - chrono::Duration::seconds(1),
+            }))
+            .map(|state| state.org_id),
+        None
+    );
+}
+
+#[tokio::test]
+async fn manager_transactions_bind_the_browser_and_org_and_survive_api_recreation() {
+    let server = MockServer::start().await;
+    let (provisioner, db) = manager_provisioner(&server);
+    let (url, _) = provisioner
+        .manager_authorize_url(41, "https://example.test/cb", "browser-one")
+        .await
+        .unwrap();
+    let state = query_param(&url, "state");
+    let mut pending = provisioner.open_manager_state(&state).unwrap();
+    assert!(
+        !provisioner
+            .consume_manager_state(&pending, "browser-two")
+            .await
+            .unwrap()
+    );
+    pending.org_id = 42;
+    assert!(
+        !provisioner
+            .consume_manager_state(&pending, "browser-one")
+            .await
+            .unwrap()
+    );
+    pending.org_id = 41;
+    let restarted = SlackApiProvisioner::with_api_base(db, encryption(), &server.uri()).unwrap();
+    let (first, second) = tokio::join!(
+        provisioner.consume_manager_state(&pending, "browser-one"),
+        restarted.consume_manager_state(&pending, "browser-one"),
+    );
+    assert_eq!(
+        usize::from(first.unwrap()) + usize::from(second.unwrap()),
+        1
+    );
+    assert!(
+        !restarted
+            .consume_manager_state(&pending, "browser-one")
+            .await
+            .unwrap()
     );
 }
 
@@ -525,7 +593,9 @@ async fn without_a_manager_app_there_is_no_consent_to_start() {
     let (provisioner, _db) = provisioner(&server);
     assert!(!provisioner.manager_app_configured());
     assert!(matches!(
-        provisioner.manager_authorize_url(41, "https://example.test/cb"),
+        provisioner
+            .manager_authorize_url(41, "https://example.test/cb", "browser-secret")
+            .await,
         Err(SlackProvisioningError::Unavailable)
     ));
 }

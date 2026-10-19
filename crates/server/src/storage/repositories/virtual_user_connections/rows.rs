@@ -21,7 +21,7 @@ pub struct VirtualUserConnectionRow {
     pub scopes: Option<String>,
     pub expires_at: Option<DateTime<Utc>>,
     pub installation_id: Option<i64>,
-    /// Provider-specific metadata (e.g. Deno org slug for personal tokens)
+    /// Provider-specific metadata (e.g. provider org slug for personal tokens)
     pub provider_metadata: Option<sqlx::types::JsonValue>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -40,7 +40,7 @@ pub struct CreateVirtualUserConnectionRow {
     pub scopes: Option<String>,
     pub expires_at: Option<DateTime<Utc>>,
     pub installation_id: Option<i64>,
-    /// Provider-specific metadata (e.g. Deno org slug for personal tokens)
+    /// Provider-specific metadata (e.g. provider org slug for personal tokens)
     pub provider_metadata: Option<serde_json::Value>,
 }
 

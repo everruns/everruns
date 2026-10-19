@@ -9,7 +9,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AccountIcon } from "@/components/icons/facet-icons";
-import { BookOpen, ChevronUp, Key, LogOut } from "lucide-react";
+import { BookOpen, ChevronUp, Key, LogOut, ScrollText } from "lucide-react";
 import { McpConnectDialog, McpConnectMenuItem } from "@/components/layout/mcp-connect-button";
 import { NotificationIndicator, NotificationMenuSub } from "@/components/layout/notification-bell";
 import { ThemeMenuSub } from "@/components/layout/theme-menu";
@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const DOCS_URL = "https://everruns.com/docs";
+const CHANGELOG_URL = "https://everruns.com/docs/changelog/";
 
 export type SidebarUserMenuUser = {
   name?: string | null;
@@ -135,6 +136,19 @@ export function SidebarUserMenu({
               >
                 <BookOpen className="icon-sharp mr-2 h-4 w-4" />
                 Documentation
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                render={
+                  <a
+                    href={CHANGELOG_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Changelog"
+                  />
+                }
+              >
+                <ScrollText className="icon-sharp mr-2 h-4 w-4" />
+                Changelog
               </DropdownMenuItem>
               {requiresAuth && renderExtraItems?.({ user, navigate })}
             </DropdownMenuGroup>

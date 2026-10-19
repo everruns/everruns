@@ -188,6 +188,8 @@ External/gRPC workers and the in-process worker both run `crates/worker/src/unif
 | Fallback poll interval | `WORKER_POLL_INTERVAL_MS` | `100` | Base interval when push notifications are unavailable. |
 | Fallback poll backoff cap | `WORKER_POLL_BACKOFF_MAX_MS` | `5000` | Idle polling backs off exponentially from the base up to this cap. |
 | Shutdown grace | `WORKER_SHUTDOWN_GRACE_SECS` | `25` | How long a stopping worker lets in-flight tasks finish before it aborts them. Keep it under the orchestrator's kill timeout. |
+| Actor stall bound | `WORKER_ACTOR_STALL_TIMEOUT_SECS` | `300` | How long a leased session may sit before or after its turn writing nothing before the worker lets its lease expire ([stall watchdog](#session-actors-turn-execution)). |
+| Control-plane call deadline | `WORKER_GRPC_REQUEST_TIMEOUT_SECS` | `120` | Deadline of each worker call to the control plane; past it the call fails as a retryable error. |
 
 Guidance:
 
@@ -342,6 +344,25 @@ production and DEV_MODE alike; the worker side is
   instead of reporting it as a model failure, so it never becomes a
   `turn.failed` with a provider-error message.
   Expiry is database time.
+- **A stalled holder lets its lease go.** The renewer extends the lease
+  whatever the turn does, so a holder stuck where it writes nothing (setup
+  before the turn is driven, or the flush and checkpoint after it) once kept a
+  session `active` with no events for two days: the lease never expired, so
+  neither resume nor the poison guard ran, and the idle sandbox sweep skipped
+  the session as active. A stall watchdog
+  ([`lease.rs`](../../crates/core/src/host/session_actor/lease.rs)) bounds
+  those phases (`WORKER_ACTOR_STALL_TIMEOUT_SECS`, default 5 minutes): past
+  the bound the renewer stops, the lease is lost and the stuck phase is
+  dropped, so the lease expires and the next one resumes from the log, each
+  stalled lease counting toward the poison guard. A driven turn is not bounded
+  this way; a long model stream or tool call is progress with its own
+  timeouts. Every worker control-plane call also has a deadline
+  (`WORKER_GRPC_REQUEST_TIMEOUT_SECS`, default 120 s,
+  [`connect.rs`](../../crates/worker/src/grpc_adapters/connect.rs)), so a call
+  nobody answers fails as a retryable store error instead of hanging the turn.
+  The task subscription stream has its own channel and no deadline. Not yet
+  covered: a sweep for an `active` session whose actor is neither leased nor
+  runnable.
 - **Every log append is fenced.** Stopping on a lost renew leaves a window: a
   write already in flight when the lease ran out could land after another
   holder took the session. So every event a leased turn appends carries its
@@ -390,7 +411,11 @@ production and DEV_MODE alike; the worker side is
   by two lease lives); inside a command transaction that wait runs after the
   commit, when the holder can first see the request, still before the command
   answers. Past the bound the answer means "acknowledged": the request stays
-  on the row for the holder, or the next one, to record.
+  on the row for the holder, or the next one, to record. A backend error does
+  not transfer event ownership to the API: session and channel cancellation
+  return the error without synthesizing terminal events or idling the session.
+  Otherwise a worker completing while the API waits for a connection can leave
+  both completion and cancellation in the same turn's log.
 - **Poison guard.** `attempts` counts leases since the last release. A lease
   that finds more than `DURABLE_NO_PROGRESS_SEAL_THRESHOLD` (default 3) seals
   the turn instead of running it: a user-facing processing error,

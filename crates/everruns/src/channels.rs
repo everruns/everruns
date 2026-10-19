@@ -67,7 +67,8 @@ pub use everruns_core::channel_runtime::{AttachmentIntake, AttachmentPolicy, Att
 pub use everruns_core::channel_runtime::{
     ChannelConfig, ChannelEventStream, ChannelHost, ChannelHostBuilder, ChannelKind, ChannelRef,
     ChannelResolver, ChannelScope, ChannelSessionPort, Conversation, DeliveryEvent,
-    NewChannelSession, ReceivedAttachment, ResolvedChannel, SendOutcome, StreamTurn,
+    NewChannelSession, ReceivedAttachment, ResolvedChannel, SendOutcome, SendResolution,
+    StreamTurn,
 };
 pub use everruns_core::channel_runtime::{
     ChannelStore, DEFAULT_DELIVERY_LEASE, DeliveryOptions, MemoryChannelStore, PendingDelivery,
@@ -348,11 +349,23 @@ impl ChannelSessionPort for EnginePort {
         let session = self.session(&channel.name, session_id).await?;
         let sent = session.send(message).await.map_err(session_error)?;
         Ok(match sent.disposition {
+            SendDisposition::Pending => SendOutcome::Pending {
+                input_message_id: sent.message_id,
+            },
             SendDisposition::Steered => SendOutcome::Steered,
             _ => SendOutcome::Started {
                 input_message_id: sent.message_id,
             },
         })
+    }
+
+    async fn resolve_send(
+        &self,
+        channel: &ChannelConfig,
+        session_id: &str,
+        input: &str,
+    ) -> Result<SendResolution, ChannelError> {
+        resolve_send(&self.session(&channel.name, session_id).await?, input).await
     }
 
     async fn events(
@@ -366,6 +379,52 @@ impl ChannelSessionPort for EnginePort {
     }
 }
 
+/// Resolve an Engine admission for the shared channel runtime. Preparation
+/// rejection has no terminal turn event, and steering has no delivery of its own.
+pub async fn resolve_send(session: &Session, input: &str) -> Result<SendResolution, ChannelError> {
+    use crate::hosting::AdmissionState;
+    if !session.has_hosted_execution() {
+        return Ok(SendResolution::Assigned {
+            turn_id: None,
+            steered: false,
+        });
+    }
+    let admission = session
+        .admission(input.parse().map_err(session_error)?)
+        .await
+        .map_err(session_error)?
+        .ok_or_else(|| ChannelError::Session("admission is unavailable".into()))?;
+    let preparing = match admission.state().await.map_err(session_error)? {
+        AdmissionState::Pending => return Ok(SendResolution::Pending),
+        AdmissionState::Rejected { .. } => return Ok(SendResolution::Rejected),
+        AdmissionState::Suspended => return Ok(SendResolution::Suspended),
+        AdmissionState::Assigned { .. } => true,
+        _ => false,
+    };
+    let Some(assignment) = admission.assignment().await.map_err(session_error)? else {
+        return Ok(SendResolution::Pending);
+    };
+    let turn = assignment.turn_id.to_string();
+    if preparing
+        && !assignment.steered
+        && !session
+            .events_after(admission.sequence())
+            .await
+            .map_err(session_error)?
+            .iter()
+            .any(|event| {
+                event.event_type() == "turn.started"
+                    && event.turn_id.as_deref() == Some(turn.as_str())
+            })
+    {
+        return Ok(SendResolution::Pending);
+    }
+    Ok(SendResolution::Assigned {
+        turn_id: Some(turn),
+        steered: assignment.steered,
+    })
+}
+
 /// A session's events as channel delivery reads them: live from now when
 /// `after` is `None`, else the durable events after that sequence followed by
 /// live ones. For hosts implementing [`ChannelSessionPort`] over a
@@ -376,6 +435,9 @@ pub async fn session_events(
 ) -> Result<ChannelEventStream, ChannelError> {
     let session = session.clone();
     let events = match after {
+        None if session.has_hosted_execution() => {
+            session.protocol_events().await.map_err(session_error)?
+        }
         None => session.events(),
         Some(after) => session
             .events_from(i32::try_from(after).unwrap_or(i32::MAX))

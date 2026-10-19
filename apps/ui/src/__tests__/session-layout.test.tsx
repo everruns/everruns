@@ -391,11 +391,11 @@ describe("SessionLayout", () => {
     });
   });
 
-  it("renders Ready badge for idle session", async () => {
+  it("renders Idle badge when there is no recorded terminal outcome", async () => {
     await renderLayout();
 
     await waitFor(() => {
-      expect(screen.getByText("Ready")).toBeInTheDocument();
+      expect(screen.getByText("Idle")).toBeInTheDocument();
     });
   });
 

@@ -4,6 +4,7 @@
 // re-exported here, so callers name them as `crate::storage::*`.
 
 mod agent_activity;
+pub use sessions::failures::{AgentFailureTotals, FailedSessionRow};
 mod agent_channels;
 pub use agent_channels::conversion::{
     ApiEndpointChannelRow, ConvertedApiChannelRow, LockedApiEndpointChannel,
@@ -515,3 +516,5 @@ impl Database {
         }
     }
 }
+
+mod session_command;

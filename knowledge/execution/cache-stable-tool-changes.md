@@ -188,7 +188,7 @@ Context is rebuilt on every reasoning step (`crates/core/src/runtime_context.rs`
 | MCP `tools/list`: scoped servers without a preset are fetched live on every turn load; a failed fetch silently drops the server's tools; order is whatever the server returns | `crates/server/src/domains/mcp_servers/scoped_mcp/`, `crates/core/src/host/mcp_cache.rs` | live, or caches with TTL |
 | Host tools that come and go (`report_result` with child tasks, coordinator and worker tools, MCP resource tools) | `crates/capabilities/src/host_extension.rs`, `crates/core/src/host/host/reason_surface.rs` | recomputed each step |
 | AG-UI frontend tools replaced per run (order-sensitive compare) | `crates/server/src/channels/ag_ui/mod.rs` | session record |
-| Capability switched on or off in a session (yolop `/ext`, in-process overlay), agent or harness edits, a model override that changes `auto_tool_search` resolution | `crates/core/src/host/runtime.rs` | session and agent records |
+| Capability switched on or off in a session (yolop `/ext`, in-process overlay), agent or harness edits, a model override that changes `auto_tool_search` resolution | `crates/core/src/host/runtime/mod.rs` | session and agent records |
 | `tools_in_shell` and Lua code mode rewrite the `bash` / `lua` description with the hidden-tool catalogue | `crates/integrations/src/bashkit/tools_in_shell/`, `lua/code_mode.rs` | recomputed each step |
 | Hosted Claude search switches on when the count crosses the threshold, which reshapes `tools` | `crates/drivers/drivers/src/anthropic/driver.rs` | recomputed each step |
 

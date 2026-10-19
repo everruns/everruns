@@ -240,3 +240,70 @@ async fn a_slack_file_is_downloaded_into_the_sessions_files() {
         [Some("Bearer xoxb-test".to_string())]
     );
 }
+
+#[tokio::test]
+async fn rejected_preparation_clears_its_channel_delivery_without_a_turn_terminal() {
+    let engine = InMemoryEngine::new();
+    let recorder = Recorder::default();
+    let store = Arc::new(MemoryChannelStore::new());
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let agent = Agent::builder()
+        .instructions("You are concise.")
+        .model(Model::simulated("must not run"))
+        .on_turn_start({
+            let entered = entered.clone();
+            let release = release.clone();
+            move |_| {
+                let entered = entered.clone();
+                let release = release.clone();
+                async move {
+                    entered.notify_one();
+                    release.notified().await;
+                    Err::<(), _>("preparation rejected")
+                }
+            }
+        })
+        .build()
+        .unwrap();
+    let channels = Channels::builder(&engine)
+        .store(store.clone())
+        .channel("support", Channel::new(recorder.clone()), agent)
+        .build();
+    let response = tokio::time::timeout(
+        Duration::from_secs(1),
+        channels.handle("support", &message("hi", "t1")),
+    )
+    .await
+    .expect("request must acknowledge before preparation finishes");
+    assert_eq!(response.status, 200);
+    tokio::time::timeout(Duration::from_secs(2), entered.notified())
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while store
+            .claim_pending("test", DEFAULT_DELIVERY_LEASE)
+            .await
+            .unwrap()
+            .is_empty()
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    release.notify_one();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while !store
+            .claim_pending("test", DEFAULT_DELIVERY_LEASE)
+            .await
+            .unwrap()
+            .is_empty()
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("rejection has no turn terminal to wait for");
+    assert!(recorder.posts().is_empty());
+}

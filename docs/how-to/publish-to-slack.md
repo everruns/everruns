@@ -61,6 +61,12 @@ behavior.
 
 Your organization must have a Slack workspace connected in **Settings** > **Slack workspaces** first; an administrator does this once. See [Connect a Slack Workspace](/capabilities/slack/#connect-a-slack-workspace).
 
+If your deployment connects workspaces through a Slack manager app, complete its
+consent in the same browser that started the connection. Each attempt expires
+after thirty minutes and can finish once. Separate tabs keep independent
+attempts. After cancellation, expiry, or an exchange failure, start a new
+connection from **Settings** > **Slack workspaces**.
+
 1. Select **Publish** in the channel editor.
 2. If more than one workspace is connected, choose which one.
 3. Select **Add to Slack**.

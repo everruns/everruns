@@ -23,7 +23,7 @@
 
 use async_trait::async_trait;
 use futures::StreamExt;
-use reqwest::header::HeaderMap;
+use http::header::HeaderMap;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
@@ -318,7 +318,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         // retry recognises the response an earlier attempt left running.
         let background_responses = background.then(|| {
             super::background::BackgroundResponses::new(
-                self.client(),
+                self.http_client(),
                 endpoint,
                 &api_url,
                 &extension_headers,
@@ -338,7 +338,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         // transient send failures) are handled inside the per-attempt send.
         // Opt-in WebSocket transport (see `websocket.rs`). `None` means it was
         // not wanted or failed before committing, and the call goes over SSE.
-        #[cfg(feature = "responses-websocket")]
+        #[cfg(all(feature = "responses-websocket", not(target_arch = "wasm32")))]
         let websocket_stream = match reattached {
             None if self.websocket.wants(config, background) => {
                 super::websocket_transport::open_stream(
@@ -352,7 +352,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             }
             _ => None,
         };
-        #[cfg(not(feature = "responses-websocket"))]
+        #[cfg(any(not(feature = "responses-websocket"), target_arch = "wasm32"))]
         let websocket_stream: Option<crate::stream_reconnect::SseStream> = None;
 
         let first_connect = match (reattached, websocket_stream) {

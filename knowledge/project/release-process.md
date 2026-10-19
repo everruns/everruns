@@ -30,6 +30,10 @@ the copy committed in the release's changelog entry. The card is presentation me
 release-notes source: it cannot introduce claims absent from `CHANGELOG.md`. The user reviews the highlights
 and the rendered card before the release PR merges.
 
+The source-only DO hosting reference and celld serve adapter are excluded from
+the publish set. They demonstrate the public Framework hosting SPI and are
+built/qualified from source in CI; Framework does not own vendor DO support.
+
 Each release also publishes a release entry in the public changelog, with the card, and links the
 changelog entries of the features it carries from its `CHANGELOG.md` highlights; feature entries
 get the version stamped. See [Public Changelog](../docs/changelog.md#releases).
@@ -197,7 +201,7 @@ with a default body unless breaking implementors is the point.
 **`#[doc(hidden)]` is not a private boundary.** If a published crate calls an
 item, that item is public contract whatever it is annotated with. The published
 `everruns` facade drove a hidden steering surface on `everruns-host`
-([`crates/core/src/host/runtime.rs`](../../crates/core/src/host/runtime.rs)) across a
+([`crates/core/src/host/runtime/mod.rs`](../../crates/core/src/host/runtime/mod.rs)) across a
 crates.io boundary, which is the whole of
 [#665](https://github.com/everruns/yolop/issues/665). That surface is documented
 public contract now. Document such an item rather than hiding it.

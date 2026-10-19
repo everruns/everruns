@@ -14,6 +14,15 @@ The Everruns documentation site provides user-facing documentation for operators
 
 ## Requirements
 
+### Integration landing pages
+
+The [Slack landing page](../../docs/integrations/slack.mdx) introduces building
+and publishing an Agent with realistic English examples and the public demo.
+It is distinct from the detailed [Slack reference](../../docs/capabilities/slack.md).
+The integration route is a page, not an alias to the capability reference.
+Examples reconstructed or translated from captures must say so; raw recordings
+and unrelated messages stay out of published assets.
+
 ### Site Structure
 
 1. **Content Location**: `docs/` in the repository root
@@ -136,6 +145,9 @@ hero: ../images/section/visual.png  # Optional: hero image for social card
 - `title` and `description` are required
 - `hero` is optional, relative path to an image that will be composited into the page's OG social card (see [Social Card Images](#social-card-images-og-images))
 - `appliesTo` is optional: any of `framework`, `platform`, `cloud`. `PageTitle.astro` renders it as an "Applies to" badge row under the title. Set it on capability, feature, and how-to pages, and only after checking availability in code: `framework` means the default Framework capability registry or an `everruns` Cargo feature; `platform` and `cloud` share the server registry, except that plugins behind a dev-grade feature flag are never on Cloud. A page without the field shows no row, which is better than a wrong one
+
+Unavailable targets keep muted gray labels and borders without strikethroughs; the
+badge row indicates applicability without making other products look deprecated.
 
 #### Notebook-Backed Tutorials
 

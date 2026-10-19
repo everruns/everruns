@@ -499,6 +499,7 @@ pub async fn dispatch_github_delivery(
                 session_source: crate::domains::sessions::record::SessionSource::Webhook,
                 webhook_compat: None,
                 script: None,
+                channel: None,
             },
             TriggerEvent {
                 source: "github",

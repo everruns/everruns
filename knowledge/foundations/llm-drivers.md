@@ -142,6 +142,15 @@ headers. Drivers own protocol request construction, streaming parse logic,
 retry decision, and error mapping. Shared clients disable redirects and
 pin DNS only after private-range validation.
 
+The shared Chat Completions and Responses protocols and OpenAI/OpenRouter chat
+wrappers also accept host-injected HTTP. This allows wasm32 hosts to supply
+fetch without copying provider behavior. Injection is a trusted host boundary:
+the adapter sees auth and must enforce deployment endpoint/DNS policy, refuse
+redirects, bound network waits and cancel dropped requests/readers. The native
+default retains its hardened client. See the
+[WASM kernel decision](../framework/wasm-kernel.md) and
+[transport contract](../../crates/contracts/src/http_transport.rs).
+
 ### Message Types
 
 1. **Message**: Provider-agnostic message format

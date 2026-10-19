@@ -347,6 +347,51 @@ fn resolver_for(fixture: &McpFixture) -> DbConnectionResolver {
 }
 
 #[tokio::test]
+async fn session_grant_discovery_identity_respects_the_invoking_subject() {
+    for (owner_kind, matching_subject, expected_identity) in [
+        (ATTENDED, true, true),
+        (ATTENDED, false, false),
+        (UNATTENDED, true, false),
+    ] {
+        let fixture = mcp_setup(owner_kind, false, false).await;
+        let server_id = DbConnectionResolver::parse_mcp_oauth_provider(&fixture.provider).unwrap();
+        fixture
+            .db
+            .upsert_mcp_oauth_session_credentials(UpsertMcpOAuthSessionCredentials {
+                virtual_user_id: Some(if matching_subject {
+                    VirtualUserId::from_uuid(fixture.user_id)
+                } else {
+                    fixture.identity_id
+                }),
+                session_id: fixture.session_id,
+                server_id,
+                access_token_encrypted: fixture
+                    .encryption
+                    .encrypt_string("delegated-token")
+                    .unwrap(),
+                refresh_token_encrypted: None,
+                expires_at_encrypted: None,
+            })
+            .await
+            .unwrap();
+        let resolver = resolver_for(&fixture);
+        let identity = resolver
+            .get_connection_user(fixture.session_id, &fixture.provider)
+            .await
+            .unwrap();
+        assert_eq!(identity, expected_identity.then_some(fixture.user_id));
+        assert_eq!(
+            resolver
+                .get_connection_user(fixture.session_id, &format!("mcp_oauth_{}", Uuid::now_v7()))
+                .await
+                .unwrap(),
+            None,
+            "a session grant supplies identity only for its own MCP server"
+        );
+    }
+}
+
+#[tokio::test]
 async fn user_attachment_resolves_the_invoking_user_and_never_the_identity_grant() {
     let fixture = mcp_setup(ATTENDED, true, true).await;
     let resolver = resolver_for(&fixture);

@@ -31,7 +31,7 @@ use crate::error::AgentLoopError;
 use crate::llm_retry::{LlmRetryConfig, RetryMetadata, remaining_retry_time, reserve_retry_wait};
 
 /// SSE item type produced by `reqwest::Response::bytes_stream().eventsource()`.
-pub type SseItem = Result<Event, EventStreamError<reqwest::Error>>;
+pub type SseItem = Result<Event, EventStreamError<crate::http_transport::HttpError>>;
 
 /// A `'static` SSE event stream. Boxed so the returned stream is independent of
 /// the `connect` closure's borrows (the concrete stream owns its
@@ -41,7 +41,8 @@ pub type SseStream = Pin<Box<dyn Stream<Item = SseItem> + Send>>;
 
 /// A `'static` raw byte stream, for drivers that parse SSE by hand over
 /// `reqwest::Response::bytes_stream()` (e.g. Gemini).
-pub type ByteStream = Pin<Box<dyn Stream<Item = reqwest::Result<Bytes>> + Send>>;
+pub type ByteStream =
+    Pin<Box<dyn Stream<Item = Result<Bytes, crate::http_transport::HttpError>> + Send>>;
 
 /// Upper bound for the setup-time peek that enables safe pre-first-item
 /// reconnects. The Reason atom starts its provider stall timer only after
@@ -55,8 +56,8 @@ const FIRST_STREAM_ITEM_TIMEOUT: Duration = Duration::from_secs(120);
 /// stale pooled keep-alive connection discovered dead), or a read timeout before
 /// the first byte. A status/redirect/builder error is not a mid-stream transport
 /// flake and is not reconnected.
-pub fn is_reconnectable_reqwest_error(err: &reqwest::Error) -> bool {
-    err.is_body() || err.is_decode() || err.is_connect() || err.is_request() || err.is_timeout()
+pub fn is_reconnectable_reqwest_error(err: &impl crate::http_transport::TransportFailure) -> bool {
+    err.reconnect()
 }
 
 /// Classify an SSE stream error as a transient transport failure that is safe to
@@ -65,7 +66,9 @@ pub fn is_reconnectable_reqwest_error(err: &reqwest::Error) -> bool {
 /// Only `Transport` (reqwest) errors qualify. A UTF-8 or parser error means the
 /// bytes that *did* arrive were a malformed SSE payload — a real protocol error
 /// we must surface, not paper over with a reconnect.
-pub fn is_reconnectable_stream_error(err: &EventStreamError<reqwest::Error>) -> bool {
+pub fn is_reconnectable_stream_error(
+    err: &EventStreamError<crate::http_transport::HttpError>,
+) -> bool {
     match err {
         EventStreamError::Transport(e) => is_reconnectable_reqwest_error(e),
         EventStreamError::Utf8(_) | EventStreamError::Parser(_) => false,
@@ -76,13 +79,13 @@ fn reconnect_budget_error(
     config: &LlmRetryConfig,
     driver: &str,
     metadata: &RetryMetadata,
+    started: Option<crate::rt::Instant>,
 ) -> AgentLoopError {
     AgentLoopError::llm_kind(
         crate::error::LlmErrorKind::Unavailable,
         format!(
-            "{driver} stream reconnect budget exhausted after {} retries over {:.1}s",
-            metadata.attempts,
-            config.max_retry_elapsed.as_secs_f64()
+            "{driver} stream reconnect budget exhausted {}",
+            config.budget_exhausted_detail(started, metadata.attempts)
         ),
     )
     .with_retry_metadata(metadata)
@@ -92,13 +95,13 @@ fn reconnect_remaining(
     config: &LlmRetryConfig,
     driver: &str,
     metadata: &RetryMetadata,
-    started: Option<tokio::time::Instant>,
+    started: Option<crate::rt::Instant>,
 ) -> Result<Option<Duration>, AgentLoopError> {
     match started {
         None => Ok(None),
         Some(_) => match remaining_retry_time(config, started) {
             Some(remaining) if !remaining.is_zero() => Ok(Some(remaining)),
-            _ => Err(reconnect_budget_error(config, driver, metadata)),
+            _ => Err(reconnect_budget_error(config, driver, metadata, started)),
         },
     }
 }
@@ -124,14 +127,15 @@ fn reconnect_remaining(
 /// provider that returns 200 but then sends no first frame is bounded by
 /// `FIRST_STREAM_ITEM_TIMEOUT`, matching the Reason atom's default provider
 /// stall timeout instead of the longer transport read timeout.
-pub async fn connect_sse_with_reconnect<C, Fut>(
+pub async fn connect_sse_with_reconnect<C, Fut, R>(
     retry_config: &LlmRetryConfig,
     driver_name: &str,
     mut connect: C,
 ) -> Result<(SseStream, RetryMetadata), AgentLoopError>
 where
     C: FnMut(u32) -> Fut,
-    Fut: Future<Output = Result<(reqwest::Response, RetryMetadata), AgentLoopError>>,
+    Fut: Future<Output = Result<(R, RetryMetadata), AgentLoopError>>,
+    R: Into<crate::http_transport::HttpResponse>,
 {
     connect_sse_with_reconnect_timeout(
         retry_config,
@@ -142,7 +146,7 @@ where
     .await
 }
 
-async fn connect_sse_with_reconnect_timeout<C, Fut>(
+async fn connect_sse_with_reconnect_timeout<C, Fut, R>(
     retry_config: &LlmRetryConfig,
     driver_name: &str,
     connect: &mut C,
@@ -150,7 +154,8 @@ async fn connect_sse_with_reconnect_timeout<C, Fut>(
 ) -> Result<(SseStream, RetryMetadata), AgentLoopError>
 where
     C: FnMut(u32) -> Fut,
-    Fut: Future<Output = Result<(reqwest::Response, RetryMetadata), AgentLoopError>>,
+    Fut: Future<Output = Result<(R, RetryMetadata), AgentLoopError>>,
+    R: Into<crate::http_transport::HttpResponse>,
 {
     let mut retry_metadata = RetryMetadata::default();
     let mut retry_started_at = None;
@@ -158,20 +163,27 @@ where
         let connected = if let Some(remaining) =
             reconnect_remaining(retry_config, driver_name, &retry_metadata, retry_started_at)?
         {
-            tokio::time::timeout(remaining, connect(retry_metadata.attempts))
+            crate::rt::timeout(remaining, connect(retry_metadata.attempts))
                 .await
-                .map_err(|_| reconnect_budget_error(retry_config, driver_name, &retry_metadata))?
+                .map_err(|_| {
+                    reconnect_budget_error(
+                        retry_config,
+                        driver_name,
+                        &retry_metadata,
+                        retry_started_at,
+                    )
+                })?
         } else {
             connect(retry_metadata.attempts).await
         };
         let (response, metadata) = connected?;
         if retry_started_at.is_none() && metadata.had_retries() {
-            retry_started_at = tokio::time::Instant::now()
+            retry_started_at = crate::rt::Instant::now()
                 .checked_sub(metadata.total_retry_elapsed)
-                .or_else(|| Some(tokio::time::Instant::now()));
+                .or_else(|| Some(crate::rt::Instant::now()));
         }
         retry_metadata.absorb(metadata);
-        let events = Box::pin(response.bytes_stream().eventsource());
+        let events = Box::pin(response.into().bytes_stream().eventsource());
 
         // Peek the first item: an immediate transport failure at stream open
         // (the observed "error decoding response body") lands here. Bound this
@@ -182,7 +194,7 @@ where
                 .map_or(first_item_timeout, |remaining| {
                     remaining.min(first_item_timeout)
                 });
-        let (first, rest) = tokio::time::timeout(item_timeout, events.into_future())
+        let (first, rest) = crate::rt::timeout(item_timeout, events.into_future())
             .await
             .map_err(|_| {
                 let error = AgentLoopError::llm(format!(
@@ -205,6 +217,7 @@ where
                     retry_config,
                     driver_name,
                     &retry_metadata,
+                    retry_started_at,
                 ));
             };
             retry_metadata.record_retry(wait, None);
@@ -218,7 +231,7 @@ where
                     "streaming transport failed before first event; reconnecting"
                 );
             }
-            tokio::time::sleep(wait).await;
+            crate::rt::sleep(wait).await;
             continue;
         }
 
@@ -256,14 +269,15 @@ where
 /// attempts remain. Once any chunk has been forwarded the stream is committed
 /// and errors pass through. Semantics, safety, and the first-item timeout note
 /// match [`connect_sse_with_reconnect`].
-pub async fn connect_bytes_with_reconnect<C, Fut>(
+pub async fn connect_bytes_with_reconnect<C, Fut, R>(
     retry_config: &LlmRetryConfig,
     driver_name: &str,
     mut connect: C,
 ) -> Result<(ByteStream, RetryMetadata), AgentLoopError>
 where
     C: FnMut(u32) -> Fut,
-    Fut: Future<Output = Result<(reqwest::Response, RetryMetadata), AgentLoopError>>,
+    Fut: Future<Output = Result<(R, RetryMetadata), AgentLoopError>>,
+    R: Into<crate::http_transport::HttpResponse>,
 {
     connect_bytes_with_reconnect_timeout(
         retry_config,
@@ -274,7 +288,7 @@ where
     .await
 }
 
-async fn connect_bytes_with_reconnect_timeout<C, Fut>(
+async fn connect_bytes_with_reconnect_timeout<C, Fut, R>(
     retry_config: &LlmRetryConfig,
     driver_name: &str,
     connect: &mut C,
@@ -282,7 +296,8 @@ async fn connect_bytes_with_reconnect_timeout<C, Fut>(
 ) -> Result<(ByteStream, RetryMetadata), AgentLoopError>
 where
     C: FnMut(u32) -> Fut,
-    Fut: Future<Output = Result<(reqwest::Response, RetryMetadata), AgentLoopError>>,
+    Fut: Future<Output = Result<(R, RetryMetadata), AgentLoopError>>,
+    R: Into<crate::http_transport::HttpResponse>,
 {
     let mut retry_metadata = RetryMetadata::default();
     let mut retry_started_at = None;
@@ -290,26 +305,33 @@ where
         let connected = if let Some(remaining) =
             reconnect_remaining(retry_config, driver_name, &retry_metadata, retry_started_at)?
         {
-            tokio::time::timeout(remaining, connect(retry_metadata.attempts))
+            crate::rt::timeout(remaining, connect(retry_metadata.attempts))
                 .await
-                .map_err(|_| reconnect_budget_error(retry_config, driver_name, &retry_metadata))?
+                .map_err(|_| {
+                    reconnect_budget_error(
+                        retry_config,
+                        driver_name,
+                        &retry_metadata,
+                        retry_started_at,
+                    )
+                })?
         } else {
             connect(retry_metadata.attempts).await
         };
         let (response, metadata) = connected?;
         if retry_started_at.is_none() && metadata.had_retries() {
-            retry_started_at = tokio::time::Instant::now()
+            retry_started_at = crate::rt::Instant::now()
                 .checked_sub(metadata.total_retry_elapsed)
-                .or_else(|| Some(tokio::time::Instant::now()));
+                .or_else(|| Some(crate::rt::Instant::now()));
         }
         retry_metadata.absorb(metadata);
-        let bytes = Box::pin(response.bytes_stream());
+        let bytes = Box::pin(response.into().bytes_stream());
         let item_timeout =
             reconnect_remaining(retry_config, driver_name, &retry_metadata, retry_started_at)?
                 .map_or(first_item_timeout, |remaining| {
                     remaining.min(first_item_timeout)
                 });
-        let (first, rest) = tokio::time::timeout(item_timeout, bytes.into_future())
+        let (first, rest) = crate::rt::timeout(item_timeout, bytes.into_future())
             .await
             .map_err(|_| {
                 let error = AgentLoopError::llm(format!(
@@ -332,6 +354,7 @@ where
                     retry_config,
                     driver_name,
                     &retry_metadata,
+                    retry_started_at,
                 ));
             };
             retry_metadata.record_retry(wait, None);
@@ -345,7 +368,7 @@ where
                     "streaming transport failed before first chunk; reconnecting"
                 );
             }
-            tokio::time::sleep(wait).await;
+            crate::rt::sleep(wait).await;
             continue;
         }
 

@@ -759,34 +759,6 @@ async fn a_turn_whose_session_is_deleted_stops_at_the_next_renew() {
     assert!(!run_once(&worker).await, "nothing left to lease");
 }
 
-/// EVE-1235: a turn whose session was deleted fails on whatever it reads next
-/// (its input message, the conversation), with errors that do not name the
-/// session. The holder asks the renew, which answers for the actor row, before
-/// treating such a failure as the turn's own.
-#[tokio::test]
-async fn a_failure_after_the_session_was_deleted_reads_as_the_delete() {
-    let fixture = Fixture::new(model("Done.", vec![])).await;
-    let (worker, _) = fixture.worker("w1");
-    fixture.send("Hello.").await;
-    let actor = worker.lease(1).await.unwrap().pop().expect("leased");
-    let lease = super::super::lease::Lease::new(
-        fixture.store.clone(),
-        "w1".to_string(),
-        &actor,
-        Duration::from_secs(3),
-        3,
-    );
-    let unrelated =
-        everruns_contracts::error::AgentLoopError::store("User message not found: message_x");
-
-    assert!(
-        !super::super::turn::session_deleted(&lease, &unrelated).await,
-        "the session is still there: the failure is the turn's"
-    );
-    fixture.store.delete(fixture.session_id);
-    assert!(super::super::turn::session_deleted(&lease, &unrelated).await);
-}
-
 /// EVE-1235, ported from the retired turn driver: the session is deleted
 /// after its actor was leased and before the turn's first step. The turn ends
 /// without error and without retry: no `turn.failed`, no answer, no seal, and
@@ -841,6 +813,7 @@ async fn died_before_idling(fixture: &Fixture, terminal: &str, committed: bool) 
             fixture.session_id,
             context,
             crate::core::events::TurnCompletedData {
+                termination_reason: None,
                 turn_id,
                 iterations: 1,
                 status: Some("completed".to_string()),

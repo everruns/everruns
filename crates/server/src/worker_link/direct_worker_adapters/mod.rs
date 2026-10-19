@@ -245,6 +245,7 @@ pub struct DirectWorkerAdapters {
         Option<Arc<everruns_core::host::InMemoryCompactionCheckpointStore>>,
     proactive_compaction_attempts: Arc<everruns_core::ProactiveCompactionAttemptTracker>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
+    channels: Option<Arc<crate::channels::host::ServerChannels>>,
     slack_provisioner: Option<Arc<dyn SlackAppProvisioner>>,
     permission_resolver: Arc<dyn PermissionResolver>,
     pub(crate) virtual_registry:
@@ -288,152 +289,13 @@ impl DirectWorkerAdapters {
             proactive_compaction_attempts: Arc::default(),
             workflow_store: None,
             slack_provisioner: None,
+            channels: None,
             permission_resolver: Arc::new(everruns_core::DefaultPermissionResolver),
             virtual_registry: None,
             org_rate_limiter: None,
             provider_services: None,
             quota: crate::domains::session_files::limits::QuotaLimits::from_env(),
         }
-    }
-
-    /// Load the stored platform Session record (server-internal; EVE-882).
-    ///
-    /// `WorkerAdapters::get_session` projects this into the portable
-    /// `ExecutionSession`; internal paths that need platform-only fields
-    /// (scoped-MCP wiring) read the record here.
-    pub(crate) async fn get_stored_session(
-        &self,
-        org_id: i64,
-        session_id: Uuid,
-    ) -> Result<Option<Session>> {
-        let session_id_typed = SessionId::from_uuid(session_id);
-        let row = self
-            .db
-            .get_session(org_id, session_id_typed)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to get session: {}", e);
-                store_error("Failed to get session")
-            })?;
-
-        let Some(mut r) = row else {
-            return Ok(None);
-        };
-        if let Some(message) = self.input_message_id {
-            if !self
-                .db
-                .runtime_invocation_exists(r.id, message)
-                .await
-                .map_err(|e| store_error(e.to_string()))?
-            {
-                return Err(store_error("Unknown invocation"));
-            }
-            let responder = self
-                .db
-                .runtime_invocation_responder(r.id, message)
-                .await
-                .map_err(|e| store_error(e.to_string()))?
-                .map(AgentId::from_uuid);
-
-            if r.agent_id != responder {
-                r.agent_revision = None;
-            }
-
-            r.agent_id = responder;
-        }
-        if r.locale.is_none() {
-            let profile = match self.input_message_id {
-                Some(message) => self
-                    .db
-                    .runtime_invocation_subject(r.id, message)
-                    .await
-                    .map_err(|e| store_error(e.to_string()))?,
-                None => None,
-            };
-            if let Some(id) = profile.or(r.virtual_user_id)
-                && let Some(profile) = self
-                    .db
-                    .get_virtual_user(org_id, id)
-                    .await
-                    .map_err(|e| store_error(e.to_string()))?
-            {
-                r.locale = profile.locale;
-            }
-        }
-        let capabilities = serde_json::from_value(r.capabilities).unwrap_or_default();
-        let capabilities =
-            crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
-                &self.db,
-                org_id,
-                capabilities,
-            )
-            .await?;
-
-        Ok(Some({
-            // Parse capabilities from JSON
-            Session {
-                source: crate::domains::sessions::record::SessionSource::from(r.source.as_str()),
-                run_summary: r.run_summary.clone(),
-                activity: crate::domains::sessions::record::SessionActivity::derive(
-                    &crate::domains::sessions::record::SessionStatus::from(r.status.as_str()),
-                    r.last_turn_status.as_deref(),
-                ),
-                id: r.id,
-                organization_id: everruns_core::org_public_id_from_internal(org_id),
-                workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(r.workspace_id),
-                harness_id: r.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
-                agent_id: r.agent_id,
-                agent_revision: r.agent_revision,
-                virtual_user_id: r.virtual_user_id,
-                playground_user_id: r.playground_user_id,
-                owner_principal_id: r.owner_principal_id,
-                resolved_owner_user_id: r.resolved_owner_user_id,
-                owner: None,
-                effective_owner: None,
-                title: r.title,
-                goal: r.goal,
-                locale: r.locale,
-                preview: None,
-                output_preview: None,
-                tags: r.tags,
-                model_id: r.model_id,
-                capabilities,
-                tools: serde_json::from_value(r.tools).unwrap_or_default(),
-                mcp_servers: serde_json::from_value(r.mcp_servers).unwrap_or_default(),
-                system_prompt: r.system_prompt,
-                initial_files: serde_json::from_value(r.initial_files).unwrap_or_default(),
-                network_access: r
-                    .network_access
-                    .and_then(|v| serde_json::from_value(v).ok()),
-                hints: r.hints.and_then(|v| serde_json::from_value(v).ok()),
-                max_iterations: max_iterations::from_db(r.max_iterations),
-                parallel_tool_calls: r.parallel_tool_calls,
-                status: match r.status.as_str() {
-                    "started" => SessionStatus::Started,
-                    "active" => SessionStatus::Active,
-                    "idle" => SessionStatus::Idle,
-                    "running" => SessionStatus::Active,
-                    _ => SessionStatus::Started,
-                },
-                created_at: r.created_at,
-                updated_at: r.updated_at,
-                started_at: r.started_at,
-                finished_at: r.finished_at,
-                usage: None,
-                is_pinned: None,
-                archived_at: None,
-                active_schedule_count: None,
-                event_count: None,
-                task_count: None,
-                file_count: None,
-                features: vec![],
-                parent_session_id: r.parent_session_id,
-                forked_from_session_id: r.forked_from_session_id,
-                forked_from_sequence: r.forked_from_sequence,
-                blueprint_id: r.blueprint_id,
-                blueprint_config: r.blueprint_config,
-            }
-        }))
     }
 
     async fn load_turn_messages(
@@ -562,14 +424,6 @@ impl DirectWorkerAdapters {
 
     pub fn with_utility_llm_service(mut self, service: Arc<dyn UtilityLlmService>) -> Self {
         self.utility_llm_service = Some(service);
-        self
-    }
-
-    pub fn with_slack_provisioner(
-        mut self,
-        provisioner: Option<Arc<dyn SlackAppProvisioner>>,
-    ) -> Self {
-        self.slack_provisioner = provisioner;
         self
     }
 
@@ -1629,6 +1483,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
             &self.db,
             &session_service,
             &message_service,
+            self.channels.as_deref(),
+            self.encryption.as_ref(),
             org_id,
             agent_id,
             trigger_id,

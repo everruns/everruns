@@ -38,7 +38,11 @@ someone finishing a new agent. Both mostly touch a small set of fields; the rest
   that shows its current value ("Inherited", "2 files") and opens a side sheet, so the whole
   configuration reads without opening anything. Side sheets, not accordions, because Branding and
   Files are large editors. Service account is a More row. Its sheet saves immediately, like MCP
-  servers and Credentials, and stays editable on a built-in agent.
+  servers and Credentials, and stays editable on a built-in agent. The Files row, and the Files
+  card on Preview, appear only when the effective agent has a filesystem: a capability that
+  contributes one (including through a dependency or the harness) or starter files already set.
+  Without a filesystem, the empty Files section stays hidden. Adding a filesystem capability
+  reveals the row. Source: `apps/ui/src/components/agents/agent-files-visibility.ts`.
 - **Page-level edit mode.** Edit, change several things, then one **Save changes** or
   **Discard**. A prompt edit and the capability change that goes with it land in one update.
   Changing any config control in view mode enters edit mode with that change pending, so nothing
@@ -52,6 +56,10 @@ someone finishing a new agent. Both mostly touch a small set of fields; the rest
   stay under Integrations (EVE-1009). History, Manager notes and archive/delete live in the header
   [Entity Actions Menu](entity-actions-menu.md), replacing the danger-zone card. Old
   `?tab=mcp` and `?tab=credentials` links open the matching sheet; `?tab=versions` opens History.
+- **The Sessions tab is the agent's full history.** It includes archived sessions because the
+  tab badge counts them, and marks those cards as Archived. The ordinary Sessions and Chats
+  lists still hide archived sessions by default. Cards show the source/channel, creation time,
+  and latest conversational-message time; a session edit or tool event is not a new message.
 - **Checks sit next to what they check.** In edit mode prompt findings render under the prompt
   editor; the behavioral health check is a More row.
 - **Button tiers.** Gold is only **Test in Playground**. It opens Playground setup with the Agent

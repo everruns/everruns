@@ -1,0 +1,76 @@
+//! Provider-neutral turn completion semantics.
+//!
+//! Turn execution state and transition logic live behind core’s `engine` feature.
+//! The default kernel retains the stable stop-reason value shared by events, APIs, hosts,
+//! providers, and durable storage.
+
+use serde::{Deserialize, Serialize};
+
+/// Stable reason a turn stopped, independent of provider-specific strings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum TurnStopReason {
+    EndTurn,
+    MaxTokens,
+    MaxTurnRequests,
+    Refusal,
+    Error,
+    Cancelled,
+}
+
+impl TurnStopReason {
+    /// Normalize a provider finish reason at the runtime boundary.
+    pub fn from_provider_finish_reason(reason: Option<&str>) -> Self {
+        match reason.map(str::to_ascii_lowercase).as_deref() {
+            Some("length" | "max_tokens" | "max_output_tokens") => Self::MaxTokens,
+            Some("refusal" | "content_filter" | "safety") => Self::Refusal,
+            Some("error") => Self::Error,
+            Some("cancelled" | "canceled") => Self::Cancelled,
+            _ => Self::EndTurn,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stop_reason_wire_values_are_stable() {
+        for (value, expected) in [
+            (TurnStopReason::EndTurn, "\"end_turn\""),
+            (TurnStopReason::MaxTokens, "\"max_tokens\""),
+            (TurnStopReason::MaxTurnRequests, "\"max_turn_requests\""),
+            (TurnStopReason::Refusal, "\"refusal\""),
+            (TurnStopReason::Error, "\"error\""),
+            (TurnStopReason::Cancelled, "\"cancelled\""),
+        ] {
+            assert_eq!(serde_json::to_string(&value).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn provider_finish_reasons_are_normalized() {
+        for (input, expected) in [
+            (Some("length"), TurnStopReason::MaxTokens),
+            (Some("max_tokens"), TurnStopReason::MaxTokens),
+            (Some("MAX_OUTPUT_TOKENS"), TurnStopReason::MaxTokens),
+            (Some("refusal"), TurnStopReason::Refusal),
+            (Some("content_filter"), TurnStopReason::Refusal),
+            (Some("SaFeTy"), TurnStopReason::Refusal),
+            (Some("error"), TurnStopReason::Error),
+            (Some("cancelled"), TurnStopReason::Cancelled),
+            (Some("CANCELED"), TurnStopReason::Cancelled),
+            (Some("stop"), TurnStopReason::EndTurn),
+            (Some("future-provider-reason"), TurnStopReason::EndTurn),
+            (None, TurnStopReason::EndTurn),
+        ] {
+            assert_eq!(
+                TurnStopReason::from_provider_finish_reason(input),
+                expected,
+                "{input:?}"
+            );
+        }
+    }
+}

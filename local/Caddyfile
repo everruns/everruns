@@ -22,6 +22,10 @@
 #   /health    -> API server at :API_PORT
 #   /*         -> UI dev server at :UI_PORT
 #
+# Use IPv4 loopback to match the agent stack listeners. Dual-stack localhost
+# dialing can pick the refused IPv6 socket during connection bursts.
+# Caddy >= 2.11.4 preserves unread POST bodies across failed connection dials.
+#
 # SSE/Proxy Notes:
 #   - flush_interval -1: disables response buffering (required for SSE)
 #   - Server handles its own 5-min connection cycling with disconnecting events
@@ -47,32 +51,36 @@
 				header Content-Type image/svg+xml*
 			}
 		}
-		reverse_proxy localhost:{$API_PORT:9301} {
+		reverse_proxy 127.0.0.1:{$API_PORT:9301} {
+			# Bursts can overflow the local TCP accept queue. Retry failed dials;
+			# POST round trips stay excluded so accepted messages cannot duplicate.
+			lb_try_duration 5s
+			lb_retry_match method GET HEAD
 			# Disable response buffering for SSE streaming
 			flush_interval -1
 		}
 	}
 	handle /oauth/* {
-		reverse_proxy localhost:{$API_PORT:9301}
+		reverse_proxy 127.0.0.1:{$API_PORT:9301}
 	}
 	handle /mcp {
-		reverse_proxy localhost:{$API_PORT:9301}
+		reverse_proxy 127.0.0.1:{$API_PORT:9301}
 	}
 	# Pages served under the MCP endpoint — the URL mode elicitation forms a
 	# user opens out of band. Matched separately from /mcp so the UI's own
 	# /mcp-servers route is not swallowed by a /mcp* prefix.
 	handle /mcp/* {
-		reverse_proxy localhost:{$API_PORT:9301}
+		reverse_proxy 127.0.0.1:{$API_PORT:9301}
 	}
 	handle /.well-known/* {
-		reverse_proxy localhost:{$API_PORT:9301}
+		reverse_proxy 127.0.0.1:{$API_PORT:9301}
 	}
 	# Agent-facing documents (auth.md, llms.txt, robots.txt, sitemap.xml). Served by
 	# the API, not the UI: an agent with no credentials yet is exactly the caller
 	# that needs to read them.
 	@agent_docs path /auth.md /llms.txt /robots.txt /sitemap.xml
 	handle @agent_docs {
-		reverse_proxy localhost:{$API_PORT:9301}
+		reverse_proxy 127.0.0.1:{$API_PORT:9301}
 	}
 	# The console at / needs JavaScript, so an agent that asks for markdown
 	# there gets llms.txt, which says where the MCP endpoint and auth.md are.
@@ -83,18 +91,18 @@
 	handle @agent_markdown {
 		header Vary Accept
 		rewrite * /llms.txt
-		reverse_proxy localhost:{$API_PORT:9301}
+		reverse_proxy 127.0.0.1:{$API_PORT:9301}
 	}
 	handle /api-doc/* {
-		reverse_proxy localhost:{$API_PORT:9301}
+		reverse_proxy 127.0.0.1:{$API_PORT:9301}
 	}
 	handle /health {
-		reverse_proxy localhost:{$API_PORT:9301}
+		reverse_proxy 127.0.0.1:{$API_PORT:9301}
 	}
 	handle {
 		# Point agents at the discovery documents (RFC 8288, RFC 9727).
 		header / +Link "</.well-known/api-catalog>; rel=\"api-catalog\", </llms.txt>; rel=\"describedby\"; type=\"text/markdown\", </auth.md>; rel=\"service-doc\"; type=\"text/markdown\", </api-doc/openapi.json>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi+json\""
 		header / +Vary Accept
-		reverse_proxy localhost:{$UI_PORT:9305}
+		reverse_proxy 127.0.0.1:{$UI_PORT:9305}
 	}
 }

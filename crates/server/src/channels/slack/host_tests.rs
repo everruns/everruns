@@ -98,23 +98,23 @@ const SECRET: &str = "secret";
 
 /// A channel installed in workspace `T1`: its senders' identities are
 /// scoped to that workspace.
-fn slack_config(binding: SessionBinding) -> SlackChannelConfig {
+pub(crate) fn slack_config(binding: SessionBinding) -> SlackChannelConfig {
     SlackChannelConfig {
         team_id: Some("T1".into()),
         ..test_config(binding)
     }
 }
 
-struct Slack {
-    db: Arc<StorageBackend>,
-    state: SlackState,
-    context: IngressContext,
-    channel: IngressChannel,
+pub(crate) struct Slack {
+    pub(crate) db: Arc<StorageBackend>,
+    pub(crate) state: SlackState,
+    pub(crate) context: IngressContext,
+    pub(crate) channel: IngressChannel,
     runner: Arc<IdleRunner>,
 }
 
 impl Slack {
-    async fn new(config: SlackChannelConfig) -> Self {
+    pub(crate) async fn new(config: SlackChannelConfig) -> Self {
         let db = Arc::new(StorageBackend::test_database());
         let harness = Uuid::now_v7();
         db.create_test_harness(DEFAULT_ORG_ID, harness).await;
@@ -199,7 +199,7 @@ impl Slack {
         }
     }
 
-    async fn send(&self, body: Value) -> Result<ChannelResponse, ChannelError> {
+    pub(crate) async fn send(&self, body: Value) -> Result<ChannelResponse, ChannelError> {
         let request = self.signed(&body, SECRET);
         self.state
             .channels
@@ -210,14 +210,14 @@ impl Slack {
             .await
     }
 
-    async fn bound(&self, key: &str) -> Option<String> {
+    pub(crate) async fn bound(&self, key: &str) -> Option<String> {
         PgChannelStore::new(self.db.clone())
             .session_for(&self.channel.internal_id.to_string(), key)
             .await
             .unwrap()
     }
 
-    async fn bindings(&self) -> i64 {
+    pub(crate) async fn bindings(&self) -> i64 {
         sqlx::query_scalar("SELECT COUNT(*) FROM channel_bindings WHERE channel_id = $1")
             .bind(self.channel.internal_id)
             .fetch_one(self.db.database().pool())
@@ -235,7 +235,7 @@ impl Slack {
     }
 }
 
-fn message(channel: &str, ts: &str, thread_ts: Option<&str>) -> Value {
+pub(crate) fn message(channel: &str, ts: &str, thread_ts: Option<&str>) -> Value {
     json!({
         "type": "event_callback",
         "team_id": "T1",
@@ -268,7 +268,7 @@ fn pane_event(event_type: &str, ts: &str, extra: Value) -> Value {
     })
 }
 
-fn session_of(response: &ChannelResponse) -> String {
+pub(crate) fn session_of(response: &ChannelResponse) -> String {
     response.body["session_id"]
         .as_str()
         .expect("the message started a session")
