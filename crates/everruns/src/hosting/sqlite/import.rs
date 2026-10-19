@@ -218,6 +218,19 @@ fn import_objects(
             crate::local::LocalSessionTaskRegistry::store_message(tx, message)?;
         }
     }
+    for (schedule, metadata) in &image.schedules {
+        if schedule.session_id != session {
+            return Err(AgentLoopError::config(
+                "legacy schedule belongs to another session",
+            ));
+        }
+        crate::local::LocalScheduleStore::insert_row(
+            tx,
+            super::services::AUTHORITY_ORG,
+            schedule,
+            metadata,
+        )?;
+    }
     import_admissions(tx, session, image)
 }
 
