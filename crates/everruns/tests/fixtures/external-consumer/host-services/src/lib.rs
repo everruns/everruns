@@ -357,6 +357,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)] // The legacy facade lane, until its retirement (EVE-1298).
     async fn a_completion_review_sends_exactly_the_host_envelope() {
         for legacy in [false, true] {
             let driver = RecordingDriver::default();

@@ -3,6 +3,7 @@
 //!
 //! A recording driver behind host provider services captures exactly what
 //! each provider call receives, on both hosting lanes.
+#![allow(deprecated)] // Exercises the legacy facade lane until its retirement (EVE-1298).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
