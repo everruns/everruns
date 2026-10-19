@@ -176,7 +176,11 @@ fn github_status_and_credential_binding_keep_their_classes() {
 #[test]
 fn scoped_credential_metadata_is_readable_but_management_requires_full_scope() {
     for path in ["/v1/credential-bindings", "/v1/resources/{id}/grants"] {
-        assert_eq!(classify(&Method::GET, path), Some(RouteAccess::Read), "{path}");
+        assert_eq!(
+            classify(&Method::GET, path),
+            Some(RouteAccess::Read),
+            "{path}"
+        );
     }
     for (method, path) in [
         (Method::POST, "/v1/credential-bindings"),
