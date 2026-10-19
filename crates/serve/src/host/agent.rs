@@ -111,7 +111,8 @@ impl Host {
         };
         if let Some(local) = local {
             #[allow(deprecated)]
-            // Legacy facade lane until EVE-1298 moves this onto Engine hosting.
+            // Legacy facade lane: only the source of a pre-authority cutover
+            // (EVE-1298) or the store of a host without session hosting.
             {
                 builder = builder.local(local);
             }

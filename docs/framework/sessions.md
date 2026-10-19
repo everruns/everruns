@@ -409,7 +409,9 @@ import is lossless and atomic: the full event history keeps its event ids and
 sequences, and admissions, parked client calls and approvals, compaction
 checkpoints, session values, finished task records and the workspace binding
 come along. Retrying after a crash or a lost reply returns the same result. A
-cutover to a different build fails.
+cutover to a different build fails. `cut_over_legacy_session_with_metadata`
+also records binding metadata the legacy lane never stored, such as the
+`parent_session_id` of a child session.
 
 ```rust ignore
 let profile = SqliteHosting::open("authority.db")?;

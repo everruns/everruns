@@ -24,6 +24,10 @@ which share the same cache and linker characteristics.
 Pull requests run formatting, linting, repository guards, affected workspace tests,
 and relevant UI/docs checks. The affected set includes reverse Cargo dependencies;
 server persistence, authorization, and migration changes add focused contracts.
+The durable isolation job provisions its own source scanner. Missing or failed
+scans are incomplete checks, never evidence of a clean architecture boundary;
+the [scanner regression](../../scripts/test-durable-isolation.sh) exercises both
+failure paths alongside matching and clean source fixtures.
 MCP credential and worker-transport changes also exercise the gRPC identity and
 connection-required contract before merge.
 Hosted capability graph validation selects both portable builtins and environment

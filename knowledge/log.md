@@ -2,6 +2,11 @@
 
 ## 2026-10-19
 
+* **serve moves legacy child sessions.** Children found from the legacy
+  journal move with their parent; the pre-authority build is registered under
+  the microVM adapter too. See
+  [Local authority cutover](framework/local-authority-cutover.md).
+
 * **serve moves pre-authority sessions.** A session an older serve kept under
   `data_dir/everruns` is cut over to the native authority on first access;
   only rewind/redo remains in the retirement gate. See

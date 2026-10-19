@@ -23,6 +23,11 @@ cd "$PROJECT_ROOT"
 # "the guard found a violation". See guard-cargo.sh.
 source "$SCRIPT_DIR/guard-cargo.sh"
 
+if ! command -v rg >/dev/null 2>&1; then
+  echo "Guard could not run: ripgrep (rg) is required for the worker source scan." >&2
+  exit "$GUARD_INFRA_EXIT"
+fi
+
 MANIFEST=crates/durable/Cargo.toml
 FAILED=0
 
@@ -57,6 +62,12 @@ if matches=$(rg -n 'everruns_(core|durable)::' crates/worker --glob '*.rs' --glo
   echo "Worker source must reach core and durable through the crate re-exports in lib.rs:"
   echo "$matches"
   exit 1
+else
+  scan_status=$?
+  if [ "$scan_status" -ne 1 ]; then
+    echo "Guard could not run: worker source scan exited $scan_status; the boundary was not checked." >&2
+    exit "$GUARD_INFRA_EXIT"
+  fi
 fi
 
 echo "Durable isolation guard passed: durable remains generic; worker source reaches core and durable through its re-exports."
