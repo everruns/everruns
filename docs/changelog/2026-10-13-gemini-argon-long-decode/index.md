@@ -43,3 +43,8 @@ and recovery limits.
 
 Argon is also an enabled favourite and the preferred default for new Gemini
 setups. Read the [defaults and favourites update](/changelog/2026-10-14-gemini-argon-default/).
+
+## Update 2026-10-19
+
+Grounded responses now preserve citations and search usage across continuation
+hops. Read the [grounding fix](/changelog/2026-10-19-gemini-continuation-grounding/).
