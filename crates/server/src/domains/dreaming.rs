@@ -1,5 +1,7 @@
 //! Internal maintenance persistence. This command is never a model/public command.
 use crate::domains::common::*;
+use crate::domains::sessions::SESSION_MANAGE;
+use crate::kernel_imports::Policy;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::dreaming::DreamStateRow;
 use serde::{Deserialize, Serialize};
@@ -27,6 +29,11 @@ pub struct WorkerDreamingState {
 )]
 impl Command for WorkerDreamingState {
     type Output = serde_json::Value;
+    fn policy() -> Option<&'static Policy> {
+        // Worker identity is enforced by the internal path; session management
+        // also participates in the shared permission-resolver contract.
+        Some(&SESSION_MANAGE)
+    }
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         // Global due discovery remains infrastructure; tenant effects and budget
         // reservations re-read adoption before every operation, including revocation.
@@ -167,6 +174,42 @@ mod tests {
     async fn run(ctx: &Ctx, value: serde_json::Value) -> serde_json::Value {
         serde_json::from_str(&dispatch("worker_dreaming_state", value, ctx).await.unwrap()).unwrap()
     }
+    struct DenyMaintenance;
+    impl everruns_core::PermissionResolver for DenyMaintenance {
+        fn has_permission(
+            &self,
+            _caller: &Caller,
+            _permission: &everruns_core::Permission,
+        ) -> bool {
+            false
+        }
+        fn caller_permissions(&self, _caller: &Caller) -> Vec<everruns_core::Permission> {
+            Vec::new()
+        }
+    }
+
+    #[tokio::test]
+    async fn maintenance_honors_permission_resolver_before_state_or_memory_effects() {
+        let db = Arc::new(StorageBackend::test_database());
+        let mut c = ctx(db.clone(), DEFAULT_ORG_ID);
+        c.permission_resolver = Arc::new(DenyMaintenance);
+        for operation in ["get", "cas", "scope", "create_artifact", "due"] {
+            let error = dispatch(
+                "worker_dreaming_state",
+                json!({"operation": operation, "key": "budget:denied", "value": "{}"}),
+                &c,
+            )
+            .await
+            .unwrap_err();
+            assert!(matches!(error.kind, CommandErrorKind::Forbidden(_)));
+        }
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM dreaming_state")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
     #[tokio::test]
     async fn disabled_adoption_blocks_queued_work_before_budget_or_memory_effects() {
         let db = Arc::new(StorageBackend::test_database());

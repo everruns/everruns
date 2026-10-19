@@ -96,6 +96,11 @@ impl Command for CreateAgent {
 - `dispatch()` (used by MCP and gRPC `ExecuteCommand`) routes through `run`, enforcement is identical across HTTP and RPC paths.
 - The resolver is threaded through `Ctx::new` from `AuthState.permission_resolver`. Internal callers (`Caller::internal`) use `DefaultPermissionResolver` so SaaS-custom restrictions never block internal ops.
 
+Internal dreaming maintenance also declares the session-management policy, in
+addition to the internal-worker identity fence. Permission denial precedes state,
+budget and Memory effects, including due discovery; the domain regression covers
+all maintenance operations with a denying resolver.
+
 **Inventory coverage test.** `crates/server/tests/domain/command_policy_enforcement_test.rs` iterates `inventory::iter::<CommandDescriptor>` and asserts every non-GET command declares a policy. New mutating commands that forget `policy()` fail the build.
 
 ### Retired: `#[policy]` Macro

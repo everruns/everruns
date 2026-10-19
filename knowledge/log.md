@@ -56,7 +56,7 @@
   budget without duplicating command Wasm. See
   [Engine sessions](framework/engine-durable-sessions.md) and
   [Wasm artifacts](framework/wasm-kernel.md).
-* Added the dreaming contract: authorized Memory destinations, bounded background consolidation, recovery, and hosting requirements. Worker inheritance requires organization Adoption opt-in; legacy authority cutover refuses maintenance it cannot transfer. Key rotation covers maintenance without overwriting concurrent writes; internal maintenance stays outside entity snapshots.
+* Added the dreaming contract: authorized Memory destinations, bounded background consolidation, recovery, and hosting requirements. Worker inheritance requires organization Adoption opt-in; legacy authority cutover refuses maintenance it cannot transfer. Key rotation covers maintenance without overwriting concurrent writes; internal maintenance stays outside entity snapshots. Internal maintenance also declares session-management policy behind the worker identity fence.
 
 * **Generated E2B descriptors are outputs.** Cargo tracks source proto and
   decoder settings instead of the generated descriptor, avoiding self-invalidating
