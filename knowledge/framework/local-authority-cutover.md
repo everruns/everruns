@@ -108,24 +108,25 @@ noted.
 | Probe: wake recovery | | Approval deadlines become authority wakeups; imported schedules fire from the supervisor as admissions | **passes** |
 | Probe: interrupted import | | Nothing committed, legacy stays frozen, explicit abandon only | **passes** |
 | Uncertain external effects not replayed | | Interrupted at-most-once call never runs again | **passes** |
-| Host surfaces on Engine | `LocalConfig`/custom-backend facade | serve on the native authority; [AG-UI hosted threads](../../crates/everruns/src/ag_ui/threads.rs); coordination through authority child sessions | **passes**, except serve's migration of pre-hosting data |
-| Retire the facade actor only after all host surfaces pass | | | **blocked** by the missing rows |
+| Host surfaces on Engine | `LocalConfig`/custom-backend facade | serve on the native authority, [moving pre-authority sessions on first access](../../crates/serve/src/host/cutover.rs); [AG-UI hosted threads](../../crates/everruns/src/ag_ui/threads.rs); coordination through authority child sessions | **passes** |
+| Retire the facade actor only after all host surfaces pass | | | **blocked** by rewind/redo |
 
 ## Retirement gate
 
 Retire the legacy facade actor, and the `Engine::create` path that selects it,
-only when each item holds on the revision being released:
+only when the remaining item holds on the revision being released:
 
 1. **Rewind/redo under the authority.** Blocked on the owner's decision on
    branch-selection semantics (proposal below). Neither lane in this
    repository has a rewind contract today; the downstream consumer owns it.
-2. **Migrate pre-hosting serve data.** serve already runs on the native
-   authority ([host](../../crates/serve/src/host.rs)), AG-UI threads have a
-   hosted mode, and coordination threads run through the authority's child
-   sessions. serve does not yet cut over session data written under
-   `data_dir/everruns` by releases that predate its native authority; until a
-   startup migration exists, such sessions are moved with
-   `Engine::cut_over_legacy_session` one by one.
+
+Every other row passes. serve moves a session that a release before its native
+authority kept under `data_dir/everruns` when the session is first read: it
+cuts the session over to a separate `<build>:pre-authority` build of the same
+agent over the shared legacy directory workspace, so files and file tools carry
+over and new sessions keep per-session workspaces. A failed move is an error
+for that session, never a 404 or a read from the legacy store. Child sessions
+of the legacy lane had no catalog row and are not moved.
 
 ### Proposal for rewind and redo (needs an owner decision)
 
