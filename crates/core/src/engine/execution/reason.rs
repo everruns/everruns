@@ -934,9 +934,7 @@ impl ReasonAtom {
             llm_config_builder = llm_config_builder.with_metadata(k, v.clone());
         }
 
-        // These IDs help correlate API requests with Everruns entities.
-        // Stamped after embedder metadata so it cannot claim them; keep in
-        // sync with `openresponses_types::SYSTEM_LLM_METADATA_KEYS`.
+        // Correlation ids, stamped after embedder metadata (SYSTEM_LLM_METADATA_KEYS)
         // TypedId::to_string() produces prefixed format (e.g., "session_abc123")
         llm_config_builder = llm_config_builder
             .with_metadata("session_id", session_id.to_string())

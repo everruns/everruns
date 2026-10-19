@@ -1,6 +1,6 @@
 ---
 title: "Bring host capabilities and providers into Engine sessions"
-description: "Embedding hosts attach their own Core capabilities, provider resolution, retry budgets, MCP credentials, request attribution and observers to Engine-run Framework sessions."
+description: "Embedding hosts attach their own capabilities, provider resolution, retry budgets, MCP credentials, request attribution and observers to Engine sessions."
 date: 2026-10-19
 kind: feature
 significance: notable
