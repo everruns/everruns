@@ -32,6 +32,7 @@ pub const RESOLVE_REQUEST: &str = "The announcement looks good. Resolve that thr
 
 /// Build the coordinator: an agent with the coordination capability whose
 /// threads share `workspace`. Session state lives in `workspace/.everruns`.
+#[allow(deprecated)] // Legacy facade lane until EVE-1298 moves this onto Engine hosting.
 pub fn coordinator(model: Model, workspace: &std::path::Path) -> Result<Agent, BuildError> {
     Agent::builder()
         .name("launch-coordinator")

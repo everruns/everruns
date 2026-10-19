@@ -59,26 +59,37 @@ async fn coordinator_hands_work_to_threads_and_hears_back() {
 
     // The finished work woke the coordinator without the person saying anything.
     // The updates may land inside the first turn or start new ones; either way
-    // the coordinator answers them.
+    // the coordinator answers them. Each thread's update arrives on its own, so
+    // wait for both rather than for the first answer.
+    let updates = || async {
+        session
+            .history()
+            .page()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|m| m.role == MessageRole::User && m.text().contains("finished: succeeded"))
+            .count()
+    };
     let deadline = tokio::time::Instant::now() + WAIT;
-    while !replies(&session)
-        .await
-        .unwrap()
-        .iter()
-        .any(|reply| reply.contains("ready for review"))
+    while updates().await < 2
+        || !replies(&session)
+            .await
+            .unwrap()
+            .iter()
+            .any(|reply| reply.contains("ready for review"))
     {
         assert!(
             tokio::time::Instant::now() < deadline,
-            "coordinator was not woken"
+            "coordinator was not woken by both finished threads"
         );
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    let history = session.history().page().await.unwrap();
-    let updates = history
-        .iter()
-        .filter(|m| m.role == MessageRole::User && m.text().contains("finished: succeeded"))
-        .count();
-    assert_eq!(updates, 2, "one automatic update per finished thread");
+    assert_eq!(
+        updates().await,
+        2,
+        "one automatic update per finished thread"
+    );
 
     // Resolving goes through the coordinator.
     session.run(RESOLVE_REQUEST).await.unwrap();

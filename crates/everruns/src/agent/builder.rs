@@ -417,7 +417,16 @@ impl AgentBuilder {
     /// Task, schedule, and session identity state is stored in SQLite.
     /// Conversation history is reconstructed from the canonical local event
     /// log. Requires the `local` feature.
+    ///
+    /// Deprecated: this selects the legacy facade lane, which keeps a weaker
+    /// recovery boundary than coherent session hosting. Build the Engine with
+    /// `Engine::builder().hosting(SqliteHosting::open(path)?)` instead, and move
+    /// existing sessions with `Engine::cut_over_legacy_session`.
     #[cfg(feature = "local")]
+    #[deprecated(
+        since = "0.48.0",
+        note = "legacy facade lane; use Engine::builder().hosting(SqliteHosting::open(..)) and Engine::cut_over_legacy_session"
+    )]
     pub fn local(mut self, config: crate::LocalConfig) -> Self {
         self.local = Some(config);
         if !self

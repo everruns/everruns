@@ -11,6 +11,12 @@
   coherent authority; threads of cut-over sessions keep their sessions. See
   [Local authority cutover](framework/local-authority-cutover.md).
 
+* **Sessions overview and legacy deprecation.** A one-page plain-language map
+  of the agent, Engine and hosting layers; `AgentBuilder::local` and
+  `AgentBuilder::backends` are deprecated in favour of Engine hosting; the
+  recovery workflow runs nightly and adds the real Cloudflare service. See
+  [How sessions run](framework/engine-overview.md).
+
 * **Authority schedules.** Imported and native schedules of coherent SQLite
   sessions fire from the supervisor as admissions; the rewind proposal awaits
   an owner decision. See
