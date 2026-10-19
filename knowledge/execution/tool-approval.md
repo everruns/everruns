@@ -81,6 +81,12 @@ parks the same way a client-side tool or an MCP elicitation parks it.
 6. The model calls the tool again. The gate, on whichever worker runs it, finds
    the recorded decision and lets that call through or blocks it.
 
+A decision may arrive while the asking worker is still finishing its pause.
+The actor must retain that unread wakeup when it releases ownership; recording
+an answer cannot leave the open turn stranded until unrelated input arrives.
+The [actor inbox](../../crates/core/src/host/session_actor/inbox.rs) keeps this
+boundary without changing who may approve or what the decision authorizes.
+
 The retry is deliberate. The gated call already has a result in the transcript,
 and resuming a turn into a tool execution the model did not just request is not
 something the durable turn loop does; the same retry shape already carries URL

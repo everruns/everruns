@@ -550,6 +550,7 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             hosts: &*self.hosts,
             host,
             drive: &drive,
+            parked: Default::default(),
         };
         let (mut lost, mut cancel) = (lease.lost(), lease.cancel());
         enum Stopped {
@@ -615,7 +616,11 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             }
             (Stopped::Done(Ok(_)), Ok(())) => {
                 lease.turn_stored();
-                lease.skip_to_next_input().await?;
+                // Only a closed turn consumed its resolution. One that parked
+                // must leave a concurrent resolution for the next lease.
+                if !inbox.parked() {
+                    lease.skip_to_next_input().await?;
+                }
                 Finish::Release
             }
             (Stopped::Done(Err(error)), Ok(())) if error.is_non_retryable() => {
