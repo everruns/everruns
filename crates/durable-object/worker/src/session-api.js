@@ -89,9 +89,21 @@ async function eventStream(request,env,session,url) {
   let after=await replayPosition(request,env,session,url,snapshot.high_watermark);
   const tenant=env.TENANT_ID;
   const stub=env.SESSIONS.get(env.SESSIONS.idFromName(`${tenant}:${session}`));
-  const watch=await stub.fetch(new Request(`https://object.invalid/tenants/${tenant}/sessions/${session}/watch`,{
-    headers:{authorization:`Bearer ${env.AUTHORITY_TOKEN}`,upgrade:"websocket"},
-  }));
+  // Some hosts support remote sockets through HTTP ingress rather than a
+  // kept stub response. Authority credentials go only to the configured origin,
+  // never an origin taken from the caller's URL or Host header.
+  const watchUrl=new URL(`/tenants/${tenant}/sessions/${session}/watch`,env.NOTIFICATION_ORIGIN??"https://object.invalid");
+  const watchRequest=new Request(watchUrl,{
+    redirect:"manual",
+    // A complete HTTP handshake also survives hosts that forward this stub
+    // call through a peer connection before it reaches the session owner.
+    headers:{
+      authorization:`Bearer ${env.AUTHORITY_TOKEN}`,upgrade:"websocket",connection:"Upgrade",
+      "sec-websocket-version":"13",
+      "sec-websocket-key":btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16)))),
+    },
+  });
+  const watch=await (env.NOTIFICATION_ORIGIN?fetch(watchRequest):stub.fetch(watchRequest));
   if(watch.status!==101 || !watch.webSocket) throw new HttpError(503,"event notification connection unavailable");
   const socket=watch.webSocket;
   let cursor=null, stopped=false, connected=false, dirty=true, wake=null;

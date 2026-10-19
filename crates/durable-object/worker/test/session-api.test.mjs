@@ -92,6 +92,10 @@ test("idle SSE waits for a notification instead of polling the session object",a
   env.SESSIONS.get=()=>({fetch:async request=>{
     if(new URL(request.url).pathname.endsWith("/watch")) {
       assert.equal(request.headers.get("authorization"),`Bearer ${AUTHORITY_TOKEN}`);
+      assert.equal(request.headers.get("upgrade"),"websocket");
+      assert.equal(request.headers.get("connection").toLowerCase(),"upgrade");
+      assert.equal(request.headers.get("sec-websocket-version"),"13");
+      assert.equal(Buffer.from(request.headers.get("sec-websocket-key"),"base64").length,16);
       return {status:101,webSocket:socket};
     }
     const call=await request.json();calls.push(call);
@@ -106,6 +110,41 @@ test("idle SSE waits for a notification instead of polling the session object",a
   ready=true;socket.change();
   assert.match(new TextDecoder().decode((await next).value),/id: event_wake/);
   await reader.cancel();
+});
+
+test("HTTP notification transport uses only the configured trusted origin",async context=>{
+  const {env}=fixture();env.NOTIFICATION_ORIGIN="https://notifications.test";
+  env.SESSIONS.get=()=>({fetch:async request=>{
+    assert.ok(!new URL(request.url).pathname.endsWith("/watch"));
+    return Response.json({events:[],next_cursor:null,high_watermark:0});
+  }});
+  let watched=false;
+  context.mock.method(globalThis,"fetch",async request=>{
+    watched=true;
+    assert.equal(request.url,`https://notifications.test/tenants/test/sessions/${session}/watch`);
+    assert.equal(request.redirect,"manual");
+    assert.equal(request.headers.get("authorization"),`Bearer ${AUTHORITY_TOKEN}`);
+    return {status:101,webSocket:new WatchSocket()};
+  });
+  const response=await sessionApi(new Request(`https://attacker.invalid/v1/sessions/${session}/sse`,{
+    headers:{authorization:`Bearer ${API_TOKEN}`},
+  }),env);
+  assert.equal(response.status,200);assert.ok(watched);
+  const reader=response.body.getReader();await reader.read();await reader.cancel();
+});
+
+test("HTTP notification redirects are rejected without forwarding authority credentials",async context=>{
+  const {env}=fixture();env.NOTIFICATION_ORIGIN="https://notifications.test";
+  env.SESSIONS.get=()=>({fetch:async()=>Response.json({events:[],next_cursor:null,high_watermark:0})});
+  let calls=0;
+  context.mock.method(globalThis,"fetch",async request=>{
+    calls++;
+    assert.equal(new URL(request.url).origin,"https://notifications.test");
+    assert.equal(request.redirect,"manual");
+    return new Response(null,{status:302,headers:{location:"https://attacker.invalid/steal"}});
+  });
+  const response=await sessionApi(request(`/v1/sessions/${session}/sse`),env);
+  assert.equal(response.status,503);assert.equal(calls,1);
 });
 test("Workers event list preserves the native data envelope and total count",async()=>{
   const {env,calls}=fixture();

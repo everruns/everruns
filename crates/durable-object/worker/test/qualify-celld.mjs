@@ -26,6 +26,7 @@ const native = process.env.CELLD_QUALIFY_NATIVE === "1";
 const nativeBootstrap=join(here,`native-fleet-${process.pid}.generated.js`);
 const children = [];
 const servers = [];
+const upgradeSockets = new Set();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const env = {
   ...process.env,
@@ -60,9 +61,9 @@ async function until(label, fn, ms = 90000) {
   }
   throw new Error(`timeout: ${label}; logs: ${run}`);
 }
-async function listen(server) {
+async function listen(server, port = 0) {
   servers.push(server);
-  await new Promise((r, j) => server.once("error", j).listen(0, "127.0.0.1", r));
+  await new Promise((r, j) => server.once("error", j).listen(port, "127.0.0.1", r));
   return server.address().port;
 }
 async function freePort() {
@@ -197,6 +198,8 @@ try {
   ];
   const fixture = JSON.parse(readFileSync(join(here, "qualification.json"), "utf8"));
   fixture.vars.AUTHORITY_TOKEN = "authority-test-token-at-least-32-bytes";
+  const gatewayPort=await freePort();
+  fixture.vars.NOTIFICATION_ORIGIN=`http://127.0.0.1:${gatewayPort}`;
   const nativePort=native?await freePort():null;
   if(native) {
     writeFileSync(nativeBootstrap,`export {default,SessionAuthority,ServeExecutor} from ${JSON.stringify(resolve(root,"examples/serve/celld/worker/src/index.js"))};\n`);
@@ -265,7 +268,28 @@ try {
         res.writeHead(502).end();
       });
       req.pipe(out);
-    }),
+    }).on("upgrade",(req,client,head)=>{
+      upgradeSockets.add(client);
+      let peer;
+      const out=request({hostname:"127.0.0.1",port:live[0].port,path:req.url,method:req.method,headers:req.headers});
+      const close=()=>{client.destroy();peer?.destroy();out.destroy();};
+      client.on("error",close);
+      client.on("close",()=>{upgradeSockets.delete(client);peer?.destroy();});
+      out.on("error",close);
+      out.on("response",reply=>{reply.resume();client.end(`HTTP/1.1 ${reply.statusCode} ${reply.statusMessage}\r\nConnection: close\r\n\r\n`);});
+      out.on("upgrade",(reply,socket,replyHead)=>{
+        peer=socket;upgradeSockets.add(peer);
+        peer.on("error",close);
+        peer.on("close",()=>{upgradeSockets.delete(peer);client.destroy();});
+        let headers=`HTTP/1.1 ${reply.statusCode} ${reply.statusMessage}\r\n`;
+        for(let i=0;i<reply.rawHeaders.length;i+=2)headers+=`${reply.rawHeaders[i]}: ${reply.rawHeaders[i+1]}\r\n`;
+        client.write(`${headers}\r\n`);
+        if(head.length)peer.write(head);
+        if(replyHead.length)client.write(replyHead);
+        client.pipe(peer).pipe(client);
+      });
+      out.end();
+    }),gatewayPort,
   );
   const signal = join(run, "effect.json");
   const check = start(process.execPath, [native?resolve(root,"examples/serve/celld/worker/test/e2e.mjs"):join(here, "qualify-isolate.mjs")], "proof", {
@@ -300,17 +324,45 @@ try {
     const {session}=JSON.parse(readFileSync(signal,"utf8"));
     const hash=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(`${fixture.vars.AUTHORITY_TOKEN}:api`));
     const apiToken=[...new Uint8Array(hash)].map(byte=>byte.toString(16).padStart(2,"0")).join("");
-    const observer=await fetch(`http://127.0.0.1:${gateway}/v1/sessions/${session}/sse`,{
-      headers:{authorization:`Bearer ${apiToken}`},signal:AbortSignal.timeout(10000),
-    });
-    assert.equal(observer.status,200,"celld supports the passive SSE bridge");
-    const reader=observer.body.getReader();
-    assert.match(new TextDecoder().decode((await reader.read()).value),/event: connected/);
-    await reader.cancel();
+    // Every survivor must serve observers, including a frontend on a different
+    // node from the recovered object. A single random ingress can hide that hop.
+    const observers=[];
+    try {
+      for (const node of live) {
+        const observer=await fetch(`http://127.0.0.1:${node.port}/v1/sessions/${session}/sse`,{
+          headers:{authorization:`Bearer ${apiToken}`},signal:AbortSignal.timeout(20000),
+        });
+        assert.equal(observer.status,200,`${node.name}: celld supports the passive SSE bridge${observer.ok?"":`: ${await observer.text()}`}`);
+        const reader=observer.body.getReader();
+        observers.push({node,reader});
+        assert.match(new TextDecoder().decode((await reader.read()).value),/event: connected/);
+      }
+      const marker=`observer-probe-${crypto.randomUUID()}`;
+      // Let initial canonical replay drain: this input must arrive through
+      // a later notification rather than racing the initial snapshot.
+      await sleep(1500);
+      const deliveries=observers.map(async({node,reader})=>{
+        let text="";const decoder=new TextDecoder();
+        while(!text.includes(marker)) {
+          const next=await reader.read();
+          assert.ok(!next.done,`${node.name}: observer closed before receiving the new input`);
+          text+=decoder.decode(next.value,{stream:true});
+        }
+      });
+      const admission=fetch(`http://127.0.0.1:${gateway}/v1/sessions/${session}/messages`,{
+        method:"POST",headers:{authorization:`Bearer ${apiToken}`,"content-type":"application/json"},
+        body:JSON.stringify({message:{role:"user",content:[{type:"text",text:marker}]}}),
+      });
+      await Promise.all([...deliveries,admission.then(reply=>assert.equal(reply.status,201))]);
+      console.log(JSON.stringify({passive_observers:observers.length,new_input_delivered:true}));
+    } finally {
+      await Promise.allSettled(observers.map(({reader})=>reader.cancel()));
+    }
   }
   console.log(readFileSync(join(run, "proof.log"), "utf8").trim());
   console.log(`Celld qualification evidence: ${run}`);
 } finally {
+  for(const socket of upgradeSockets)socket.destroy();
   // Stop dependants before the test storage service.
   for (const child of children.slice(1))
     if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");

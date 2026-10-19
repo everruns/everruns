@@ -93,6 +93,12 @@ The Workers SSE bridge subscribes to committed-event hints over a hibernating
 WebSocket. Its heartbeat runs in the frontend Worker, so an idle stream no longer
 polls the session DO. Notifications carry no event payload and are not a source of
 truth: the observer replays bounded canonical pages with its existing cursor.
+Celld 0.6.2 needs a complete HTTP upgrade through a fixed notification ingress:
+its kept cross-node stub response can connect without delivering later frames.
+The origin is deployment-controlled, never taken from the caller's URL, and
+redirects are refused before any authority credential can be forwarded elsewhere.
+The fleet qualification idles observers on both surviving frontends, then verifies
+new input delivery after the client-free recovery proof has already completed.
 Connection loss closes SSE so clients reconnect and replay. The internal watch
 endpoint requires the authority credential and matching session identity, accepts
 no commands and bounds connection count. Other clients that actively poll still
