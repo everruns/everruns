@@ -111,7 +111,7 @@ lua = ["everruns-core/direct-egress", "dep:everruns-integrations", "everruns-int
 # between the command and the filesystem. Opt-in because it is the one target
 # that contains nothing; the contract types compile without it.
 host-compute = ["everruns-core/process"]
-mcp = ["everruns-core/mcp", "everruns-core/direct-egress"]
+mcp = ["everruns-core/mcp", "everruns-core/direct-egress", "dep:anyhow"]
 # Enable local-process (stdio) MCP servers, using `everruns-core/mcp-stdio`.
 mcp-stdio = ["mcp", "everruns-core/mcp-stdio"]
 # Enable a crash-durable canonical event log, SQLite-backed session catalog and

@@ -12,6 +12,10 @@ For durable execution under Framework, implement
 owns the runtime and recovery; the host supplies transactional session authority,
 epochs and independent activation. This path needs only an `everruns` dependency.
 
+To keep a host's own capability implementations, provider resolution, retry
+budgets, MCP credentials or observers while Engine runs the sessions, use
+[host services](/framework/host-services/) instead of composing a runtime.
+
 Cross into separate low-level composition only when your application is itself an
 execution host, for example, a server, evaluation harness, research runtime, or
 specialized embedder that must replace storage or orchestration components.

@@ -68,6 +68,7 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 - [Capability integrations](/framework/capability-integrations/), opt into filesystem, shell, web, Lua, and MCP implementation boundaries.
 - [Portable and hosted capabilities](/framework/capability-boundaries/), understand the Framework/Platform implementation boundary.
 - [Agent blueprints](/framework/agent-blueprints/), contribute a code-defined specialist agent from a capability.
+- [Host services](/framework/host-services/), compose a host's own capabilities, provider resolution, retry budgets, MCP credentials and observers into Engine sessions.
 - [Custom backends](/framework/custom-backends/), cross into low-level host composition deliberately.
 - [Testing and simulation](/framework/testing-and-simulation/), deterministic tests without credentials.
 - [Runnable examples](/framework/examples/), complete programs maintained with the crate.

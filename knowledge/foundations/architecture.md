@@ -69,6 +69,8 @@ Events are classified as **ephemeral** or **durable**:
 
 `EventService.emit()` routes automatically based on `EventRequest::is_ephemeral()`. With NATS-backed delivery, ephemeral delta events skip PostgreSQL, reducing write pressure significantly. In-memory dev event delivery still persists events to PG. SSE reconnection replays durable events from PG; missed deltas are acceptable since the completed event has the full content.
 
+NATS rejects a message over its `max_payload` (1 MiB by default). A durable `llm.generation` too large for it goes out live without its captured request body, then without its prompt messages and tool list, marked `live_payload_trimmed` in `metadata`; output and usage stay, and the stored row is complete. Other oversize events are not delivered live and log their size.
+
 Durable events and usage rows can also feed asynchronous analytical projections
 for built-in reporting. Reporting is not part of the hot event delivery path;
 see [knowledge/evaluation/reporting.md](../evaluation/reporting.md).

@@ -25,6 +25,7 @@ mod explicit_communication;
 mod facade_smoke;
 mod function_tools;
 mod harness;
+mod host_services;
 mod lifecycle_hooks;
 mod model_catalog;
 mod session_events;

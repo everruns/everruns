@@ -171,6 +171,24 @@ impl EngineBuilder {
         self
     }
 
+    /// Register a host observer for every Engine session.
+    ///
+    /// It receives the same committed canonical envelopes as
+    /// [`listener`](Self::listener), as Core
+    /// [`HostEvent`](crate::hosting::services::HostEvent) values, on its own
+    /// bounded queue. A
+    /// slow, full, failing or dropped host observer cannot fail a turn, delay
+    /// another observer or add to canonical history; drops are counted in
+    /// [`Engine::observer_stats`]. Stability: experimental.
+    pub fn host_listener(
+        mut self,
+        listener: impl crate::hosting::services::HostEventListener + 'static,
+    ) -> Self {
+        self.listeners
+            .push(ListenerRegistration::Host(Arc::new(listener)));
+        self
+    }
+
     /// Register a built-in observability integration for every Engine session.
     #[cfg(any(feature = "otel", feature = "braintrust"))]
     pub fn observe(mut self, observer: impl crate::observability::Observation) -> Self {

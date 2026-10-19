@@ -458,15 +458,13 @@ impl SessionActor {
 
     async fn inspect(&mut self) -> Result<crate::SessionContext, RunError> {
         self.ensure_runtime().await?;
-        let context = self
-            .runtime
-            .as_ref()
-            .expect("runtime built above")
-            .load_context(self.session_id)
-            .await?;
+        let runtime = self.runtime.as_ref().expect("runtime built above");
+        let context = runtime.load_context(self.session_id).await?;
+        let commands = runtime.list_commands(self.session_id).await?;
         Ok(crate::SessionContext::from_runtime(
             context,
             self.agent.plugin_warnings(),
+            commands,
         ))
     }
 
