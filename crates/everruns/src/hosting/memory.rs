@@ -29,6 +29,8 @@ pub struct MemoryHosting {
 struct MemorySession {
     id: SessionId,
     renew_poke: Arc<tokio::sync::Notify>,
+    /// [`SessionHosting::changes`]: signalled after every receipt or control write.
+    changed: Arc<tokio::sync::Notify>,
     control: tokio::sync::Mutex<Control>,
     log: InMemoryEventLog,
     services: HostBackends,
@@ -69,6 +71,7 @@ impl MemoryHosting {
         Arc::new(MemorySession {
             id,
             renew_poke: Arc::default(),
+            changed: Arc::default(),
             control: tokio::sync::Mutex::new(Control::default()),
             log: InMemoryEventLog::new(),
             services: HostBackends::in_memory(),
@@ -110,7 +113,15 @@ impl SessionHosting for MemoryHosting {
         session: SessionId,
         command: super::spi::session_commands::SessionCommand,
     ) -> Result<Value> {
-        self.execute_command(session, command).await
+        let reply = self.execute_command(session, command).await;
+        if reply.is_ok() {
+            self.session(session).changed.notify_waiters();
+        }
+        reply
+    }
+
+    fn changes(&self, session: SessionId) -> Option<Arc<tokio::sync::Notify>> {
+        Some(self.session(session).changed.clone())
     }
 
     async fn query_snapshot(&self, id: SessionId) -> Result<SessionQuerySnapshot> {
@@ -421,6 +432,8 @@ impl SessionEpoch for Ports {
             state.finalizing.remove(&turn);
         }
         state.records.insert(key.to_owned(), value);
+        drop(state);
+        self.session.changed.notify_waiters();
         Ok(true)
     }
     async fn suspend(&self, reason: &str) -> Result<()> {
@@ -430,6 +443,8 @@ impl SessionEpoch for Ports {
         state
             .records
             .insert("suspension".into(), json!({"reason":reason}));
+        drop(state);
+        self.session.changed.notify_waiters();
         Ok(())
     }
 }

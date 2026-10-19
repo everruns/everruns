@@ -149,6 +149,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: turn-backends-bench
+          # As in server-turn-latency: keep the build warm across gate failures.
+          cache-on-failure: true
 
       - name: Run turn_backends
         run: |
@@ -209,10 +211,14 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
 
+      # Save the cache even when a gate fails: rust-cache skips saving on a
+      # failed job by default, so while this gate failed every week the release
+      # build stayed cold (69 of the 75 minutes on 2026-10-19).
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: server-turn-latency-bench
+          cache-on-failure: true
 
       - name: Run turn_latency
         run: |
