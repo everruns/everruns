@@ -58,6 +58,7 @@ pub(crate) async fn run(
             .negotiate(&environment)
             .map_err(|e| AgentLoopError::config(e.to_string()))?;
     }
+    let live = engine.hosted_live_controls(session).await?;
     let runtime = match everruns_contracts::rt::timeout(
         config.lease_ttl,
         agent.build_runtime_with_event_sink(
@@ -67,6 +68,7 @@ pub(crate) async fn run(
             harness.as_ref(),
             handle.inner.event_bus.clone(),
             state.clone(),
+            Some(live.as_ref()),
         ),
     )
     .await
@@ -117,6 +119,15 @@ impl ActorHosts for FrameworkHosts {
     fn host(&self, _: HostTurn, signals: &TurnSignals) -> Self::Host {
         if let Some(fence) = &signals.fence {
             self.epoch.observe_fence(fence);
+        }
+        // Capability code the host registered on the Engine (EVE-1297)
+        // resolves from the next turn of a running activation.
+        for capability in self.engine.registered_capabilities() {
+            if let Err(error) =
+                crate::session::register_engine_capability(&self.runtime, &capability)
+            {
+                tracing::warn!(%error, "Engine capability not registered on activation runtime");
+            }
         }
         self.runtime.clone()
     }

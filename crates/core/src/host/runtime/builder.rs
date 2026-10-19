@@ -2,6 +2,30 @@
 use super::*;
 
 impl InProcessRuntimeBuilder {
+    /// Share a live, turn-scoped reasoning-effort override with this runtime.
+    ///
+    /// The Reason step re-reads the handle before each model call, so a change
+    /// made between calls (by the embedding host or by a tool through its
+    /// `ToolContext`) applies from the next call. Each turn resets it to the
+    /// [`Self::session_reasoning_effort`] selection; an empty handle defers to
+    /// the effort carried by message controls.
+    pub fn reasoning_effort_handle(
+        mut self,
+        handle: crate::tool_context::ReasoningEffortHandle,
+    ) -> Self {
+        self.reasoning_effort_handle = Some(handle);
+        self
+    }
+
+    /// Read the session-scoped effort every turn's live handle starts from.
+    pub fn session_reasoning_effort(
+        mut self,
+        source: crate::tool_context::ReasoningEffortHandle,
+    ) -> Self {
+        self.session_reasoning_effort = Some(source);
+        self
+    }
+
     /// Assemble context against query-local metadata without authoring the
     /// canonical first-session event. Pair with a read-only event log.
     pub fn for_context_query(mut self) -> Self {

@@ -1,10 +1,10 @@
 //! EVE-1299: rebuilding a session's runtime from a trusted Agent keeps the
 //! session's persisted, mutable overlay instead of reseeding it from the Agent.
 //!
-//! Live capability controls on the Engine API arrive with EVE-1297; until then
-//! these tests make live changes through the public hosting SPI session
-//! mutator, which is the same write `activate_capability` and
-//! `deactivate_capability` perform.
+//! Most tests make live changes through the public hosting SPI session
+//! mutator, the store-level write. `engine_controls` repeats the scenarios with
+//! the Session control API from EVE-1297 (`activate_capability`,
+//! `deactivate_capability`), which performs the same write after validation.
 
 use everruns::hosting::spi::{EventReadLimit, EventReadRequest, HostBackends, SessionMutator};
 use everruns::{Agent, AgentBuilder, CapabilityRef, Engine, Model, SessionId};
@@ -409,5 +409,182 @@ mod host_registered {
             "{instructions}"
         );
         assert!(resumed.run("still writable").await.unwrap().success);
+    }
+}
+
+/// The same overlay guarantees through the Session control API (EVE-1297).
+#[cfg(feature = "builtins")]
+mod engine_controls {
+    use super::*;
+    use everruns::hosting::services::{Capability, HostServices};
+    use everruns::{LlmSimConfig, SessionControlError, ToolCall};
+
+    fn tool_names(context: &everruns::SessionContext) -> Vec<String> {
+        context.tools.iter().map(|tool| tool.name.clone()).collect()
+    }
+
+    fn overlay_ids(record: &everruns::hosting::spi::ExecutionSession) -> Vec<String> {
+        record
+            .capabilities
+            .iter()
+            .map(|capability| capability.capability_id().to_string())
+            .collect()
+    }
+
+    fn clock_model() -> Model {
+        Model::simulated_with_config(LlmSimConfig::fixed("It is now.").with_tool_call_sequence(
+            vec![
+                vec![ToolCall {
+                    id: "call_clock".into(),
+                    name: "get_current_time".into(),
+                    arguments: json!({}),
+                }],
+                vec![],
+            ],
+        ))
+    }
+
+    #[tokio::test]
+    async fn live_activation_survives_restart_and_live_deactivation_stays_off() {
+        let backends = HostBackends::in_memory();
+        let store = backends.session_store.clone();
+        let first = Engine::new();
+        let session = first.create(agent(&backends, Model::simulated("ok")).build().unwrap());
+        session.run("hello").await.unwrap();
+        let id = session.session_id();
+
+        for capability in ["current_time", "stateless_todo_list"] {
+            let change = session
+                .activate_capability(CapabilityRef::new(capability))
+                .await
+                .unwrap();
+            assert!(change.changed && change.active);
+        }
+        let change = session
+            .deactivate_capability("stateless_todo_list")
+            .await
+            .unwrap();
+        assert!(change.changed && !change.active);
+        assert_eq!(
+            overlay_ids(&store.get_session(id).await.unwrap().unwrap()),
+            ["current_time"]
+        );
+        drop(session);
+
+        // A runtime rebuild inside the same Engine keeps the overlay.
+        let reopened = first.resume(id).await.unwrap();
+        let tools = tool_names(&reopened.inspect().await.unwrap());
+        assert!(tools.contains(&"get_current_time".to_string()), "{tools:?}");
+        assert!(!tools.contains(&"write_todos".to_string()), "{tools:?}");
+        drop(reopened);
+        drop(first);
+
+        let replacement = Engine::new();
+        replacement
+            .attach(id, agent(&backends, clock_model()).build().unwrap())
+            .await
+            .unwrap();
+        let resumed = replacement.resume(id).await.unwrap();
+        let tools = tool_names(&resumed.inspect().await.unwrap());
+        assert!(tools.contains(&"get_current_time".to_string()), "{tools:?}");
+        assert!(!tools.contains(&"write_todos".to_string()), "{tools:?}");
+        assert!(resumed.run("what time is it?").await.unwrap().success);
+        assert_eq!(
+            overlay_ids(&store.get_session(id).await.unwrap().unwrap()),
+            ["current_time"]
+        );
+    }
+
+    #[tokio::test]
+    async fn agent_defaults_are_inherited_and_not_deactivatable() {
+        let backends = HostBackends::in_memory();
+        let session = Engine::new().create(
+            agent(&backends, Model::simulated("ok"))
+                .capability("current_time")
+                .build()
+                .unwrap(),
+        );
+        assert!(matches!(
+            session.deactivate_capability("current_time").await,
+            Err(SessionControlError::Rejected(reason)) if reason.contains("inherited")
+        ));
+        let change = session
+            .activate_capability(CapabilityRef::new("current_time"))
+            .await
+            .unwrap();
+        assert!(!change.changed && change.active, "already effective");
+        let record = backends
+            .session_store
+            .get_session(session.session_id())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(overlay_ids(&record).is_empty(), "no copy in the overlay");
+    }
+
+    struct Marker(&'static str, &'static str);
+
+    impl Capability for Marker {
+        fn id(&self) -> &str {
+            self.0
+        }
+
+        fn name(&self) -> &str {
+            self.0
+        }
+
+        fn description(&self) -> &str {
+            "Contributes a marker to the instructions."
+        }
+
+        fn system_prompt_addition(&self) -> Option<&str> {
+            Some(self.1)
+        }
+    }
+
+    #[tokio::test]
+    async fn host_and_engine_registered_capabilities_follow_the_overlay_rules() {
+        let backends = HostBackends::in_memory();
+        let trusted = agent(&backends, Model::simulated("ok"))
+            .host_services(HostServices::new().register(Marker("host_kept", "HOST_KEPT_MARKER")))
+            .build()
+            .unwrap();
+        let first = Engine::new();
+        first
+            .register_capability(Marker("engine_dropped", "ENGINE_DROPPED_MARKER"))
+            .unwrap();
+        first
+            .register_capability(Marker("engine_kept", "ENGINE_KEPT_MARKER"))
+            .unwrap();
+        let session = first.create(trusted.clone());
+        let id = session.session_id();
+        for capability in ["host_kept", "engine_kept", "engine_dropped"] {
+            session
+                .activate_capability(CapabilityRef::new(capability))
+                .await
+                .unwrap();
+        }
+        session
+            .deactivate_capability("engine_dropped")
+            .await
+            .unwrap();
+        drop(session);
+        drop(first);
+
+        // Capability code is not persisted: the restarted host registers it
+        // again, exactly as it re-attaches the Agent.
+        let replacement = Engine::new();
+        replacement
+            .register_capability(Marker("engine_dropped", "ENGINE_DROPPED_MARKER"))
+            .unwrap();
+        replacement
+            .register_capability(Marker("engine_kept", "ENGINE_KEPT_MARKER"))
+            .unwrap();
+        replacement.attach(id, trusted).await.unwrap();
+        let resumed = replacement.resume(id).await.unwrap();
+        let instructions = resumed.inspect().await.unwrap().instructions;
+        assert!(instructions.contains("HOST_KEPT_MARKER"));
+        assert!(instructions.contains("ENGINE_KEPT_MARKER"));
+        assert!(!instructions.contains("ENGINE_DROPPED_MARKER"));
     }
 }

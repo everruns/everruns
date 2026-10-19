@@ -31,6 +31,11 @@ use crate::{Agent, Harness, SessionEnvironmentError};
 mod actor;
 use actor::SessionActor;
 mod attach;
+mod controls;
+pub use controls::{
+    CapabilityChange, CapabilityRegistrationError, CommandOutput, SessionControlError,
+};
+pub(crate) use controls::{HostedQuery, LiveControls, register_engine_capability};
 #[cfg(test)]
 mod backend_tests;
 mod interrupted;
@@ -817,6 +822,7 @@ impl Session {
                     crate::hosting::SessionConfiguration {
                         instructions: overrides.instructions,
                         client_tools: overrides.client_tools,
+                        ..Default::default()
                     },
                 )
                 .await?;
@@ -1043,6 +1049,11 @@ enum Command {
     },
     Inspect {
         response: oneshot::Sender<Result<crate::SessionContext, RunError>>,
+    },
+    /// The session's runtime for a control or query (EVE-1297), answered
+    /// during an active turn too. Never handed to application code.
+    Runtime {
+        response: oneshot::Sender<Result<InProcessRuntime, RunError>>,
     },
     Attach {
         request: Box<AttachRequest>,

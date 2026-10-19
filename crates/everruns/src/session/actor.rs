@@ -61,6 +61,13 @@ impl SessionActor {
                     let result = self.inspect().await;
                     let _ = response.send(result);
                 }
+                Command::Runtime { response } => {
+                    let result = self
+                        .ensure_runtime()
+                        .await
+                        .map(|()| self.runtime.as_ref().expect("runtime built above").clone());
+                    let _ = response.send(result);
+                }
                 Command::Attach { request, response } => {
                     let _ = response.send(self.attach(request).await);
                 }
@@ -372,6 +379,12 @@ impl SessionActor {
                         Some(Command::Inspect { response }) => {
                             self.deferred.push_back(Command::Inspect { response });
                         }
+                        // Answered at once: a tool of this turn may be the
+                        // caller, so deferring it to the turn's end would
+                        // deadlock. The control runs on the caller's task.
+                        Some(Command::Runtime { response }) => {
+                            let _ = response.send(Ok(runtime.clone()));
+                        }
                         // The runtime is built while a turn runs.
                         Some(Command::Attach { request, response }) => {
                             let _ = response.send(self.attach(request).await);
@@ -484,6 +497,7 @@ impl SessionActor {
                 .host
                 .clone();
             let leases = host.session_leases.clone();
+            let live = self.execution.live_controls();
             let runtime = self
                 .agent
                 .build_runtime_with_event_sink(
@@ -493,8 +507,18 @@ impl SessionActor {
                     self.harness.as_ref(),
                     self.event_bus.clone(),
                     self.hook_state.clone(),
+                    Some(live.as_ref()),
                 )
                 .await?;
+            // Engine-registered code (EVE-1297) resolves before the first
+            // turn, so a persisted activation of it is effective after a
+            // rebuild. A collision leaves the existing registration in place;
+            // activating the Engine capability then reports the conflict.
+            for capability in self.execution.registered_capabilities() {
+                if let Err(error) = controls::register_engine_capability(&runtime, &capability) {
+                    tracing::warn!(%error, "Engine capability not registered on session runtime");
+                }
+            }
             // The session runs as an actor: each turn holds the session's
             // lease, so a process sharing these backends cannot run it at
             // the same time.

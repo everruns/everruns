@@ -203,5 +203,6 @@ nothing a listener does is written to session history. Drops are counted in
 ## Related
 
 - [Advanced capabilities](/framework/advanced-capabilities/) for typed capability packages that need no Core contract.
+- [Session controls](/framework/session-controls/) to hot-install, activate and deactivate capabilities and run their commands on a live session.
 - [Session hosting](/framework/hosting/) for durable session authority under Engine.
 - [Custom backends](/framework/custom-backends/) when the host itself replaces execution components.

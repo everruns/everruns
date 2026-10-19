@@ -28,6 +28,7 @@ mod harness;
 mod host_services;
 mod lifecycle_hooks;
 mod model_catalog;
+mod session_controls;
 mod session_events;
 mod session_history;
 mod session_identity;

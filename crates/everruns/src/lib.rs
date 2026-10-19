@@ -142,7 +142,7 @@ pub mod voice;
 pub mod work;
 pub use agent::{Agent, AgentBuilder, BuildError, Model};
 pub use capability_config::{CapabilityRef, CapabilitySpec, IntoCapability};
-pub use context::{CommandInfo, ContextMessage, SessionContext, ToolInfo};
+pub use context::{CommandArgument, CommandInfo, ContextMessage, SessionContext, ToolInfo};
 pub use decisions::{Answers, Decision, Decisions, DecisionsError};
 pub use engine::{Engine, EngineBuilder, InMemoryEngine};
 pub use events::{
@@ -230,8 +230,9 @@ pub use observers::{
 };
 pub use plugin::PluginError;
 pub use session::{
-    AttachError, CancelError, EnvironmentSessionBuilder, InterruptedTurn, RunError,
-    SendDisposition, SentMessage, Session, Turn, TurnHandle,
+    AttachError, CancelError, CapabilityChange, CapabilityRegistrationError, CommandOutput,
+    EnvironmentSessionBuilder, InterruptedTurn, RunError, SendDisposition, SentMessage, Session,
+    SessionControlError, Turn, TurnHandle,
 };
 pub use session_environment::SessionEnvironmentError;
 pub use tool::{

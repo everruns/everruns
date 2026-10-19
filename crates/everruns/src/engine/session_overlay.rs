@@ -32,6 +32,15 @@
 //!   overlay so the Agent's current configuration wins instead of a stale copy.
 //!   An entry an older Agent declared but the current one does not is
 //!   indistinguishable from a hot-enabled overlay in such a record and is kept.
+//! - **Live session controls (EVE-1297).** `Session::activate_capability` and
+//!   `deactivate_capability` write exactly the capability overlay above.
+//!   Live MCP edits are trusted Engine-held input: the runtime builder applies
+//!   them over the Agent-derived `mcp_servers` after this reconciliation, so a
+//!   credential-bearing definition is never copied from a record. Live model
+//!   and reasoning-effort selections are not record fields (`model_id` stays
+//!   whatever its session owner wrote): coherent hosting retains them in its
+//!   authority `SessionConfiguration`, and the legacy lane holds them in the
+//!   owning Engine. See `crate::session::controls`.
 
 use std::collections::HashSet;
 

@@ -215,6 +215,7 @@ async fn configuration_seed_and_queries_reopen_without_execution(
     let patch = SessionConfiguration {
         instructions: Some(Some("Retained override.".into())),
         client_tools: Some(Vec::new()),
+        ..Default::default()
     };
     profile.configure(id, command, patch.clone()).await.unwrap();
     profile.configure(id, command, patch).await.unwrap();

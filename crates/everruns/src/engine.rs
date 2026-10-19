@@ -116,6 +116,19 @@ pub(crate) trait SessionExecution: Send + Sync + fmt::Debug {
     ) -> Result<(), SessionEnvironmentError>;
     async fn default_environment(&self) -> Result<Environment, SessionEnvironmentError>;
     async fn reopen_environment(&self) -> Result<Option<Environment>, ResumeError>;
+    /// Live, process-local session controls (EVE-1297). They outlive Session
+    /// handles and runtime rebuilds within the owning Engine.
+    fn live_controls(&self) -> Arc<crate::session::LiveControls>;
+    /// Trusted capabilities registered on the owning Engine.
+    fn registered_capabilities(&self) -> Vec<Arc<dyn everruns_core::capabilities::Capability>>;
+    /// A read-only query runtime for a coherently hosted session.
+    async fn query_runtime(
+        &self,
+    ) -> everruns_contracts::error::Result<crate::session::HostedQuery> {
+        Err(everruns_contracts::error::AgentLoopError::config(
+            "query port unavailable",
+        ))
+    }
 }
 
 /// Application-owned session execution engine.
@@ -138,6 +151,10 @@ struct EngineInner {
     observers: Arc<ObserverDispatcher>,
     #[cfg(feature = "local")]
     local_backends: Mutex<HashMap<std::path::PathBuf, Arc<OnceCell<Arc<EngineBackends>>>>>,
+    /// See [`Engine::register_capability`].
+    capabilities: Mutex<Vec<Arc<dyn everruns_core::capabilities::Capability>>>,
+    /// See [`SessionExecution::live_controls`].
+    live_controls: Mutex<HashMap<SessionId, Arc<crate::session::LiveControls>>>,
 }
 
 /// Configures an application-owned [`Engine`].
@@ -219,6 +236,8 @@ impl EngineBuilder {
                 observers: ObserverDispatcher::new(self.listeners, self.observer_queue_capacity),
                 #[cfg(feature = "local")]
                 local_backends: Mutex::new(HashMap::new()),
+                capabilities: Mutex::new(Vec::new()),
+                live_controls: Mutex::new(HashMap::new()),
             }),
         }
     }
@@ -346,6 +365,92 @@ impl Engine {
         let session = Session::new(binding, environment, self.inner.observers.clone());
         self.remember_state(session_id, &session);
         Ok(session)
+    }
+
+    /// Register trusted capability code on this Engine without activating it.
+    ///
+    /// Registration makes an implementation discovered after startup (for
+    /// example a newly installed extension) resolvable by every session this
+    /// Engine runs, including runtimes it already built. It changes no model
+    /// surface: a session uses the capability only after
+    /// [`Session::activate_capability`](crate::Session::activate_capability),
+    /// and stops after
+    /// [`Session::deactivate_capability`](crate::Session::deactivate_capability).
+    /// The activation is the session's persisted overlay; the code is not
+    /// persisted, so after a restart the host registers it again before it
+    /// resumes sessions that use it, exactly as it re-attaches the Agent.
+    ///
+    /// Registering the same value again is a no-op. A different value under a
+    /// registered id, or an id or alias the Framework catalog already serves,
+    /// is rejected rather than overriding the existing registration.
+    /// Stability: experimental.
+    pub fn register_capability(
+        &self,
+        capability: impl everruns_core::capabilities::Capability + 'static,
+    ) -> Result<(), crate::session::CapabilityRegistrationError> {
+        self.register_shared_capability(Arc::new(capability))
+    }
+
+    /// [`register_capability`](Self::register_capability) for a capability
+    /// value the host shares with other Engines or Agents.
+    pub fn register_shared_capability(
+        &self,
+        capability: Arc<dyn everruns_core::capabilities::Capability>,
+    ) -> Result<(), crate::session::CapabilityRegistrationError> {
+        use crate::session::CapabilityRegistrationError;
+        // THREAT[TM-TOOL-065]: only in-process trusted code registers, and a
+        // registration never overrides one the Framework or host already made.
+        let id = capability.id().trim().to_string();
+        if id.is_empty() {
+            return Err(CapabilityRegistrationError::InvalidId);
+        }
+        let mut names = vec![id.clone()];
+        names.extend(capability.aliases().iter().map(|alias| alias.to_string()));
+        let catalog = crate::capability_config::framework_capability_registry(false);
+        if let Some(name) = names.iter().find(|name| catalog.has(name)) {
+            return Err(CapabilityRegistrationError::Conflict { id: name.clone() });
+        }
+        let mut registered = self
+            .inner
+            .capabilities
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        for existing in registered.iter() {
+            if same_capability(existing, &capability) {
+                return Ok(());
+            }
+            let existing_names: Vec<&str> = std::iter::once(existing.id())
+                .chain(existing.aliases().iter().copied())
+                .collect();
+            if let Some(name) = names
+                .iter()
+                .find(|name| existing_names.contains(&name.as_str()))
+            {
+                return Err(CapabilityRegistrationError::Conflict { id: name.clone() });
+            }
+        }
+        registered.push(capability);
+        Ok(())
+    }
+
+    pub(crate) fn live_controls(&self, session_id: SessionId) -> Arc<crate::session::LiveControls> {
+        self.inner
+            .live_controls
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .entry(session_id)
+            .or_default()
+            .clone()
+    }
+
+    pub(crate) fn registered_capabilities(
+        &self,
+    ) -> Vec<Arc<dyn everruns_core::capabilities::Capability>> {
+        self.inner
+            .capabilities
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
     }
 
     /// Return a snapshot of listener delivery counters.
@@ -652,6 +757,17 @@ impl Engine {
     }
 }
 
+/// Whether two capability handles share one implementation value.
+pub(crate) fn same_capability(
+    left: &Arc<dyn everruns_core::capabilities::Capability>,
+    right: &Arc<dyn everruns_core::capabilities::Capability>,
+) -> bool {
+    std::ptr::eq(
+        Arc::as_ptr(left).cast::<()>(),
+        Arc::as_ptr(right).cast::<()>(),
+    )
+}
+
 /// Non-owning engine handle held by shared local backends.
 #[cfg(feature = "local")]
 #[derive(Clone)]
@@ -857,6 +973,20 @@ impl SessionExecution for EngineSessionExecution {
 
     fn session_id(&self) -> SessionId {
         self.session_id
+    }
+
+    fn live_controls(&self) -> Arc<crate::session::LiveControls> {
+        self.engine.live_controls(self.session_id)
+    }
+
+    fn registered_capabilities(&self) -> Vec<Arc<dyn everruns_core::capabilities::Capability>> {
+        self.engine.registered_capabilities()
+    }
+
+    async fn query_runtime(
+        &self,
+    ) -> everruns_contracts::error::Result<crate::session::HostedQuery> {
+        self.engine.query_runtime_hosted(self.session_id).await
     }
 
     fn agent_snapshot(&self) -> Agent {

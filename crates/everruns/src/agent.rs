@@ -658,6 +658,7 @@ impl Agent {
     /// distinct session ids yield independent sessions. This is the private seam
     /// [`Session`](crate::Session) builds on. The sink observes finalized event
     /// envelopes; the host log remains the sole write path and sequence owner.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn build_runtime_with_event_sink(
         &self,
         backends: HostBackends,
@@ -666,22 +667,79 @@ impl Agent {
         harness: Option<&crate::Harness>,
         event_sink: Arc<dyn EventSink>,
         hook_state: Arc<crate::hooks::HookRunState>,
+        live: Option<&crate::session::LiveControls>,
     ) -> Result<InProcessRuntime, everruns_contracts::error::AgentLoopError> {
-        self.build_runtime_with_backends(
+        self.runtime_builder(
             backends,
             session_id,
             environment,
             harness,
             Some(event_sink),
             Some(hook_state),
+            live,
         )
+        .await?
+        .build()
         .await
+    }
+
+    /// Resolve a live model selection (EVE-1297) against this Agent's trusted
+    /// providers. Nothing falls back: a provider neither the Agent nor its
+    /// host provider services serve is an error, and a model that bundles
+    /// its own provider is refused because a live selection never changes
+    /// credentials or provider code.
+    pub(crate) async fn live_model_spec(&self, model: Model) -> Result<ModelSpec, String> {
+        // THREAT[TM-LLM-052]: a live selection never brings provider code or
+        // credentials, and never falls back to another provider.
+        if model.bundled_provider.is_some() {
+            return Err(
+                "a live model selection names its provider by key; a bundled provider cannot \
+                 be attached to a running session"
+                    .into(),
+            );
+        }
+        let id = model.id.trim();
+        if id.is_empty() {
+            return Err("model id must not be blank".into());
+        }
+        let provider = model
+            .provider_key
+            .unwrap_or_else(|| self.model.provider.clone());
+        match self
+            .host_services
+            .as_deref()
+            .and_then(|services| services.providers.as_ref())
+        {
+            Some(providers) => Box::pin(providers.ensure_serves(&provider))
+                .await
+                .map_err(|error| error.to_string())?,
+            None if provider != self.model.provider => {
+                return Err(format!(
+                    "provider {provider} is not configured for this agent; refusing to fall \
+                     back to {}",
+                    self.model.provider
+                ));
+            }
+            None => {}
+        }
+        Ok(ModelSpec::on(provider, id))
+    }
+
+    /// Capability ids this Agent contributes on its own layer, plus the
+    /// Engine-owned lifecycle-hook capability.
+    pub(crate) fn capability_ids(&self) -> std::collections::HashSet<String> {
+        self.capabilities
+            .iter()
+            .map(|capability| capability.capability_id().to_string())
+            .chain([crate::hooks::LIFECYCLE_HOOK_CAPABILITY_ID.to_string()])
+            .collect()
     }
 
     pub(crate) fn plugin_warnings(&self) -> Vec<String> {
         self.plugin_warnings.clone()
     }
 
+    #[cfg(test)]
     pub(crate) async fn build_runtime_with_backends(
         &self,
         backends: HostBackends,
@@ -698,6 +756,7 @@ impl Agent {
             bound_harness,
             event_sink,
             hook_state,
+            None,
         )
         .await?
         .build()
@@ -710,14 +769,24 @@ impl Agent {
         session: SessionId,
         environment: Environment,
         harness: Option<&crate::Harness>,
+        live: Option<&crate::session::LiveControls>,
     ) -> Result<InProcessRuntime, everruns_contracts::error::AgentLoopError> {
-        self.runtime_builder(backends, session, Some(environment), harness, None, None)
-            .await?
-            .for_context_query()
-            .build()
-            .await
+        self.runtime_builder(
+            backends,
+            session,
+            Some(environment),
+            harness,
+            None,
+            None,
+            live,
+        )
+        .await?
+        .for_context_query()
+        .build()
+        .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn runtime_builder(
         &self,
         mut backends: HostBackends,
@@ -726,6 +795,7 @@ impl Agent {
         bound_harness: Option<&crate::Harness>,
         event_sink: Option<Arc<dyn EventSink>>,
         hook_state: Option<Arc<crate::hooks::HookRunState>>,
+        live: Option<&crate::session::LiveControls>,
     ) -> Result<
         everruns_core::host::InProcessRuntimeBuilder,
         everruns_contracts::error::AgentLoopError,
@@ -739,6 +809,13 @@ impl Agent {
             backends.provider_store = Arc::new(crate::hosting::services::HostProviderStore::new(
                 providers.clone(),
             ));
+        }
+        if let Some(live) = live {
+            let agent_provider = host_services
+                .and_then(|services| services.providers.as_ref())
+                .is_none()
+                .then(|| self.model.provider.clone());
+            backends.provider_store = live.provider_store(backends.provider_store, agent_provider);
         }
         let hook_capability = hook_state.and_then(|state| state.capability());
         let mut capabilities = self.capabilities.clone();
@@ -817,6 +894,12 @@ impl Agent {
             &capabilities,
         )
         .await;
+        // EVE-1297: live MCP edits are trusted Engine-held input, re-applied
+        // over the Agent-derived servers on every rebuild (see the MCP rule in
+        // `engine::session_overlay`).
+        if let Some(live) = live {
+            live.apply_mcp(&mut session.mcp_servers);
+        }
         if !self.client_tools.is_empty() || self.client_questions {
             let hints = session.hints.get_or_insert_with(Default::default);
             if !self.client_tools.is_empty() {
@@ -841,6 +924,12 @@ impl Agent {
             .session(session)
             .model_spec(self.model.clone())
             .workspace_policy(self.workspace_policy.clone());
+        if let Some(live) = live {
+            let (turn, session) = live.effort_handles();
+            builder = builder
+                .reasoning_effort_handle(turn)
+                .session_reasoning_effort(session);
+        }
 
         if let Some(event_sink) = event_sink {
             backends = backends.with_event_sink(event_sink);
