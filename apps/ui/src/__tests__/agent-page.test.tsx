@@ -318,7 +318,7 @@ describe("AgentPage layout", () => {
     ).toBeInTheDocument();
     expect(more.queryByRole("button", { name: /Files/ })).not.toBeInTheDocument();
     expect(more.getByRole("button", { name: /Network access\s*Inherited/ })).toBeInTheDocument();
-    expect(more.getByRole("button", { name: /Primary sandbox\s*None/ })).toBeInTheDocument();
+    expect(more.getByRole("button", { name: /Sandbox\s*None/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Health check\s*Not run/ })).toBeInTheDocument();
     // Status badge in view mode, Test in Playground is the primary action.
     expect(screen.getByText("active")).toBeInTheDocument();
@@ -382,10 +382,10 @@ describe("AgentPage layout", () => {
 
     expect(
       screen.getByRole("button", {
-        name: /Primary sandbox\s*Bashkit Virtual Workspace/,
+        name: /Sandbox\s*Bashkit Virtual Workspace/,
       }),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Primary sandbox/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Sandbox/ }));
     expect(
       screen.getByText("Locked by the selected Harness.", { exact: false }),
     ).toBeInTheDocument();
@@ -724,7 +724,7 @@ describe("AgentPage edit mode", () => {
   it("includes sandbox policy edited in their sheet", async () => {
     await renderPage();
 
-    fireEvent.click(screen.getByRole("button", { name: /Primary sandbox/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Sandbox/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Add Daytona sandbox" }));
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await save();

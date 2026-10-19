@@ -439,7 +439,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     },
     {
       id: "sandbox",
-      label: "Primary sandbox",
+      label: "Sandbox",
       summary:
         fixedSandbox ??
         (draft.sandboxPolicy

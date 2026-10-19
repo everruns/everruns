@@ -91,7 +91,7 @@ const SECTIONS: Record<
     kind: "draft",
   },
   sandbox: {
-    title: "Primary sandbox",
+    title: "Sandbox",
     description: "Sandbox bindings available when a new Playground Session starts.",
     kind: "draft",
     wide: true,

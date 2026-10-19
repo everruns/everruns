@@ -81,7 +81,7 @@ export function SessionSandboxPanel({ sessionId }: { sessionId: string }) {
   if (isLoading) {
     return (
       <div className="border-t p-4">
-        <h2 className="mb-3 text-sm font-medium text-muted-foreground">Primary Sandbox</h2>
+        <h2 className="mb-3 text-sm font-medium text-muted-foreground">Sandbox</h2>
         <Skeleton className="h-24 w-full" />
       </div>
     );
@@ -101,7 +101,7 @@ export function SessionSandboxPanel({ sessionId }: { sessionId: string }) {
 
   return (
     <div className="border-t p-4">
-      <h2 className="mb-3 text-sm font-medium text-muted-foreground">Primary Sandbox</h2>
+      <h2 className="mb-3 text-sm font-medium text-muted-foreground">Sandbox</h2>
 
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
