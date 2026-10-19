@@ -30,6 +30,7 @@
 //!   sees the turn cancelled.
 
 mod agent;
+mod cutover;
 
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
@@ -259,8 +260,9 @@ impl Host {
         let session = id
             .parse()
             .map_err(|_| ApiError::NotFound(format!("session {id}")))?;
-        Ok(Some(self.engine.session_status(session).await?))
+        Ok(Some(self.hosted_status(id, session).await?))
     }
+
     pub(crate) fn register_agent(&self, entry: &AgentEntry) -> crate::Result {
         let agent = self.build_agent(entry, None, false)?;
         if self.engine.has_session_hosting() {
@@ -301,6 +303,23 @@ impl Host {
                     .ok_or_else(|| anyhow!("native authority requires a data directory"))?
                     .join("workspaces");
                 let factory = agent.directory_environment_factory(root);
+                if let (Some(legacy), Some(authority)) =
+                    (self.legacy_store(), self.native_authority.get())
+                {
+                    let moved = self.build_agent_with(
+                        entry,
+                        None,
+                        None,
+                        Some(legacy.workspace_root().to_path_buf()),
+                    )?;
+                    self.engine.register_agent_with_environment(
+                        self.legacy_build(&entry.name),
+                        moved.clone(),
+                        harness.clone(),
+                        reference.clone(),
+                        everruns::hosting::ImportedWorkspaceFactory::new(moved, authority.clone()),
+                    )?;
+                }
                 self.engine
                     .register_agent_with_environment(build, agent, harness, reference, factory)?;
             } else {
@@ -588,7 +607,7 @@ impl Host {
             let session: SessionId = id
                 .parse()
                 .map_err(|_| ApiError::NotFound(format!("session {id}")))?;
-            let status = self.engine.session_status(session).await?;
+            let status = self.hosted_status(id, session).await?;
             let metadata = status.binding.metadata;
             self.store.insert_session(&SessionRow {
                 id: id.into(),
