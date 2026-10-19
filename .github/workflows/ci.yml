@@ -243,6 +243,7 @@ jobs:
               - 'scripts/lib/core-feature-modules.sh'
               - 'scripts/test-core-feature-modules.sh'
               - 'scripts/lib/check-durable-isolation.sh'
+              - 'scripts/test-durable-isolation.sh'
               - 'scripts/lib/check-database-driver-isolation.sh'
               - 'scripts/lib/check-database-driver-isolation.py'
               - 'scripts/test-database-driver-isolation.py'
@@ -819,8 +820,19 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
 
+      - name: Install durable guard scanner
+        timeout-minutes: 5
+        run: |
+          if ! command -v rg >/dev/null 2>&1; then
+            sudo apt-get update || true
+            sudo apt-get install -y ripgrep
+          fi
+          rg --version
+
       - name: Check durable isolation
-        run: bash scripts/lib/check-durable-isolation.sh
+        run: |
+          bash scripts/test-durable-isolation.sh
+          bash scripts/lib/check-durable-isolation.sh
 
       - name: Check database driver isolation
         run: |

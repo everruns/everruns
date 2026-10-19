@@ -286,7 +286,8 @@ fi
 # 20. Durable isolation guard: the generic engine has no everruns-* deps
 echo "20/32 Durable isolation guard"
 if DURABLE_ISOLATION_OUTPUT="$(
-  bash "$PROJECT_ROOT/scripts/lib/check-durable-isolation.sh" 2>&1
+  bash "$PROJECT_ROOT/scripts/lib/check-durable-isolation.sh" 2>&1 &&
+    bash "$PROJECT_ROOT/scripts/test-durable-isolation.sh" 2>&1
 )"; then
   pass "$DURABLE_ISOLATION_OUTPUT"
 else
