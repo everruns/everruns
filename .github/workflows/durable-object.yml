@@ -170,6 +170,8 @@ jobs:
         run: cargo check --locked -p everruns --no-default-features --features macros,capabilities,builtins --target wasm32-unknown-unknown
       - name: Build the ordinary Framework application for Wasm
         run: bash examples/durable-object-agent/build.sh
+      - name: Enforce the complete Engine Worker upload budget
+        run: node examples/durable-object-agent/check-size.mjs
       - name: Test isolate loss and autonomous alarm recovery on workerd
         working-directory: crates/durable-object/worker
         run: npm run test:isolate

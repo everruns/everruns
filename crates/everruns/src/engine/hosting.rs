@@ -1,6 +1,8 @@
 //! Engine-owned authority and retained behavior reconstruction.
 use super::*;
-use crate::hosting::{AgentBuild, SessionBinding, SessionHosting};
+use crate::hosting::{
+    AgentBuild, SESSION_RUNTIME_VERSION, SessionBinding, SessionCompatibility, SessionHosting,
+};
 use everruns_contracts::error::{AgentLoopError, Result};
 
 #[derive(Clone)]
@@ -268,6 +270,36 @@ impl Engine {
     pub async fn session_binding(&self, session: SessionId) -> Result<SessionBinding> {
         Ok(self.profile()?.status(session).await?.binding)
     }
+
+    /// Inspect retained-code compatibility without claiming execution or
+    /// changing suspension, history, accepted inputs or pending waits.
+    pub async fn session_compatibility(&self, session: SessionId) -> Result<SessionCompatibility> {
+        self.binding_compatibility(&self.session_binding(session).await?)
+    }
+
+    /// Retry a compatibility suspension after restoring the required code.
+    /// The authority checks the unchanged binding and absence of an active
+    /// epoch atomically. This never migrates builds or clears uncertain effects.
+    /// Retain `command` across lost replies. Privileged hosts authorize callers.
+    pub async fn retry_session(&self, session: SessionId, command: uuid::Uuid) -> Result<()> {
+        let binding = self.session_binding(session).await?;
+        let compatibility = self.binding_compatibility(&binding)?;
+        if !compatibility.is_available() {
+            return Err(AgentLoopError::config(compatibility.suspension_reason()));
+        }
+        self.profile()?
+            .command(
+                session,
+                crate::hosting::spi::session_commands::SessionCommand::RetryExecution {
+                    id: command.to_string(),
+                    binding: serde_json::to_value(binding)
+                        .map_err(|e| AgentLoopError::config(e.to_string()))?,
+                },
+            )
+            .await?;
+        self.binding(session).activate();
+        Ok(())
+    }
     /// Commit a session binding at a caller-retained identity. Retrying the
     /// same creation is safe even after losing the entire Engine process.
     pub async fn create_registered(
@@ -320,7 +352,7 @@ impl Engine {
                 .environment
                 .as_ref()
                 .map(|(reference, _)| reference.clone()),
-            framework: 1,
+            framework: SESSION_RUNTIME_VERSION,
             metadata,
         };
         if let Some((_, factory)) = &registration.environment {
@@ -357,8 +389,18 @@ impl Engine {
             .ok_or_else(|| AgentLoopError::config("retained agent build is unavailable"))
     }
 
-    fn cache_hosted(&self, session: SessionId, binding: SessionBinding) -> Result<()> {
-        let registration = self.registration(&binding.behavior)?;
+    fn binding_compatibility(&self, binding: &SessionBinding) -> Result<SessionCompatibility> {
+        if binding.framework != SESSION_RUNTIME_VERSION {
+            return Ok(SessionCompatibility::UnsupportedRuntimeVersion {
+                required: binding.framework,
+                supported: SESSION_RUNTIME_VERSION,
+            });
+        }
+        let Ok(registration) = self.registration(&binding.behavior) else {
+            return Ok(SessionCompatibility::MissingBuild {
+                required: binding.behavior.clone(),
+            });
+        };
         let harness = registration
             .harness
             .as_ref()
@@ -372,10 +414,17 @@ impl Engine {
                     .as_ref()
                     .map(|(reference, _)| reference.clone())
         {
-            return Err(AgentLoopError::config(
-                "retained session configuration is unavailable",
-            ));
+            return Ok(SessionCompatibility::ConfigurationUnavailable);
         }
+        Ok(SessionCompatibility::Available)
+    }
+
+    fn cache_hosted(&self, session: SessionId, binding: SessionBinding) -> Result<()> {
+        let compatibility = self.binding_compatibility(&binding)?;
+        if !compatibility.is_available() {
+            return Err(AgentLoopError::config(compatibility.suspension_reason()));
+        }
+        let registration = self.registration(&binding.behavior)?;
         let mut sessions = self
             .inner
             .sessions
@@ -488,13 +537,25 @@ impl Engine {
                     "activation belongs to another session",
                 ));
             }
-            if let Err(error) = self.cache_hosted(session, activation.binding.clone()) {
+            let compatibility = self.binding_compatibility(&activation.binding)?;
+            if !compatibility.is_available() {
+                let reason = compatibility.suspension_reason();
+                activation.epoch.suspend(reason).await?;
+                // No runtime/effects were started. Release the claim without
+                // consuming input so restored code can be retried immediately.
                 activation
                     .epoch
-                    .suspend("retained_build_unavailable")
+                    .actor_store()
+                    .release_actor(
+                        session,
+                        &config.holder,
+                        activation.actor.fence,
+                        activation.actor.consumed_seq,
+                    )
                     .await?;
-                return Err(error);
+                return Err(AgentLoopError::config(reason));
             }
+            self.cache_hosted(session, activation.binding.clone())?;
             let registration = self.registration(&activation.binding.behavior)?;
             crate::hosting::execution::run(
                 self,
@@ -548,7 +609,7 @@ impl Engine {
                     state: None,
                     selected_environment: None,
                     durable_binding: Some(SessionBinding {
-                        framework: 1,
+                        framework: SESSION_RUNTIME_VERSION,
                         behavior: build,
                         harness: None,
                         environment: Some(reference),

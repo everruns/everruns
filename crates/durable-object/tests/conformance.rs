@@ -27,3 +27,9 @@ async fn public_engine_wait_recovery() {
 async fn public_expired_owner() {
     everruns::hosting::conformance::lease_expiry(&profile()).await;
 }
+
+#[tokio::test]
+#[ignore = "requires the local workerd authority on port 8789"]
+async fn public_retained_deployment() {
+    everruns::hosting::conformance::retained_build_recovery(profile()).await;
+}

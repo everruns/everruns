@@ -89,8 +89,11 @@ session addressing and immutable agent/build bindings prevent accidental cross-
 tenant or wrong-build activation. Embedders authenticate users and authorize
 session access before calling the privileged authority API. Service credentials
 must never reach browsers or agent tools. An executor URL is deployment config,
-not input supplied by a request; redirects are refused. Build identifiers must
-name immutable code that remains available for the session's retention period.
+not input supplied by a request; redirects are refused. Agent build identifiers name immutable behavior/configuration retained for the
+session's retention period. They are independent of deployment digests and compatible
+Engine upgrades. Engine checks the persisted runtime format separately. See the
+[retained-registration strategy](engine-durable-sessions.md#agent-registration-and-creation)
+for compatibility diagnostics and safe retry after restoring missing code.
 
 See [TM-DURABLE-012](../security/threat-model.md) for the security boundary and
 [source configuration](../../crates/durable-object/worker/wrangler.jsonc).

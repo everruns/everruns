@@ -113,3 +113,49 @@ host. It consumes the same Core actor driver directly, shares the Rust command
 validation for client results and the approval/question policies, and retains its
 platform authorization and durable resolution claims. Supporting external hosts
 does not require routing the whole platform through the Framework facade.
+
+## Deployments and retained behavior
+
+Keep three identities separate:
+
+| Identity | Changes when | Persisted binding |
+| --- | --- | --- |
+| Deployment revision | Worker/container is rebuilt or redeployed | Deployment metadata only |
+| `AgentBuild` | Agent behavior or its immutable configuration changes | Exact Agent registration |
+| `SessionBinding.framework` | Persisted runtime format becomes incompatible | Runtime format version |
+
+A compatible Engine upgrade can serve several retained Agent definitions in one
+binary. Register the original definitions alongside the new one; an old key must
+still construct its original tools, hooks, Harness, Environment and model settings.
+Do not alias old keys to the current Agent. Retaining a frontend Worker revision
+alone does not retain the implementation running inside its Durable Objects.
+
+```rust
+use everruns::{Agent, Engine};
+use everruns::hosting::AgentBuild;
+
+fn deployment(original: Agent, current: Agent) -> Engine {
+    Engine::builder()
+        .register(AgentBuild::new("assistant", "v1"), original)
+        .register(AgentBuild::new("assistant", "v2"), current)
+        .build()
+}
+```
+
+Use `engine.session_compatibility(id).await?` to inspect the required build,
+unsupported runtime version or missing immutable configuration without starting
+execution. History and accepted receipts remain readable when code is missing.
+Activation suspends before running an unsupported format or substituting behavior.
+
+After restoring the exact registration and a compatible Engine, an authorized
+host can call `engine.retry_session(id, stable_command_id).await?`. This checks
+compatibility, then atomically checks the unchanged binding and absence of an
+active epoch, retains the retry receipt and restores the activation obligation.
+Pending tools, approvals, waits, history and accepted inputs retain their identities.
+The command refuses suspensions caused by uncertain effects: those require their
+own reconciliation policy. This privileged method needs application authorization.
+
+The framework does not provide an in-place build migration. A migration would
+need a separate compatibility and fencing protocol covering active execution,
+accepted inputs and outstanding effects. Overwriting a build ID or copying only
+completed messages does not preserve interrupted execution.

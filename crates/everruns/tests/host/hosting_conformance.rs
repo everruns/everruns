@@ -34,3 +34,17 @@ async fn sqlite_expired_owner() {
     let profile = everruns::hosting::SqliteHosting::open(dir.path().join("authority.db")).unwrap();
     conformance::lease_expiry(&profile).await;
 }
+
+#[tokio::test]
+async fn memory_retained_deployment() {
+    conformance::retained_build_recovery(MemoryHosting::default()).await;
+}
+#[cfg(feature = "local")]
+#[tokio::test]
+async fn sqlite_retained_deployment() {
+    let dir = tempfile::tempdir().unwrap();
+    conformance::retained_build_recovery(
+        everruns::hosting::SqliteHosting::open(dir.path().join("authority.db")).unwrap(),
+    )
+    .await;
+}

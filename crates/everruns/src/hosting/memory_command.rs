@@ -62,6 +62,13 @@ impl MemoryHosting {
             session: id,
             now_ms: everruns_contracts::rt::utc_now().timestamp_millis(),
             binding: state.binding.as_ref().map(|value| json!(value)),
+            execution_active: state.holder.is_some()
+                && state.expires.is_some_and(|at| at > Instant::now()),
+            suspended: state.suspended,
+            suspension_reason: state
+                .records
+                .get("suspension")
+                .and_then(|value| value["reason"].as_str().map(str::to_owned)),
             head,
             open: state
                 .open
@@ -156,6 +163,12 @@ impl MemoryHosting {
                 state.inbox = i64::from(head);
                 state.resume_generation += 1;
                 state.runnable = true;
+            }
+            ControlUpdate::RetryExecution => {
+                state.suspended = false;
+                state.runnable = true;
+                state.holder = None;
+                state.expires = None;
             }
             ControlUpdate::Cancel { input, interrupt } => {
                 let position = state.inbox;

@@ -427,7 +427,18 @@ pub async fn engine_wait_recovery(profile: impl SessionHosting + Clone) {
     .unwrap();
     drop(session);
     drop(owner);
-    let replacement = engine(agent);
+    let replacement = Engine::builder()
+        .hosting(profile.clone())
+        .register(build.clone(), agent)
+        .register(
+            AgentBuild::new(&build.agent, "newer-deployment-build"),
+            Agent::builder()
+                .instructions("Use the newer behavior.")
+                .model(Model::simulated("wrong build"))
+                .build()
+                .unwrap(),
+        )
+        .build();
     let session = replacement.resume(id).await.unwrap();
     assert!(
         matches!(session.admission(message).await.unwrap().unwrap().state().await.unwrap(),
@@ -502,4 +513,115 @@ pub async fn engine_wait_recovery(profile: impl SessionHosting + Clone) {
         .unwrap();
     assert_eq!(session.events_after(0).await.unwrap().len(), after);
     assert_eq!(effects.load(Ordering::SeqCst), 1);
+}
+
+/// Qualify deployment with a missing build, restoration beside a newer build,
+/// and retry of the original admission without changing its immutable binding.
+pub async fn retained_build_recovery(profile: impl SessionHosting + Clone) {
+    use super::SessionCompatibility;
+    let profile = manual::Manual(profile);
+    let old = AgentBuild::new("retained-deployment", uuid::Uuid::new_v4().to_string());
+    let new = AgentBuild::new(&old.agent, uuid::Uuid::new_v4().to_string());
+    let behavior = |reply: &str| {
+        Agent::builder()
+            .instructions("Answer briefly.")
+            .model(Model::simulated(reply))
+            .build()
+            .unwrap()
+    };
+    let id = SessionId::new();
+    let message = crate::MessageId::new();
+    {
+        let before = Engine::builder()
+            .hosting(profile.clone())
+            .register(old.clone(), behavior("original behavior"))
+            .build();
+        before
+            .create_registered(id, &old)
+            .await
+            .unwrap()
+            .send_with_id(message, "accepted before deploy")
+            .await
+            .unwrap();
+    }
+    let missing = Engine::builder()
+        .hosting(profile.clone())
+        .register(new.clone(), behavior("new behavior"))
+        .build();
+    assert_eq!(
+        missing.session_compatibility(id).await.unwrap(),
+        SessionCompatibility::MissingBuild {
+            required: old.clone()
+        }
+    );
+    assert!(missing.activate(id).await.is_err());
+    let suspended = missing.session_status(id).await.unwrap();
+    assert!(suspended.suspended && !suspended.executing);
+    assert_eq!(
+        suspended.suspension_reason.as_deref(),
+        Some("retained_build_unavailable")
+    );
+    assert!(
+        missing
+            .retry_session(id, uuid::Uuid::new_v4())
+            .await
+            .is_err()
+    );
+    let readable = missing.resume(id).await.unwrap();
+    assert_eq!(readable.events_after(0).await.unwrap().len(), 1);
+    drop(readable);
+    drop(missing);
+
+    // A single compatible Engine serves both retained behaviors. No older
+    // Engine binary, copied transcript or overwritten build ID is required.
+    let restored = Engine::builder()
+        .hosting(profile.clone())
+        .register(old.clone(), behavior("original behavior"))
+        .register(new.clone(), behavior("new behavior"))
+        .build();
+    assert!(
+        restored
+            .session_compatibility(id)
+            .await
+            .unwrap()
+            .is_available()
+    );
+    let command = uuid::Uuid::new_v4();
+    restored.retry_session(id, command).await.unwrap();
+    assert_eq!(
+        restored.session_binding(id).await.unwrap(),
+        suspended.binding
+    );
+    restored.activate(id).await.unwrap();
+    let session = restored.resume(id).await.unwrap();
+    let admission = session.admission(message).await.unwrap().unwrap();
+    assert_eq!(
+        admission.wait().await.unwrap().response,
+        "original behavior"
+    );
+    let events = session.events_after(0).await.unwrap();
+    restored.retry_session(id, command).await.unwrap();
+    restored.activate(id).await.unwrap();
+    assert_eq!(session.events_after(0).await.unwrap().len(), events.len());
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| e.event_type() == "input.message")
+            .count(),
+        1
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| e.event_type() == "turn.started")
+            .count(),
+        1
+    );
+    let fresh = restored
+        .create_registered(SessionId::new(), &new)
+        .await
+        .unwrap();
+    let admission = fresh.send("new session").await.unwrap();
+    restored.activate(fresh.session_id()).await.unwrap();
+    assert_eq!(admission.wait().await.unwrap().response, "new behavior");
 }

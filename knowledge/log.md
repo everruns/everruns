@@ -1,5 +1,14 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-19
+
+* **Retained Engine deployments.** Separate Agent identity from compatible runtime
+  deployments, validate persisted runtime format before execution and provide
+  transactional retry after restoring code. Enforce the complete isolate upload
+  budget without duplicating command Wasm. See
+  [Engine sessions](framework/engine-durable-sessions.md) and
+  [Wasm artifacts](framework/wasm-kernel.md).
+
 ## 2026-10-18
 
 * **Tenant egress proxy in OSS.** The proxy moves from SaaS into the server

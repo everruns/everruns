@@ -176,6 +176,8 @@ export class Authority {
           };
         }
         case "resume":
+          requireValue(state.binding?.framework == null, 400,
+            "Framework sessions require checked retry_execution");
           state.suspended = false;
           state.failures = 0;
           state.retry_at = 0;

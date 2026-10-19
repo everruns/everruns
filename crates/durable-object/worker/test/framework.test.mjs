@@ -118,3 +118,47 @@ test("authority derives approval writes in Rust and ignores caller-prepared perm
   const record=JSON.parse(await f.call("store",{kind:"value",operation:"get",key:"tool_approval/once/sha256_test"}));
   assert.equal(record.allow,false);assert.equal(record.turn_id,turn);
 });
+
+test("restored implementation retries preserve binding and refuse live epochs or uncertain effects", async () => {
+  const f = await fixture();
+  await f.call("input", { event: input() });
+  const lease = await claim(f);
+  const turn = await start(f, lease);
+  await f.call("append", { lease, event: event("tool.call_requested", turn, {
+    tool_calls: [{ id: "still_pending", name: "client_tool", arguments: {} }],
+  }) });
+  await f.call("schedule", { lease, wake_at: 1060000 });
+  await f.call("suspend", { lease, reason: "retained_build_unavailable" });
+  const pending = (await f.call("status")).pending;
+  const command = { operation: "retry_execution", id: "restored-code", binding: f.binding };
+  const retry = () => f.call("session_command", { command });
+  await assert.rejects(f.call("resume"), /checked retry_execution/);
+  await assert.rejects(retry(), /epoch is still active/);
+  assert.equal((await f.call("status")).suspended, true);
+  f.advance(10001);
+  const before = (await f.call("status")).head;
+  const reply = await retry();
+  assert.equal(reply.retried_suspension, "retained_build_unavailable");
+  const status = await f.call("status");
+  assert.deepEqual(status.binding, f.binding);
+  assert.equal(status.head, before);
+  assert.deepEqual(status.pending, pending);
+  assert.equal(status.open.turn_id, turn);
+  assert.equal(status.wake_at, 1060000);
+  assert.equal(status.suspended, false);
+  assert.equal(status.runnable, true);
+  assert.notEqual(f.storage.alarm, null);
+  // Retry revokes the old expired capability even if the authority clock is
+  // subsequently corrected backwards, before a replacement has claimed.
+  f.advance(-10000);
+  await assert.rejects(f.call("framework", { lease, operation: "set", key: "stale-retry", value: true }), /lease lost/);
+  f.advance(10000);
+  const replacement = await claim(f, "replacement");
+  await f.call("suspend", { lease: replacement, reason: "uncertain_agent_start" });
+  // Lost-reply retry returns its old receipt, without clearing a new suspension.
+  assert.deepEqual(await retry(), reply);
+  assert.equal((await f.call("status")).suspended, true);
+  f.advance(10001);
+  await assert.rejects(f.call("session_command", { command: { ...command, id: "new-retry" } }), /reconciliation/);
+  await assert.rejects(f.call("session_command", { command: { ...command, id: "changed-build", binding: { ...f.binding, build_id: "latest" } } }), /binding changed/);
+});
