@@ -135,6 +135,12 @@ impl std::fmt::Debug for BoundSecret {
     }
 }
 
+/// Session key/value prefix the Framework Engine reserves for its own
+/// per-session metadata in caller-owned host backends: the workspace binding,
+/// Harness requirement and legacy cutover marker (EVE-1298). Tools never read
+/// or write these keys; see the session storage capability's reserved list.
+pub const FRAMEWORK_SESSION_KV_PREFIX: &str = "framework_session:";
+
 /// Trait for session key/value and secret storage operations
 ///
 /// This trait abstracts storage operations for tools that need to persist

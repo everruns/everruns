@@ -293,7 +293,24 @@ impl Engine {
                 "retained Environment does not match binding",
             ));
         }
-        factory.open(session).await
+        let environment = factory.open(session).await?;
+        // A cutover retained the legacy workspace head (EVE-1298). A factory
+        // that opens any other head would silently move the session to a new
+        // workspace; fail instead.
+        if let Ok(Some(imported)) = self
+            .profile()?
+            .record(session, crate::hosting::cutover::CUTOVER_WORKSPACE)
+            .await
+        {
+            let imported: everruns_core::host::WorkspaceBinding = serde_json::from_value(imported)
+                .map_err(|_| AgentLoopError::store("imported workspace binding is corrupt"))?;
+            if environment.workspace_head().binding() != &imported {
+                return Err(AgentLoopError::config(
+                    "retained Environment does not reopen the imported workspace head",
+                ));
+            }
+        }
+        Ok(environment)
     }
 
     /// Read authoritative scheduling and durable wait state without activation.
@@ -365,33 +382,7 @@ impl Engine {
         }
         let profile = self.profile()?;
         let registration = self.registration(build)?;
-        // An Agent cannot choose a second authority beneath the Engine profile.
-        if registration.agent.custom_backends().is_some() {
-            return Err(AgentLoopError::config(
-                "Agent backends conflict with Engine hosting",
-            ));
-        }
-        #[cfg(feature = "local")]
-        if registration.agent.local_config().is_some() {
-            return Err(AgentLoopError::config(
-                "Agent local profile conflicts with Engine hosting",
-            ));
-        }
-        let binding = SessionBinding {
-            behavior: build.clone(),
-            harness: registration
-                .harness
-                .as_ref()
-                .map(serde_json::to_value)
-                .transpose()
-                .map_err(|_| AgentLoopError::config("invalid Harness binding"))?,
-            environment: registration
-                .environment
-                .as_ref()
-                .map(|(reference, _)| reference.clone()),
-            framework: SESSION_RUNTIME_VERSION,
-            metadata,
-        };
+        let binding = registered_binding(build, &registration, metadata)?;
         if let Some((_, factory)) = &registration.environment {
             let environment = factory.open(session).await?;
             if let Some(harness) = &registration.harness {
@@ -416,7 +407,7 @@ impl Engine {
             .ok_or_else(|| AgentLoopError::config("Engine has no session hosting profile"))
     }
 
-    fn registration(&self, build: &AgentBuild) -> Result<Registration> {
+    pub(super) fn registration(&self, build: &AgentBuild) -> Result<Registration> {
         self.inner
             .registry
             .lock()
@@ -456,7 +447,7 @@ impl Engine {
         Ok(SessionCompatibility::Available)
     }
 
-    fn cache_hosted(&self, session: SessionId, binding: SessionBinding) -> Result<()> {
+    pub(super) fn cache_hosted(&self, session: SessionId, binding: SessionBinding) -> Result<()> {
         let compatibility = self.binding_compatibility(&binding)?;
         if !compatibility.is_available() {
             return Err(AgentLoopError::config(compatibility.suspension_reason()));
@@ -609,6 +600,41 @@ impl Engine {
             ran = true;
         }
     }
+}
+
+/// The immutable binding a registered build creates. An Agent cannot choose a
+/// second authority beneath the Engine profile.
+pub(super) fn registered_binding(
+    build: &AgentBuild,
+    registration: &Registration,
+    metadata: serde_json::Value,
+) -> Result<SessionBinding> {
+    if registration.agent.custom_backends().is_some() {
+        return Err(AgentLoopError::config(
+            "Agent backends conflict with Engine hosting",
+        ));
+    }
+    #[cfg(feature = "local")]
+    if registration.agent.local_config().is_some() {
+        return Err(AgentLoopError::config(
+            "Agent local profile conflicts with Engine hosting",
+        ));
+    }
+    Ok(SessionBinding {
+        behavior: build.clone(),
+        harness: registration
+            .harness
+            .as_ref()
+            .map(serde_json::to_value)
+            .transpose()
+            .map_err(|_| AgentLoopError::config("invalid Harness binding"))?,
+        environment: registration
+            .environment
+            .as_ref()
+            .map(|(reference, _)| reference.clone()),
+        framework: SESSION_RUNTIME_VERSION,
+        metadata,
+    })
 }
 
 impl Engine {
