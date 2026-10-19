@@ -650,6 +650,52 @@ async fn start_opens_a_conversation_from_this_side() {
     .await;
 }
 
+#[tokio::test]
+async fn send_in_conversation_binds_once_and_delivers_to_the_target() {
+    let f = fixture(SessionBinding::Requester);
+    let (first, outcome) = f
+        .host
+        .send_in_conversation(
+            "support",
+            "test:user:U1",
+            InputMessage::user("Morning briefing"),
+            DeliveryTarget::new("D1", ""),
+        )
+        .await
+        .unwrap();
+    assert!(first.created);
+    assert_eq!(
+        outcome,
+        SendOutcome::Started {
+            input_message_id: "turn_1".into()
+        }
+    );
+    assert_eq!(
+        f.port.state().created[0].binding_key.as_deref(),
+        Some("test:user:U1")
+    );
+    f.port.reply(&first.session_id, "turn_1", "briefing");
+    eventually("the reply", || {
+        f.driver.posts() == vec![(String::new(), "briefing".into())]
+    })
+    .await;
+
+    // The next run, like the next platform message, lands in the same session.
+    let (again, _) = f
+        .host
+        .send_in_conversation(
+            "support",
+            "test:user:U1",
+            InputMessage::user("Weekly review"),
+            DeliveryTarget::new("D1", ""),
+        )
+        .await
+        .unwrap();
+    assert!(!again.created);
+    assert_eq!(again.session_id, first.session_id);
+    assert_eq!(f.port.state().created.len(), 1);
+}
+
 #[test]
 fn titles_take_the_first_line() {
     assert_eq!(title_for("first\nsecond"), "first");

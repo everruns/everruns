@@ -336,6 +336,9 @@ pub struct AppState {
     /// Agent health check service, so health-check commands work over MCP too.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
     pub slack_provisioner: Option<Arc<dyn SlackAppProvisioner>>,
+    /// The channel host Slack runs on, for schedule triggers fired by hand
+    /// that run in a channel conversation.
+    pub channels: Option<Arc<crate::channels::host::ServerChannels>>,
     /// OAuth catalog preset connection check (`api::user_connections`).
     pub mcp_oauth_checker: Option<context::SharedMcpOAuthChecker>,
     /// Absolute URL of `/.well-known/oauth-protected-resource/mcp`, used to
@@ -417,6 +420,7 @@ impl AppState {
             utility_llm_service: host_composition.utility_llm_service(),
             decisions: host_composition.decisions(),
             slack_provisioner: None,
+            channels: None,
             mcp_oauth_checker: None,
             health_check_service: None,
             resource_metadata_url: None,
@@ -445,14 +449,6 @@ impl AppState {
     /// Public root that URL mode elicitation pages are built from.
     pub fn with_elicitation_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.elicitation_base_url = Some(base_url.into());
-        self
-    }
-
-    pub fn with_mcp_events(
-        mut self,
-        service: Arc<crate::domains::mcp_servers::events::McpEventsService>,
-    ) -> Self {
-        self.mcp_events = Some(service);
         self
     }
 

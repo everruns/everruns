@@ -60,6 +60,8 @@ impl WorkerServiceImpl {
             &self.db,
             &self.session_service,
             &message_service,
+            self.channels.as_deref(),
+            self.encryption.as_ref(),
             req.org_id,
             &req.agent_id,
             &req.trigger_id,

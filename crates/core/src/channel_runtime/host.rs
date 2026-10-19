@@ -704,6 +704,56 @@ impl ChannelHost {
             .await
     }
 
+    /// Send `message` in conversation `key` of messaging channel `channel`
+    /// and deliver that turn's replies to `target`: the session a platform
+    /// message under the same key would land in, created and bound on first
+    /// use. For a schedule that speaks in an existing conversation (a Slack
+    /// DM) rather than opening a new one, as [`start`](Self::start) does.
+    pub async fn send_in_conversation<'a>(
+        &self,
+        channel: impl Into<ChannelRef<'a>>,
+        key: &str,
+        message: InputMessage,
+        target: DeliveryTarget,
+    ) -> Result<(Conversation, SendOutcome), ChannelError> {
+        let channel = self.channel(channel.into()).await?;
+        let driver = channel.require_driver()?;
+        let conversation = match self.inner.store.session_for(channel.name(), key).await? {
+            Some(session_id) => Conversation {
+                session_id,
+                created: false,
+            },
+            None => {
+                let created = self
+                    .inner
+                    .port
+                    .create_session(NewChannelSession {
+                        channel: channel.config.clone(),
+                        binding_key: Some(key.to_string()),
+                        title: title_for(
+                            message
+                                .content
+                                .iter()
+                                .find_map(|part| part.as_text())
+                                .unwrap_or_default(),
+                        ),
+                        metadata: json!({
+                            "channel": channel.name(),
+                            "kind": channel.platform(),
+                            "binding_key": key,
+                        }),
+                    })
+                    .await?;
+                self.bind_created(&channel, key, created).await?
+            }
+        };
+        let message = with_channel(message, channel.name());
+        let outcome = self
+            .send_and_deliver(&channel, &driver, &conversation.session_id, message, target)
+            .await?;
+        Ok((conversation, outcome))
+    }
+
     /// The session behind conversation `key` of streaming channel `channel`,
     /// created and bound on first use. `title` names a new session.
     pub async fn conversation<'a>(

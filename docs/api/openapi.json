@@ -36930,6 +36930,22 @@
             "description": "Webhook and MCP event: template for the event subject. Required for\n`session_mode: per_thread`, which keeps one session per subject.",
             "example": "{{webhook.json.action}}"
           },
+          "target_binding_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Schedule only: the conversation on `target_channel_id`, keyed the way\nthe channel binds sessions: `slack:user:{user_id}` (a direct message)\nor `slack:channel:{channel_id}` (top-level posts).",
+            "example": "slack:user:U0123ABCD"
+          },
+          "target_channel_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Schedule only: the agent's channel whose conversation each run speaks\nin, instead of a session of the trigger's own. Needs\n`target_binding_key`.",
+            "example": "appchan_01933b5a000070008000000000000001"
+          },
           "timezone": {
             "type": "string",
             "description": "IANA timezone identifier for cron evaluation (default `UTC`).",
@@ -59586,9 +59602,38 @@
             "$ref": "#/components/schemas/SessionBinding",
             "description": "Whether invocations reuse a stable session or create a new one."
           },
+          "target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ScheduleTriggerTarget",
+                "description": "Conversation of one of the agent's own channels each run speaks in,\ninstead of a session of the trigger's own. `session_mode` then does\nnot apply: the conversation's binding picks the session."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "timezone": {
             "type": "string",
             "description": "IANA timezone identifier for cron evaluation."
+          }
+        }
+      },
+      "ScheduleTriggerTarget": {
+        "type": "object",
+        "description": "A conversation a schedule trigger runs in: the session a message from that\nconversation would land in, created and bound on the first run.\n\nSlack only. `binding_key` names the conversation the way the channel binds\nit: `slack:user:{user_id}` (a direct message with that person) on a\n`per_user` channel, `slack:channel:{channel_id}` (a top-level post) on a\n`per_channel` one.",
+        "required": [
+          "channel_id",
+          "binding_key"
+        ],
+        "properties": {
+          "binding_key": {
+            "type": "string",
+            "description": "The conversation's binding key on that channel."
+          },
+          "channel_id": {
+            "type": "string",
+            "description": "The agent's channel the conversation belongs to."
           }
         }
       },
@@ -66325,6 +66370,22 @@
             ],
             "description": "Replacement subject template. An empty string removes it.",
             "example": "{{webhook.json.action}}"
+          },
+          "target_binding_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Replacement target conversation; given with `target_channel_id`.",
+            "example": "slack:user:U0123ABCD"
+          },
+          "target_channel_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Replacement target channel. An empty string removes the target, so\nruns use a session of the trigger's own again.",
+            "example": "appchan_01933b5a000070008000000000000001"
           },
           "timezone": {
             "type": [

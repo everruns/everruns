@@ -4,6 +4,7 @@ mod http_layers;
 mod integrations;
 mod listeners;
 mod pat_scope;
+use pat_scope::{PersonalAccessTokenRoutesWrapFn, apply_personal_access_token_routes_wrap};
 mod serve;
 
 // Server app builder for composable server configurations
@@ -54,8 +55,6 @@ pub(crate) type MigrationFn =
 type BackgroundTaskFn =
     Box<dyn FnOnce(ServerContext) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
 
-type PersonalAccessTokenRoutesWrapFn = Box<dyn FnOnce(Router) -> Router + Send>;
-
 fn github_app_token_minter(
     auth_config: &auth::AuthConfig,
 ) -> Option<crate::storage::GitHubAppTokenMinter> {
@@ -102,18 +101,6 @@ fn spawn_background_tasks(
     for task_fn in background_tasks {
         let ctx = server_context.clone();
         supervisor.track("custom_background_task", tokio::spawn(task_fn(ctx)));
-    }
-}
-
-/// Apply the optional personal-access-token-routes wrap closure to the router.
-/// Identity when no wrap is configured.
-fn apply_personal_access_token_routes_wrap(
-    wrap: Option<PersonalAccessTokenRoutesWrapFn>,
-    router: Router,
-) -> Router {
-    match wrap {
-        Some(wrap) => wrap(router),
-        None => router,
     }
 }
 
@@ -987,7 +974,8 @@ impl ServerAppBuilder {
             messages_state.session_service.clone(),
             messages_state.message_service.clone(),
         )
-        .with_mcp_event_triggers(mcp_event_triggers.clone());
+        .with_mcp_event_triggers(mcp_event_triggers.clone())
+        .with_channels(channel_recovery.clone());
         let schedules_state = api::schedules::routes(
             api::schedules::ScheduleAppState::new(
                 db.clone(),
@@ -1071,6 +1059,7 @@ impl ServerAppBuilder {
         .with_elicitation_base_url(mcp_root_url.clone())
         .with_mcp_events(mcp_events)
         .with_slack_provisioner(slack_provisioner.clone())
+        .with_channels(channel_recovery.clone())
         .with_mcp_oauth_checker(Some(api::user_connections::OAuthConnectionChecker::shared(
             user_connections_state.clone(),
         )))
@@ -1384,6 +1373,7 @@ impl ServerAppBuilder {
             org_rate_limiter: org_rate_limiter.clone(),
             virtual_registry: virtual_registry.clone(),
             slack_provisioner: slack_provisioner.clone(),
+            channels: channel_recovery.clone(),
         };
         if !self.config.dev_mode {
             background::spawn_grpc_server(
