@@ -41,6 +41,25 @@ must produce visible suspension instead of falling back to the latest Agent.
 A durable journal does not make tools, workspace files or external effects durable;
 those services retain their own guarantees and idempotency requirements.
 
+## Waiting without keeping execution alive
+
+Engine stores safe provider retry deadlines and budgets in the session authority,
+then releases execution. The host wakes the same session when its deadline is due;
+an early wake sends no model request, and cancellation can interrupt the wait.
+Retry limits survive restarting Engine. An explicit provider policy that disables
+retries remains disabled.
+
+`HostingStatus::wake()` reports whether compute is needed now, at a deadline, or
+only after an external event. Hosts deliver wakeups; Engine retains execution and
+recovery policy. Default memory hosting uses its local scheduler and needs no
+external backend. This does not suspend arbitrary running tools or make external
+effects safe to repeat.
+
+The reference Workers SSE transport uses hibernating WebSocket notifications to
+read committed events when they change. Its frontend heartbeat does not poll an
+idle session object. Clients that perform their own polling still generate object
+activity.
+
 ## Implementing a host
 
 Depend on `everruns` with only the features the placement needs. The supported

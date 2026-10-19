@@ -66,6 +66,11 @@ fn parked() -> AgentLoopError {
 #[error("provider request can be retried before streaming")]
 struct RetryableStart(AgentLoopError, Option<LlmRetryConfig>);
 
+/// Whether this failure already carries authorization for a safe retry.
+pub fn is_retryable_start(error: &AgentLoopError) -> bool {
+    matches!(error, AgentLoopError::Internal(inner) if inner.is::<RetryableStart>())
+}
+
 /// Call only at a safe pre-stream boundary. Mid-stream failures and requests
 /// with provider-executed side effects must never be converted to this marker.
 pub fn retryable_start(error: AgentLoopError) -> AgentLoopError {

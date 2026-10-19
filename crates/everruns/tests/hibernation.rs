@@ -270,6 +270,105 @@ async fn driver_and_engine_share_the_configured_retry_budget() {
     Box::pin(driver_policy(1)).await;
 }
 
+#[derive(Clone)]
+struct StreamFault {
+    calls: Arc<AtomicUsize>,
+    partial: bool,
+}
+#[async_trait]
+impl ChatDriver for StreamFault {
+    async fn chat_completion_stream(
+        &self,
+        _: &ProviderEndpoint,
+        _: Vec<everruns::llm::Message>,
+        _: &LlmCallConfig,
+    ) -> Result<LlmResponseStream, AgentLoopError> {
+        let first = self.calls.fetch_add(1, Ordering::SeqCst) == 0;
+        let events = if first {
+            let mut events = vec![];
+            if self.partial {
+                events.push(Ok(LlmStreamEvent::TextDelta("already visible".into())));
+            }
+            events.push(Ok(LlmStreamEvent::Error(
+                everruns_contracts::driver_registry::LlmStreamError::provider(
+                    Some("server_error".into()),
+                    Some(503),
+                    "temporary provider failure",
+                ),
+            )));
+            events
+        } else {
+            vec![
+                Ok(LlmStreamEvent::TextDelta("recovered".into())),
+                Ok(LlmStreamEvent::Done(Box::default())),
+            ]
+        };
+        Ok(Box::pin(futures::stream::iter(events)))
+    }
+}
+
+async fn streaming_boundary(partial: bool) {
+    let profile = MemoryHosting::default();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let agent = Agent::builder()
+        .instructions("Answer briefly.")
+        .provider(Provider::new(
+            "stream-fault",
+            StreamFault {
+                calls: calls.clone(),
+                partial,
+            },
+        ))
+        .model("test")
+        .build()
+        .unwrap();
+    let host = Engine::builder()
+        .hosting(External(profile.clone()))
+        .register(build(), agent)
+        .build();
+    let id = SessionId::new();
+    let session = Box::pin(host.create_registered(id, &build()))
+        .await
+        .unwrap();
+    let sent = session.send("hello").await.unwrap();
+    tokio::time::timeout(Duration::from_millis(500), Box::pin(host.activate(id)))
+        .await
+        .unwrap()
+        .unwrap();
+    let status = profile.status(id).await.unwrap();
+    if partial {
+        assert!(
+            status.wake_at.is_none(),
+            "visible partial output is not replayed as a fresh request"
+        );
+    } else {
+        let at = status.wake_at.expect("a pre-output stream error parks");
+        assert!(!status.executing);
+        tokio::time::sleep(Duration::from_millis((at - status.now_ms) as u64 + 20)).await;
+        Box::pin(host.activate(id)).await.unwrap();
+    }
+    let turn = session
+        .admission(sent.message_id.parse().unwrap())
+        .await
+        .unwrap()
+        .unwrap()
+        .wait()
+        .await
+        .unwrap();
+    assert!(turn.success);
+    assert_eq!(calls.load(Ordering::SeqCst), if partial { 1 } else { 2 });
+}
+
+#[tokio::test]
+async fn a_stream_error_before_output_parks_for_recovery() {
+    Box::pin(streaming_boundary(false)).await;
+}
+
+#[tokio::test]
+async fn visible_partial_output_does_not_gain_automatic_replay() {
+    Box::pin(streaming_boundary(true)).await;
+}
+
 #[tokio::test]
 async fn retry_reopens_in_another_engine() {
     Box::pin(exercise(MemoryHosting::default(), 1)).await;

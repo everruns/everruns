@@ -170,7 +170,9 @@ pub(super) async fn try_apply_native_compaction(
         Ok(Some(response)) => response,
         Ok(None) => return Ok(None),
         Err(error) => {
-            if everruns_contracts::durable_retry::single_attempt() && error.is_transient_llm_error()
+            if everruns_contracts::durable_retry::single_attempt()
+                && (error.is_transient_llm_error()
+                    || everruns_contracts::durable_retry::is_retryable_start(&error))
             {
                 return Err(everruns_contracts::durable_retry::retryable_start(error));
             }
@@ -421,25 +423,33 @@ pub(super) async fn apply_proactive_compaction(
         let input_message_count = messages_before;
         let source_fingerprint =
             proactive_source_fingerprint(config.provider_opaque_context.as_ref(), messages);
-        if let Err(error) = store
-            .record_proactive_attempt(
-                context.session_id,
-                context.provider_type,
-                context.model,
-                crate::engine::ProactiveCompactionAttempt {
-                    source_sequence,
-                    estimated_input_tokens: estimated_tokens_before,
-                    input_message_count,
-                    source_fingerprint,
-                },
-            )
-            .await
-        {
-            tracing::warn!(
-                session_id = %context.session_id,
-                error = %error,
-                "ReasonAtom: proactive compaction attempt watermark write failed"
-            );
+        // A transient hosted attempt is a parked continuation. Do not mark
+        // it as a completed proactive evaluation or the next instance would
+        // skip compaction and send the original oversized context instead.
+        let mark_attempt = async || {
+            if let Err(error) = store
+                .record_proactive_attempt(
+                    context.session_id,
+                    context.provider_type,
+                    context.model,
+                    crate::engine::ProactiveCompactionAttempt {
+                        source_sequence,
+                        estimated_input_tokens: estimated_tokens_before,
+                        input_message_count,
+                        source_fingerprint: source_fingerprint.clone(),
+                    },
+                )
+                .await
+            {
+                tracing::warn!(
+                    session_id = %context.session_id,
+                    error = %error,
+                    "ReasonAtom: proactive compaction attempt watermark write failed"
+                );
+            }
+        };
+        if !everruns_contracts::durable_retry::single_attempt() {
+            mark_attempt().await;
         }
         let _ = context
             .event_emitter
@@ -478,6 +488,14 @@ pub(super) async fn apply_proactive_compaction(
             config,
         )
         .await;
+        if everruns_contracts::durable_retry::single_attempt()
+            && !applied
+                .as_ref()
+                .err()
+                .is_some_and(everruns_contracts::durable_retry::is_retryable_start)
+        {
+            mark_attempt().await;
+        }
         let applied = match applied {
             Err(error) => {
                 // A failed attempt must close its lifecycle: record the
@@ -981,6 +999,13 @@ pub(super) async fn apply_reactive_compaction(
                         messages_after = messages.len(),
                         "ReasonAtom: summarization applied"
                     );
+                }
+                Err(error)
+                    if everruns_contracts::durable_retry::single_attempt()
+                        && (error.is_transient_llm_error()
+                            || everruns_contracts::durable_retry::is_retryable_start(&error)) =>
+                {
+                    return Err(everruns_contracts::durable_retry::retryable_start(error));
                 }
                 Err(error) => tracing::warn!(
                     session_id = %context.session_id,
