@@ -943,3 +943,40 @@ async fn message_and_resume_roll_back_together() {
         &awaiting,
     );
 }
+
+#[tokio::test]
+async fn causal_task_origin_survives_database_reopen_and_reaches_wake_queue() {
+    use everruns_contracts::typed_id::{MessageId, TurnId};
+    use everruns_core::events::EventContext;
+    use everruns_core::session_task::TurnCorrelatedSessionTaskRegistry;
+    use std::sync::Arc;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("causal-tasks.db");
+    let session = SessionId::new();
+    let context = EventContext::turn(TurnId::new(), MessageId::new());
+    let expected = everruns::CausalContext::from_traceparents([
+        "00-1234567890abcdef1234567890abcdef-1234567890abcdef-00",
+    ]);
+    let id = {
+        let registry = LocalSessionTaskRegistry::new(SqliteDb::open(&path).unwrap()).unwrap();
+        let bound = TurnCorrelatedSessionTaskRegistry::wrap_with_causal_context(
+            Arc::new(registry),
+            context.clone(),
+            expected.clone(),
+        );
+        let mut input = create_input(session, TASK_KIND_SUBAGENT);
+        input.wake_policy = TaskWakePolicy::OnTerminal;
+        bound.create(input).await.unwrap().id
+    };
+    let registry = LocalSessionTaskRegistry::new(SqliteDb::open(&path).unwrap()).unwrap();
+    let task = registry.get(session, &id).await.unwrap().unwrap();
+    assert_eq!(everruns_core::causal::task_causal_context(&task), expected);
+    assert!(
+        !serde_json::to_string(&task)
+            .unwrap()
+            .contains("__everruns_origin_event_context")
+    );
+    let queue = everruns_core::SessionWakeQueue::new();
+    assert!(queue.note_transition(&task, everruns_core::TaskTransition::Terminal));
+    assert_eq!(queue.drain(session)[0].causal_context, expected);
+}

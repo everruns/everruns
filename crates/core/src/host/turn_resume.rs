@@ -86,6 +86,7 @@ pub type WaitsOnPersonFn = dyn Fn(&ToolCall) -> bool + Send + Sync;
 /// event. Built by [`TurnLogFold`].
 #[derive(Debug, Clone)]
 pub struct OpenTurn {
+    trace_metadata: Option<serde_json::Value>,
     session_id: SessionId,
     turn_id: TurnId,
     input_message_id: MessageId,
@@ -112,6 +113,12 @@ pub struct OpenTurn {
 }
 
 impl OpenTurn {
+    pub(crate) fn restore_causal_context<A: RuntimeHostAdapter>(&self, adapter: &A) {
+        adapter.event_emitter().restore_turn_context(
+            &crate::events::EventContext::turn(self.turn_id, self.input_message_id),
+            self.trace_metadata.as_ref(),
+        );
+    }
     /// The session the turn runs in.
     pub fn session_id(&self) -> SessionId {
         self.session_id
@@ -194,6 +201,13 @@ impl TurnLogFold {
         match &event.data {
             EventData::TurnStarted(data) => {
                 *open = Some(OpenTurn {
+                    trace_metadata: event
+                        .metadata
+                        .as_ref()
+                        .and_then(|metadata| metadata.get("everruns.turn_traceparent"))
+                        .and_then(|value| value.as_str())
+                        .filter(|value| value.len() == 55)
+                        .map(|value| serde_json::json!({"everruns.turn_traceparent":value})),
                     session_id: event.session_id,
                     turn_id: data.turn_id,
                     input_message_id: data.input_message_id,
@@ -377,6 +391,7 @@ pub async fn resume_open_turn<A: RuntimeHostAdapter>(
     turn: OpenTurn,
     waits_on_person: Option<&WaitsOnPersonFn>,
 ) -> Result<Option<(TurnState, ActPlan)>> {
+    turn.restore_causal_context(adapter);
     let Some(ResumeDecision {
         turn,
         rerun: tool_calls,

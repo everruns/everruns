@@ -548,6 +548,55 @@ impl ObserverDispatcher {
         })
     }
 
+    pub(crate) fn prepare_causal_context(
+        &self,
+        request: &everruns_core::events::EventRequest,
+    ) -> Option<String> {
+        if !self.accepting.load(Ordering::Acquire) {
+            return None;
+        }
+        for slot in &self.slots {
+            if let ListenerTarget::Host(listener) = slot.listener.as_ref()
+                && let Ok(Some(carrier)) =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        listener.prepare_causal_context(request)
+                    }))
+            {
+                return Some(carrier);
+            }
+        }
+        None
+    }
+    pub(crate) fn turn_causal_context(
+        &self,
+        context: &everruns_core::events::EventContext,
+    ) -> crate::CausalContext {
+        let mut causes = crate::CausalContext::default();
+        for slot in &self.slots {
+            if let ListenerTarget::Host(listener) = slot.listener.as_ref()
+                && let Ok(value) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    listener.turn_causal_context(context)
+                }))
+            {
+                causes.merge(&value);
+            }
+        }
+        causes
+    }
+    pub(crate) fn restore_turn_context(
+        &self,
+        context: &everruns_core::events::EventContext,
+        metadata: Option<&serde_json::Value>,
+    ) {
+        for slot in &self.slots {
+            if let ListenerTarget::Host(listener) = slot.listener.as_ref() {
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    listener.restore_turn_context(context, metadata)
+                }));
+            }
+        }
+    }
+
     /// Build the one payload every matching listener will share, or `None` when
     /// nothing matched.
     ///

@@ -1077,6 +1077,26 @@ impl FacadeEventBus {
 }
 
 impl EventSink for FacadeEventBus {
+    fn prepare_causal_context(
+        &self,
+        request: &everruns_core::events::EventRequest,
+    ) -> Option<String> {
+        self.observers.prepare_causal_context(request)
+    }
+    fn turn_causal_context(
+        &self,
+        context: &everruns_core::events::EventContext,
+    ) -> crate::CausalContext {
+        self.observers.turn_causal_context(context)
+    }
+    fn restore_turn_context(
+        &self,
+        context: &everruns_core::events::EventContext,
+        metadata: Option<&serde_json::Value>,
+    ) {
+        self.observers.restore_turn_context(context, metadata);
+    }
+
     fn try_send(&self, event: Event) -> Result<(), EventSinkError> {
         self.observe(&event)
     }

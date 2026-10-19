@@ -6,7 +6,7 @@
 // same spans, the OpenInference conventions read by Arize Phoenix. See
 // knowledge/operations/observability.md for the contract.
 //
-// One trace per turn:
+// One trace per turn, under a short durable.turn anchor:
 //
 //   invoke_agent {agent}      INTERNAL  turn.started → turn.completed/failed/cancelled
 //   ├── reason                INTERNAL  reason.started → reason.completed (phase span)
@@ -36,6 +36,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
+use crate::causal::{CausalContext, CausalLink};
 use crate::event_listeners::EventListener;
 use crate::events::{
     ACT_COMPLETED, ACT_STARTED, ActCompletedData, ActStartedData, Event, EventData, LLM_GENERATION,
@@ -50,11 +51,17 @@ use crate::telemetry::{
     chat_span_name, content, error_type, gen_ai, invoke_agent_span_name, tool_span_name,
 };
 use opentelemetry::global::{BoxedSpan, BoxedTracer};
-use opentelemetry::trace::{Span, SpanKind, Status, TraceContextExt, Tracer};
+use opentelemetry::trace::{
+    Link, Span, SpanContext, SpanId, SpanKind, Status, TraceContextExt, TraceFlags, TraceId,
+    TraceState, Tracer,
+};
 use opentelemetry::{Context, KeyValue, StringValue, Value};
 use opentelemetry_sdk::trace::SdkTracerProvider;
 
 use super::openinference as oi;
+#[path = "otel_causal.rs"]
+mod causal;
+use causal::turn_anchor;
 #[path = "otel_usage.rs"]
 mod usage;
 use usage::{cost_usd, oi_token_attributes, prompt_tokens};
@@ -175,6 +182,7 @@ pub struct OtelEventListener {
     record_content: bool,
     conventions: TraceConventions,
     state: Mutex<ListenerState>,
+    causal: Mutex<causal::TurnContexts>,
 }
 
 impl Default for OtelEventListener {
@@ -217,6 +225,7 @@ impl OtelEventListener {
             record_content,
             conventions,
             state: Mutex::new(ListenerState::default()),
+            causal: Mutex::new(causal::TurnContexts::default()),
         }
     }
 
@@ -239,6 +248,7 @@ impl OtelEventListener {
             record_content,
             conventions,
             state: Mutex::new(ListenerState::default()),
+            causal: Mutex::new(causal::TurnContexts::default()),
         }
     }
 
@@ -253,56 +263,6 @@ impl OtelEventListener {
     // ------------------------------------------------------------------
     // Span construction helpers
     // ------------------------------------------------------------------
-
-    fn start_span(
-        &self,
-        name: String,
-        kind: SpanKind,
-        start: SystemTime,
-        attributes: Vec<KeyValue>,
-        parent: Option<&Context>,
-    ) -> (BoxedSpan, Context) {
-        let builder = self
-            .tracer
-            .span_builder(name)
-            .with_kind(kind)
-            .with_start_time(start)
-            .with_attributes(attributes);
-        let root = Context::new();
-        let span = self
-            .tracer
-            .build_with_context(builder, parent.unwrap_or(&root));
-        let cx = Context::new().with_remote_span_context(span.span_context().clone());
-        (span, cx)
-    }
-
-    /// Attributes every span carries: conversation/session correlation plus
-    /// Everruns ids.
-    fn common_attributes(&self, event: &Event, oi_kind: &'static str) -> Vec<KeyValue> {
-        let session = event.session_id.to_string();
-        let mut attrs = Vec::new();
-        if self.conventions.gen_ai {
-            attrs.push(KeyValue::new(gen_ai::CONVERSATION_ID, session.clone()));
-        }
-        if self.conventions.openinference {
-            attrs.push(KeyValue::new(oi::SPAN_KIND, oi_kind));
-            attrs.push(KeyValue::new(oi::SESSION_ID, session));
-        }
-        if let Some(turn_id) = &event.context.turn_id {
-            attrs.push(KeyValue::new(everruns_attr::TURN_ID, turn_id.to_string()));
-        }
-        if let Some(exec_id) = &event.context.exec_id {
-            attrs.push(KeyValue::new(everruns_attr::EXEC_ID, exec_id.to_string()));
-        }
-        if let Some(id) = &event.context.input_message_id {
-            attrs.push(KeyValue::new(
-                everruns_attr::INPUT_MESSAGE_ID,
-                id.to_string(),
-            ));
-        }
-        attrs.extend(super::provider_attrs::otel_provider_attributes(event));
-        attrs
-    }
 
     /// Mark a span failed per the conventions: `error.type`, error status
     /// with the message, and an `exception` event for backends that render
@@ -427,6 +387,7 @@ impl OtelEventListener {
     fn handle_turn_started(&self, event: &Event, data: &TurnStartedData) {
         let ts = event_time(event);
         let turn_key = format!("turn:{}", data.turn_id);
+        self.commit_trace_anchor(&turn_key, ts);
         let agent = ObservedAgent {
             id: data.agent_id.map(|id| id.to_string()),
             name: data.agent_name.clone(),
@@ -485,12 +446,17 @@ impl OtelEventListener {
             ));
         }
 
-        let (span, cx) = self.start_span(
+        let parent = self
+            .trace_anchor(&turn_key)
+            .or_else(|| turn_anchor(event.metadata.as_ref()))
+            .map(|cx| Context::new().with_remote_span_context(cx));
+        let (span, cx) = self.start_causal_span(
             invoke_agent_span_name(agent.name.as_deref()),
             SpanKind::Internal,
             ts,
             attrs,
-            None,
+            parent.as_ref(),
+            &CausalContext::from_event_metadata(event.metadata.as_ref()),
         );
 
         let mut state = self.state.lock().unwrap();
@@ -561,6 +527,7 @@ impl OtelEventListener {
         let turn_key = format!("turn:{turn_id}");
         let mut state = self.state.lock().unwrap();
         let turn_state = state.turns.remove(&turn_key).unwrap_or_default();
+        let anchor = self.finish_trace_anchor(&turn_key, ts);
         for child_key in turn_state.children {
             if let Some(mut child) = Self::take(&mut state, &child_key) {
                 if let Some(pending) = child.reason.pending_chat.take() {
@@ -593,8 +560,14 @@ impl OtelEventListener {
                         gen_ai::operation::INVOKE_AGENT,
                     ));
                 }
-                let (mut span, _) =
-                    self.start_span(orphan_name.to_string(), SpanKind::Internal, ts, attrs, None);
+                let (mut span, _) = self.start_causal_span(
+                    orphan_name.to_string(),
+                    SpanKind::Internal,
+                    ts,
+                    attrs,
+                    anchor.as_ref(),
+                    &CausalContext::from_event_metadata(event.metadata.as_ref()),
+                );
                 if let Some((code, message)) = failure {
                     self.record_failure(&mut span, ts, code, message);
                 }
@@ -694,12 +667,14 @@ impl OtelEventListener {
         let mut state = self.state.lock().unwrap();
         let turn_key = Self::turn_key(event).filter(|k| state.spans.contains_key(k));
         let parent_cx = Self::parent_cx(&state, turn_key.as_ref());
-        let (span, cx) = self.start_span(
+        let causes = self.phase_causes(event, parent_cx.is_some());
+        let (span, cx) = self.start_causal_span(
             family.to_string(),
             SpanKind::Internal,
             ts,
             attrs,
             parent_cx.as_ref(),
+            &causes,
         );
         let exec_alias = event.context.exec_id.map(|id| format!("exec:{id}"));
         Self::register(
@@ -1429,12 +1404,32 @@ fn tool_result_value(result: &[ContentPart]) -> (String, &'static str) {
 
 #[async_trait]
 impl EventListener for OtelEventListener {
+    fn prepare_causal_context(&self, request: &crate::events::EventRequest) -> Option<String> {
+        self.prepare_turn_trace(request)
+    }
+    fn turn_causal_context(&self, context: &crate::events::EventContext) -> CausalContext {
+        self.causal_context_for_turn(context)
+    }
+    fn restore_turn_context(
+        &self,
+        context: &crate::events::EventContext,
+        metadata: Option<&serde_json::Value>,
+    ) {
+        self.restore_trace_anchor(context, metadata);
+    }
     async fn on_event(&self, event: &Event) {
         match &event.data {
             EventData::TurnStarted(data) => self.handle_turn_started(event, data),
             EventData::TurnCompleted(data) => self.handle_turn_completed(event, data),
             EventData::TurnFailed(data) => self.handle_turn_failed(event, data),
             EventData::TurnCancelled(data) => self.handle_turn_cancelled(event, data),
+            EventData::TurnSealed(data) => self.finish_turn(
+                event,
+                &data.turn_id.to_string(),
+                vec![KeyValue::new(everruns_attr::TURN_STATUS, "sealed")],
+                None,
+                &invoke_agent_span_name(None),
+            ),
             EventData::ReasonStarted(data) => self.handle_reason_started(event, data),
             EventData::ReasonCompleted(data) => self.handle_reason_completed(event, data),
             EventData::ReasonThinkingStarted(data) => self.handle_thinking_started(event, data),
@@ -1467,6 +1462,7 @@ impl EventListener for OtelEventListener {
             TURN_COMPLETED,
             TURN_FAILED,
             TURN_CANCELLED,
+            crate::events::TURN_SEALED,
             REASON_STARTED,
             REASON_COMPLETED,
             REASON_THINKING_STARTED,

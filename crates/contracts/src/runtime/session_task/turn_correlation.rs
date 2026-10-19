@@ -51,6 +51,7 @@ pub(super) fn redacted_public_task_spec(spec: &Value) -> Value {
     let mut public = spec.clone();
     if let Some(object) = public.as_object_mut() {
         object.remove(ORIGIN_EVENT_CONTEXT_KEY);
+        object.remove(crate::runtime::causal::TASK_CAUSAL_CONTEXT_KEY);
     }
     let Some(configs) = public.get_mut("push_configs").and_then(Value::as_array_mut) else {
         return public;
@@ -71,6 +72,7 @@ pub(super) fn redacted_public_task_spec(spec: &Value) -> Value {
 pub struct TurnCorrelatedSessionTaskRegistry {
     inner: Arc<dyn SessionTaskRegistry>,
     context: EventContext,
+    causes: crate::runtime::causal::CausalContext,
 }
 
 impl TurnCorrelatedSessionTaskRegistry {
@@ -79,7 +81,20 @@ impl TurnCorrelatedSessionTaskRegistry {
         inner: Arc<dyn SessionTaskRegistry>,
         context: EventContext,
     ) -> Arc<dyn SessionTaskRegistry> {
-        Arc::new(Self { inner, context })
+        let causes = crate::runtime::causal::event_causal_context(&context);
+        Self::wrap_with_causal_context(inner, context, causes)
+    }
+    /// Bind real exporter identities without changing the legacy event hierarchy.
+    pub fn wrap_with_causal_context(
+        inner: Arc<dyn SessionTaskRegistry>,
+        context: EventContext,
+        causes: crate::runtime::causal::CausalContext,
+    ) -> Arc<dyn SessionTaskRegistry> {
+        Arc::new(Self {
+            inner,
+            context,
+            causes,
+        })
     }
 }
 
@@ -87,6 +102,7 @@ impl TurnCorrelatedSessionTaskRegistry {
 impl SessionTaskRegistry for TurnCorrelatedSessionTaskRegistry {
     async fn create(&self, mut input: CreateSessionTask) -> Result<SessionTask> {
         set_task_origin_event_context(&mut input.spec, &self.context);
+        self.causes.write_task_context(&mut input.spec);
         self.inner.create(input).await
     }
 
@@ -156,11 +172,28 @@ impl crate::runtime::tool_context::ToolContext {
     /// the binding happens here, where the turn is known, rather than at each
     /// `task.*` emission.
     pub fn bind_to_turn(&mut self, context: EventContext) {
+        let causes = self
+            .event_emitter
+            .as_ref()
+            .map(|emitter| emitter.turn_causal_context(&context))
+            .unwrap_or_default();
+        self.bind_to_turn_with_causal_context(context, causes);
+    }
+
+    /// Restore a durable task's original causes when rebuilding its tool context.
+    pub fn bind_to_turn_with_causal_context(
+        &mut self,
+        context: EventContext,
+        causes: crate::runtime::causal::CausalContext,
+    ) {
+        self.bind_causal_delegate(causes.clone());
         if let Some(registry) = self.session_task_registry.take() {
-            self.session_task_registry = Some(TurnCorrelatedSessionTaskRegistry::wrap(
-                registry,
-                context.clone(),
-            ));
+            self.session_task_registry =
+                Some(TurnCorrelatedSessionTaskRegistry::wrap_with_causal_context(
+                    registry,
+                    context.clone(),
+                    causes,
+                ));
         }
         self.event_context = Some(context);
     }
@@ -197,6 +230,11 @@ mod tests {
         let context = EventContext::turn(TurnId::from_seed(2), MessageId::from_seed(3));
         set_task_origin_event_context(&mut task.spec, &context);
 
+        let causes = crate::runtime::causal::CausalContext::from_traceparents([
+            "00-1234567890abcdef1234567890abcdef-1234567890abcdef-00",
+        ]);
+        causes.write_task_context(&mut task.spec);
+        assert_eq!(crate::runtime::causal::task_causal_context(&task), causes);
         let stored = task_origin_event_context(&task).unwrap();
         assert_eq!(stored.turn_id, context.turn_id);
         assert_eq!(stored.input_message_id, context.input_message_id);

@@ -86,6 +86,41 @@ is off by default. Turn it on in code with `.record_content(true)`.
 The span layout and attribute vocabularies are the same as on the platform:
 see [OpenTelemetry](/observability/opentelemetry/).
 
+## Causal links across durable turns
+
+Each turn starts an independent trace with a short `durable.turn` anchor. Child
+messages and task wakes link back to the creating turn. Restarted execution reads
+the committed anchor without re-exporting history. Sampling remains controlled by
+your tracer provider.
+
+Attach a caller's W3C context to an input when your ingress already has one:
+
+```rust
+use everruns::{CausalContext, InputMessage};
+
+let causes = CausalContext::from_traceparents([
+    "00-1234567890abcdef1234567890abcdef-1234567890abcdef-01",
+]);
+let input = InputMessage::user("Continue the analysis").with_causal_context(&causes);
+// session.send(input).await?;
+```
+
+Custom tools can use `ToolCallContext::causal_context()` when submitting a child
+input. `TaskRequest::with_causal_context` and `WakeRequest::with_causal_context`
+retain the same typed context through work delivery retries and completion wakes.
+Custom work backends must retain it with their task/wake snapshots and compare
+requests with `same_submission_as`, which excludes retry telemetry. Built-in child delegates and task wakes propagate it automatically. Batched
+and steered inputs contribute links to the reason that reads them. Retrying a
+stable message ID keeps its first committed causes.
+
+Carriers retain at most sixteen distinct trace/span identities. They exclude
+baggage, tracestate, arbitrary attributes and remote sampling decisions. Invalid
+entries are ignored. Old journals without carriers continue to work; disabled
+observers and dropped events can leave trace gaps. Custom hosts that replace the
+event or child-delivery adapters must forward the optional causal methods.
+Legacy `WakeRoutes` string receivers carry only text; their fallback runner
+forwards causal metadata.
+
 ## Braintrust
 
 The `braintrust` feature adds `everruns::observability::Braintrust`.

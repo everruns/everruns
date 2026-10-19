@@ -112,6 +112,16 @@ pub trait PlatformStore: Send + Sync {
     /// Send a user message to a session, triggering a turn.
     async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()>;
 
+    /// Preserve causal identities when the host supports metadata admission.
+    async fn send_message_with_causal_context(
+        &self,
+        session_id: SessionId,
+        content: &str,
+        _causes: &everruns_contracts::runtime::causal::CausalContext,
+    ) -> Result<()> {
+        self.send_message(session_id, content).await
+    }
+
     /// Get the conversation of a session (most recent first): user messages
     /// and what the agent said, as defined by
     /// [`everruns_core::conversation::said_text`]. Agent commentary and
@@ -241,6 +251,17 @@ impl everruns_core::subagent_delegation::SubagentSessionDelegate for PlatformSto
     async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()> {
         self.0.send_message(session_id, content).await
     }
+    async fn send_message_with_causal_context(
+        &self,
+        session_id: SessionId,
+        content: &str,
+        causes: &everruns_contracts::runtime::causal::CausalContext,
+    ) -> Result<()> {
+        self.0
+            .send_message_with_causal_context(session_id, content, causes)
+            .await
+    }
+
     async fn get_messages(
         &self,
         session_id: SessionId,

@@ -185,9 +185,16 @@ struct ToolCallContextInner {
     tool_call_id: String,
     turn_id: Option<String>,
     context: everruns_core::tool_context::ToolContext,
+    causal_context: crate::CausalContext,
 }
 
 impl ToolCallContext {
+    /// Real exporter identities for this turn. Attach these to child inputs or
+    /// application work; empty when the Engine has no causal observer.
+    pub fn causal_context(&self) -> crate::CausalContext {
+        self.inner.causal_context.clone()
+    }
+
     /// Read a session-owned value from the selected Engine authority.
     pub async fn get_value(&self, key: &str) -> Result<Option<String>, String> {
         if everruns_core::host::is_internal_session_kv_key(key) {
@@ -230,6 +237,10 @@ impl ToolCallContext {
                     .and_then(|event| event.turn_id)
                     .map(|turn_id| turn_id.to_string()),
                 context: context.clone(),
+                causal_context: match (&context.event_emitter, &context.event_context) {
+                    (Some(emitter), Some(event)) => emitter.turn_causal_context(event),
+                    _ => Default::default(),
+                },
             }),
         }
     }

@@ -57,6 +57,8 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 mod builder;
+mod input_message;
+use input_message::{message_from_input, message_from_input_with_id};
 mod commands;
 mod parked;
 mod steering;
@@ -1505,24 +1507,6 @@ async fn seed_runtime_initial_files(
         file_store.seed_initial_file(seed_key, file).await?;
     }
     Ok(())
-}
-
-fn message_from_input(input: InputMessage) -> RuntimeMessage {
-    message_from_input_with_id(MessageId::new(), input)
-}
-
-fn message_from_input_with_id(message_id: MessageId, input: InputMessage) -> RuntimeMessage {
-    RuntimeMessage {
-        id: message_id,
-        role: input.role,
-        content: input.content,
-        phase: None,
-        phase_source: None,
-        controls: input.controls,
-        metadata: input.metadata,
-        external_actor: input.external_actor,
-        created_at: Utc::now(),
-    }
 }
 
 #[cfg(test)]

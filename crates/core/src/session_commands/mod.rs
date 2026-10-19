@@ -7,6 +7,7 @@
 mod approval;
 mod approval_outcome;
 pub use approval_outcome::ApprovalOutcome;
+mod causal;
 mod configuration;
 mod resolution;
 #[cfg(test)]
@@ -228,6 +229,7 @@ impl SessionCommand {
                     object.remove("created_at");
                     object.remove("updated_at");
                 }
+                causal::normalize_fingerprint(&mut value);
                 if *cancelled {
                     json!({"message":value,"cancelled":true})
                 } else {
@@ -315,7 +317,13 @@ pub fn prepare(
         return Err(AgentLoopError::SessionNotFound(view.session).into());
     }
     if let Some(previous) = view.previous {
-        if previous.fingerprint != plan.fingerprint {
+        let mut fingerprint = previous.fingerprint;
+        if matches!(command, SessionCommand::Admit { .. }) {
+            // Normalize old retained receipts too; journals predating this
+            // feature may already contain arbitrary metadata at this key.
+            causal::normalize_fingerprint(&mut fingerprint);
+        }
+        if fingerprint != plan.fingerprint {
             return Err(CommandError::Conflict(
                 "command identity reused with different input",
             ));
@@ -378,7 +386,11 @@ pub fn prepare(
             }
             plan.control = ControlUpdate::Bind { binding };
         }
-        SessionCommand::Admit { message, cancelled } => {
+        SessionCommand::Admit {
+            mut message,
+            cancelled,
+        } => {
+            crate::causal::sanitize_input_metadata(&mut message.metadata);
             if message.role != RuntimeMessageRole::User {
                 return Err(invalid("admission requires user input"));
             }

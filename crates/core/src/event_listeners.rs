@@ -45,6 +45,26 @@ use crate::events::Event;
 /// ```
 #[async_trait]
 pub trait EventListener: Send + Sync {
+    /// Reserve a short trace anchor before its carrier is committed. Implementations
+    /// must perform no I/O; failures must not affect execution.
+    fn prepare_causal_context(&self, _request: &crate::events::EventRequest) -> Option<String> {
+        None
+    }
+
+    fn turn_causal_context(
+        &self,
+        _context: &crate::events::EventContext,
+    ) -> crate::causal::CausalContext {
+        Default::default()
+    }
+
+    fn restore_turn_context(
+        &self,
+        _context: &crate::events::EventContext,
+        _metadata: Option<&serde_json::Value>,
+    ) {
+    }
+
     /// Called after an event is persisted.
     ///
     /// The event has already been stored in the database with its
