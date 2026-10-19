@@ -625,6 +625,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "external-host-services"
+version = "0.0.0"
+dependencies = [
+ "everruns",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "external-platform-store"
 version = "0.0.0"
 dependencies = [

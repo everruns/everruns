@@ -31,6 +31,16 @@ impl InProcessRuntimeBuilder {
         self
     }
 
+    /// Register an additional shared capability on the runtime platform.
+    ///
+    /// Same registration as [`Self::capability`] for a host that retains one
+    /// capability value across many runtimes (for example one per session).
+    pub fn shared_capability(self, capability: Arc<dyn Capability>) -> Self {
+        self.host_composition
+            .register_capability_overriding(capability);
+        self
+    }
+
     /// Replace the platform driver registry.
     pub fn driver_registry(mut self, driver_registry: DriverRegistry) -> Self {
         *self.host_composition.driver_registry_mut() = driver_registry;

@@ -169,7 +169,9 @@ impl AgentBuilder {
         if self.model.is_none()
             && let Some(model) = &m.model
         {
-            self.model = Some(Model::from(model.model.clone()));
+            // Keep the manifest's provider key so a mismatched Agent provider
+            // fails and host provider services can resolve it.
+            self.model = Some(Model::on(model.provider.to_string(), model.model.clone()));
         }
         if let Some(model) = &m.model
             && self.providers.iter().any(|p| p.id() != &model.provider)

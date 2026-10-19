@@ -123,9 +123,11 @@ impl Engine {
 
     pub(crate) async fn inspect_hosted(&self, session: SessionId) -> Result<crate::SessionContext> {
         let (runtime, agent) = self.query_runtime_hosted(session).await?;
+        let commands = runtime.list_commands(session).await?;
         Ok(crate::SessionContext::from_runtime(
             runtime.load_context(session).await?,
             agent.plugin_warnings(),
+            commands,
         ))
     }
 

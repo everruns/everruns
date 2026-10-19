@@ -30,6 +30,9 @@
 #                             runtime-only store and a real offline child turn.
 #   external-workspace-backend implements the open workspace lifecycle SPI
 #                             using only the published core host feature.
+#   external-host-services    composes a host capability with a pre-tool guard
+#                             and a model view into an Engine Session through
+#                             `everruns::hosting::services` alone (EVE-1296).
 #
 # The fixtures live under `crates/everruns/tests/fixtures/external-consumer` and
 # form their own cargo workspace, deliberately outside the repository workspace,
@@ -87,6 +90,11 @@ CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
   cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-workspace-backend
 
 echo "External workspace backend implements the open host SPI under -D warnings."
+
+CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
+  cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-host-services
+
+echo "External host composes capability services into an Engine Session through the public hosting SPI under -D warnings."
 
 CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
   cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-platform-store

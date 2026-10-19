@@ -163,6 +163,50 @@ The decision below is the durable decision for each family; individual
 implementation tests inside `crates/core/tests/consolidated/host` remain host coverage, not additional
 application entrypoints.
 
+## Host services in Engine applications
+
+An embedding host with its own curated capability implementations, provider
+resolution, recovery budgets, MCP credentials and observers must be able to
+adopt `Engine` without replacing that behavior by the default Framework
+catalog (EVE-1296). Yolop's foreground and child execution is the first such
+consumer. Exposing the runtime builder would also expose session authority,
+stores and the filesystem factory, and a callback or a separately driven
+runtime would bypass Engine's leases, admission and turn runner.
+
+The decision is a curated, value-first SPI,
+[`hosting::services`](../../crates/everruns/src/hosting/services.rs), attached
+to the immutable Agent. Agent build validates it; every runtime Engine
+constructs for that Agent applies it after the Framework has selected the
+Environment-backed composition, so frontend sessions, coherent activations,
+context queries and resumption all see the same services. Engine-level host
+observers use the existing listener dispatcher.
+
+- Host capabilities use the Core `Capability` contract directly, so pre-tool
+  hooks, model views, commands and instructions behave as they do in a
+  directly composed runtime. Their ids, aliases and tool names are checked
+  against the Framework registry and other inputs; collisions fail the build
+  rather than overriding a registration. This is what keeps the
+  Environment-selected filesystem and containment out of reach.
+- Host provider resolution replaces the Agent-owned provider, never
+  supplements it. A model names its provider key; an Agent provider beside
+  host providers, or a key that disagrees with the Agent provider, is a build
+  error. Credentials resolve per call under the session identity, and an
+  unknown key fails before execution instead of letting the runtime guess an
+  external driver of the same name.
+- Retry, stream-stall and MCP credential services are injected values, not a
+  second recovery or transport path. MCP credentials are requested per call.
+- Host observers receive the same committed envelopes as application
+  listeners, on independent bounded queues; they cannot fail a turn or write
+  history.
+- Services do not replace egress, stores, session authority or leases. Those
+  remain profile or low-level host concerns below.
+
+The [external host-services fixture](../../crates/everruns/tests/fixtures/external-consumer/host-services/src/lib.rs)
+proves a downstream crate can author a guarded capability with a model view
+using only `everruns`, and the
+[parity test](../../crates/everruns/tests/host/host_services_parity.rs) checks
+the Engine path against direct Core composition.
+
 ## Deliberately low-level host concerns
 
 The following stay on the host side rather than being mirrored into ordinary
@@ -425,3 +469,5 @@ entrypoints.
 - `crates/core/src/host/events.rs`
 - `crates/core/src/host/mod.rs`
 - `crates/everruns/src/local/`
+- `crates/everruns/src/hosting/services.rs`
+- `crates/everruns/tests/facade/host_services.rs`
