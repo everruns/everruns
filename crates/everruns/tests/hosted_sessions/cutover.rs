@@ -951,3 +951,106 @@ async fn pending_legacy_approval_resolves_under_the_authority() {
     assert!(outcome.success);
     assert_eq!(effects.load(Ordering::SeqCst), 1);
 }
+
+/// After cutover JSONL is a projection: rebuilt from the authority in the
+/// `JsonlEventLog` format, readable by it, covering the legacy prefix and
+/// later turns, and identical on every rebuild.
+#[tokio::test]
+async fn jsonl_is_a_rebuildable_export_of_the_authority_after_cutover() {
+    use everruns::hosting::spi::EventReader;
+    let root = tempfile::tempdir().unwrap();
+    let workspace = root.path().join("workspace");
+    let legacy = Agent::builder()
+        .instructions("Answer briefly.")
+        .model(Model::simulated("Hello!"))
+        .local(everruns::LocalConfig::new(root.path().join("state")).workspace(&workspace))
+        .build()
+        .unwrap();
+    let session = Engine::new().create(legacy.clone());
+    let id = session.session_id();
+    session.run("first").await.unwrap();
+    drop(session);
+    let legacy_log =
+        everruns_core::host::JsonlEventLog::open(root.path().join("state/events.jsonl"))
+            .await
+            .unwrap();
+    let legacy_events = legacy_log
+        .read_page(EventReadRequest::new(
+            id,
+            EventReadLimit::new(1000).unwrap(),
+        ))
+        .await
+        .unwrap()
+        .events;
+    drop(legacy_log);
+
+    let target = Agent::builder()
+        .instructions("Answer briefly.")
+        .model(Model::simulated("Hello!"))
+        .workspace(&workspace)
+        .build()
+        .unwrap();
+    let profile = SqliteHosting::open(root.path().join("authority.db")).unwrap();
+    let engine = Engine::builder().hosting(profile.clone()).build();
+    engine
+        .register_agent_with_environment(
+            target_build(),
+            target.clone(),
+            None,
+            "imported-workspace",
+            ImportedWorkspaceFactory::new(target, profile.clone()),
+        )
+        .unwrap();
+    engine
+        .cut_over_legacy_session(id, &legacy, &target_build())
+        .await
+        .unwrap();
+    let hosted = engine.resume(id).await.unwrap();
+    let next = hosted.send("second").await.unwrap();
+    tokio::time::timeout(WAIT, next.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    let authority = hosted_journal(&hosted).await;
+
+    let export = root.path().join("export/events.jsonl");
+    std::fs::create_dir_all(export.parent().unwrap()).unwrap();
+    let written = profile.rebuild_jsonl_export(id, &export).unwrap();
+    assert_eq!(written, authority.len());
+    let first = std::fs::read(&export).unwrap();
+    assert_eq!(profile.rebuild_jsonl_export(id, &export).unwrap(), written);
+    assert_eq!(
+        std::fs::read(&export).unwrap(),
+        first,
+        "rebuild is deterministic"
+    );
+
+    let projected = everruns_core::host::JsonlEventLog::open(&export)
+        .await
+        .unwrap();
+    let events = projected
+        .read_page(EventReadRequest::new(
+            id,
+            EventReadLimit::new(1000).unwrap(),
+        ))
+        .await
+        .unwrap()
+        .events;
+    let rows: Vec<_> = events
+        .iter()
+        .map(|event| {
+            (
+                event.id.to_string(),
+                event.sequence.unwrap(),
+                event.event_type.clone(),
+            )
+        })
+        .collect();
+    assert_eq!(rows, authority);
+    for (legacy, exported) in legacy_events.iter().zip(&events) {
+        assert_eq!(
+            serde_json::to_value(legacy).unwrap(),
+            serde_json::to_value(exported).unwrap()
+        );
+    }
+}

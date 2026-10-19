@@ -84,7 +84,7 @@ noted.
 | Rewind/redo of active history and compaction under the authority while quiescent | Not in this repository: neither lane has a rewind contract | None | **missing** |
 | Workspace restore keeps its own confirmation and snapshot policy | Separate workspace checkpoint API | Unchanged | not affected; restore stays separate |
 | Background tools, monitors, child sessions, coordination: obligations, permissions, provenance, delivery dedup | Durable local task registry, `EngineHub` coordination, schedule runner | Epoch ports carry no task registry, schedule store or subagent delegate | **missing** |
-| JSONL is the legacy authority before cutover or a rebuildable export after | JSONL is the authority | JSONL is never written after cutover | **partial**: no rebuild-from-authority export yet |
+| JSONL is the legacy authority before cutover or a rebuildable export after | JSONL is the authority | Never written after cutover; [rebuilt from one authority snapshot](../../crates/everruns/src/hosting/sqlite/export.rs) in the `JsonlEventLog` format | **passes** |
 | Probe: admission before response loss | | Retried id replays; supervision completes | **passes** |
 | Probe: activation/restart | | New connection and Engine reopen identical state | **passes** |
 | Probe: expired-epoch writes | | Stale epoch writes refused on an imported session | **passes** |
@@ -112,11 +112,9 @@ only when each item holds on the revision being released:
    Blocker: coherent epoch backends start from in-memory defaults
    ([SQLite ports](../../crates/everruns/src/hosting/sqlite/ports.rs)); task and
    schedule state needs authority tables and fencing first.
-3. **JSONL as a rebuildable export.** A projection rebuilt from the authority
-   journal, never written by the executor.
-4. **Session secrets.** An external encrypted secret service for the native
+3. **Session secrets.** An external encrypted secret service for the native
    authority; until then sessions with secrets refuse cutover.
-5. **Every host surface on Engine.** serve, AG-UI threads and the coordination
+4. **Every host surface on Engine.** serve, AG-UI threads and the coordination
    hub reach sessions only through hosting.
 
 A lower-level Core host still exists for platform hosts; retiring the facade

@@ -2,6 +2,7 @@
 //! IMMEDIATE SQLite transaction with FULL synchronization. JSONL is not a
 //! second writer. A startup supervisor rediscovers owed work after process loss.
 mod commands;
+mod export;
 mod import;
 mod ports;
 use super::*;

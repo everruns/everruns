@@ -427,7 +427,10 @@ let session = engine.resume(session_id).await?;
 
 The legacy lane is frozen first. After that, `Engine::attach` with the legacy
 Agent returns `ResumeError::CutOver` and no legacy turn starts, in any process
-that shares the store. The JSONL file is never written again. If a cutover
+that shares the store. The JSONL file is never written again; when a tool still
+needs JSONL, rebuild it from the authority with
+`SqliteHosting::rebuild_jsonl_export(session_id, path)`, which writes the same
+line format atomically and can be repeated at any time. If a cutover
 fails before the authority commits, the session stays frozen until you retry or
 call `Engine::abandon_legacy_cutover`.
 
