@@ -267,7 +267,7 @@ impl ActorHosts for FrameworkHosts {
 }
 
 /// Runtime termination is projected separately from Framework finalization.
-fn project_terminal(events: &[Event]) -> Option<Turn> {
+pub(crate) fn project_terminal(events: &[Event]) -> Option<Turn> {
     let terminal = events.iter().rev().find(|event| {
         matches!(
             event.data,
@@ -331,7 +331,7 @@ fn project_terminal(events: &[Event]) -> Option<Turn> {
     Some(turn)
 }
 
-fn approval_deadline(call: &crate::ToolCall) -> Option<i64> {
+pub(crate) fn approval_deadline(call: &crate::ToolCall) -> Option<i64> {
     let request = everruns_contracts::tool_approval_types::ToolApprovalRequired::from_request_call(
         &call.id,
         &call.name,

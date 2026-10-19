@@ -58,6 +58,11 @@ impl LocalSessionStore {
                     owner_session_id TEXT,
                     PRIMARY KEY(provider_id, workspace_id, head_id),
                     FOREIGN KEY(owner_session_id) REFERENCES framework_sessions(session_id)
+                );
+                 CREATE TABLE IF NOT EXISTS framework_session_cutovers (
+                    session_id TEXT PRIMARY KEY NOT NULL,
+                    marker_json TEXT NOT NULL,
+                    FOREIGN KEY(session_id) REFERENCES framework_sessions(session_id)
                 );",
             )?;
             let has_harness_required = conn
@@ -153,6 +158,57 @@ impl HarnessBindingStore for LocalSessionStore {
                 Ok(())
             })
             .map_err(|_| crate::HistoryError::Unavailable)
+    }
+}
+
+/// Legacy ownership marker (EVE-1298), shared by every process on this
+/// profile so none of them resumes a cut-over session on the legacy lane.
+#[async_trait]
+impl crate::engine::LegacyCutoverStore for LocalSessionStore {
+    async fn load_cutover(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Option<crate::engine::LegacyCutoverMarker>> {
+        self.db
+            .with_conn(|conn| {
+                conn.query_row(
+                    "SELECT marker_json FROM framework_session_cutovers WHERE session_id = ?1",
+                    params![session_id.to_string()],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()
+            })
+            .map_err(store_error)?
+            .map(|raw| {
+                serde_json::from_str(&raw)
+                    .map_err(|_| AgentLoopError::store("legacy cutover marker is corrupt"))
+            })
+            .transpose()
+    }
+
+    async fn store_cutover(
+        &self,
+        session_id: SessionId,
+        marker: Option<&crate::engine::LegacyCutoverMarker>,
+    ) -> Result<()> {
+        let encoded = marker
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|error| AgentLoopError::store(error.to_string()))?;
+        self.db
+            .with_conn(|conn| match &encoded {
+                Some(encoded) => conn.execute(
+                    "INSERT INTO framework_session_cutovers (session_id, marker_json) VALUES (?1, ?2)
+                     ON CONFLICT(session_id) DO UPDATE SET marker_json = excluded.marker_json",
+                    params![session_id.to_string(), encoded],
+                ),
+                None => conn.execute(
+                    "DELETE FROM framework_session_cutovers WHERE session_id = ?1",
+                    params![session_id.to_string()],
+                ),
+            })
+            .map_err(store_error)?;
+        Ok(())
     }
 }
 

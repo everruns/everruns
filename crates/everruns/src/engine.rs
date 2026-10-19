@@ -25,8 +25,15 @@ use crate::{
     SessionEvent, SessionId,
 };
 
+mod cutover;
 mod hosting;
+mod legacy_metadata;
 mod session_overlay;
+
+pub(crate) use cutover::{ensure_legacy_owner, fence_legacy_leases};
+#[cfg(feature = "local")]
+pub(crate) use legacy_metadata::LegacyCutoverMarker;
+pub(crate) use legacy_metadata::LegacyCutoverStore;
 
 pub(crate) use session_overlay::reconcile_session_record;
 
@@ -35,6 +42,8 @@ pub(crate) struct EngineBackends {
     pub(crate) host: HostBackends,
     binding_store: Arc<dyn EnvironmentBindingStore>,
     harness_binding_store: Arc<dyn HarnessBindingStore>,
+    /// Legacy-lane ownership marker (EVE-1298).
+    pub(crate) cutover: Arc<dyn LegacyCutoverStore>,
     /// Engines sharing these local backends, for coordination threads.
     #[cfg(feature = "local")]
     hub: Option<Arc<crate::coordination::EngineHub>>,
@@ -520,6 +529,17 @@ impl Engine {
         if !exists {
             return Err(ResumeError::SessionNotFound { session_id });
         }
+        // A cut-over session belongs to its authority; never hand it back to
+        // the legacy executor (EVE-1298).
+        if backends
+            .cutover
+            .load_cutover(session_id)
+            .await
+            .map_err(|_| ResumeError::Unavailable)?
+            .is_some()
+        {
+            return Err(ResumeError::CutOver);
+        }
         // Refuse before any environment work: a session that has run with a
         // Harness may not come back without one, or the restart quietly widens
         // it to whatever the Agent alone allows.
@@ -876,14 +896,21 @@ async fn initialize_backends(agent: &Agent) -> Result<Arc<EngineBackends>, Backe
         return Ok(Arc::new(EngineBackends {
             host,
             binding_store: session_store.clone(),
-            harness_binding_store: session_store,
+            harness_binding_store: session_store.clone(),
+            cutover: session_store,
             hub: Some(hub),
         }));
     }
+    // Caller-owned backends keep the session's metadata themselves, so a new
+    // Agent value over the same backends reopens the same workspace head.
+    let metadata = Arc::new(legacy_metadata::HostSessionMetadata::new(
+        backends.storage_store.clone(),
+    ));
     Ok(Arc::new(EngineBackends {
         host: backends,
-        binding_store: Arc::new(InMemoryEnvironmentBindingStore::default()),
-        harness_binding_store: Arc::new(InMemoryHarnessBindingStore::default()),
+        binding_store: metadata.clone(),
+        harness_binding_store: metadata.clone(),
+        cutover: metadata,
         #[cfg(feature = "local")]
         hub: None,
     }))
@@ -1009,6 +1036,7 @@ impl SessionExecution for EngineSessionExecution {
                 host: profile.reader(self.session_id),
                 binding_store: Arc::new(InMemoryEnvironmentBindingStore::default()),
                 harness_binding_store: Arc::new(InMemoryHarnessBindingStore::default()),
+                cutover: Arc::new(legacy_metadata::AuthorityOwned),
                 #[cfg(feature = "local")]
                 hub: None,
             }));

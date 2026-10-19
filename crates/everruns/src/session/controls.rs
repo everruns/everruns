@@ -215,6 +215,12 @@ impl LiveControls {
         })
     }
 
+    /// The live model and effort selections, as a cutover carries them into
+    /// authority configuration (EVE-1298).
+    pub(crate) fn selections(&self) -> (Option<ModelSpec>, Option<ReasoningEffort>) {
+        (self.selected_model(), self.effort.get())
+    }
+
     /// Adopt the model and effort a coherent hosting authority retains.
     pub(crate) fn sync_authority(&self, configuration: &crate::hosting::SessionConfiguration) {
         *self

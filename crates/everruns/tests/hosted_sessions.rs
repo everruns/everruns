@@ -749,3 +749,6 @@ async fn native_rejected_admission_rolls_back_event_cursor_receipt_and_wakeup() 
 
 #[path = "hosted_sessions/controls.rs"]
 mod controls;
+#[cfg(feature = "local")]
+#[path = "hosted_sessions/cutover.rs"]
+mod cutover;

@@ -401,6 +401,44 @@ typed recovery-limit error instead of allocating or scanning without bound.
 Do not design new application persistence around a legacy storage
 representation.
 
+### Moving legacy sessions to `SqliteHosting`
+
+`Engine::cut_over_legacy_session` (experimental) moves an existing `LocalConfig`
+or custom-backend session into `SqliteHosting` with the same `SessionId`. The
+import is lossless and atomic: the full event history keeps its event ids and
+sequences, and admissions, parked client calls and approvals, compaction
+checkpoints, session values, finished task records and the workspace binding
+come along. Retrying after a crash or a lost reply returns the same result. A
+cutover to a different build fails.
+
+```rust ignore
+let profile = SqliteHosting::open("authority.db")?;
+let engine = Engine::builder().hosting(profile.clone()).build();
+engine.register_agent_with_environment(
+    build.clone(),
+    agent.clone(),
+    None,
+    "imported-workspace",
+    ImportedWorkspaceFactory::new(agent, profile),
+)?;
+let report = engine.cut_over_legacy_session(session_id, &legacy_agent, &build).await?;
+let session = engine.resume(session_id).await?;
+```
+
+The legacy lane is frozen first. After that, `Engine::attach` with the legacy
+Agent returns `ResumeError::CutOver` and no legacy turn starts, in any process
+that shares the store. The JSONL file is never written again. If a cutover
+fails before the authority commits, the session stays frozen until you retry or
+call `Engine::abandon_legacy_cutover`.
+
+The session must be quiescent. A cutover refuses, without writing anything to
+the authority, while a legacy turn is running or while the session has an
+unfinished task, an active schedule or stored secrets. It also refuses when the
+target build cannot reopen the session's workspace head. Use
+`ImportedWorkspaceFactory` so the authority reopens that head after restarts.
+The Agent's in-memory default workspace is not durable on either lane, so its
+files are not migrated; the report sets `volatile_workspace`.
+
 ### One process runs a session at a time
 
 Each session runs as an actor: its event log is its state, and a turn holds

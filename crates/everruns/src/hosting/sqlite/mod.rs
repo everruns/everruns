@@ -2,6 +2,7 @@
 //! IMMEDIATE SQLite transaction with FULL synchronization. JSONL is not a
 //! second writer. A startup supervisor rediscovers owed work after process loss.
 mod commands;
+mod import;
 mod ports;
 use super::*;
 use crate::sqlite::{Connection, OptionalExtension, TransactionBehavior, params};
@@ -295,33 +296,7 @@ fn append(
         return Err(error("authority event sequence conflict"));
     }
     let turn = request.context.turn_id;
-    let terminal = matches!(
-        request.data,
-        EventData::TurnCompleted(_)
-            | EventData::TurnCancelled(_)
-            | EventData::TurnFailed(_)
-            | EventData::TurnSealed(_)
-    );
-    let identity = if terminal {
-        Some(format!(
-            "terminal:{}",
-            turn.ok_or_else(|| error("terminal event lacks turn"))?
-        ))
-    } else {
-        match &request.data {
-            EventData::ToolStarted(data) => Some(format!(
-                "started:{}:{}",
-                turn.ok_or_else(|| error("tool event lacks turn"))?,
-                data.tool_call.id
-            )),
-            EventData::ToolCompleted(data) => Some(format!(
-                "completed:{}:{}",
-                turn.ok_or_else(|| error("tool event lacks turn"))?,
-                data.tool_call_id
-            )),
-            _ => None,
-        }
-    };
+    let identity = event_identity(&request.data, turn)?;
     if let Some(identity) = &identity {
         let old: Option<String> = tx
             .query_row(
@@ -366,18 +341,61 @@ fn append(
         ],
     )
     .map_err(error)?;
+    advance(state, &event);
+    Ok(event)
+}
+
+fn is_terminal(data: &EventData) -> bool {
+    matches!(
+        data,
+        EventData::TurnCompleted(_)
+            | EventData::TurnCancelled(_)
+            | EventData::TurnFailed(_)
+            | EventData::TurnSealed(_)
+    )
+}
+
+/// Operation identity deduplicating terminal and tool outcomes per turn.
+fn event_identity(data: &EventData, turn: Option<TurnId>) -> Result<Option<String>> {
+    Ok(if is_terminal(data) {
+        Some(format!(
+            "terminal:{}",
+            turn.ok_or_else(|| error("terminal event lacks turn"))?
+        ))
+    } else {
+        match data {
+            EventData::ToolStarted(data) => Some(format!(
+                "started:{}:{}",
+                turn.ok_or_else(|| error("tool event lacks turn"))?,
+                data.tool_call.id
+            )),
+            EventData::ToolCompleted(data) => Some(format!(
+                "completed:{}:{}",
+                turn.ok_or_else(|| error("tool event lacks turn"))?,
+                data.tool_call_id
+            )),
+            _ => None,
+        }
+    })
+}
+
+/// Control transitions of one committed event. Live appends and legacy
+/// imports share them, so an imported journal leaves the same open turn and
+/// pending calls a native authority would hold at that position.
+fn advance(state: &mut Control, event: &Event) {
     match &event.data {
         EventData::TurnStarted(data) => state.open = Some((data.turn_id, data.input_message_id)),
         EventData::ToolCallRequested(data) => state.pending = data.tool_calls.clone(),
         EventData::ToolCompleted(data) => state.pending.retain(|call| call.id != data.tool_call_id),
         _ => {}
     }
-    if terminal && let Some(turn) = turn {
+    if is_terminal(&event.data)
+        && let Some(turn) = event.context.turn_id
+    {
         state.open = None;
         state.pending.clear();
         state.finalizing.insert(turn);
     }
-    Ok(event)
 }
 
 #[derive(Clone)]
@@ -541,6 +559,11 @@ impl SessionHosting for SqliteHosting {
     }
     fn process_scheduler(&self) -> bool {
         true
+    }
+    async fn import_legacy(&self, session: SessionId, image: LegacySessionImage) -> Result<bool> {
+        let replayed = self.import_image(session, image)?;
+        self.changes.notify(session);
+        Ok(replayed)
     }
 }
 
