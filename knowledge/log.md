@@ -2,10 +2,6 @@
 
 ## 2026-10-19
 
-* **Generated E2B descriptors are outputs.** Cargo tracks source proto and
-  decoder settings instead of the generated descriptor, avoiding self-invalidating
-  warm builds. See [CI build time](project/ci-build-time.md).
-
 * **Hosted AG-UI threads.** `AgUiThreads::hosted` serves threads from a
   coherent authority; threads of cut-over sessions keep their sessions. See
   [Local authority cutover](framework/local-authority-cutover.md).
@@ -29,6 +25,10 @@
   with the platform envelope scheme when given secret keys, and cutover moves
   legacy secrets under them. See
   [Local authority cutover](framework/local-authority-cutover.md).
+
+* **Generated E2B descriptors are outputs.** Cargo tracks source proto and
+  decoder settings instead of the generated descriptor, avoiding self-invalidating
+  warm builds. See [CI build time](project/ci-build-time.md).
 
 * **Legacy session cutover.** Legacy local/custom-backend sessions import into
   the SQLite authority in one transaction with a recorded source boundary and
