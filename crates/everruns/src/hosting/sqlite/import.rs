@@ -14,6 +14,17 @@ impl SqliteHosting {
         image: LegacySessionImage,
     ) -> Result<bool> {
         let decision = image.record();
+        // Seal outside the transaction; refuse before any write without keys.
+        let sealed = image
+            .secrets
+            .iter()
+            .map(|(name, value)| {
+                Ok((
+                    name.clone(),
+                    self.secret_keys()?.seal(session, name, value)?,
+                ))
+            })
+            .collect::<Result<Vec<_>>>()?;
         self.transaction(session, |tx, state| {
             if state.binding.is_some() {
                 let committed: Option<Value> = object(tx, session, "framework", CUTOVER_RECORD)?;
@@ -50,6 +61,9 @@ impl SqliteHosting {
             state.created_at = everruns_contracts::rt::utc_now_iso();
             import_journal(tx, session, state, &image)?;
             import_objects(tx, session, state, &image)?;
+            for (name, secret) in &sealed {
+                put(tx, session, "secret", name, secret)?;
+            }
             let mut record = decision.clone();
             record["decided_at"] = json!(everruns_contracts::rt::utc_now_iso());
             put(tx, session, "framework", CUTOVER_RECORD, &record)?;

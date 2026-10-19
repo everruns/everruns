@@ -119,6 +119,8 @@ mcp-stdio = ["mcp", "everruns-core/mcp-stdio"]
 # history is derived from canonical events rather than selecting a writable
 # message store here.
 local = [
+    "dep:aes-gcm",
+    "dep:rand",
     "dep:anyhow",
     "dep:everruns-capabilities",
     "dep:rusqlite",
@@ -232,6 +234,10 @@ serde.workspace = true
 # SQLite for the `local` feature. `everruns::sqlite` owns connection opening
 # for the facade and serve hosts.
 rusqlite = { version = "0.39", features = ["bundled", "backup"], optional = true }
+# Envelope encryption of session secrets in the native SQLite authority
+# (EVE-1298), the same AES-256-GCM scheme and key format the platform uses.
+aes-gcm = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }
 anyhow = { workspace = true, optional = true }
 libc = { version = "0.2", optional = true }
 chrono = { workspace = true, optional = true }

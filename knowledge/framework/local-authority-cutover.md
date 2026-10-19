@@ -53,8 +53,14 @@ the shared actor driver. No second authority, planner or turn loop.
   authority commits.
 - **Refuse, never drop.** Obligations the authority cannot own yet fail the
   cutover before any authority write: non-terminal tasks, active schedules,
-  session secrets, a missing Harness for a session that ran with one, and a
-  durable workspace without a retained Environment factory.
+  secrets when the authority has no secret keys, a missing Harness for a
+  session that ran with one, and a durable workspace without a retained
+  Environment factory.
+- **Secrets stay encrypted.** With `SqliteHosting::with_secret_keys`, the
+  authority [seals each secret](../../crates/everruns/src/hosting/sqlite/secrets.rs)
+  with the platform's envelope scheme and key format, bound to its session and
+  name, with key rotation. Cutover moves legacy secrets under those keys; the
+  frozen legacy copies are left to the legacy store.
 - **Workspace metadata survives.** The legacy binding is imported. An
   [`ImportedWorkspaceFactory`](../../crates/everruns/src/hosting/cutover.rs)
   reopens that exact head, and Engine refuses any factory that opens another
@@ -78,6 +84,7 @@ noted.
 | Active and abandoned branches | No branch model in the Framework journal; superseded outputs stay in the log | Verbatim copy keeps every event | **passes** for Framework stores; branch semantics depend on rewind below |
 | Task/child links | Task registry records, `parent_session_id` | Terminal task records and messages imported; links kept in records | **partial**: non-terminal tasks refuse cutover |
 | Workspace metadata | Binding store | Imported binding, exact-head factory, mismatch refused | **passes** |
+| Session secrets | Legacy secret store | Sealed under authority secret keys | **passes** |
 | Compatible compaction checkpoints | Latest per provider/model/format | Imported when within the journal | **passes** |
 | Durable source boundary and ownership decision | Marker | Cutover record | **passes** |
 | Interrupted/retried/conflicting cutover, no duplicate work, no automatic fallback | Frozen by marker and lease fence | One transaction, replay on retry | **passes** |
@@ -112,9 +119,7 @@ only when each item holds on the revision being released:
    Blocker: coherent epoch backends start from in-memory defaults
    ([SQLite ports](../../crates/everruns/src/hosting/sqlite/ports.rs)); task and
    schedule state needs authority tables and fencing first.
-3. **Session secrets.** An external encrypted secret service for the native
-   authority; until then sessions with secrets refuse cutover.
-4. **Every host surface on Engine.** serve, AG-UI threads and the coordination
+3. **Every host surface on Engine.** serve, AG-UI threads and the coordination
    hub reach sessions only through hosting.
 
 A lower-level Core host still exists for platform hosts; retiring the facade

@@ -509,24 +509,74 @@ impl SessionStorageStore for Ports {
         if keys.len()>1024 {return Err(error("session key capacity exceeded"));}Ok(keys)
     })
     }
-    async fn set_secret(&self, _: SessionId, _: &str, _: &str) -> Result<()> {
-        Err(AgentLoopError::config(
-            "native authority requires an external encrypted secret service",
-        ))
+    async fn set_secret(&self, session: SessionId, name: &str, value: &str) -> Result<()> {
+        self.scope(session)?;
+        let sealed = self.hosting.secret_keys()?.seal(session, name, value)?;
+        self.hosting.transaction(session, |tx, state| {
+            self.check(state)?;
+            put(tx, session, "secret", name, &sealed)
+        })
     }
-    async fn get_secret(&self, _: SessionId, _: &str) -> Result<Option<String>> {
-        Err(AgentLoopError::config(
-            "native authority requires an external encrypted secret service",
-        ))
+    async fn get_secret(&self, session: SessionId, name: &str) -> Result<Option<String>> {
+        self.scope(session)?;
+        let keys = self.hosting.secret_keys()?;
+        let sealed: Option<super::secrets::SealedSecret> =
+            self.hosting.transaction(session, |tx, state| {
+                state.binding(session)?;
+                object(tx, session, "secret", name)
+            })?;
+        sealed
+            .map(|sealed| keys.open(session, name, &sealed))
+            .transpose()
     }
-    async fn delete_secret(&self, _: SessionId, _: &str) -> Result<bool> {
-        Err(AgentLoopError::config(
-            "native authority requires an external encrypted secret service",
-        ))
+    async fn delete_secret(&self, session: SessionId, name: &str) -> Result<bool> {
+        self.scope(session)?;
+        self.hosting.secret_keys()?;
+        self.hosting.transaction(session, |tx, state| {
+            self.check(state)?;
+            let deleted = tx
+                .execute(
+                    "DELETE FROM framework_objects WHERE session=? AND kind='secret' AND key=?",
+                    params![session.to_string(), name],
+                )
+                .map_err(error)?;
+            Ok(deleted > 0)
+        })
     }
-    async fn list_secrets(&self, _: SessionId) -> Result<Vec<SecretInfo>> {
-        Err(AgentLoopError::config(
-            "native authority requires an external encrypted secret service",
-        ))
+    async fn list_secrets(&self, session: SessionId) -> Result<Vec<SecretInfo>> {
+        self.scope(session)?;
+        self.hosting.secret_keys()?;
+        list_secret_infos(&self.hosting, session)
     }
+}
+
+/// Secret names and timestamps, never values.
+pub(super) fn list_secret_infos(
+    hosting: &SqliteHosting,
+    session: SessionId,
+) -> Result<Vec<SecretInfo>> {
+    hosting.transaction(session, |tx, state| {
+        state.binding(session)?;
+        let mut query = tx
+            .prepare("SELECT key,created,updated FROM framework_objects WHERE session=? AND kind='secret' ORDER BY key LIMIT 1025")
+            .map_err(error)?;
+        let secrets = query
+            .query_map([session.to_string()], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+            })
+            .map_err(error)?
+            .map(|row| {
+                let (name, created, updated) = row.map_err(error)?;
+                Ok(SecretInfo {
+                    name,
+                    created_at: created.parse().map_err(error)?,
+                    updated_at: updated.parse().map_err(error)?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        if secrets.len() > 1024 {
+            return Err(error("session secret capacity exceeded"));
+        }
+        Ok(secrets)
+    })
 }
