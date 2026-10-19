@@ -918,3 +918,51 @@ impl SessionScheduleStore for LocalScheduleStore {
         Ok(count as u32)
     }
 }
+
+#[cfg(test)]
+mod retry_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn failed_delivery_keeps_retry_exclusive_until_timeout() -> Result<()> {
+        let store =
+            LocalScheduleStore::new(SqliteDb::open_in_memory()?, 1, PrincipalId::from_seed(1))?;
+        let start = Utc::now();
+        let schedule = store
+            .create_schedule(
+                SessionId::new(),
+                "retry".into(),
+                None,
+                Some(start),
+                "UTC".into(),
+            )
+            .await?;
+        let timeout = Duration::from_millis(100);
+        let first = store.claim_due("first", start, timeout, 8, None)?;
+        assert_eq!(first.len(), 1);
+        let failed_at = start + chrono::Duration::seconds(10);
+        store.fail_delivery(&first[0], "first", failed_at, "injected failure")?;
+        assert!(
+            store
+                .claim_due(
+                    "second",
+                    failed_at + chrono::Duration::milliseconds(99),
+                    timeout,
+                    8,
+                    None,
+                )?
+                .is_empty()
+        );
+        let retry = store.claim_due(
+            "second",
+            failed_at + chrono::Duration::milliseconds(101),
+            timeout,
+            8,
+            None,
+        )?;
+        assert_eq!(retry.len(), 1);
+        assert_eq!(retry[0].schedule.id, schedule.id);
+        assert_eq!(retry[0].schedule.trigger_count, 0);
+        Ok(())
+    }
+}

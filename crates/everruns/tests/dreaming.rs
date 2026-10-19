@@ -13,6 +13,7 @@ fn config() -> DreamingConfig {
 
 #[cfg(feature = "local")]
 #[tokio::test]
+#[allow(deprecated)] // Intentionally exercises the legacy backend before cutover.
 async fn legacy_cutover_refuses_to_drop_dreaming_state() {
     use everruns::hosting::spi::HostBackends;
     use everruns::hosting::{AgentBuild, SessionHosting, SqliteHosting};

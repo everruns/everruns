@@ -104,7 +104,7 @@ impl FilePathPresentation {
     fn root_guidance(&self) -> String {
         if self.uses_vfs_namespace() {
             format!(
-                "Workspace root: `{WORKSPACE_PREFIX}`. Use `{WORKSPACE_PREFIX}` for workspace files. Explicit named mounts such as `/memory/user` use their own absolute paths; preserve those paths exactly. "
+                "Workspace root: `{WORKSPACE_PREFIX}`. Mounts like `/memory/user` stay absolute. "
             )
         } else {
             let escaped_root = escape_xml_text(&self.root);
@@ -3036,9 +3036,7 @@ mod tests {
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
 
         assert!(prompt.contains("Workspace root: `/workspace`"));
-        assert!(
-            prompt.contains("named mounts such as `/memory/user` use their own absolute paths")
-        );
+        assert!(prompt.contains("Mounts like `/memory/user` stay absolute"));
         assert!(!prompt.contains("All file paths must start"));
         assert!(!prompt.contains("/host/repo"));
     }

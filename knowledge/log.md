@@ -26,9 +26,11 @@
   legacy secrets under them. See
   [Local authority cutover](framework/local-authority-cutover.md).
 
-* **Generated E2B descriptors are outputs.** Cargo tracks source proto and
-  decoder settings instead of the generated descriptor, avoiding self-invalidating
-  warm builds. See [CI build time](project/ci-build-time.md).
+* **Provider retry hibernation.** Park safe provider recovery under the session
+  authority, retain policy and wall-clock budgets across Engine replacement, and
+  observe object events without periodic SSE polling. See
+  [Engine sessions](framework/engine-durable-sessions.md) and
+  [object hibernation](framework/durable-object-native.md#hibernation-and-passive-observation).
 
 * **Legacy session cutover.** Legacy local/custom-backend sessions import into
   the SQLite authority in one transaction with a recorded source boundary and
@@ -54,7 +56,11 @@
   budget without duplicating command Wasm. See
   [Engine sessions](framework/engine-durable-sessions.md) and
   [Wasm artifacts](framework/wasm-kernel.md).
-* Added the dreaming contract: authorized Memory destinations, bounded background consolidation, recovery, and hosting requirements. Worker inheritance requires organization Adoption opt-in; legacy authority cutover refuses maintenance it cannot transfer.
+* Added the dreaming contract: authorized Memory destinations, bounded background consolidation, recovery, and hosting requirements. Worker inheritance requires organization Adoption opt-in; legacy authority cutover refuses maintenance it cannot transfer. Key rotation covers maintenance without overwriting concurrent writes; internal maintenance stays outside entity snapshots.
+
+* **Generated E2B descriptors are outputs.** Cargo tracks source proto and
+  decoder settings instead of the generated descriptor, avoiding self-invalidating
+  warm builds. See [CI build time](project/ci-build-time.md).
 
 * **Scoped credentials implementation.** Implement typed ownership and explicit
   grants, one binding domain, invocation-based HTTP/MCP use, bounded atomic

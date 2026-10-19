@@ -90,6 +90,9 @@ state). A guard test fails on any mutating command missing from the table, so
 "applies to everything editable" is enforced by CI. Knowledge entries, eval
 cases and sessions have history but no context (notes belong on the parent;
 sessions change by conversation and keep no snapshots).
+Private background maintenance is operational state, so it uses the exemption
+path rather than copying evidence or reservations into entity history; payload-free
+activity remains in the session's background trace.
 
 ### Write semantics: recording is atomic with the change
 
