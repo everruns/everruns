@@ -253,6 +253,16 @@ impl Lease {
         self.unstarted_input.store(0, Ordering::SeqCst);
     }
 
+    /// Run the lease's turn again from the log (a retry after a
+    /// control-plane failure, see `turn.rs`): the cursor goes back to what
+    /// renew and release commit, as the next holder's would, so a fresh
+    /// turn's input that never reached the log is found again.
+    pub(crate) fn rewind(&self) {
+        let committed = self.committed_cursor();
+        self.unstarted_input.store(0, Ordering::SeqCst);
+        self.cursor.store(committed, Ordering::SeqCst);
+    }
+
     /// The cursor renew and release commit.
     pub(crate) fn committed_cursor(&self) -> i64 {
         let cursor = self.cursor();

@@ -15,9 +15,12 @@
 //!   control plane refuses a stale one in the insert's transaction, so a
 //!   write already in flight when the lease was lost does not land either;
 //!   the refusal itself is a way the holder learns of the loss.
-//! - A retryable failure (a store or transport error) also lets the lease
-//!   expire, after storing what the turn emitted: the next lease resumes from
-//!   the log, and the TTL is the backoff. A non-retryable one fails the turn
+//! - A retryable failure (a store or transport error) runs the turn again from
+//!   the log on the same lease, after winding the failed run down (its queued
+//!   writes dropped or stored, its turns ended on this worker) and a doubling
+//!   backoff, up to `SessionActorConfig::control_plane_retries` times. Past
+//!   that the lease is left to expire: the next lease resumes from the log,
+//!   and the TTL is the backoff. A non-retryable one fails the turn
 //!   (user-facing message, `turn.failed`, idle) and releases.
 //! - A deleted session (EVE-1235) stops the turn like a lost lease, but
 //!   quietly: its actor row went with it, so there is nothing to fail, record
@@ -31,6 +34,24 @@
 //! - Poison guard: a lease that finds more attempts than the threshold (each
 //!   lease counts one; any release resets the count) seals the turn instead of
 //!   running it, so a turn that kills its worker cannot loop forever.
+//! - The poison guard counts holder deaths, not failures to reach the control
+//!   plane (EVE-1301). Every lease that ended on a retryable error used to
+//!   count like a crash, so a database blip that spanned three leases (chaos
+//!   harness: a pool exhaustion, then a server kill) sealed a healthy turn.
+//!   Retrying on the lease (above) keeps those failures off `attempts` and
+//!   bounds them separately, at `control_plane_retries` per lease: a turn
+//!   whose own work keeps failing that way still exhausts the retries, lets
+//!   the lease expire and counts an attempt, so it is sealed after
+//!   `poison_attempts` such leases instead of looping forever. Rejected:
+//!   releasing without committing the cursor instead of expiring. Release
+//!   resets `attempts`, so a turn that fails retryably every time would never
+//!   be sealed; it clears the runnable marker when no new input is pending,
+//!   leaving an open turn with nothing to resume it; and it drops the TTL as
+//!   a backoff against a struggling control plane. Also rejected: skipping
+//!   the increment in the control plane (a report at the end of the lease,
+//!   with its own counter). That report fails in the very outage it reports,
+//!   so a blip would still count; the retry waits the blip out instead, and
+//!   needs no schema or protocol change.
 //! - Cancel: the holder records it (single writer; the server does not when
 //!   a live holder runs the actor). The drive is dropped first, and the
 //!   cancel is recorded only while the turn is still open in the log, so a
@@ -72,8 +93,61 @@ pub const NO_PROGRESS_SEAL_REASON: &str = "no_progress";
 enum Finish {
     /// Release, consuming input up to the cursor.
     Release,
-    /// Keep the lease until it expires: lost, or a retryable failure.
+    /// Keep the lease until it expires: lost, or a stall.
     Expire,
+    /// A retryable failure the drive stopped on, its queued events stored or
+    /// given up on: run the turn again from the log (on this lease while
+    /// retries last, else as `Expire`).
+    Retry(AgentLoopError),
+}
+
+/// The hosts and turns one run of a lease made, so a retry on the same lease
+/// can wind them down first: a write the failed run still had queued must not
+/// land under the same fence after the retry folded the log.
+struct Made<H: ActorHosts> {
+    hosts: std::sync::Mutex<Vec<H::Host>>,
+    drives: std::sync::Mutex<Vec<TurnDrive>>,
+}
+
+impl<H: ActorHosts> Made<H> {
+    fn new() -> Self {
+        Self {
+            hosts: std::sync::Mutex::new(Vec::new()),
+            drives: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    fn host(&self, host: H::Host) -> H::Host {
+        self.hosts
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(host.clone());
+        host
+    }
+
+    fn turn(&self, host: H::Host, drive: &TurnDrive) -> H::Host {
+        self.drives
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(drive.clone());
+        self.host(host)
+    }
+
+    fn take(&self) -> (Vec<H::Host>, Vec<TurnDrive>) {
+        let hosts = std::mem::take(
+            &mut *self
+                .hosts
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()),
+        );
+        let drives = std::mem::take(
+            &mut *self
+                .drives
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()),
+        );
+        (hosts, drives)
+    }
 }
 
 /// Aborts the renewer when the actor's run ends, however it ends.
@@ -102,44 +176,37 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             lease.clone(),
             self.renew_poke.clone(),
         )));
-        // A fired stall watchdog abandons a setup that never returns: the
-        // lease is already lost and stops renewing (see `lease.rs`). Biased to
-        // the turn, and the watchdog is disarmed while a turn is driven, so a
-        // driven turn is never dropped here.
-        let mut stalled = lease.stalled();
-        let mut finish = tokio::select! {
-            biased;
-            finish = self.run_leased(&lease, &actor) => finish,
-            _ = stalled.wait_for(|stalled| *stalled) => Ok(Finish::Expire),
-        };
-        if matches!(finish, Ok(Finish::Release)) && !lease.is_lost() {
-            lease.arm_watchdog();
-            let signals = Self::signals(&lease);
-            let host = self.hosts.host(
-                HostTurn {
-                    org_id: actor.org_id,
-                    session_id: actor.session_id,
-                    agent_id: None,
-                    input_message_id: None,
-                },
-                &signals,
-            );
-            let mut stalled = lease.stalled();
-            let settled = tokio::select! {
-                biased;
-                settled = async {
-                    self.hosts.flush(&host).await?;
-                    self.hosts
-                        .checkpoint(&host, &lease.read_tail().await?)
-                        .await
-                } => settled,
-                // The lease is lost: nothing is released below.
-                _ = stalled.wait_for(|stalled| *stalled) => Ok(()),
+        // A retryable failure runs the turn again on this lease, off the
+        // poison guard's count (module notes).
+        let mut retries = 0;
+        let finish = loop {
+            let made = Made::new();
+            // Boxed: the run's future (setup, the whole driven turn) is large,
+            // and inline in this loop it overflowed a test thread's stack.
+            let finish = Box::pin(self.run_once(&lease, &actor, &made)).await;
+            let error = match finish {
+                Ok(Finish::Retry(error)) | Err(error)
+                    if retries < self.config.control_plane_retries
+                        && !lease.is_lost()
+                        && !error.is_non_retryable()
+                        && !session_deleted(&lease, &error).await =>
+                {
+                    error
+                }
+                finish => break finish,
             };
-            if let Err(error) = settled {
-                finish = Err(error);
+            retries += 1;
+            tracing::warn!(
+                session_id = %actor.session_id,
+                retry = retries,
+                error = %error,
+                "Actor turn hit a retryable failure; running it again from the log on this lease"
+            );
+            if !self.wind_down(&lease, &made, retries).await {
+                break Err(error);
             }
-        }
+            lease.rewind();
+        };
         // Lease-release replies may arrive after another holder takes over;
         // record the execution boundary before that administrative RPC.
         tracing::debug!(session_id = %actor.session_id, "Actor turn execution finished");
@@ -161,6 +228,9 @@ impl<H: ActorHosts> SessionActorDriver<H> {
                     tracing::warn!(session_id = %actor.session_id, error = %error, "Actor release failed; the lease will expire");
                 }
             },
+            Ok(Finish::Retry(error)) => {
+                tracing::warn!(session_id = %actor.session_id, error = %error, "Actor turn kept failing; the lease will expire and the turn resumes from the log");
+            }
             Ok(_) => {}
             Err(error) if session_deleted(&lease, &error).await => {
                 tracing::info!(session_id = %actor.session_id, "Session deleted, stopping turn");
@@ -191,11 +261,94 @@ impl<H: ActorHosts> SessionActorDriver<H> {
         }
     }
 
-    async fn run_leased(&self, lease: &Lease, actor: &LeasedActor) -> Result<Finish> {
+    /// One run of the lease's turn, and the flush and checkpoint after it
+    /// when it ends in a release.
+    async fn run_once(&self, lease: &Lease, actor: &LeasedActor, made: &Made<H>) -> Result<Finish> {
+        // A fired stall watchdog abandons a setup that never returns: the
+        // lease is already lost and stops renewing (see `lease.rs`). Biased to
+        // the turn, and the watchdog is disarmed while a turn is driven, so a
+        // driven turn is never dropped here.
+        let mut stalled = lease.stalled();
+        let mut finish = tokio::select! {
+            biased;
+            finish = self.run_leased(lease, actor, made) => finish,
+            _ = stalled.wait_for(|stalled| *stalled) => Ok(Finish::Expire),
+        };
+        if matches!(finish, Ok(Finish::Release)) && !lease.is_lost() {
+            lease.arm_watchdog();
+            let signals = Self::signals(lease);
+            let host = made.host(self.hosts.host(
+                HostTurn {
+                    org_id: actor.org_id,
+                    session_id: actor.session_id,
+                    agent_id: None,
+                    input_message_id: None,
+                },
+                &signals,
+            ));
+            let mut stalled = lease.stalled();
+            let settled = tokio::select! {
+                biased;
+                settled = async {
+                    self.hosts.flush(&host).await?;
+                    self.hosts
+                        .checkpoint(&host, &lease.read_tail().await?)
+                        .await
+                } => settled,
+                // The lease is lost: nothing is released below.
+                _ = stalled.wait_for(|stalled| *stalled) => Ok(()),
+            };
+            if let Err(error) = settled {
+                finish = Err(error);
+            }
+        }
+        finish
+    }
+
+    /// Wind a failed run down before the lease runs the turn again: drop the
+    /// events its hosts still queue and wait out any store in flight, end its
+    /// turns on this worker, then back off (doubling from
+    /// `control_plane_backoff`). Armed under the stall watchdog. `false` when
+    /// the lease was lost meanwhile (renews failed for a whole TTL, or the
+    /// watchdog fired): the lease expires instead.
+    async fn wind_down(&self, lease: &Lease, made: &Made<H>, retry: u32) -> bool {
+        lease.arm_watchdog();
+        let (hosts, drives) = made.take();
+        for host in &hosts {
+            self.hosts.abandon(host);
+        }
+        for drive in &drives {
+            self.hosts.turn_ended(drive).await;
+        }
+        let backoff = self
+            .config
+            .control_plane_backoff
+            .saturating_mul(1 << retry.saturating_sub(1).min(6));
+        let mut lost = lease.lost();
+        tokio::select! {
+            biased;
+            _ = lost.wait_for(|lost| *lost) => {}
+            () = async {
+                for host in &hosts {
+                    // A queue that gave up already dropped what it held.
+                    let _ = self.hosts.flush(host).await;
+                }
+                everruns_contracts::rt::sleep(backoff).await;
+            } => {}
+        }
+        !lease.is_lost()
+    }
+
+    async fn run_leased(
+        &self,
+        lease: &Lease,
+        actor: &LeasedActor,
+        made: &Made<H>,
+    ) -> Result<Finish> {
         let org_id = actor.org_id;
         let session_id = actor.session_id;
         let signals = Self::signals(lease);
-        let setup = self.hosts.host(
+        let setup = made.host(self.hosts.host(
             HostTurn {
                 org_id,
                 session_id,
@@ -203,7 +356,7 @@ impl<H: ActorHosts> SessionActorDriver<H> {
                 input_message_id: None,
             },
             &signals,
-        );
+        ));
         let tail = lease.read_tail().await?;
         self.hosts.checkpoint(&setup, &tail).await?;
         let started_at = tail
@@ -270,7 +423,7 @@ impl<H: ActorHosts> SessionActorDriver<H> {
                 snapshot.agent_id,
                 snapshot.workspace_id,
             );
-            let host = self.turn_host(&drive, &signals);
+            let host = made.turn(self.turn_host(&drive, &signals), &drive);
             self.hosts
                 .inputs_consumed(&drive, &[input.message_id])
                 .await?;
@@ -336,7 +489,7 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             turn
         };
         let drive = self.open_drive(&setup, org_id, &turn).await?;
-        let host = self.turn_host(&drive, &signals);
+        let host = made.turn(self.turn_host(&drive, &signals), &drive);
         let waits_on_person = self.hosts.waits_on_person();
         let Some((state, act)) =
             resume_open_turn(&host, org_id, turn, waits_on_person.as_deref()).await?
@@ -427,7 +580,7 @@ impl<H: ActorHosts> SessionActorDriver<H> {
         // waits for the turn's queued events first. A queued store that gave
         // up left a gap in the host's write-behind log: the turn ends
         // as on a retryable failure, without committing its input or writing
-        // anything more, and the next holder resumes from the log.
+        // anything more, and the turn runs again from the log.
         let flushed = match &stopped {
             Stopped::Cancel | Stopped::Done(_) => self.hosts.flush(host).await,
             Stopped::Lost | Stopped::Deleted => Ok(()),
@@ -451,9 +604,9 @@ impl<H: ActorHosts> SessionActorDriver<H> {
                     session_id = %drive.session_id,
                     turn_id = %drive.turn_id,
                     error = %error,
-                    "Actor turn's queued events were not stored; the lease will expire and the turn resumes from the log"
+                    "Actor turn's queued events were not stored; the turn resumes from the log"
                 );
-                Finish::Expire
+                Finish::Retry(error)
             }
             (Stopped::Cancel, Ok(())) => {
                 lease.turn_stored();
@@ -476,9 +629,9 @@ impl<H: ActorHosts> SessionActorDriver<H> {
                     session_id = %drive.session_id,
                     turn_id = %drive.turn_id,
                     error = %error,
-                    "Actor turn hit a retryable failure; the lease will expire and the turn resumes from the log"
+                    "Actor turn hit a retryable failure; the turn resumes from the log"
                 );
-                Finish::Expire
+                Finish::Retry(error)
             }
         };
         self.hosts.turn_ended(&drive).await;
