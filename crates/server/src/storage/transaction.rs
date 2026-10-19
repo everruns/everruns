@@ -135,6 +135,34 @@ where
     }
 }
 
+/// [`after_commit`] for an effect that must not be lost once its rows are
+/// committed: the effect runs on its own task, and the caller still waits for
+/// it (so consecutive effects keep their order), but dropping the caller no
+/// longer drops the effect.
+///
+/// Decision: a request future is dropped whenever its client goes away (a
+/// worker SIGKILLed mid-RPC resets its gRPC stream; hyper then drops the
+/// handler). Run inline, an event publish queued behind its committed insert
+/// died with it: the row was stored but never reached live subscribers, and an
+/// SSE client resuming from a later event's sequence skipped it for good
+/// (chaos harness: a turn's `turn.started` / `turn.completed` never arrived).
+pub async fn after_commit_detached<F>(effect: F)
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    after_commit(run_detached(effect)).await;
+}
+
+async fn run_detached<F>(effect: F)
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    use tracing::Instrument;
+    if let Err(error) = tokio::spawn(effect.in_current_span()).await {
+        tracing::error!(error = %error, "post-commit effect panicked");
+    }
+}
+
 /// Spawn `task` once the current transaction commits (it may read the rows the
 /// transaction wrote); never, if it rolls back. Outside a transaction it is
 /// spawned now.
@@ -449,5 +477,27 @@ mod tests {
         after_commit(async move { flag.store(true, Ordering::SeqCst) }).await;
         assert!(ran.load(Ordering::SeqCst));
         assert!(!in_transaction());
+    }
+
+    /// A detached effect that has started finishes even when its caller is
+    /// dropped mid-way, as a gRPC handler is when its worker dies.
+    #[tokio::test]
+    async fn detached_effects_survive_a_dropped_caller() {
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel::<()>();
+        let (gate_tx, gate_rx) = tokio::sync::oneshot::channel::<()>();
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel::<()>();
+        let caller = tokio::spawn(after_commit_detached(async move {
+            let _ = entered_tx.send(());
+            let _ = gate_rx.await;
+            let _ = done_tx.send(());
+        }));
+        entered_rx.await.unwrap();
+        caller.abort();
+        assert!(caller.await.unwrap_err().is_cancelled());
+        gate_tx.send(()).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(5), done_rx)
+            .await
+            .expect("the effect must finish after its caller was dropped")
+            .expect("the effect was dropped with its caller");
     }
 }
