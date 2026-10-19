@@ -177,12 +177,29 @@ impl Engine {
         legacy: &Agent,
         build: &AgentBuild,
     ) -> Result<CutoverReport> {
+        self.cut_over_legacy_session_with_metadata(session, legacy, build, serde_json::Value::Null)
+            .await
+    }
+
+    /// [`Engine::cut_over_legacy_session`] recording `metadata` on the
+    /// authoritative binding, as [`Engine::create_registered_with_metadata`]
+    /// does for a new session. A host passes the links the legacy lane never
+    /// stored, such as `parent_session_id` of a child session, so the
+    /// authority's ancestor reads and task services see them. Retries must
+    /// pass the same metadata. Stability: experimental.
+    pub async fn cut_over_legacy_session_with_metadata(
+        &self,
+        session: SessionId,
+        legacy: &Agent,
+        build: &AgentBuild,
+        metadata: serde_json::Value,
+    ) -> Result<CutoverReport> {
         let profile = self.profile()?.clone();
         let lane = legacy_lane(legacy).ok_or_else(|| {
             AgentLoopError::config("the source Agent selects no legacy local or custom backends")
         })?;
         let registration = self.registration(build)?;
-        let binding = hosting::registered_binding(build, &registration, serde_json::Value::Null)?;
+        let binding = hosting::registered_binding(build, &registration, metadata)?;
         let backends = self
             .backends_for(legacy)
             .await

@@ -153,7 +153,8 @@ knows what it registered.
 
 Sessions that an earlier release kept in the data directory's `everruns/`
 folder move to the current session store the first time they are opened, with
-their history and their shared workspace files. A session that cannot move
+their history and their shared workspace files. Subagent sessions they started
+move with them and are linked to their parent. A session that cannot move
 returns an error; it is never served as missing or empty.
 
 ## Keep the data in a bucket

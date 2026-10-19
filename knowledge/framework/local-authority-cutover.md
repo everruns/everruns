@@ -125,8 +125,14 @@ authority kept under `data_dir/everruns` when the session is first read: it
 cuts the session over to a separate `<build>:pre-authority` build of the same
 agent over the shared legacy directory workspace, so files and file tools carry
 over and new sessions keep per-session workspaces. A failed move is an error
-for that session, never a 404 or a read from the legacy store. Child sessions
-of the legacy lane had no catalog row and are not moved.
+for that session, never a 404 or a read from the legacy store. The build is
+registered for every environment placement, the microVM adapter included,
+because the legacy lane bound sessions to its shared directory whatever the
+sandbox. Legacy child sessions had no catalog row and no stored parent link;
+serve finds each from the legacy journal (started inside the parent's open
+`ask_<sub>` call, first input equal to its `task`) and moves it before its
+parent, recording `parent_session_id` with
+`Engine::cut_over_legacy_session_with_metadata`.
 
 ### Proposal for rewind and redo (needs an owner decision)
 

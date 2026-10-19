@@ -163,3 +163,192 @@ async fn pre_authority_sessions_move_to_the_native_authority_on_first_access() {
         after
     );
 }
+
+/// `profile_app` plus a `helper` subagent, as an app that delegated before
+/// serve's native authority.
+fn app_with_helper() -> crate::App {
+    let mut app = profile_app();
+    let inner = std::sync::Arc::get_mut(&mut app.inner).unwrap();
+    inner.agents.push(crate::app::AgentEntry {
+        name: "helper".into(),
+        doc: "Helps.".into(),
+        sub: true,
+        default: false,
+        source: "test".into(),
+        spec: crate::prelude::Agent::builder()
+            .model("sim")
+            .instructions("Help.")
+            .offline(crate::sim::script([crate::sim::reply("helped")]))
+            .build(),
+    });
+    app
+}
+
+/// A session a pre-authority release ran with `ask_helper` delegating `task`
+/// to a legacy child session, as that release's subagent tool did: the
+/// child had no catalog row and nothing linked it to its parent.
+#[allow(deprecated)] // writes legacy-lane data, as an older release did
+async fn legacy_delegation(
+    native: &Server,
+    store: &everruns::LocalConfig,
+    task: &str,
+) -> (String, everruns::SessionId) {
+    let child_store = store.clone();
+    let children = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let created = children.clone();
+    let ask = everruns::FunctionTool::new(
+        "ask_helper",
+        "Delegate a task to the helper subagent.",
+        serde_json::json!({
+            "type": "object",
+            "properties": { "task": { "type": "string" } },
+            "required": ["task"],
+        }),
+        move |args: serde_json::Value| {
+            let store = child_store.clone();
+            let created = created.clone();
+            async move {
+                let agent = everruns::Agent::builder()
+                    .instructions("Help.")
+                    .model(everruns::Model::simulated("helped"))
+                    .local(store)
+                    .build()
+                    .map_err(|error| error.to_string())?;
+                let child = everruns::Engine::new().create(agent);
+                created.lock().unwrap().push(child.session_id());
+                let turn = child
+                    .send_and_wait(args["task"].as_str().unwrap_or_default())
+                    .await
+                    .map_err(|error| error.to_string())?;
+                Ok::<_, String>(turn.response)
+            }
+        },
+    );
+    let parent = everruns::Agent::builder()
+        .instructions("Delegate.")
+        .model(everruns::Model::simulated_with_config(crate::sim::script(
+            [
+                crate::sim::call("ask_helper", serde_json::json!({ "task": task })),
+                crate::sim::reply("delegated"),
+            ],
+        )))
+        .tool(ask)
+        .local(store.clone())
+        .build()
+        .unwrap();
+    let session = everruns::Engine::new().create(parent);
+    assert!(session.send_and_wait("go").await.unwrap().success);
+    native
+        .host
+        .store
+        .insert_session(&crate::store::SessionRow {
+            id: session.id(),
+            agent: "tester".into(),
+            build_id: "pre-authority".into(),
+            title: None,
+            tags: Vec::new(),
+            hints: None,
+            metadata: None,
+            created_at: "2026-10-01T00:00:00.000Z".into(),
+            updated_at: "2026-10-01T00:00:00.000Z".into(),
+        })
+        .unwrap();
+    let child = children.lock().unwrap()[0];
+    (session.id(), child)
+}
+
+/// EVE-1298: a legacy child session moves with its parent, found through the
+/// parent's delegation call, and keeps its history under the parent link.
+#[tokio::test]
+async fn pre_authority_child_sessions_move_with_their_parent() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = everruns::LocalConfig::new(dir.path().join("everruns"));
+    let (parent, child) = {
+        let first = Server::builder(app_with_helper(), Mode::Eval)
+            .data_dir(dir.path())
+            .build()
+            .unwrap();
+        legacy_delegation(&first, &store, "check the numbers").await
+    };
+    let native = Server::builder(app_with_helper(), Mode::Eval)
+        .data_dir(dir.path())
+        .build()
+        .unwrap();
+    native.host.session(&parent).await.unwrap();
+    let binding = native.engine().session_binding(child).await.unwrap();
+    assert_eq!(binding.behavior.agent, "helper");
+    assert_eq!(binding.metadata["parent_session_id"], parent);
+    let row = native.host.session_row(&child.to_string()).unwrap();
+    assert_eq!(row.agent, "helper");
+    let events = native
+        .host
+        .events_after(&child.to_string(), 0)
+        .await
+        .unwrap();
+    assert!(!events.is_empty());
+}
+
+/// EVE-1298: with a microVM adapter the legacy lane still bound sessions to
+/// its shared directory workspace, so the pre-authority build is registered
+/// on that path too and the session moves.
+#[tokio::test]
+async fn pre_authority_sessions_move_under_a_microvm_adapter() {
+    let microvm_app = || {
+        let mut app = profile_app();
+        std::sync::Arc::get_mut(&mut app.inner)
+            .unwrap()
+            .config
+            .sandbox
+            .kind = crate::config::SandboxKind::Microvm;
+        app
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let store = everruns::LocalConfig::new(dir.path().join("everruns"));
+    let id = {
+        let first = Server::builder(microvm_app(), Mode::Eval)
+            .data_dir(dir.path())
+            .microvm(|builder| builder)
+            .build()
+            .unwrap();
+        let entry = first.app().agent("tester").unwrap().clone();
+        let agent = first
+            .host
+            .build_agent_with(&entry, None, Some(store), None)
+            .unwrap();
+        let session = everruns::Engine::new().create(agent);
+        assert!(session.send_and_wait("hello").await.unwrap().success);
+        first
+            .host
+            .store
+            .insert_session(&crate::store::SessionRow {
+                id: session.id(),
+                agent: "tester".into(),
+                build_id: "pre-authority".into(),
+                title: None,
+                tags: Vec::new(),
+                hints: None,
+                metadata: None,
+                created_at: "2026-10-01T00:00:00.000Z".into(),
+                updated_at: "2026-10-01T00:00:00.000Z".into(),
+            })
+            .unwrap();
+        session.id()
+    };
+    let native = Server::builder(microvm_app(), Mode::Eval)
+        .data_dir(dir.path())
+        .microvm(|builder| builder)
+        .build()
+        .unwrap();
+    let session = native.host.session(&id).await.unwrap();
+    let binding = native
+        .engine()
+        .session_binding(session.session_id())
+        .await
+        .unwrap();
+    assert_eq!(
+        binding.behavior.build_id,
+        format!("{}:pre-authority", native.build_id())
+    );
+    let turn = native.host.send(&id, "again".into()).await.unwrap();
+    turn.wait().await.unwrap();
+}

@@ -211,6 +211,8 @@ pub(crate) struct Host {
     pub(crate) engine: everruns::Engine,
     native_authority: std::sync::OnceLock<everruns::hosting::SqliteHosting>,
     authority_supervisor: std::sync::OnceLock<tokio::task::AbortHandle>,
+    /// Legacy child sessions by parent, indexed on the first move.
+    legacy_children: std::sync::OnceLock<Arc<cutover::LegacyChildren>>,
     /// `Some` persists sessions through everruns' local store.
     data_dir: Option<PathBuf>,
     live: Mutex<HashMap<String, Arc<Live>>>,
@@ -279,6 +281,9 @@ impl Host {
                 .get()
                 .cloned()
                 .unwrap_or_else(|| format!("serve-environment-{}", self.build_id));
+            // Every environment placement, the microVM adapter included,
+            // can take sessions an older release left in the legacy store.
+            self.register_pre_authority(entry, harness.clone(), reference.clone())?;
             if let Some(factory) = self.environment_factory.get() {
                 let factory = factory.clone();
                 self.engine.register_agent_with_environment(
@@ -303,23 +308,6 @@ impl Host {
                     .ok_or_else(|| anyhow!("native authority requires a data directory"))?
                     .join("workspaces");
                 let factory = agent.directory_environment_factory(root);
-                if let (Some(legacy), Some(authority)) =
-                    (self.legacy_store(), self.native_authority.get())
-                {
-                    let moved = self.build_agent_with(
-                        entry,
-                        None,
-                        None,
-                        Some(legacy.workspace_root().to_path_buf()),
-                    )?;
-                    self.engine.register_agent_with_environment(
-                        self.legacy_build(&entry.name),
-                        moved.clone(),
-                        harness.clone(),
-                        reference.clone(),
-                        everruns::hosting::ImportedWorkspaceFactory::new(moved, authority.clone()),
-                    )?;
-                }
                 self.engine
                     .register_agent_with_environment(build, agent, harness, reference, factory)?;
             } else {
@@ -418,6 +406,7 @@ impl Host {
             engine,
             native_authority: std::sync::OnceLock::new(),
             authority_supervisor: std::sync::OnceLock::new(),
+            legacy_children: std::sync::OnceLock::new(),
             data_dir,
             live: Mutex::new(HashMap::new()),
             approvals: Mutex::new(HashMap::new()),
