@@ -2,6 +2,8 @@
 
 mod act;
 mod act_hooks;
+mod cpu_time;
+pub use cpu_time::ThreadCpuClock;
 mod input;
 pub mod model_wait;
 mod provider_checkpoint;

@@ -71,6 +71,7 @@ mod script_run;
 pub mod session_actor;
 mod session_file_system_factory;
 pub mod session_services;
+mod thread_cpu;
 mod turn_backend;
 mod turn_loop;
 mod turn_resume;

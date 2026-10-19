@@ -80,6 +80,14 @@ mod turn_strategy;
 #[path = "host/turn_tool_context.rs"]
 mod turn_tool_context;
 
+// The native clock reads the OS thread CPU time through libc, which the
+// portable host does not depend on; tool CPU stays unknown here.
+mod thread_cpu {
+    pub(super) fn clock() -> Option<std::sync::Arc<dyn crate::engine::ThreadCpuClock>> {
+        None
+    }
+}
+
 pub use actor::{
     ActorRunner, DEFAULT_SESSION_LEASE_TTL, InMemorySessionLeases, SessionLease, SessionLeases,
 };

@@ -63601,7 +63601,7 @@
               "null"
             ],
             "format": "int64",
-            "description": "Duration of the tool call in milliseconds",
+            "description": "Wall-clock duration of the tool call in milliseconds",
             "minimum": 0
           },
           "error": {
@@ -63675,6 +63675,15 @@
               "null"
             ],
             "description": "Stable fingerprint of tool name + normalized result/error."
+          },
+          "worker_thread_cpu_ns": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Actual worker-thread CPU nanoseconds consumed while polling the invoked\ntool executor future, including clock-bracketing overhead. Excludes async\nwaiting, child processes, separately spawned/blocking tasks and remote\ncompute. Missing means unobserved/unsupported, not zero or total tool CPU.",
+            "minimum": 0
           }
         }
       },
