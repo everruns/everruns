@@ -84,6 +84,9 @@ context append	--context-revision --entity-ref --kind --reason --text! <entity_r
 context clear	--context-revision --entity-ref --expected-revision --kind --reason <entity_ref>
 context get	--context-revision --entity-ref --kind --reason <entity_ref>
 context set	--content! --context-revision --entity-ref --expected-revision --kind --reason <entity_ref>
+credential-bindings create	--binding --context-revision --label! --mcp --name --owner-id --reason --scope! --source --usage!
+credential-bindings list	--context-revision --owner-id --reason --scope! --usage!
+credential-bindings revoke	--context-revision --id! --reason --revision!
 durable executions get	--context-revision --execution-id --reason <execution_id>
 durable schedules create	--catch-up-missed --context-revision --cron-expression! --description --enabled --max-catch-up --max-concurrent --name! --reason --retry-policy --target! --timezone
 durable schedules delete	--context-revision --reason --schedule-id!
@@ -251,6 +254,9 @@ reports saved get	--context-revision --reason --report-id!
 reports saved list	--context-revision --reason
 reports saved run	--context-revision --reason --report-id!
 reports saved update	--context-revision --reason --report-id! --request!
+resources grants grant	--constraints --consumer-id --consumer-scope! --context-revision --expires-at --id! --reason --usage!
+resources grants list	--context-revision --id! --reason
+resources grants revoke	--context-revision --grant-id! --id! --reason
 sandbox-targets list	--context-revision --reason
 sandboxes get	--context-revision --id --reason <id>
 sandboxes list	--agent-id --context-revision --include-in-process --limit --needs-attention --offset --provider --reason --sandbox-template-id --search --state
