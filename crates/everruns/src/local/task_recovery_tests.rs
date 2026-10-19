@@ -633,3 +633,41 @@ async fn inconsistent_attempt_fence_cannot_create_a_recovery_wake() {
     assert_eq!(unchanged.attempt, task.attempt);
     assert_eq!(unchanged.updated_at, task.updated_at);
 }
+
+#[tokio::test]
+async fn causal_recovery_outbox_retains_task_origin_after_reopen() {
+    use everruns_contracts::typed_id::{MessageId, TurnId};
+    use everruns_core::events::EventContext;
+    use everruns_core::session_task::set_task_origin_event_context;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("causal.sqlite");
+    let session = SessionId::new();
+    let context = EventContext::turn(TurnId::new(), MessageId::new());
+    let causes = crate::CausalContext::from_traceparents([
+        "00-1234567890abcdef1234567890abcdef-1234567890abcdef-00",
+    ]);
+    {
+        let (registry, recovery) =
+            recovery(SqliteDb::open(&path).unwrap(), TaskOwnership::Lost, None);
+        let mut create = input(session, KIND, SessionTaskState::Running);
+        create.spec["push_configs"] = json!([{"secret":"PRIVATE_WEBHOOK_SECRET"}]);
+        set_task_origin_event_context(&mut create.spec, &context);
+        causes.write_task_context(&mut create.spec);
+        registry.create(create).await.unwrap();
+        recovery.recover_all().await.unwrap();
+        // No observer was available to acknowledge the durable outbox.
+    }
+    let db = SqliteDb::open(&path).unwrap();
+    let pending = LocalSessionTaskRegistry::pending_recovery_wakes(&db, Some(session)).unwrap();
+    assert_eq!(pending.len(), 1);
+    assert!(
+        !pending[0]
+            .spec
+            .to_string()
+            .contains("PRIVATE_WEBHOOK_SECRET")
+    );
+    assert_eq!(
+        everruns_core::causal::task_causal_context(&pending[0]),
+        causes
+    );
+}

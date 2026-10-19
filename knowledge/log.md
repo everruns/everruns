@@ -2,6 +2,11 @@
 
 ## 2026-10-19
 
+* **Durable causal observability.** Input causes, child messages and task wakes
+  retain bounded OTel links through canonical journals and recovery outboxes.
+  Turns keep independent traces and application sampling. See
+  [Framework observability](framework/observability.md#durable-causal-context).
+
 * **Native authority secrets.** `SqliteHosting` stores session secrets sealed
   with the platform envelope scheme when given secret keys, and cutover moves
   legacy secrets under them. See

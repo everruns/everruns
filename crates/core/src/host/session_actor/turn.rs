@@ -452,6 +452,7 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             return self.drive(lease, &host, drive, execution, plan).await;
         };
 
+        turn.restore_causal_context(&setup);
         lease.begin_turn(
             lease
                 .open_turn_input(turn.input_message_id(), started_at)

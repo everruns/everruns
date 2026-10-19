@@ -300,6 +300,7 @@ impl TaskTransitionObserver for CoordinatorWaker {
             return Ok(());
         };
         let coordinator = task.session_id;
+        let causes = everruns_core::causal::task_causal_context(task);
         tokio::spawn(async move {
             let session = match engine.resume(coordinator).await {
                 Ok(session) => session,
@@ -310,6 +311,7 @@ impl TaskTransitionObserver for CoordinatorWaker {
             };
             let mut input = InputMessage::user(text);
             input.metadata = Some(everruns_core::message::task_wake_message_metadata());
+            causes.write_metadata(&mut input.metadata);
             // Hold the session until the turn ends, so dropping the last
             // application handle does not cut the automatic turn short.
             match session.send(input).await {
@@ -421,6 +423,16 @@ impl LocalSessionRunner for EngineSessionRunner {
     }
 
     async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()> {
+        self.send_message_with_causal_context(session_id, content, &crate::CausalContext::default())
+            .await
+    }
+
+    async fn send_message_with_causal_context(
+        &self,
+        session_id: SessionId,
+        content: &str,
+        causes: &crate::CausalContext,
+    ) -> Result<()> {
         let engine = self.owner(session_id)?;
         let session = engine
             .resume(session_id)
@@ -433,7 +445,9 @@ impl LocalSessionRunner for EngineSessionRunner {
             .and_then(|record| record.parent_session_id);
         self.settle(coordinator, session_id, ThreadTurn::Started)
             .await;
-        let result = session.run(content).await;
+        let result = session
+            .run(InputMessage::user(content).with_causal_context(causes))
+            .await;
         let turn = match &result {
             Ok(turn) if turn.success => ThreadTurn::Completed,
             Ok(turn) if turn.stop_reason == TurnStopReason::Cancelled => ThreadTurn::Cancelled,
