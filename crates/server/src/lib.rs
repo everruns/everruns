@@ -99,6 +99,9 @@ pub mod session_sqldb;
 // The server's turn requests on the `TurnBackend` entry point
 pub mod turns;
 
+// Tenant egress proxy (`everruns-egress-proxy` binary)
+pub mod egress_proxy;
+
 // `--health-check` probe for distroless container healthchecks
 pub mod health_probe;
 

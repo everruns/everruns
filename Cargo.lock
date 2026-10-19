@@ -3351,6 +3351,7 @@ dependencies = [
  "hex",
  "hmac",
  "http-body-util",
+ "httparse",
  "hyper",
  "hyper-util",
  "image",
