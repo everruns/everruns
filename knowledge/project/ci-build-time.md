@@ -106,6 +106,11 @@ durable 9.1m to 2-3m.
 
 ## Constraints
 
+- **Generated descriptors are outputs.** The [E2B build](../../crates/integrations/build.rs)
+  generates a descriptor before calling ConnectRPC codegen. Registering that same
+  descriptor as a Cargo input invalidated warm integration and downstream builds.
+  Track the source proto and decoder environment setting instead; cache-hit claims
+  require a second unchanged invocation, not just a successful compile.
 - **Invocation count drives build time.** Each `cargo test` invocation pays its own
   codegen and link pass, so CI keeps the count per shard to a minimum: the domain shard
   runs one invocation. The server shard builds library, contracts and repository

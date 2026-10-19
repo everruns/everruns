@@ -2,6 +2,10 @@
 
 ## 2026-10-19
 
+* **Generated E2B descriptors are outputs.** Cargo tracks source proto and
+  decoder settings instead of the generated descriptor, avoiding self-invalidating
+  warm builds. See [CI build time](project/ci-build-time.md).
+
 * **Hosted AG-UI threads.** `AgUiThreads::hosted` serves threads from a
   coherent authority; threads of cut-over sessions keep their sessions. See
   [Local authority cutover](framework/local-authority-cutover.md).
