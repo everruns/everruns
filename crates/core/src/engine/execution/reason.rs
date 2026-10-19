@@ -46,6 +46,7 @@ use crate::engine::{
 use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
 
 mod background_call;
+mod causal;
 mod compaction;
 mod error_policy;
 mod facts;
@@ -107,6 +108,7 @@ fn default_max_iterations() -> usize {
 /// 10. Emits reason.completed event
 /// 11. Returns the result with tool calls (if any)
 pub struct ReasonAtom {
+    causal_context: crate::causal::CausalContext,
     native_async:
         Option<Arc<tokio::sync::Mutex<crate::engine::native_async::NativeAsyncCoordinator>>>,
     context_resolver: Arc<dyn TurnContextResolver>,
@@ -152,14 +154,6 @@ pub struct ReasonAtom {
 }
 
 impl ReasonAtom {
-    pub fn with_native_async(
-        mut self,
-        coordinator: Arc<tokio::sync::Mutex<crate::engine::native_async::NativeAsyncCoordinator>>,
-    ) -> Self {
-        self.native_async = Some(coordinator);
-        self
-    }
-
     /// Create a new ReasonAtom
     pub fn new(
         context_resolver: impl TurnContextResolver + 'static,
@@ -168,6 +162,7 @@ impl ReasonAtom {
         event_emitter: impl PhaseEffectSink + 'static,
     ) -> Self {
         Self {
+            causal_context: Default::default(),
             native_async: None,
             context_resolver: Arc::new(context_resolver),
             message_retriever: Arc::new(message_retriever),
@@ -362,15 +357,18 @@ impl ReasonAtom {
         if prior.announces_step()
             && let Err(e) = self
                 .event_emitter
-                .emit(EventRequest::new(
-                    context.session_id,
-                    event_context.clone(),
-                    ReasonStartedData {
-                        harness_id,
-                        agent_id,
-                        metadata: None, // Will be populated after model resolution
-                    },
-                ))
+                .emit(
+                    EventRequest::new(
+                        context.session_id,
+                        event_context.clone(),
+                        ReasonStartedData {
+                            harness_id,
+                            agent_id,
+                            metadata: None, // Will be populated after model resolution
+                        },
+                    )
+                    .with_causal_context(&self.causal_context),
+                )
                 .await
         {
             tracing::warn!(

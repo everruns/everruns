@@ -1071,11 +1071,12 @@ fn conventions_parse_from_env_syntax() {
 }
 
 #[tokio::test]
-async fn listener_subscribes_to_the_thirteen_lifecycle_events() {
+async fn listener_subscribes_to_the_fourteen_lifecycle_events() {
     let h = OtelHarness::new(false, TraceConventions::ALL);
     let types = h.listener.event_types().unwrap();
-    assert_eq!(types.len(), 13);
+    assert_eq!(types.len(), 14);
     assert!(types.contains(&TURN_STARTED));
+    assert!(types.contains(&crate::events::TURN_SEALED));
     assert!(types.contains(&LLM_GENERATION));
     assert!(types.contains(&TOOL_COMPLETED));
     assert_eq!(h.listener.name(), "OtelEventListener");
@@ -1277,3 +1278,6 @@ async fn truncation_details_reach_chat_and_turn_spans() {
 
 #[path = "otel_regression_tests.rs"]
 mod regressions;
+
+#[path = "otel_causal_tests.rs"]
+mod causal_tests;

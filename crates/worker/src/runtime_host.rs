@@ -302,6 +302,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
 /// ```
 #[derive(Clone)]
 pub struct WorkerRuntimeHost<A: WorkerAdapters> {
+    causal_trace: crate::worker_adapters::CausalTurnTrace,
     adapters: A,
     cancellation: Option<tokio::sync::watch::Receiver<bool>>,
     /// Explicit turn cancel only; `cancellation` also fires on ownership loss.
@@ -377,6 +378,7 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
             adapters,
             cancellation: None,
             cancel_requested: None,
+            causal_trace: Default::default(),
             event_metadata: metadata,
             reads: PhaseReads::new(),
             write_behind: WriteBehind::new(),
@@ -528,6 +530,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
     fn event_emitter(&self) -> Arc<dyn EventEmitter> {
         Arc::new(
             SessionAdapter::new(self.adapters.clone())
+                .with_causal_trace(self.causal_trace.clone())
                 .with_event_metadata(self.event_metadata.clone())
                 .with_reads(self.reads.clone())
                 .with_write_behind(self.write_behind.clone())

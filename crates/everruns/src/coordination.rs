@@ -237,9 +237,7 @@ fn thread_status(task: &SessionTask) -> ThreadStatus {
     }
 }
 
-// =============================================================================
-// Engine wiring
-// =============================================================================
+// Engine wiring.
 
 /// Engines sharing one local backend bundle. Threads and wakes reach a session
 /// through whichever engine holds it.
@@ -300,6 +298,7 @@ impl TaskTransitionObserver for CoordinatorWaker {
             return Ok(());
         };
         let coordinator = task.session_id;
+        let causes = everruns_core::causal::task_causal_context(task);
         tokio::spawn(async move {
             let session = match engine.resume(coordinator).await {
                 Ok(session) => session,
@@ -310,6 +309,7 @@ impl TaskTransitionObserver for CoordinatorWaker {
             };
             let mut input = InputMessage::user(text);
             input.metadata = Some(everruns_core::message::task_wake_message_metadata());
+            causes.write_metadata(&mut input.metadata);
             // Hold the session until the turn ends, so dropping the last
             // application handle does not cut the automatic turn short.
             match session.send(input).await {
@@ -328,6 +328,8 @@ pub(crate) struct EngineSessionRunner {
     hub: Arc<EngineHub>,
     sessions: Arc<dyn RuntimeSessionStore>,
     registry: Arc<dyn SessionTaskRegistry>,
+    /// Legacy deliveries (schedules, wakes) never reach a cut-over session.
+    cutover: Arc<dyn crate::engine::LegacyCutoverStore>,
 }
 
 impl EngineSessionRunner {
@@ -335,11 +337,13 @@ impl EngineSessionRunner {
         hub: Arc<EngineHub>,
         sessions: Arc<dyn RuntimeSessionStore>,
         registry: Arc<dyn SessionTaskRegistry>,
+        cutover: Arc<dyn crate::engine::LegacyCutoverStore>,
     ) -> Self {
         Self {
             hub,
             sessions,
             registry,
+            cutover,
         }
     }
 
@@ -421,6 +425,23 @@ impl LocalSessionRunner for EngineSessionRunner {
     }
 
     async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()> {
+        self.send_message_with_causal_context(session_id, content, &crate::CausalContext::default())
+            .await
+    }
+
+    async fn send_message_with_causal_context(
+        &self,
+        session_id: SessionId,
+        content: &str,
+        causes: &crate::CausalContext,
+    ) -> Result<()> {
+        // A cut-over session belongs to its authority, which delivers its
+        // schedules and wakes itself (EVE-1298).
+        if self.cutover.load_cutover(session_id).await?.is_some() {
+            return Err(AgentLoopError::tool(
+                "the session moved to a coherent session authority; the legacy lane does not deliver to it",
+            ));
+        }
         let engine = self.owner(session_id)?;
         let session = engine
             .resume(session_id)
@@ -433,7 +454,9 @@ impl LocalSessionRunner for EngineSessionRunner {
             .and_then(|record| record.parent_session_id);
         self.settle(coordinator, session_id, ThreadTurn::Started)
             .await;
-        let result = session.run(content).await;
+        let result = session
+            .run(InputMessage::user(content).with_causal_context(causes))
+            .await;
         let turn = match &result {
             Ok(turn) if turn.success => ThreadTurn::Completed,
             Ok(turn) if turn.stop_reason == TurnStopReason::Cancelled => ThreadTurn::Cancelled,
@@ -475,48 +498,7 @@ impl LocalSessionRunner for EngineSessionRunner {
             .backends_for(&agent)
             .await
             .map_err(crate::agent::BackendInitError::into_agent_loop)?;
-        let history = EventHistory::new(backends.host.event_log.clone());
-        let page_size = EventHistoryReadLimit::new(MAX_EVENT_HISTORY_PAGE_SIZE)
-            .map_err(|error| AgentLoopError::store(error.to_string()))?;
-        let mut request = EventHistoryReadRequest::new(session_id, page_size);
-        let mut raw = Vec::new();
-        loop {
-            let page = history
-                .read_page(request)
-                .await
-                .map_err(|error| AgentLoopError::store(error.to_string()))?;
-            raw.extend(page.messages);
-            let Some(cursor) = page.next_cursor else {
-                break;
-            };
-            request = EventHistoryReadRequest::new(session_id, page_size).with_cursor(cursor);
-        }
-        // The conversation as the platform store contract reads it: what
-        // people said and what the agent said (its text or its sent messages),
-        // never its commentary.
-        let lines = conversation::transcript_lines(&raw);
-        let mut messages: Vec<PlatformMessage> = raw
-            .into_iter()
-            .zip(lines)
-            .filter_map(|(message, content)| {
-                let role = match &message.role {
-                    RuntimeMessageRole::Agent => "agent",
-                    RuntimeMessageRole::User => "user",
-                    _ => return None,
-                };
-                Some(PlatformMessage {
-                    role: role.to_string(),
-                    content: content?,
-                    created_at: message.created_at,
-                })
-            })
-            .collect();
-        // Most recent first, as the platform store contract reads them.
-        messages.reverse();
-        if let Some(limit) = limit {
-            messages.truncate(limit);
-        }
-        Ok(messages)
+        platform_messages(backends.host.event_log.clone(), session_id, limit).await
     }
 
     async fn get_session_status(&self, session_id: SessionId) -> Result<Option<String>> {
@@ -528,4 +510,54 @@ impl LocalSessionRunner for EngineSessionRunner {
             .await?
             .map(|_| "idle".to_string()))
     }
+}
+
+/// A session's conversation as the platform store contract reads it.
+pub(crate) async fn platform_messages(
+    event_log: Arc<dyn everruns_core::host::EventLog>,
+    session_id: SessionId,
+    limit: Option<usize>,
+) -> Result<Vec<PlatformMessage>> {
+    let history = EventHistory::new(event_log);
+    let page_size = EventHistoryReadLimit::new(MAX_EVENT_HISTORY_PAGE_SIZE)
+        .map_err(|error| AgentLoopError::store(error.to_string()))?;
+    let mut request = EventHistoryReadRequest::new(session_id, page_size);
+    let mut raw = Vec::new();
+    loop {
+        let page = history
+            .read_page(request)
+            .await
+            .map_err(|error| AgentLoopError::store(error.to_string()))?;
+        raw.extend(page.messages);
+        let Some(cursor) = page.next_cursor else {
+            break;
+        };
+        request = EventHistoryReadRequest::new(session_id, page_size).with_cursor(cursor);
+    }
+    // The conversation as the platform store contract reads it: what
+    // people said and what the agent said (its text or its sent messages),
+    // never its commentary.
+    let lines = conversation::transcript_lines(&raw);
+    let mut messages: Vec<PlatformMessage> = raw
+        .into_iter()
+        .zip(lines)
+        .filter_map(|(message, content)| {
+            let role = match &message.role {
+                RuntimeMessageRole::Agent => "agent",
+                RuntimeMessageRole::User => "user",
+                _ => return None,
+            };
+            Some(PlatformMessage {
+                role: role.to_string(),
+                content: content?,
+                created_at: message.created_at,
+            })
+        })
+        .collect();
+    // Most recent first, as the platform store contract reads them.
+    messages.reverse();
+    if let Some(limit) = limit {
+        messages.truncate(limit);
+    }
+    Ok(messages)
 }

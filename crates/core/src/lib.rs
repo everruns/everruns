@@ -99,6 +99,7 @@ pub use everruns_contracts::runtime::localization;
 
 // Telemetry conventions (neutral gen-ai span metadata contracts)
 pub mod telemetry;
+pub use everruns_contracts::runtime::causal;
 pub use everruns_contracts::runtime::tool_narration;
 
 // Event listeners (pluggable observability backends)

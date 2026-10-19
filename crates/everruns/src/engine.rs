@@ -883,6 +883,7 @@ async fn initialize_backends(agent: &Agent) -> Result<Arc<EngineBackends>, Backe
                 hub.clone(),
                 session_store.clone(),
                 registry.clone(),
+                session_store.clone(),
             ));
         use everruns_capabilities::PlatformHostBackendsExt;
         let host = local

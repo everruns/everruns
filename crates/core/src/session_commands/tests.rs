@@ -244,3 +244,49 @@ fn restored_build_retry_is_fenced_binding_preserving_and_idempotent() {
     assert!(replay.replay && matches!(replay.control, ControlUpdate::None));
     assert_eq!(replay.reply, plan.reply);
 }
+
+#[test]
+fn causal_admission_retry_retains_first_commit_without_changing_identity() {
+    use crate::causal::CausalContext;
+    let mut message = crate::RuntimeMessage::user("hello");
+    let original = CausalContext::from_traceparents([
+        "00-1234567890abcdef1234567890abcdef-1234567890abcdef-00",
+    ]);
+    original.write_metadata(&mut message.metadata);
+    let mut legacy_fingerprint = serde_json::to_value(&message).unwrap();
+    legacy_fingerprint
+        .as_object_mut()
+        .unwrap()
+        .remove("created_at");
+    let command = SessionCommand::Admit {
+        message: Box::new(message.clone()),
+        cancelled: false,
+    };
+    let first = prepare(command, view()).unwrap();
+    let crate::events::EventData::InputMessage(accepted) = &first.events[0].data else {
+        panic!("input event")
+    };
+    assert_eq!(
+        CausalContext::from_metadata(accepted.message.metadata.as_ref()),
+        original
+    );
+
+    CausalContext::from_traceparents(["00-2234567890abcdef1234567890abcdef-2234567890abcdef-00"])
+        .write_metadata(&mut message.metadata);
+    let mut retry_view = view();
+    retry_view.previous = Some(CommandReceipt {
+        fingerprint: legacy_fingerprint,
+        value: first.reply.clone(),
+    });
+    let retry = prepare(
+        SessionCommand::Admit {
+            message: Box::new(message),
+            cancelled: false,
+        },
+        retry_view,
+    )
+    .unwrap();
+    assert!(retry.replay);
+    assert!(retry.events.is_empty());
+    assert_eq!(retry.reply, first.reply);
+}

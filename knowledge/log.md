@@ -2,6 +2,25 @@
 
 ## 2026-10-19
 
+* **Hosted AG-UI threads.** `AgUiThreads::hosted` serves threads from a
+  coherent authority; threads of cut-over sessions keep their sessions. See
+  [Local authority cutover](framework/local-authority-cutover.md).
+
+* **Authority schedules.** Imported and native schedules of coherent SQLite
+  sessions fire from the supervisor as admissions; the rewind proposal awaits
+  an owner decision. See
+  [Local authority cutover](framework/local-authority-cutover.md).
+
+* **Authority task services.** Coherent SQLite sessions get the durable task
+  registry, child sessions and coordination wakes; cutover carries tasks, and
+  lost executions are re-attached or settled on activation. See
+  [Local authority cutover](framework/local-authority-cutover.md).
+
+* **Durable causal observability.** Input causes, child messages and task wakes
+  retain bounded OTel links through canonical journals and recovery outboxes.
+  Turns keep independent traces and application sampling. See
+  [Framework observability](framework/observability.md#durable-causal-context).
+
 * **Native authority secrets.** `SqliteHosting` stores session secrets sealed
   with the platform envelope scheme when given secret keys, and cutover moves
   legacy secrets under them. See

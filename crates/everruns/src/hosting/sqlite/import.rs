@@ -193,17 +193,43 @@ fn import_objects(
     for (key, value) in &image.values {
         put(tx, session, "value", key, value)?;
     }
+    // Tasks land in the authority's task registry tables, in the same
+    // transaction; running ones are reconciled by the next activation.
     for (task, messages) in &image.tasks {
-        put(tx, session, "task", &task.id, task)?;
-        for message in messages {
-            put(
-                tx,
-                session,
-                "task_message",
-                &format!("{}/{}", task.id, message.id),
-                message,
-            )?;
+        if task.session_id != session {
+            return Err(AgentLoopError::config(
+                "legacy task belongs to another session",
+            ));
         }
+        let exists: bool = tx
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM local_tasks WHERE id=?)",
+                [&task.id],
+                |row| row.get(0),
+            )
+            .map_err(error)?;
+        if exists {
+            return Err(AgentLoopError::config(
+                "a legacy task id already exists in the authority",
+            ));
+        }
+        crate::local::LocalSessionTaskRegistry::store_task(tx, task)?;
+        for message in messages {
+            crate::local::LocalSessionTaskRegistry::store_message(tx, message)?;
+        }
+    }
+    for (schedule, metadata) in &image.schedules {
+        if schedule.session_id != session {
+            return Err(AgentLoopError::config(
+                "legacy schedule belongs to another session",
+            ));
+        }
+        crate::local::LocalScheduleStore::insert_row(
+            tx,
+            super::services::AUTHORITY_ORG,
+            schedule,
+            metadata,
+        )?;
     }
     import_admissions(tx, session, image)
 }

@@ -57,6 +57,8 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 mod builder;
+mod input_message;
+use input_message::{message_from_input, message_from_input_with_id};
 mod commands;
 mod seeding;
 use seeding::seed_runtime_initial_files;
@@ -1487,24 +1489,6 @@ fn hydrate_plugin_refs(
         if let Some(hydrated) = plugin_configs.iter().find(|c| c.capability_id() == cap_id) {
             cap.set_config(hydrated.config_value().clone());
         }
-    }
-}
-
-fn message_from_input(input: InputMessage) -> RuntimeMessage {
-    message_from_input_with_id(MessageId::new(), input)
-}
-
-fn message_from_input_with_id(message_id: MessageId, input: InputMessage) -> RuntimeMessage {
-    RuntimeMessage {
-        id: message_id,
-        role: input.role,
-        content: input.content,
-        phase: None,
-        phase_source: None,
-        controls: input.controls,
-        metadata: input.metadata,
-        external_actor: input.external_actor,
-        created_at: Utc::now(),
     }
 }
 

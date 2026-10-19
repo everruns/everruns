@@ -371,3 +371,55 @@ async fn task_reads_and_cancellation_are_session_scoped() {
     ));
     assert_eq!(owner.task(&task.id).await.unwrap().unwrap().id, task.id);
 }
+
+#[tokio::test]
+async fn causal_work_and_wakes_retain_first_submission_through_redelivery() {
+    let first = everruns::CausalContext::from_traceparents([
+        "00-1234567890abcdef1234567890abcdef-1234567890abcdef-00",
+    ]);
+    let retry = everruns::CausalContext::from_traceparents([
+        "00-2234567890abcdef1234567890abcdef-2234567890abcdef-00",
+    ]);
+    let queue = WorkQueue::in_memory();
+    let session = queue.for_session("causal_session");
+    let now = instant(100);
+    let request = TaskRequest::new("work", json!({}))
+        .idempotency_key("task")
+        .wake_policy(WakePolicy::OnCompletion)
+        .with_causal_context(first.clone());
+    let accepted = session.submit_at(request.clone(), now).await.unwrap();
+    let duplicate = session
+        .submit_at(request.with_causal_context(retry.clone()), now)
+        .await
+        .unwrap();
+    assert_eq!(accepted.id, duplicate.id);
+    assert_eq!(duplicate.causal_context, first);
+    let delivery = queue.claim_due_at(now, LEASE, 1).await.unwrap().remove(0);
+    let resumed = queue
+        .claim_due_at(now + LEASE, LEASE, 1)
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(resumed.attempt, delivery.attempt + 1);
+    assert_eq!(resumed.task.causal_context, first);
+    queue
+        .finish_at(&resumed, TaskOutcome::success(json!({})), now + LEASE)
+        .await
+        .unwrap();
+    let wake = queue
+        .claim_wakes_at(now + LEASE, LEASE, 1)
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(wake.wake.causal_context, first);
+    let request = WakeRequest::new(json!({}))
+        .idempotency_key("direct")
+        .with_causal_context(first.clone());
+    let accepted = session.wake_at(request.clone(), now).await.unwrap();
+    let duplicate = session
+        .wake_at(request.with_causal_context(retry), now)
+        .await
+        .unwrap();
+    assert_eq!(accepted.id, duplicate.id);
+    assert_eq!(duplicate.causal_context, first);
+}

@@ -7,6 +7,7 @@ mod export;
 mod import;
 mod ports;
 mod secrets;
+mod services;
 use super::*;
 use crate::sqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use everruns_contracts::{
@@ -20,6 +21,7 @@ use everruns_core::{
 use rusqlite::Transaction;
 use serde::de::DeserializeOwned;
 use serde_json::json;
+pub(crate) use services::task_is_running_elsewhere;
 use std::{
     collections::{HashMap, HashSet},
     path::Path,
@@ -54,6 +56,8 @@ pub struct SqliteHosting {
     /// Key encryption keys for session secrets; without them the authority
     /// refuses secret operations rather than storing plaintext.
     secrets: Option<secrets::SecretKeys>,
+    /// Task registry, recovery and child-session services in this database.
+    services: Arc<services::AuthorityServices>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -117,7 +121,7 @@ impl SqliteHosting {
     /// Use a local filesystem with working POSIX locks; remote object mounts
     /// and restoring snapshots over this database are unsupported.
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let db = crate::sqlite::open(path).map_err(error)?;
+        let db = crate::sqlite::open(path.as_ref()).map_err(error)?;
         db.busy_timeout(Duration::from_secs(5)).map_err(error)?;
         db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
             CREATE TABLE IF NOT EXISTS framework_authority(session TEXT PRIMARY KEY,control TEXT NOT NULL);
@@ -135,6 +139,7 @@ impl SqliteHosting {
             proactive: Arc::default(),
             changes: super::ChangeHints::default(),
             secrets: None,
+            services: Arc::new(services::AuthorityServices::open(path.as_ref())?),
         })
     }
 
@@ -210,6 +215,20 @@ impl SqliteHosting {
         engine: crate::Engine,
         shutdown: crate::CancellationToken,
     ) -> Result<()> {
+        // Executions lost with an earlier process are settled before new
+        // work starts; their wakes become admissions the loop below runs.
+        self.services
+            .recovery
+            .set_wake_observer(Arc::new(services::HostedWaker::new(
+                &engine,
+                self.clone(),
+                true,
+            )));
+        if let Err(error) = self.services.recovery.recover_all().await {
+            tracing::warn!(%error, "task recovery at startup failed");
+        }
+        self.services.recovery.start_maintenance();
+        let schedules = self.start_schedules(&engine)?;
         let mut running = tokio::task::JoinSet::new();
         loop {
             let sessions: Vec<SessionId> = {
@@ -246,7 +265,14 @@ impl SqliteHosting {
             }
             while running.try_join_next().is_some() {}
             tokio::select! {
-                () = shutdown.cancelled() => { running.abort_all(); while running.join_next().await.is_some() {} return Ok(()); }
+                () = shutdown.cancelled() => {
+                    running.abort_all();
+                    while running.join_next().await.is_some() {}
+                    if let Err(error) = schedules.shutdown().await {
+                        tracing::warn!(%error, "schedule runner shutdown failed");
+                    }
+                    return Ok(());
+                }
                 () = everruns_contracts::rt::sleep(Duration::from_millis(100)) => {}
             }
         }
@@ -546,7 +572,11 @@ impl SessionHosting for SqliteHosting {
         })
     }
     fn reader(&self, session: SessionId) -> HostBackends {
-        self.ports(session).backends()
+        // Task reads (threads, task tools on query runtimes) see the authority's
+        // registry; nothing here is canonical journal state.
+        self.ports(session)
+            .backends()
+            .with_session_task_registry(self.services.registry.clone())
     }
     async fn record(&self, session: SessionId, key: &str) -> Result<Option<Value>> {
         SessionEpoch::record(&self.ports(session), key).await
@@ -599,6 +629,15 @@ impl SessionHosting for SqliteHosting {
     }
     fn process_scheduler(&self) -> bool {
         true
+    }
+    async fn prepare_activation(
+        &self,
+        engine: &crate::Engine,
+        session: SessionId,
+        environment: &crate::Environment,
+        backends: HostBackends,
+    ) -> Result<HostBackends> {
+        self.prepare(engine, session, environment, backends).await
     }
     async fn import_legacy(&self, session: SessionId, image: LegacySessionImage) -> Result<bool> {
         let replayed = self.import_image(session, image)?;
