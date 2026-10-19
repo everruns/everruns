@@ -644,6 +644,9 @@ pub mod host;
 /// MCP client, auth, and tool adaptation over injected transports.
 #[cfg(feature = "mcp")]
 pub mod mcp;
+/// Transactional session command semantics shared by Framework and platform hosts.
+#[cfg(all(feature = "engine", feature = "builtins"))]
+pub mod session_commands;
 
 #[cfg(feature = "a2a")]
 pub mod a2a;

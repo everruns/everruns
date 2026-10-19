@@ -27,7 +27,12 @@ Cloudflare service integration is not a Framework responsibility.
 One authority owns a session's admitted input, canonical journal, execution epoch,
 inbox progress and next activation. A native executor or a Wasm isolate reconstructs an
 ordinary Framework agent or registered serve agent and runs the shared Rust
-session actor driver. JavaScript owns storage and activation, never agent planning.
+session actor driver. JavaScript owns storage and activation. The object invokes the shared Rust
+session-command implementation, compiled to Wasm, within its storage transaction.
+This applies to both native and isolate Engine placements: canonical pending calls,
+deadlines and receipts are read where the decision commits. Remote commands cannot
+supply prepared permission writes. Agent planning and session-command semantics
+are never reimplemented in JavaScript.
 Native placement keeps native tools and providers available. Isolate placement
 uses the shared provider protocols over host fetch and only tools supported by
 its injected services. Protocol encoding, SSE parsing, retry classification and

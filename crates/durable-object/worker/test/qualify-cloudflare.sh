@@ -46,7 +46,21 @@ node --input-type=module - "$RUN_DIR/secrets.json" <<'JS'
 import {writeFileSync} from 'node:fs';writeFileSync(process.argv[2],JSON.stringify({AUTHORITY_TOKEN:process.env.DO_QUALIFY_TOKEN}),{mode:0o600});
 JS
 CREATED=true
-WRANGLER_SEND_METRICS=false node "$WRANGLER" deploy --config "$TEST_DIR/qualification.json" --name "$WORKER_NAME" --minify >"$RUN_DIR/deploy.log" 2>&1
+# The Workers inventory can lag a successful first upload. Retry only that
+# known lookup failure; uploading the same binding/migration is idempotent.
+DEPLOYED=false
+for attempt in 1 2 3; do
+  attempt_log="$RUN_DIR/deploy-$attempt.log"
+  if WRANGLER_SEND_METRICS=false node "$WRANGLER" deploy --config "$TEST_DIR/qualification.json" --name "$WORKER_NAME" --minify >"$attempt_log" 2>&1; then
+    cat "$attempt_log" >>"$RUN_DIR/deploy.log"
+    DEPLOYED=true
+    break
+  fi
+  cat "$attempt_log" >>"$RUN_DIR/deploy.log"
+  if ! grep -Fq "Uploaded $WORKER_NAME" "$attempt_log" || ! grep -Fq '[code: 10007]' "$attempt_log"; then break; fi
+  sleep 1
+done
+if [[ "$DEPLOYED" != true ]]; then cat "$RUN_DIR/deploy.log"; exit 1; fi
 WRANGLER_SEND_METRICS=false node "$WRANGLER" secret bulk "$RUN_DIR/secrets.json" --config "$TEST_DIR/qualification.json" --name "$WORKER_NAME" >"$RUN_DIR/secrets.log" 2>&1
 rm -f "$RUN_DIR/secrets.json"
 DO_QUALIFY_URL="$(node --input-type=module - "$RUN_DIR/deploy.log" <<'JS'

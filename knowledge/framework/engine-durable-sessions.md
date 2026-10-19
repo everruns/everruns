@@ -8,7 +8,6 @@ tags:
   - durable
   - actors
   - wasm
-  - proposal
 ---
 
 # Engine-Owned Durable Sessions
@@ -52,6 +51,31 @@ a separate consumer of the same core driver.
 The announcement publication hold remains in force. Qualification results must
 identify the tested revision and placement; low-level authority proofs alone do
 not establish the Framework contract.
+
+## Shared session semantics
+
+Ordinary embedding stays backend-free at the application level: the default
+Engine uses volatile memory hosting. Durable hosting is optional. Agent describes
+behavior, Engine runs it, and one host owns that session's state and activation.
+
+The [Core session commands](../../crates/core/src/session_commands/mod.rs) own
+binding/admission checks, idempotency fingerprints, configuration/history rules,
+targeted cancellation and approval/client-wait decisions. The host captures bounded
+canonical facts, executes that Rust reducer and commits its plan under the same
+transaction or revision guard. Memory and SQLite execute it locally. The source-only
+object reference compiles it to Wasm and executes it inside the DO transaction,
+even for a native Engine placement. An executor never posts an unchecked prepared
+permission record or decides from a stale frontend snapshot. Receipts are checked
+before deadlines so accepted retries retain their reply after the wait changes.
+
+The platform server remains a direct Core actor-driver consumer. Its PostgreSQL
+client-result claim captures the pending calls and runs this same reducer under
+the tenant-scoped session row lock, then retains the existing recoverable resolution
+plan. Partial results remain parked until the last pending call is answered.
+Approval outcome materialization and question-answer normalization are shared;
+platform authorization, encrypted-secret verification and control-plane ingress
+remain platform-owned. This does not claim that every platform endpoint is a
+Framework SessionHosting adapter.
 
 ## Decision
 

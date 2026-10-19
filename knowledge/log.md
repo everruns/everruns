@@ -7,6 +7,11 @@
   off unless configured; hosts plug in limits and usage over two traits or an
   HTTP control endpoint. See [System allowlist](operations/system-allowlist.md#tenant-egress-proxy).
 
+- Framework hosts execute shared Rust session commands at the authority transaction;
+  object hosting invokes the same reducer as Wasm and the platform reuses its
+  client-result validation. Default embedding remains in-memory. See
+  [Engine-owned durable sessions](framework/engine-durable-sessions.md).
+
 * **MCP OAuth consent redirects.** Let the browser complete client-controlled
   callback chains after approval and require a browser check with a second
   callback hop. See [MCP](integrations/mcp.md).

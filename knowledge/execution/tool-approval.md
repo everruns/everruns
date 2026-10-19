@@ -37,7 +37,7 @@ blocks until it answers) is unchanged and lives with the capability.
 - [`crates/server/src/api/tool_approvals.rs`](../../crates/server/src/api/tool_approvals.rs)
   owns the answer endpoint and the shared resolution; the deadline pass lives in
   [`crates/server/src/background/tool_result_timeout.rs`](../../crates/server/src/background/tool_result_timeout.rs).
-- [`crates/everruns/src/hosting/approval.rs`](../../crates/everruns/src/hosting/approval.rs)
+- [`crates/core/src/session_commands/approval.rs`](../../crates/core/src/session_commands/approval.rs)
   owns Engine approval commands over the same durable gate; native serve and
   AgentCore use them as well as external hosting profiles.
 - [`docs/api/openapi.json`](../../docs/api/openapi.json) is the wire contract.

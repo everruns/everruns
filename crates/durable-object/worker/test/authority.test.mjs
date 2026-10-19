@@ -62,19 +62,18 @@ test("mixed approval and client results validate atomically and retain their rec
   await f.call("input", { event: input() });
   const owner = await claim(f);
   const turn = await start(f, owner);
-  const approval = { id: "permission", name: "approve_tool_call", arguments: { expires_at: new Date(1010000).toISOString() } };
+  const approval = { id: "tool_approval_permission", name: "approve_tool_call", arguments: {code:"tool_approval_required",error:"waiting",tool_call_id:"permission",tool:"mutate",arguments:{n:1},fingerprint:"sha256:test",risk:"policy",mode:"normal",asked_at:new Date(1000000).toISOString(),expires_at:new Date(1010000).toISOString()} };
   const client = { id: "render", name: "render", arguments: {} };
   await f.call("append", { lease: owner, event: event("tool.call_requested", turn, { tool_calls: [approval, client] }) });
   await f.call("release", { ...owner, consumed_seq: 3 });
   const result = { tool_call_id: "render", tool_name: "render", success: true, status: "success", result: [] };
   const command = {
     command_id: "mixed", turn_id: turn,
-    approvals: [{ turn_id: turn, request_id: approval.id, decision: "Allow" }],
-    prepared: [{ expected_request: approval, not_after_ms: 1010000, key: "tool_approval/permission", record: "allowed", result: { ...result, tool_call_id: approval.id, tool_name: approval.name }, spoken: input().data.message }],
-    expected_pending: [client], results: [result],
+    approvals: [{ turn_id: turn, request_id: approval.id, decision: "allow" }],
+    results: [result],
   };
   const before = await f.call("events");
-  await assert.rejects(f.call("resolve_waits", { ...command, results: [{ ...result, tool_call_id: "unknown" }] }), /client request changed/);
+  await assert.rejects(f.call("resolve_waits", { ...command, results: [{ ...result, tool_call_id: "unknown" }] }), /pending call/);
   assert.deepEqual(await f.call("events"), before);
   assert.equal((await f.call("status")).pending.length, 2);
   await f.call("resolve_waits", command);
@@ -151,19 +150,23 @@ test("input arriving at release remains runnable", async () => {
 });
 
 test("cancellation retries cannot cancel the next generation", async () => {
-  const f = await fixture();
+  const f = await fixture({...binding,framework:1});
   await f.call("input", { event: input() });
   const owner = await claim(f);
-  await f.call("cancel", { command_id: "same-cancel" });
+  const turn=await start(f,owner);
+  await f.call("framework",{lease:owner,operation:"set",key:`assignment/${input().data.message.id}`,value:{turn_id:turn},absent:true});
+  await f.call("cancel", { command_id: "same-cancel", input_message_id: input().data.message.id });
   const renewal = await f.call("renew", {
     ...owner,
     ttl_ms: 10000,
     consumed_seq: 0,
   });
   assert.equal(renewal.cancel_inbox_seq, 1);
-  await f.call("release", { ...owner, consumed_seq: 1 });
+  const terminal=await f.call("append",{lease:owner,event:event("turn.cancelled",turn,{turn_id:turn})});
+  await f.call("framework", {lease:owner,operation:"set",key:`outcome/${turn}`,value:{success:false}});
+  await f.call("release", { ...owner, consumed_seq: terminal.event.sequence });
   await f.call("input", { event: input(2) });
-  await f.call("cancel", { command_id: "same-cancel" });
+  await f.call("cancel", { command_id: "same-cancel", input_message_id: input().data.message.id });
   const next = await f.call("claim", { holder: "worker-two", ttl_ms: 10000 });
   assert.equal(next.actor.cancel_inbox_seq, null);
 });
@@ -177,8 +180,8 @@ test("client waits survive restart and partial resolution does not reactivate", 
     lease: owner,
     event: event("tool.call_requested", turn, {
       tool_calls: [
-        { id: "a", name: "approve" },
-        { id: "b", name: "approve" },
+        { id: "a", name: "approve", arguments: {} },
+        { id: "b", name: "approve", arguments: {} },
       ],
     }),
   });
@@ -210,7 +213,7 @@ test("client waits survive restart and partial resolution does not reactivate", 
   );
   await assert.rejects(
     f.call("resolve", { resolution_id: "unknown", results: [result("c")] }),
-    /pending client tools/,
+    /pending call/,
   );
 });
 
@@ -284,7 +287,7 @@ test("agent bindings cannot change and tenant/session identities are isolated", 
   const f = await fixture();
   await assert.rejects(
     f.call("bind", { binding: { ...binding, build_id: "another-build" } }),
-    /another agent build/,
+    /binding conflict/,
   );
   await assert.rejects(
     f.authority.handle("status", {}, sessionId, "other-tenant"),

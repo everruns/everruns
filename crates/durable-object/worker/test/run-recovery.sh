@@ -5,6 +5,7 @@ WORKER_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_ROOT="$(cd "$WORKER_ROOT/../../.." && pwd)"
 cd "$PROJECT_ROOT"
 if [[ -f /workspace/.tools/activate.sh ]]; then source /workspace/.tools/activate.sh; fi
+bash "$WORKER_ROOT/build-authority.sh"
 if curl -s --max-time 1 http://127.0.0.1:8789/ >/dev/null 2>&1 || curl -s --max-time 1 http://127.0.0.1:8790/ >/dev/null 2>&1; then
   echo "Recovery test needs unused ports 8789 and 8790" >&2
   exit 1

@@ -12,8 +12,10 @@ Part of the [Everruns](https://everruns.com) ecosystem.
 An experimental native and Wasm execution profile: a Durable Object owns admission, the
 canonical session log, leases and alarms. Ordinary Everruns Rust agents run on an
 external executor or inside an object’s Wasm isolate using the same actor driver
-as the platform worker. No planner
-or tool loop is reimplemented in JavaScript.
+as the platform worker. The authority also runs Framework's shared Rust session commands as Wasm inside
+its storage transaction, so approval and client-result rules have one
+implementation across memory, SQLite and objects. JavaScript handles storage,
+leases, alarms and transport.
 
 ## What It Provides
 
@@ -55,7 +57,9 @@ println!("admitted {}", receipt.message_id);
 
 ## Run locally
 
-Requires Node 24, Rust and an OpenAI API key. From the repository root:
+Requires Node 24, Rust with `wasm32-unknown-unknown`, `wasm-bindgen-cli` 0.2.129
+and an OpenAI API key. The Worker build compiles the shared command reducer to
+Wasm even when the agent Engine runs on a native executor. From the repository root:
 
 ```sh
 cd crates/durable-object/worker

@@ -5,6 +5,7 @@ PROJECT_ROOT="$(cd "$APP_ROOT/../.." && pwd)"
 if [[ -f /workspace/.tools/activate.sh ]]; then source /workspace/.tools/activate.sh; fi
 : "${CARGO_TARGET_DIR:=$PROJECT_ROOT/target/wasm-agent}"
 export CARGO_TARGET_DIR
+bash "$PROJECT_ROOT/crates/durable-object/worker/build-authority.sh"
 # Pin the compiled agent to its complete source/lock inputs, including local edits.
 BUILD_DIGEST="$(cd "$PROJECT_ROOT"
 {

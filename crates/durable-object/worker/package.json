@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "bash build-authority.sh",
+    "pretest": "bash build-authority.sh",
     "test": "node --test --test-isolation=none test/*.test.mjs",
     "test:recovery": "bash test/run-recovery.sh",
     "dev": "wrangler dev",
