@@ -400,7 +400,7 @@ impl Engine {
         self.resume_hosted(session).await
     }
 
-    pub(super) fn profile(&self) -> Result<&Arc<dyn SessionHosting>> {
+    pub(crate) fn profile(&self) -> Result<&Arc<dyn SessionHosting>> {
         self.inner
             .hosting
             .as_ref()
