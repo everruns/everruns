@@ -736,7 +736,10 @@ where
             tool_scheduler::schedule(tool_calls.len(), &classes, schedule_config, |index| {
                 let tool_call = &tool_calls[index];
                 let tool_def = tool_map.get(tool_call.name.as_str()).cloned();
-                self.execute_single_tool(
+                // Boxed: a tool that runs a child turn (handoff, subagent)
+                // re-enters this act inline, and an inline per-call future made
+                // each nesting level's debug-build stack frame overflow 2 MiB.
+                Box::pin(self.execute_single_tool(
                     &context,
                     tool_call.clone(),
                     tool_def,
@@ -745,7 +748,7 @@ where
                     locale.as_deref(),
                     network_access.as_ref(),
                     visible_tool_names.clone(),
-                )
+                ))
             })
             .await;
         results.extend(over_cap);
