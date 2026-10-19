@@ -173,6 +173,26 @@ fn github_status_and_credential_binding_keep_their_classes() {
     );
 }
 
+#[test]
+fn scoped_credential_metadata_is_readable_but_management_requires_full_scope() {
+    for path in ["/v1/credential-bindings", "/v1/resources/{id}/grants"] {
+        assert_eq!(classify(&Method::GET, path), Some(RouteAccess::Read), "{path}");
+    }
+    for (method, path) in [
+        (Method::POST, "/v1/credential-bindings"),
+        (Method::PUT, "/v1/credential-bindings/{id}"),
+        (Method::DELETE, "/v1/credential-bindings/{id}"),
+        (Method::POST, "/v1/resources/{id}/grants"),
+        (Method::DELETE, "/v1/resources/{id}/grants/{grant_id}"),
+    ] {
+        assert_eq!(
+            classify(&method, path),
+            Some(RouteAccess::Never),
+            "{method} {path}"
+        );
+    }
+}
+
 // --- Test 5: predicate parity ---------------------------------------------
 
 /// The class of every command-backed route equals membership in the MCP
