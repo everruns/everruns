@@ -11,6 +11,24 @@ that need no code changes are not listed. For every release, see the
 
 ## 0.49
 
+### `local()` and `backends()` are deprecated
+
+`AgentBuilder::local` and `AgentBuilder::backends` select the older facade
+lane, which recovers less after a crash than Engine hosting. They still work
+and now emit a deprecation warning. New code builds the Engine with a hosting
+profile instead, and existing sessions move over with
+[`Engine::cut_over_legacy_session`](/framework/sessions/#moving-legacy-sessions-to-sqlitehosting):
+
+```diff
+-let agent = Agent::builder().local(LocalConfig::new(dir)) /* … */ .build()?;
+-let engine = Engine::new();
++let agent = Agent::builder() /* … */ .build()?;
++let engine = Engine::builder().hosting(SqliteHosting::open(dir.join("authority.db"))?).build();
+```
+
+AG-UI threads and coordination still run on the older lane; keep `local()`
+there until they move to Engine hosting.
+
 ### Custom task registries honor recovery guards
 
 `SessionTaskUpdate` adds `expected_recovery`. Code constructing updates with

@@ -1,4 +1,5 @@
 //! Public Framework acceptance tests for session history and resumption.
+#![allow(deprecated)] // Exercises the legacy facade lane until its retirement (EVE-1298).
 
 use std::str::FromStr;
 

@@ -3,6 +3,7 @@
 //! ```text
 //! cargo run -p everruns --features local,openai --example session_history [-- DATA_DIR]
 //! ```
+#![allow(deprecated)] // Exercises the legacy facade lane until its retirement (EVE-1298).
 
 use std::path::{Path, PathBuf};
 

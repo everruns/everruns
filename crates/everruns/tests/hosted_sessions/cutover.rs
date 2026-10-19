@@ -1,5 +1,6 @@
 //! EVE-1298: lossless cutover of legacy local/custom-backend sessions into the
 //! coherent SQLite authority, and the process-loss probes around it.
+#![allow(deprecated)] // Exercises the legacy facade lane until its retirement (EVE-1298).
 use super::*;
 use everruns::hosting::spi::{EventReadLimit, EventReadRequest, HostBackends};
 use everruns::hosting::{ImportedWorkspaceFactory, SqliteHosting};
