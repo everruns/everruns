@@ -294,6 +294,20 @@ try {
     120000,
   );
   assert.equal(check.exitCode, 0, readFileSync(join(run, "proof.log"), "utf8"));
+  if (!native) {
+    // After autonomous recovery has already passed, qualify the passive SSE
+    // bridge against celld's actual hibernating WebSocket implementation.
+    const {session}=JSON.parse(readFileSync(signal,"utf8"));
+    const hash=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(`${fixture.vars.AUTHORITY_TOKEN}:api`));
+    const apiToken=[...new Uint8Array(hash)].map(byte=>byte.toString(16).padStart(2,"0")).join("");
+    const observer=await fetch(`http://127.0.0.1:${gateway}/v1/sessions/${session}/sse`,{
+      headers:{authorization:`Bearer ${apiToken}`},signal:AbortSignal.timeout(10000),
+    });
+    assert.equal(observer.status,200,"celld supports the passive SSE bridge");
+    const reader=observer.body.getReader();
+    assert.match(new TextDecoder().decode((await reader.read()).value),/event: connected/);
+    await reader.cancel();
+  }
   console.log(readFileSync(join(run, "proof.log"), "utf8").trim());
   console.log(`Celld qualification evidence: ${run}`);
 } finally {

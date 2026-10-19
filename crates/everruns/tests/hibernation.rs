@@ -84,6 +84,11 @@ async fn exercise(profile: impl SessionHosting + Clone, failures: usize) {
         everruns::hosting::WakeState::At(status.wake_at.unwrap())
     );
     assert!(status.open_turn.is_some());
+    assert_eq!(
+        status.phase(),
+        "active",
+        "parking compute does not finish the conversation's turn"
+    );
     Box::pin(first.activate(id)).await.unwrap();
     assert_eq!(
         calls.load(Ordering::SeqCst),
@@ -291,7 +296,7 @@ impl ChatDriver for StreamFault {
             }
             events.push(Ok(LlmStreamEvent::Error(
                 everruns_contracts::driver_registry::LlmStreamError::provider(
-                    Some("server_error".into()),
+                    Some("server_error"),
                     Some(503),
                     "temporary provider failure",
                 ),
@@ -367,6 +372,50 @@ async fn a_stream_error_before_output_parks_for_recovery() {
 #[tokio::test]
 async fn visible_partial_output_does_not_gain_automatic_replay() {
     Box::pin(streaming_boundary(true)).await;
+}
+
+#[tokio::test]
+async fn input_during_backoff_keeps_its_admission_and_the_original_deadline() {
+    let profile = MemoryHosting::default();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let host = engine(External(profile.clone()), calls.clone(), 1);
+    let id = SessionId::new();
+    let session = Box::pin(host.create_registered(id, &build()))
+        .await
+        .unwrap();
+    let first = session.send("first").await.unwrap();
+    Box::pin(host.activate(id)).await.unwrap();
+    let at = profile.status(id).await.unwrap().wake_at.unwrap();
+    let second = session.send("also include this").await.unwrap();
+    tokio::time::timeout(Duration::from_millis(500), Box::pin(host.activate(id)))
+        .await
+        .unwrap()
+        .unwrap();
+    let status = profile.status(id).await.unwrap();
+    assert_eq!(status.wake_at, Some(at));
+    assert!(!status.runnable);
+    assert!(!status.executing);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    tokio::time::sleep(Duration::from_millis(
+        (at - status.now_ms).max(0) as u64 + 20,
+    ))
+    .await;
+    Box::pin(host.activate(id)).await.unwrap();
+    for sent in [first, second] {
+        let admission = session
+            .admission(sent.message_id.parse().unwrap())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(500), admission.wait())
+                .await
+                .unwrap()
+                .unwrap()
+                .success
+        );
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]

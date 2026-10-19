@@ -436,7 +436,7 @@ pub(super) async fn apply_proactive_compaction(
                         source_sequence,
                         estimated_input_tokens: estimated_tokens_before,
                         input_message_count,
-                        source_fingerprint: source_fingerprint.clone(),
+                        source_fingerprint,
                     },
                 )
                 .await

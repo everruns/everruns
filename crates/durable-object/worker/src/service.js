@@ -47,8 +47,8 @@ export class SessionAuthority extends DurableObject {
   }
 
   webSocketMessage(socket) { socket.close(1008, "Read-only event notifications"); }
-  webSocketClose(socket, code) { socket.close(code, ""); }
-  webSocketError(socket) { socket.close(1011, "Reconnect to replay"); }
+  webSocketClose(socket) { try { socket.close(1000, "Observer disconnected"); } catch {} }
+  webSocketError(socket) { try { socket.close(1011, "Reconnect to replay"); } catch {} }
 }
 
 export default {

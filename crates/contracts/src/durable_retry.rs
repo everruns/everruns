@@ -132,16 +132,16 @@ pub async fn restore(
     let Some(checkpoint) = host.load(operation).await? else {
         return Ok((fallback.clone(), RetryMetadata::default(), None));
     };
-    let elapsed = host
-        .now_ms()
-        .await?
-        .saturating_sub(checkpoint.started_at_ms)
-        .max(0) as u64;
-    Ok((
-        checkpoint.policy.clone(),
-        metadata(&checkpoint),
-        crate::rt::Instant::now().checked_sub(Duration::from_millis(elapsed)),
-    ))
+    let now = host.now_ms().await?;
+    let mut policy = checkpoint.policy.clone();
+    // A new isolate's monotonic clock may start at zero. Reconstruct a
+    // remaining window instead of subtracting persisted time from that origin.
+    policy.max_retry_elapsed =
+        Duration::from_millis(checkpoint.expires_at_ms.saturating_sub(now).max(0) as u64);
+    let mut restored = metadata(&checkpoint);
+    restored.total_retry_elapsed =
+        Duration::from_millis(now.saturating_sub(checkpoint.started_at_ms).max(0) as u64);
+    Ok((policy, restored, Some(crate::rt::Instant::now())))
 }
 
 /// Before any provider I/O, re-arm early wakes or surface an exhausted budget
@@ -320,6 +320,27 @@ mod tests {
             let exhausted = prepare("turn/1").await.unwrap().unwrap();
             assert!(exhausted.llm_retry_handled());
             assert_eq!(exhausted.llm_retry_attempts(), 1);
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn restored_attempts_use_the_authority_remaining_budget_on_a_new_clock() {
+        let host = Arc::new(Host::default());
+        scope(host.clone(), async {
+            assert!(is_parked(&retry("turn/1", &policy(), failure()).await));
+        })
+        .await;
+        host.now.store(12_500, Ordering::SeqCst);
+        scope(host, async {
+            let (config, metadata, started) = restore("turn/1", &policy()).await.unwrap();
+            assert_eq!(config.max_retry_elapsed, Duration::from_millis(17_500));
+            assert_eq!(metadata.total_retry_elapsed, Duration::from_millis(12_500));
+            assert_eq!(metadata.attempts, 1);
+            assert!(
+                crate::llm_retry::remaining_retry_time(&config, started).unwrap()
+                    <= Duration::from_millis(17_500)
+            );
         })
         .await;
     }

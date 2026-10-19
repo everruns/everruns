@@ -229,7 +229,10 @@ impl HostingStatus {
             "suspended"
         } else if !self.waiting.is_empty() {
             "waitingfortoolresults"
-        } else if self.runnable {
+        } else if self.executing
+            || self.runnable
+            || (self.open_turn.is_some() && self.wake_at.is_some())
+        {
             "active"
         } else {
             "idle"

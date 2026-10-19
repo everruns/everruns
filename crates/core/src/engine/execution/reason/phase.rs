@@ -11,13 +11,7 @@ impl ReasonAtom {
         let retry_error = durable_retry::prepare(&operation).await?;
         // Keep the portable host's already large phase future off the caller's
         // stack, including ordinary native embedding with no retry host.
-        durable_retry::attempt(Box::pin(self.execute_once(
-            input,
-            assembled,
-            retry_error,
-            &operation,
-        )))
-        .await
+        Box::pin(self.execute_once(input, assembled, retry_error, &operation)).await
     }
 
     async fn execute_once(
@@ -113,26 +107,49 @@ impl ReasonAtom {
         };
         let (error_disclosure, error_context, error_hooks, call_result) = match assembled {
             Ok(assembled) => {
+                let (policy, retry, started) =
+                    durable_retry::restore(retry_operation, &self.provider_retry_config).await?;
                 // Heap-allocate the large fallback future so nested foreground
                 // child turns fit Tokio's default worker stack.
-                let outcome = Box::pin(provider_managed_compaction::execute_with_fallback(
-                    provider_managed_compaction::Call {
-                        atom: self,
-                        session_id: context.session_id,
-                        harness_id,
-                        agent_id,
-                        org_id,
-                        context: &context,
-                        trace_id: &trace_id,
-                        reason_span_id: &reason_span_id,
-                        previous_response_id,
-                        iteration,
-                        mcp_tool_definitions: &mcp_tool_definitions,
-                        assembled,
-                        prior,
-                    },
-                ))
-                .await;
+                let call = durable_retry::attempt(Box::pin(
+                    provider_managed_compaction::execute_with_fallback(
+                        provider_managed_compaction::Call {
+                            atom: self,
+                            session_id: context.session_id,
+                            harness_id,
+                            agent_id,
+                            org_id,
+                            context: &context,
+                            trace_id: &trace_id,
+                            reason_span_id: &reason_span_id,
+                            previous_response_id,
+                            iteration,
+                            mcp_tool_definitions: &mcp_tool_definitions,
+                            assembled,
+                            prior,
+                        },
+                    ),
+                ));
+                // Bound the complete recovered provider phase, including
+                // compaction, on this instance's clock. Never poll a new call
+                // when the authority's recovery budget has already expired.
+                let exhausted = || provider_managed_compaction::CallOutcome {
+                    disclosure: ErrorDisclosure::default(),
+                    error_context: UserFacingErrorContext::default(),
+                    error_hooks: Vec::new(),
+                    result: Err(AgentLoopError::llm_kind(
+                        everruns_contracts::error::LlmErrorKind::Unavailable,
+                        "provider recovery time budget exhausted",
+                    )
+                    .with_retry_metadata(&retry)),
+                };
+                let outcome = match remaining_retry_time(&policy, started) {
+                    Some(remaining) if remaining.is_zero() => exhausted(),
+                    Some(remaining) => everruns_contracts::rt::timeout(remaining, call)
+                        .await
+                        .unwrap_or_else(|_| exhausted()),
+                    None => call.await,
+                };
                 (
                     outcome.disclosure,
                     outcome.error_context,
