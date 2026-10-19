@@ -990,6 +990,115 @@ impl ChatDriver for NoNativeCompactDriver {
 #[derive(Debug)]
 struct FailingCompactDriver;
 
+#[derive(Debug, Default)]
+struct TransientCompactDriver(std::sync::atomic::AtomicUsize);
+
+#[async_trait::async_trait]
+impl ChatDriver for TransientCompactDriver {
+    async fn chat_completion_stream(
+        &self,
+        _: &ProviderEndpoint,
+        _: Vec<Message>,
+        _: &LlmCallConfig,
+    ) -> ProviderResult<LlmResponseStream> {
+        unreachable!("compaction must finish before generation");
+    }
+    fn supports_compact(&self) -> bool {
+        true
+    }
+    async fn compact(
+        &self,
+        endpoint: &ProviderEndpoint,
+        request: everruns_contracts::compact::CompactRequest,
+    ) -> ProviderResult<Option<everruns_contracts::compact::CompactResponse>> {
+        if self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+            return Err(AgentLoopError::llm_kind(
+                everruns_contracts::error::LlmErrorKind::Unavailable,
+                "transient compaction failure",
+            ));
+        }
+        InstallingCompactDriver.compact(endpoint, request).await
+    }
+}
+
+struct CompactionRetryHost;
+#[async_trait::async_trait]
+impl everruns_contracts::durable_retry::RetryHost for CompactionRetryHost {
+    async fn now_ms(&self) -> ProviderResult<i64> {
+        Ok(0)
+    }
+    async fn load(
+        &self,
+        _: &str,
+    ) -> ProviderResult<Option<everruns_contracts::durable_retry::RetryCheckpoint>> {
+        Ok(None)
+    }
+    async fn save(
+        &self,
+        _: &str,
+        _: &everruns_contracts::durable_retry::RetryCheckpoint,
+    ) -> ProviderResult<()> {
+        unreachable!("this test stops at the Reason boundary")
+    }
+    async fn schedule(&self, _: i64) -> ProviderResult<()> {
+        unreachable!("this test stops at the Reason boundary")
+    }
+}
+
+#[tokio::test]
+async fn a_parked_compaction_does_not_consume_its_proactive_attempt_watermark() {
+    let policy = LifecycleStubPolicy {
+        window_pressure: true,
+        strategy: CompactionStrategy::Native,
+        masked_count: 0,
+    };
+    let driver = TransientCompactDriver::default();
+    let emitter = TestEventEmitter::new();
+    let event_context = crate::engine::events::EventContext::default();
+    let store: Arc<dyn crate::CompactionCheckpointStore> =
+        Arc::new(crate::compaction_checkpoint::InMemoryCompactionCheckpointStore::default());
+    let session = SessionId::new();
+    let mut config = lifecycle_test_config();
+    let mut messages = vec![Message::text(
+        everruns_contracts::MessageRole::User,
+        "hello",
+    )];
+    for attempt in 0..2 {
+        let mut context =
+            lifecycle_test_context(&policy, &driver, &emitter, &event_context, Some(&store));
+        context.session_id = session;
+        let result = durable_retry::scope(
+            Arc::new(CompactionRetryHost),
+            durable_retry::attempt(apply_proactive_compaction(
+                context,
+                &mut messages,
+                &mut config,
+            )),
+        )
+        .await;
+        if attempt == 0 {
+            assert!(durable_retry::is_retryable_start(&result.unwrap_err()));
+            assert!(
+                store
+                    .get_proactive_attempt(session, "stub-provider", "stub-model")
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
+        } else {
+            assert!(result.unwrap().is_some());
+            assert!(
+                store
+                    .get_proactive_attempt(session, "stub-provider", "stub-model")
+                    .await
+                    .unwrap()
+                    .is_some()
+            );
+        }
+    }
+    assert_eq!(driver.0.load(std::sync::atomic::Ordering::SeqCst), 2);
+}
+
 #[async_trait::async_trait]
 impl ChatDriver for FailingCompactDriver {
     async fn chat_completion_stream(

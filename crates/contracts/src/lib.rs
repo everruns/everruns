@@ -48,6 +48,7 @@ pub mod credential_schema;
 pub mod driver_helpers;
 mod driver_oauth;
 pub mod driver_registry;
+pub mod durable_retry;
 pub mod error;
 pub mod execution_api;
 pub mod execution_phase;

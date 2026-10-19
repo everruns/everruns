@@ -93,6 +93,9 @@ pub const NO_PROGRESS_SEAL_REASON: &str = "no_progress";
 enum Finish {
     /// Release, consuming input up to the cursor.
     Release,
+    /// Release ownership while preserving the retry checkpoint and alarm.
+    /// An intentional wait bypasses the control-plane failure retry loop.
+    Park,
     /// Keep the lease until it expires: lost, or a stall.
     Expire,
     /// A retryable failure the drive stopped on, its queued events stored or
@@ -212,7 +215,7 @@ impl<H: ActorHosts> SessionActorDriver<H> {
         tracing::debug!(session_id = %actor.session_id, "Actor turn execution finished");
         drop(renewer);
         match finish {
-            Ok(Finish::Release) if !lease.is_lost() => match lease.release().await {
+            Ok(Finish::Release | Finish::Park) if !lease.is_lost() => match lease.release().await {
                 Ok(ActorRelease::Released { still_runnable }) => {
                     tracing::debug!(session_id = %actor.session_id, still_runnable, "Actor released");
                 }
@@ -623,6 +626,12 @@ impl<H: ActorHosts> SessionActorDriver<H> {
                     lease.skip_to_next_input().await?;
                 }
                 Finish::Release
+            }
+            (Stopped::Done(Err(error)), Ok(()))
+                if everruns_contracts::durable_retry::is_parked(&error) =>
+            {
+                lease.turn_stored();
+                Finish::Park
             }
             (Stopped::Done(Err(error)), Ok(())) if error.is_non_retryable() => {
                 lease.turn_stored();

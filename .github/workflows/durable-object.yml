@@ -181,6 +181,9 @@ jobs:
       - name: Test isolate loss and autonomous alarm recovery on workerd
         working-directory: crates/durable-object/worker
         run: npm run test:isolate
+      - name: Test natural hibernation and passive observation on workerd
+        working-directory: crates/durable-object/worker
+        run: npm run test:hibernation
       - name: Test owner node loss in a three-node celld fleet
         working-directory: crates/durable-object/worker
         run: npm run test:celld

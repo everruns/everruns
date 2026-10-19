@@ -158,6 +158,37 @@ silently select another authority through its legacy local/custom-backend settin
 Workspace selection remains an Environment concern, separate from journal and
 activation ownership.
 
+## Parking provider recovery
+
+Framework execution parks safe provider retries as versioned, secret-free
+continuations in the same fenced authority. The shared Reason boundary owns one
+retry count and wall-clock budget across request setup, replay-safe stream recovery
+and compaction. A provider's explicit retry policy is retained, including disabling
+retries. Standalone driver calls retain their existing local retry behavior.
+See [retry policy](../../crates/contracts/src/durable_retry.rs) and
+[Engine integration](../../crates/everruns/src/hosting/retry.rs).
+
+Before releasing compute, execution stores the selected deadline and checkpoint,
+then arms the host wake. Lease-expiry recovery covers owner loss between those
+steps. Early activation re-arms the same deadline without sending another request;
+cancellation may run immediately. Intentional parking does not consume the
+crash-loop budget. A later instance continues the same turn and cannot reset its
+retry count or elapsed-time budget. A compatible executor must understand pending
+retry checkpoints; rolling back to a version that ignores them cannot preserve
+these guarantees.
+
+The host can derive its compute requirement from authoritative status without
+claiming execution. No active invocation is needed while waiting for time or
+external input. This does not snapshot an arbitrary future, process or running
+tool. Requests with provider-executed effects do not gain automatic replay, and
+committed output retains the shared stream recovery rules. A retry after answer
+text first persists the existing same-message replacement boundary, so a new
+executor restarts the attempt instead of finalizing its abandoned partial text.
+The boundary is written only if another wait fits the remaining recovery budget.
+A trailing stream error otherwise retains the usable partial answer.
+The [Framework tests](../../crates/everruns/tests/hibernation.rs) cover reopening,
+policy limits, cancellation and the backend-free default Engine.
+
 Synchronous memory sessions retain their selected Environment across frontend
 handle loss and resume. Default Environment factories reopen one head per
 session across validation, frontend access and activations. Binding still validates

@@ -33,7 +33,7 @@ const MAX_RETRY_AFTER_SECS: u64 = 60;
 /// - max_backoff: 60 seconds
 /// - backoff_multiplier: 2.0
 /// - jitter_factor: 0.25 (±25%)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct LlmRetryConfig {
     /// Maximum number of retry attempts (0 = no retries)
     pub max_retries: u32,
@@ -623,6 +623,17 @@ where
     CFut: Future<Output = RetryDecision>,
     E: Fn(&T, u32) -> AgentLoopError,
 {
+    let original_config = config;
+    let hosted_config;
+    let config = if crate::durable_retry::single_attempt() {
+        hosted_config = LlmRetryConfig {
+            max_retries: 0,
+            ..config.clone()
+        };
+        &hosted_config
+    } else {
+        config
+    };
     let mut retry_metadata = RetryMetadata::default();
     let mut retry_started_at = None;
 
@@ -694,9 +705,10 @@ where
                         "attempts",
                     );
                 }
-                return Err(
-                    send_error(&e, retry_metadata.attempts).with_retry_metadata(&retry_metadata)
-                );
+                return Err(crate::durable_retry::retryable_start_with_policy(
+                    send_error(&e, retry_metadata.attempts).with_retry_metadata(&retry_metadata),
+                    original_config,
+                ));
             }
         };
 
@@ -711,6 +723,23 @@ where
                 wait,
                 rate_limit_info,
             } => {
+                if crate::durable_retry::single_attempt() {
+                    let mut error = AgentLoopError::llm_kind(
+                        if is_rate_limit_status(status) {
+                            crate::error::LlmErrorKind::RateLimited
+                        } else {
+                            crate::error::LlmErrorKind::Unavailable
+                        },
+                        format!("{driver_name} transient provider response ({status})"),
+                    );
+                    if let Some(secs) = rate_limit_info.and_then(|info| info.retry_after_secs) {
+                        error = error.with_retry_after_secs(secs);
+                    }
+                    return Err(crate::durable_retry::retryable_start_with_policy(
+                        error,
+                        original_config,
+                    ));
+                }
                 // The classifier's wait is usually the provider's Retry-After.
                 // When it cannot fit the remaining budget, fall back to backoff
                 // (as `next_retry_wait` does) rather than giving up with zero
@@ -754,7 +783,10 @@ where
                         "attempts",
                     );
                 }
-                return Err(err.with_retry_metadata(&retry_metadata));
+                return Err(crate::durable_retry::retryable_start_with_policy(
+                    err.with_retry_metadata(&retry_metadata),
+                    original_config,
+                ));
             }
         }
     };

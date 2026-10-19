@@ -6,6 +6,11 @@ const API_TOKEN="public-api-test-token-at-least-32-bytes";
 const AUTHORITY_TOKEN="private-authority-test-token-at-least-32-bytes";
 const session=`session_${"1".repeat(32)}`;
 const message=`message_${"2".repeat(32)}`;
+class WatchSocket extends EventTarget {
+  accept() {}
+  close() { this.dispatchEvent(new Event("close")); }
+  change() { this.dispatchEvent(new Event("message")); }
+}
 function fixture() {
   const calls=[];
   const env={TENANT_ID:"test",API_TOKEN,AUTHORITY_TOKEN,SESSIONS:{
@@ -64,6 +69,7 @@ test("cancellation acknowledges a targeted command and preserves retry identity"
 test("Workers SSE replays exact cursors and closing the observer sends no cancel command",async()=>{
   const {env,calls}=fixture();
   env.SESSIONS.get=name=>({fetch:async request=>{
+    if(new URL(request.url).pathname.endsWith("/watch"))return {status:101,webSocket:new WatchSocket()};
     const call={name,...await request.json()};calls.push(call);
     if(call.operation==="cursor") return Response.json({sequence:7});
     assert.equal(call.operation,"events");
@@ -79,6 +85,66 @@ test("Workers SSE replays exact cursors and closing the observer sends no cancel
   assert.match(event,/id: event_random/);assert.match(event,/event: turn.completed/);
   await reader.cancel();
   assert.ok(calls.every(call=>["cursor","events"].includes(call.operation)));
+});
+
+test("idle SSE waits for a notification instead of polling the session object",async()=>{
+  const {env,calls}=fixture();const socket=new WatchSocket();let ready=false;
+  env.SESSIONS.get=()=>({fetch:async request=>{
+    if(new URL(request.url).pathname.endsWith("/watch")) {
+      assert.equal(request.headers.get("authorization"),`Bearer ${AUTHORITY_TOKEN}`);
+      assert.equal(request.headers.get("upgrade"),"websocket");
+      assert.equal(request.headers.get("connection").toLowerCase(),"upgrade");
+      assert.equal(request.headers.get("sec-websocket-version"),"13");
+      assert.equal(Buffer.from(request.headers.get("sec-websocket-key"),"base64").length,16);
+      return {status:101,webSocket:socket};
+    }
+    const call=await request.json();calls.push(call);
+    return Response.json({events:ready?[{id:"event_wake",sequence:1,type:"turn.completed",data:{}}]:[],next_cursor:null,high_watermark:ready?1:0});
+  }});
+  const response=await sessionApi(request(`/v1/sessions/${session}/sse`),env);
+  const reader=response.body.getReader();
+  await reader.read();
+  const next=reader.read();
+  await new Promise(resolve=>setTimeout(resolve,650));
+  assert.equal(calls.length,2,"one snapshot and one replay; no periodic object reads");
+  ready=true;socket.change();
+  assert.match(new TextDecoder().decode((await next).value),/id: event_wake/);
+  await reader.cancel();
+});
+
+test("HTTP notification transport uses only the configured trusted origin",async context=>{
+  const {env}=fixture();env.NOTIFICATION_ORIGIN="https://notifications.test";
+  env.SESSIONS.get=()=>({fetch:async request=>{
+    assert.ok(!new URL(request.url).pathname.endsWith("/watch"));
+    return Response.json({events:[],next_cursor:null,high_watermark:0});
+  }});
+  let watched=false;
+  context.mock.method(globalThis,"fetch",async request=>{
+    watched=true;
+    assert.equal(request.url,`https://notifications.test/tenants/test/sessions/${session}/watch`);
+    assert.equal(request.redirect,"manual");
+    assert.equal(request.headers.get("authorization"),`Bearer ${AUTHORITY_TOKEN}`);
+    return {status:101,webSocket:new WatchSocket()};
+  });
+  const response=await sessionApi(new Request(`https://attacker.invalid/v1/sessions/${session}/sse`,{
+    headers:{authorization:`Bearer ${API_TOKEN}`},
+  }),env);
+  assert.equal(response.status,200);assert.ok(watched);
+  const reader=response.body.getReader();await reader.read();await reader.cancel();
+});
+
+test("HTTP notification redirects are rejected without forwarding authority credentials",async context=>{
+  const {env}=fixture();env.NOTIFICATION_ORIGIN="https://notifications.test";
+  env.SESSIONS.get=()=>({fetch:async()=>Response.json({events:[],next_cursor:null,high_watermark:0})});
+  let calls=0;
+  context.mock.method(globalThis,"fetch",async request=>{
+    calls++;
+    assert.equal(new URL(request.url).origin,"https://notifications.test");
+    assert.equal(request.redirect,"manual");
+    return new Response(null,{status:302,headers:{location:"https://attacker.invalid/steal"}});
+  });
+  const response=await sessionApi(request(`/v1/sessions/${session}/sse`),env);
+  assert.equal(response.status,503);assert.equal(calls,1);
 });
 test("Workers event list preserves the native data envelope and total count",async()=>{
   const {env,calls}=fixture();

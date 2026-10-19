@@ -14,6 +14,13 @@ celld dev .
 ```
 
 Use the standard `/v1/sessions`, `/messages`, `/events` and `/sse` endpoints.
+The reference configuration uses celld dev's loopback ingress for notification
+WebSockets. For a fleet, set `NOTIFICATION_ORIGIN` to a fixed trusted Worker
+ingress that forwards WebSocket upgrades. The authority credential is sent there;
+redirects are refused. This uses celld 0.6.2's HTTP socket path because its kept
+cross-node stub sockets do not deliver notifications. Cloudflare uses its direct
+stub socket path. Engine's session and execution interfaces are shared.
+
 Retain creation and message identities across retries. A successful creation
 commits the binding; a successful send commits its receipt and wakeup obligation.
 Read admissions separately for assignment and completion. API credentials never

@@ -69,7 +69,7 @@ function invoke(env,session,operation,body) {
 }
 
 // Event ids are opaque. Exact lookup avoids assuming lexicographic UUID order
-// and refuses another session's cursor. The poller never activates execution.
+// and refuses another session's cursor. Observation never activates execution.
 async function replayPosition(request,env,session,url,fallback) {
   const id=url.searchParams.get("since_id") ?? request.headers.get("last-event-id");
   if(id) return (await value(env,session,"cursor",{event_id:id})).sequence;
@@ -87,16 +87,53 @@ async function value(env,session,operation,body) {
 async function eventStream(request,env,session,url) {
   const snapshot=await value(env,session,"events",{after:0,limit:1});
   let after=await replayPosition(request,env,session,url,snapshot.high_watermark);
-  let cursor=null, stopped=false, connected=false, heartbeat=Date.now();
+  const tenant=env.TENANT_ID;
+  const stub=env.SESSIONS.get(env.SESSIONS.idFromName(`${tenant}:${session}`));
+  // Some hosts support remote sockets through HTTP ingress rather than a
+  // kept stub response. Authority credentials go only to the configured origin,
+  // never an origin taken from the caller's URL or Host header.
+  const watchUrl=new URL(`/tenants/${tenant}/sessions/${session}/watch`,env.NOTIFICATION_ORIGIN??"https://object.invalid");
+  const watchRequest=new Request(watchUrl,{
+    redirect:"manual",
+    // A complete HTTP handshake also survives hosts that forward this stub
+    // call through a peer connection before it reaches the session owner.
+    headers:{
+      authorization:`Bearer ${env.AUTHORITY_TOKEN}`,upgrade:"websocket",connection:"Upgrade",
+      "sec-websocket-version":"13",
+      "sec-websocket-key":btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16)))),
+    },
+  });
+  const watch=await (env.NOTIFICATION_ORIGIN?fetch(watchRequest):stub.fetch(watchRequest));
+  if(watch.status!==101 || !watch.webSocket) throw new HttpError(503,"event notification connection unavailable");
+  const socket=watch.webSocket;
+  let cursor=null, stopped=false, connected=false, dirty=true, wake=null;
   const types=url.searchParams.getAll("types"),exclude=url.searchParams.getAll("exclude");
   const encoder=new TextEncoder();
-  const stop=()=>{stopped=true;};
+  const signal=()=>{wake?.();};
+  socket.addEventListener("message",()=>{dirty=true;signal();});
+  socket.addEventListener("close",()=>{stopped=true;signal();});
+  socket.addEventListener("error",()=>{stopped=true;signal();});
+  socket.accept();
+  const stop=()=>{stopped=true;signal();try{socket.close(1000,"Observer disconnected");}catch{}};
+  const wait=()=>new Promise(resolve=>{
+    const timer=setTimeout(()=>{wake=null;resolve();},30000);
+    wake=()=>{clearTimeout(timer);wake=null;resolve();};
+  });
   request.signal.addEventListener("abort",stop,{once:true});
+  if(request.signal.aborted)stop();
   const stream=new ReadableStream({
     async pull(controller) {
       try {
         if(!connected) {connected=true;controller.enqueue(encoder.encode('event: connected\ndata: {"status":"connected"}\nretry: 1000\n\n'));return;}
         while(!stopped) {
+          if(!dirty && !cursor) {
+            // Heartbeats live in this frontend Worker. The session DO keeps
+            // only a hibernating socket and is not polled while idle.
+            await wait();
+            if(stopped)break;
+            if(!dirty) {controller.enqueue(encoder.encode(": heartbeat\n\n"));return;}
+          }
+          dirty=false;
           const page=await value(env,session,"events",cursor?{cursor,limit:64}:{after,limit:64});
           cursor=page.next_cursor;
           const output=[];
@@ -106,11 +143,9 @@ async function eventStream(request,env,session,url) {
           }
           if(!cursor) after=Math.max(after,page.high_watermark);
           if(output.length) {controller.enqueue(encoder.encode(output.join("")));return;}
-          if(Date.now()-heartbeat>=30000){heartbeat=Date.now();controller.enqueue(encoder.encode(": heartbeat\n\n"));return;}
-          if(!cursor) await new Promise(resolve=>setTimeout(resolve,500));
         }
         controller.close();
-      } catch(error) {controller.error(error);}
+      } catch(error) {stop();controller.error(error);}
       finally {if(stopped)request.signal.removeEventListener("abort",stop);}
     },
     cancel(){stop();request.signal.removeEventListener("abort",stop);},

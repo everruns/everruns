@@ -68,6 +68,12 @@ graph TD
 
 ## Requirements
 
+Framework Engine hosts consolidate safe provider recovery at the shared Reason
+boundary. Drivers retain protocol classification but perform one transport attempt
+inside that scope; Engine persists the configured retry policy, deadline and
+budget through its session authority. Standalone driver consumers keep local
+bounded retries. See [Engine parking](../framework/engine-durable-sessions.md#parking-provider-recovery).
+
 ### ChatDriver Trait
 
 1. **Trait Definition**: See `crates/contracts/src/driver_registry.rs` for `ChatDriver` trait, `ProviderType`, and `LlmCallConfig`, and `crates/contracts/src/stream_event.rs` for `LlmStreamEvent`.

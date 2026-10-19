@@ -3,7 +3,7 @@
   "main": "worker/index.js",
   "compatibility_date": "2026-07-01",
   "compatibility_flags": ["nodejs_compat"],
-  "vars": { "TENANT_ID": "example", "MODEL": "gpt-6-luna" },
+  "vars": { "TENANT_ID": "example", "MODEL": "gpt-6-luna", "NOTIFICATION_ORIGIN": "http://127.0.0.1:9876" },
   "durable_objects": {
     "bindings": [{ "name": "SESSIONS", "class_name": "SessionAuthority" }]
   },

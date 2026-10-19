@@ -42,6 +42,12 @@
   legacy secrets under them. See
   [Local authority cutover](framework/local-authority-cutover.md).
 
+* **Provider retry hibernation.** Park safe provider recovery under the session
+  authority, retain policy and wall-clock budgets across Engine replacement, and
+  observe object events without periodic SSE polling. See
+  [Engine sessions](framework/engine-durable-sessions.md) and
+  [object hibernation](framework/durable-object-native.md#hibernation-and-passive-observation).
+
 * **Legacy session cutover.** Legacy local/custom-backend sessions import into
   the SQLite authority in one transaction with a recorded source boundary and
   ownership decision; the legacy executor is frozen, never a fallback. Custom
