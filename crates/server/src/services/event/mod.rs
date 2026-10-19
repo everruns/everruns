@@ -255,7 +255,7 @@ impl EventService {
             // Once committed, as in `emit_durable`.
             let service = self.clone();
             let published = event.clone();
-            crate::storage::transaction::after_commit(async move {
+            crate::storage::transaction::after_commit_detached(async move {
                 service.publish_durable(&published).await;
             })
             .await;
@@ -621,10 +621,12 @@ impl EventService {
 
     /// Subscribers hear of events only once their rows are visible: inside a
     /// command transaction that is after it commits, and never if it rolls
-    /// back (`storage::transaction`). Outside one, right away.
+    /// back (`storage::transaction`). Outside one, right away. Once stored, an
+    /// event is published even if the caller is dropped meanwhile (a worker
+    /// killed mid-RPC); see `after_commit_detached`.
     async fn publish_after_commit(&self, events: Vec<Event>) {
         let service = self.clone();
-        crate::storage::transaction::after_commit(async move {
+        crate::storage::transaction::after_commit_detached(async move {
             for event in &events {
                 service.publish_durable(event).await;
             }
@@ -726,7 +728,7 @@ impl EventService {
         // Notify listeners once the row is committed (see `emit_durable`).
         let service = self.clone();
         let notified = event.clone();
-        crate::storage::transaction::after_commit(async move {
+        crate::storage::transaction::after_commit_detached(async move {
             service.notify_listeners(&notified).await;
         })
         .await;
@@ -885,6 +887,7 @@ mod tests {
     use everruns_core::{DEFAULT_ORG_ID, RuntimeMessage};
     use std::sync::Arc;
 
+    mod cancelled_caller;
     mod emit_conditional;
     mod service_mcp_responder;
 
