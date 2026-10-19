@@ -702,6 +702,91 @@ async fn steering_sent_before_a_crash_is_answered_after_the_resume() {
     fixture.assert_idle();
 }
 
+/// Chaos harness (EVE-1279, `steered_message_unread`): steering landed while
+/// the turn's reason ran, the reason answered without calls, and the turn took
+/// the steering for one more reason. The holder committed the cursor over it
+/// at that reason's renew and died in its model call. The survivor folded the
+/// log as answered (its latest agent message made no calls), completed the
+/// turn, and the message was never answered: no turn of its own, and no
+/// reason after it in the turn it steered.
+#[tokio::test]
+async fn steering_taken_after_the_answer_is_answered_after_a_crash() {
+    let fixture = Fixture::new(model("Answered.", vec![])).await;
+    let (crashing, probe) = fixture.worker("w1");
+    // Flush 2 follows the first reason's answer: the steering lands there,
+    // before the turn's last inbox check, as a send mid-reason does.
+    let steering = {
+        let runtime = fixture.runtime.clone();
+        let store = fixture.store.clone();
+        let session_id = fixture.session_id;
+        let (sent, steering) = tokio::sync::oneshot::channel();
+        *probe.at_flush.lock().unwrap() = Some((
+            2,
+            Box::pin(async move {
+                let message_id = runtime
+                    .persist_accepted_input(
+                        session_id,
+                        AcceptedTurnInput::new(crate::core::InputMessage::user(
+                            "Also check the calendar.",
+                        )),
+                    )
+                    .await
+                    .expect("steering stored");
+                let sequence = runtime
+                    .events()
+                    .await
+                    .expect("events")
+                    .iter()
+                    .rev()
+                    .find_map(|event| event.sequence)
+                    .map(i64::from)
+                    .expect("the steering is in the log");
+                store.mark_runnable(session_id, ORG_ID, sequence);
+                let _ = sent.send((message_id, sequence));
+            }),
+        ));
+        steering
+    };
+    // Call 0 answers; call 1, the reason the steering joins, hangs.
+    fixture.model.block(1);
+    fixture.send("Answer me.").await;
+
+    crash_at(&fixture, &crashing, &fixture.model.entered).await;
+    let (_, steered_at) = steering.await.expect("the steering was sent");
+    assert_eq!(fixture.answers().await, vec!["Answered."]);
+    assert_eq!(fixture.count("turn.completed").await, 0);
+    assert!(
+        fixture.store.row(fixture.session_id).consumed_seq >= steered_at,
+        "the dead holder committed the steering as consumed"
+    );
+    let asked_before = fixture.model.seen().len();
+
+    let (survivor, _) = fixture.worker("w2");
+    run_until_idle(&survivor).await;
+    let seen = fixture.model.seen();
+    assert!(
+        seen[asked_before..]
+            .iter()
+            .any(|call| call.contains("Also check the calendar.")),
+        "the survivor hands the steering to the model"
+    );
+    let events = fixture.events().await;
+    let types = fixture.types().await;
+    assert!(
+        events.iter().any(|event| {
+            matches!(
+                event.event_type.as_str(),
+                "reason.started" | "reason.recovered"
+            ) && event.sequence.map_or(0, i64::from) > steered_at
+        }),
+        "the steered turn reasons again after the steering: {types:?}"
+    );
+    assert_eq!(fixture.count("turn.started").await, 1, "{types:?}");
+    assert_eq!(fixture.count("turn.completed").await, 1, "{types:?}");
+    assert_eq!(fixture.answers().await.len(), 2, "{types:?}");
+    fixture.assert_idle();
+}
+
 /// A worker dies after a tool call completed and before the next reason:
 /// the survivor resumes at the reason and never runs the tool again.
 #[tokio::test]

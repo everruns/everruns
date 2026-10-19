@@ -51,7 +51,9 @@ use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 
 use crate::ExecutionContext;
 use crate::engine::{ActInput, ActPlan, TurnPlan, TurnState};
-use crate::events::{Event, EventContext, EventData, EventRequest, TokenUsage, ToolCompletedData};
+use crate::events::{
+    Event, EventContext, EventData, EventRequest, RecoveryMode, TokenUsage, ToolCompletedData,
+};
 use crate::host::runtime_host::{RuntimeHostAdapter, reason_turn_context};
 use crate::runtime_context::AssembledTurnContext;
 
@@ -100,9 +102,13 @@ pub struct OpenTurn {
     settled: HashSet<String>,
     /// Calls with a `tool.started`: they may have run.
     started: HashSet<String>,
-    /// The latest agent message made no tool calls: the turn has its answer
-    /// and only its end is missing.
+    /// The latest agent message made no tool calls, and no steering reached
+    /// the turn after the reason that wrote it started: the turn has its
+    /// answer and only its end is missing.
     answered: bool,
+    /// Turn input (steering) reached the log after the turn's latest
+    /// `reason.started`, so that reason did not read it.
+    steered_since_reason: bool,
 }
 
 impl OpenTurn {
@@ -131,9 +137,10 @@ impl OpenTurn {
         self.usage.as_ref()
     }
 
-    /// Whether the turn's latest agent message made no tool calls: it has
-    /// its answer and only its end is missing, so resuming it would answer
-    /// twice.
+    /// Whether the turn's latest agent message made no tool calls and was
+    /// written by a reason that read every steering message the turn got: it
+    /// has its answer and only its end is missing, so resuming it would
+    /// answer twice.
     pub fn is_answered(&self) -> bool {
         self.answered
     }
@@ -200,6 +207,7 @@ impl TurnLogFold {
                     settled: HashSet::new(),
                     started: HashSet::new(),
                     answered: false,
+                    steered_since_reason: false,
                 });
                 return;
             }
@@ -207,6 +215,22 @@ impl TurnLogFold {
             EventData::TurnFailed(data) if ends(&data.turn_id) => *open = None,
             EventData::TurnCancelled(data) if ends(&data.turn_id) => *open = None,
             EventData::TurnSealed(data) if ends(&data.turn_id) => *open = None,
+            // Steering: input without a turn id that joined the open turn.
+            // An answer from a reason that started before it does not answer
+            // it (chaos harness, EVE-1279): the holder took it for one more
+            // reason, committed it as consumed, and died before that reason
+            // answered. Read as answered, the survivor completed the turn and
+            // the message was never answered. The turn reasons again instead.
+            EventData::InputMessage(data) if event.context.turn_id.is_none() => {
+                if let Some(turn) = open
+                    .as_mut()
+                    .filter(|turn| data.message.id != turn.input_message_id)
+                {
+                    turn.steered_since_reason = true;
+                    turn.answered = false;
+                }
+                return;
+            }
             _ => {}
         }
         let Some(turn) = open
@@ -216,6 +240,14 @@ impl TurnLogFold {
             return;
         };
         match event.data {
+            // A reason reads the log as it stands when it starts; a restarted
+            // one (`reason.recovered`, mode restart) reads it again. A
+            // finalized one completes the dead attempt's text, which read
+            // only what was there at that attempt's `reason.started`.
+            EventData::ReasonStarted(_) => turn.steered_since_reason = false,
+            EventData::ReasonRecovered(data) if matches!(data.mode, RecoveryMode::Restart) => {
+                turn.steered_since_reason = false;
+            }
             EventData::ReasonCompleted(data) => {
                 turn.reasons = turn.reasons.saturating_add(1);
                 turn.tool_call_count = turn.tool_call_count.saturating_add(data.tool_call_count);
@@ -238,7 +270,7 @@ impl TurnLogFold {
                         arguments: call.arguments.clone(),
                     })
                     .collect();
-                turn.answered = turn.calls.is_empty();
+                turn.answered = turn.calls.is_empty() && !turn.steered_since_reason;
                 turn.settled.clear();
                 turn.started.clear();
             }
