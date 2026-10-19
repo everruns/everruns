@@ -738,10 +738,12 @@ impl Agent {
         let agent_id = agent.agent_id();
         let agent = agent.build();
 
+        // EVE-1299: Agent capabilities stay on the agent layer above; the
+        // session record's capabilities are only the session's own overlay,
+        // so a rebuild can keep it without pinning stale Agent defaults.
         let mut session = SessionBuilder::new(harness_id)
             .id(session_id)
             .agent(agent_id)
-            .capabilities(capabilities)
             .mcp_servers(self.mcp_servers.clone());
         for tool in &self.client_tools {
             session = session.tool(everruns_contracts::tool_types::ToolDefinition::ClientSide(
@@ -760,9 +762,12 @@ impl Agent {
         for file in &self.initial_files {
             session = session.initial_file(file.clone());
         }
-        let mut session =
-            crate::engine::keep_catalog_fields(backends.session_store.as_ref(), session.build())
-                .await;
+        let mut session = crate::engine::reconcile_session_record(
+            backends.session_store.as_ref(),
+            session.build(),
+            &capabilities,
+        )
+        .await;
         if !self.client_tools.is_empty() || self.client_questions {
             let hints = session.hints.get_or_insert_with(Default::default);
             if !self.client_tools.is_empty() {

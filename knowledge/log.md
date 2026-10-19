@@ -2,6 +2,11 @@
 
 ## 2026-10-19
 
+* **Engine keeps session capability overlays.** Runtime reconstruction no longer
+  reseeds the session layer from the Agent; hot-enabled capabilities and
+  session-owned fields survive restart. See
+  [Capabilities](execution/capabilities.md#live-session-reconfiguration).
+
 * **Retained Engine deployments.** Separate Agent identity from compatible runtime
   deployments, validate persisted runtime format before execution and provide
   transactional retry after restoring code. Enforce the complete isolate upload
