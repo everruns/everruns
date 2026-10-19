@@ -475,3 +475,8 @@ pub mod batteries;
 /// Deployment-owned utility LLM bootstrap wiring.
 #[cfg(feature = "utility-llm")]
 pub mod utility_llm;
+
+/// Background memory consolidation configuration.
+pub use everruns_core::dreaming::{
+    DreamBudget, DreamCommitMode, DreamDestination, DreamTrigger, DreamTriggerMode, DreamingConfig,
+};

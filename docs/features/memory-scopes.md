@@ -55,3 +55,7 @@ See the [API reference](/api/) for current organization-memory schemas.
 
 - [Session participants](/features/session-participants/), host and guest agent behavior in shared sessions.
 - [File System capability](/capabilities/file-system/), tools that access session and mounted files.
+
+## Background consolidation
+
+The optional [Dreaming capability](/features/dreaming/) consolidates completed experience into authorized Memory files without rewriting the active conversation.

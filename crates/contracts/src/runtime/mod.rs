@@ -30,6 +30,7 @@ pub mod decisions;
 pub mod delegation_services;
 pub mod dependency_blocker;
 pub mod deployment;
+pub mod dreaming;
 pub mod egress;
 pub mod event_emitter;
 pub mod events;

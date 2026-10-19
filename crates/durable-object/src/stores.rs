@@ -58,6 +58,7 @@ impl Authority {
     /// the retained build. Workspace durability is supplied separately by a host.
     pub fn backends(&self) -> HostBackends {
         let mut backends = HostBackends::in_memory();
+        backends.dreaming_store = self.client.dreaming_store.clone();
         backends.event_log = Arc::new(self.clone());
         backends.session_store = Arc::new(self.clone());
         backends.compaction_checkpoint_store = Arc::new(self.clone());

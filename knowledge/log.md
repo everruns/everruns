@@ -31,6 +31,7 @@
   budget without duplicating command Wasm. See
   [Engine sessions](framework/engine-durable-sessions.md) and
   [Wasm artifacts](framework/wasm-kernel.md).
+* Added the dreaming contract: authorized Memory destinations, bounded background consolidation, recovery, and hosting requirements. Worker inheritance requires organization Adoption opt-in; legacy authority cutover refuses maintenance it cannot transfer.
 
 * **Scoped credentials implementation.** Implement typed ownership and explicit
   grants, one binding domain, invocation-based HTTP/MCP use, bounded atomic

@@ -355,3 +355,27 @@ test("checkpoint lookup keeps formats separate and chooses the newest matching s
   assert.equal((await read(1)).source_sequence, 10);
   assert.equal(await read(3), null);
 });
+
+test("dreaming metadata uses its own claim boundary without weakening turn epochs", async () => {
+  const f = await fixture();
+  const metadata = event("dreaming.activity", null, { operation_id: "maintenance-test", status: "queued", note_count: 0 });
+  await f.call("append", { event: metadata });
+  assert.equal((await f.call("events")).events.at(-1).type, "dreaming.activity");
+  const before = await f.call("events");
+  await assert.rejects(f.call("append", { event: event("turn.started", "turn_unowned", {}) }), /lease lost/);
+  await assert.rejects(f.call("append", { event: { ...metadata, data: { reason: "x".repeat(4097) } } }), /lease lost/);
+  await assert.rejects(f.call("append", { event: { ...metadata, data: { ...metadata.data, reason: "🌙".repeat(1200) } } }), /lease lost/);
+  assert.deepEqual(await f.call("events"), before);
+});
+
+test("background usage metering rejects captured prompts and generated output", async () => {
+  const f = await fixture();
+  const generation = event("llm.generation", null, { messages: [], tools: [], output: { text: null, tool_calls: [] }, metadata: { model: "model", success: true } });
+  generation.metadata = { dreaming_operation_id: "11111111-1111-4111-8111-111111111111" };
+  await f.call("append", { event: generation });
+  const before = await f.call("events");
+  await assert.rejects(f.call("append", { event: { ...generation, data: { ...generation.data, request_body: { evidence: "private" } } } }), /lease lost/);
+  await assert.rejects(f.call("append", { event: { ...generation, data: { ...generation.data, output: { text: "private notes", tool_calls: [] } } } }), /lease lost/);
+  await assert.rejects(f.call("append", { event: { ...generation, metadata: { dreaming_operation_id: "-".repeat(36) } } }), /lease lost/);
+  assert.deepEqual(await f.call("events"), before);
+});

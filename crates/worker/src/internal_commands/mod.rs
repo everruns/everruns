@@ -19,6 +19,7 @@ use serde_json::Value;
 
 mod connections;
 mod credentials;
+pub mod dreaming;
 mod leased_resources;
 mod org_egress_allowlist;
 mod poppy;
@@ -68,7 +69,7 @@ fn decode<T: serde::de::DeserializeOwned>(operation: &str, value: Value) -> Resu
 /// A shape mismatch reports only that the shape was wrong: serde's message
 /// quotes the offending value, which here would be the secret itself.
 async fn call_secret<R: serde::de::DeserializeOwned>(
-    transport: &impl InternalCommandTransport,
+    transport: &(impl InternalCommandTransport + ?Sized),
     operation: &str,
     name: &str,
     params: Value,
@@ -82,7 +83,7 @@ async fn call_secret<R: serde::de::DeserializeOwned>(
 
 /// Run `name` and decode its answer, naming `operation` in any failure.
 async fn call<R: serde::de::DeserializeOwned>(
-    transport: &impl InternalCommandTransport,
+    transport: &(impl InternalCommandTransport + ?Sized),
     operation: &str,
     name: &str,
     params: Value,

@@ -81,6 +81,7 @@ pub use everruns_contracts::runtime::user_hook_types;
 pub mod decision_driver;
 pub use everruns_contracts::runtime::decisions;
 pub use everruns_contracts::runtime::deployment;
+pub use everruns_contracts::runtime::dreaming;
 pub use everruns_contracts::runtime::egress;
 pub use everruns_contracts::runtime::exec_tool_result;
 pub use everruns_contracts::runtime::execution_context;

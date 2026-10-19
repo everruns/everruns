@@ -29,6 +29,7 @@ impl SessionEpoch for Ports {
     }
     fn backends(&self) -> HostBackends {
         let mut backends = HostBackends::in_memory();
+        backends.dreaming_store = Arc::new(self.hosting.clone());
         backends.event_log = Arc::new(self.clone());
         backends.session_store = Arc::new(self.clone());
         backends.storage_store = Arc::new(self.clone());
@@ -271,7 +272,11 @@ impl EventLog for Ports {
         self.scope(request.session_id).map_err(log_error)?;
         self.hosting
             .transaction(self.session, |tx, state| {
-                self.check(state)?;
+                if !request.is_dreaming_metadata() {
+                    self.check(state)?;
+                } else {
+                    state.binding(self.session)?;
+                }
                 append(tx, state, request, None)
             })
             .map_err(log_error)

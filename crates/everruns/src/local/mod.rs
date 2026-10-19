@@ -87,3 +87,5 @@ impl LocalConfig {
         LocalProfile::new(self.data_dir.clone()).with_workspace_root(self.workspace_root.clone())
     }
 }
+
+mod dreaming;

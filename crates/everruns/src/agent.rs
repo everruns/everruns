@@ -385,6 +385,7 @@ pub struct Agent {
     max_iterations: Option<usize>,
     parallel_tool_calls: Option<bool>,
     communication: crate::conversation::Communication,
+    memory_directories: Vec<(String, PathBuf)>,
     workspace_root: Option<PathBuf>,
     default_workspace: crate::default_workspace::DefaultWorkspace,
     workspace_policy: everruns_core::WorkspacePolicy,
@@ -817,6 +818,27 @@ impl Agent {
                 .then(|| self.model.provider.clone());
             backends.provider_store = live.provider_store(backends.provider_store, agent_provider);
         }
+        #[cfg(target_arch = "wasm32")]
+        if !self.memory_directories.is_empty() {
+            return Err(everruns_contracts::error::AgentLoopError::config(
+                "Wasm hosts must supply Memory through authorized filesystem ports, not native directories",
+            ));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        for (mount, path) in &self.memory_directories {
+            let store = Arc::new(everruns_core::host::RealDiskFileStore::new(path)?);
+            let identity = std::fs::canonicalize(path)
+                .map_err(|e| everruns_contracts::error::AgentLoopError::config(e.to_string()))?;
+            backends.memory_mounts.push((
+                mount.clone(),
+                store,
+                everruns_core::dreaming::DreamMemoryScope {
+                    key: format!("directory:{}", identity.display()),
+                    private: true,
+                },
+            ));
+        }
+
         let hook_capability = hook_state.and_then(|state| state.capability());
         let mut capabilities = self.capabilities.clone();
         if hook_capability.is_some() {
@@ -1087,6 +1109,7 @@ pub struct AgentBuilder {
     max_iterations: Option<usize>,
     parallel_tool_calls: Option<bool>,
     communication: crate::conversation::Communication,
+    memory_directories: Vec<(String, PathBuf)>,
     workspace_root: Option<PathBuf>,
     workspace_policy: everruns_core::WorkspacePolicy,
     workspace_backends: Vec<Arc<dyn WorkspaceBackend>>,

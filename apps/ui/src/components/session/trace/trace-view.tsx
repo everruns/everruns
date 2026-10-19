@@ -47,6 +47,7 @@ import {
 } from "./trace-model";
 import { TraceSearch } from "./trace-search";
 import { TurnRail } from "./turn-rail";
+import { DreamingTrace } from "./dreaming-trace";
 
 const VIEWS: { value: View; label: string }[] = [
   { value: "all", label: "Everything" },
@@ -337,6 +338,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
 
   return (
     <section aria-label="Session trace" className="flex min-h-0 flex-1 flex-col">
+      <DreamingTrace sessionId={sessionId} />
       {linkedFailure > 0 && !data.loading && (
         <div
           className="border-b border-l-2 border-destructive/30 border-l-destructive bg-destructive/5 px-6 py-3 text-sm"

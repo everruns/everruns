@@ -410,6 +410,40 @@ impl Engine {
         };
         let record = host.session_store.get_session(session).await?;
 
+        // Maintenance has its own authority, including Memory-wide reservations.
+        // The legacy image cannot transfer those per session. Refuse configured
+        // dreaming and retained cursors/jobs rather than reset spending or replay
+        // experience; removing the capability must not discard retained work.
+        let configured = legacy.capability_ids().contains("dreaming")
+            || record.as_ref().is_some_and(|record| {
+                record
+                    .capabilities
+                    .iter()
+                    .any(|capability| capability.capability_id() == "dreaming")
+            });
+        let retained = if let Some(record) = &record {
+            let org = everruns_core::host::in_process_internal_org_id(&record.organization_id);
+            host.dreaming_store
+                .get(
+                    org,
+                    &everruns_core::engine::dreaming::runner::job_key(session),
+                )
+                .await?
+                .is_some()
+                || host
+                    .dreaming_store
+                    .get(org, &format!("turns:{session}"))
+                    .await?
+                    .is_some()
+        } else {
+            false
+        };
+        if configured || retained {
+            return Err(AgentLoopError::config(
+                "the legacy session has dreaming configuration or maintenance state; cutover cannot transfer its maintenance authority",
+            ));
+        }
+
         // Harness: a session that ran with one must keep one.
         if backends
             .harness_binding_store

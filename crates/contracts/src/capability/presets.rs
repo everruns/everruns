@@ -82,6 +82,12 @@ impl BuiltInHarnessPreset {
             ],
             Self::Worker => vec![
                 CapabilityRef::new("session_file_system"),
+                CapabilityRef::with_config(
+                    "dreaming",
+                    serde_json::json!({
+                        "destinations": [{"mount": "/memory/user", "path": "/learned"}]
+                    }),
+                ),
                 CapabilityRef::new("agent_instructions"),
                 CapabilityRef::new("session"),
                 CapabilityRef::new("tool_output_persistence"),
@@ -315,6 +321,38 @@ mod tests {
             .collect();
         for expected in ["session_file_system", "bashkit_shell", "web_fetch"] {
             assert!(ids.iter().any(|id| id == expected), "missing {expected}");
+        }
+    }
+}
+
+#[cfg(all(test, feature = "runtime"))]
+mod dreaming_preset_tests {
+    use super::*;
+    #[test]
+    fn only_worker_levels_inherit_dreaming_with_valid_private_memory_defaults() {
+        for preset in [
+            BuiltInHarnessPreset::Base,
+            BuiltInHarnessPreset::Conversation,
+            BuiltInHarnessPreset::Worker,
+            BuiltInHarnessPreset::BashkitWorker,
+        ] {
+            let capabilities = preset.effective_capabilities();
+            let dreaming = capabilities
+                .iter()
+                .find(|c| c.capability_id() == "dreaming");
+            assert_eq!(
+                dreaming.is_some(),
+                matches!(
+                    preset,
+                    BuiltInHarnessPreset::Worker | BuiltInHarnessPreset::BashkitWorker
+                )
+            );
+            if let Some(capability) = dreaming {
+                let config: crate::runtime::dreaming::DreamingConfig =
+                    serde_json::from_value(capability.config_value().clone()).unwrap();
+                config.validate().unwrap();
+                assert_eq!(config.destinations[0].mount, "/memory/user");
+            }
         }
     }
 }

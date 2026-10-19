@@ -69,10 +69,16 @@ The public surface is split across the execution and host concerns:
 
 See `crates/contracts/src/runtime/session_files.rs` and
 `crates/core/src/host/session_file_system_factory.rs` for the full method signatures
-and doc comments. The filesystem trait shape is intentionally small: an implementation
-supports `read_file`, `write_file`, `write_file_if_content_matches` (CAS),
-`delete_file`, `list_directory`, `stat_file`, `grep_files`,
-`create_directory`, and `seed_initial_file`.
+and doc comments. The trait owns ordinary file operations, canonical path
+presentation, and explicit host opt-in to writable Memory scopes and atomic
+create-only artifacts. Unsupported Memory operations fail closed.
+
+In-process worker hosts may supply the complete port through
+`WorkerAdapters::session_file_system`. `WorkerRuntimeHost` prefers it to the
+org-scoped remote command adapter. The direct server supplies `WorkspaceFileService`
+with its quota and virtual mounts, keeping live Memory reads, edits and deletion
+on one service. Per-operation overrides must not mix live reads with snapshot
+writes. See [Dreaming](dreaming.md) for the maintenance consumer.
 
 ### Batch-native reads
 
@@ -102,7 +108,9 @@ or `SystemPromptContext`. `MountFs` owns:
   resolve against it, `.`/`..` collapse POSIX-style.
 
 `/workspace` is therefore a **mount point and the default cwd**, not a magic
-prefix re-implemented in every store. Today there is a single workspace backend,
+prefix re-implemented in every store. Model-facing guidance preserves explicit
+named-mount paths: Memory paths such as `/memory/user` must not be rewritten
+under `/workspace`. Today there is a single workspace backend,
 so the table holds the root mount (`/` → backend, for legacy backend-native
 paths such as `/AGENTS.md`, `/outputs/…`, `/.agents/skills/…`) and the
 `/workspace` view of the same backend; `/workspace` wins by longest-prefix, so

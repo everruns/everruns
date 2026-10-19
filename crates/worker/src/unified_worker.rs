@@ -222,6 +222,7 @@ where
     store: Arc<S>,
     /// Runs each claimed task (see `task_driver`).
     driver: TaskDriver<S, A>,
+    dreaming_host: crate::runtime_host::WorkerRuntimeHost<A>,
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
     in_flight: Arc<AtomicUsize>,
@@ -263,7 +264,7 @@ where
         );
         let driver = TaskDriver::new(
             store.clone(),
-            adapters,
+            adapters.clone(),
             config.worker_id.clone(),
             config.heartbeat_interval,
         );
@@ -279,6 +280,7 @@ where
             config,
             store,
             driver,
+            dreaming_host: crate::runtime_host::WorkerRuntimeHost::new(adapters),
             shutdown_tx,
             shutdown_rx,
             in_flight,
@@ -300,6 +302,24 @@ where
 
     /// Run the worker (blocking until shutdown)
     pub async fn run(&mut self) -> Result<()> {
+        let maintenance_host = self.dreaming_host.clone();
+        let maintenance = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(15));
+            loop {
+                interval.tick().await;
+                if let Err(error) = crate::host::dreaming::run_due(maintenance_host.clone()).await {
+                    tracing::warn!(%error,"dreaming sweep failed");
+                }
+            }
+        });
+        struct StopMaintenance(tokio::task::JoinHandle<()>);
+        impl Drop for StopMaintenance {
+            fn drop(&mut self) {
+                self.0.abort();
+            }
+        }
+        let _maintenance = StopMaintenance(maintenance);
+
         info!(
             worker_id = %self.config.worker_id,
             "Starting unified worker"

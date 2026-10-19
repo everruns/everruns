@@ -44,6 +44,7 @@ pub trait AuthorityTransport: Send + Sync + 'static {
 pub struct AuthorityClient {
     tenant: String,
     transport: Arc<dyn AuthorityTransport>,
+    pub(crate) dreaming_store: Arc<dyn everruns::hosting::spi::dreaming::DreamingStore>,
 }
 
 impl AuthorityClient {
@@ -71,7 +72,19 @@ impl AuthorityClient {
         Ok(Self {
             tenant: tenant.to_owned(),
             transport,
+            dreaming_store: Arc::new(everruns::hosting::spi::dreaming::UnsupportedDreamingStore),
         })
+    }
+
+    /// Supply background state scoped to this client's tenant, shared by every executor and session
+    /// that can write the same Memory scope. The host must arrange durable alarms
+    /// to call Engine::maintain_dreaming; no resident process is required.
+    pub fn with_dreaming_store(
+        mut self,
+        store: Arc<dyn everruns::hosting::spi::dreaming::DreamingStore>,
+    ) -> Self {
+        self.dreaming_store = store;
+        self
     }
 
     /// Bind requests to one typed session identity.

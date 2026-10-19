@@ -19,10 +19,64 @@ use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, RwLock};
 
+#[cfg(all(test, feature = "builtins", feature = "filesystem"))]
+mod dreaming_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn completed_experience_can_dream_while_an_idle_epoch_is_leased() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = crate::DreamingConfig::new(crate::DreamDestination {
+            mount: "/memory/user".into(),
+            path: "/learned".into(),
+            instructions: String::new(),
+        });
+        config.trigger.mode = crate::DreamTriggerMode::Manual;
+        config.budget.max_cost_usd_per_day = None;
+        let agent = crate::Agent::builder()
+            .instructions("Acknowledge")
+            .model(crate::Model::simulated("{\"notes\":[]}"))
+            .memory_directory("/memory/user", directory.path())
+            .capability(config)
+            .build()
+            .unwrap();
+        let profile = MemoryHosting::default();
+        let build = AgentBuild::new("dreaming-idle-lease", "v1");
+        let engine = crate::Engine::builder()
+            .hosting(profile.clone())
+            .register(build.clone(), agent)
+            .build();
+        let session = engine
+            .create_registered(SessionId::new(), &build)
+            .await
+            .unwrap();
+        session.send_and_wait("Remember UTC.").await.unwrap();
+        let id = session.session_id();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while profile.status(id).await.unwrap().executing {
+            assert!(Instant::now() < deadline, "foreground did not settle");
+            everruns_contracts::rt::sleep(Duration::from_millis(10)).await;
+        }
+        // Completion receipts can become visible before the actor releases its
+        // epoch. Reproduce that authority state without scheduler timing races.
+        let authority = profile.session(id);
+        {
+            let mut control = authority.control.lock().await;
+            assert!(control.open.is_none());
+            control.holder = Some("finishing-completed-turn".into());
+            control.expires = Some(Instant::now() + Duration::from_secs(30));
+        }
+        assert!(profile.status(id).await.unwrap().executing);
+        assert!(engine.dream(id).await.unwrap());
+        assert!(!engine.dream(id).await.unwrap());
+    }
+}
+
 /// A coherent process-lifetime authority. Clones share sessions. There is no
 /// claim that accepted work survives losing this process or Wasm isolate.
 #[derive(Clone, Default)]
 pub struct MemoryHosting {
+    dreaming: Arc<everruns_core::engine::dreaming::store::InMemoryDreamingStore>,
     sessions: Arc<Mutex<HashMap<SessionId, Arc<MemorySession>>>>,
 }
 
@@ -67,14 +121,16 @@ struct Control {
 }
 
 impl MemoryHosting {
-    fn new_session(id: SessionId) -> Arc<MemorySession> {
+    fn new_session(&self, id: SessionId) -> Arc<MemorySession> {
+        let mut services = HostBackends::in_memory();
+        services.dreaming_store = self.dreaming.clone();
         Arc::new(MemorySession {
             id,
             renew_poke: Arc::default(),
             changed: Arc::default(),
             control: tokio::sync::Mutex::new(Control::default()),
             log: InMemoryEventLog::new(),
-            services: HostBackends::in_memory(),
+            services,
         })
     }
     fn session(&self, id: SessionId) -> Arc<MemorySession> {
@@ -83,7 +139,7 @@ impl MemoryHosting {
             .unwrap_or_else(|p| p.into_inner())
             .get(&id)
             .cloned()
-            .unwrap_or_else(|| Self::new_session(id))
+            .unwrap_or_else(|| self.new_session(id))
     }
     fn ports(&self, id: SessionId) -> Ports {
         Ports {
@@ -304,7 +360,11 @@ impl Ports {
     ) -> std::result::Result<Event, EventLogError> {
         self.scope(request.session_id).map_err(log_error)?;
         let mut state = self.session.control.lock().await;
-        self.check(&state).map_err(log_error)?;
+        if !request.is_dreaming_metadata() {
+            self.check(&state).map_err(log_error)?;
+        } else {
+            state.binding(self.session.id).map_err(log_error)?;
+        }
         let turn = request.context.turn_id;
         let terminal = matches!(
             request.data,
@@ -369,6 +429,7 @@ impl SessionEpoch for Ports {
     }
     fn backends(&self) -> HostBackends {
         let mut backends = HostBackends::in_memory();
+        backends.dreaming_store = self.session.services.dreaming_store.clone();
         backends.event_log = Arc::new(self.clone());
         backends.session_store = Arc::new(self.clone());
         backends.storage_store = Arc::new(self.clone());

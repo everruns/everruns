@@ -27,6 +27,17 @@ impl AgentBuilder {
         self
     }
 
+    /// Mount an existing private durable Memory directory. The host chooses this path.
+    pub fn memory_directory(
+        mut self,
+        mount: impl Into<String>,
+        directory: impl Into<PathBuf>,
+    ) -> Self {
+        self.memory_directories
+            .push((mount.into(), directory.into()));
+        self
+    }
+
     /// Set the agent's system instructions. Required.
     pub fn instructions(mut self, instructions: impl Into<String>) -> Self {
         self.instructions = Some(instructions.into());
@@ -460,6 +471,19 @@ impl AgentBuilder {
         if self.local.is_some() && self.backends.is_some() {
             return Err(BuildError::ConflictingBackends);
         }
+        let mut seen_memory = HashSet::new();
+        for (mount, _) in &self.memory_directories {
+            if !["/memory/user", "/memory/agent"].contains(&mount.as_str())
+                || !seen_memory.insert(mount)
+            {
+                return Err(BuildError::InvalidCapability {
+                    id: "dreaming".into(),
+                    reason:
+                        "Memory directories require distinct /memory/user or /memory/agent mounts"
+                            .into(),
+                });
+            }
+        }
         let mut workspace_backends = HashMap::new();
         for backend in &self.workspace_backends {
             let id = backend.id();
@@ -804,6 +828,7 @@ impl AgentBuilder {
             max_iterations: self.max_iterations,
             parallel_tool_calls: self.parallel_tool_calls,
             communication: self.communication,
+            memory_directories: self.memory_directories,
             workspace_root: self.workspace_root,
             default_workspace,
             workspace_policy: self.workspace_policy,

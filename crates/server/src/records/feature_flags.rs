@@ -25,6 +25,9 @@ pub struct FeatureFlags {
     /// Organization-scoped live execution monitoring. Adoption opt-in.
     #[serde(default)]
     pub monitoring: bool,
+    /// Background Worker memory consolidation. Organization adoption opt-in.
+    #[serde(default)]
+    pub dreaming: bool,
     /// Evals (user-facing behavioral evals for agents). Experimental.
     pub evals: bool,
     /// Skills registry management UI. Experimental.
@@ -122,6 +125,12 @@ pub fn is_known_feature_flag(name: &str) -> bool {
 /// One catalog for platform flags, including infrastructure capabilities.
 /// Integration flags live with their integration crates.
 pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
+    FeatureFlagDefinition {
+        name: "dreaming",
+        label: "Dreaming",
+        description: "Let Worker harnesses consolidate completed experience into authorized Memory.",
+        grade: FeatureFlagGrade::Adoption,
+    },
     FeatureFlagDefinition {
         name: "monitoring",
         label: "Monitoring",
@@ -324,6 +333,7 @@ impl FeatureFlags {
     pub fn to_map(&self) -> FeatureFlagMap {
         let mut map = BTreeMap::from([
             ("monitoring".to_string(), self.monitoring),
+            ("dreaming".to_string(), self.dreaming),
             ("docker_capability".to_string(), self.docker_capability),
             ("container_sandbox".to_string(), self.container_sandbox),
             ("lua".to_string(), self.lua),
@@ -358,6 +368,7 @@ impl FeatureFlags {
     pub fn is_enabled(&self, flag: &str) -> bool {
         match flag {
             "monitoring" => self.monitoring,
+            "dreaming" => self.dreaming,
             "docker_capability" => self.docker_capability,
             "container_sandbox" => self.container_sandbox,
             "lua" => self.lua,
@@ -383,6 +394,7 @@ impl FeatureFlags {
     fn set(&mut self, name: &str, enabled: bool) {
         match name {
             "monitoring" => self.monitoring = enabled,
+            "dreaming" => self.dreaming = enabled,
             "evals" => self.evals = enabled,
             "skills" => self.skills = enabled,
             "memory" => self.memory = enabled,
@@ -431,6 +443,7 @@ impl FeatureFlags {
     /// Feature flag required by a capability, when one exists.
     pub fn required_for_capability(capability_id: &str) -> Option<&'static str> {
         match capability_id {
+            "dreaming" => Some("dreaming"),
             "docker_container" => Some("docker_capability"),
             "container_sandbox" => Some("container_sandbox"),
             "lua" | "lua_code_mode" => Some("lua"),
@@ -467,6 +480,7 @@ impl FeatureFlags {
     pub fn all_enabled() -> Self {
         Self {
             monitoring: true,
+            dreaming: true,
             docker_capability: true,
             container_sandbox: true,
             lua: true,
@@ -503,6 +517,44 @@ mod tests {
             grades: feature_flag_definitions()
                 .map(|def| (def.name.to_string(), grade))
                 .collect(),
+        }
+    }
+
+    #[test]
+    fn dreaming_requires_org_adoption_and_revocation_filters_the_capability() {
+        let definition = API_FEATURE_FLAG_DEFINITIONS
+            .iter()
+            .find(|d| d.name == "dreaming")
+            .unwrap();
+        assert_eq!(definition.grade, FeatureFlagGrade::Adoption);
+        for deployment in [
+            DeploymentGrade::Dev,
+            DeploymentGrade::Preview,
+            DeploymentGrade::Prod,
+        ] {
+            let available = policy(deployment, definition.grade);
+            assert!(
+                !available
+                    .for_org(&HashMap::new())
+                    .is_capability_enabled("dreaming")
+            );
+            let enrolled = HashMap::from([("dreaming".to_string(), true)]);
+            assert!(
+                available
+                    .for_org(&enrolled)
+                    .is_capability_enabled("dreaming")
+            );
+            assert!(
+                !available
+                    .for_org(&HashMap::from([("dreaming".to_string(), false)]))
+                    .is_capability_enabled("dreaming")
+            );
+            assert!(
+                !available
+                    .with_grade("dreaming", FeatureFlagGrade::Off)
+                    .for_org(&enrolled)
+                    .is_capability_enabled("dreaming")
+            );
         }
     }
 

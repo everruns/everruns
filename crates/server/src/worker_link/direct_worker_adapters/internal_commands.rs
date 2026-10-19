@@ -25,7 +25,7 @@ use everruns_worker::internal_commands::{
 use serde_json::Value;
 use std::sync::Arc;
 
-struct DirectInternalCommands {
+pub(super) struct DirectInternalCommands {
     db: Arc<crate::storage::StorageBackend>,
     permission_resolver: Arc<dyn PermissionResolver>,
     org_id: i64,
@@ -45,7 +45,7 @@ struct DirectInternalCommands {
 }
 
 impl DirectWorkerAdapters {
-    fn internal_commands(&self, org_id: i64) -> DirectInternalCommands {
+    pub(super) fn internal_commands(&self, org_id: i64) -> DirectInternalCommands {
         DirectInternalCommands {
             db: self.db.clone(),
             permission_resolver: self.permission_resolver.clone(),

@@ -55,6 +55,9 @@ pub const CONVERSATION_MESSAGE: &str = "conversation.message";
 // Turn lifecycle events
 pub const TURN_STARTED: &str = "turn.started";
 pub const TURN_COMPLETED: &str = "turn.completed";
+pub const DREAMING_ACTIVITY: &str = "dreaming.activity";
+mod dreaming;
+pub use dreaming::DreamingActivityData;
 pub const TURN_FAILED: &str = "turn.failed";
 /// Turn was deliberately sealed (stopped to prevent waste): no forward progress
 /// across repeated crash-reclaims, or work budget exhausted. Distinct from
@@ -193,6 +196,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     CONVERSATION_MESSAGE,
     TURN_STARTED,
     TURN_COMPLETED,
+    DREAMING_ACTIVITY,
     TURN_FAILED,
     TURN_SEALED,
     TURN_CANCELLED,
@@ -640,6 +644,7 @@ pub enum EventData {
     // Turn lifecycle events
     TurnStarted(TurnStartedData),
     TurnCompleted(TurnCompletedData),
+    DreamingActivity(DreamingActivityData),
     TurnFailed(TurnFailedData),
 
     // Atom lifecycle events
@@ -882,6 +887,7 @@ event_data_kinds! {
     // Turn lifecycle events
     TurnStarted(TurnStartedData) = TURN_STARTED,
     TurnCompleted(TurnCompletedData) = TURN_COMPLETED,
+    DreamingActivity(DreamingActivityData) = DREAMING_ACTIVITY,
     TurnFailed(TurnFailedData) = TURN_FAILED,
     TurnSealed(TurnSealedData) = TURN_SEALED,
     TurnCancelled(TurnCancelledData) = TURN_CANCELLED,
@@ -989,6 +995,7 @@ impl_from_event_data! {
     ConversationMessageData => ConversationMessage,
     TurnStartedData => TurnStarted,
     TurnCompletedData => TurnCompleted,
+    DreamingActivityData => DreamingActivity,
     TurnFailedData => TurnFailed,
     TurnSealedData => TurnSealed,
     TurnCancelledData => TurnCancelled,

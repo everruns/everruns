@@ -41,6 +41,7 @@ pub mod channel_context;
 pub mod claude_tool_search;
 pub mod compaction;
 pub mod current_time;
+pub mod dreaming;
 pub mod dry_run;
 pub mod error_disclosure;
 mod framework_config;
@@ -321,6 +322,7 @@ fn capabilities_with_ask_user(ask_user: AskUserCapability) -> Vec<Arc<dyn Capabi
         Arc::new(MessageMetadataCapability),
         Arc::new(StatelessTodoListCapability),
         Arc::new(BtwCapability),
+        Arc::new(dreaming::DreamingCapability),
         Arc::new(BudgetingCapability),
         Arc::new(SelfBudgetCapability),
         Arc::new(CompactionCapability),
@@ -350,7 +352,7 @@ fn capabilities_with_ask_user(ask_user: AskUserCapability) -> Vec<Arc<dyn Capabi
 mod bundle_tests {
     use super::*;
 
-    const RUNTIME_IDS: [&str; 32] = [
+    const RUNTIME_IDS: [&str; 33] = [
         "human_intent",
         "ask_user",
         "infinity_context",
@@ -361,6 +363,7 @@ mod bundle_tests {
         "message_metadata",
         "stateless_todo_list",
         "btw",
+        "dreaming",
         "budgeting",
         "self_budget",
         "compaction",

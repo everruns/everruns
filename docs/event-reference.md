@@ -60,6 +60,7 @@ This page lists every event type in the Everruns event protocol and documents th
 | `context.compacted` | Context compaction installed a summary. |
 | `context.compaction.skipped` | A compaction evaluation ran but installed nothing. |
 | `context.compaction.failed` | A compaction attempt errored before installing. |
+| `dreaming.activity` | Background Memory consolidation status, note count, model, usage, and cost; excludes evidence and generated notes. See [Dreaming](/features/dreaming/). |
 | `file.written` | A session file was written. |
 | `budget.warning` | Budget crossed its warning threshold. |
 | `budget.paused` | Budget paused the session. |
@@ -603,6 +604,11 @@ Do not infer severity from `success: false` alone. Failed `tool.completed` event
 ### llm.generation
 
 Full visibility into LLM API calls. Emitted after each call.
+
+Background [dreaming](/features/dreaming/) calls emit usage and timing with
+`metadata.dreaming_operation_id` on the event envelope. Their messages, tools,
+output, and captured request are empty to keep private consolidation content
+out of the session log.
 
 | Field | Type | Description |
 |-------|------|-------------|

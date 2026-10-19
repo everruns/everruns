@@ -55,7 +55,9 @@ the shared actor driver. No second authority, planner or turn loop.
   cutover before any authority write: non-terminal tasks, active schedules,
   secrets when the authority has no secret keys, a missing Harness for a
   session that ran with one, and a durable workspace without a retained
-  Environment factory.
+  Environment factory. Dreaming configuration or retained maintenance also refuses
+  transfer: the import image does not move jobs, cursors, proposals or Memory-wide
+  reservations between maintenance authorities. See [Dreaming](../runtime-resources/dreaming.md).
 - **Secrets stay encrypted.** With `SqliteHosting::with_secret_keys`, the
   authority [seals each secret](../../crates/everruns/src/hosting/sqlite/secrets.rs)
   with the platform's envelope scheme and key format, bound to its session and
@@ -86,6 +88,7 @@ noted.
 | Workspace metadata | Binding store | Imported binding, exact-head factory, mismatch refused | **passes** |
 | Session secrets | Legacy secret store | Sealed under authority secret keys | **passes** |
 | Compatible compaction checkpoints | Latest per provider/model/format | Imported when within the journal | **passes** |
+| Dreaming maintenance and shared Memory budgets | Original maintenance store | No maintenance-authority handoff | **protected by refusal** when configured or retained; not imported |
 | Durable source boundary and ownership decision | Marker | Cutover record | **passes** |
 | Interrupted/retried/conflicting cutover, no duplicate work, no automatic fallback | Frozen by marker and lease fence | One transaction, replay on retry | **passes** |
 | Rewind/redo of active history and compaction under the authority while quiescent | Not in this repository: neither lane has a rewind contract | None | **missing** |

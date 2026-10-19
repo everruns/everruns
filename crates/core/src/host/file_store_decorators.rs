@@ -170,6 +170,30 @@ impl PolicyFileStore {
 
 #[async_trait]
 impl SessionFileSystem for PolicyFileStore {
+    async fn create_file_if_absent(
+        &self,
+        session: SessionId,
+        path: &str,
+        content: &str,
+    ) -> Result<bool> {
+        self.check_write(path)?;
+        self.inner
+            .create_file_if_absent(session, path, content)
+            .await
+    }
+
+    async fn dreaming_scope(
+        &self,
+        session: SessionId,
+        mount: &str,
+    ) -> Result<Option<crate::dreaming::DreamMemoryScope>> {
+        let scope = self.inner.dreaming_scope(session, mount).await?;
+        if scope.is_some() {
+            self.check_write(mount)?;
+        }
+        Ok(scope)
+    }
+
     fn display_root(&self) -> String {
         self.inner.display_root()
     }
@@ -415,6 +439,26 @@ impl WriteBlocklistFileStore {
 
 #[async_trait]
 impl SessionFileSystem for WriteBlocklistFileStore {
+    async fn dreaming_scope(
+        &self,
+        session: SessionId,
+        mount: &str,
+    ) -> Result<Option<crate::dreaming::DreamMemoryScope>> {
+        self.check(mount)?;
+        self.inner.dreaming_scope(session, mount).await
+    }
+    async fn create_file_if_absent(
+        &self,
+        session: SessionId,
+        path: &str,
+        content: &str,
+    ) -> Result<bool> {
+        self.check(path)?;
+        self.inner
+            .create_file_if_absent(session, path, content)
+            .await
+    }
+
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         self.inner.read_file(session_id, path).await
     }
@@ -577,6 +621,32 @@ impl ApprovalGatingFileStore {
 
 #[async_trait]
 impl SessionFileSystem for ApprovalGatingFileStore {
+    async fn dreaming_scope(
+        &self,
+        session: SessionId,
+        mount: &str,
+    ) -> Result<Option<crate::dreaming::DreamMemoryScope>> {
+        self.inner.dreaming_scope(session, mount).await
+    }
+    async fn create_file_if_absent(
+        &self,
+        session: SessionId,
+        path: &str,
+        content: &str,
+    ) -> Result<bool> {
+        if self.inner.stat_file(session, path).await?.is_some() {
+            return Ok(false);
+        }
+        if !self.gate.approve_write(path, None, content).await {
+            return Err(AgentLoopError::tool(format!(
+                "user denied write to `{path}`"
+            )));
+        }
+        self.inner
+            .create_file_if_absent(session, path, content)
+            .await
+    }
+
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         self.inner.read_file(session_id, path).await
     }
