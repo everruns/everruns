@@ -48,6 +48,15 @@ def affected(packages, paths, root):
 
 def risk_filters(paths):
     filters = set()
+    if any(p.startswith(('crates/server/src/domains/agents/credentials.rs',
+                         'crates/server/src/domains/credentials/',
+                         'crates/server/src/domains/resource_access/',
+                         'crates/server/src/domains/mcp_servers/',
+                         'crates/server/src/worker_link/'))
+           or p == 'crates/server/tests/domain/mcp_acts_as_grpc_test.rs' for p in paths):
+        # Credential parameter lookup must not preempt native OAuth's identity
+        # and connection-required behavior over the actual worker transport.
+        filters.add('mcp_acts_as_grpc_test::')
     if any(p.startswith(('crates/server/src/api/', 'crates/server/src/openapi/')) for p in paths):
         # Reuse the domain invocation: API shape and prose are public contracts.
         filters.update(['openapi_coverage_test::', 'openapi_descriptions_test::', 'pat_scope_coverage_test::'])

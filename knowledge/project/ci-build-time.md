@@ -24,6 +24,8 @@ which share the same cache and linker characteristics.
 Pull requests run formatting, linting, repository guards, affected workspace tests,
 and relevant UI/docs checks. The affected set includes reverse Cargo dependencies;
 server persistence, authorization, and migration changes add focused contracts.
+MCP credential and worker-transport changes also exercise the gRPC identity and
+connection-required contract before merge.
 Hosted capability graph validation selects both portable builtins and environment
 capabilities, matching server/worker composition; either catalog alone can omit
 dependencies supplied by the other.
