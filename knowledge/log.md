@@ -6,8 +6,8 @@
   the SQLite authority in one transaction with a recorded source boundary and
   ownership decision; the legacy executor is frozen, never a fallback. Custom
   backends now keep workspace bindings themselves. The gate for retiring the
-  facade lane lists rewind, background/child obligations, JSONL export and
-  secrets as open. See [Local authority cutover](framework/local-authority-cutover.md).
+  facade lane lists rewind, background/child obligations and secrets as open;
+  JSONL is rebuilt from the authority as an export. See [Local authority cutover](framework/local-authority-cutover.md).
 
 * **Session commands and live controls.** Sessions run capability commands,
   activate Engine-registered capabilities and switch model, effort and MCP
