@@ -395,8 +395,9 @@ pub struct Agent {
     lifecycle_hooks: crate::hooks::LifecycleHooks,
     client_tools: Vec<everruns_contracts::tool_types::ClientSideTool>,
     client_questions: bool,
-    /// See [`AgentBuilder::host_services`].
-    host_services: Option<crate::hosting::services::HostServices>,
+    /// See [`AgentBuilder::host_services`]. Shared so cloning an Agent into
+    /// session and activation futures stays pointer-sized.
+    host_services: Option<Arc<crate::hosting::services::HostServices>>,
     /// See [`AgentBuilder::backends`]; mutually exclusive with `local`.
     pub(crate) backends: Option<HostBackends>,
     pub(crate) state: Arc<AgentState>,
@@ -730,11 +731,11 @@ impl Agent {
         everruns_contracts::error::AgentLoopError,
     > {
         backends = crate::batteries::runtime_backends(backends);
-        let host_services = self.host_services.as_ref();
+        let host_services = self.host_services.as_deref();
         if let Some(providers) = host_services.and_then(|services| services.providers.as_ref()) {
             // Resolve before execution: an unknown host provider is a
             // configuration failure, never a fallback to another provider.
-            providers.ensure_serves(&self.model.provider).await?;
+            Box::pin(providers.ensure_serves(&self.model.provider)).await?;
             backends.provider_store = Arc::new(crate::hosting::services::HostProviderStore::new(
                 providers.clone(),
             ));

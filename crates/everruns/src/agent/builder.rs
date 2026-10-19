@@ -814,7 +814,7 @@ impl AgentBuilder {
             lifecycle_hooks: self.lifecycle_hooks,
             client_tools: self.client_tools,
             client_questions: self.client_questions,
-            host_services: self.host_services,
+            host_services: self.host_services.map(Arc::new),
             backends: self.backends,
             state: Arc::new(AgentState::new(workspace_backends)),
         })
