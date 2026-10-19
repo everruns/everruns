@@ -345,6 +345,43 @@ async fn uncertain_agent_start_suspends_without_repeating_the_effect_or_dispatch
     );
 }
 
+/// A finished in-process turn reaches its waiter through the host's change
+/// hint, not the admission receipt poll. Time is paused, so any wait on the
+/// poll would advance the clock by its 50 ms interval; before the hint, every
+/// `send_and_wait` on an Engine took at least that long (turn_backends bench:
+/// ~51 ms per instant turn).
+async fn completed_turns_wake_waiters_without_polling(profile: impl SessionHosting) {
+    let engine = engine(profile, agent());
+    let session = engine
+        .create_registered(SessionId::new(), &build())
+        .await
+        .unwrap();
+    let started = tokio::time::Instant::now();
+    for _ in 0..3 {
+        session.send_and_wait("hello").await.unwrap();
+    }
+    assert!(
+        started.elapsed() < std::time::Duration::from_millis(50),
+        "three instant turns waited {:?} of virtual time",
+        started.elapsed()
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn memory_completed_turns_wake_waiters_without_polling() {
+    completed_turns_wake_waiters_without_polling(MemoryHosting::default()).await;
+}
+
+#[cfg(feature = "local")]
+#[tokio::test(start_paused = true)]
+async fn sqlite_completed_turns_wake_waiters_without_polling() {
+    let dir = tempfile::tempdir().unwrap();
+    completed_turns_wake_waiters_without_polling(
+        everruns::hosting::SqliteHosting::open(dir.path().join("authority.db")).unwrap(),
+    )
+    .await;
+}
+
 #[tokio::test]
 async fn registered_build_conflicts_and_unavailable_builds_never_select_latest() {
     let profile = MemoryHosting::default();

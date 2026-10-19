@@ -3,6 +3,9 @@ use super::*;
 use crate::{RunError, Turn};
 use everruns_contracts::typed_id::TurnId;
 
+/// Fallback receipt poll for [`Admission::wait`] when no local hint fires.
+const ADMISSION_POLL: Duration = Duration::from_millis(50);
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 /// The logical turn that consumed an admitted input.
 pub struct TurnAssignment {
@@ -121,13 +124,35 @@ impl Admission {
 
     /// Poll authoritative receipts. A frontend or executor restart cannot lose
     /// completion. Explicit suspension is returned rather than waiting forever.
+    ///
+    /// The host's [`SessionHosting::changes`] hint wakes the waiter as soon as
+    /// a local commit lands; the poll only covers writes the hint cannot see
+    /// (another process, a remote host). Polling alone added up to one
+    /// interval to every turn: in-process turns that finish in ~2 ms took
+    /// ~51 ms (turn_backends bench, Durable Benchmarks 2026-10-18).
     pub async fn wait(&self) -> std::result::Result<Turn, RunError> {
+        let changes = self.hosting.changes(self.session);
         loop {
+            // Created before the read: `notify_waiters` reaches a `Notified`
+            // from creation on, so a commit between the read and the wait
+            // still wakes this loop.
+            let changed = changes.as_deref().map(tokio::sync::Notify::notified);
             match self.state().await? {
                 AdmissionState::Complete { turn } => return Ok(turn),
                 AdmissionState::Suspended => return Err(RunError::Suspended),
                 AdmissionState::Rejected { failure } => return Err(RunError::Hook(failure)),
-                _ => everruns_contracts::rt::sleep(Duration::from_millis(50)).await,
+                _ => {
+                    let poll = everruns_contracts::rt::sleep(ADMISSION_POLL);
+                    match changed {
+                        Some(changed) => {
+                            tokio::select! {
+                                _ = changed => {}
+                                _ = poll => {}
+                            }
+                        }
+                        None => poll.await,
+                    }
+                }
             }
         }
     }

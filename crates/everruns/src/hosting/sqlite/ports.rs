@@ -63,7 +63,7 @@ impl SessionEpoch for Ports {
     })
     }
     async fn commit(&self, key: &str, value: Value, absent: bool) -> Result<bool> {
-        self.hosting.transaction(self.session, |tx, state| {
+        let written = self.hosting.transaction(self.session, |tx, state| {
             self.check(state)?;
             if absent && object::<Value>(tx, self.session, "framework", key)?.is_some() {
                 return Ok(false);
@@ -93,7 +93,11 @@ impl SessionEpoch for Ports {
             }
             put(tx, self.session, "framework", key, &value)?;
             Ok(true)
-        })
+        })?;
+        if written {
+            self.hosting.changes.notify(self.session);
+        }
+        Ok(written)
     }
     async fn suspend(&self, reason: &str) -> Result<()> {
         self.hosting.transaction(self.session, |tx, state| {
@@ -106,7 +110,9 @@ impl SessionEpoch for Ports {
                 "suspension",
                 &json!({"reason":reason}),
             )
-        })
+        })?;
+        self.hosting.changes.notify(self.session);
+        Ok(())
     }
 }
 

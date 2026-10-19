@@ -845,10 +845,11 @@ impl EventStream {
                         Ok(event) if event.sequence().is_none() => return Ok(Some(event)),
                         Err(broadcast::error::RecvError::Closed) => return Ok(None),
                         Err(broadcast::error::RecvError::Lagged(missed)) => return Err(EventStreamError::Lagged { missed }),
-                        Ok(_) => {
-                            everruns_contracts::rt::sleep(std::time::Duration::from_millis(50)).await;
-                            continue;
-                        }
+                        // A canonical event landed: read the journal now.
+                        // If it is not visible yet, the next pass waits on
+                        // the feed or the poll above, so this cannot spin;
+                        // sleeping here delayed every live event by 50 ms.
+                        Ok(_) => continue,
                     }
                 }
             }

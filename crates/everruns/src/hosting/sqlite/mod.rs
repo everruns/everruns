@@ -44,6 +44,9 @@ const DISCOVER_RUNNABLE: &str = "
 pub struct SqliteHosting {
     db: Arc<Mutex<Connection>>,
     proactive: ProactiveAttempts,
+    /// In-process [`SessionHosting::changes`] hints. Other processes sharing
+    /// the database are seen by the waiter's poll, not by these.
+    changes: super::ChangeHints,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -121,6 +124,7 @@ impl SqliteHosting {
         Ok(Self {
             db: Arc::new(Mutex::new(db)),
             proactive: Arc::default(),
+            changes: super::ChangeHints::default(),
         })
     }
 
@@ -415,7 +419,15 @@ impl SessionHosting for SqliteHosting {
         session: SessionId,
         command: super::spi::session_commands::SessionCommand,
     ) -> Result<Value> {
-        self.execute_command(session, command)
+        let reply = self.execute_command(session, command);
+        if reply.is_ok() {
+            self.changes.notify(session);
+        }
+        reply
+    }
+
+    fn changes(&self, session: SessionId) -> Option<Arc<tokio::sync::Notify>> {
+        Some(self.changes.subscribe(session))
     }
 
     async fn query_snapshot(&self, session: SessionId) -> Result<SessionQuerySnapshot> {

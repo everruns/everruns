@@ -436,6 +436,54 @@ pub trait SessionHosting: Send + Sync + 'static {
     fn process_scheduler(&self) -> bool {
         false
     }
+    /// Optional process-local hint, signalled after this session's receipts or
+    /// control state change in this process. It carries no authority: an
+    /// [`Admission`] waiter re-reads receipts on every signal and still polls,
+    /// so writes from other processes or remote hosts are seen without it.
+    /// Without the hint every waiter pays up to one poll interval per turn.
+    fn changes(&self, _session: SessionId) -> Option<Arc<tokio::sync::Notify>> {
+        None
+    }
+}
+
+/// Per-session [`SessionHosting::changes`] hints for hosts whose sessions have
+/// no in-process object to hold one. Entries are weak, so a session nobody
+/// waits on costs nothing; a signal with no waiter is dropped, which is safe
+/// because waiters read receipts after subscribing.
+#[derive(Clone, Default)]
+#[cfg_attr(not(feature = "local"), allow(dead_code))]
+pub(crate) struct ChangeHints(
+    Arc<
+        std::sync::Mutex<
+            std::collections::HashMap<SessionId, std::sync::Weak<tokio::sync::Notify>>,
+        >,
+    >,
+);
+
+#[cfg_attr(not(feature = "local"), allow(dead_code))]
+impl ChangeHints {
+    pub(crate) fn subscribe(&self, session: SessionId) -> Arc<tokio::sync::Notify> {
+        let mut hints = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(hint) = hints.get(&session).and_then(std::sync::Weak::upgrade) {
+            return hint;
+        }
+        hints.retain(|_, hint| hint.strong_count() > 0);
+        let hint = Arc::new(tokio::sync::Notify::new());
+        hints.insert(session, Arc::downgrade(&hint));
+        hint
+    }
+
+    pub(crate) fn notify(&self, session: SessionId) {
+        let hint = self
+            .0
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(&session)
+            .and_then(std::sync::Weak::upgrade);
+        if let Some(hint) = hint {
+            hint.notify_waiters();
+        }
+    }
 }
 
 /// Write capability scoped to one unexpired authority epoch.
