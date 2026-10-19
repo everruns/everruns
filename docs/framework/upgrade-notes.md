@@ -26,8 +26,9 @@ profile instead, and existing sessions move over with
 +let engine = Engine::builder().hosting(SqliteHosting::open(dir.join("authority.db"))?).build();
 ```
 
-AG-UI threads and coordination still run on the older lane; keep `local()`
-there until they move to Engine hosting.
+AG-UI threads move with `AgUiThreads::hosted`, and coordination threads run as
+child sessions of the hosting authority. Sessions written by an older lane
+still move one by one with `Engine::cut_over_legacy_session`.
 
 ### Custom task registries honor recovery guards
 
