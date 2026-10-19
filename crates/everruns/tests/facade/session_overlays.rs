@@ -335,3 +335,79 @@ mod registered {
         );
     }
 }
+
+/// Host-registered capabilities (EVE-1296) follow the same overlay rules as
+/// built-ins: a session-enabled one stays effective after a restart and a
+/// session-disabled one stays off.
+mod host_registered {
+    use super::*;
+    use everruns::hosting::services::{Capability, HostServices};
+
+    struct Marker(&'static str, &'static str);
+
+    impl Capability for Marker {
+        fn id(&self) -> &str {
+            self.0
+        }
+
+        fn name(&self) -> &str {
+            self.0
+        }
+
+        fn description(&self) -> &str {
+            "Contributes a marker to the instructions."
+        }
+
+        fn system_prompt_addition(&self) -> Option<&str> {
+            Some(self.1)
+        }
+    }
+
+    fn host_agent(backends: &HostBackends) -> Agent {
+        agent(backends, Model::simulated("ok"))
+            .host_services(
+                HostServices::new()
+                    .register(Marker("host_kept", "HOST_KEPT_MARKER"))
+                    .register(Marker("host_dropped", "HOST_DROPPED_MARKER")),
+            )
+            .build()
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn session_enabled_host_capability_survives_and_disabled_one_stays_off() {
+        let backends = HostBackends::in_memory();
+        let store = backends.session_store.clone();
+        let first = Engine::new();
+        let session = first.create(host_agent(&backends));
+        let before = session.inspect().await.unwrap().instructions;
+        assert!(
+            !before.contains("HOST_KEPT_MARKER"),
+            "registered is not active"
+        );
+        let id = session.session_id();
+        for capability in ["host_kept", "host_dropped"] {
+            store
+                .upsert_session_capability(id, CapabilityRef::new(capability))
+                .await
+                .unwrap();
+        }
+        store
+            .remove_session_capability(id, "host_dropped")
+            .await
+            .unwrap();
+        drop(session);
+        drop(first);
+
+        let engine = Engine::new();
+        engine.attach(id, host_agent(&backends)).await.unwrap();
+        let resumed = engine.resume(id).await.unwrap();
+        let instructions = resumed.inspect().await.unwrap().instructions;
+        assert!(instructions.contains("HOST_KEPT_MARKER"), "{instructions}");
+        assert!(
+            !instructions.contains("HOST_DROPPED_MARKER"),
+            "{instructions}"
+        );
+        assert!(resumed.run("still writable").await.unwrap().success);
+    }
+}
