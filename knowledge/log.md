@@ -2,6 +2,13 @@
 
 ## 2026-10-19
 
+* **Legacy session cutover.** Legacy local/custom-backend sessions import into
+  the SQLite authority in one transaction with a recorded source boundary and
+  ownership decision; the legacy executor is frozen, never a fallback. Custom
+  backends now keep workspace bindings themselves. The gate for retiring the
+  facade lane lists rewind, background/child obligations and secrets as open;
+  JSONL is rebuilt from the authority as an export. See [Local authority cutover](framework/local-authority-cutover.md).
+
 * **Session commands and live controls.** Sessions run capability commands,
   activate Engine-registered capabilities and switch model, effort and MCP
   servers without a runtime handle; coherent hosting commits them through

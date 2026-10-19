@@ -12,8 +12,12 @@ pub mod spi;
 
 mod admission;
 mod configuration;
+pub mod cutover;
 #[cfg(not(target_arch = "wasm32"))]
 pub use configuration::DirectoryEnvironmentFactory;
+#[doc(hidden)]
+pub use cutover::LegacySessionImage;
+pub use cutover::{CutoverBoundary, CutoverReport, ImportedWorkspaceFactory};
 pub use everruns_contracts::execution_api::ToolApprovalDecision;
 pub use everruns_core::session_commands::{ApprovalCommit, SessionConfiguration};
 pub(crate) mod execution;
@@ -443,6 +447,17 @@ pub trait SessionHosting: Send + Sync + 'static {
     /// Without the hint every waiter pays up to one poll interval per turn.
     fn changes(&self, _session: SessionId) -> Option<Arc<tokio::sync::Notify>> {
         None
+    }
+    /// Commit a quiescent legacy session, its source boundary and ownership
+    /// decision in one transaction (EVE-1298). Returns `true` when an
+    /// identical cutover was already committed. Only the built-in SQLite
+    /// authority supports it; reached through
+    /// [`Engine::cut_over_legacy_session`](crate::Engine::cut_over_legacy_session).
+    #[doc(hidden)]
+    async fn import_legacy(&self, _session: SessionId, _image: LegacySessionImage) -> Result<bool> {
+        Err(spi::error::AgentLoopError::config(
+            "this hosting profile does not accept legacy session cutover",
+        ))
     }
 }
 

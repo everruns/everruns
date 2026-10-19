@@ -11,6 +11,7 @@
 * [serve (experimental)](serve.md) - Why the experimental serve crates pair Topcoat's API shape with eve's hosting model, and what is still open.
 * [Execution Backends](execution-backends.md) - Engine hosting profiles, shared actor/log recovery and remaining internal turn backends.
 * [Engine-Owned Durable Sessions](engine-durable-sessions.md) - Engine/Session hosting boundary, durable admission handles, shared execution and native/DO/serve integration.
+* [Local Authority Cutover](local-authority-cutover.md) - Lossless import of legacy local/custom-backend sessions into the SQLite authority, gap matrix and the legacy lane retirement gate.
 * [Portable Durable Agent Execution](durable-execution-portability.md) - Draft architecture for shared runtime execution over native actors, Cloudflare Durable Objects and celld, with deployment alternatives and a phased recommendation.
 * [Durable Execution Guarantees and Backend Qualification](durable-execution-guarantees.md) - Proposed admission, activation, fencing, operation recovery, wait and versioning contracts, with backend qualification scenarios.
 * [The Execution Kernel in a JavaScript Isolate](wasm-kernel.md) - Why provider, core and engine build for wasm32, how time and tasks port, and the shared Framework Engine application used by Cloudflare and celld.

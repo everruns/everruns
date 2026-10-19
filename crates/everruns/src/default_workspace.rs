@@ -17,6 +17,13 @@ use everruns_core::host::{RealDiskFileStore, WorkspaceHeadAccess};
 use everruns_core::session_files::SessionFileSystem;
 use uuid::Uuid;
 
+/// Whether `binding` names a head of the Agent's volatile in-memory default
+/// workspace. Such a head lives only as long as its Agent value, so it is not
+/// durable session metadata on any lane (EVE-1298).
+pub(crate) fn is_volatile_default(binding: &WorkspaceBinding) -> bool {
+    binding.provider_id.as_str() == MEMORY_BACKEND_ID
+}
+
 pub(crate) struct DefaultWorkspace {
     backend: Arc<dyn WorkspaceBackend>,
     locator: &'static str,

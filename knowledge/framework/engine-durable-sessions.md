@@ -45,7 +45,10 @@ A durable journal does not supply workspace, compute, channel, schedule or
 subagent services. Environment factories reopen declared workspace services;
 unsupported external serve declarations fail before listening. Explicit legacy
 `LocalConfig` and custom host backends retain their separate weaker facade lane.
-They are not coherent durable profiles. The platform PostgreSQL actor host remains
+They are not coherent durable profiles. Their sessions move to the SQLite
+authority through a lossless, recorded cutover; the
+[retirement gate](local-authority-cutover.md) lists what still blocks removing
+the facade lane. The platform PostgreSQL actor host remains
 a separate consumer of the same core driver.
 
 The announcement publication hold remains in force. Qualification results must

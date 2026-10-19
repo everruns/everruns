@@ -438,6 +438,10 @@ pub enum ResumeError {
     WorkspaceBindingCorrupt,
     /// The reconstructed Harness is incompatible with the reopened Environment.
     Environment(SessionEnvironmentError),
+    /// The session moved to a coherent session authority
+    /// ([`Engine::cut_over_legacy_session`](crate::Engine::cut_over_legacy_session));
+    /// resume it through the hosting Engine. The legacy executor never resumes it.
+    CutOver,
 }
 
 impl fmt::Display for ResumeError {
@@ -461,6 +465,9 @@ impl fmt::Display for ResumeError {
             Self::WorkspaceBindingCorrupt => f.write_str("persisted workspace binding is corrupt"),
             Self::Environment(error) => {
                 write!(f, "reopened environment is incompatible: {error}")
+            }
+            Self::CutOver => {
+                f.write_str("session is owned by a coherent session authority after cutover")
             }
         }
     }

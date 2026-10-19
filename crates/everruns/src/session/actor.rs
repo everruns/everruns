@@ -489,14 +489,19 @@ impl SessionActor {
                 .map_err(|error| {
                     everruns_contracts::error::AgentLoopError::store(error.to_string())
                 })?;
-            let host = self
+            let backends = self
                 .execution
                 .backends()
                 .await
-                .map_err(crate::agent::BackendInitError::into_agent_loop)?
-                .host
-                .clone();
-            let leases = host.session_leases.clone();
+                .map_err(crate::agent::BackendInitError::into_agent_loop)?;
+            // A cut-over session never runs on the legacy lane again; every
+            // turn re-checks under its lease (EVE-1298).
+            crate::engine::ensure_legacy_owner(backends.cutover.as_ref(), self.session_id).await?;
+            let host = backends.host.clone();
+            let leases = crate::engine::fence_legacy_leases(
+                host.session_leases.clone(),
+                backends.cutover.clone(),
+            );
             let live = self.execution.live_controls();
             let runtime = self
                 .agent
