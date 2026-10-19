@@ -72,8 +72,11 @@ export async function readJson(request) {
   }
 }
 
-export const failure = (error) =>
-  Response.json(
+export const failure = (error) => {
+  // Unexpected failures surface only as a generic 503 to the caller; keep the
+  // cause in the Worker log so a deployment failure is diagnosable.
+  if (!(error instanceof HttpError)) console.error("authority operation failed", error);
+  return Response.json(
     {
       error:
         error instanceof HttpError
@@ -82,3 +85,4 @@ export const failure = (error) =>
     },
     { status: error instanceof HttpError ? error.status : 503 },
   );
+};
