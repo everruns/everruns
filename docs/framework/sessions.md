@@ -436,7 +436,10 @@ call `Engine::abandon_legacy_cutover`.
 
 The session must be quiescent. A cutover refuses, without writing anything to
 the authority, while a legacy turn is running or while the session has an
-unfinished task, an active schedule or stored secrets. It also refuses when the
+unfinished task or an active schedule. Session secrets move only when the
+authority has secret keys (`SqliteHosting::with_secret_keys`, the same
+`key_id:base64_key` format as `SECRETS_ENCRYPTION_KEY`); they are stored
+encrypted and the cutover refuses without keys. It also refuses when the
 target build cannot reopen the session's workspace head. Use
 `ImportedWorkspaceFactory` so the authority reopens that head after restarts.
 The Agent's in-memory default workspace is not durable on either lane, so its

@@ -63,6 +63,8 @@ pub struct CutoverReport {
     /// content is not durable on either lane and is not migrated; the
     /// authority opens the target build's own workspace.
     pub volatile_workspace: bool,
+    /// Imported session secrets, sealed under the authority's secret keys.
+    pub secrets: usize,
 }
 
 /// One quiescent legacy session, ready for a single authority transaction.
@@ -80,6 +82,8 @@ pub struct LegacySessionImage {
     pub(crate) checkpoints: Vec<CompactionCheckpoint>,
     pub(crate) values: Vec<(String, String)>,
     pub(crate) tasks: Vec<(SessionTask, Vec<TaskMessage>)>,
+    /// Plaintext legacy secrets, sealed by the authority before its commit.
+    pub(crate) secrets: Vec<(String, String)>,
     pub(crate) workspace: Option<WorkspaceBinding>,
 }
 

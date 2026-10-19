@@ -295,10 +295,13 @@ async fn committed_cutover_cannot_be_abandoned() {
     ));
 }
 
-/// Outstanding obligations the authority cannot carry yet are refused before
-/// any authority write, never dropped.
+const SECRET_KEY: &str = "k1:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
+const NEXT_SECRET_KEY: &str = "k2:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=";
+
+/// Session secrets move sealed under the authority's own keys. Without keys
+/// the cutover refuses before any authority write instead of dropping them.
 #[tokio::test]
-async fn sessions_with_secrets_are_refused_before_import() {
+async fn session_secrets_cut_over_encrypted_under_the_authority_keys() {
     let backends = HostBackends::in_memory();
     let legacy = legacy_agent(&backends);
     let session = Engine::new().create(legacy.clone());
@@ -306,31 +309,71 @@ async fn sessions_with_secrets_are_refused_before_import() {
     session.run("first").await.unwrap();
     backends
         .storage_store
-        .set_secret(id, "token", "secret")
+        .set_secret(id, "token", "s3cr3t-value")
         .await
         .unwrap();
     let directory = tempfile::tempdir().unwrap();
-    let profile = SqliteHosting::open(directory.path().join("authority.db")).unwrap();
-    let engine = hosting_engine(profile.clone(), agent());
+    let path = directory.path().join("authority.db");
+
+    let keyless = SqliteHosting::open(&path).unwrap();
+    let engine = hosting_engine(keyless.clone(), agent());
     let error = engine
         .cut_over_legacy_session(id, &legacy, &target_build())
         .await
         .unwrap_err();
-    assert!(error.to_string().contains("secrets"), "{error}");
-    assert!(profile.status(id).await.is_err());
-    // Once the secret moves elsewhere, the retry completes.
-    backends
-        .storage_store
-        .delete_secret(id, "token")
+    assert!(error.to_string().contains("secret keys"), "{error}");
+    assert!(keyless.status(id).await.is_err());
+
+    let keyed = SqliteHosting::open(&path)
+        .unwrap()
+        .with_secret_keys(SECRET_KEY, &[])
+        .unwrap();
+    let engine = hosting_engine(keyed.clone(), agent());
+    let report = engine
+        .cut_over_legacy_session(id, &legacy, &target_build())
         .await
         .unwrap();
-    assert!(
-        !engine
-            .cut_over_legacy_session(id, &legacy, &target_build())
+    assert_eq!(report.secrets, 1);
+    let reader = keyed.reader(id).storage_store;
+    assert_eq!(
+        reader.get_secret(id, "token").await.unwrap().as_deref(),
+        Some("s3cr3t-value")
+    );
+    assert_eq!(reader.list_secrets(id).await.unwrap()[0].name, "token");
+
+    // Never stored as plaintext.
+    let raw = std::fs::read(&path).unwrap();
+    assert!(!raw.windows(12).any(|window| window == b"s3cr3t-value"));
+
+    // Rotation: a new primary key still opens values sealed with the old one.
+    let rotated = SqliteHosting::open(&path)
+        .unwrap()
+        .with_secret_keys(NEXT_SECRET_KEY, &[SECRET_KEY])
+        .unwrap();
+    assert_eq!(
+        rotated
+            .reader(id)
+            .storage_store
+            .get_secret(id, "token")
             .await
             .unwrap()
-            .replayed
+            .as_deref(),
+        Some("s3cr3t-value")
     );
+    // A wrong key does not open it, and readers cannot write.
+    let wrong = SqliteHosting::open(&path)
+        .unwrap()
+        .with_secret_keys(NEXT_SECRET_KEY, &[])
+        .unwrap();
+    assert!(
+        wrong
+            .reader(id)
+            .storage_store
+            .get_secret(id, "token")
+            .await
+            .is_err()
+    );
+    assert!(reader.set_secret(id, "token", "other").await.is_err());
 }
 
 /// Pending client tool results parked on the legacy lane reopen as durable

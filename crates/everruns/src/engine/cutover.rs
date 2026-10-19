@@ -338,6 +338,7 @@ impl Engine {
             image.tasks.len(),
             image.values.len(),
         );
+        let secret_count = image.secrets.len();
         let volatile_workspace = image.source["volatile_workspace"].as_bool() == Some(true);
         let replayed = profile
             .import_legacy(session, image)
@@ -364,6 +365,7 @@ impl Engine {
             tasks: counts.1,
             values: counts.2,
             volatile_workspace,
+            secrets: secret_count,
         })
     }
 
@@ -456,15 +458,17 @@ impl Engine {
             ));
         }
 
-        // Obligations the authority cannot carry yet are refused, not dropped.
-        if let Ok(secrets) = host.storage_store.list_secrets(session).await
-            && !secrets.is_empty()
-        {
-            return Err(AgentLoopError::config(
-                "the legacy session holds secrets; the native authority needs an external \
-                 encrypted secret service before it can own them",
-            ));
+        // Secrets move sealed under the authority's own keys. A legacy store
+        // without secret support has none to move.
+        let mut secrets = Vec::new();
+        if let Ok(names) = host.storage_store.list_secrets(session).await {
+            for info in names {
+                if let Some(value) = host.storage_store.get_secret(session, &info.name).await? {
+                    secrets.push((info.name, value));
+                }
+            }
         }
+        // Obligations the authority cannot carry yet are refused, not dropped.
         let mut tasks = Vec::new();
         if let Some(registry) = &host.session_task_registry {
             for task in registry.list(session, None).await? {
@@ -559,6 +563,7 @@ impl Engine {
             checkpoints,
             values,
             tasks,
+            secrets,
             workspace,
         })
     }

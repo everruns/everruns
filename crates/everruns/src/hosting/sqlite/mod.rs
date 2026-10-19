@@ -5,6 +5,7 @@ mod commands;
 mod export;
 mod import;
 mod ports;
+mod secrets;
 use super::*;
 use crate::sqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use everruns_contracts::{
@@ -49,6 +50,9 @@ pub struct SqliteHosting {
     /// In-process [`SessionHosting::changes`] hints. Other processes sharing
     /// the database are seen by the waiter's poll, not by these.
     changes: super::ChangeHints,
+    /// Key encryption keys for session secrets; without them the authority
+    /// refuses secret operations rather than storing plaintext.
+    secrets: Option<secrets::SecretKeys>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -127,6 +131,26 @@ impl SqliteHosting {
             db: Arc::new(Mutex::new(db)),
             proactive: Arc::default(),
             changes: super::ChangeHints::default(),
+            secrets: None,
+        })
+    }
+
+    /// Store session secrets encrypted with these key encryption keys, in the
+    /// platform's `key_id:base64_key` format (32-byte AES-256 keys). The first
+    /// key seals new values; `previous` keys still open older ones during
+    /// rotation. Keep the keys outside the database and stable across
+    /// restarts: a secret sealed with a lost key cannot be read.
+    /// Stability: experimental.
+    pub fn with_secret_keys(mut self, primary: &str, previous: &[&str]) -> Result<Self> {
+        self.secrets = Some(secrets::SecretKeys::new(primary, previous)?);
+        Ok(self)
+    }
+
+    fn secret_keys(&self) -> Result<&secrets::SecretKeys> {
+        self.secrets.as_ref().ok_or_else(|| {
+            AgentLoopError::config(
+                "this SQLite authority has no secret keys; configure SqliteHosting::with_secret_keys",
+            )
         })
     }
 
