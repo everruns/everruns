@@ -103,11 +103,28 @@ pub async fn actor(
         .runtime_invocation_subject(invocation.session_id, invocation.input_message_id)
         .await?
         .map(|id| id.uuid());
-    let consumers: i64 = sqlx::query_scalar("SELECT count(DISTINCT virtual_user_id) FROM runtime_invocations WHERE org_id=$1 AND session_id=$2")
+    let private_access = if selected == CredentialUsage::User {
+        let consumers: i64 = sqlx::query_scalar("SELECT count(DISTINCT virtual_user_id) FROM runtime_invocations WHERE org_id=$1 AND session_id=$2")
         .bind(ctx.org_id()).bind(invocation.session_id).fetch_one(ctx.db.pool()).await.map_err(|e|CommandError::internal(e.into()))?;
-    let private_access = !ctx.db.is_playground_session(invocation.session_id).await?
-        && session.workspace_id == invocation.session_id.uuid()
-        && consumers <= 1;
+        let workspace_sessions: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM sessions WHERE org_id=$1 AND workspace_id=$2")
+                .bind(ctx.org_id())
+                .bind(session.workspace_id)
+                .fetch_one(ctx.db.pool())
+                .await
+                .map_err(|e| CommandError::internal(e.into()))?;
+        // A dedicated workspace and a single known speaker are necessary, but a
+        // channel/App delivery surface can have an audience before another speaker
+        // appears. Without a proved private audience, personal use fails closed.
+        !ctx.db.is_playground_session(invocation.session_id).await?
+            && matches!(session.source.as_str(), "chat" | "api")
+            && session.channel_id.is_none()
+            && session.app_id.is_none()
+            && workspace_sessions == 1
+            && consumers <= 1
+    } else {
+        false
+    };
     let result = ResourceActor {
         org_id: ctx.org_id(),
         session_id: invocation.session_id.uuid(),

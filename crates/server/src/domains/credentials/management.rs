@@ -530,10 +530,21 @@ pub async fn grant(ctx: &Ctx, id: Uuid, input: GrantCredential) -> Result<Uuid, 
     Ok(grant)
 }
 
-pub async fn grants(ctx: &Ctx, id: Uuid) -> Result<Vec<Value>, CommandError> {
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ManagedResourceGrant {
+    pub id: Uuid,
+    pub consumer_scope: ResourceScope,
+    pub consumer_id: Option<Uuid>,
+    pub consumer_label: Option<String>,
+    pub usage: CredentialUsage,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub constraints: Option<ResourceConstraints>,
+}
+
+pub async fn grants(ctx: &Ctx, id: Uuid) -> Result<Vec<ManagedResourceGrant>, CommandError> {
     let r = access::record(ctx, id).await?;
     access::require_manage(ctx, &r).await?;
-    sqlx::query_scalar(
+    let rows:Vec<Value>=sqlx::query_scalar(
             r#"
             SELECT jsonb_build_object('id',g.id,'consumer_scope',consumer_scope,'consumer_id',coalesce(consumer_agent_id,consumer_session_id,consumer_virtual_user_id),'consumer_label',coalesce(a.name,v.name,s.title,'All service agents'),'usage',g.usage,'expires_at',g.expires_at,'constraints',g.constraints) FROM resource_grants g
             LEFT
@@ -547,7 +558,14 @@ pub async fn grants(ctx: &Ctx, id: Uuid) -> Result<Vec<Value>, CommandError> {
             LIMIT 256
             "#,
         )
-        .bind(ctx.org_id()).bind(id).fetch_all(ctx.db.pool()).await.map_err(error)
+        .bind(ctx.org_id()).bind(id).fetch_all(ctx.db.pool()).await.map_err(error)?;
+    rows.into_iter()
+        .map(|v| {
+            serde_json::from_value(v).map_err(|_| {
+                CommandError::internal(anyhow::anyhow!("Invalid resource grant metadata"))
+            })
+        })
+        .collect()
 }
 
 pub async fn revoke_grant(ctx: &Ctx, id: Uuid, grant_id: Uuid) -> Result<(), CommandError> {

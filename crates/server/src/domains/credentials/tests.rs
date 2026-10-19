@@ -593,3 +593,52 @@ async fn credential_consent_requires_the_proved_person_even_for_an_org_owner() {
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn private_access_depends_on_workspace_audience_and_not_matching_uuid_values() {
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = context(db.clone());
+    let workspace = Uuid::now_v7();
+    sqlx::query("INSERT INTO workspaces(id,org_id,public_id,name) VALUES($1,$2,$3,'Private credential fixture')").bind(workspace).bind(DEFAULT_ORG_ID).bind(format!("wsp_{}",workspace.simple())).execute(db.pool()).await.unwrap();
+    let private = db
+        .create_session(CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            owner_principal_id: PrincipalId::from_seed(1),
+            workspace_id: Some(workspace),
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+        .id;
+    let inv = invoke(&db, private, Some("alice")).await;
+    assert!(
+        crate::domains::resource_access::actor(&ctx, inv, CredentialUsage::User)
+            .await
+            .is_ok()
+    );
+    db.create_session(CreateSessionRow {
+        org_id: DEFAULT_ORG_ID,
+        owner_principal_id: PrincipalId::from_seed(1),
+        workspace_id: Some(workspace),
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+    assert!(
+        crate::domains::resource_access::actor(&ctx, inv, CredentialUsage::User)
+            .await
+            .is_err()
+    );
+    let channel = new_session(&db).await;
+    sqlx::query("UPDATE sessions SET source='slack' WHERE id=$1")
+        .bind(channel)
+        .execute(db.pool())
+        .await
+        .unwrap();
+    let external = invoke(&db, channel, Some("alice")).await;
+    assert!(
+        crate::domains::resource_access::actor(&ctx, external, CredentialUsage::User)
+            .await
+            .is_err()
+    );
+}

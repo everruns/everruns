@@ -14,10 +14,15 @@ use axum::{
     routing::{get, put},
 };
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
-use serde_json::{Value, json};
+use serde::{Deserialize, Serialize};
+
 use utoipa::ToSchema;
 use uuid::Uuid;
+
+#[derive(Serialize, ToSchema)]
+pub struct CreatedResource {
+    pub id: Uuid,
+}
 
 pub fn routes(state: ApiState) -> Router {
     Router::new()
@@ -63,15 +68,17 @@ pub async fn list(
             .await?,
     ))
 }
-#[utoipa::path(post,path="/v1/credential-bindings",request_body=domain::CreateScopedCredential,responses((status=201,description="Binding declared; value is provisioned separately")),tag="credentials")]
+#[utoipa::path(post,path="/v1/credential-bindings",request_body=domain::CreateScopedCredential,responses((status=201,description="Binding declared; value is provisioned separately",body=CreatedResource)),tag="credentials")]
 pub async fn create(
     org: ResolvedOrg,
     State(state): State<ApiState>,
     Json(input): Json<domain::CreateScopedCredential>,
-) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(StatusCode, Json<CreatedResource>), (StatusCode, Json<ErrorResponse>)> {
     Ok((
         StatusCode::CREATED,
-        Json(json!({"id":input.run(&context(&state,&org,true)?).await?})),
+        Json(CreatedResource {
+            id: input.run(&context(&state, &org, true)?).await?,
+        }),
     ))
 }
 
@@ -117,28 +124,32 @@ pub async fn revoke(
     .await?;
     Ok(StatusCode::NO_CONTENT)
 }
-#[utoipa::path(get,path="/v1/resources/{id}/grants",params(("id"=Uuid,Path,description="Resource ID")),responses((status=200,description="Explicit access grants",body=Vec<Value>)),tag="credentials")]
+#[utoipa::path(get,path="/v1/resources/{id}/grants",params(("id"=Uuid,Path,description="Resource ID")),responses((status=200,description="Explicit access grants",body=Vec<domain::ManagedResourceGrant>)),tag="credentials")]
 pub async fn grants(
     org: ResolvedOrg,
     State(state): State<ApiState>,
     Path(id): Path<Uuid>,
-) -> ApiResult<Vec<Value>> {
+) -> ApiResult<Vec<domain::ManagedResourceGrant>> {
     Ok(Json(
         ListResourceGrants { id }
             .run(&context(&state, &org, false)?)
             .await?,
     ))
 }
-#[utoipa::path(post,path="/v1/resources/{id}/grants",params(("id"=Uuid,Path,description="Resource ID")),request_body=domain::GrantCredential,responses((status=201,description="Access granted")),tag="credentials")]
+#[utoipa::path(post,path="/v1/resources/{id}/grants",params(("id"=Uuid,Path,description="Resource ID")),request_body=domain::GrantCredential,responses((status=201,description="Access granted",body=CreatedResource)),tag="credentials")]
 pub async fn grant(
     org: ResolvedOrg,
     State(state): State<ApiState>,
     Path(id): Path<Uuid>,
     Json(input): Json<domain::GrantCredential>,
-) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(StatusCode, Json<CreatedResource>), (StatusCode, Json<ErrorResponse>)> {
     Ok((
         StatusCode::CREATED,
-        Json(json!({"id":GrantResource{id,grant:input}.run(&context(&state,&org,true)?).await?})),
+        Json(CreatedResource {
+            id: GrantResource { id, grant: input }
+                .run(&context(&state, &org, true)?)
+                .await?,
+        }),
     ))
 }
 #[utoipa::path(delete,path="/v1/resources/{id}/grants/{grant_id}",params(("id"=Uuid,Path,description="Resource ID"),("grant_id"=Uuid,Path,description="Grant ID")),responses((status=204,description="Grant revoked")),tag="credentials")]

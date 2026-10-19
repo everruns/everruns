@@ -26,7 +26,9 @@ are explicit; there is no scope-precedence or identity-fallback chain. Multiple
 authorized bindings with the same reference name fail as ambiguous.
 
 Personal use requires the persisted invocation's verified virtual user in a
-private transcript/workspace. It cannot borrow the session owner, a previous
+private Console/API transcript and a workspace used by one session. Channel/App
+delivery surfaces have no proved private audience and refuse personal use;
+explicit service grants remain available. It cannot borrow the session owner, a previous
 speaker, or administrative impersonation. Agent credentials follow the actual
 active responder. Organization ownership grants no implicit runtime access.
 A use grant never permits management or resharing.

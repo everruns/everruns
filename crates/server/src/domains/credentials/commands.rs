@@ -77,7 +77,7 @@ pub struct ListResourceGrants {
 }
 #[command(name="list_resource_grants",category="credentials",description="List explicit use grants for an authorized resource owner.",method="GET",path="/v1/resources/{id}/grants",policy=CREDENTIAL_VIEW)]
 impl Command for ListResourceGrants {
-    type Output = Vec<Value>;
+    type Output = Vec<domain::ManagedResourceGrant>;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         domain::grants(ctx, self.id).await
     }
