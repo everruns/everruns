@@ -181,7 +181,9 @@ impl<H: ActorHosts> SessionActorDriver<H> {
         let mut retries = 0;
         let finish = loop {
             let made = Made::new();
-            let finish = self.run_once(&lease, &actor, &made).await;
+            // Boxed: the run's future (setup, the whole driven turn) is large,
+            // and inline in this loop it overflowed a test thread's stack.
+            let finish = Box::pin(self.run_once(&lease, &actor, &made)).await;
             let error = match finish {
                 Ok(Finish::Retry(error)) | Err(error)
                     if retries < self.config.control_plane_retries
