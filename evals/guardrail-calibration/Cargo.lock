@@ -434,6 +434,7 @@ dependencies = [
  "everruns-core",
  "everruns-drivers",
  "everruns-llmsim",
+ "serde",
  "serde_json",
  "tokio",
  "tokio-util",
@@ -445,6 +446,7 @@ dependencies = [
 name = "everruns-contracts"
 version = "0.48.0"
 dependencies = [
+ "aho-corasick",
  "anyhow",
  "async-trait",
  "base64",
