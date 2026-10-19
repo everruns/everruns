@@ -13093,7 +13093,7 @@
       "description": "List available capabilities with optional search and pagination.",
       "properties": {
         "include_retired": {
-          "description": "Include capabilities that have been retired (removed but still\nreferenceable). Off by default so catalogs and discovery surfaces do not\nadvertise a capability that no longer does anything; management UIs turn\nit on to explain existing attachments.",
+          "description": "Include capabilities that have been retired (removed but still\nreferenceable). Off by default so catalogs and discovery surfaces do not\nadvertise a capability that no longer does anything; management UIs turn\nit on to explain existing attachments. The same switch keeps a capability\nwhose rollout flag is off, so those screens can still show its name,\ndescription, and icon.",
           "type": "boolean"
         },
         "limit": {
