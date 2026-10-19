@@ -15,7 +15,9 @@
 //! `everruns` is the primary Rust library in the
 //! [Everruns](https://everruns.com) ecosystem. Ordinary applications begin
 //! here. Engine hosting adapters use [`hosting::SessionHosting`] and
-//! [`hosting::spi`] without a direct Core dependency. Separately composed
+//! [`hosting::spi`] without a direct Core dependency. Embedding hosts that keep
+//! their own capabilities, provider resolution, recovery budgets, MCP
+//! credentials and observers compose them with [`hosting::services`]. Separately composed
 //! low-level execution hosts select the `host`, `engine`, `builtins`, MCP
 //! or AG-UI features of [`everruns-core`](https://docs.rs/everruns-core), with
 //! [`everruns-contracts`](https://docs.rs/everruns-contracts) for neutral extension
@@ -140,7 +142,7 @@ pub mod voice;
 pub mod work;
 pub use agent::{Agent, AgentBuilder, BuildError, Model};
 pub use capability_config::{CapabilityRef, CapabilitySpec, IntoCapability};
-pub use context::{ContextMessage, SessionContext, ToolInfo};
+pub use context::{CommandInfo, ContextMessage, SessionContext, ToolInfo};
 pub use decisions::{Answers, Decision, Decisions, DecisionsError};
 pub use engine::{Engine, EngineBuilder, InMemoryEngine};
 pub use events::{
