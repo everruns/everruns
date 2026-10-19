@@ -198,6 +198,18 @@ observers use the existing listener dispatcher.
 - Host observers receive the same committed envelopes as application
   listeners, on independent bounded queues; they cannot fail a turn or write
   history.
+- Host request metadata and OpenRouter attribution (EVE-1302) are a validated,
+  credential-free value on the services, not a harness or builder hook. Engine
+  seeds it into the execution configuration of every runtime it builds, the
+  same assembled turn context both turn model calls and session completions
+  read, so there is one place metadata enters execution and no lane or rebuild
+  can drop it. Session completions merge it through the contracts'
+  `completion_metadata` (host < request `purpose` < authority `session_id`).
+  Runtime correlation ids (`RESERVED_COMPLETION_METADATA_KEYS`: `session_id`,
+  `turn_id` and the rest) are reserved: the build rejects them and the runtime
+  stamps them last on every request. `SessionContext` exposes the
+  effective entries, and the external-consumer fixture records them on the
+  actual provider request across first run, reconstruction and resume.
 - Services do not replace egress, stores, session authority or leases. Those
   remain profile or low-level host concerns below.
 

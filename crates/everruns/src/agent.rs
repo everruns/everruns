@@ -297,6 +297,14 @@ pub enum BuildError {
         /// The colliding workspace backend id.
         id: String,
     },
+    /// Host provider-request metadata was invalid or claimed a runtime-owned
+    /// correlation key.
+    InvalidRequestMetadata {
+        /// The rejected key, or empty when the entry count is the problem.
+        key: String,
+        /// Why the metadata was rejected.
+        reason: String,
+    },
     /// A tool requires approval but no approver was configured.
     ///
     /// Set one with `AgentBuilder::approver` (requires the default `builtins`
@@ -353,6 +361,9 @@ impl fmt::Display for BuildError {
             #[allow(deprecated)]
             BuildError::DuplicateWorkspaceProvider { id } => {
                 write!(f, "duplicate workspace backend id {id:?}")
+            }
+            BuildError::InvalidRequestMetadata { key, reason } => {
+                write!(f, "invalid request metadata {key:?}: {reason}")
             }
             BuildError::MissingApprover { tool } => write!(
                 f,
@@ -827,7 +838,7 @@ impl Agent {
                 crate::hooks::LIFECYCLE_HOOK_CAPABILITY_ID,
             ));
         }
-        let harness = match bound_harness {
+        let mut harness = match bound_harness {
             Some(harness) => harness.seeded(),
             None => {
                 // Decision: the synthetic harness carries no prompt. The
@@ -845,6 +856,18 @@ impl Agent {
                 harness.build()
             }
         };
+        // EVE-1302: the one place host request metadata enters execution. The
+        // seeded harness definition feeds the assembled turn context, which
+        // both turn model calls and session completions read, on every lane
+        // and every rebuild.
+        if let Some(services) = host_services {
+            harness.definition.embedder_metadata.extend(
+                services
+                    .request_metadata
+                    .iter()
+                    .map(|(key, value)| (key.to_string(), value.to_string())),
+            );
+        }
         let harness_id = harness.id;
 
         // EVE-877: the builder produces a portable AgentDefinition; the

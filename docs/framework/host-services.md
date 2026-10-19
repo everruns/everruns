@@ -1,12 +1,13 @@
 ---
 title: Host Services
-description: Compose an embedding host's own capabilities, provider resolution, retry budgets, MCP credentials and observers into Engine sessions.
+description: Compose an embedding host's own capabilities, provider resolution, retry budgets, MCP credentials, request metadata and observers into Engine sessions.
 ---
 
 An embedding host often owns more than an agent definition: a curated set of
 capability implementations with guards and context controls, its own provider
 and credential resolution, provider recovery budgets, refreshing MCP tokens,
-and event observers. `everruns::hosting::services` composes those into the
+request attribution and event observers. `everruns::hosting::services`
+composes those into the
 runtimes `Engine` builds, so the host keeps its behavior and still uses
 Engine's sessions, durability and turn runner.
 
@@ -25,6 +26,7 @@ inspection.
 | Provider resolution through a host `ProviderStore` and `DriverRegistry` | The Environment-selected session filesystem and its containment |
 | Provider retry and stream-stall budgets | Canonical history: observers only observe |
 | Call-time MCP credentials | Framework capability ids, aliases and tool names |
+| Credential-free provider-request metadata and OpenRouter attribution | Request correlation ids such as `session_id` and `turn_id` |
 
 There is no callback that receives a runtime builder, and no runtime handle to
 drive. A host capability whose id, alias or tool name collides with a Framework
@@ -153,6 +155,46 @@ host-resolved model also carries an Agent provider, or when `Model::on` names a
 different provider than `.provider(..)`. A provider key the host cannot serve
 fails runtime construction before any model call, rather than falling back to
 another driver.
+
+## Attribute provider requests
+
+`RequestMetadata` is a small set of credential-free strings that every provider
+request of the Agent's sessions carries: turn model calls, out-of-band
+completions, and sessions Engine rebuilds or resumes, on both the in-process
+and the hosted lanes. `openrouter_attribution` sets the entries the OpenRouter
+driver sends as its `HTTP-Referer` and `X-Title` headers; other providers
+receive them as ordinary request metadata.
+
+```rust
+use everruns::hosting::services::{HostServices, RequestMetadata};
+use everruns::{Agent, Engine, OpenAI};
+
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+let metadata = RequestMetadata::new()
+    .entry("app", "my-app")
+    .entry("my_app_version", env!("CARGO_PKG_VERSION"))
+    .openrouter_attribution("https://my-app.example", "My App");
+let agent = Agent::builder()
+    .instructions("You are concise.")
+    .provider(OpenAI::from_env()?)
+    .model("gpt-6.1-sol")
+    .host_services(HostServices::new().request_metadata(metadata))
+    .build()?;
+let session = Engine::new().create(agent);
+let context = session.inspect().await?;
+assert_eq!(context.request_metadata["app"], "my-app");
+# Ok(())
+# }
+```
+
+`SessionContext::request_metadata` shows the entries as assembled for the next
+request. The runtime adds its own correlation ids to each request after them.
+Building fails with `InvalidRequestMetadata` when an entry claims one of those
+ids (`RequestMetadata::RESERVED_KEYS`: `session_id`, `harness_id`, `turn_id`,
+`exec_id`, `org_id`, `agent_id`, `model_id`), when a key is not 1 to 64 ASCII
+letters, digits, `_`, `.`, `-` or `:`, when a value is longer than 512 bytes or
+holds control characters, or when there are more than nine entries. Providers
+and request capture see these values, so never put a secret in them.
 
 ## Budgets, MCP credentials and observers
 

@@ -18,7 +18,10 @@
 //! - provider resolution through a host [`ProviderStore`] and
 //!   [`DriverRegistry`] ([`HostProviders`]);
 //! - provider retry and stream-stall budgets;
-//! - call-time MCP credentials (`mcp` feature).
+//! - call-time MCP credentials (`mcp` feature);
+//! - credential-free provider-request metadata and OpenRouter attribution
+//!   ([`RequestMetadata`]), applied to every provider request the Agent's
+//!   sessions make.
 //!
 //! Engine-level host observers are registered with
 //! [`EngineBuilder::host_listener`](crate::EngineBuilder::host_listener).
@@ -101,6 +104,10 @@ use everruns_contracts::runtime_provider::ProviderKey;
 use everruns_contracts::typed_id::{ModelId, SessionId};
 use serde_json::Value;
 
+pub use super::request_metadata::{
+    MAX_REQUEST_METADATA_ENTRIES, OPENROUTER_HTTP_REFERER_KEY, OPENROUTER_X_TITLE_KEY,
+    RequestMetadata,
+};
 pub use async_trait::async_trait;
 pub use everruns_contracts::driver_registry::{DriverRegistry, ProviderConfig, ProviderMetadata};
 pub use everruns_contracts::error::{AgentLoopError, Result};
@@ -149,6 +156,7 @@ pub struct HostServices {
     pub(crate) providers: Option<HostProviders>,
     pub(crate) retry: Option<LlmRetryConfig>,
     pub(crate) stall_timeout: Option<Duration>,
+    pub(crate) request_metadata: RequestMetadata,
     #[cfg(feature = "mcp")]
     pub(crate) mcp_auth: Option<Arc<dyn McpAuthProvider>>,
 }
@@ -237,6 +245,22 @@ impl HostServices {
         self
     }
 
+    /// Attach credential-free metadata to every provider request.
+    ///
+    /// Replaces earlier metadata. Engine seeds it into every runtime it builds
+    /// for the Agent, so turn model calls, out-of-band completions, context
+    /// queries and rebuilt or resumed sessions all carry it. Entries are
+    /// validated when the Agent is built; see [`RequestMetadata`].
+    pub fn request_metadata(mut self, metadata: RequestMetadata) -> Self {
+        self.request_metadata = metadata;
+        self
+    }
+
+    /// The provider-request metadata these services attach.
+    pub fn request_metadata_entries(&self) -> &RequestMetadata {
+        &self.request_metadata
+    }
+
     /// Acquire scoped MCP server credentials at call time.
     ///
     /// The provider is asked before every discovery and tool call, so a host
@@ -300,6 +324,7 @@ impl HostServices {
         framework: &everruns_core::CapabilityRegistry,
         seen_tool_names: &mut HashSet<String>,
     ) -> std::result::Result<(), crate::BuildError> {
+        self.request_metadata.validate()?;
         let mut seen = HashSet::new();
         for capability in &self.capabilities {
             let implementation = capability.implementation.as_ref();
@@ -358,7 +383,8 @@ impl fmt::Debug for HostServices {
             .field("capabilities", &self.capability_ids())
             .field("providers", &self.providers.is_some())
             .field("retry", &self.retry)
-            .field("stall_timeout", &self.stall_timeout);
+            .field("stall_timeout", &self.stall_timeout)
+            .field("request_metadata", &self.request_metadata);
         #[cfg(feature = "mcp")]
         debug.field("mcp_auth", &self.mcp_auth.is_some());
         debug.finish()
