@@ -184,6 +184,8 @@ tool. Requests with provider-executed effects do not gain automatic replay, and
 committed output retains the shared stream recovery rules. A retry after answer
 text first persists the existing same-message replacement boundary, so a new
 executor restarts the attempt instead of finalizing its abandoned partial text.
+The boundary is written only if another wait fits the remaining recovery budget.
+A trailing stream error otherwise retains the usable partial answer.
 The [Framework tests](../../crates/everruns/tests/hibernation.rs) cover reopening,
 policy limits, cancellation and the backend-free default Engine.
 

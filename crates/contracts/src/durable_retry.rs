@@ -63,6 +63,24 @@ fn parked() -> AgentLoopError {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[error("failed to retain a provider retry: {0}")]
+struct ParkingError(AgentLoopError);
+
+/// Extract a failed boundary/checkpoint write so Reason returns it to its host
+/// instead of recording a model failure. Retain the original error category.
+pub fn take_parking_error(
+    error: AgentLoopError,
+) -> std::result::Result<AgentLoopError, AgentLoopError> {
+    match error {
+        AgentLoopError::Internal(inner) => inner
+            .downcast::<ParkingError>()
+            .map(|error| error.0)
+            .map_err(AgentLoopError::Internal),
+        error => Err(error),
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
 #[error("provider request can be retried at a replay-safe boundary")]
 struct RetryableStart(AgentLoopError, Option<LlmRetryConfig>);
 
@@ -183,8 +201,22 @@ pub async fn retry(
     config: &LlmRetryConfig,
     error: AgentLoopError,
 ) -> AgentLoopError {
-    match retain_retry(operation, config, error).await {
+    match retain_retry(operation, config, error, std::future::ready(Ok(()))).await {
         Ok(error) | Err(error) => error,
+    }
+}
+
+/// Prepare a replay boundary only when another attempt fits, before retaining
+/// the retry checkpoint. An exhausted budget must not discard partial output.
+pub async fn retry_with_boundary(
+    operation: &str,
+    config: &LlmRetryConfig,
+    error: AgentLoopError,
+    boundary: impl Future<Output = Result<()>>,
+) -> AgentLoopError {
+    match retain_retry(operation, config, error, boundary).await {
+        Ok(error) => error,
+        Err(error) => AgentLoopError::Internal(ParkingError(error).into()),
     }
 }
 
@@ -192,6 +224,7 @@ async fn retain_retry(
     operation: &str,
     config: &LlmRetryConfig,
     error: AgentLoopError,
+    boundary: impl Future<Output = Result<()>>,
 ) -> Result<AgentLoopError> {
     let Ok(host) = HOST.try_with(Arc::clone) else {
         return Ok(error);
@@ -232,6 +265,7 @@ async fn retain_retry(
     state.attempts += 1;
     state.total_wait_ms = state.total_wait_ms.saturating_add(wait_ms);
     state.wake_at_ms = now.saturating_add(i64::try_from(wait_ms).unwrap_or(i64::MAX));
+    boundary.await?;
     host.save(operation, &state).await?;
     host.schedule(state.wake_at_ms).await?;
     Ok(parked())
@@ -280,6 +314,42 @@ mod tests {
             jitter_factor: 0.0,
             ..Default::default()
         }
+    }
+
+    #[tokio::test]
+    async fn a_retry_that_cannot_fit_preserves_the_replay_boundary() {
+        let host = Arc::new(Host::default());
+        let mut config = policy();
+        config.max_retry_elapsed = Duration::from_millis(1);
+        scope(host.clone(), async {
+            let error = retry_with_boundary("turn/1", &config, failure(), async {
+                panic!("must retain partial output when the wait does not fit")
+            })
+            .await;
+            assert!(matches!(error, AgentLoopError::Llm(_)));
+        })
+        .await;
+        assert!(host.saved.lock().unwrap().is_none());
+        assert_eq!(host.alarm.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn replay_boundary_must_commit_before_retaining_a_retry() {
+        let host = Arc::new(Host::default());
+        scope(host.clone(), async {
+            let error = retry_with_boundary("turn/1", &policy(), failure(), async {
+                assert!(host.saved.lock().unwrap().is_none());
+                Err(AgentLoopError::store("replacement boundary failed"))
+            })
+            .await;
+            assert!(matches!(
+                take_parking_error(error).unwrap(),
+                AgentLoopError::MessageStore(_)
+            ));
+        })
+        .await;
+        assert!(host.saved.lock().unwrap().is_none());
+        assert_eq!(host.alarm.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]

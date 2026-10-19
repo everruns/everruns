@@ -1137,11 +1137,17 @@ impl ReasonAtom {
                             retry_config.max_retries,
                         ) {
                             if durable_retry::single_attempt() {
-                                stream_state::restart_before_parking(
-                                    &self.event_emitter, &started, &text,
-                                ).await?;
-                                return Err(durable_retry::retryable_start(AgentLoopError::llm_kind(
-                                    crate::engine::error::LlmErrorKind::Unavailable, stall_error.message)));
+                                return Err(durable_retry::retry_with_boundary(
+                                    &format!("{}/{}", context.turn_id, iteration),
+                                    &retry_config,
+                                    AgentLoopError::llm_kind(
+                                        crate::engine::error::LlmErrorKind::Unavailable,
+                                        stall_error.message,
+                                    ),
+                                    stream_state::restart_before_parking(
+                                        &self.event_emitter, &started, &text,
+                                    ),
+                                ).await);
                             }
                             let proposed_wait = retry_config
                                 .calculate_backoff(stream_retry_metadata.attempts);
@@ -1497,16 +1503,27 @@ impl ReasonAtom {
                                 retry_config.max_retries,
                             )
                         {
-                            stream_state::restart_before_parking(
-                                &self.event_emitter,
-                                &started,
-                                &text,
+                            let error = AgentLoopError::llm_kind(err.kind(), err.to_string());
+                            if text.is_empty() {
+                                return Err(durable_retry::retryable_start(error));
+                            }
+                            let error = durable_retry::retry_with_boundary(
+                                &format!("{}/{}", context.turn_id, iteration),
+                                &retry_config,
+                                error,
+                                stream_state::restart_before_parking(
+                                    &self.event_emitter,
+                                    &started,
+                                    &text,
+                                ),
                             )
-                            .await?;
-                            return Err(durable_retry::retryable_start(AgentLoopError::llm_kind(
-                                err.kind(),
-                                err.to_string(),
-                            )));
+                            .await;
+                            if matches!(error, AgentLoopError::Llm(_)) {
+                                // No retry fits: retain the answer, as in local recovery.
+                                termination = StreamTermination::PartialSuccess;
+                                break;
+                            }
+                            return Err(error);
                         }
                         // Keep tool calls (a trailing server_error can follow them) as
                         // a partial success, and text once no retry is left.

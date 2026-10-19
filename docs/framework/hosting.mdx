@@ -51,7 +51,9 @@ retries remains disabled.
 
 If a stream fails after answer text, a safe retry keeps the message ID and emits
 `output.message.started` again before parking. Clients replace that attempt's
-partial text. Tool calls and provider-executed effects retain their existing
+partial text. A trailing stream error keeps the partial answer when no retry
+fits the remaining budget.
+Tool calls and provider-executed effects retain their existing
 replay restrictions.
 
 `HostingStatus::wake()` reports whether compute is needed now, at a deadline, or

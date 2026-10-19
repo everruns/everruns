@@ -166,6 +166,14 @@ impl ReasonAtom {
         };
 
         let call_result = match call_result {
+            Err(error) => match durable_retry::take_parking_error(error) {
+                Ok(error) => return Err(error),
+                Err(error) => Err(error),
+            },
+            result => result,
+        };
+        let call_result = match call_result {
+            Err(error) if durable_retry::is_parked(&error) => return Err(error),
             Err(error) => match durable_retry::take_retryable_start(error) {
                 Ok((error, policy)) => {
                     let error = durable_retry::retry(
