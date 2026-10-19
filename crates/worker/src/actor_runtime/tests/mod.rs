@@ -333,6 +333,7 @@ struct Fixture {
     model: Arc<ModelGate>,
     poison_attempts: u32,
     stall_timeout: Duration,
+    control_plane_retries: u32,
 }
 
 fn call(id: &str, name: &str) -> ToolCall {
@@ -410,6 +411,7 @@ impl Fixture {
             model: model_gate,
             poison_attempts: 3,
             stall_timeout: crate::host::session_actor::DEFAULT_ACTOR_STALL_TIMEOUT,
+            control_plane_retries: crate::host::session_actor::DEFAULT_ACTOR_CONTROL_PLANE_RETRIES,
         }
     }
 
@@ -434,6 +436,8 @@ impl Fixture {
             journal_page: 3,
             max_leased_per_org: None,
             stall_timeout: self.stall_timeout,
+            control_plane_retries: self.control_plane_retries,
+            control_plane_backoff: Duration::from_millis(10),
         };
         (ActorRuntime::new(hosts, self.store.clone(), config), probe)
     }
