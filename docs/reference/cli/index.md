@@ -39,7 +39,7 @@ Every command below is also in `everruns --help`, and an agent running on Everru
 | [`capabilities`](/reference/cli/capabilities/) | Capabilities agents can use, including declarative ones you define. |
 | [`connections`](/reference/cli/connections/) | Your LLM provider API keys |
 | [`context`](/reference/cli/context/) | Notes managers keep about an entity, read by agents that manage it. |
-| [`credential-bindings`](/reference/cli/credential-bindings/) | credential-bindings commands |
+| [`credential-bindings`](/reference/cli/credential-bindings/) | Declare, list and revoke write-only credential bindings. |
 | [`durable`](/reference/cli/durable/) | Durable scheduled tasks and their executions. |
 | [`evals`](/reference/cli/evals/) | Evaluation cases, runs, results and scores. |
 | [`files`](/reference/cli/files/) | Sync files between a local folder and a session |
@@ -60,7 +60,7 @@ Every command below is also in `everruns --help`, and an agent running on Everru
 | [`plugins`](/reference/cli/plugins/) | Plugins installed in this organization. |
 | [`providers`](/reference/cli/providers/) | LLM providers and their credentials. |
 | [`reports`](/reference/cli/reports/) | Usage and cost reporting: queries, saved reports, catalog. |
-| [`resources`](/reference/cli/resources/) | resources commands |
+| [`resources`](/reference/cli/resources/) | Access to credentials and connections. |
 | [`sandbox-targets`](/reference/cli/sandbox-targets/) | Sandbox providers this deployment offers. |
 | [`sandboxes`](/reference/cli/sandboxes/) | Sandboxes across providers: state, history, usage. |
 | [`sessions`](/reference/cli/sessions/) | Running and archived sessions, their state and participants |

@@ -1,6 +1,6 @@
 ---
 title: everruns resources
-description: "Resources commands. CLI reference for everruns resources: usage, flags and examples."
+description: "Access to credentials and connections. CLI reference for everruns resources: usage, flags and examples."
 sidebar:
   label: resources
 appliesTo: [platform, cloud]
@@ -8,7 +8,7 @@ appliesTo: [platform, cloud]
 
 <!-- Generated from the everruns CLI by `UPDATE_CLI_REFERENCE=1 cargo test -p everruns-cli the_cli_reference`. Edit command descriptions and examples in the code, not here. -->
 
-Resources commands.
+Access to credentials and connections.
 
 | Command | What it does |
 |---|---|

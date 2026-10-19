@@ -1,6 +1,6 @@
 ---
 title: everruns credential-bindings
-description: "Credential-bindings commands. CLI reference for everruns credential-bindings: usage, flags and examples."
+description: "Declare, list and revoke write-only credential bindings. CLI reference for everruns credential-bindings: usage, flags and examples."
 sidebar:
   label: credential-bindings
 appliesTo: [platform, cloud]
@@ -8,7 +8,7 @@ appliesTo: [platform, cloud]
 
 <!-- Generated from the everruns CLI by `UPDATE_CLI_REFERENCE=1 cargo test -p everruns-cli the_cli_reference`. Edit command descriptions and examples in the code, not here. -->
 
-Credential-bindings commands.
+Declare, list and revoke write-only credential bindings.
 
 | Command | What it does |
 |---|---|
