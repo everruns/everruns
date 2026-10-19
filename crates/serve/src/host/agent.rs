@@ -13,6 +13,24 @@ impl Host {
         surface: Option<String>,
         persistent: bool,
     ) -> crate::Result<everruns::Agent> {
+        let local = self
+            .data_dir
+            .as_ref()
+            .filter(|_| persistent && !self.engine.has_session_hosting())
+            .map(|dir| LocalConfig::new(dir.join("everruns")));
+        self.build_agent_with(entry, surface, local, None)
+    }
+
+    /// [`Host::build_agent`] over an explicit legacy `local` store, or with
+    /// the shared directory `workspace` sessions of that store used. A cutover
+    /// reads the first and runs moved sessions on the second.
+    pub(crate) fn build_agent_with(
+        &self,
+        entry: &AgentEntry,
+        surface: Option<String>,
+        local: Option<LocalConfig>,
+        workspace: Option<PathBuf>,
+    ) -> crate::Result<everruns::Agent> {
         let spec = &entry.spec;
         let (model, _) = gateway::resolve(
             &spec.model,
@@ -91,11 +109,11 @@ impl Host {
                 None => builder.capability(BashkitShell::new()),
             },
         };
-        if persistent
-            && !self.engine.has_session_hosting()
-            && let Some(dir) = &self.data_dir
-        {
-            builder = builder.local(LocalConfig::new(dir.join("everruns")));
+        if let Some(local) = local {
+            builder = builder.local(local);
+        }
+        if let Some(workspace) = workspace {
+            builder = builder.workspace(workspace);
         }
         if let Some(customize) = &spec.customize {
             builder = customize(builder);
