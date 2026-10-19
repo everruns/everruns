@@ -27,6 +27,12 @@ pub struct SessionContext {
     /// Slash commands contributed by the session's active capabilities, in
     /// capability resolution order and deduplicated by name.
     pub commands: Vec<CommandInfo>,
+    /// Effective host metadata the next provider request carries, as
+    /// assembled for it (see
+    /// [`HostServices::request_metadata`](crate::hosting::services::HostServices::request_metadata)).
+    /// The runtime adds its own correlation ids (such as `session_id`) per
+    /// request; they are not listed here.
+    pub request_metadata: std::collections::BTreeMap<String, String>,
 }
 
 /// A slash command contributed by an active capability.
@@ -120,6 +126,7 @@ impl SessionContext {
             .collect();
 
         Self {
+            request_metadata: context.embedder_metadata,
             model,
             messages,
             tools,

@@ -1,7 +1,9 @@
 //! External embedding host (EVE-1296): a curated host capability with a
 //! pre-tool guard and a model-view contribution, composed into an Engine
 //! Session through `everruns::hosting::services` only. It also hot-installs
-//! an extension and drives it through the Session control surface (EVE-1297).
+//! an extension and drives it through the Session control surface (EVE-1297),
+//! and attaches Yolop-style request metadata and OpenRouter attribution that
+//! must reach the actual provider request (EVE-1302).
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -9,8 +11,8 @@ use std::sync::{Arc, Mutex};
 use everruns::hosting::services::{
     Capability, CommandDescriptor, CommandExecutionContext, CommandResult, CommandSource,
     ExecuteCommandRequest, HostServices, ModelViewContext, ModelViewProvider, PolicyGate,
-    PreToolUseDecision, PreToolUseHook, Result, RuntimeMessage, Tool, ToolCall, ToolContext,
-    ToolDefinition, ToolExecutionResult, async_trait,
+    PreToolUseDecision, PreToolUseHook, RequestMetadata, Result, RuntimeMessage, Tool, ToolCall,
+    ToolContext, ToolDefinition, ToolExecutionResult, async_trait,
 };
 use serde_json::{Value, json};
 
@@ -180,6 +182,16 @@ pub fn services(policy: DeployPolicy) -> HostServices {
     HostServices::new().capability(policy)
 }
 
+/// The five values Yolop attaches to every model call: its app name and
+/// version, the Everruns core version, and OpenRouter attribution.
+pub fn yolop_metadata() -> RequestMetadata {
+    RequestMetadata::new()
+        .entry("app", "yolop")
+        .entry("yolop_version", "0.42.0")
+        .entry("everruns_core_version", "0.1.0")
+        .openrouter_attribution("https://github.com/everruns/yolop", "Yolop")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,5 +299,132 @@ mod tests {
             .await
             .expect("deactivate");
         assert!(session.commands().await.expect("commands").is_empty());
+    }
+
+    mod request_metadata {
+        use std::collections::{BTreeMap, HashMap};
+        use std::sync::{Arc, Mutex};
+
+        use everruns::hosting::services::{HostServices, async_trait};
+        use everruns::hosting::spi::HostBackends;
+        use everruns::llm::Message;
+        use everruns::{
+            Agent, AgentLoopError, ChatDriver, Engine, LlmCallConfig, LlmResponseStream,
+            LlmStreamEvent, Provider, ProviderEndpoint, Session,
+        };
+
+        use super::super::yolop_metadata;
+
+        type Requests = Arc<Mutex<Vec<(String, HashMap<String, String>)>>>;
+
+        /// A host-owned driver that records what reaches the provider.
+        #[derive(Clone, Default)]
+        struct RecordingDriver(Requests);
+
+        #[async_trait]
+        impl ChatDriver for RecordingDriver {
+            async fn chat_completion_stream(
+                &self,
+                _endpoint: &ProviderEndpoint,
+                _messages: Vec<Message>,
+                config: &LlmCallConfig,
+            ) -> std::result::Result<LlmResponseStream, AgentLoopError> {
+                self.0
+                    .lock()
+                    .expect("requests")
+                    .push((config.model.clone(), config.metadata.clone()));
+                Ok(Box::pin(futures::stream::iter([
+                    Ok(LlmStreamEvent::TextDelta("recorded".into())),
+                    Ok(LlmStreamEvent::Done(Box::default())),
+                ])))
+            }
+        }
+
+        fn agent(driver: &RecordingDriver, backends: HostBackends) -> Agent {
+            Agent::builder()
+                .instructions("Answer briefly.")
+                .provider(Provider::new("yolop-gateway", driver.clone()))
+                .model("gateway-model")
+                .backends(backends)
+                .host_services(HostServices::new().request_metadata(yolop_metadata()))
+                .build()
+                .expect("valid agent")
+        }
+
+        fn assert_last_request(driver: &RecordingDriver, session: &Session, stage: &str) {
+            let (model, metadata) = driver
+                .0
+                .lock()
+                .expect("requests")
+                .last()
+                .cloned()
+                .expect("a provider request");
+            assert_eq!(model, "gateway-model", "{stage}: provider selection");
+            for (key, value) in yolop_metadata().iter() {
+                assert_eq!(
+                    metadata.get(key).map(String::as_str),
+                    Some(value),
+                    "{stage}: {key}"
+                );
+            }
+            assert_eq!(
+                metadata.get("session_id"),
+                Some(&session.session_id().to_string()),
+                "{stage}: runtime-owned correlation"
+            );
+        }
+
+        async fn run(driver: &RecordingDriver, session: &Session, stage: &str) {
+            let turn = session.run(stage).await.expect("turn");
+            assert!(turn.success, "{stage}: {:?}", turn.error);
+            assert_last_request(driver, session, stage);
+        }
+
+        #[tokio::test]
+        async fn yolop_metadata_reaches_provider_requests_across_rebuilds() {
+            let driver = RecordingDriver::default();
+            let backends = HostBackends::in_memory();
+            let expected: BTreeMap<String, String> = yolop_metadata()
+                .iter()
+                .map(|(key, value)| (key.into(), value.into()))
+                .collect();
+
+            let engine = Engine::new();
+            let session = engine.create(agent(&driver, backends.clone()));
+            let id = session.session_id();
+            run(&driver, &session, "first run").await;
+            assert_eq!(
+                session.inspect().await.expect("inspect").request_metadata,
+                expected
+            );
+            session
+                .complete_out_of_band(None, "review")
+                .await
+                .expect("completion");
+            assert_last_request(&driver, &session, "completion");
+            drop(session);
+
+            let resumed = engine.resume(id).await.expect("resume");
+            run(&driver, &resumed, "resume").await;
+            drop(resumed);
+
+            // Process restart: a new Engine and a rebuilt Agent over the
+            // host's stores reconstruct the runtime.
+            let restarted = Engine::new();
+            restarted
+                .attach(id, agent(&driver, backends))
+                .await
+                .expect("attach");
+            let reconstructed = restarted.resume(id).await.expect("resume rebuilt");
+            run(&driver, &reconstructed, "reconstruction").await;
+            assert_eq!(
+                reconstructed
+                    .command_context()
+                    .await
+                    .expect("context")
+                    .request_metadata,
+                expected
+            );
+        }
     }
 }

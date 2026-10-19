@@ -234,8 +234,12 @@ impl StoreCommandHost {
                     enabled: false,
                     threshold: usize::MAX,
                 })
-                .previous_response_id(None)
-                .with_metadata("session_id", self.session_id.to_string());
+                .previous_response_id(None);
+        // Embedder metadata first, as on turn model calls, so a host's
+        // attribution reaches out-of-band completions too (EVE-1302).
+        for (key, value) in &assembled.embedder_metadata {
+            builder = builder.with_metadata(key, value);
+        }
         if let Some(effort) = request
             .controls
             .as_ref()
@@ -247,6 +251,9 @@ impl StoreCommandHost {
         for (key, value) in &request.metadata {
             builder = builder.with_metadata(key, value);
         }
+        // THREAT[TM-LLM-053]: the correlation id is stamped last so neither
+        // embedder nor request metadata can claim another session's identity.
+        builder = builder.with_metadata("session_id", self.session_id.to_string());
         Ok(PreparedCompletion {
             llm_messages,
             llm_config: builder.build(),

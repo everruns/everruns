@@ -12,6 +12,7 @@ use crate::kernel_imports::{
     AgentCapabilityConfig, ScopedMcpServers,
     contracts::openresponses_types::{
         MAX_METADATA_KEY_LENGTH, MAX_METADATA_KEYS, MAX_METADATA_VALUE_LENGTH,
+        SYSTEM_LLM_METADATA_KEYS,
     },
     contracts::tool_types::ToolDefinition,
     contracts::typed_id::HarnessId,
@@ -30,16 +31,6 @@ use crate::domains::validation::{
     check_platform_chat_content,
 };
 use everruns_core::InitialFile;
-
-const SYSTEM_LLM_METADATA_KEYS: &[&str] = &[
-    "session_id",
-    "harness_id",
-    "turn_id",
-    "exec_id",
-    "org_id",
-    "agent_id",
-    "model_id",
-];
 
 const MAX_EMBEDDER_METADATA_KEYS: usize = MAX_METADATA_KEYS - SYSTEM_LLM_METADATA_KEYS.len();
 

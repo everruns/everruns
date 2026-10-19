@@ -1135,6 +1135,21 @@ pub const MAX_METADATA_KEYS: usize = 16;
 pub const MAX_METADATA_KEY_LENGTH: usize = 64;
 /// Maximum metadata value length.
 pub const MAX_METADATA_VALUE_LENGTH: usize = 512;
+/// Provider-request metadata keys the runtime owns on every model call.
+///
+/// The reason atom stamps these correlation ids after any embedder metadata,
+/// so embedder- or host-supplied metadata must neither claim them nor rely on
+/// them surviving. Embedders get `MAX_METADATA_KEYS - SYSTEM_LLM_METADATA_KEYS.len()`
+/// keys of headroom.
+pub const SYSTEM_LLM_METADATA_KEYS: &[&str] = &[
+    "session_id",
+    "harness_id",
+    "turn_id",
+    "exec_id",
+    "org_id",
+    "agent_id",
+    "model_id",
+];
 /// Minimum max_output_tokens.
 pub const MIN_MAX_OUTPUT_TOKENS: u32 = 16;
 /// Maximum top_logprobs.

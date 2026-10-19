@@ -7,6 +7,7 @@
 /// Reusable host qualification scenarios; never enabled by application defaults.
 #[cfg(all(feature = "hosting-conformance", not(target_arch = "wasm32")))]
 pub mod conformance;
+mod request_metadata;
 pub mod services;
 pub mod spi;
 
