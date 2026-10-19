@@ -339,6 +339,7 @@ pub(crate) async fn resume(
                 db: services.db,
                 event_service: services.event_service,
                 runner: &services.runner,
+                credential_authorizer: None,
             },
             org_id,
             session.id,
@@ -346,7 +347,6 @@ pub(crate) async fn resume(
             &outcomes,
             ApprovalOutcome::NotApproved,
             "ag_ui_resume",
-            None,
         )
         .await
         .map_err(approval_error)?;

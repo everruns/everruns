@@ -7,7 +7,7 @@ import type { ScopedCredential } from "@/lib/api/credential-bindings";
 jest.mock("@/lib/api/credential-bindings");
 let mockOrg = "org_a";
 jest.mock("@/providers/org-provider", () => ({
-  useOrg: () => ({ currentOrg: { public_id: mockOrg } }),
+  useOrg: () => ({ currentOrg: { public_id: mockOrg }, hasRole: () => true }),
 }));
 jest.mock("@/components/agent/agent-select", () => ({
   AgentSelect: () => <div>Agent picker</div>,

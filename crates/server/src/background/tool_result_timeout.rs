@@ -409,6 +409,7 @@ async fn resolve_expired_approvals(
             db,
             event_service,
             runner,
+            credential_authorizer: None,
         },
         org_id,
         session_id,
@@ -416,7 +417,6 @@ async fn resolve_expired_approvals(
         &std::collections::HashMap::new(),
         ApprovalOutcome::Expired,
         "tool_approval_timeout",
-        None,
     )
     .await
     {

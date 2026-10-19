@@ -170,7 +170,15 @@ impl CredentialRedactor {
                     .map(|(key, value)| (self.text(&key), self.value(value)))
                     .collect(),
             ),
-            other => other,
+            other => {
+                let literal = other.to_string();
+                let sanitized = self.text(&literal);
+                if sanitized == literal {
+                    other
+                } else {
+                    Value::String(sanitized)
+                }
+            }
         }
     }
 
@@ -212,6 +220,15 @@ fn lower_percent_escapes(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn scalar_echoes_are_sanitized_without_changing_unrelated_types() {
+        let redactor =
+            CredentialRedactor::new([("PIN", "12345"), ("FLAG", "true"), ("VOID", "null")]);
+        assert_eq!(
+            redactor.value(json!({"number":12345,"flag":true,"nil":null,"safe":42,"off":false})),
+            json!({"number":"$PIN","flag":"$FLAG","nil":"$VOID","safe":42,"off":false})
+        );
+    }
     #[test]
     fn destinations_match_origins_and_path_segments() {
         let binding = SecretBinding {

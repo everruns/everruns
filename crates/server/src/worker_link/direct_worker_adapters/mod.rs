@@ -2,7 +2,9 @@ mod actors;
 mod command_context;
 mod definition_reads;
 pub mod files;
+mod image_store;
 mod internal_commands;
+use image_store::DirectImageArtifactStore;
 pub(crate) mod mcp;
 mod message_projection;
 mod user_mcp;
@@ -27,11 +29,13 @@ use crate::kernel_imports::{
     contracts::tool_types::ToolDefinition, resolve_runtime_capabilities,
 };
 use crate::kernel_imports::{
-    connection_services::ProviderCredentialStore, contracts::model_spec::ModelSpec,
-    delegation_services::SessionCreationAuthority, file_services::ResolvedFile,
-    image_services::CreateStoredImage, image_services::ImageArtifactStore,
-    image_services::ResolvedImage, image_services::StoredImage, image_services::StoredImageInfo,
-    tool_execution::BudgetChecker, tool_execution::PaymentAuthority,
+    connection_services::ProviderCredentialStore,
+    contracts::model_spec::ModelSpec,
+    delegation_services::SessionCreationAuthority,
+    file_services::ResolvedFile,
+    image_services::{ImageArtifactStore, ResolvedImage},
+    tool_execution::BudgetChecker,
+    tool_execution::PaymentAuthority,
 };
 use crate::max_iterations;
 use crate::services::{EventService, ProviderResolverService};
@@ -41,7 +45,7 @@ use async_trait::async_trait;
 use everruns_capabilities::capabilities::PoppyInvoker;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::typed_id::{AgentId, BudgetId, HarnessId, ImageId, SessionId};
+use everruns_contracts::typed_id::{AgentId, BudgetId, HarnessId, SessionId};
 use everruns_core::budget::{BudgetSummary, BudgetToolResponse};
 use everruns_core::capabilities::{CapabilityRegistry, collect_message_filters_only};
 use everruns_core::connection_services::ProviderCredentials;
@@ -68,68 +72,6 @@ struct DirectBudgetChecker {
     budget_service: Arc<BudgetService>,
     org_id: i64,
     agent_id: Option<String>,
-}
-
-struct DirectImageArtifactStore {
-    db: Arc<StorageBackend>,
-    org_id: i64,
-}
-
-#[async_trait]
-impl ImageArtifactStore for DirectImageArtifactStore {
-    async fn create_image(&self, input: CreateStoredImage) -> Result<StoredImageInfo> {
-        let (thumbnail_data, thumbnail_content_type) =
-            crate::api::images::generate_thumbnail(&input.data, &input.content_type)
-                .map(|(data, content_type)| (Some(data), Some(content_type)))
-                .unwrap_or((None, None));
-
-        let row = self
-            .db
-            .create_image(
-                self.org_id,
-                crate::storage::CreateImageRow {
-                    org_id: self.org_id,
-                    filename: input.filename,
-                    content_type: input.content_type,
-                    size_bytes: input.data.len() as i64,
-                    data: input.data,
-                    thumbnail_data,
-                    thumbnail_content_type,
-                    metadata: input.metadata,
-                },
-            )
-            .await
-            .map_err(|e| store_error(format!("Failed to create image artifact: {e}")))?;
-
-        Ok(StoredImageInfo {
-            id: row.id,
-            filename: row.filename,
-            content_type: row.content_type,
-            size_bytes: row.size_bytes,
-            metadata: row.metadata,
-            created_at: row.created_at,
-        })
-    }
-
-    async fn get_image(&self, image_id: ImageId) -> Result<Option<StoredImage>> {
-        let row = self
-            .db
-            .get_image(self.org_id, image_id.uuid())
-            .await
-            .map_err(|e| store_error(format!("Failed to get image artifact: {e}")))?;
-
-        Ok(row.map(|row| StoredImage {
-            info: StoredImageInfo {
-                id: row.id,
-                filename: row.filename,
-                content_type: row.content_type,
-                size_bytes: row.size_bytes,
-                metadata: row.metadata,
-                created_at: row.created_at,
-            },
-            data: row.data,
-        }))
-    }
 }
 
 struct DirectProviderCredentialStore {

@@ -1931,6 +1931,42 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/credential-bindings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List */
+    get: operations["list"];
+    put?: never;
+    /** Create */
+    post: operations["create"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/credential-bindings/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Set value */
+    put: operations["set_value"];
+    post?: never;
+    /** Revoke */
+    delete: operations["revoke"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/durable/circuit-breakers": {
     parameters: {
       query?: never;
@@ -5464,6 +5500,41 @@ export interface paths {
     put?: never;
     post?: never;
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/resources/{id}/grants": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Grants */
+    get: operations["grants"];
+    put?: never;
+    /** Grant */
+    post: operations["grant"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/resources/{id}/grants/{grant_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Revoke grant */
+    delete: operations["revoke_grant"];
     options?: never;
     head?: never;
     patch?: never;
@@ -10376,6 +10447,11 @@ export interface components {
        */
       scopes?: string | null;
     };
+    ConnectionCredentialSource: {
+      /** Format: uuid */
+      connection_id: string;
+      github_access: components["schemas"]["GitHubAccess"];
+    };
     /** @description Browser URL returned to a bearer-authenticated consumer before navigation. */
     ConnectionSetupResponse: {
       /**
@@ -12135,6 +12211,13 @@ export interface components {
        */
       timezone?: string;
     };
+    CreateScopedCredential: components["schemas"]["CredentialOwnerInput"] & {
+      binding?: components["schemas"]["SecretBinding"] | null;
+      label: string;
+      mcp?: components["schemas"]["McpCredentialTarget"] | null;
+      name?: string | null;
+      source?: components["schemas"]["ConnectionCredentialSource"] | null;
+    };
     /** @description Request to create a session */
     CreateSessionRequest: {
       /**
@@ -12355,6 +12438,10 @@ export interface components {
       /** @description Runtime purpose; service accounts may be attached to agents. */
       usage?: components["schemas"]["VirtualUserUsage"];
     };
+    CreatedResource: {
+      /** Format: uuid */
+      id: string;
+    };
     /** @description Outcome of checking a candidate provider credential. */
     CredentialCheckResult:
       | {
@@ -12395,6 +12482,13 @@ export interface components {
       /** @description Markdown instructions shown above the form (how to get the key, etc.). */
       instructions_markdown: string;
     };
+    CredentialOwnerInput: {
+      owner_id?: string | null;
+      scope: components["schemas"]["ResourceScope"];
+      usage: components["schemas"]["CredentialUsage"];
+    };
+    /** @enum {string} */
+    CredentialUsage: "user" | "service";
     /** @description Database info response. */
     DatabaseInfoResponse: {
       /** @description Timestamp when this resource was created (RFC 3339). */
@@ -14306,6 +14400,25 @@ export interface components {
       insertions: number;
     };
     /**
+     * @description What one GitHub use asks for: who it acts as, and the least access it needs.
+     *
+     *     The resolver mints an installation token limited to `repositories` and
+     *     `permissions`, so a tool that only reads a diff never holds write access.
+     *     Empty `repositories` means every repository the installation covers; empty
+     *     `permissions` means everything the installation was granted. A person's own
+     *     login cannot be narrowed by GitHub and answers with its full reach.
+     */
+    GitHubAccess: {
+      /** @description Whose GitHub identity answers. `none` resolves nothing. */
+      acts_as: components["schemas"]["McpServerActsAs"];
+      /** @description GitHub App permission name to level (`read` or `write`). */
+      permissions?: {
+        [key: string]: string;
+      };
+      /** @description Repositories as `owner/repo`, all under one owner. */
+      repositories?: string[];
+    };
+    /**
      * @description What kind of GitHub account a login is.
      * @enum {string}
      */
@@ -14396,6 +14509,14 @@ export interface components {
       /** @description Human-readable name. Safe to render in user-facing messages. */
       name: string;
       target: string;
+    };
+    GrantCredential: {
+      constraints?: components["schemas"]["ResourceConstraints"] | null;
+      consumer_id?: string | null;
+      consumer_scope: components["schemas"]["ResourceScope"];
+      /** Format: date-time */
+      expires_at?: string | null;
+      usage: components["schemas"]["CredentialUsage"];
     };
     /** @description Grep match result */
     GrepMatch: {
@@ -18776,6 +18897,42 @@ export interface components {
       /** @description Absolute path of the sandbox workspace root. */
       workspace_path?: string | null;
     };
+    ManagedCredential: {
+      binding?: unknown;
+      configured: boolean;
+      /** Format: date-time */
+      expires_at?: string | null;
+      /** Format: uuid */
+      id: string;
+      kind: string;
+      label: string;
+      /** Format: uuid */
+      last_used_agent_id?: string | null;
+      last_used_agent_name?: string | null;
+      /** Format: date-time */
+      last_used_at?: string | null;
+      mcp_server_url?: string | null;
+      name?: string | null;
+      parameter_name?: string | null;
+      /** Format: int64 */
+      revision: number;
+      scope: string;
+      /** Format: uuid */
+      source_connection_id?: string | null;
+      tool_name?: string | null;
+    };
+    ManagedResourceGrant: {
+      constraints?: components["schemas"]["ResourceConstraints"] | null;
+      /** Format: uuid */
+      consumer_id?: string | null;
+      consumer_label?: string | null;
+      consumer_scope: components["schemas"]["ResourceScope"];
+      /** Format: date-time */
+      expires_at?: string | null;
+      /** Format: uuid */
+      id: string;
+      usage: components["schemas"]["CredentialUsage"];
+    };
     /** @description An entity's manager context. */
     ManagerContext: {
       /** @description Markdown, at most 16 KiB. Empty when none was written or it was cleared. */
@@ -18906,6 +19063,12 @@ export interface components {
       | "unreachable"
       | "failed"
       | "not_checked";
+    McpCredentialTarget: {
+      parameter_name: string;
+      server_name: string;
+      tool_name: string;
+      url: string;
+    };
     /**
      * @description Which MCP elicitation modes the client declares to one server.
      *
@@ -23004,6 +23167,17 @@ export interface components {
         [key: string]: boolean;
       };
     };
+    /** @description Provider limits must be enforced by the adapter before a token is exposed. */
+    ResourceConstraints: {
+      permissions: {
+        [key: string]: string;
+      };
+      /** @enum {string} */
+      provider: "github";
+      repositories: string[];
+    };
+    /** @enum {string} */
+    ResourceScope: "session" | "agent" | "virtual_user" | "organization";
     /** @description Response body for resource stats. */
     ResourceStats: {
       /**
@@ -24520,8 +24694,7 @@ export interface components {
     /**
      * @description How a bound secret is put on an outbound request.
      *
-     *     Header-only by design: a value
-     *     is never placed in a URL or a body.
+     *     Only the declared header or named, structured form field may carry a value.
      */
     SecretAuth:
       | {
@@ -24533,6 +24706,11 @@ export interface components {
           name: string;
           /** @enum {string} */
           type: "header";
+        }
+      | {
+          name: string;
+          /** @enum {string} */
+          type: "form_field";
         };
     /** @description Where a bound secret may be sent, and how. */
     SecretBinding: {
@@ -25396,9 +25574,21 @@ export interface components {
     /** @description Request to replace a credential binding's encrypted value. */
     SetAgentCredentialValueRequest: {
       /**
+       * Format: int64
+       * @description Revision observed in scoped credential metadata.
+       */
+      revision: number;
+      /**
        * @description Write-only credential value. It is encrypted and never returned.
        * @example vsk_disposable_example
        */
+      value: string;
+    };
+    SetCredentialValue: {
+      /** Format: date-time */
+      expires_at?: string | null;
+      /** Format: int64 */
+      revision: number;
       value: string;
     };
     /** @description Select or clear the organization decision default. */
@@ -36235,6 +36425,106 @@ export interface operations {
       };
     };
   };
+  list: {
+    parameters: {
+      query: {
+        /** @description session, agent, virtual_user, organization */
+        scope: string;
+        /** @description Owner ID, or me for the current virtual user */
+        owner_id?: string;
+        /** @description user or service */
+        usage: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Write-only credential metadata */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ManagedCredential"][];
+        };
+      };
+    };
+  };
+  create: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateScopedCredential"];
+      };
+    };
+    responses: {
+      /** @description Binding declared; value is provisioned separately */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CreatedResource"];
+        };
+      };
+    };
+  };
+  set_value: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Binding ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetCredentialValue"];
+      };
+    };
+    responses: {
+      /** @description Credential securely stored; no value is returned */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  revoke: {
+    parameters: {
+      query: {
+        /** @description Last observed resource revision */
+        revision: number;
+      };
+      header?: never;
+      path: {
+        /** @description Binding ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Credential revoked */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   list_circuit_breakers: {
     parameters: {
       query?: never;
@@ -45565,6 +45855,79 @@ export interface operations {
       };
       /** @description Unknown id, unknown prefix, or caller is not a member of the owning org */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  grants: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Resource ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Explicit access grants */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ManagedResourceGrant"][];
+        };
+      };
+    };
+  };
+  grant: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Resource ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["GrantCredential"];
+      };
+    };
+    responses: {
+      /** @description Access granted */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CreatedResource"];
+        };
+      };
+    };
+  };
+  revoke_grant: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Resource ID */
+        id: string;
+        /** @description Grant ID */
+        grant_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Grant revoked */
+      204: {
         headers: {
           [name: string]: unknown;
         };

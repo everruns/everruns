@@ -8061,6 +8061,182 @@
         }
       }
     },
+    "/v1/credential-bindings": {
+      "get": {
+        "tags": [
+          "credentials"
+        ],
+        "summary": "List",
+        "operationId": "list",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "description": "session, agent, virtual_user, organization",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "owner_id",
+            "in": "query",
+            "description": "Owner ID, or me for the current virtual user",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "usage",
+            "in": "query",
+            "description": "user or service",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Write-only credential metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ManagedCredential"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "credentials"
+        ],
+        "summary": "Create",
+        "operationId": "create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateScopedCredential"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Binding declared; value is provisioned separately",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedResource"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/credential-bindings/{id}": {
+      "put": {
+        "tags": [
+          "credentials"
+        ],
+        "summary": "Set value",
+        "operationId": "set_value",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Binding ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetCredentialValue"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Credential securely stored; no value is returned"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      },
+      "delete": {
+        "tags": [
+          "credentials"
+        ],
+        "summary": "Revoke",
+        "operationId": "revoke",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Binding ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "description": "Last observed resource revision",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Credential revoked"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/durable/circuit-breakers": {
       "get": {
         "tags": [
@@ -21740,6 +21916,137 @@
         }
       }
     },
+    "/v1/resources/{id}/grants": {
+      "get": {
+        "tags": [
+          "credentials"
+        ],
+        "summary": "Grants",
+        "operationId": "grants",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Resource ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Explicit access grants",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ManagedResourceGrant"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "credentials"
+        ],
+        "summary": "Grant",
+        "operationId": "grant",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Resource ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantCredential"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Access granted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedResource"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/resources/{id}/grants/{grant_id}": {
+      "delete": {
+        "tags": [
+          "credentials"
+        ],
+        "summary": "Revoke grant",
+        "operationId": "revoke_grant",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Resource ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "grant_id",
+            "in": "path",
+            "description": "Grant ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Grant revoked"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/sandbox-targets": {
       "get": {
         "tags": [
@@ -35397,6 +35704,23 @@
           }
         }
       },
+      "ConnectionCredentialSource": {
+        "type": "object",
+        "required": [
+          "connection_id",
+          "github_access"
+        ],
+        "properties": {
+          "connection_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "github_access": {
+            "$ref": "#/components/schemas/GitHubAccess"
+          }
+        },
+        "additionalProperties": false
+      },
       "ConnectionSetupResponse": {
         "type": "object",
         "description": "Browser URL returned to a bearer-authenticated consumer before navigation.",
@@ -38455,6 +38779,60 @@
           }
         }
       },
+      "CreateScopedCredential": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CredentialOwnerInput"
+          },
+          {
+            "type": "object",
+            "required": [
+              "label"
+            ],
+            "properties": {
+              "binding": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/SecretBinding"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "mcp": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/McpCredentialTarget"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ConnectionCredentialSource"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
       "CreateSessionRequest": {
         "type": "object",
         "description": "Request to create a session",
@@ -38769,6 +39147,18 @@
           }
         }
       },
+      "CreatedResource": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
       "CredentialCheckResult": {
         "oneOf": [
           {
@@ -38873,6 +39263,34 @@
             "description": "Markdown instructions shown above the form (how to get the key, etc.)."
           }
         }
+      },
+      "CredentialOwnerInput": {
+        "type": "object",
+        "required": [
+          "scope",
+          "usage"
+        ],
+        "properties": {
+          "owner_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ResourceScope"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/CredentialUsage"
+          }
+        }
+      },
+      "CredentialUsage": {
+        "type": "string",
+        "enum": [
+          "user",
+          "service"
+        ]
       },
       "DatabaseInfoResponse": {
         "type": "object",
@@ -42191,6 +42609,36 @@
           }
         }
       },
+      "GitHubAccess": {
+        "type": "object",
+        "description": "What one GitHub use asks for: who it acts as, and the least access it needs.\n\nThe resolver mints an installation token limited to `repositories` and\n`permissions`, so a tool that only reads a diff never holds write access.\nEmpty `repositories` means every repository the installation covers; empty\n`permissions` means everything the installation was granted. A person's own\nlogin cannot be narrowed by GitHub and answers with its full reach.",
+        "required": [
+          "acts_as"
+        ],
+        "properties": {
+          "acts_as": {
+            "$ref": "#/components/schemas/McpServerActsAs",
+            "description": "Whose GitHub identity answers. `none` resolves nothing."
+          },
+          "permissions": {
+            "type": "object",
+            "description": "GitHub App permission name to level (`read` or `write`).",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Repositories as `owner/repo`, all under one owner."
+          }
+        }
+      },
       "GitHubAccountKind": {
         "type": "string",
         "description": "What kind of GitHub account a login is.",
@@ -42388,6 +42836,44 @@
           },
           "target": {
             "type": "string"
+          }
+        }
+      },
+      "GrantCredential": {
+        "type": "object",
+        "required": [
+          "consumer_scope",
+          "usage"
+        ],
+        "properties": {
+          "constraints": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ResourceConstraints"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "consumer_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "consumer_scope": {
+            "$ref": "#/components/schemas/ResourceScope"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/CredentialUsage"
           }
         }
       },
@@ -50233,6 +50719,148 @@
           }
         }
       },
+      "ManagedCredential": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "kind",
+          "scope",
+          "configured",
+          "revision"
+        ],
+        "properties": {
+          "binding": {},
+          "configured": {
+            "type": "boolean"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "last_used_agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "last_used_agent_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "mcp_server_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parameter_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "source_connection_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "tool_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ManagedResourceGrant": {
+        "type": "object",
+        "required": [
+          "id",
+          "consumer_scope",
+          "usage"
+        ],
+        "properties": {
+          "constraints": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ResourceConstraints"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "consumer_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "consumer_label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "consumer_scope": {
+            "$ref": "#/components/schemas/ResourceScope"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/CredentialUsage"
+          }
+        }
+      },
       "ManagerContext": {
         "type": "object",
         "description": "An entity's manager context.",
@@ -50519,6 +51147,30 @@
           "failed",
           "not_checked"
         ]
+      },
+      "McpCredentialTarget": {
+        "type": "object",
+        "required": [
+          "server_name",
+          "url",
+          "tool_name",
+          "parameter_name"
+        ],
+        "properties": {
+          "parameter_name": {
+            "type": "string"
+          },
+          "server_name": {
+            "type": "string"
+          },
+          "tool_name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "McpElicitationPolicy": {
         "type": "string",
@@ -57532,6 +58184,51 @@
           }
         }
       },
+      "ResourceConstraints": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "repositories",
+              "permissions",
+              "provider"
+            ],
+            "properties": {
+              "permissions": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "propertyNames": {
+                  "type": "string"
+                }
+              },
+              "provider": {
+                "type": "string",
+                "enum": [
+                  "github"
+                ]
+              },
+              "repositories": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ],
+        "description": "Provider limits must be enforced by the adapter before a token is exposed."
+      },
+      "ResourceScope": {
+        "type": "string",
+        "enum": [
+          "session",
+          "agent",
+          "virtual_user",
+          "organization"
+        ]
+      },
       "ResourceStats": {
         "type": "object",
         "description": "Response body for resource stats.",
@@ -60585,9 +61282,28 @@
                 ]
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "One application/x-www-form-urlencoded field, never a body template.",
+            "required": [
+              "name",
+              "type"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "form_field"
+                ]
+              }
+            }
           }
         ],
-        "description": "How a bound secret is put on an outbound request.\n\nHeader-only by design: a value\nis never placed in a URL or a body."
+        "description": "How a bound secret is put on an outbound request.\n\nOnly the declared header or named, structured form field may carry a value."
       },
       "SecretBinding": {
         "type": "object",
@@ -62092,13 +62808,42 @@
         "type": "object",
         "description": "Request to replace a credential binding's encrypted value.",
         "required": [
+          "revision",
           "value"
         ],
         "properties": {
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Revision observed in scoped credential metadata."
+          },
           "value": {
             "type": "string",
             "description": "Write-only credential value. It is encrypted and never returned.",
             "example": "vsk_disposable_example"
+          }
+        }
+      },
+      "SetCredentialValue": {
+        "type": "object",
+        "required": [
+          "value",
+          "revision"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "value": {
+            "type": "string"
           }
         }
       },
@@ -72278,6 +73023,10 @@
       "x-displayName": "Virtual users"
     },
     {
+      "name": "credentials",
+      "x-displayName": "Credentials"
+    },
+    {
       "name": "Organizations",
       "x-displayName": "Organizations"
     },
@@ -72427,6 +73176,7 @@
       "tags": [
         "users",
         "virtual-users",
+        "credentials",
         "Organizations",
         "organization invitations"
       ],

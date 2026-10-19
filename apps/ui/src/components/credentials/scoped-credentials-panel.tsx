@@ -158,7 +158,8 @@ function AccessDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { currentOrg } = useOrg();
+  const { currentOrg, hasRole } = useOrg();
+  const canGrantOrganization = hasRole("admin");
   const [agent, setAgent] = useState("");
   const [audience, setAudience] = useState("agent");
   const [expires, setExpires] = useState("");
@@ -261,9 +262,11 @@ function AccessDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="agent">One agent</SelectItem>
-                <SelectItem value="organization">
-                  All service agents in this organization
-                </SelectItem>
+                {canGrantOrganization && (
+                  <SelectItem value="organization">
+                    All service agents in this organization
+                  </SelectItem>
+                )}
               </SelectContent>
             </Select>
           </div>

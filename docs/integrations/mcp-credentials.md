@@ -1,6 +1,6 @@
 ---
 title: Secure MCP Credentials
-description: Configure write-only Agent credentials for MCP tools that require a secret parameter.
+description: Configure write-only credentials with scoped ownership and explicit access for MCP tools that require a secret parameter.
 ---
 
 Use an Agent credential binding when an MCP tool requires a secret in its input,
@@ -17,7 +17,7 @@ parameter from the model-visible tool schema and injects the value only when it
 sends the MCP request. The same Agent binding works for a shared session and
 for triggers that create a new session per invocation.
 
-Use **Rotate** to replace a value. Use the revoke action to delete the binding;
+Use **Replace** to replace a value. Use the revoke action to delete the binding;
 future calls then return a setup-required result with a link back to the
 agent's Credentials settings.
 
@@ -41,7 +41,7 @@ and organization membership do not grant personal access. Organization bindings
 require explicit access grants. Two matching authorized bindings fail as
 ambiguous rather than selecting one silently.
 
-Use **Replace** for secure rotation. Secure entry uses the revision of the target
+Secure entry uses the revision of the target
 you reviewed, so a stale form cannot provision a changed target. See
 [write-only HTTP credentials](/capabilities/web-fetch/#write-only-credentials) for
 HTTP form/header bindings and response capture.

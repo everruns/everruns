@@ -152,6 +152,7 @@ pub(crate) struct ApprovalServices<'a> {
     pub(crate) db: &'a std::sync::Arc<StorageBackend>,
     pub(crate) event_service: &'a EventService,
     pub(crate) runner: &'a std::sync::Arc<dyn everruns_core::host::TurnBackend>,
+    pub(crate) credential_authorizer: Option<&'a crate::domains::common::Ctx>,
 }
 
 /// Settle every pending approval request on a parked session and resume it.
@@ -168,12 +169,12 @@ pub(crate) async fn resolve_tool_approvals(
     outcomes: &HashMap<String, ApprovalOutcome>,
     fallback: ApprovalOutcome,
     kind: &str,
-    credential_authorizer: Option<&crate::domains::common::Ctx>,
 ) -> Result<Vec<ToolApprovalResolution>, ApprovalResolveError> {
     let ApprovalServices {
         db,
         event_service,
         runner,
+        credential_authorizer,
     } = services;
     if pending.is_empty() {
         return Err(ApprovalResolveError::NotFound(
@@ -494,6 +495,7 @@ pub async fn submit_tool_approvals(
             db: &state.db,
             event_service: &state.event_service,
             runner: &state.runner,
+            credential_authorizer: Some(&credential_ctx),
         },
         org.org_id,
         session_id,
@@ -501,7 +503,6 @@ pub async fn submit_tool_approvals(
         &outcomes,
         ApprovalOutcome::NotApproved,
         "tool_approvals",
-        Some(&credential_ctx),
     )
     .await
     .map_err(approval_error_response)?;

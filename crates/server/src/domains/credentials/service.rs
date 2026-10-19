@@ -84,10 +84,8 @@ pub async fn execute(
     params: Value,
 ) -> Result<Value, CommandError> {
     if operation == "prepare" {
-        return Ok(
-            serde_json::to_value(prepare(ctx, invocation, decode(params)?).await?)
-                .map_err(|_| invalid())?,
-        );
+        return serde_json::to_value(prepare(ctx, invocation, decode(params)?).await?)
+            .map_err(|_| invalid());
     }
     if operation == "commit" {
         #[derive(Deserialize)]

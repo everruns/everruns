@@ -193,7 +193,7 @@ mod tests {
     use super::*;
     use everruns_internal_protocol::proto;
     use serde_json::Value;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
 
     /// Records each call and answers with a canned result.
     struct Recorded {
@@ -202,7 +202,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl InternalCommandTransport for &Recorded {
+    impl InternalCommandTransport for Arc<Recorded> {
         async fn execute_internal_command(
             &self,
             name: &str,
@@ -213,11 +213,11 @@ mod tests {
         }
     }
 
-    fn recorded(answer: std::result::Result<Value, proto::CommandError>) -> Recorded {
-        Recorded {
+    fn recorded(answer: std::result::Result<Value, proto::CommandError>) -> Arc<Recorded> {
+        Arc::new(Recorded {
             calls: Mutex::new(Vec::new()),
             answer,
-        }
+        })
     }
 
     #[tokio::test]
@@ -228,13 +228,13 @@ mod tests {
             "created_at": "2026-01-01T00:00:00Z",
             "updated_at": "2026-01-02T00:00:00Z",
         }])));
-        let store = CommandSessionStorageStore::new(&answered);
+        let store = CommandSessionStorageStore::new(answered.clone());
         let keys = store.list_keys(session).await.unwrap();
         assert_eq!(keys[0].key, "a");
         assert_eq!(keys[0].updated_at.to_rfc3339(), "2026-01-02T00:00:00+00:00");
 
         let set = recorded(Ok(Value::Null));
-        CommandSessionStorageStore::new(&set)
+        CommandSessionStorageStore::new(set.clone())
             .set_value(session, "k", "v")
             .await
             .unwrap();
@@ -250,7 +250,7 @@ mod tests {
     async fn take_is_one_command_and_absent_values_decode() {
         let session = SessionId::new();
         let absent = recorded(Ok(Value::Null));
-        let store = CommandSessionStorageStore::new(&absent);
+        let store = CommandSessionStorageStore::new(absent.clone());
         assert!(store.take_value(session, "gone").await.unwrap().is_none());
         assert!(store.get_value(session, "gone").await.unwrap().is_none());
         let calls = absent.calls.lock().unwrap();
@@ -263,7 +263,7 @@ mod tests {
     async fn secrets_travel_as_commands_and_decode_back() {
         let session = SessionId::new();
         let set = recorded(Ok(Value::Null));
-        CommandSessionStorageStore::new(&set)
+        CommandSessionStorageStore::new(set.clone())
             .set_secret(session, "TOKEN", "s3cret")
             .await
             .unwrap();
@@ -275,7 +275,7 @@ mod tests {
         }
 
         let got = recorded(Ok(json!("s3cret")));
-        let store = CommandSessionStorageStore::new(&got);
+        let store = CommandSessionStorageStore::new(got.clone());
         assert_eq!(
             store.get_secret(session, "TOKEN").await.unwrap().as_deref(),
             Some("s3cret")
@@ -287,7 +287,7 @@ mod tests {
             "created_at": "2026-01-01T00:00:00Z",
             "updated_at": "2026-01-02T00:00:00Z",
         }])));
-        let secrets = CommandSessionStorageStore::new(&listed)
+        let secrets = CommandSessionStorageStore::new(listed.clone())
             .list_secrets(session)
             .await
             .unwrap();
@@ -299,7 +299,7 @@ mod tests {
 
         let deleted = recorded(Ok(json!(true)));
         assert!(
-            CommandSessionStorageStore::new(&deleted)
+            CommandSessionStorageStore::new(deleted.clone())
                 .delete_secret(session, "TOKEN")
                 .await
                 .unwrap()
@@ -315,7 +315,7 @@ mod tests {
     #[tokio::test]
     async fn a_malformed_secret_answer_does_not_echo_the_value() {
         let wrong = recorded(Ok(json!("s3cret-value")));
-        let error = CommandSessionStorageStore::new(&wrong)
+        let error = CommandSessionStorageStore::new(wrong.clone())
             .set_secret(SessionId::new(), "TOKEN", "s3cret-value")
             .await
             .expect_err("wrong shape");
@@ -330,7 +330,7 @@ mod tests {
             kind: proto::command_error::Kind::NotFound as i32,
             message: "Session".to_string(),
         }));
-        let error = CommandSessionStorageStore::new(&missing)
+        let error = CommandSessionStorageStore::new(missing.clone())
             .delete_value(SessionId::new(), "a")
             .await
             .expect_err("not found");
