@@ -222,3 +222,88 @@ async fn a_driven_turn_keeps_renewing_past_the_stall_bound() {
         .expect("renewer task");
     assert!(lease.is_stalled() && lease.is_lost());
 }
+
+/// Renews succeed until `fail` is set, then fail at once (the control plane
+/// is unreachable).
+#[derive(Default)]
+struct Unreachable {
+    fail: std::sync::atomic::AtomicBool,
+}
+
+#[async_trait]
+impl SessionActorStore for Unreachable {
+    async fn renew_actor_lease(
+        &self,
+        _id: SessionId,
+        _holder: &str,
+        _fence: u64,
+        _ttl: Duration,
+        _consumed: i64,
+    ) -> Result<Option<ActorRenewal>> {
+        if self.fail.load(Ordering::SeqCst) {
+            return Err(AgentLoopError::store(
+                "Service unavailable: tcp connect error",
+            ));
+        }
+        Ok(Some(ActorRenewal {
+            inbox_seq: 1,
+            cancel_inbox_seq: None,
+        }))
+    }
+    async fn release_actor(
+        &self,
+        _id: SessionId,
+        _holder: &str,
+        _fence: u64,
+        _consumed: i64,
+    ) -> Result<ActorRelease> {
+        unreachable!("the renew test never releases")
+    }
+    async fn read_actor_journal(
+        &self,
+        _id: SessionId,
+        _after: Option<i32>,
+        _limit: u32,
+    ) -> Result<ActorJournal> {
+        unreachable!("the renew test reads nothing")
+    }
+}
+
+/// Chaos harness: renews kept failing after a server was killed, and the
+/// lease was flagged lost only at the first failed-renew retry after the TTL,
+/// 0.9 s after the control plane had already handed the session to another
+/// worker. Lost is flagged by the TTL counted from the last successful renew.
+#[tokio::test(start_paused = true)]
+async fn failing_renews_lose_the_lease_by_its_ttl() {
+    let store = Arc::new(Unreachable::default());
+    let ttl = Duration::from_secs(10);
+    let lease = Arc::new(Lease::new(
+        store.clone(),
+        "worker".into(),
+        &leased(),
+        ttl,
+        3,
+    ));
+    assert!(lease.disarm_watchdog());
+    let start = tokio::time::Instant::now();
+    let renewer = tokio::spawn(super::lease::renew_loop(
+        lease.clone(),
+        Arc::new(tokio::sync::Notify::new()),
+    ));
+    // The first renew (at a third of the TTL) succeeds; every later one fails.
+    tokio::time::sleep_until(start + ttl / 3 + Duration::from_millis(1)).await;
+    assert!(lease.since_renewed() < Duration::from_millis(5));
+    store.fail.store(true, Ordering::SeqCst);
+    let deadline = start + ttl / 3 + ttl;
+    tokio::time::sleep_until(deadline - Duration::from_millis(1)).await;
+    assert!(!lease.is_lost(), "lost before its TTL ran out");
+    tokio::time::sleep_until(deadline + Duration::from_millis(1)).await;
+    assert!(
+        lease.is_lost(),
+        "still held past the TTL since the last renew"
+    );
+    tokio::time::timeout(Duration::from_secs(1), renewer)
+        .await
+        .expect("the renewer stops once the lease is lost")
+        .expect("renewer task");
+}

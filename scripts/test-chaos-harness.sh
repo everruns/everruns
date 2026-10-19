@@ -16,7 +16,7 @@ from unittest.mock import patch
 sys.path.insert(0, "scripts/chaos")
 import topology  # noqa: E402
 import run as chaos_run  # noqa: E402
-from check import Report, actor_worker_overlap  # noqa: E402
+from check import ActorLeaseSampler, Report, actor_worker_overlap  # noqa: E402
 from load import Driver, SessionRun  # noqa: E402
 
 
@@ -123,6 +123,38 @@ class ActorOverlapTests(unittest.TestCase):
                         "Actor release failed; the lease will expire"):
             with self.subTest(release=release):
                 self.assertEqual(len(self.report(release, True).failures["session_on_two_workers"]), 1)
+
+
+class ActorLeaseTakeoverTests(unittest.TestCase):
+    # Main batch 39222530399: worker-0 finished, sent its release, and was
+    # SIGKILLed before logging the acknowledgement; worker-1 leased the free
+    # row before the next sample. The lease journal holds the release.
+    SID = "01a15349-0c5b-76ff-9191-ac6d3df8917f"
+
+    def check(self, journal=None, releases=None):
+        sampler = ActorLeaseSampler("postgres://unused")
+        sampler.history[self.SID] = [
+            (1792398665.394, "chaos-worker-0", 2, 1792398679.280),
+            (1792398670.268, "chaos-worker-1", 3, 1792398681.831),
+        ]
+        report = Report()
+        sampler.check(report, releases, journal)
+        return report.failures
+
+    def test_unseen_release_is_a_takeover(self):
+        self.assertEqual(len(self.check()["actor_takeover_before_expiry"]), 1)
+
+    def test_journaled_release_of_that_fence_is_a_handoff(self):
+        self.assertFalse(self.check({(self.SID, "chaos-worker-0", 2)}))
+
+    def test_journaled_release_of_another_fence_or_holder_is_not(self):
+        for journal in ({(self.SID, "chaos-worker-0", 1)}, {(self.SID, "chaos-worker-2", 2)}):
+            with self.subTest(journal=journal):
+                self.assertEqual(len(self.check(journal)["actor_takeover_before_expiry"]), 1)
+
+    def test_logged_release_still_counts(self):
+        hexid = self.SID.replace("-", "")
+        self.assertFalse(self.check(releases={hexid: [(1792398669.9, "chaos-worker-0")]}))
 
 
 class WorkflowTests(unittest.TestCase):
