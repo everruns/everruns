@@ -15,8 +15,7 @@
 //!
 //! Outstanding obligations the authority cannot carry yet (non-terminal tasks,
 //! active schedules, session secrets) refuse the cutover before step 2 rather
-//! than drop them. The retirement gate in
-//! `knowledge/framework/local-authority-cutover.md` lists what remains.
+//! than drop them.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};

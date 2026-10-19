@@ -9,8 +9,6 @@
 //! checkpoints, session values, terminal task records and the workspace
 //! binding. The authority records the source boundary and ownership decision
 //! with it, so a retried cutover replays and a conflicting one fails.
-//! `knowledge/framework/local-authority-cutover.md` holds the gap matrix and
-//! the retirement gate for the legacy lane.
 
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
