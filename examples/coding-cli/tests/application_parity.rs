@@ -94,6 +94,7 @@ async fn local_plugin_uses_the_framework() {
 }
 
 #[tokio::test]
+#[allow(deprecated)] // Legacy facade lane until EVE-1298 moves this onto Engine hosting.
 async fn local_profile_supplies_workspace_and_schedule_state() {
     let root = tempfile::tempdir().expect("local root");
     let workspace = root.path().join("workspace");
