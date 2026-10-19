@@ -38,7 +38,11 @@ someone finishing a new agent. Both mostly touch a small set of fields; the rest
   that shows its current value ("Inherited", "2 files") and opens a side sheet, so the whole
   configuration reads without opening anything. Side sheets, not accordions, because Branding and
   Files are large editors. Service account is a More row. Its sheet saves immediately, like MCP
-  servers and Credentials, and stays editable on a built-in agent.
+  servers and Credentials, and stays editable on a built-in agent. The Files row, and the Files
+  card on Preview, appear only when the effective agent has a filesystem: a capability that
+  contributes one (including through a dependency or the harness) or starter files already set.
+  Without a filesystem, the empty Files section stays hidden. Adding a filesystem capability
+  reveals the row. Source: `apps/ui/src/components/agents/agent-files-visibility.ts`.
 - **Page-level edit mode.** Edit, change several things, then one **Save changes** or
   **Discard**. A prompt edit and the capability change that goes with it land in one update.
   Changing any config control in view mode enters edit mode with that change pending, so nothing

@@ -82,6 +82,7 @@ import {
 } from "@/components/layout";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { AgentChecks, applyByteSpanReplacement } from "@/components/agents/agent-checks";
+import { agentFilesSectionVisible } from "@/components/agents/agent-files-visibility";
 import { AgentConfigColumn, type AgentMoreRow } from "@/components/agents/agent-config-column";
 import { AgentIntegrationsPanel } from "@/components/agents/agent-integrations-panel";
 import { useAgentChannels } from "@/hooks/use-agent-channels";
@@ -161,7 +162,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
 
   const observersEnabled = useFeatureFlag("observers");
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
-  const { data: harnesses = [] } = useHarnesses();
+  const { data: harnesses } = useHarnesses();
   usePageTitle(agent ? getDisplayName(agent) : null, "Agent");
   const { data: allCapabilities } = useCapabilities({ includeRetired: true });
   const { data: models } = useModels();
@@ -381,7 +382,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const displayName = getDisplayName(agent);
   const fixedSandbox = harnessInheritsFromName(
     draft.fields.harness_id || agent.harness_id,
-    harnesses,
+    harnesses ?? [],
     "bashkit-worker",
   )
     ? "Bashkit Virtual Workspace"
@@ -392,6 +393,15 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     draft.fields.description.trim() ? "Description" : "No description",
     ...(draft.starters.length > 0 ? [count(draft.starters.length, "starter")] : []),
   ];
+  // Keep an open Files sheet available if the draft drops the last file.
+  const showFiles =
+    agentFilesSectionVisible({
+      capabilities: draft.capabilities,
+      files: draft.files,
+      harnessId: draft.fields.harness_id,
+      harnesses,
+      catalog: allCapabilities,
+    }) || openSection === "files";
   const moreRows: AgentMoreRow[] = [
     { id: "branding", label: "Branding", summary: brandingParts.join(" · ") },
     {
@@ -444,7 +454,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         : "None",
     },
     { id: "health", label: "Health check", summary: healthSummary(latestHealth) },
-  ];
+  ].filter((row) => row.id !== "files" || showFiles);
 
   const canArchive = canEdit;
   const canDelete = !builtIn && agent.status === "archived" && can("agent.dangerous");
