@@ -22,13 +22,11 @@ use axum::{
     routing::post,
 };
 use everruns_contracts::typed_id::SessionId;
-use everruns_core::events::{EventContext, EventRequest, ToolCompletedData};
 use everruns_core::host::TurnBackend;
-use everruns_core::message::ContentPart;
 
 use super::common::{ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, impl_auth_state};
 use crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution;
-use crate::storage::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
+use crate::storage::ClaimWaitingTurnResult;
 use everruns_core::Caller;
 use std::sync::Arc;
 
@@ -132,16 +130,23 @@ pub async fn submit_tool_results(
         return Err(ErrorResponse::not_found("Session"));
     }
     let accepted = req.tool_results.len();
-    let context = crate::turns::open_turn_context(&state.db, session_id)
-        .await
-        .log_internal_error_json("read the waiting turn")?;
-    let plan = tool_results_plan(session_id, context, &req.tool_results);
-    let claim = match state
+    let result = state
         .db
-        .claim_waiting_turn(org.org_id, session_id, plan)
-        .await
-        .log_internal_error_json("claim waiting turn")?
+        .claim_tool_result_command(
+            org.org_id,
+            session_id,
+            req.tool_results
+                .iter()
+                .map(ClientToolResult::completed)
+                .collect(),
+        )
+        .await;
+    if let Err(error) = &result
+        && let Some(error) = error.downcast_ref::<everruns_contracts::AgentLoopError>()
     {
+        return Err(ErrorResponse::new(error.to_string()).into_response(StatusCode::BAD_REQUEST));
+    }
+    let claim = match result.log_internal_error_json("claim waiting turn")? {
         ClaimWaitingTurnResult::Claimed(claim) => claim,
         ClaimWaitingTurnResult::Conflict { current_status } => {
             return Err(ErrorResponse::new(format!(
@@ -167,54 +172,22 @@ pub async fn submit_tool_results(
     .await
     .map(|_| SubmitToolResultsResponse {
         accepted,
-        status: "active".to_string(),
+        status: if claim
+            .plan
+            .response
+            .get("resume")
+            .and_then(serde_json::Value::as_bool)
+            == Some(false)
+        {
+            "waiting_for_tool_results"
+        } else {
+            "active"
+        }
+        .to_string(),
     });
     Ok(Json(
         result.log_internal_error_json("resolve client tool results")?,
     ))
-}
-
-/// The waiting-turn resolution that records client tool results, shared with
-/// the AG-UI endpoint, whose consumer sends them as `tool` messages.
-/// `context` is the waiting turn's ([`crate::turns::open_turn_context`]).
-pub(crate) fn tool_results_plan(
-    session_id: SessionId,
-    context: EventContext,
-    tool_results: &[ClientToolResult],
-) -> WaitingTurnResolutionPlan {
-    let events = tool_results
-        .iter()
-        .map(|client_result| {
-            let tool_result = if let Some(ref error) = client_result.error {
-                ToolCompletedData::failure(
-                    client_result.tool_call_id.clone(),
-                    String::new(),
-                    "error".to_string(),
-                    error.clone(),
-                    None,
-                )
-            } else {
-                let result_content = client_result
-                    .result
-                    .as_ref()
-                    .map(|result| vec![ContentPart::tool_result_text(result)])
-                    .unwrap_or_default();
-                ToolCompletedData::success(
-                    client_result.tool_call_id.clone(),
-                    String::new(),
-                    result_content,
-                    None,
-                )
-            };
-            EventRequest::new(session_id, context.clone(), tool_result)
-        })
-        .collect();
-    WaitingTurnResolutionPlan {
-        kind: "tool_results".to_string(),
-        events,
-        session_values: Vec::new(),
-        response: serde_json::json!({ "accepted": tool_results.len() }),
-    }
 }
 
 #[cfg(test)]

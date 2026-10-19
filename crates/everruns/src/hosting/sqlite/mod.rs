@@ -1,6 +1,7 @@
 //! Single-domain durable authority. All canonical/control mutations use an
 //! IMMEDIATE SQLite transaction with FULL synchronization. JSONL is not a
 //! second writer. A startup supervisor rediscovers owed work after process loss.
+mod commands;
 mod ports;
 use super::*;
 use crate::sqlite::{Connection, OptionalExtension, TransactionBehavior, params};
@@ -9,7 +10,7 @@ use everruns_contracts::{
     typed_id::{EventId, TurnId},
 };
 use everruns_core::{
-    events::{Event, EventContext, EventData, EventRequest, InputMessageData},
+    events::{Event, EventContext, EventData, EventRequest},
     host::session_actor::store::actor_lease_lost,
 };
 use rusqlite::Transaction;
@@ -241,32 +242,6 @@ fn put(
     tx.execute("INSERT INTO framework_objects VALUES (?,?,?,?,?,?) ON CONFLICT(session,kind,key) DO UPDATE SET value=excluded.value,updated=excluded.updated", params![session.to_string(),kind,key,raw,at,at]).map_err(error)?;
     Ok(())
 }
-fn command<T: DeserializeOwned>(
-    tx: &Transaction<'_>,
-    session: SessionId,
-    id: &str,
-    fingerprint: &Value,
-) -> Result<Option<T>> {
-    let saved: Option<(String, String)> = tx
-        .query_row(
-            "SELECT fingerprint,value FROM framework_commands WHERE session=? AND id=?",
-            params![session.to_string(), id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .optional()
-        .map_err(error)?;
-    match saved {
-        Some((previous, value)) => {
-            if decode::<Value>(previous)? != *fingerprint {
-                return Err(AgentLoopError::config(
-                    "command identity reused with different input",
-                ));
-            }
-            Ok(Some(decode(value)?))
-        }
-        None => Ok(None),
-    }
-}
 fn retain_command(
     tx: &Transaction<'_>,
     session: SessionId,
@@ -435,177 +410,14 @@ impl Ports {
 
 #[async_trait]
 impl SessionHosting for SqliteHosting {
-    async fn resolve_waits(
+    async fn command(
         &self,
         session: SessionId,
-        id: uuid::Uuid,
-        target: TurnId,
-        approvals: Vec<ApprovalCommit>,
-        results: Vec<ToolCompletedData>,
-    ) -> Result<()> {
-        self.transaction(session, |tx, state| {
-            state.binding(session)?;
-            let fingerprint = json!({"turn_id":target,"approvals":approvals,"results":results});
-            let key = format!("wait_resolution:{id}");
-            if command::<Value>(tx, session, &key, &fingerprint)?.is_some() {
-                return Ok(());
-            }
-            let (turn, input) = state
-                .open
-                .filter(|(turn, _)| *turn == target)
-                .ok_or_else(|| AgentLoopError::config("wait resolution targets another turn"))?;
-            let batch = if approvals.is_empty() {
-                Vec::new()
-            } else {
-                prepare_approvals(
-                    &approvals,
-                    &state.pending,
-                    turn,
-                    everruns_contracts::rt::utc_now(),
-                )?
-            };
-            if !results.is_empty() {
-                validate_tool_resolutions(
-                    &results,
-                    &state.pending,
-                    everruns_contracts::rt::utc_now(),
-                )?;
-            }
-            if batch.is_empty() && results.is_empty() {
-                return Err(AgentLoopError::config("empty wait resolution"));
-            }
-            for prepared in batch {
-                put(tx, session, "value", &prepared.key, &prepared.record)?;
-                append(
-                    tx,
-                    state,
-                    EventRequest::new(session, EventContext::turn(turn, input), prepared.result),
-                    None,
-                )?;
-                append(
-                    tx,
-                    state,
-                    EventRequest::new(
-                        session,
-                        EventContext::turn(turn, input),
-                        InputMessageData::new(prepared.spoken),
-                    ),
-                    None,
-                )?;
-            }
-            for result in results {
-                append(
-                    tx,
-                    state,
-                    EventRequest::new(session, EventContext::turn(turn, input), result),
-                    None,
-                )?;
-            }
-            if state.pending.is_empty() {
-                state.inbox = i64::from(state.head);
-                state.resume_generation += 1;
-                state.runnable = true;
-            }
-            retain_command(tx, session, &key, &fingerprint, &json!({}))
-        })
+        command: super::spi::session_commands::SessionCommand,
+    ) -> Result<Value> {
+        self.execute_command(session, command)
     }
-    async fn submit_approvals(
-        &self,
-        session: SessionId,
-        id: uuid::Uuid,
-        target: TurnId,
-        decisions: Vec<everruns_contracts::execution_api::ToolApprovalAnswer>,
-    ) -> Result<everruns_contracts::execution_api::SubmitToolApprovalsResponse> {
-        self.transaction(session, |tx, state| {
-            state.binding(session)?;
-            let fingerprint = json!({"turn_id":target,"decisions":decisions});
-            let key = format!("approval_submission:{id}");
-            if let Some(response) = command(tx, session, &key, &fingerprint)? {
-                return Ok(response);
-            }
-            let (turn, input) =
-                state
-                    .open
-                    .filter(|(turn, _)| *turn == target)
-                    .ok_or_else(|| {
-                        AgentLoopError::config("approval submission targets another turn")
-                    })?;
-            let (approvals, response) =
-                prepare_approval_submission(&decisions, &state.pending, turn)?;
-            let batch = prepare_approvals(
-                &approvals,
-                &state.pending,
-                turn,
-                everruns_contracts::rt::utc_now(),
-            )?;
-            for prepared in batch {
-                put(tx, session, "value", &prepared.key, &prepared.record)?;
-                append(
-                    tx,
-                    state,
-                    EventRequest::new(session, EventContext::turn(turn, input), prepared.result),
-                    None,
-                )?;
-                append(
-                    tx,
-                    state,
-                    EventRequest::new(
-                        session,
-                        EventContext::turn(turn, input),
-                        InputMessageData::new(prepared.spoken),
-                    ),
-                    None,
-                )?;
-            }
-            if state.pending.is_empty() {
-                state.inbox = i64::from(state.head);
-                state.resume_generation += 1;
-                state.runnable = true;
-            }
-            retain_command(tx, session, &key, &fingerprint, &response)?;
-            Ok(response)
-        })
-    }
-    async fn configure(
-        &self,
-        session: SessionId,
-        id: uuid::Uuid,
-        patch: SessionConfiguration,
-    ) -> Result<()> {
-        patch.validate()?;
-        self.transaction(session, |tx, state| {
-            state.binding(session)?;
-            let fingerprint = json!(patch);
-            let key = format!("configuration:{id}");
-            if command::<Value>(tx, session, &key, &fingerprint)?.is_some() {
-                return Ok(());
-            }
-            let mut configuration: SessionConfiguration =
-                object(tx, session, "framework", "configuration")?.unwrap_or_default();
-            configuration.merge(patch);
-            put(tx, session, "framework", "configuration", &configuration)?;
-            retain_command(tx, session, &key, &fingerprint, &json!({}))
-        })
-    }
-    async fn seed_history(
-        &self,
-        session: SessionId,
-        id: uuid::Uuid,
-        messages: Vec<RuntimeMessage>,
-    ) -> Result<bool> {
-        validate_history_seed(&messages)?;
-        self.transaction(session,|tx,state| {
-            state.binding(session)?;
-            let fingerprint=json!(messages); let key=format!("seed:{id}");
-            if let Some(saved)=command(tx,session,&key,&fingerprint)? {return Ok(saved);}
-            let exists:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM framework_events WHERE session=? AND type IN ('input.message','output.message.completed'))",[session.to_string()],|row|row.get(0)).map_err(error)?;
-            if !exists {for message in messages {
-                let request=if message.role==everruns_core::message::RuntimeMessageRole::Agent {EventRequest::new(session,EventContext::empty(),everruns_core::events::OutputMessageCompletedData::new(message))} else {EventRequest::new(session,EventContext::empty(),InputMessageData::new(message))};
-                append(tx,state,request,None)?;
-            }}
-            retain_command(tx,session,&key,&fingerprint,&!exists)?; Ok(!exists)
-        })
-    }
+
     async fn query_snapshot(&self, session: SessionId) -> Result<SessionQuerySnapshot> {
         self.transaction(session, |tx, state| {
             Ok(SessionQuerySnapshot {
@@ -623,68 +435,6 @@ impl SessionHosting for SqliteHosting {
     }
     async fn event_sequence(&self, session: SessionId, event_id: &str) -> Result<Option<i32>> {
         self.db.lock().map_err(|_|error("authority database lock poisoned"))?.query_row("SELECT seq FROM framework_events WHERE session=? AND json_extract(value,'$.id')=? LIMIT 1",params![session.to_string(),event_id],|row|row.get(0)).optional().map_err(error)
-    }
-    async fn approve_many(
-        &self,
-        session: SessionId,
-        id: uuid::Uuid,
-        approvals: Vec<ApprovalCommit>,
-    ) -> Result<()> {
-        self.transaction(session, |tx, state| {
-            state.binding(session)?;
-            let fingerprint = json!({"approvals":approvals});
-            let key = format!("approval:{id}");
-            if command::<Value>(tx, session, &key, &fingerprint)?.is_some() {
-                return Ok(());
-            }
-            let (turn, input) = state
-                .open
-                .ok_or_else(|| AgentLoopError::config("session has no open turn"))?;
-            let batch = prepare_approvals(
-                &approvals,
-                &state.pending,
-                turn,
-                everruns_contracts::rt::utc_now(),
-            )?;
-            for prepared in batch {
-                put(tx, session, "value", &prepared.key, &prepared.record)?;
-                append(
-                    tx,
-                    state,
-                    EventRequest::new(session, EventContext::turn(turn, input), prepared.result),
-                    None,
-                )?;
-                append(
-                    tx,
-                    state,
-                    EventRequest::new(
-                        session,
-                        EventContext::turn(turn, input),
-                        InputMessageData::new(prepared.spoken),
-                    ),
-                    None,
-                )?;
-            }
-            if state.pending.is_empty() {
-                state.inbox = i64::from(state.head);
-                state.resume_generation += 1;
-                state.runnable = true;
-            }
-            retain_command(tx, session, &key, &fingerprint, &json!({}))?;
-            Ok(())
-        })
-    }
-    async fn create(&self, session: SessionId, binding: &SessionBinding) -> Result<()> {
-        self.transaction(session, |_, state| {
-            if state.binding.as_ref().is_some_and(|old| old != binding) {
-                return Err(AgentLoopError::config("session binding conflict"));
-            }
-            if state.binding.is_none() {
-                state.created_at = everruns_contracts::rt::utc_now_iso();
-            }
-            state.binding = Some(binding.clone());
-            Ok(())
-        })
     }
     async fn status(&self, session: SessionId) -> Result<HostingStatus> {
         self.transaction(session, |tx, state| {
@@ -706,31 +456,6 @@ impl SessionHosting for SqliteHosting {
                 waiting: state.pending.clone(),
             })
         })
-    }
-    async fn admit(
-        &self,
-        session: SessionId,
-        message: RuntimeMessage,
-        cancelled: bool,
-    ) -> Result<AdmissionReceipt> {
-        self.transaction(session, |tx, state| {
-        state.binding(session)?;
-        if message.role != everruns_core::RuntimeMessageRole::User { return Err(AgentLoopError::config("admission requires user input")); }
-        let mut fingerprint = serde_json::to_value(&message).map_err(error)?;
-        if let Some(object) = fingerprint.as_object_mut() { object.remove("created_at"); object.remove("updated_at"); }
-        if cancelled {fingerprint=json!({"message":fingerprint,"cancelled":true});}
-        let id = message.id;
-        if let Some(receipt) = command(tx, session, &id.to_string(), &fingerprint)? { return Ok(receipt); }
-        let queued: i64 = tx.query_row("SELECT count(*) FROM framework_events WHERE session=? AND type='input.message' AND turn_id IS NULL AND seq>?", params![session.to_string(),state.consumed], |row| row.get(0)).map_err(error)?;
-        if queued >= 256 { return Err(error("session inbox is full")); }
-        let event = append(tx,state,EventRequest::new(session,EventContext::empty(),InputMessageData::new(message)),None)?;
-        let sequence = event.sequence.ok_or_else(|| error("admission has no sequence"))?;
-        let receipt = AdmissionReceipt { message_id: id, sequence };
-        retain_command(tx,session,&id.to_string(),&fingerprint,&receipt)?;
-        if cancelled {state.target_cancels.insert(id,i64::from(sequence));}
-        state.inbox = i64::from(sequence); if state.next_input <= state.consumed { state.next_input = state.inbox; } state.runnable = true;
-        Ok(receipt)
-    })
     }
     async fn receipt(
         &self,
@@ -755,99 +480,6 @@ impl SessionHosting for SqliteHosting {
     }
     async fn record(&self, session: SessionId, key: &str) -> Result<Option<Value>> {
         SessionEpoch::record(&self.ports(session), key).await
-    }
-    async fn resolve(
-        &self,
-        session: SessionId,
-        id: uuid::Uuid,
-        target: everruns_contracts::typed_id::TurnId,
-        results: Vec<ToolCompletedData>,
-    ) -> Result<()> {
-        self.transaction(session, |tx, state| {
-            state.binding(session)?;
-            let fingerprint = json!({"turn_id":target,"results":results});
-            let key = format!("resolution:{id}");
-            if command::<Value>(tx, session, &key, &fingerprint)?.is_some() {
-                return Ok(());
-            }
-            validate_tool_resolutions(&results, &state.pending, everruns_contracts::rt::utc_now())?;
-            let (turn, input) = state
-                .open
-                .ok_or_else(|| AgentLoopError::config("session has no open turn"))?;
-            if state.open.map(|(turn, _)| turn) != Some(target) {
-                return Err(AgentLoopError::config(
-                    "tool resolution targets another turn",
-                ));
-            }
-            let mut seen = HashSet::new();
-            if results.is_empty()
-                || results.len() > 256
-                || results.iter().any(|result| {
-                    !seen.insert(result.tool_call_id.clone())
-                        || !state.pending.iter().any(|call| {
-                            call.id == result.tool_call_id && call.name == result.tool_name
-                        })
-                })
-            {
-                return Err(AgentLoopError::config(
-                    "tool results do not match pending calls",
-                ));
-            }
-            for result in results {
-                append(
-                    tx,
-                    state,
-                    EventRequest::new(session, EventContext::turn(turn, input), result),
-                    None,
-                )?;
-            }
-            if state.pending.is_empty() {
-                state.resume_generation += 1;
-                state.inbox = i64::from(state.head);
-                state.runnable = true;
-            }
-            retain_command(tx, session, &key, &fingerprint, &json!({}))?;
-            Ok(())
-        })
-    }
-    async fn cancel(
-        &self,
-        session: SessionId,
-        command_id: uuid::Uuid,
-        input: MessageId,
-    ) -> Result<()> {
-        self.transaction(session, |tx, state| {
-            state.binding(session)?;
-            let fingerprint = json!({"input":input});
-            let key = format!("cancel:{command_id}");
-            if command::<Value>(tx, session, &key, &fingerprint)?.is_some() {
-                return Ok(());
-            }
-            let admitted: bool = tx
-                .query_row(
-                    "SELECT EXISTS(SELECT 1 FROM framework_commands WHERE session=? AND id=?)",
-                    params![session.to_string(), input.to_string()],
-                    |row| row.get(0),
-                )
-                .map_err(error)?;
-            if !admitted {
-                return Err(AgentLoopError::config("admission not found"));
-            }
-            state.target_cancels.insert(input, state.inbox);
-            if let Some(assignment) = object::<super::TurnAssignment>(
-                tx,
-                session,
-                "framework",
-                &format!("assignment/{input}"),
-            )? && state.open.is_none_or(|(turn, _)| turn == assignment.turn_id)
-            {
-                let terminal:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM framework_events WHERE session=? AND identity=?)",params![session.to_string(),format!("terminal:{}",assignment.turn_id)],|row|row.get(0)).map_err(error)?;
-                let rejected:Option<Value>=object(tx,session,"framework",&format!("rejected/{input}"))?;
-                if !terminal && rejected.is_none() {state.cancel = Some(state.inbox);state.cancel_reported = false;state.runnable = true;}
-            }
-            retain_command(tx, session, &key, &fingerprint, &json!({}))?;
-            Ok(())
-        })
     }
     async fn claim(
         &self,

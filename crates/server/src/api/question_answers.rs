@@ -27,7 +27,7 @@ use crate::storage::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan, WaitingT
 use everruns_contracts::tool_types::{FORM_ELICITATION_CALL_ID_PREFIX, MCP_ELICITATION_ARGUMENT};
 use everruns_core::builtins::ask_user::{
     ASK_USER_TOOL_NAME, AskUserAnswer, AskUserAnsweredBy, AskUserQuestion, AskUserQuestionKind,
-    AskUserResult, AskUserStatus, session_secret_ref,
+    AskUserResult, AskUserStatus,
 };
 
 /// How far back to look for the question set being answered. The card is emitted
@@ -99,121 +99,17 @@ pub(crate) fn validate_answers(
     questions: &[AskUserQuestion],
     submitted: &[AskUserAnswer],
 ) -> Result<Vec<AskUserAnswer>, String> {
-    for answer in submitted {
-        if !questions
-            .iter()
-            .any(|question| question.id.as_deref() == Some(answer.id.as_str()))
-        {
-            return Err(format!("no question with id {:?} was asked", answer.id));
-        }
-    }
-
-    let mut validated = Vec::with_capacity(questions.len());
-    for question in questions {
-        let id = question.id.as_deref().unwrap_or_default();
-        let matches: Vec<&AskUserAnswer> =
-            submitted.iter().filter(|answer| answer.id == id).collect();
-        if matches.len() > 1 {
-            return Err(format!("question {id:?} was answered more than once"));
-        }
-        // Every asked question needs an answer. A partial set would reach the
-        // model as a question it asked and nobody addressed, which it cannot
-        // tell apart from one the person deliberately skipped.
-        let answer = matches
-            .first()
-            .ok_or_else(|| format!("question {id:?} was not answered"))?;
-
-        if question.kind == AskUserQuestionKind::Secret {
-            // THREAT[TM-AGENT-016]: the only thing a secret answer may carry is
-            // a reference to a secret that was already stored encrypted. Every
-            // value-bearing field is refused here rather than ignored, so a
-            // client that put the credential in one gets an error instead of a
-            // result that quietly persisted it to the event log.
-            if !answer.selected.is_empty() || answer.other_text.is_some() {
-                return Err(format!(
-                    "question {id:?} is a secret; its answer carries only secret_ref"
-                ));
-            }
-            let expected = session_secret_ref(question.secret_name.as_deref().unwrap_or_default());
-            match answer.secret_ref.as_deref() {
-                Some(reference) if reference == expected => {}
-                Some(_) => {
-                    return Err(format!("question {id:?} was not asked for that secret"));
-                }
-                None => return Err(format!("question {id:?} has no secret_ref")),
-            }
-            validated.push(AskUserAnswer {
-                id: id.to_string(),
-                selected: Vec::new(),
-                other_text: None,
-                secret_ref: Some(expected),
-            });
-            continue;
-        }
-        // A choice answer cannot mint a handle to a secret nobody asked for.
-        if answer.secret_ref.is_some() {
-            return Err(format!("question {id:?} is not a secret question"));
-        }
-        if question.kind == AskUserQuestionKind::Text && !answer.selected.is_empty() {
-            return Err(format!(
-                "question {id:?} is text and must not select options"
-            ));
-        }
-
-        for label in &answer.selected {
-            if !question.options.iter().any(|option| &option.label == label) {
-                return Err(format!(
-                    "question {id:?} was not asked with option {label:?}"
-                ));
-            }
-        }
-        if answer.selected.len()
-            != answer
-                .selected
-                .iter()
-                .collect::<std::collections::HashSet<_>>()
-                .len()
-        {
-            return Err(format!("question {id:?} selects the same option twice"));
-        }
-
-        let other = answer
-            .other_text
-            .as_deref()
-            .map(str::trim)
-            .filter(|text| !text.is_empty());
-        if other.is_some() && question.kind != AskUserQuestionKind::Text && !question.allow_other {
-            return Err(format!("question {id:?} does not allow free text"));
-        }
-
-        // EVE-1059: refuse before persistence, never redact after. This text
-        // becomes a tool result — written to `events` and replayed into model
-        // context every turn — and there is no un-persisting an event, so the
-        // only place this check works is here, ahead of the write.
-        if let Some(text) = other
+    let validated =
+        everruns_core::session_commands::normalize_question_answers(questions, submitted, true)?;
+    // Product policy rejects credential-shaped free text before persistence.
+    for answer in &validated {
+        if let Some(text) = answer.other_text.as_deref()
             && let Some(label) = crate::credential_shape::credential_format(text)
         {
-            return Err(crate::credential_shape::credential_rejection(id, label));
-        }
-
-        // An answer has to say something. Free text stands in for a selection,
-        // which is the whole point of `allow_other`.
-        if answer.selected.is_empty() && other.is_none() {
-            return Err(format!("question {id:?} has no selection and no free text"));
-        }
-        if !question.multi_select && answer.selected.len() > 1 {
-            return Err(format!(
-                "question {id:?} is single-select and carries {} selections",
-                answer.selected.len()
+            return Err(crate::credential_shape::credential_rejection(
+                &answer.id, label,
             ));
         }
-
-        validated.push(AskUserAnswer {
-            id: id.to_string(),
-            selected: answer.selected.clone(),
-            other_text: other.map(str::to_string),
-            secret_ref: None,
-        });
     }
     Ok(validated)
 }

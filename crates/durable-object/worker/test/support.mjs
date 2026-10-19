@@ -1,3 +1,8 @@
+import { readFileSync } from "node:fs";
+import { initSync, session_command, session_command_key } from "../pkg/everruns_durable_object.js";
+import { installSessionCommands } from "../src/session-command.js";
+initSync({ module: readFileSync(new URL("../pkg/everruns_durable_object_bg.wasm",import.meta.url)) });
+installSessionCommands(session_command,session_command_key);
 import { DatabaseSync } from "node:sqlite";
 import { Authority } from "../src/authority.js";
 
@@ -54,12 +59,12 @@ export class Storage {
   }
 }
 
-export async function fixture() {
+export async function fixture(agentBinding=binding) {
   const storage = new Storage();
   let now = 1000000;
   const authority = new Authority(storage, () => now);
   const call = (op, body = {}) => authority.handle(op, body, sessionId, tenant);
-  await call("bind", { binding });
+  await call("bind", { binding:agentBinding });
   return {
     storage,
     authority,
@@ -80,6 +85,7 @@ export function input(index = 1, text = "hello") {
       message: {
         id: `message_${index.toString(16).padStart(32, "0")}`,
         role: "user",
+        created_at: new Date().toISOString(),
         content: [{ type: "text", text }],
       },
     },

@@ -54,6 +54,8 @@ pub use everruns_core::host::{
     EventReadLimit, EventReadRequest, EventReader, HostBackends, RuntimeSessionStore,
     SessionMutator,
 };
+/// Shared command reducer; execute inside the authority transaction, including remote hosts.
+pub use everruns_core::session_commands;
 pub use everruns_core::{
     CompactionCheckpoint, CompactionCheckpointPayload, CompactionCheckpointStore, ExecutionSession,
     ProactiveCompactionAttempt, RuntimeMessage,

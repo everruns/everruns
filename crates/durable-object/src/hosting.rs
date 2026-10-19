@@ -2,9 +2,8 @@
 use crate::{Authority, AuthorityClient};
 use async_trait::async_trait;
 use everruns::hosting::spi::{
-    HostBackends, RuntimeMessage,
+    HostBackends,
     actor::{ActorFence, LeasedActor, SessionActorStore},
-    events::{EventContext, EventRequest, InputMessageData, ToolCompletedData},
 };
 use everruns::hosting::spi::{
     error::Result,
@@ -33,160 +32,17 @@ impl ObjectHosting {
 
 #[async_trait]
 impl SessionHosting for ObjectHosting {
-    async fn resolve_waits(
+    async fn command(
         &self,
         session: SessionId,
-        command: uuid::Uuid,
-        target: everruns::hosting::spi::ids::TurnId,
-        approvals: Vec<everruns::hosting::ApprovalCommit>,
-        results: Vec<ToolCompletedData>,
-    ) -> Result<()> {
-        let authority = self.client.session(session);
-        let fingerprint = json!({"turn_id":target,"approvals":approvals,"results":results});
-        let retained: Option<Value> = authority
-            .call(
-                "command",
-                json!({"id":format!("wait_resolution:{command}")}),
-            )
-            .await?;
-        if let Some(retained) = retained {
-            return if retained["fingerprint"] == fingerprint {
-                Ok(())
-            } else {
-                Err(crate::client::rejected(409))
-            };
-        }
-        #[derive(Deserialize)]
-        struct Snapshot {
-            pending: Vec<everruns::ToolCall>,
-            now_ms: i64,
-            open: Option<Value>,
-        }
-        let snapshot: Snapshot = authority.call("status", json!({})).await?;
-        if snapshot
-            .open
-            .as_ref()
-            .and_then(|open| open["turn_id"].as_str())
-            != Some(target.to_string().as_str())
-        {
-            return Err(crate::client::rejected(409));
-        }
-        let now = chrono::DateTime::from_timestamp_millis(snapshot.now_ms).ok_or_else(|| {
-            everruns::hosting::spi::error::AgentLoopError::store("invalid authority clock")
-        })?;
-        let prepared = if approvals.is_empty() {
-            Vec::new()
-        } else {
-            everruns::hosting::prepare_approvals(&approvals, &snapshot.pending, target, now)?
-        };
-        if !results.is_empty() {
-            everruns::hosting::validate_tool_resolutions(&results, &snapshot.pending, now)?;
-        }
-        if prepared.is_empty() && results.is_empty() {
-            return Err(everruns::hosting::spi::error::AgentLoopError::config(
-                "empty wait resolution",
-            ));
-        }
-        let expected: Vec<_> = snapshot
-            .pending
-            .into_iter()
-            .filter(|call| results.iter().any(|result| result.tool_call_id == call.id))
-            .collect();
-        authority.call::<Value>("resolve_waits",json!({"command_id":command,"turn_id":target,"approvals":approvals,"prepared":prepared,"results":results,"expected_pending":expected})).await?;
-        Ok(())
-    }
-    async fn submit_approvals(
-        &self,
-        session: SessionId,
-        command: uuid::Uuid,
-        target: everruns::hosting::spi::ids::TurnId,
-        decisions: Vec<everruns::execution_api::ToolApprovalAnswer>,
-    ) -> Result<everruns::execution_api::SubmitToolApprovalsResponse> {
-        let authority = self.client.session(session);
-        let fingerprint = json!({"turn_id":target,"decisions":decisions});
-        let retained: Option<Value> = authority
-            .call(
-                "command",
-                json!({"id":format!("approval_submission:{command}")}),
-            )
-            .await?;
-        if let Some(retained) = retained {
-            if retained["fingerprint"] != fingerprint {
-                return Err(crate::client::rejected(409));
-            }
-            return serde_json::from_value(retained["value"].clone()).map_err(|_| {
-                everruns::hosting::spi::error::AgentLoopError::store(
-                    "invalid approval submission receipt",
-                )
-            });
-        }
-        #[derive(Deserialize)]
-        struct Snapshot {
-            now_ms: i64,
-            pending: Vec<everruns::ToolCall>,
-            open: Option<Value>,
-        }
-        let snapshot: Snapshot = authority.call("status", json!({})).await?;
-        if snapshot
-            .open
-            .as_ref()
-            .and_then(|open| open["turn_id"].as_str())
-            != Some(target.to_string().as_str())
-        {
-            return Err(crate::client::rejected(409));
-        }
-        let (approvals, response) =
-            everruns::hosting::prepare_approval_submission(&decisions, &snapshot.pending, target)?;
-        let now = chrono::DateTime::from_timestamp_millis(snapshot.now_ms).ok_or_else(|| {
-            everruns::hosting::spi::error::AgentLoopError::store("invalid authority clock")
-        })?;
-        let prepared =
-            everruns::hosting::prepare_approvals(&approvals, &snapshot.pending, target, now)?;
-        authority.call("approve",json!({"command_id":command,"approvals":approvals,"prepared":prepared,"submission":{"fingerprint":fingerprint,"response":response}})).await
-    }
-    async fn configure(
-        &self,
-        session: SessionId,
-        command: uuid::Uuid,
-        patch: everruns::hosting::SessionConfiguration,
-    ) -> Result<()> {
-        patch.validate()?;
+        command: everruns::hosting::spi::session_commands::SessionCommand,
+    ) -> Result<Value> {
         self.client
             .session(session)
-            .call::<Value>("configure", json!({"command_id":command,"patch":patch}))
-            .await?;
-        Ok(())
-    }
-    async fn seed_history(
-        &self,
-        session: SessionId,
-        command: uuid::Uuid,
-        messages: Vec<RuntimeMessage>,
-    ) -> Result<bool> {
-        everruns::hosting::validate_history_seed(&messages)?;
-        let events: Vec<_> = messages
-            .into_iter()
-            .map(|message| {
-                if message.role == everruns::hosting::spi::message::RuntimeMessageRole::Agent {
-                    EventRequest::new(
-                        session,
-                        EventContext::empty(),
-                        everruns::hosting::spi::events::OutputMessageCompletedData::new(message),
-                    )
-                } else {
-                    EventRequest::new(
-                        session,
-                        EventContext::empty(),
-                        InputMessageData::new(message),
-                    )
-                }
-            })
-            .collect();
-        self.client
-            .session(session)
-            .call("seed", json!({"command_id":command,"events":events}))
+            .call("session_command", json!({"command":command}))
             .await
     }
+
     async fn query_snapshot(
         &self,
         session: SessionId,
@@ -201,56 +57,6 @@ impl SessionHosting for ObjectHosting {
             .session(session)
             .call("event_sequence", json!({"event_id":event_id}))
             .await
-    }
-    async fn approve_many(
-        &self,
-        session: SessionId,
-        command: uuid::Uuid,
-        approvals: Vec<everruns::hosting::ApprovalCommit>,
-    ) -> Result<()> {
-        let authority = self.client.session(session);
-        let retained: Option<Value> = authority
-            .call("command", json!({"id":format!("approval:{command}")}))
-            .await?;
-        if let Some(retained) = retained {
-            if retained["fingerprint"] != json!(approvals) {
-                return Err(crate::client::rejected(409));
-            }
-            return Ok(());
-        }
-        #[derive(Deserialize)]
-        struct Snapshot {
-            now_ms: i64,
-            pending: Vec<everruns::ToolCall>,
-            open: Option<Value>,
-        }
-        let snapshot: Snapshot = authority.call("status", json!({})).await?;
-        let turn = serde_json::from_value(
-            snapshot.open.ok_or_else(|| {
-                everruns::hosting::spi::error::AgentLoopError::config("session has no open turn")
-            })?["turn_id"]
-                .clone(),
-        )
-        .map_err(|_| everruns::hosting::spi::error::AgentLoopError::store("invalid open turn"))?;
-        let now = chrono::DateTime::from_timestamp_millis(snapshot.now_ms).ok_or_else(|| {
-            everruns::hosting::spi::error::AgentLoopError::store("invalid authority clock")
-        })?;
-        let prepared =
-            everruns::hosting::prepare_approvals(&approvals, &snapshot.pending, turn, now)?;
-        authority
-            .call::<Value>(
-                "approve",
-                json!({"command_id":command,"approvals":approvals,"prepared":prepared}),
-            )
-            .await?;
-        Ok(())
-    }
-    async fn create(&self, session: SessionId, binding: &SessionBinding) -> Result<()> {
-        self.client
-            .session(session)
-            .call::<Value>("bind", json!({"binding":binding}))
-            .await?;
-        Ok(())
     }
     async fn status(&self, session: SessionId) -> Result<HostingStatus> {
         #[derive(Deserialize)]
@@ -292,22 +98,6 @@ impl SessionHosting for ObjectHosting {
             waiting: status.pending,
         })
     }
-    async fn admit(
-        &self,
-        session: SessionId,
-        message: RuntimeMessage,
-        cancelled: bool,
-    ) -> Result<AdmissionReceipt> {
-        let event = EventRequest::new(
-            session,
-            EventContext::empty(),
-            InputMessageData::new(message),
-        );
-        self.client
-            .session(session)
-            .call("input", json!({"event":event,"cancelled":cancelled}))
-            .await
-    }
     async fn receipt(
         &self,
         session: SessionId,
@@ -326,72 +116,6 @@ impl SessionHosting for ObjectHosting {
             .session(session)
             .call("framework", json!({"operation":"get", "key":key}))
             .await
-    }
-    async fn resolve(
-        &self,
-        session: SessionId,
-        command: uuid::Uuid,
-        target: everruns::hosting::spi::ids::TurnId,
-        results: Vec<ToolCompletedData>,
-    ) -> Result<()> {
-        let authority = self.client.session(session);
-        let fingerprint = json!({"turn_id":target,"results":results});
-        let retained: Option<Value> = authority
-            .call("command", json!({"id":format!("resolution:{command}")}))
-            .await?;
-        if let Some(retained) = retained {
-            return if retained["fingerprint"] == fingerprint {
-                Ok(())
-            } else {
-                Err(crate::client::rejected(409))
-            };
-        }
-        #[derive(Deserialize)]
-        struct Pending {
-            pending: Vec<everruns::ToolCall>,
-            now_ms: i64,
-            open: Option<Value>,
-        }
-        let status: Pending = authority.call("status", json!({})).await?;
-        if status
-            .open
-            .as_ref()
-            .and_then(|open| open["turn_id"].as_str())
-            != Some(target.to_string().as_str())
-        {
-            return Err(crate::client::rejected(409));
-        }
-        let now = chrono::DateTime::from_timestamp_millis(status.now_ms).ok_or_else(|| {
-            everruns::hosting::spi::error::AgentLoopError::store("invalid authority clock")
-        })?;
-        everruns::hosting::validate_tool_resolutions(&results, &status.pending, now)?;
-        let expected: Vec<_> = status
-            .pending
-            .into_iter()
-            .filter(|call| results.iter().any(|result| result.tool_call_id == call.id))
-            .collect();
-        authority
-            .call::<Value>(
-                "resolve",
-                json!({"resolution_id":command,"turn_id":target,"results":results,"expected_pending":expected}),
-            )
-            .await?;
-        Ok(())
-    }
-    async fn cancel(
-        &self,
-        session: SessionId,
-        command: uuid::Uuid,
-        input: MessageId,
-    ) -> Result<()> {
-        self.client
-            .session(session)
-            .call::<Value>(
-                "cancel",
-                json!({"command_id":command,"input_message_id":input}),
-            )
-            .await?;
-        Ok(())
     }
     async fn claim(
         &self,

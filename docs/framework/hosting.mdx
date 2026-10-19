@@ -11,6 +11,10 @@ through `everruns::hosting::SessionHosting` and a claimed write capability throu
 `SessionEpoch`. Applications define ordinary `Agent` values and call the same
 `Engine` and `Session` API regardless of the hosting implementation.
 
+Without hosting configuration, `Engine::builder().build()` uses in-memory hosting.
+An embedded application needs no database, Durable Object or external hosting service.
+Its sessions live for the lifetime of that process. Durable hosting is an opt-in.
+
 The hosting SPI is experimental. Framework has no dependency on a Cloudflare or
 celld adapter. [Durable Object examples](/framework/durable-objects/) demonstrate
 how an external implementation can use this boundary; they are source-only
@@ -22,7 +26,7 @@ references, outside the product publish set.
 | --- | --- | --- |
 | Planning, shared actor recovery and tool execution | Immutable session binding and transactional commands | Trusted Agent/build registry |
 | Lifecycle hooks and finalized outcomes | Deduplicated input receipts and canonical journal | Retained code and Environment factories |
-| Approval/client wait interpretation and context projection | Exclusive epochs, fenced storage and bounded snapshot reads | Workspace, compute, secrets and provider transport |
+| Session command rules, approval/client wait interpretation and context projection | Exclusive epochs, fenced storage and bounded snapshot reads | Workspace, compute, secrets and provider transport |
 | Execution entry through `Engine::activate` | Independent wakeups, expiry discovery and activation retries | Authentication, authorization and operational recovery |
 
 A hosting implementation must commit input, receipt and wakeup obligation before
@@ -45,6 +49,21 @@ paging, actor leases/journal access, execution views, compaction checkpoints and
 session values. `SessionHosting` and `SessionEpoch` describe the semantic contract.
 Host implementations need no direct `everruns-core` or `everruns-contracts`
 dependency, and do not construct the Engine runtime.
+
+The host's required `command` method runs the shared Rust command implementation
+inside its authority transaction. Capture a bounded `spi::session_commands::CommandView`,
+call `spi::session_commands::prepare`, and apply its complete plan before releasing
+the transaction or revision guard. This keeps binding checks, command fingerprints,
+approval decisions, pending-call validation and partial-wait behavior in Everruns.
+The host translates the resulting journal, value, receipt and activation writes
+into its own storage operations. It does not reproduce those decisions.
+
+For a remote authority, send the semantic command to that authority. Run the Rust
+implementation there, against its locked canonical state and clock; preparing a
+plan in an executor and sending its effects creates a validation/commit race.
+The object reference compiles this same command implementation to Wasm and invokes
+it inside the object's storage transaction, including when Engine runs on a native
+executor. JavaScript supplies transaction and wakeup plumbing.
 
 `SessionEpoch::backends()` supplies the low-level storage ports that Engine uses
 internally. `HostBackends` is an implementation detail of writing a hosting
@@ -80,3 +99,17 @@ original admission to finish through an independent wakeup. Test lease expiry,
 platform owner loss and retained-build failure according to the claimed failure
 domain. The reference includes workerd, isolate and native-process harnesses;
 local emulators alone do not establish production platform guarantees.
+
+## Framework, serve and the platform server
+
+Framework applications and serve both enter `everruns::Engine`; selecting a host
+does not change their Agent definitions. A DO application is the same Engine and
+Agent compiled to Wasm, with an object host and host-compatible tools. The celld
+example supplies that hosting integration, or a native executor when tools need
+processes and files.
+
+The full Everruns platform server has its own control plane and PostgreSQL actor
+host. It consumes the same Core actor driver directly, shares the Rust command
+validation for client results and the approval/question policies, and retains its
+platform authorization and durable resolution claims. Supporting external hosts
+does not require routing the whole platform through the Framework facade.

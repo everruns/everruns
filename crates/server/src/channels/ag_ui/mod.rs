@@ -652,6 +652,7 @@ pub(crate) async fn run_app_agent_stream(
                     app.org_id,
                     &session.session,
                     &frontend_names,
+                    &channel_config,
                     tool_results,
                 )
                 .await

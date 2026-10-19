@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import "./rust.js";
 import { Authority } from "./authority.js";
 import { runAlarm } from "./activation.js";
 import { authenticate, address, readJson, failure } from "./http.js";

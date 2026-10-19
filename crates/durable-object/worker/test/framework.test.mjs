@@ -16,7 +16,7 @@ async function fixture() {
 test("Framework binding and admission receipts reopen without frontend state", async () => {
   const f = await fixture();
   await f.call("bind", { binding: f.binding });
-  await assert.rejects(f.call("bind", { binding: { ...f.binding, framework: 2 } }), /another agent/);
+  await assert.rejects(f.call("bind", { binding: { ...f.binding, framework: 2 } }), /binding conflict/);
   const accepted = await f.call("input", { event: input() });
   assert.deepEqual(await f.call("receipt", { message_id: accepted.message_id }), accepted);
   const restarted = new Authority(f.storage, () => 1000001);
@@ -73,7 +73,7 @@ test("approval permission, correlated answer and wakeup commit atomically and re
   const pause=await f.call("append",{lease,event:event("tool.call_requested",turn,{tool_calls:[request]})});
   await f.call("release",{...lease,consumed_seq:pause.event.sequence});
   assert.equal((await f.call("status")).runnable,false);
-  const command={command_id:"approval-command",approvals:[{turn_id:turn,request_id:request.id,decision:"allow"}],prepared:[{expected_request:request,not_after_ms:1100000,key:"tool_approval/once/sha256_test",record:JSON.stringify({tool:"mutate",allow:true,fingerprint:"sha256:test"}),result:{tool_call_id:request.id,tool_name:request.name,success:true,status:"success",result:[{type:"text",text:"approved"}]},spoken:{id:`message_${"4".repeat(32)}`,role:"user",content:[{type:"text",text:"I approved mutate"}],created_at:new Date(1000000).toISOString()}}]};
+  const command={command_id:"approval-command",approvals:[{turn_id:turn,request_id:request.id,decision:"allow"}]};
   await f.call("approve",command);const history=await f.call("events");await f.call("approve",command);
   assert.deepEqual(await f.call("events"),history);
   const record=JSON.parse(await f.call("store",{kind:"value",operation:"get",key:"tool_approval/once/sha256_test"}));
@@ -106,4 +106,15 @@ test("a fenced parked deadline retains an independent alarm and becomes runnable
   const next=await claim(f,"timer-replacement");
   assert.ok(next);assert.ok(next.fence>lease.fence);
   assert.equal((await f.call("status")).wake_at,null);
+});
+
+
+test("authority derives approval writes in Rust and ignores caller-prepared permission records",async()=>{
+  const f=await fixture();await f.call("input",{event:input()});const lease=await claim(f);const turn=await start(f,lease);
+  const request={id:"tool_approval_call_one",name:"approve_tool_call",arguments:{code:"tool_approval_required",error:"waiting",tool_call_id:"call_one",tool:"mutate",arguments:{n:1},fingerprint:"sha256:test",risk:"policy",mode:"normal",asked_at:new Date(1000000).toISOString(),expires_at:new Date(1100000).toISOString()}};
+  await f.call("append",{lease,event:event("tool.call_requested",turn,{tool_calls:[request]})});
+  await f.call("approve",{command_id:"forged-preparation",approvals:[{turn_id:turn,request_id:request.id,decision:"reject"}],prepared:[{key:"tool_approval/always/mutate",record:JSON.stringify({tool:"mutate",allow:true})}]});
+  assert.equal(await f.call("store",{kind:"value",operation:"get",key:"tool_approval/always/mutate"}),null);
+  const record=JSON.parse(await f.call("store",{kind:"value",operation:"get",key:"tool_approval/once/sha256_test"}));
+  assert.equal(record.allow,false);assert.equal(record.turn_id,turn);
 });

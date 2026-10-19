@@ -13,16 +13,11 @@ mod admission;
 mod configuration;
 #[cfg(not(target_arch = "wasm32"))]
 pub use configuration::DirectoryEnvironmentFactory;
-pub use configuration::{SessionConfiguration, validate_history_seed};
-mod approval;
-pub use approval::{
-    ApprovalCommit, PreparedApproval, ToolApprovalDecision, prepare_approval_submission,
-    prepare_approvals,
-};
+pub use everruns_contracts::execution_api::ToolApprovalDecision;
+pub use everruns_core::session_commands::{ApprovalCommit, SessionConfiguration};
 pub(crate) mod execution;
 mod memory;
-mod resolution;
-pub use resolution::{
+pub use everruns_core::session_commands::{
     QuestionAnswersRequest, validate_question_answers, validate_tool_resolutions,
 };
 pub(crate) mod query;
@@ -165,6 +160,14 @@ impl HostingStatus {
 /// One coherent authority and its activation policy.
 #[async_trait]
 pub trait SessionHosting: Send + Sync + 'static {
+    /// Execute a semantic command in the authority transaction using the shared
+    /// Rust reducer. Remote hosts transport the command, never unchecked effects.
+    async fn command(
+        &self,
+        session: SessionId,
+        command: spi::session_commands::SessionCommand,
+    ) -> Result<Value>;
+
     /// Resolve mixed approvals and client answers on one retained turn in one
     /// transaction. This is the command boundary for protocol resume batches.
     async fn resolve_waits(
@@ -174,7 +177,19 @@ pub trait SessionHosting: Send + Sync + 'static {
         target: TurnId,
         approvals: Vec<ApprovalCommit>,
         results: Vec<ToolCompletedData>,
-    ) -> Result<()>;
+    ) -> Result<()> {
+        self.command(
+            session,
+            spi::session_commands::SessionCommand::ResolveWaits {
+                id: command.to_string(),
+                turn: target,
+                approvals,
+                results,
+            },
+        )
+        .await
+        .map(|_| ())
+    }
     /// Resolve an Execution API approval batch atomically and retain its response.
     async fn submit_approvals(
         &self,
@@ -182,21 +197,56 @@ pub trait SessionHosting: Send + Sync + 'static {
         command: uuid::Uuid,
         turn: TurnId,
         decisions: Vec<crate::execution_api::ToolApprovalAnswer>,
-    ) -> Result<crate::execution_api::SubmitToolApprovalsResponse>;
+    ) -> Result<crate::execution_api::SubmitToolApprovalsResponse> {
+        serde_json::from_value(
+            self.command(
+                session,
+                spi::session_commands::SessionCommand::SubmitApprovals {
+                    id: command.to_string(),
+                    turn,
+                    decisions,
+                },
+            )
+            .await?,
+        )
+        .map_err(|e| spi::error::AgentLoopError::store(e.to_string()))
+    }
     /// Apply an idempotent patch to client configuration under the authority lock.
     async fn configure(
         &self,
         session: SessionId,
         command: uuid::Uuid,
         patch: SessionConfiguration,
-    ) -> Result<()>;
+    ) -> Result<()> {
+        self.command(
+            session,
+            spi::session_commands::SessionCommand::Configure {
+                id: command.to_string(),
+                patch,
+            },
+        )
+        .await
+        .map(|_| ())
+    }
     /// Atomically import prior conversation only while canonical conversation is empty.
     async fn seed_history(
         &self,
         session: SessionId,
         command: uuid::Uuid,
         messages: Vec<RuntimeMessage>,
-    ) -> Result<bool>;
+    ) -> Result<bool> {
+        serde_json::from_value(
+            self.command(
+                session,
+                spi::session_commands::SessionCommand::Seed {
+                    id: command.to_string(),
+                    messages,
+                },
+            )
+            .await?,
+        )
+        .map_err(|e| spi::error::AgentLoopError::store(e.to_string()))
+    }
     /// Capture a read boundary and execution settings in one authority transaction.
     async fn query_snapshot(&self, session: SessionId) -> Result<SessionQuerySnapshot>;
     /// Resolve an opaque event identity without assuming UUID time order.
@@ -238,9 +288,29 @@ pub trait SessionHosting: Send + Sync + 'static {
         session: SessionId,
         command: uuid::Uuid,
         approvals: Vec<ApprovalCommit>,
-    ) -> Result<()>;
+    ) -> Result<()> {
+        self.command(
+            session,
+            spi::session_commands::SessionCommand::Approve {
+                id: command.to_string(),
+                approvals,
+            },
+        )
+        .await
+        .map(|_| ())
+    }
     /// Same id and binding succeeds; conflicting reuse fails atomically.
-    async fn create(&self, session: SessionId, binding: &SessionBinding) -> Result<()>;
+    async fn create(&self, session: SessionId, binding: &SessionBinding) -> Result<()> {
+        self.command(
+            session,
+            spi::session_commands::SessionCommand::Create {
+                binding: serde_json::to_value(binding)
+                    .map_err(|e| spi::error::AgentLoopError::config(e.to_string()))?,
+            },
+        )
+        .await
+        .map(|_| ())
+    }
     /// Read binding and scheduling state.
     async fn status(&self, session: SessionId) -> Result<HostingStatus>;
     /// Commits the input, deduplicated receipt and wakeup obligation together.
@@ -249,7 +319,19 @@ pub trait SessionHosting: Send + Sync + 'static {
         session: SessionId,
         message: RuntimeMessage,
         cancelled: bool,
-    ) -> Result<AdmissionReceipt>;
+    ) -> Result<AdmissionReceipt> {
+        serde_json::from_value(
+            self.command(
+                session,
+                spi::session_commands::SessionCommand::Admit {
+                    message: Box::new(message),
+                    cancelled,
+                },
+            )
+            .await?,
+        )
+        .map_err(|e| spi::error::AgentLoopError::store(e.to_string()))
+    }
     /// Reopen an accepted command without submitting its payload again.
     async fn receipt(
         &self,
@@ -267,10 +349,35 @@ pub trait SessionHosting: Send + Sync + 'static {
         command: uuid::Uuid,
         target: TurnId,
         results: Vec<ToolCompletedData>,
-    ) -> Result<()>;
+    ) -> Result<()> {
+        self.command(
+            session,
+            spi::session_commands::SessionCommand::Resolve {
+                id: command.to_string(),
+                turn: target,
+                results,
+            },
+        )
+        .await
+        .map(|_| ())
+    }
     /// Target a retained admission, never whichever turn happens to run later.
-    async fn cancel(&self, session: SessionId, command: uuid::Uuid, input: MessageId)
-    -> Result<()>;
+    async fn cancel(
+        &self,
+        session: SessionId,
+        command: uuid::Uuid,
+        input: MessageId,
+    ) -> Result<()> {
+        self.command(
+            session,
+            spi::session_commands::SessionCommand::Cancel {
+                id: command.to_string(),
+                input,
+            },
+        )
+        .await
+        .map(|_| ())
+    }
     /// Acquire a known session using the authority clock and monotonically increasing epoch.
     async fn claim(
         &self,

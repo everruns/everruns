@@ -1,6 +1,7 @@
 {
   "name":"serve-celld-engine-external",
   "main":"src/index.js",
+  "build":{"command":"bash ../../../../crates/durable-object/worker/build-authority.sh"},
   "compatibility_date":"2026-09-01",
   "compatibility_flags":["nodejs_compat"],
   "vars":{"TENANT_ID":"example","SERVE_URL":"http://127.0.0.1:8080"},
