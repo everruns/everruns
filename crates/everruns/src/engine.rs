@@ -26,6 +26,9 @@ use crate::{
 };
 
 mod hosting;
+mod session_overlay;
+
+pub(crate) use session_overlay::reconcile_session_record;
 
 /// The runtime resources owned by an [`Engine`].
 pub(crate) struct EngineBackends {
@@ -663,21 +666,6 @@ impl WeakEngine {
     pub(crate) fn is(&self, engine: &Engine) -> bool {
         std::ptr::eq(self.0.as_ptr(), Arc::as_ptr(&engine.inner))
     }
-}
-
-/// A runtime rebuilt for a cataloged session keeps the catalog's parent,
-/// title and goal, so a thread stays linked to its coordinator.
-pub(crate) async fn keep_catalog_fields(
-    store: &dyn everruns_core::host::RuntimeSessionStore,
-    mut session: everruns_core::session::ExecutionSession,
-) -> everruns_core::session::ExecutionSession {
-    if let Ok(Some(existing)) = store.get_session(session.id).await {
-        session.parent_session_id = existing.parent_session_id;
-        session.title = session.title.or(existing.title);
-        session.goal = session.goal.or(existing.goal);
-        session.locale = session.locale.or(existing.locale);
-    }
-    session
 }
 
 /// Compatibility name for the application-owned process-local engine.

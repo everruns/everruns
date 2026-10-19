@@ -245,6 +245,17 @@ without rebuilding the runtime or replacing the session:
 host-storage boundary. Its default implementation fails closed, while the bundled
 in-memory runtime store implements both mutations atomically.
 
+The Framework Engine rebuilds a session's runtime from the trusted Agent on every
+attach, resume, inspection and restart, and must not reset that overlay. Agent
+capabilities therefore live only on the agent (and synthetic harness) layer, so
+the persisted session layer holds exactly the hot-enabled overlay: it survives
+reconstruction, a deactivated entry stays absent, and changing an Agent default
+reaches existing sessions instead of a pinned copy. Every other session-record
+field is either Agent/Engine-owned (re-derived, including association ids and
+MCP servers) or session-owned (persisted value wins). The field-by-field rules
+and the legacy-record caveat live in
+[`session_overlay.rs`](../../crates/everruns/src/engine/session_overlay.rs).
+
 ### Live registration
 
 Activation can only reach a capability the registry already knows. A host that
