@@ -36,7 +36,9 @@ pub struct ListCapabilities {
     /// Include capabilities that have been retired (removed but still
     /// referenceable). Off by default so catalogs and discovery surfaces do not
     /// advertise a capability that no longer does anything; management UIs turn
-    /// it on to explain existing attachments.
+    /// it on to explain existing attachments. The same switch keeps a capability
+    /// whose rollout flag is off, so those screens can still show its name,
+    /// description, and icon.
     #[serde(default)]
     pub include_retired: bool,
     #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
@@ -70,8 +72,14 @@ impl Command for ListCapabilities {
         let mut capabilities = ctx.capability_service.list_all(ctx.org_id()).await?;
 
         capabilities.retain(|capability| {
-            (self.include_retired || capability.status.is_listed())
-                && ctx
+            if !(self.include_retired || capability.status.is_listed()) {
+                return false;
+            }
+            // Discovery hides a capability whose rollout flag is off. Management
+            // reads pass `include_retired` so a harness or agent can name an
+            // attachment that discovery no longer lists.
+            self.include_retired
+                || ctx
                     .feature_flags
                     .is_capability_enabled(capability.id.as_str())
         });
@@ -88,6 +96,7 @@ impl Command for ListCapabilities {
             .into_iter()
             .skip(offset as usize)
             .take(limit as usize)
+            .map(annotate_feature_flag)
             .collect();
 
         Ok(Paginated {
@@ -125,17 +134,22 @@ impl Command for GetCapability {
     async fn execute(self, ctx: &Ctx) -> Result<CapabilityInfo, CommandError> {
         let cap_id = CapabilityId::new(&self.id);
 
-        if let Some(flag) = crate::records::FeatureFlags::required_for_capability(cap_id.as_str())
-            && !ctx.feature_flags.is_enabled(flag)
-        {
-            return Err(CommandError::feature_not_enabled(flag));
-        }
-
+        // Catalog metadata stays readable when a rollout flag is off. A harness
+        // can link to the capability and show its name and description. Enabling
+        // it on a write is still rejected.
         ctx.capability_service
             .get(ctx.org_id(), &cap_id)
             .await?
+            .map(annotate_feature_flag)
             .ok_or_else(|| CommandError::not_found("Capability"))
     }
+}
+
+fn annotate_feature_flag(mut capability: CapabilityInfo) -> CapabilityInfo {
+    capability.feature_flag =
+        crate::records::FeatureFlags::required_for_capability(capability.id.as_str())
+            .map(str::to_string);
+    capability
 }
 
 // ============================================================================

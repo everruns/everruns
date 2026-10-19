@@ -5656,7 +5656,7 @@
           {
             "name": "include_retired",
             "in": "query",
-            "description": "Include retired capabilities (default: false)",
+            "description": "Include retired capabilities and capabilities hidden by a rollout flag (default: false)",
             "required": false,
             "schema": {
               "type": "boolean"
@@ -34116,6 +34116,14 @@
             "description": "Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.",
             "example": "session_file_system"
           },
+          "feature_flag": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Rollout flag that gates this capability, when one is required.\nPresent whether or not the flag is on, so a management screen can name\nan attached capability and avoid offering it for new selection.",
+            "example": "skills"
+          },
           "features": {
             "type": "array",
             "items": {
@@ -45371,6 +45379,14 @@
                   "description": "Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.",
                   "example": "session_file_system"
                 },
+                "feature_flag": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Rollout flag that gates this capability, when one is required.\nPresent whether or not the flag is on, so a management screen can name\nan attached capability and avoid offering it for new selection.",
+                  "example": "skills"
+                },
                 "features": {
                   "type": "array",
                   "items": {
@@ -54839,6 +54855,14 @@
                       ],
                       "description": "Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.",
                       "example": "session_file_system"
+                    },
+                    "feature_flag": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Rollout flag that gates this capability, when one is required.\nPresent whether or not the flag is on, so a management screen can name\nan attached capability and avoid offering it for new selection.",
+                      "example": "skills"
                     },
                     "features": {
                       "type": "array",
@@ -69743,6 +69767,14 @@
                 ],
                 "description": "Slug under the [capability documentation](https://everruns.com/docs/capabilities/) when public docs exist.",
                 "example": "session_file_system"
+              },
+              "feature_flag": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Rollout flag that gates this capability, when one is required.\nPresent whether or not the flag is on, so a management screen can name\nan attached capability and avoid offering it for new selection.",
+                "example": "skills"
               },
               "features": {
                 "type": "array",

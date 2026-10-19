@@ -191,6 +191,7 @@ pub fn declarative_capability_info(
         agent_count: 0,
         harness_count: 0,
         docs_slug: None,
+        feature_flag: None,
         localizations: Default::default(),
     }
 }
@@ -247,6 +248,7 @@ pub fn plugin_capability_info(
         agent_count: 0,
         harness_count: 0,
         docs_slug: None,
+        feature_flag: None,
         localizations: Default::default(),
     }
 }

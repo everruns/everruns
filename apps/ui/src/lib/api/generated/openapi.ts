@@ -9663,6 +9663,13 @@ export interface components {
        */
       docs_slug?: string | null;
       /**
+       * @description Rollout flag that gates this capability, when one is required.
+       *     Present whether or not the flag is on, so a management screen can name
+       *     an attached capability and avoid offering it for new selection.
+       * @example skills
+       */
+      feature_flag?: string | null;
+      /**
        * @description UI feature strings this capability contributes to.
        *     Multiple capabilities can contribute the same feature.
        * @example [
@@ -16101,6 +16108,13 @@ export interface components {
          */
         docs_slug?: string | null;
         /**
+         * @description Rollout flag that gates this capability, when one is required.
+         *     Present whether or not the flag is on, so a management screen can name
+         *     an attached capability and avoid offering it for new selection.
+         * @example skills
+         */
+        feature_flag?: string | null;
+        /**
          * @description UI feature strings this capability contributes to.
          *     Multiple capabilities can contribute the same feature.
          * @example [
@@ -21327,6 +21341,13 @@ export interface components {
          * @example session_file_system
          */
         docs_slug?: string | null;
+        /**
+         * @description Rollout flag that gates this capability, when one is required.
+         *     Present whether or not the flag is on, so a management screen can name
+         *     an attached capability and avoid offering it for new selection.
+         * @example skills
+         */
+        feature_flag?: string | null;
         /**
          * @description UI feature strings this capability contributes to.
          *     Multiple capabilities can contribute the same feature.
@@ -29486,6 +29507,13 @@ export interface components {
        */
       docs_slug?: string | null;
       /**
+       * @description Rollout flag that gates this capability, when one is required.
+       *     Present whether or not the flag is on, so a management screen can name
+       *     an attached capability and avoid offering it for new selection.
+       * @example skills
+       */
+      feature_flag?: string | null;
+      /**
        * @description UI feature strings this capability contributes to.
        *     Multiple capabilities can contribute the same feature.
        * @example [
@@ -34567,7 +34595,7 @@ export interface operations {
         offset?: number;
         /** @description Page size (default: 20, max: 100) */
         limit?: number;
-        /** @description Include retired capabilities (default: false) */
+        /** @description Include retired capabilities and capabilities hidden by a rollout flag (default: false) */
         include_retired?: boolean;
       };
       header?: never;

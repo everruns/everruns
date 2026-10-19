@@ -76,6 +76,11 @@ export function useFeatureFlags(): FeatureFlags {
   return useFeatureFlagsState().flags;
 }
 
+/** Null outside the provider, so catalog pickers can render in isolation. */
+export function useOptionalFeatureFlags(): FeatureFlagsContextValue | null {
+  return useContext(FeatureFlagsContext) ?? null;
+}
+
 export function useFeatureFlagsState(): FeatureFlagsContextValue {
   const context = useContext(FeatureFlagsContext);
   if (context === undefined) {
