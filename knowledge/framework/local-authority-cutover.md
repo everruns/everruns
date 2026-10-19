@@ -99,15 +99,16 @@ noted.
 | Interrupted/retried/conflicting cutover, no duplicate work, no automatic fallback | Frozen by marker and lease fence | One transaction, replay on retry | **passes** |
 | Rewind/redo of active history and compaction under the authority while quiescent | Not in this repository: neither lane has a rewind contract | None | **missing** |
 | Workspace restore keeps its own confirmation and snapshot policy | Separate workspace checkpoint API | Unchanged | not affected; restore stays separate |
-| Background tools, monitors, child sessions, coordination: obligations, permissions, provenance, delivery dedup | Durable local task registry, `EngineHub` coordination, schedule runner | [Authority task services](../../crates/everruns/src/hosting/sqlite/services.rs): the local task registry and recovery over the authority file, child sessions of the same build with a durable parent link, wakes as task-derived admissions, fenced re-attach or conservative settlement after owner loss | **passes** for tasks, child sessions and coordination; **partial**: schedules refuse cutover |
+| Background tools, monitors, child sessions, coordination: obligations, permissions, provenance, delivery dedup | Durable local task registry, `EngineHub` coordination, schedule runner | [Authority task services](../../crates/everruns/src/hosting/sqlite/services.rs): the local task registry and recovery over the authority file, child sessions of the same build with a durable parent link, wakes as task-derived admissions, fenced re-attach or conservative settlement after owner loss | **passes**, schedules included |
 | JSONL is the legacy authority before cutover or a rebuildable export after | JSONL is the authority | Never written after cutover; [rebuilt from one authority snapshot](../../crates/everruns/src/hosting/sqlite/export.rs) in the `JsonlEventLog` format | **passes** |
 | Probe: admission before response loss | | Retried id replays; supervision completes | **passes** |
 | Probe: activation/restart | | New connection and Engine reopen identical state | **passes** |
 | Probe: expired-epoch writes | | Stale epoch writes refused on an imported session | **passes** |
 | Probe: pending approval/tool results | | Parked client calls and durable approvals resolve once | **passes** |
-| Probe: wake recovery | | Approval deadlines become authority wakeups | **partial**: legacy schedules refuse cutover |
+| Probe: wake recovery | | Approval deadlines become authority wakeups; imported schedules fire from the supervisor as admissions | **passes** |
 | Probe: interrupted import | | Nothing committed, legacy stays frozen, explicit abandon only | **passes** |
 | Uncertain external effects not replayed | | Interrupted at-most-once call never runs again | **passes** |
+| Host surfaces on Engine | `LocalConfig`/custom-backend facade | serve on the native authority; [AG-UI hosted threads](../../crates/everruns/src/ag_ui/threads.rs); coordination through authority child sessions | **passes**, except serve's migration of pre-hosting data |
 | Retire the facade actor only after all host surfaces pass | | | **blocked** by the missing rows |
 
 ## Retirement gate
@@ -115,19 +116,46 @@ noted.
 Retire the legacy facade actor, and the `Engine::create` path that selects it,
 only when each item holds on the revision being released:
 
-1. **Rewind/redo under the authority.** A quiescent session command that moves
-   the active head and selects compaction checkpoints at or before it, keeping
-   abandoned history in the journal and refusing while admissions or waits are
-   outstanding. Blocker: the Framework and Core have no rewind contract today
-   (rewind lives in the downstream consumer), so this needs a canonical
-   event/command design across the contracts crate, the conversation fold and
-   the SQLite and memory reducers.
-2. **Schedules through Engine.** A schedule store and runner over the
-   authority, firing as admissions, so sessions with active schedules cut over
-   instead of refusing. Tasks, child sessions and coordination already run
-   through the authority.
-3. **Every host surface on Engine.** serve, AG-UI threads and the coordination
-   hub reach sessions only through hosting.
+1. **Rewind/redo under the authority.** Blocked on the owner's decision on
+   branch-selection semantics (proposal below). Neither lane in this
+   repository has a rewind contract today; the downstream consumer owns it.
+2. **Migrate pre-hosting serve data.** serve already runs on the native
+   authority ([host](../../crates/serve/src/host.rs)), AG-UI threads have a
+   hosted mode, and coordination threads run through the authority's child
+   sessions. serve does not yet cut over session data written under
+   `data_dir/everruns` by releases that predate its native authority; until a
+   startup migration exists, such sessions are moved with
+   `Engine::cut_over_legacy_session` one by one.
+
+### Proposal for rewind and redo (needs an owner decision)
+
+The journal stays append-only; a rewind selects which prefix is active.
+
+- **Command.** `Rewind { id, to: <event sequence of a turn boundary> }` runs in
+  the shared session-command reducer. It is accepted only while quiescent: no
+  live epoch, no open turn, no pending call or approval, no queued admission.
+  Otherwise it is refused, never queued behind work.
+- **Canonical record.** It appends one `history.rewound` event naming the
+  active head (`to`) and the head it replaces (`from`). Folding the journal
+  into model history skips every event in the replaced range. Nothing is
+  deleted, so the abandoned branch stays readable and exportable.
+- **Redo.** Redo is a rewind whose `to` is the head of an abandoned branch,
+  allowed only while nothing has been admitted on the active branch since
+  that rewind. Admitting new input on a rewound head makes the abandoned branch
+  final; it remains in history, but it is no longer redoable.
+- **Compaction.** Checkpoints carry a source sequence. After a rewind, only
+  checkpoints whose source is at or before `to` on the active branch are used;
+  later ones are ignored, not deleted, so a redo can use them again.
+- **Admissions and waits.** Receipts and outcomes of rewound turns stay
+  readable. A retried command id from the abandoned branch replays its
+  original receipt; it does not run again on the new branch.
+- **Workspace.** Rewind never changes files. Restoring a workspace checkpoint
+  is a separate, confirmed operation with its own snapshot policy.
+
+The owner needs to decide whether redo stays available after new input,
+whether rewind may cross a compaction boundary, and how clients present
+abandoned branches. The `history.rewound` event is a public contract change
+(OpenAPI, SDKs, UI).
 
 A lower-level Core host still exists for platform hosts; retiring the facade
 lane does not remove it, and is a separate claim from whether an application can

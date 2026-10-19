@@ -70,6 +70,7 @@ pub enum WakePolicy {
 /// A request for session-owned work.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TaskRequest {
+    causal_context: crate::CausalContext,
     kind: String,
     input: Value,
     schedule: WorkSchedule,
@@ -78,6 +79,28 @@ pub struct TaskRequest {
 }
 
 impl TaskRequest {
+    /// Retain validated caller identities with the task and its completion wake.
+    pub fn with_causal_context(mut self, context: crate::CausalContext) -> Self {
+        self.causal_context = context;
+        self
+    }
+
+    /// Identities a custom backend must retain with the submitted task.
+    pub fn causal_context(&self) -> &crate::CausalContext {
+        &self.causal_context
+    }
+
+    /// Compare business fields for idempotency, excluding causal hints.
+    /// A retry retains the first committed context. Custom backends should
+    /// use this comparison when deciding whether to return an existing record.
+    pub fn same_submission_as(&self, other: &Self) -> bool {
+        self.kind == other.kind
+            && self.input == other.input
+            && self.schedule == other.schedule
+            && self.idempotency_key == other.idempotency_key
+            && self.wake_policy == other.wake_policy
+    }
+
     /// Create an immediate work request for an application-defined `kind`.
     ///
     /// `kind` is routing metadata for the application's worker. It must not be
@@ -86,6 +109,7 @@ impl TaskRequest {
         Self {
             kind: kind.into(),
             input: input.into(),
+            causal_context: Default::default(),
             schedule: WorkSchedule::Immediate,
             idempotency_key: None,
             wake_policy: WakePolicy::Never,
@@ -221,6 +245,8 @@ impl TaskOutcome {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct Task {
+    /// Validated causes retained from the first accepted submission.
+    pub causal_context: crate::CausalContext,
     /// Opaque stable task identifier. Use it to deduplicate handler effects.
     pub id: String,
     /// Opaque identifier of the owning Everruns session.
@@ -268,6 +294,7 @@ impl Task {
             session_id: session_id.into(),
             kind: request.kind.clone(),
             input: request.input.clone(),
+            causal_context: request.causal_context.clone(),
             state: TaskState::Pending,
             cancel_requested_at: None,
             idempotency_key: request.idempotency_key.clone(),
@@ -353,6 +380,8 @@ pub enum WakeReason {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct SessionWake {
+    /// Validated causes retained with the direct request or originating task.
+    pub causal_context: crate::CausalContext,
     /// Opaque stable wake identifier.
     pub id: String,
     /// Opaque identifier of the session to wake.
@@ -379,6 +408,7 @@ impl SessionWake {
         Self {
             id: id.into(),
             session_id: session_id.into(),
+            causal_context: request.causal_context.clone(),
             reason: WakeReason::Requested {
                 payload: request.payload.clone(),
             },
@@ -402,6 +432,7 @@ impl SessionWake {
         Some(Self {
             id: id.into(),
             session_id: task.session_id.clone(),
+            causal_context: task.causal_context.clone(),
             reason: WakeReason::TaskFinished {
                 task_id: task.id.clone(),
                 state: task.state,
@@ -416,16 +447,36 @@ impl SessionWake {
 /// A request to wake a session immediately.
 #[derive(Clone, Debug, PartialEq)]
 pub struct WakeRequest {
+    causal_context: crate::CausalContext,
     payload: Value,
     idempotency_key: Option<String>,
 }
 
 impl WakeRequest {
+    /// Retain validated caller identities with this wake request.
+    pub fn with_causal_context(mut self, context: crate::CausalContext) -> Self {
+        self.causal_context = context;
+        self
+    }
+
+    /// Identities a custom backend must retain with the wake.
+    pub fn causal_context(&self) -> &crate::CausalContext {
+        &self.causal_context
+    }
+
+    /// Compare business fields for idempotency, excluding causal hints.
+    /// A retry retains the first committed context. Custom backends should
+    /// use this comparison when deciding whether to return an existing record.
+    pub fn same_submission_as(&self, other: &Self) -> bool {
+        self.payload == other.payload && self.idempotency_key == other.idempotency_key
+    }
+
     /// Create an immediate wake carrying application-defined JSON data.
     pub fn new(payload: impl Into<Value>) -> Self {
         Self {
             payload: payload.into(),
             idempotency_key: None,
+            causal_context: Default::default(),
         }
     }
 
@@ -964,7 +1015,7 @@ impl WorkBackend for InMemoryWorkBackend {
                     .tasks
                     .get(task_id)
                     .expect("key references stored task");
-                if stored.request == request {
+                if stored.request.same_submission_as(&request) {
                     return Ok(stored.task.clone());
                 }
                 return Err(WorkError::IdempotencyConflict { key: key.clone() });
@@ -1150,7 +1201,11 @@ impl WorkBackend for InMemoryWorkBackend {
                     .wakes
                     .get(wake_id)
                     .expect("key references stored wake");
-                if stored.request.as_ref() == Some(&request) {
+                if stored
+                    .request
+                    .as_ref()
+                    .is_some_and(|stored| stored.same_submission_as(&request))
+                {
                     return Ok(stored.wake.clone());
                 }
                 return Err(WorkError::IdempotencyConflict { key: key.clone() });

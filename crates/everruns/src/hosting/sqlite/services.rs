@@ -19,7 +19,8 @@
 //!   executor re-attaches only work it declares safe to run again.
 use super::*;
 use crate::local::{
-    LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, LocalTaskRecovery, SqliteDb,
+    LocalPlatformStore, LocalScheduleRunner, LocalScheduleRunnerHandle, LocalScheduleStore,
+    LocalSessionRunner, LocalSessionTaskRegistry, LocalTaskRecovery, SqliteDb,
 };
 use everruns_capabilities::capabilities::coordination::{
     THREAD_RESOLVED_DETAIL, ThreadTurn, settle_thread_turn,
@@ -40,8 +41,17 @@ const MAX_REATTACH_ATTEMPTS: i32 = 3;
 /// Stable namespace for wake admission identities.
 const WAKE_NAMESPACE: uuid::Uuid = uuid::Uuid::from_u128(0x6576_6572_7275_6e73_7461_736b_7761_6b65);
 
-/// Task services sharing the authority database file.
+/// Internal org of hosted sessions; the runtime scopes schedules by it.
+pub(crate) const AUTHORITY_ORG: i64 = everruns_contracts::runtime::organization::DEFAULT_ORG_ID;
+
+/// Principal stamped on schedules, as for the default local profile.
+fn schedule_owner() -> everruns_contracts::typed_id::PrincipalId {
+    everruns_contracts::typed_id::PrincipalId::from_seed(1)
+}
+
+/// Task and schedule services sharing the authority database file.
 pub(super) struct AuthorityServices {
+    db: SqliteDb,
     pub(super) registry: Arc<LocalSessionTaskRegistry>,
     pub(super) recovery: Arc<LocalTaskRecovery>,
 }
@@ -50,8 +60,29 @@ impl AuthorityServices {
     pub(super) fn open(path: &Path) -> Result<Self> {
         let db = SqliteDb::open(path).map_err(AgentLoopError::from)?;
         let registry = Arc::new(LocalSessionTaskRegistry::new(db.clone())?);
-        let recovery = Arc::new(LocalTaskRecovery::new(db, registry.clone()));
-        Ok(Self { registry, recovery })
+        let recovery = Arc::new(LocalTaskRecovery::new(db.clone(), registry.clone()));
+        // Creates the schedule tables, so a cutover can write rows into them.
+        LocalScheduleStore::new(db.clone(), AUTHORITY_ORG, schedule_owner())?;
+        Ok(Self {
+            db,
+            registry,
+            recovery,
+        })
+    }
+
+    /// Schedules of one org. With a journal, the store records timers in the
+    /// session log; the runner's store has none, since a delivery is itself
+    /// an admission in that log.
+    fn schedules(
+        &self,
+        org: i64,
+        journal: Option<Arc<dyn everruns_core::host::EventLog>>,
+    ) -> LocalScheduleStore {
+        let store = LocalScheduleStore::scoped(self.db.clone(), org, schedule_owner());
+        match journal {
+            Some(journal) => store.with_journal(journal),
+            None => store,
+        }
     }
 }
 
@@ -114,9 +145,31 @@ impl SqliteHosting {
         self.reattach(session, environment, registry.clone(), store.clone())
             .await?;
         self.services.recovery.recover_session(session).await?;
+        // Schedule timers are journaled through this epoch's fenced log.
+        let services = self.services.clone();
+        let journal = backends.event_log.clone();
         Ok(backends
             .with_session_task_registry(registry)
-            .with_platform_store_factory(Arc::new(move |_, _| store.clone())))
+            .with_platform_store_factory(Arc::new(move |_, _| store.clone()))
+            .with_schedule_store_factory(Arc::new(move |org| {
+                Arc::new(services.schedules(org, Some(journal.clone())))
+                    as Arc<dyn everruns_core::session_services::SessionScheduleStore>
+            })))
+    }
+
+    /// Fire due schedules of hosted sessions as ordinary admissions.
+    pub(super) fn start_schedules(
+        &self,
+        engine: &crate::Engine,
+    ) -> Result<LocalScheduleRunnerHandle> {
+        let runner: Arc<dyn LocalSessionRunner> = Arc::new(HostedSessionRunner {
+            engine: engine.downgrade(),
+            hosting: self.clone(),
+            registry: self.task_registry(),
+        });
+        LocalScheduleRunner::new(self.services.schedules(AUTHORITY_ORG, None), runner)
+            .start()
+            .map_err(AgentLoopError::from)
     }
 
     /// Re-attach running tasks whose owner is proved gone, when their
@@ -173,7 +226,7 @@ impl SqliteHosting {
             else {
                 continue;
             };
-            let context = everruns_core::tool_context::ToolContext::with_file_store(
+            let mut context = everruns_core::tool_context::ToolContext::with_file_store(
                 session,
                 environment.workspace_head().file_system(),
             )
@@ -181,6 +234,11 @@ impl SqliteHosting {
             .with_subagent_delegate(Arc::new(
                 everruns_capabilities::PlatformStoreSubagentDelegate(store.clone()),
             ));
+            context.bind_to_turn_with_causal_context(
+                everruns_core::session_task::task_origin_event_context(&claimed)
+                    .unwrap_or_else(everruns_core::events::EventContext::empty),
+                everruns_core::causal::task_causal_context(&claimed),
+            );
             if let Err(error) = executor.start(&claimed, &context).await {
                 tracing::warn!(%session, task = %claimed.id, %error, "task re-attach failed");
                 self.services
@@ -279,6 +337,7 @@ impl TaskTransitionObserver for HostedWaker {
         let mut message = everruns_core::RuntimeMessage::user(text);
         message.id = MessageId::from_uuid(uuid::Uuid::new_v5(&WAKE_NAMESPACE, identity.as_bytes()));
         message.metadata = Some(everruns_core::message::task_wake_message_metadata());
+        everruns_core::causal::task_causal_context(task).write_metadata(&mut message.metadata);
         self.hosting.admit(task.session_id, message, false).await?;
         if let Some(engine) = self.engine.upgrade() {
             let session = task.session_id;
@@ -356,6 +415,16 @@ impl LocalSessionRunner for HostedSessionRunner {
     }
 
     async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()> {
+        self.send_message_with_causal_context(session_id, content, &crate::CausalContext::default())
+            .await
+    }
+
+    async fn send_message_with_causal_context(
+        &self,
+        session_id: SessionId,
+        content: &str,
+        causes: &crate::CausalContext,
+    ) -> Result<()> {
         let session = self
             .engine()?
             .resume(session_id)
@@ -371,7 +440,9 @@ impl LocalSessionRunner for HostedSessionRunner {
             )
             .await;
         }
-        let result = session.run(content).await;
+        let result = session
+            .run(crate::InputMessage::user(content).with_causal_context(causes))
+            .await;
         if let Some(coordinator) = coordinator {
             let turn = match &result {
                 Ok(turn) if turn.success => ThreadTurn::Completed,
@@ -469,7 +540,28 @@ mod tests {
             .create_session(HarnessId::new(), None, Some("Thread"), None, Some(parent))
             .await
             .unwrap();
-        runner.send_message(child.id, "work on it").await.unwrap();
+        let causes = crate::CausalContext::from_traceparents([
+            "00-1234567890abcdef1234567890abcdef-1234567890abcdef-00",
+        ]);
+        runner
+            .send_message_with_causal_context(child.id, "work on it", &causes)
+            .await
+            .unwrap();
+        let events = engine
+            .resume(child.id)
+            .await
+            .unwrap()
+            .events_after(0)
+            .await
+            .unwrap();
+        let input = events
+            .iter()
+            .find(|event| event.event_type() == "input.message")
+            .unwrap();
+        assert_eq!(
+            input.canonical_json()["data"]["message"]["metadata"]["everruns.causal_links"][0],
+            causes.links()[0].traceparent()
+        );
         assert_eq!(runner.get_messages(child.id, None).await.unwrap().len(), 2);
         assert_eq!(
             runner
@@ -505,5 +597,108 @@ mod tests {
             .unwrap();
         assert_eq!(record.parent_session_id, Some(parent));
         assert_eq!(record.title.as_deref(), Some("Thread"));
+    }
+}
+
+#[cfg(test)]
+mod causal_tests {
+    use super::*;
+    use everruns_core::host::{EventReadLimit, EventReadRequest};
+    use everruns_core::session_task::{CreateSessionTask, TaskWakePolicy};
+
+    #[tokio::test]
+    async fn causal_authority_recovery_wake_keeps_first_causes_across_restart_and_retry() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("wake.db");
+        let hosting = SqliteHosting::open(&path).unwrap();
+        let engine = crate::Engine::builder().hosting(hosting.clone()).build();
+        let session = SessionId::new();
+        hosting
+            .create(
+                session,
+                &crate::hosting::SessionBinding {
+                    framework: 1,
+                    behavior: crate::hosting::AgentBuild::new("assistant", "v1"),
+                    harness: None,
+                    environment: None,
+                    metadata: Value::Null,
+                },
+            )
+            .await
+            .unwrap();
+        let causes = crate::CausalContext::from_traceparents([
+            "00-1234567890abcdef1234567890abcdef-1234567890abcdef-00",
+        ]);
+        let mut spec = serde_json::json!({});
+        causes.write_task_context(&mut spec);
+        let task = hosting
+            .services
+            .registry
+            .create(CreateSessionTask {
+                session_id: session,
+                kind: TASK_KIND_ASSIGNMENT.into(),
+                id: None,
+                display_name: "done".into(),
+                spec,
+                state: SessionTaskState::Succeeded,
+                links: Default::default(),
+                wake_policy: TaskWakePolicy::OnTerminal,
+            })
+            .await
+            .unwrap();
+        let waker = HostedWaker::new(&engine, hosting.clone(), true);
+        drop(engine); // Commit admissions without starting a replacement turn.
+        waker
+            .on_transition(&task, TaskTransition::Terminal)
+            .await
+            .unwrap();
+        drop(waker);
+        drop(hosting);
+
+        let reopened = SqliteHosting::open(&path).unwrap();
+        let engine = crate::Engine::builder().hosting(reopened.clone()).build();
+        let waker = HostedWaker::new(&engine, reopened.clone(), true);
+        drop(engine);
+        let mut retried = reopened
+            .services
+            .registry
+            .get(session, &task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        crate::CausalContext::from_traceparents([
+            "00-2234567890abcdef1234567890abcdef-2234567890abcdef-00",
+        ])
+        .write_task_context(&mut retried.spec);
+        waker
+            .on_transition(&retried, TaskTransition::Terminal)
+            .await
+            .unwrap();
+        let page = reopened
+            .reader(session)
+            .event_log
+            .read_page(EventReadRequest::new(
+                session,
+                EventReadLimit::new(100).unwrap(),
+            ))
+            .await
+            .unwrap();
+        let inputs: Vec<_> = page
+            .events
+            .iter()
+            .filter_map(|event| match &event.data {
+                EventData::InputMessage(data) => Some(&data.message),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            inputs.len(),
+            1,
+            "a retried wake must reuse its committed admission"
+        );
+        assert_eq!(
+            crate::CausalContext::from_metadata(inputs[0].metadata.as_ref()),
+            causes
+        );
     }
 }

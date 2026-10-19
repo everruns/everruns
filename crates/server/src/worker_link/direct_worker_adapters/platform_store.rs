@@ -186,6 +186,16 @@ impl everruns_capabilities::PlatformStore for DirectPlatformStore {
         session_id: SessionId,
         content: &str,
     ) -> everruns_contracts::error::Result<()> {
+        self.send_message_with_causal_context(session_id, content, &Default::default())
+            .await
+    }
+
+    async fn send_message_with_causal_context(
+        &self,
+        session_id: SessionId,
+        content: &str,
+        causes: &everruns_contracts::runtime::causal::CausalContext,
+    ) -> everruns_contracts::error::Result<()> {
         let _: serde_json::Value = self
             .execute_domain_command(
                 "create_message",
@@ -194,6 +204,7 @@ impl everruns_capabilities::PlatformStore for DirectPlatformStore {
                     "message": {
                         "content": [{ "type": "text", "text": content }],
                     },
+                    "metadata": causes.event_metadata(),
                 }),
             )
             .await?;

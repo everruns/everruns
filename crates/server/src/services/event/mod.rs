@@ -268,6 +268,16 @@ impl EventService {
         self.attach_session_participant_metadata(request).await;
         self.attach_service_mcp_provenance(request).await?;
         Self::validate_event_type_consistency(request)?;
+        for listener in self.listeners.iter() {
+            if let Ok(Some(carrier)) =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    listener.prepare_causal_context(request)
+                }))
+            {
+                everruns_core::causal::attach_turn_trace(request, &carrier);
+                break;
+            }
+        }
         Ok(())
     }
 
@@ -860,6 +870,32 @@ impl EventService {
 /// emit through the same persistence + delivery path as the worker.
 #[async_trait::async_trait]
 impl everruns_core::event_emitter::EventEmitter for EventService {
+    fn turn_causal_context(
+        &self,
+        context: &everruns_core::events::EventContext,
+    ) -> everruns_core::causal::CausalContext {
+        let mut causes = everruns_core::causal::CausalContext::default();
+        for listener in self.listeners.iter() {
+            if let Ok(value) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                listener.turn_causal_context(context)
+            })) {
+                causes.merge(&value);
+            }
+        }
+        causes
+    }
+    fn restore_turn_context(
+        &self,
+        context: &everruns_core::events::EventContext,
+        metadata: Option<&serde_json::Value>,
+    ) {
+        for listener in self.listeners.iter() {
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                listener.restore_turn_context(context, metadata)
+            }));
+        }
+    }
+
     async fn emit(
         &self,
         request: EventRequest,
