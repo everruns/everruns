@@ -56,6 +56,9 @@ export function applySessionCommand(j, state, session, tenant, command, reduce) 
     session,
     now_ms: j.now(),
     binding: state.binding ?? null,
+    execution_active: state.expires > j.now(),
+    suspended: state.suspended,
+    suspension_reason: state.last_error ?? null,
     head: state.head,
     open: state.open,
     pending: state.pending,
@@ -83,6 +86,15 @@ export function applySessionCommand(j, state, session, tenant, command, reduce) 
   for (const object of plan.objects) j.put(object.kind, object.key, object.value);
   for (const event of plan.events) j.append(state, event);
   switch (plan.control.kind) {
+    case "retry_execution":
+      state.suspended = false;
+      state.runnable = true;
+      state.holder = null;
+      state.expires = 0;
+      state.failures = 0;
+      state.retry_at = 0;
+      state.last_error = null;
+      break;
     case "admit":
       if (plan.control.cancelled) {
         state.target_cancels ??= {};

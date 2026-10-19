@@ -38,6 +38,11 @@ pub enum SessionCommand {
     Create {
         binding: Value,
     },
+    /// Retry restored code without migrating the immutable binding or resetting waits.
+    RetryExecution {
+        id: String,
+        binding: Value,
+    },
     Admit {
         message: Box<RuntimeMessage>,
         #[serde(default)]
@@ -91,6 +96,13 @@ pub struct CommandView {
     pub now_ms: i64,
     #[serde(default)]
     pub binding: Option<Value>,
+    /// Fail closed for adapters that have not captured the lease clock.
+    #[serde(default = "active_by_default")]
+    pub execution_active: bool,
+    #[serde(default)]
+    pub suspended: bool,
+    #[serde(default)]
+    pub suspension_reason: Option<String>,
     #[serde(default)]
     pub head: i32,
     #[serde(default)]
@@ -126,6 +138,9 @@ impl CommandView {
             session,
             now_ms,
             binding: None,
+            execution_active: true,
+            suspended: false,
+            suspension_reason: None,
             head: 0,
             open: None,
             pending: Vec::new(),
@@ -140,6 +155,10 @@ impl CommandView {
             rejected: false,
         }
     }
+}
+
+fn active_by_default() -> bool {
+    true
 }
 
 /// A transactional object write; `kind` is an authority storage namespace.
@@ -164,6 +183,7 @@ pub enum ControlUpdate {
         cancelled: bool,
     },
     Resume,
+    RetryExecution,
     Cancel {
         input: MessageId,
         interrupt: bool,
@@ -187,6 +207,7 @@ impl SessionCommand {
     pub fn key(&self) -> Option<String> {
         Some(match self {
             Self::Create { .. } => return None,
+            Self::RetryExecution { id, .. } => format!("execution_retry:{id}"),
             Self::Admit { message, .. } => message.id.to_string(),
             Self::Configure { id, .. } => format!("configuration:{id}"),
             Self::Seed { id, .. } => format!("seed:{id}"),
@@ -200,6 +221,7 @@ impl SessionCommand {
     pub fn fingerprint(&self) -> Value {
         match self {
             Self::Create { binding } => binding.clone(),
+            Self::RetryExecution { binding, .. } => binding.clone(),
             Self::Admit { message, cancelled } => {
                 let mut value = json!(message);
                 if let Some(object) = value.as_object_mut() {
@@ -270,6 +292,7 @@ pub fn prepare(
     };
     let identity = match &command {
         SessionCommand::Configure { id, .. }
+        | SessionCommand::RetryExecution { id, .. }
         | SessionCommand::Seed { id, .. }
         | SessionCommand::Approve { id, .. }
         | SessionCommand::SubmitApprovals { id, .. }
@@ -307,6 +330,35 @@ pub fn prepare(
     let now = UtcTimestamp::from_timestamp_millis(view.now_ms)
         .ok_or_else(|| invalid("invalid authority clock"))?;
     match command {
+        SessionCommand::RetryExecution { binding, .. } => {
+            // THREAT[TM-DURABLE-012]: this is a retry of restored trusted code,
+            // never a build migration or a way around uncertain external effects.
+            if view.binding.as_ref() != Some(&binding) {
+                return Err(CommandError::Conflict(
+                    "session binding changed before retry",
+                ));
+            }
+            if view.execution_active {
+                return Err(CommandError::Conflict("execution epoch is still active"));
+            }
+            if view.suspended {
+                if !matches!(
+                    view.suspension_reason.as_deref(),
+                    Some(
+                        "retained_build_unavailable"
+                            | "retained_configuration_unavailable"
+                            | "unsupported_runtime_version"
+                            | "incompatible_executor_build"
+                    )
+                ) {
+                    return Err(CommandError::Conflict(
+                        "suspension requires effect reconciliation",
+                    ));
+                }
+                plan.reply = json!({"retried_suspension":view.suspension_reason});
+                plan.control = ControlUpdate::RetryExecution;
+            }
+        }
         SessionCommand::Create { binding } => {
             for field in ["agent", "build_id"] {
                 let value = binding[field]

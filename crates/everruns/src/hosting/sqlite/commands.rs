@@ -18,6 +18,8 @@ impl SqliteHosting {
             let assignment=input.map(|input|object::<super::super::TurnAssignment>(tx,session,"framework",&format!("assignment/{input}"))).transpose()?.flatten().map(|a|a.turn_id);
             let view=CommandView {
                 session,now_ms:now() as i64,binding:state.binding.as_ref().map(|b|json!(b)),head:state.head,
+                execution_active:state.holder.is_some() && state.expires>now(),suspended:state.suspended,
+                suspension_reason:object::<Value>(tx,session,"framework","suspension")?.and_then(|v|v["reason"].as_str().map(str::to_owned)),
                 open:state.open.map(|(turn,input)|EventContext::turn(turn,input)),pending:state.pending.clone(),
                 configuration:object(tx,session,"framework","configuration")?.unwrap_or_default(),previous,
                 command_count:tx.query_row("SELECT count(*) FROM framework_commands WHERE session=?",[session.to_string()],|r|r.get::<_,i64>(0)).map_err(error)? as usize,
@@ -44,6 +46,7 @@ impl SqliteHosting {
                     state.inbox=i64::from(state.head);if state.next_input<=state.consumed{state.next_input=state.inbox;}state.runnable=true;
                 },
                 ControlUpdate::Resume=>{state.inbox=i64::from(state.head);state.resume_generation+=1;state.runnable=true;},
+                ControlUpdate::RetryExecution=>{state.suspended=false;state.runnable=true;state.holder=None;state.expires=0;},
                 ControlUpdate::Cancel{input,interrupt}=>{state.target_cancels.insert(input,state.inbox);if interrupt{state.cancel=Some(state.inbox);state.cancel_reported=false;state.runnable=true;}},
             }
             if let Some(key)=plan.key {retain_command(tx,session,&key,&plan.fingerprint,&plan.reply)?;}

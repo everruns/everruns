@@ -1,14 +1,16 @@
 import { fetchModel } from "./provider.js";
 import wasm from "../pkg/everruns_object_agent_bg.wasm";
-import { initSync, binding, run, request as sessionRequest } from "../pkg/everruns_object_agent.js";
+import { initSync, run, request as sessionRequest, session_command, session_command_key } from "../pkg/everruns_object_agent.js";
 import worker, {
   SessionAuthority as Base,
   authenticate, address, readJson, failure,
-} from "../../../crates/durable-object/worker/src/index.js";
+} from "../../../crates/durable-object/worker/src/service.js";
 import { runActivation } from "../../../crates/durable-object/worker/src/activation.js";
 import { objectPort } from "../../../crates/durable-object/worker/src/isolate.js";
 import { sessionApi } from "../../../crates/durable-object/worker/src/session-api.js";
+import { installSessionCommands } from "../../../crates/durable-object/worker/src/session-command.js";
 initSync({ module: wasm });
+installSessionCommands(session_command, session_command_key);
 
 export class SessionAuthority extends Base {
   async fetch(request) {
@@ -28,12 +30,8 @@ export class SessionAuthority extends Base {
   failure(error) { return failure(error); }
   async alarm() {
     return runActivation(this.authority, async (activation) => {
-      const expected = JSON.parse(binding());
-      if (
-        activation.binding.agent !== expected.agent ||
-        activation.binding.build_id !== expected.build_id
-      )
-        return 409;
+      // Engine selects the session's exact retained registration and validates
+      // the persisted runtime format. The host must not select "latest" here.
       const rpc = this.port(activation);
       await run(
         activation.tenant,

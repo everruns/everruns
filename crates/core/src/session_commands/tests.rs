@@ -211,3 +211,36 @@ fn a_command_cannot_reuse_another_payloads_receipt() {
         .contains("different input")
     );
 }
+
+#[test]
+fn restored_build_retry_is_fenced_binding_preserving_and_idempotent() {
+    let mut facts = view();
+    facts.execution_active = false;
+    facts.suspended = true;
+    facts.suspension_reason = Some("retained_build_unavailable".into());
+    let command = SessionCommand::RetryExecution {
+        id: "restore-v1".into(),
+        binding: facts.binding.clone().unwrap(),
+    };
+    let plan = prepare(command.clone(), facts.clone()).unwrap();
+    assert!(matches!(plan.control, ControlUpdate::RetryExecution));
+    assert!(plan.events.is_empty() && plan.objects.is_empty());
+    facts.execution_active = true;
+    assert!(prepare(command.clone(), facts.clone()).is_err());
+    facts.execution_active = false;
+    facts.binding.as_mut().unwrap()["build_id"] = json!("changed");
+    assert!(prepare(command.clone(), facts.clone()).is_err());
+    facts.binding = Some(command.fingerprint());
+    facts.suspension_reason = Some("uncertain_agent_start".into());
+    assert!(prepare(command.clone(), facts.clone()).is_err());
+    // A lost reply must replay even after execution restarts or a different
+    // suspension appears; it must not clear that later suspension.
+    facts.execution_active = true;
+    facts.previous = Some(CommandReceipt {
+        fingerprint: plan.fingerprint,
+        value: plan.reply.clone(),
+    });
+    let replay = prepare(command, facts).unwrap();
+    assert!(replay.replay && matches!(replay.control, ControlUpdate::None));
+    assert_eq!(replay.reply, plan.reply);
+}

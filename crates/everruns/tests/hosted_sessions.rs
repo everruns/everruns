@@ -23,6 +23,49 @@ fn engine(profile: impl SessionHosting, agent: Agent) -> Engine {
         .build()
 }
 
+#[tokio::test]
+async fn unsupported_runtime_format_suspends_before_executing_known_agent() {
+    let profile = MemoryHosting::default();
+    let engine = engine(profile.clone(), agent());
+    let id = SessionId::new();
+    profile
+        .create(
+            id,
+            &everruns::hosting::SessionBinding {
+                framework: u32::MAX,
+                behavior: build(),
+                harness: None,
+                environment: None,
+                metadata: serde_json::Value::Null,
+            },
+        )
+        .await
+        .unwrap();
+    let session = engine.resume(id).await.unwrap();
+    let admission = session
+        .send("must not run incompatible state")
+        .await
+        .unwrap();
+    assert!(matches!(admission.wait().await, Err(RunError::Suspended)));
+    assert_eq!(
+        engine
+            .session_status(id)
+            .await
+            .unwrap()
+            .suspension_reason
+            .as_deref(),
+        Some("unsupported_runtime_version")
+    );
+    assert!(
+        !session
+            .events_after(0)
+            .await
+            .unwrap()
+            .iter()
+            .any(|event| event.event_type() == "reason.started")
+    );
+}
+
 #[path = "support/session_hosting.rs"]
 mod session_hosting;
 use session_hosting::External;

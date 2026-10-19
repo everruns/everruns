@@ -178,7 +178,8 @@ impl Authority {
         Ok(())
     }
 
-    /// Retry an explicitly suspended activation after repairing its host/build.
+    /// Legacy low-level activation retry. Framework sessions refuse this
+    /// operation; use `Engine::retry_session` after restoring their exact build.
     pub async fn resume(&self) -> Result<()> {
         self.call::<Value>("resume", json!({})).await?;
         Ok(())

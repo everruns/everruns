@@ -17,6 +17,10 @@ const BUILD: &str = match option_env!("AGENT_BUILD_ID") {
     Some(id) => id,
     None => "counter-wasm-v1",
 };
+const MODEL: &str = match option_env!("AGENT_MODEL") {
+    Some(model) => model,
+    None => "gpt-6-luna",
+};
 #[wasm_bindgen]
 pub fn binding() -> String {
     json!({"agent":"counter","build_id":BUILD,"framework":1}).to_string()
@@ -28,6 +32,11 @@ fn engine(
     provider: Function,
     model: String,
 ) -> Result<everruns::Engine, JsValue> {
+    if model != MODEL {
+        return Err(JsValue::from_str(
+            "model differs from retained Agent build; rebuild with AGENT_MODEL",
+        ));
+    }
     let client = ObjectTransport::client(tenant, authority)
         .map_err(|_| JsValue::from_str("invalid object bridge"))?;
     let driver: Arc<dyn ChatDriver> = Arc::from(

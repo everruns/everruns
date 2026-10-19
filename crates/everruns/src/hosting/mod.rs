@@ -65,8 +65,51 @@ where
 pub struct AgentBuild {
     /// Application registration key.
     pub agent: String,
-    /// Retained executable/configuration version.
+    /// Retained Agent behavior/configuration version, independent of deployment
+    /// revisions and compatible Engine library upgrades.
     pub build_id: String,
+}
+
+/// Persisted Framework runtime format understood by this Engine. This is not
+/// a crate version or deployment digest; bump only for incompatible state changes.
+pub const SESSION_RUNTIME_VERSION: u32 = 1;
+
+/// Whether this Engine can reconstruct a session's exact retained behavior.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum SessionCompatibility {
+    /// The runtime format and all immutable registrations are available.
+    Available,
+    /// Restore this Agent registration; never substitute the latest build.
+    MissingBuild {
+        /// Exact Agent behavior required by the session.
+        required: AgentBuild,
+    },
+    /// Route to a compatible Engine or perform a separately checked migration.
+    UnsupportedRuntimeVersion {
+        /// Persisted format requested by the session.
+        required: u32,
+        /// Format this Engine understands.
+        supported: u32,
+    },
+    /// Restore the registered Harness or Environment definition.
+    ConfigurationUnavailable,
+}
+
+impl SessionCompatibility {
+    /// Whether activation can safely reconstruct the retained registration.
+    pub fn is_available(&self) -> bool {
+        matches!(self, Self::Available)
+    }
+
+    pub(crate) fn suspension_reason(&self) -> &'static str {
+        match self {
+            Self::Available => "compatible",
+            Self::MissingBuild { .. } => "retained_build_unavailable",
+            Self::UnsupportedRuntimeVersion { .. } => "unsupported_runtime_version",
+            Self::ConfigurationUnavailable => "retained_configuration_unavailable",
+        }
+    }
 }
 
 impl AgentBuild {
@@ -82,7 +125,8 @@ impl AgentBuild {
 /// Authoritative session binding. All optional configuration is immutable.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SessionBinding {
-    /// Framework hosting protocol version.
+    /// Persisted Framework runtime format, independent of Agent and deployment
+    /// versions. Existing version-one bindings remain readable unchanged.
     pub framework: u32,
     #[serde(flatten)]
     /// Registered executable behavior.

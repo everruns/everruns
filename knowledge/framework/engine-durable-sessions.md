@@ -224,8 +224,29 @@ Unsupported host requirements fail before creation/admission is acknowledged.
 Unavailable retained code produces a durable, visible suspension; it never
 selects the latest build silently. The reference pins behavior configuration as
 well as executable code; credential rotation stays host-owned and secret-free.
-Retain old builds or explicitly migrate the
-binding while no execution epoch is active, with a recorded migration decision.
+Deployment revision, immutable Agent behavior/configuration key, and persisted
+runtime format are separate identities. A compatible Engine can serve multiple
+retained Agent definitions in one binary; a framework rebuild alone must not mint
+a new Agent key. `SessionBinding.framework` is the persisted runtime format, not
+the library semver. Engine rejects unsupported formats before constructing runtime
+or dispatching effects, and exposes read-only typed compatibility diagnostics.
+
+The implemented continuity strategy is retained registrations. Restore the exact
+Agent/Harness/Environment and call the privileged `Engine::retry_session` with a
+retained command ID. Its shared Rust command checks the unchanged binding and no
+unexpired epoch in the authority transaction, then restores activation without
+changing accepted inputs, pending waits, cursor or journal. Lost replies replay
+before later-state validation and cannot clear a later suspension. Only explicit
+compatibility suspensions can retry; uncertain effects remain blocked. A failed
+compatibility activation releases its unused epoch without consuming input.
+The public conformance suite covers missing-code deployment, restoration beside a
+new build, original admission completion and retained mixed waits.
+
+No in-place build migration API is implemented. Future incompatible state/behavior
+migration must validate active execution, pending effects/waits and accepted inputs
+under fencing and retain its decision; simply changing a build ID is not migration.
+Keeping old frontend Worker revisions alone does not retain the executable Agent
+inside a session DO.
 
 Creation and attachment require asynchronous authority I/O. Prefer explicit
 async durable creation over pretending that a process-local allocation created
