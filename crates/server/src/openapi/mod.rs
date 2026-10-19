@@ -531,6 +531,13 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::mcp_url_consent::submit_elicitation_consent,
         api::question_answers::submit_question_answers,
         api::tool_approvals::submit_tool_approvals,
+        api::credentials::list,
+        api::credentials::create,
+        api::credentials::set_value,
+        api::credentials::revoke,
+        api::credentials::grants,
+        api::credentials::grant,
+        api::credentials::revoke_grant,
         // Skills
         api::skills::upload_skill,
         api::skills::validate_skill,

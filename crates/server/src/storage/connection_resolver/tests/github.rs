@@ -401,6 +401,19 @@ async fn an_everruns_app_row_mints_with_the_shared_key_only() {
         .unwrap()
         .unwrap();
     fixture.db.delete_github_app(app.id).await.unwrap();
+    let link = fixture
+        .db
+        .create_organization_connection(crate::storage::CreateOrganizationConnectionRow {
+            org_id: DEFAULT_ORG_ID,
+            name: "Shared App".into(),
+            provider: "github".into(),
+            connection_type: Some(crate::github_apps::EVERRUNS_APP_CONNECTION_TYPE.into()),
+            provider_username: Some("acme".into()),
+            installation_id: Some(SHARED_INSTALLATION),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
     fixture
         .db
         .upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
@@ -414,7 +427,7 @@ async fn an_everruns_app_row_mints_with_the_shared_key_only() {
             scopes: None,
             expires_at: None,
             installation_id: Some(SHARED_INSTALLATION),
-            provider_metadata: Some(serde_json::json!({ "org_connection_id": Uuid::now_v7() })),
+            provider_metadata: Some(serde_json::json!({ "org_connection_id": link.id })),
         })
         .await
         .unwrap();
@@ -447,4 +460,41 @@ async fn an_everruns_app_row_mints_with_the_shared_key_only() {
             .unwrap()
             .is_none()
     );
+    sqlx::query("UPDATE resource_grants SET revoked_at=now(),revision=revision+1 WHERE resource_id=$1 AND consumer_agent_id=$2").bind(link.id).bind(fixture.agent_id).execute(fixture.db.pool()).await.unwrap();
+    assert!(
+        resolve(&fixture, &github, McpServerActsAs::Service)
+            .await
+            .is_none(),
+        "a revoked organization link grant cannot mint another token"
+    );
+}
+
+#[tokio::test]
+async fn common_resource_revocation_blocks_the_next_native_github_mint() {
+    let (fixture, github) = github_setup(ATTENDED).await;
+    let resolver = github_resolver(&fixture, &github);
+    let access = GitHubAccess {
+        acts_as: everruns_core::McpServerActsAs::Service,
+        repositories: vec!["acme/app".into()],
+        permissions: std::collections::BTreeMap::from([("pull_requests".into(), "read".into())]),
+    };
+    let row = fixture
+        .db
+        .get_virtual_user_connection(fixture.identity_id, "github")
+        .await
+        .unwrap()
+        .unwrap();
+    sqlx::query("UPDATE resource_access SET revoked_at=now(),revision=revision+1 WHERE id=$1")
+        .bind(row.id)
+        .execute(fixture.db.pool())
+        .await
+        .unwrap();
+    assert!(
+        resolver
+            .get_github_token(fixture.session_id, &access)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(github.received_requests().await.unwrap().is_empty());
 }

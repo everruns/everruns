@@ -31,6 +31,11 @@ pub(crate) struct RevealAwareStorage {
 
 #[async_trait]
 impl SessionStorageStore for RevealAwareStorage {
+    fn credential_service(
+        &self,
+    ) -> Option<Arc<dyn everruns_contracts::runtime::credential_services::CredentialService>> {
+        self.inner.credential_service()
+    }
     async fn set_value(&self, session_id: SessionId, key: &str, value: &str) -> Result<()> {
         self.inner.set_value(session_id, key, value).await?;
         if key.starts_with(DEFERRED_MCP_REVEAL_KV_PREFIX) {

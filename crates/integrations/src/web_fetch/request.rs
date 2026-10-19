@@ -45,6 +45,9 @@ const RESERVED_HEADERS: [&str; 6] = [
 
 /// Whether these arguments need the raw path rather than FetchKit.
 pub(super) fn is_raw(arguments: &Value) -> bool {
+    if super::credentials::needed(arguments) {
+        return true;
+    }
     let method_is_raw = arguments
         .get("method")
         .and_then(Value::as_str)
@@ -97,6 +100,21 @@ pub(super) fn extend_schema(mut schema: Value) -> Value {
             "description": "Form fields sent as application/x-www-form-urlencoded."
         }),
     );
+    properties.insert("credential_usage".into(),json!({"type":"string","enum":["user","service"],"default":"service","description":"Whose authorized credentials to use. user is the verified person invoking this turn; service is the responding agent. Never falls back to another identity."}));
+    properties.insert("capture_secrets".into(),json!({
+        "type":"array","minItems":1,"maxItems":8,
+        "description":"Capture JSON response credentials before the model sees them. All captures are atomic. Persistent scopes and cross-origin destinations require a secure consent card before the request is sent. Use headers/form $NAME references in later calls.",
+        "items":{"type":"object","additionalProperties":false,"required":["name","from","scope","binding"],"properties":{
+            "name":{"type":"string","pattern":"^[A-Za-z_][A-Za-z0-9_]{0,127}$"},
+            "from":{"type":"string","description":"JSON pointer to a nonempty secret string, e.g. /access_token."},
+            "scope":{"type":"string","enum":["session","agent","virtual_user","organization"]},
+            "binding":{"type":"object","additionalProperties":false,"required":["url","auth"],"properties":{
+                "url":{"type":"string","description":"Approved HTTPS destination, optionally with a path prefix. Same issuer origin by default; another origin requires explicit consent."},
+                "auth":{"oneOf":[{"type":"object","additionalProperties":false,"required":["type"],"properties":{"type":{"const":"bearer"}}},{"type":"object","additionalProperties":false,"required":["type","name"],"properties":{"type":{"enum":["header","form_field"]},"name":{"type":"string"}}}]}}},
+            "expires_in_from":{"type":"string","description":"JSON pointer to a positive integer lifetime in seconds."},
+            "expires_at_from":{"type":"string","description":"JSON pointer to an RFC 3339 expiry. Choose at most one expiry source."}
+        }}
+    }));
     schema
 }
 
@@ -104,16 +122,18 @@ pub(super) fn extend_schema(mut schema: Value) -> Value {
 pub(super) const DESCRIPTION_SUFFIX: &str = "\n\nAlso sends API requests: set method \
 (POST, PUT, PATCH, DELETE), headers, and one of body, json or form. Use this to follow a \
 service's own instructions for agents, such as an auth.md registration or an OAuth token \
-request. Treat returned credentials as secrets: do not repeat them to the user.";
+request. Declare capture_secrets for every expected credential field before fetching it. \
+Use $NAME references in approved headers or named form fields; the platform injects values \
+without disclosing them. Persistent storage requires explicit secure consent.";
 
-struct RawRequest {
-    method: String,
-    url: String,
-    headers: Vec<(String, String)>,
-    body: Option<Vec<u8>>,
+pub(super) struct RawRequest {
+    pub(super) method: String,
+    pub(super) url: String,
+    pub(super) headers: Vec<(String, String)>,
+    pub(super) body: Option<Vec<u8>>,
 }
 
-fn parse(arguments: &Value) -> Result<RawRequest, String> {
+pub(super) fn parse(arguments: &Value) -> Result<RawRequest, String> {
     let url = arguments
         .get("url")
         .and_then(Value::as_str)
@@ -137,6 +157,7 @@ fn parse(arguments: &Value) -> Result<RawRequest, String> {
     };
 
     let mut headers = Vec::new();
+    let mut header_names = std::collections::HashSet::new();
     match arguments.get("headers") {
         None | Some(Value::Null) => {}
         Some(Value::Object(map)) => {
@@ -144,6 +165,9 @@ fn parse(arguments: &Value) -> Result<RawRequest, String> {
                 return Err(format!("Too many headers: at most {MAX_HEADERS}"));
             }
             for (name, value) in map {
+                if !header_names.insert(name.to_ascii_lowercase()) {
+                    return Err("Duplicate header names are not allowed".into());
+                }
                 let Value::String(value) = value else {
                     return Err(format!("Header {name} must be a string"));
                 };
@@ -244,6 +268,9 @@ pub(super) async fn execute(
     context: Option<&ToolContext>,
     system_policy: Option<&SystemEgressPolicy>,
 ) -> ToolExecutionResult {
+    if super::credentials::needed(arguments) {
+        return super::credentials::execute(arguments, context, system_policy).await;
+    }
     let request = match parse(arguments) {
         Ok(request) => request,
         Err(message) => return ToolExecutionResult::tool_error(message),

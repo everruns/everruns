@@ -1,5 +1,6 @@
 "use client";
 
+import { SessionCredentialsDialog } from "@/components/credentials/session-credentials-dialog";
 import { AgentIcon } from "@/components/icons/facet-icons";
 import type { ComponentType } from "react";
 import Link from "next/link";
@@ -257,6 +258,7 @@ function SessionRecordingActions({
         platformChat={platformChat}
       />
 
+      <SessionCredentialsDialog sessionId={sessionId} />
       <DropdownMenu>
         <DropdownMenuTrigger
           className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}

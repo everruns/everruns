@@ -51,4 +51,3 @@ crates/integrations/src/daytona/client.rs
 crates/integrations/src/daytona/tools.rs
 crates/integrations/src/filesystem/mod.rs
 crates/integrations/src/lua/mod.rs
-crates/integrations/src/web_fetch/mod.rs

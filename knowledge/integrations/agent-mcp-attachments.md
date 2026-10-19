@@ -41,7 +41,8 @@ Four overlapping ways to reach an MCP server exist (`mcp-servers.md`):
 1. Org `mcp_servers` rows, attached to an agent as capability `mcp:{uuid}`.
 2. Scoped `mcpServers` maps on harness/agent/session.
 3. Capability-contributed servers (`collect_capability_mcp_servers`).
-4. Agent-bound tool-parameter credentials (`agent_mcp_secret_bindings`).
+4. Scoped tool-parameter credentials (`credential_bindings`), governed by the
+   [common resource access contract](../security/resource-access.md).
 
 Each carries different, implicit identity semantics:
 

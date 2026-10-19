@@ -10,6 +10,15 @@
             "description": "Bash commands to execute",
             "type": "string"
           },
+          "credential_usage": {
+            "default": "service",
+            "description": "Use authorized service credentials, or the verified invoking user’s private credentials. No identity fallback.",
+            "enum": [
+              "user",
+              "service"
+            ],
+            "type": "string"
+          },
           "output": {
             "default": "auto",
             "description": "Output verbosity: auto (default — compact summary on success, ~8KiB on failure for diagnostics), silent (~200B), concise (~2KiB), normal (~8KiB), verbose (~16KiB), full (unlimited, capped by 64KiB hard limit). For tools with output persistence enabled, full output is saved to /outputs/{tool_call_id}.stdout and /outputs/{tool_call_id}.stderr — use read_file to retrieve.",

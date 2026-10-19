@@ -20,10 +20,12 @@
 
 pub mod cli;
 
+mod credential_egress;
 mod egress_transport;
 pub mod hook_dispatch;
 mod http;
 pub mod tools_in_shell;
+mod workspace;
 
 use crate::bashkit::background::{
     BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
@@ -70,27 +72,6 @@ fn execution_limits() -> ExecutionLimits {
         .max_input_bytes(1_000_000) // 1MB max script size
         .max_ast_depth(100)
         .parser_timeout(std::time::Duration::from_secs(5))
-}
-
-/// Resolve the shell working directory and `WORKSPACE` env value from the file
-/// store's namespace (EVE-660).
-///
-/// The file store ([`MountFs`](crate::bashkit::mount_fs::MountFs)) is the single path
-/// authority: `working_dir` is resolved through it to an absolute path in the
-/// same namespace the file tools use, so a model that learns a path from
-/// `read_file` can pass it straight to `cd`. With no `working_dir`, the shell
-/// starts at the store's display root (`/workspace` for the mounted stores used
-/// by agent execution). The tuple is `(cwd, workspace_env)`.
-fn resolve_shell_workspace(
-    store: &dyn SessionFileSystem,
-    working_dir_arg: Option<&str>,
-) -> (String, String) {
-    let workspace_env = store.display_root();
-    let cwd = match working_dir_arg {
-        Some(arg) => store.resolve_path(arg),
-        None => workspace_env.clone(),
-    };
-    (cwd, workspace_env)
 }
 
 /// Configured bashkit tool instance with everruns settings.
@@ -334,7 +315,9 @@ impl Tool for BashTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        TOOL_INPUT_SCHEMA.clone()
+        let mut schema = TOOL_INPUT_SCHEMA.clone();
+        schema["properties"]["credential_usage"] = json!({"type":"string","enum":["user","service"],"default":"service","description":"Use authorized service credentials, or the verified invoking user’s private credentials. No identity fallback."});
+        schema
     }
 
     fn hints(&self) -> ToolHints {
@@ -382,7 +365,7 @@ impl Tool for BashTool {
             }
         };
 
-        let (working_dir, workspace_env) = resolve_shell_workspace(
+        let (working_dir, workspace_env) = workspace::resolve_shell_workspace(
             file_store.as_ref(),
             arguments.get("working_dir").and_then(|v| v.as_str()),
         );
@@ -426,7 +409,17 @@ impl Tool for BashTool {
             .max_memory(10 * 1024 * 1024) // 10 MB — prevent OOM from untrusted input
             .trace_mode(TraceMode::Redacted);
         let builder = install_observability_hooks(builder, context.session_id);
-        let (builder, redactor) = http::configure(builder, self.enable_http, context).await;
+        let (builder, redactor) = match http::configure(
+            builder,
+            self.enable_http,
+            context,
+            arguments.get("credential_usage"),
+        )
+        .await
+        {
+            Ok(configured) => configured,
+            Err(message) => return ToolExecutionResult::tool_error(message),
+        };
         let builder = install_cli_tree(builder, context);
         let mut bash = builder.cpython().build();
         if let Some(held) = tools_in_shell::preflight(context, bash.analyze(command).ok()).await {
@@ -615,7 +608,7 @@ impl BackgroundExecutableTool for BashTool {
             }
         };
 
-        let (working_dir, workspace_env) = resolve_shell_workspace(
+        let (working_dir, workspace_env) = workspace::resolve_shell_workspace(
             file_store.as_ref(),
             arguments.get("working_dir").and_then(|v| v.as_str()),
         );
@@ -652,7 +645,14 @@ impl BackgroundExecutableTool for BashTool {
             .max_memory(10 * 1024 * 1024)
             .trace_mode(TraceMode::Redacted);
         let builder = install_observability_hooks(builder, context.session_id);
-        let (builder, redactor) = http::configure(builder, self.enable_http, &context).await;
+        let (builder, redactor) = http::configure(
+            builder,
+            self.enable_http,
+            &context,
+            arguments.get("credential_usage"),
+        )
+        .await
+        .map_err(ToolExecutionResult::tool_error)?;
         let builder = install_cli_tree(builder, &context);
         let mut bash = builder.cpython().build();
 

@@ -14,13 +14,60 @@ pub(super) async fn configure(
     builder: BashBuilder,
     enable_http: bool,
     context: &ToolContext,
-) -> (BashBuilder, OutputRedactor) {
+    usage: Option<&serde_json::Value>,
+) -> Result<(BashBuilder, OutputRedactor), String> {
+    if enable_http
+        && let Some(service) = context
+            .storage_store
+            .as_ref()
+            .and_then(|s| s.credential_service())
+    {
+        use everruns_contracts::runtime::credential_services::CredentialInvocation;
+        use everruns_contracts::runtime::resource_access::CredentialUsage;
+        let invocation = *context
+            .extension::<CredentialInvocation>()
+            .ok_or("Shell HTTP credentials require a verified invocation")?;
+        let usage: CredentialUsage =
+            serde_json::from_value(usage.cloned().unwrap_or(serde_json::json!("service")))
+                .map_err(|_| "credential_usage must be user or service")?;
+        let metadata = service
+            .list(invocation, usage)
+            .await
+            .map_err(|_| "Could not authorize shell HTTP credentials")?;
+        let mut builder = builder;
+        let mut references = Vec::new();
+        for info in metadata {
+            let placeholder = format!(
+                "er_credential_{}",
+                everruns_contracts::typed_id::SessionId::new()
+                    .uuid()
+                    .simple()
+            );
+            builder = builder.env(&info.name, &placeholder);
+            references.push((info, placeholder));
+        }
+        let mut scoped = context.clone();
+        scoped.egress_service = Some(Arc::new(super::credential_egress::CredentialEgress {
+            inner: context
+                .egress_service
+                .clone()
+                .ok_or("Shell credential requests require platform egress")?,
+            service,
+            invocation,
+            usage,
+            references,
+        }));
+        return Ok((
+            configure_http(builder, enable_http, &scoped),
+            OutputRedactor::default(),
+        ));
+    }
     let builder = configure_http(builder, enable_http, context);
     let bound = bound_secrets(enable_http, context).await;
-    (
+    Ok((
         install_bound_secrets(builder, &bound),
         OutputRedactor::new(&bound),
-    )
+    ))
 }
 
 /// Enable outbound HTTP for curl/wget when the per-capability config opted in
@@ -153,6 +200,7 @@ fn install_bound_secrets(mut builder: BashBuilder, secrets: &[BoundSecret]) -> B
     for secret in secrets {
         let credential = match &secret.info.binding.auth {
             SecretAuth::Bearer => bashkit::Credential::bearer(secret.value.clone()),
+            SecretAuth::FormField { .. } => continue,
             SecretAuth::Header { name } => {
                 bashkit::Credential::header(name.clone(), secret.value.clone())
             }

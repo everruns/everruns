@@ -475,7 +475,7 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
     // Agent credentials (MCP tool parameters and HTTP bound secrets) are
     // encrypted at rest.
     EncryptedColumn {
-        table: "agent_mcp_secret_bindings",
+        table: "credential_bindings",
         column: "value_encrypted",
         id_column: "id",
     },

@@ -2750,6 +2750,7 @@ dependencies = [
 name = "everruns-contracts"
 version = "0.48.0"
 dependencies = [
+ "aho-corasick",
  "anyhow",
  "async-trait",
  "base64 0.23.1",

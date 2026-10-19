@@ -152,6 +152,7 @@ pub(crate) struct ApprovalServices<'a> {
     pub(crate) db: &'a std::sync::Arc<StorageBackend>,
     pub(crate) event_service: &'a EventService,
     pub(crate) runner: &'a std::sync::Arc<dyn everruns_core::host::TurnBackend>,
+    pub(crate) credential_authorizer: Option<&'a crate::domains::common::Ctx>,
 }
 
 /// Settle every pending approval request on a parked session and resume it.
@@ -173,6 +174,7 @@ pub(crate) async fn resolve_tool_approvals(
         db,
         event_service,
         runner,
+        credential_authorizer,
     } = services;
     if pending.is_empty() {
         return Err(ApprovalResolveError::NotFound(
@@ -196,7 +198,47 @@ pub(crate) async fn resolve_tool_approvals(
             .copied()
             .unwrap_or(fallback);
         let request = &approval.request;
-        if let Some((key, record)) = outcome.stored_record(request, now) {
+        if let Some(ticket) = request.risk.strip_prefix("credential:") {
+            use everruns_contracts::execution_api::ToolApprovalDecision;
+            if matches!(
+                outcome,
+                ApprovalOutcome::Decided(
+                    ToolApprovalDecision::AllowAlways | ToolApprovalDecision::RejectAlways
+                )
+            ) {
+                return Err(ApprovalResolveError::Invalid(
+                    "Credential capture requires a decision for this exact request".into(),
+                ));
+            }
+            if outcome.allows() {
+                let authorizer = credential_authorizer.ok_or_else(|| {
+                    ApprovalResolveError::Invalid(
+                        "Approve credential storage from the authenticated session UI".into(),
+                    )
+                })?;
+                let ticket = ticket.parse().map_err(|_| {
+                    ApprovalResolveError::Invalid("Invalid credential request".into())
+                })?;
+                if request.fingerprint != request.risk || request.tool != "web_fetch" {
+                    return Err(ApprovalResolveError::Invalid(
+                        "Invalid credential approval".into(),
+                    ));
+                }
+                crate::domains::credentials::service::authorize_capture_answer(
+                    authorizer, session_id, ticket,
+                )
+                .await
+                .map_err(|_| {
+                    ApprovalResolveError::Invalid(
+                        "You cannot authorize this credential owner or the request expired".into(),
+                    )
+                })?;
+            }
+        }
+        if let Some((key, mut record)) = outcome.stored_record(request, now) {
+            if request.risk.starts_with("credential:") {
+                record.authorizer_user_id = credential_authorizer.and_then(|c| c.caller.user_id);
+            }
             session_values.push(WaitingTurnSessionValue {
                 key,
                 value: serde_json::to_string(&record)
@@ -442,11 +484,18 @@ pub async fn submit_tool_approvals(
         .log_internal_error_json("read session events")?;
     let outcomes = validate_decisions(&pending, &req.decisions, Utc::now())
         .map_err(approval_error_response)?;
+    let credential_ctx = crate::domains::common::Ctx::minimal(
+        caller.clone(),
+        state.db.clone(),
+        None,
+        state.auth.permission_resolver.clone(),
+    );
     let resolved = resolve_tool_approvals(
         &ApprovalServices {
             db: &state.db,
             event_service: &state.event_service,
             runner: &state.runner,
+            credential_authorizer: Some(&credential_ctx),
         },
         org.org_id,
         session_id,

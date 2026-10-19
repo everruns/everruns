@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Check, ShieldAlert, X } from "lucide-react";
 import { submitToolApprovals, type ToolApprovalDecision } from "@/lib/api/sessions";
 import { cn } from "@/lib/utils";
+import { CredentialConsentSummary } from "./credential-consent-summary";
 import type { ToolCompletedData } from "@/lib/api/types";
 
 export const TOOL_APPROVAL_TOOL = "approve_tool_call";
@@ -174,6 +175,7 @@ export function ToolApprovalRequests({
     <div className="space-y-2">
       {requests.map((request) => {
         const args = argsOf(request);
+        const credentialConsent = args.risk?.startsWith("credential:") === true;
         const name = args.display_name || args.tool || "a tool";
         const preview = prettyArguments(args.arguments);
         const chosen = choices[request.id];
@@ -184,15 +186,23 @@ export function ToolApprovalRequests({
               <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-foreground" />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-foreground">
-                  Allow the agent to run {name}?
+                  {credentialConsent
+                    ? "Save credentials for this service?"
+                    : `Allow the agent to run ${name}?`}
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {riskLine(args.risk)} It will not run unless you allow it.
+                  {credentialConsent
+                    ? "Review the owner and allowed destinations. The request has not been sent."
+                    : `${riskLine(args.risk)} It will not run unless you allow it.`}
                 </p>
-                {preview && (
-                  <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-xs text-muted-foreground">
-                    {preview}
-                  </pre>
+                {credentialConsent ? (
+                  <CredentialConsentSummary value={args.arguments} />
+                ) : (
+                  preview && (
+                    <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-xs text-muted-foreground">
+                      {preview}
+                    </pre>
+                  )
                 )}
                 {args.arguments_truncated && (
                   <p className="mt-1 text-xs text-warning">
@@ -213,7 +223,10 @@ export function ToolApprovalRequests({
               </div>
             </div>
             <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
-              {CHOICES.map((choice) => (
+              {CHOICES.filter(
+                (choice) =>
+                  !credentialConsent || choice.decision === "allow" || choice.decision === "reject",
+              ).map((choice) => (
                 <Button
                   key={choice.decision}
                   size="sm"
@@ -229,7 +242,11 @@ export function ToolApprovalRequests({
                   className={choice.decision === "allow" ? undefined : "text-muted-foreground"}
                 >
                   {choice.decision === "allow" && <Check className="mr-1 h-3.5 w-3.5" />}
-                  {choice.label}
+                  {credentialConsent
+                    ? choice.decision === "allow"
+                      ? "Approve capture"
+                      : "Decline"
+                    : choice.label}
                 </Button>
               ))}
             </div>

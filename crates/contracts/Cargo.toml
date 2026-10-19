@@ -24,6 +24,7 @@ serde_json.workspace = true
 # IDs / time / text
 uuid.workspace = true
 regex.workspace = true
+aho-corasick.workspace = true
 url = "2"
 chrono.workspace = true
 

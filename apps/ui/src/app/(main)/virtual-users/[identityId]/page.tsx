@@ -292,7 +292,7 @@ export default function VirtualUserDetailPage({
       {tab === "connections" && (
         <Card>
           <CardContent className="pt-6">
-            <IdentityConnections identityId={identityId} />
+            <IdentityConnections identityId={identityId} usage={identity.usage} />
           </CardContent>
         </Card>
       )}

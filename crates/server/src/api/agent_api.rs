@@ -985,6 +985,7 @@ pub async fn agent_api_submit_tool_approvals(
             db: &state.db,
             event_service: &state.event_service,
             runner: state.message_service.runner(),
+            credential_authorizer: None,
         },
         auth.context.org_id,
         session.id,

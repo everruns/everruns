@@ -1078,6 +1078,7 @@ impl TestServer {
             .merge(api::budgets::routes(budgets_state))
             .merge(api::audit_logs::routes(api_state.clone()))
             .merge(api::agent_credentials::routes(api_state.clone()))
+            .merge(api::credentials::routes(api_state.clone()))
             .merge(api::virtual_users::routes(api_state.clone()))
             .merge(api::virtual_user_connections::routes(
                 virtual_user_connections_state,

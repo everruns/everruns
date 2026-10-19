@@ -1,6 +1,6 @@
 ---
 title: Secure MCP Credentials
-description: Configure write-only Agent credentials for MCP tools that require a secret parameter.
+description: Configure write-only credentials with scoped ownership and explicit access for MCP tools that require a secret parameter.
 ---
 
 Use an Agent credential binding when an MCP tool requires a secret in its input,
@@ -17,7 +17,7 @@ parameter from the model-visible tool schema and injects the value only when it
 sends the MCP request. The same Agent binding works for a shared session and
 for triggers that create a new session per invocation.
 
-Use **Rotate** to replace a value. Use the revoke action to delete the binding;
+Use **Replace** to replace a value. Use the revoke action to delete the binding;
 future calls then return a setup-required result with a link back to the
 agent's Credentials settings.
 
@@ -33,3 +33,15 @@ For an MCP attachment that acts as a user, connect the provider from **Settings 
 For an attachment that acts as a service, select the responding agent's service virtual user and connect the provider on that account's **Connections** tab. Agent behavior and service credentials remain separate.
 
 External integrations can exchange verified channel authentication at `POST /v1/channels/{channel_id}/runtime-auth` for a short-lived runtime bearer token. The token allows virtual-user self-service and authenticated ingress for that channel. It cannot administer organizations, agents, or other users. Use `GET /v1/virtual-users/me` to discover the account, and the canonical `/v1/virtual-users/{id}/connections` routes for its grants. To start browser OAuth with bearer authentication, POST to the provider's `authorize` subresource and navigate to the returned `authorization_url` while retaining its setup cookie. Setup captures the account and revalidates authority at callback.
+
+Credential bindings also support session, virtual-user, and organization owners.
+Select personal credentials explicitly through an MCP attachment acting as the
+verified user; service attachments use their service identity. Session ownership
+and organization membership do not grant personal access. Organization bindings
+require explicit access grants. Two matching authorized bindings fail as
+ambiguous rather than selecting one silently.
+
+Secure entry uses the revision of the target
+you reviewed, so a stale form cannot provision a changed target. See
+[write-only HTTP credentials](/capabilities/web-fetch/#write-only-credentials) for
+HTTP form/header bindings and response capture.

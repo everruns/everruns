@@ -191,7 +191,13 @@ impl WorkerServiceImpl {
                         self.db.as_ref(),
                         self.encryption.as_deref(),
                         req.org_id,
-                        found.runtime_agent_id,
+                        session_id.zip(input_message).map(|(s, i)| {
+                            everruns_contracts::runtime::credential_services::CredentialInvocation {
+                                session_id: s.into(),
+                                input_message_id: i,
+                            }
+                        }),
+                        found.server.acts_as,
                         &found.server.name,
                         &found.server.url,
                     )

@@ -24,8 +24,7 @@ pub struct SecretInfo {
 
 /// How a bound secret is put on an outbound request.
 ///
-/// Header-only by design: a value
-/// is never placed in a URL or a body.
+/// Only the declared header or named, structured form field may carry a value.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -37,6 +36,8 @@ pub enum SecretAuth {
         /// Header name.
         name: String,
     },
+    /// One application/x-www-form-urlencoded field, never a body template.
+    FormField { name: String },
 }
 
 /// Where a bound secret may be sent, and how.
@@ -68,7 +69,7 @@ impl SecretBinding {
         if parsed.query().is_some() || parsed.fragment().is_some() {
             return Err("binding url must not have a query or fragment".to_string());
         }
-        if let SecretAuth::Header { name } = &self.auth {
+        if let SecretAuth::Header { name } | SecretAuth::FormField { name } = &self.auth {
             let valid = !name.is_empty()
                 && name.len() <= 128
                 && name
@@ -76,6 +77,20 @@ impl SecretBinding {
                     .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
             if !valid {
                 return Err("header name must be 1-128 letters, digits, '-' or '_'".to_string());
+            }
+            if matches!(self.auth, SecretAuth::Header { .. })
+                && [
+                    "host",
+                    "content-length",
+                    "transfer-encoding",
+                    "connection",
+                    "upgrade",
+                    "te",
+                    "proxy-authorization",
+                ]
+                .contains(&name.to_ascii_lowercase().as_str())
+            {
+                return Err("credential header is owned by the transport".into());
             }
         }
         Ok(url.trim_end_matches('/').to_string())
@@ -133,6 +148,12 @@ impl std::fmt::Debug for BoundSecret {
 /// Secret storage is for sensitive data that is encrypted at rest.
 #[async_trait]
 pub trait SessionStorageStore: Send + Sync {
+    /// The host's shared credential service, independent of session KV/secrets.
+    fn credential_service(
+        &self,
+    ) -> Option<std::sync::Arc<dyn super::credential_services::CredentialService>> {
+        None
+    }
     // Key/Value operations (plain text)
 
     /// Set a key/value pair (creates or updates)
@@ -174,14 +195,15 @@ pub trait SessionStorageStore: Send + Sync {
     /// List all secret names in a session (without values)
     async fn list_secrets(&self, session_id: SessionId) -> Result<Vec<SecretInfo>>;
 
-    /// Bound secrets visible to the session (its own and its agent's), without
-    /// values. A session secret shadows an agent secret of the same name.
+    /// Legacy embedding-only bound metadata. Platform hosts use
+    /// `credential_service` with a verified invocation instead.
     async fn list_bound_secrets(&self, session_id: SessionId) -> Result<Vec<BoundSecretInfo>> {
         let _ = session_id;
         Ok(Vec::new())
     }
 
-    /// Bound secrets with values, for credential injection at the HTTP layer.
+    /// Legacy embedding-only value adapter. Platform workers refuse this
+    /// session-only lookup and resolve through `credential_service`.
     ///
     /// THREAT[TM-BASH-030]: callers must never hand these values to the model;
     /// `get_secret` refuses bound names for the same reason.

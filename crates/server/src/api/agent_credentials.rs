@@ -20,6 +20,8 @@ use super::common::{ApiResult, ErrorResponse, ListResponse};
 #[derive(Deserialize, ToSchema)]
 /// Request to replace a credential binding's encrypted value.
 pub struct SetAgentCredentialValueRequest {
+    /// Revision observed in scoped credential metadata.
+    pub revision: i64,
     /// Write-only credential value. It is encrypted and never returned.
     #[schema(example = "vsk_disposable_example")]
     pub value: String,
@@ -77,7 +79,7 @@ pub async fn list_credentials(
     let (internal_id, public_id) = resolve_agent(&state, &org, &agent_id).await?;
     let rows = state
         .db
-        .list_agent_mcp_secret_bindings(org.org_id, internal_id)
+        .list_credential_bindings(org.org_id, internal_id)
         .await
         .map_err(|_| ErrorResponse::internal_error())?;
     Ok(Json(ListResponse::new(
@@ -139,16 +141,24 @@ pub async fn set_credential_value(
         ChangeAction::Updated,
     )
     .await?;
-    let encryption = state
-        .encryption
-        .as_ref()
-        .ok_or_else(ErrorResponse::internal_error)?;
-    let encrypted = encryption
-        .encrypt_string(&body.value)
-        .map_err(|_| ErrorResponse::internal_error())?;
+    // Values must be bound to the exact metadata the person reviewed.
+    state
+        .db
+        .get_credential_binding(org.org_id, internal_id, binding_id)
+        .await
+        .map_err(|_| ErrorResponse::internal_error())?
+        .ok_or_else(|| ErrorResponse::not_found("Credential binding"))?;
+    crate::domains::credentials::management::set_value(
+        &state.ctx(&org),
+        binding_id,
+        body.value,
+        None,
+        body.revision,
+    )
+    .await?;
     let row = state
         .db
-        .set_agent_mcp_secret_binding_value(org.org_id, internal_id, binding_id, encrypted)
+        .get_credential_binding(org.org_id, internal_id, binding_id)
         .await
         .map_err(|_| ErrorResponse::internal_error())?
         .ok_or_else(|| ErrorResponse::not_found("Credential binding"))?;
@@ -186,7 +196,7 @@ pub async fn delete_credential_binding(
     .await?;
     let deleted = state
         .db
-        .delete_agent_mcp_secret_binding(org.org_id, internal_id, binding_id)
+        .delete_credential_binding(org.org_id, internal_id, binding_id)
         .await
         .map_err(|_| ErrorResponse::internal_error())?;
     if deleted {

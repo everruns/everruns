@@ -65,3 +65,64 @@ If your organization needs to send data to its own services on such a deployment
 
 - [File System](/capabilities/file-system/), save fetched content to workspace
 - [Capabilities Overview](/capabilities/)
+
+## Write-only credentials
+
+Use `$NAME` in the exact header or form field authorized by a credential binding.
+`credential_usage` explicitly selects `service` (default) or the verified `user`.
+It never falls back to another identity. For example:
+
+```json
+{
+  "url": "https://mail.example/api/messages",
+  "method": "POST",
+  "credential_usage": "user",
+  "headers": { "Authorization": "Bearer $MAIL_TOKEN" },
+  "json": { "to": "recipient@example.com", "subject": "Hello" }
+}
+```
+
+To capture an authentication response without showing its token to the model,
+declare every expected secret field:
+
+```json
+{
+  "url": "https://mail.example/oauth/token",
+  "method": "POST",
+  "credential_usage": "user",
+  "form": { "grant_type": "refresh_token", "refresh_token": "$MAIL_REFRESH" },
+  "capture_secrets": [
+    {
+      "name": "MAIL_TOKEN",
+      "from": "/access_token",
+      "scope": "virtual_user",
+      "binding": {
+        "url": "https://mail.example/api",
+        "auth": { "type": "bearer" }
+      },
+      "expires_in_from": "/expires_in"
+    }
+  ]
+}
+```
+
+The user approves persistent storage, replacement, and cross-origin bindings
+before any request is sent. The result contains `$MAIL_TOKEN` instead of the
+value. Up to eight captures save together; malformed JSON, duplicate keys,
+missing fields, interrupted/oversized responses, or storage failures withhold
+the response and save no partial values. Credential requests have a 256 KiB
+response limit and cannot crawl, render, extract, or save files.
+
+Bindings support bearer headers, named headers, and named form fields
+(`{"type":"form_field","name":"refresh_token"}`). References in URLs,
+arbitrary bodies, JSON values, or mixed strings are rejected. Redirects are
+returned without following them. Known literal, JSON-escaped, and form-encoded
+token echoes are redacted before the result enters chat or events. Declare all
+claim tokens, assertions, access tokens, and refresh tokens the service returns;
+arbitrary encodings such as base64 are outside this redaction guarantee.
+
+Manage personal credentials in **Settings > My agent experience**, service
+credentials on their virtual user, agent credentials on the agent's
+**Credentials** tab, organization credentials in **Settings > Organization**,
+and session credentials from the session's **Credentials** action. Values are
+write-only. Expired or revoked bindings fail with renewal/reconnect guidance.

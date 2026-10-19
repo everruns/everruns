@@ -115,6 +115,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "context",
         "Notes managers keep about an entity, read by agents that manage it.",
     ),
+    (
+        "credential-bindings",
+        "Declare, list and revoke write-only credential bindings.",
+    ),
     ("durable", "Durable scheduled tasks and their executions."),
     ("durable executions", "Single runs of a durable schedule."),
     ("durable schedules", "Cron-driven durable tasks."),
@@ -253,6 +257,11 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     ("reports projector", "Process pending reporting work."),
     ("reports query", "Ad-hoc reporting queries."),
     ("reports saved", "Saved report definitions."),
+    ("resources", "Access to credentials and connections."),
+    (
+        "resources grants",
+        "Explicit, bounded permission to use a resource.",
+    ),
     (
         "sandbox-targets",
         "Sandbox providers this deployment offers.",

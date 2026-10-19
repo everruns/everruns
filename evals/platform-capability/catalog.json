@@ -779,7 +779,7 @@
     "input_schema": {
       "$defs": {
         "SecretAuth": {
-          "description": "How a bound secret is put on an outbound request.\n\nHeader-only by design: a value\nis never placed in a URL or a body.",
+          "description": "How a bound secret is put on an outbound request.\n\nOnly the declared header or named, structured form field may carry a value.",
           "oneOf": [
             {
               "description": "`Authorization: Bearer <value>`.",
@@ -806,6 +806,25 @@
                 "type": {
                   "enum": [
                     "header"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "One application/x-www-form-urlencoded field, never a body template.",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "form_field"
                   ],
                   "type": "string"
                 }
@@ -7120,6 +7139,290 @@
     "read_only": false
   },
   {
+    "category": "credentials",
+    "cli": "credential-bindings create",
+    "description": "Declare an HTTP or MCP write-only credential binding. The owner provisions its value in the secure Credentials UI.",
+    "input_schema": {
+      "$defs": {
+        "ConnectionCredentialSource": {
+          "additionalProperties": false,
+          "description": "Reference an eligible native GitHub App connection while preserving its installation selection.",
+          "properties": {
+            "connection_id": {
+              "description": "Native connection identifier; ownership and use authorization remain enforced.",
+              "format": "uuid",
+              "type": "string"
+            },
+            "github_access": {
+              "$ref": "#/$defs/GitHubAccess",
+              "description": "Explicit repository and permission bounds for each minted installation token."
+            }
+          },
+          "required": [
+            "connection_id",
+            "github_access"
+          ],
+          "type": "object"
+        },
+        "CredentialOwnerInput": {
+          "description": "Authorized owner and usage of a credential. Ownership does not grant access to other consumers.",
+          "properties": {
+            "owner_id": {
+              "description": "Agent or session ID, or virtual-user ID (`me` by default); omit for organization scope.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scope": {
+              "$ref": "#/$defs/ResourceScope",
+              "description": "Ownership and lifetime scope within the current organization."
+            },
+            "usage": {
+              "$ref": "#/$defs/CredentialUsage",
+              "description": "Required invocation identity; agent and organization owners require service usage."
+            }
+          },
+          "required": [
+            "scope",
+            "usage"
+          ],
+          "type": "object"
+        },
+        "CredentialUsage": {
+          "description": "Invocation identity under which a credential may be used; identities never fall back to each other.",
+          "enum": [
+            "user",
+            "service"
+          ],
+          "type": "string"
+        },
+        "GitHubAccess": {
+          "description": "What one GitHub use asks for: who it acts as, and the least access it needs.\n\nThe resolver mints an installation token limited to `repositories` and\n`permissions`, so a tool that only reads a diff never holds write access.\nEmpty `repositories` means every repository the installation covers; empty\n`permissions` means everything the installation was granted. A person's own\nlogin cannot be narrowed by GitHub and answers with its full reach.",
+          "properties": {
+            "acts_as": {
+              "$ref": "#/$defs/McpServerActsAs",
+              "description": "Whose GitHub identity answers. `none` resolves nothing."
+            },
+            "permissions": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "GitHub App permission name to level (`read` or `write`).",
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "repositories": {
+              "description": "Repositories as `owner/repo`, all under one owner.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "acts_as"
+          ],
+          "type": "object"
+        },
+        "McpCredentialTarget": {
+          "additionalProperties": false,
+          "description": "Exact MCP endpoint and top-level tool parameter receiving a credential at execution time.",
+          "properties": {
+            "parameter_name": {
+              "description": "Top-level parameter name; dotted nested paths are rejected.",
+              "type": "string"
+            },
+            "server_name": {
+              "description": "Attached MCP server name used to identify the target.",
+              "type": "string"
+            },
+            "tool_name": {
+              "description": "Exact tool name within the attached server.",
+              "type": "string"
+            },
+            "url": {
+              "description": "Exact HTTPS MCP endpoint; arbitrary destinations cannot receive the value.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "server_name",
+            "url",
+            "tool_name",
+            "parameter_name"
+          ],
+          "type": "object"
+        },
+        "McpServerActsAs": {
+          "description": "Identity whose OAuth grant a scoped MCP attachment requests.",
+          "enum": [
+            "none",
+            "service",
+            "user",
+            "user_or_service"
+          ],
+          "example": "service",
+          "type": "string"
+        },
+        "ResourceScope": {
+          "description": "Ownership or consumer scope. Ownership determines lifetime, not permission to use a resource.",
+          "enum": [
+            "session",
+            "agent",
+            "virtual_user",
+            "organization"
+          ],
+          "type": "string"
+        },
+        "SecretAuth": {
+          "description": "How a bound secret is put on an outbound request.\n\nOnly the declared header or named, structured form field may carry a value.",
+          "oneOf": [
+            {
+              "description": "`Authorization: Bearer <value>`.",
+              "properties": {
+                "type": {
+                  "enum": [
+                    "bearer"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "`<name>: <value>`, e.g. `X-Api-Key`.",
+              "properties": {
+                "name": {
+                  "description": "Header name.",
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "header"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "One application/x-www-form-urlencoded field, never a body template.",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "form_field"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "type"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "SecretBinding": {
+          "description": "Where a bound secret may be sent, and how.",
+          "properties": {
+            "auth": {
+              "$ref": "#/$defs/SecretAuth",
+              "description": "How the value is attached."
+            },
+            "url": {
+              "description": "`https://host[:port][/path-prefix]` the value may be sent to.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "url",
+            "auth"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/CredentialOwnerInput",
+          "description": "Authorized owner and required invocation identity."
+        },
+        {
+          "properties": {
+            "binding": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SecretBinding",
+                  "description": "Exact HTTPS destination and injection placement; supply this or `mcp`, exclusively."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "label": {
+              "description": "Human-readable label, between 1 and 128 bytes.",
+              "type": "string"
+            },
+            "mcp": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/McpCredentialTarget",
+                  "description": "Exact MCP endpoint, tool, and parameter; supply this or `binding`, exclusively."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "name": {
+              "description": "HTTP reference name; required for HTTP bindings.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ConnectionCredentialSource",
+                  "description": "Optional native GitHub connection and bounded access request instead of a stored value."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "label"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Declare binding metadata. Provision its value separately through secure entry or approved capture."
+    },
+    "method": "POST",
+    "name": "create_scoped_credential",
+    "output_shape": "unknown",
+    "path": "/v1/credential-bindings",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "sessions",
     "cli": "sessions create",
     "description": "Create a new session. Optionally assign an agent and harness. Assign the agent with --agent_id or --agent_name (the everruns CLI spelling of this flag is --agent).",
@@ -12067,6 +12370,139 @@
     "read_only": true
   },
   {
+    "category": "credentials",
+    "cli": "resources grants grant",
+    "description": "Explicitly grant bounded resource use to a consumer. Use does not grant management or resharing.",
+    "input_schema": {
+      "$defs": {
+        "CredentialUsage": {
+          "description": "Invocation identity under which a credential may be used; identities never fall back to each other.",
+          "enum": [
+            "user",
+            "service"
+          ],
+          "type": "string"
+        },
+        "GrantCredential": {
+          "description": "Explicit bounded use grant. It does not confer management permission or permission to reshare.",
+          "properties": {
+            "constraints": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ResourceConstraints",
+                  "description": "Optional access bounds; GitHub grants cannot widen native repository or permission limits."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "consumer_id": {
+              "description": "Consumer agent, session, or virtual-user ID; omit for organization scope.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "consumer_scope": {
+              "$ref": "#/$defs/ResourceScope",
+              "description": "Consumer scope; organization grants explicitly opt eligible service agents in."
+            },
+            "expires_at": {
+              "description": "Absolute grant expiry in UTC; omit for a grant that lasts until revoked.",
+              "format": "date-time",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "usage": {
+              "$ref": "#/$defs/CredentialUsage",
+              "description": "Invocation identity that must match at every use."
+            }
+          },
+          "required": [
+            "consumer_scope",
+            "usage"
+          ],
+          "type": "object"
+        },
+        "ResourceConstraints": {
+          "description": "Provider limits must be enforced by the adapter before a token is exposed.",
+          "oneOf": [
+            {
+              "properties": {
+                "permissions": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "provider": {
+                  "enum": [
+                    "github"
+                  ],
+                  "type": "string"
+                },
+                "repositories": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "repositories",
+                "permissions",
+                "provider"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "ResourceScope": {
+          "description": "Ownership or consumer scope. Ownership determines lifetime, not permission to use a resource.",
+          "enum": [
+            "session",
+            "agent",
+            "virtual_user",
+            "organization"
+          ],
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/GrantCredential",
+          "description": "Consumer, required usage, expiry, and optional access bounds."
+        },
+        {
+          "properties": {
+            "id": {
+              "description": "Credential binding or native connection resource identifier.",
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Grant bounded resource use through an explicit owner action."
+    },
+    "method": "POST",
+    "name": "grant_resource_access",
+    "output_shape": "unknown",
+    "path": "/v1/resources/{id}/grants",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "files",
     "cli": "sessions fs - grep",
     "description": "Search files in the session filesystem.",
@@ -14349,6 +14785,31 @@
     "read_only": true
   },
   {
+    "category": "credentials",
+    "cli": "resources grants list",
+    "description": "List explicit use grants for an authorized resource owner.",
+    "input_schema": {
+      "description": "Select a credential or connection whose explicit use grants should be listed.",
+      "properties": {
+        "id": {
+          "description": "Credential binding or native connection resource identifier.",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_resource_grants",
+    "output_shape": "unknown",
+    "path": "/v1/resources/{id}/grants",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "sandbox-templates",
     "cli": "sandbox-targets list",
     "description": "List the Sandbox targets this deployment can offer.",
@@ -14555,6 +15016,71 @@
     "name": "list_schedules",
     "output_shape": "unknown",
     "path": "/v1/durable/schedules",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "credentials",
+    "cli": "credential-bindings list",
+    "description": "List credential metadata for an authorized owner. Values are never returned.",
+    "input_schema": {
+      "$defs": {
+        "CredentialOwnerInput": {
+          "description": "Authorized owner and usage of a credential. Ownership does not grant access to other consumers.",
+          "properties": {
+            "owner_id": {
+              "description": "Agent or session ID, or virtual-user ID (`me` by default); omit for organization scope.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scope": {
+              "$ref": "#/$defs/ResourceScope",
+              "description": "Ownership and lifetime scope within the current organization."
+            },
+            "usage": {
+              "$ref": "#/$defs/CredentialUsage",
+              "description": "Required invocation identity; agent and organization owners require service usage."
+            }
+          },
+          "required": [
+            "scope",
+            "usage"
+          ],
+          "type": "object"
+        },
+        "CredentialUsage": {
+          "description": "Invocation identity under which a credential may be used; identities never fall back to each other.",
+          "enum": [
+            "user",
+            "service"
+          ],
+          "type": "string"
+        },
+        "ResourceScope": {
+          "description": "Ownership or consumer scope. Ownership determines lifetime, not permission to use a resource.",
+          "enum": [
+            "session",
+            "agent",
+            "virtual_user",
+            "organization"
+          ],
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/CredentialOwnerInput",
+          "description": "Owner and required invocation usage."
+        }
+      ],
+      "description": "Select an authorized owner whose credential metadata should be listed."
+    },
+    "method": "GET",
+    "name": "list_scoped_credentials",
+    "output_shape": "unknown",
+    "path": "/v1/credential-bindings",
     "positional_arg": null,
     "read_only": true
   },
@@ -16822,6 +17348,68 @@
     "name": "revoke_eval_run_share",
     "output_shape": "unknown",
     "path": "/v1/evals/{eval_id}/runs/{run_id}/share",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "credentials",
+    "cli": "resources grants revoke",
+    "description": "Revoke an explicit resource use grant.",
+    "input_schema": {
+      "description": "Revoke one consumer's explicit grant without revoking the resource itself.",
+      "properties": {
+        "grant_id": {
+          "description": "Explicit use grant identifier.",
+          "format": "uuid",
+          "type": "string"
+        },
+        "id": {
+          "description": "Credential binding or native connection resource identifier.",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "grant_id"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "revoke_resource_grant",
+    "output_shape": "unknown",
+    "path": "/v1/resources/{id}/grants/{grant_id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "credentials",
+    "cli": "credential-bindings revoke",
+    "description": "Revoke a credential at the observed revision; future sends fail closed.",
+    "input_schema": {
+      "description": "Revoke a credential using an optimistic concurrency precondition.",
+      "properties": {
+        "id": {
+          "description": "Credential binding identifier.",
+          "format": "uuid",
+          "type": "string"
+        },
+        "revision": {
+          "description": "Last observed resource revision; stale revocations are rejected.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "revoke_scoped_credential",
+    "output_shape": "unknown",
+    "path": "/v1/credential-bindings/{id}",
     "positional_arg": null,
     "read_only": false
   },

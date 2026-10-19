@@ -375,6 +375,7 @@ not returned by the API, and never passes through the MCP client that asked for 
             let header = match &binding.auth {
                 SecretAuth::Bearer => "Authorization: Bearer".to_string(),
                 SecretAuth::Header { name } => format!("{name}:"),
+                SecretAuth::FormField { name } => format!("form {name}:"),
             };
             let place = match scope {
                 SecretScope::Session => "this session only",
