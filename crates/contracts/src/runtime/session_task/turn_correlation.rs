@@ -177,6 +177,15 @@ impl crate::runtime::tool_context::ToolContext {
             .as_ref()
             .map(|emitter| emitter.turn_causal_context(&context))
             .unwrap_or_default();
+        self.bind_to_turn_with_causal_context(context, causes);
+    }
+
+    /// Restore a durable task's original causes when rebuilding its tool context.
+    pub fn bind_to_turn_with_causal_context(
+        &mut self,
+        context: EventContext,
+        causes: crate::runtime::causal::CausalContext,
+    ) {
         self.bind_causal_delegate(causes.clone());
         if let Some(registry) = self.session_task_registry.take() {
             self.session_task_registry =

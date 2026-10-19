@@ -157,7 +157,7 @@ impl LocalSessionTaskRegistry {
             .transpose()
     }
 
-    fn store_task(conn: &rusqlite::QueryConnection, task: &SessionTask) -> Result<()> {
+    pub(crate) fn store_task(conn: &rusqlite::QueryConnection, task: &SessionTask) -> Result<()> {
         // SessionTask's public serializer redacts webhook secrets. Local snapshots
         // are persistence, not presentation, so restore the raw spec before storage.
         let mut snapshot =
@@ -180,6 +180,21 @@ impl LocalSessionTaskRegistry {
                 task.state.to_string(),
                 snapshot,
             ],
+        )
+        .map_err(LocalError::from)?;
+        Ok(())
+    }
+
+    /// Insert one message row in channel order (used by session cutover).
+    pub(crate) fn store_message(
+        conn: &rusqlite::QueryConnection,
+        message: &TaskMessage,
+    ) -> Result<()> {
+        let snapshot = serde_json::to_string(message)
+            .map_err(|e| AgentLoopError::from(LocalError::from(e)))?;
+        conn.execute(
+            "INSERT OR IGNORE INTO local_task_messages (id, task_id, snapshot) VALUES (?1, ?2, ?3)",
+            rusqlite::params![message.id, message.task_id, snapshot],
         )
         .map_err(LocalError::from)?;
         Ok(())

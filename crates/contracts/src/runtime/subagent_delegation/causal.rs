@@ -128,4 +128,20 @@ mod tests {
         assert_eq!(*target.causal_messages.lock().unwrap(), [causes]);
         assert_eq!(target.sent_messages.lock().unwrap().len(), 1);
     }
+    #[tokio::test]
+    async fn causal_delegate_restores_persisted_task_causes_without_an_observer() {
+        let target = Arc::new(super::super::tests::MockSubagentDelegate::new());
+        let mut context = ToolContext::new(SessionId::new()).with_subagent_delegate(target.clone());
+        let causes = CausalContext::from_traceparents([
+            "00-1234567890abcdef1234567890abcdef-1234567890abcdef-00",
+        ]);
+        context.bind_to_turn_with_causal_context(EventContext::empty(), causes.clone());
+        context
+            .subagent_delegate
+            .unwrap()
+            .send_message(SessionId::new(), "reattached")
+            .await
+            .unwrap();
+        assert_eq!(*target.causal_messages.lock().unwrap(), [causes]);
+    }
 }

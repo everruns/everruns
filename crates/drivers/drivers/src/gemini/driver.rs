@@ -838,6 +838,16 @@ fn is_argon(model: &str) -> bool {
     model.rsplit('/').next() == Some("gemini-4-argon")
 }
 
+/// Search metadata is cumulative within a request, but its source indices and
+/// segment offsets belong to that request, not the combined continuation text.
+#[derive(Default)]
+struct GeminiGroundingHop {
+    answer_range: std::ops::Range<usize>,
+    search_queries: Vec<String>,
+    chunks: Vec<GroundingChunk>,
+    supports: Vec<GroundingSupport>,
+}
+
 #[derive(Default)]
 struct GeminiStreamState {
     model: String,
@@ -862,12 +872,10 @@ struct GeminiStreamState {
     retry_metadata: Option<RetryMetadata>,
     /// The request carried the Google Search tool.
     grounded: bool,
-    /// Distinct grounding queries the model ran, in order.
-    search_queries: Vec<String>,
-    /// The answer text streamed so far, and the latest grounding sources and
-    /// supports (a later chunk repeats the lists in full).
+    search_calls: u32,
     answer: String,
-    grounding: (Vec<GroundingChunk>, Vec<GroundingSupport>),
+    grounding: GeminiGroundingHop,
+    completed_grounding: Vec<GeminiGroundingHop>,
     pending: std::collections::VecDeque<LlmStreamEvent>,
     done: bool,
 }
@@ -998,22 +1006,22 @@ impl GeminiStreamState {
 
     /// Report each new grounding query as a finished hosted call. Gemini
     /// sends no search progress: the queries arrive with the grounded text,
-    /// and a later chunk may repeat earlier ones.
+    /// and a later chunk in the same request may repeat earlier ones. The same
+    /// query in a continuation request is a separate search and charge.
     fn record_searches(&mut self, grounding: &GeminiGroundingMetadata) {
         if !grounding.grounding_supports.is_empty() {
-            self.grounding = (
-                grounding.grounding_chunks.clone(),
-                grounding.grounding_supports.clone(),
-            );
+            self.grounding.chunks = grounding.grounding_chunks.clone();
+            self.grounding.supports = grounding.grounding_supports.clone();
         }
         for query in &grounding.web_search_queries {
-            if query.trim().is_empty() || self.search_queries.contains(query) {
+            if query.trim().is_empty() || self.grounding.search_queries.contains(query) {
                 continue;
             }
-            self.search_queries.push(query.clone());
+            self.grounding.search_queries.push(query.clone());
+            self.search_calls = self.search_calls.saturating_add(1);
             self.pending.push_back(LlmStreamEvent::HostedToolCall(
                 everruns_contracts::driver_registry::HostedToolCall {
-                    id: format!("google_search_{}", self.search_queries.len()),
+                    id: format!("google_search_{}", self.search_calls),
                     tool: everruns_contracts::native_web_search::WEB_SEARCH_FUNCTION_TOOL
                         .to_string(),
                     status: everruns_contracts::driver_registry::HostedToolCallStatus::Completed,
@@ -1026,7 +1034,6 @@ impl GeminiStreamState {
     /// Billed searches: Gemini 3 and later bill each query, Gemini 2.x each
     /// grounded prompt (see `hosted_call_price_usd`).
     fn billed_searches(&self) -> u32 {
-        let queries = u32::try_from(self.search_queries.len()).unwrap_or(u32::MAX);
         let per_query = self
             .model
             .rsplit('/')
@@ -1035,10 +1042,18 @@ impl GeminiStreamState {
             .and_then(|rest| rest.split(['.', '-']).next())
             .and_then(|major| major.parse::<u32>().ok())
             .is_some_and(|major| major >= 3);
-        if per_query { queries } else { queries.min(1) }
+        self.completed_grounding
+            .iter()
+            .chain(std::iter::once(&self.grounding))
+            .map(|hop| {
+                let queries = u32::try_from(hop.search_queries.len()).unwrap_or(u32::MAX);
+                if per_query { queries } else { queries.min(1) }
+            })
+            .fold(0, u32::saturating_add)
     }
 
     fn finish(&mut self) {
+        self.grounding.answer_range.end = self.answer.len();
         self.add_hop_usage();
         let calls = self.calls.take_finalized();
         if self.finish_reason.is_none() && !calls.is_empty() {
@@ -1072,8 +1087,24 @@ impl GeminiStreamState {
             );
             (metadata.provider_finish_reason, metadata.tool_calls_dropped) = (raw, dropped);
             metadata.retry_metadata = self.retry_metadata.take();
-            let (chunks, supports) = &self.grounding;
-            metadata.web_citations = grounding::web_citations(&self.answer, chunks, supports);
+            metadata.web_citations = self
+                .completed_grounding
+                .iter()
+                .chain(std::iter::once(&self.grounding))
+                .flat_map(|hop| {
+                    let answer = &self.answer[hop.answer_range.clone()];
+                    let offset = self.answer[..hop.answer_range.start].chars().count();
+                    let mut citations =
+                        grounding::web_citations(answer, &hop.chunks, &hop.supports);
+                    for citation in &mut citations {
+                        if let Some(span) = &mut citation.span {
+                            span.start += offset;
+                            span.end += offset;
+                        }
+                    }
+                    citations
+                })
+                .collect();
             let searches = self.billed_searches();
             if searches > 0 {
                 metadata
@@ -1102,6 +1133,10 @@ impl GeminiStreamState {
     }
 
     fn next_hop(&mut self) {
+        self.grounding.answer_range.end = self.answer.len();
+        self.completed_grounding
+            .push(std::mem::take(&mut self.grounding));
+        self.grounding.answer_range = self.answer.len()..self.answer.len();
         self.add_hop_usage();
         self.input_tokens = 0;
         self.output_tokens = 0;

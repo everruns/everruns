@@ -39,6 +39,7 @@ pub use schedule_store::{LocalScheduleStore, ScheduleReconcileReport};
 pub use session_leases::LocalSessionLeases;
 pub use session_store::LocalSessionStore;
 pub use task_recovery::LocalTaskRecovery;
+pub(crate) use task_recovery::process_ownership;
 pub use task_registry::LocalSessionTaskRegistry;
 pub use wake_routing::{HostRoutedRunner, WakeRoutes};
 

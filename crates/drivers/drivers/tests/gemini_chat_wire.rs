@@ -39,6 +39,127 @@ fn sse(frames: &[serde_json::Value]) -> ResponseTemplate {
 }
 
 #[tokio::test]
+async fn long_decode_preserves_each_hops_grounding_and_searches() {
+    use everruns_contracts::{ToolDefinition, native_web_search::NativeWebSearch};
+    use serde_json::json;
+    use wiremock::matchers::body_partial_json;
+
+    // Exercise both public entry points, including a final hop without grounding.
+    for streaming in [false, true] {
+        for grounded_second_hop in [false, true] {
+            let server = MockServer::start().await;
+            let grounding = |start, url| {
+                json!({
+                    "webSearchQueries": ["same query", "", "same query"],
+                    "groundingChunks": [{"web": {"uri": url}}],
+                    "groundingSupports": [{
+                        "segment": {"startIndex": start, "endIndex": start + 5, "text": "Same."},
+                        "groundingChunkIndices": [0, 9]
+                    }]
+                })
+            };
+            Mock::given(method("POST"))
+                .and(body_partial_json(json!({"continuationToken":"second"})))
+                .respond_with(sse(&[
+                    json!({"candidates":[{"content":{"parts":[{"text":" Done."}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":30,"candidatesTokenCount":3,"thoughtsTokenCount":4}}),
+                ]))
+                .with_priority(1).expect(1).mount(&server).await;
+            let second_grounding =
+                grounded_second_hop.then(|| grounding(1, "https://example.com/second"));
+            Mock::given(method("POST"))
+                .and(body_partial_json(json!({"continuationToken":"first"})))
+                .respond_with(sse(&[
+                    json!({"candidates":[{"content":{"parts":[{"text":" Same."}]},"groundingMetadata":second_grounding}]}),
+                    json!({"candidates":[{"finishReason":"CONTINUATION","continuationToken":"second","groundingMetadata":second_grounding}],"usageMetadata":{"promptTokenCount":20,"candidatesTokenCount":2,"thoughtsTokenCount":3}}),
+                ]))
+                .with_priority(2).expect(1).mount(&server).await;
+            Mock::given(method("POST"))
+                .respond_with(sse(&[
+                    json!({"candidates":[{"content":{"parts":[{"text":"Grüße 😀! Same."}]},"groundingMetadata":grounding(14, "https://example.com/first")}]}),
+                    json!({"candidates":[{"finishReason":"CONTINUATION","continuationToken":"first"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":1,"thoughtsTokenCount":2}}),
+                    // Repeated metadata can trail the terminal candidate.
+                    json!({"candidates":[{"groundingMetadata":grounding(14, "https://example.com/first") }]}),
+                ]))
+                .with_priority(3).expect(1).mount(&server).await;
+
+            let mut cfg = config("gemini-4-argon");
+            cfg.max_tokens = Some(100_000);
+            cfg.tools = vec![ToolDefinition::function(
+                "web_search",
+                "search",
+                json!({"type":"object"}),
+            )];
+            let (key, value) = NativeWebSearch::default().to_driver_option();
+            cfg.driver_options.insert(key, value);
+            let messages = vec![Message::text(MessageRole::User, "search")];
+            let (text, metadata) = if streaming {
+                let mut stream = provider(&server)
+                    .chat_completion_stream(messages, &cfg)
+                    .await
+                    .unwrap();
+                let mut text = String::new();
+                let mut metadata = None;
+                let mut searches = Vec::new();
+                while let Some(event) = stream.next().await {
+                    match event.unwrap() {
+                        LlmStreamEvent::TextDelta(delta) => text.push_str(&delta),
+                        LlmStreamEvent::HostedToolCall(call) => searches.push(call),
+                        LlmStreamEvent::Done(done) => {
+                            assert!(metadata.replace(*done).is_none());
+                        }
+                        LlmStreamEvent::Error(error) => panic!("{error}"),
+                        _ => {}
+                    }
+                }
+                assert_eq!(searches.len(), if grounded_second_hop { 2 } else { 1 });
+                for (index, call) in searches.iter().enumerate() {
+                    assert_eq!(call.id, format!("google_search_{}", index + 1));
+                    assert_eq!(call.summary.as_deref(), Some("same query"));
+                }
+                (text, metadata.unwrap())
+            } else {
+                let response = provider(&server)
+                    .chat_completion(messages, &cfg)
+                    .await
+                    .unwrap();
+                (response.text, response.metadata)
+            };
+            assert_eq!(text, "Grüße 😀! Same. Same. Done.");
+            let citations = &metadata.web_citations;
+            assert_eq!(citations.len(), if grounded_second_hop { 2 } else { 1 });
+            for (citation, (url, start, end)) in citations.iter().zip([
+                ("https://example.com/first", 9, 14),
+                ("https://example.com/second", 15, 20),
+            ]) {
+                assert_eq!(citation.url, url);
+                let span = citation.span.as_ref().unwrap();
+                assert_eq!(
+                    (span.start, span.end, span.text.as_str()),
+                    (start, end, "Same.")
+                );
+            }
+            assert_eq!(
+                metadata.hosted_tool_calls.get("web_search_call"),
+                Some(&if grounded_second_hop { 2 } else { 1 })
+            );
+            assert_eq!(metadata.total_tokens, Some(75));
+            assert_eq!(metadata.prompt_tokens, Some(60));
+            assert_eq!(metadata.completion_tokens, Some(15));
+            assert_eq!(metadata.reasoning_tokens, Some(9));
+            assert_eq!(metadata.provider_finish_reason.as_deref(), Some("STOP"));
+            let requests = server.received_requests().await.unwrap();
+            assert_eq!(requests.len(), 3);
+            for request in requests {
+                assert_eq!(
+                    request.body_json::<serde_json::Value>().unwrap()["tools"],
+                    json!([{"google_search":{}}])
+                );
+            }
+        }
+    }
+}
+
+#[tokio::test]
 async fn long_decode_stops_at_the_requested_budget_and_keeps_the_default_cap() {
     use serde_json::json;
     for (budget, tokens, expected) in [

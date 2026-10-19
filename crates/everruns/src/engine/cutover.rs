@@ -472,10 +472,20 @@ impl Engine {
         let mut tasks = Vec::new();
         if let Some(registry) = &host.session_task_registry {
             for task in registry.list(session, None).await? {
+                // Work still executing under its legacy owner cannot move; work
+                // whose owner is gone moves and is reconciled by the authority.
+                #[cfg(feature = "local")]
+                if crate::hosting::task_is_running_elsewhere(&task) {
+                    return Err(AgentLoopError::config(format!(
+                        "the legacy session's {} task {} is still running; let it finish or \
+                         cancel it before cutover",
+                        task.kind, task.id
+                    )));
+                }
+                #[cfg(not(feature = "local"))]
                 if !task.state.is_terminal() {
                     return Err(AgentLoopError::config(format!(
-                        "the legacy session has an outstanding {} task {}; let it finish or \
-                         cancel it before cutover",
+                        "the legacy session has an outstanding {} task {}",
                         task.kind, task.id
                     )));
                 }

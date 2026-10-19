@@ -6,6 +6,10 @@
   retain bounded OTel links through canonical journals and recovery outboxes.
   Turns keep independent traces and application sampling. See
   [Framework observability](framework/observability.md#durable-causal-context).
+* **Authority task services.** Coherent SQLite sessions get the durable task
+  registry, child sessions and coordination wakes; cutover carries tasks, and
+  lost executions are re-attached or settled on activation. See
+  [Local authority cutover](framework/local-authority-cutover.md).
 
 * **Native authority secrets.** `SqliteHosting` stores session secrets sealed
   with the platform envelope scheme when given secret keys, and cutover moves

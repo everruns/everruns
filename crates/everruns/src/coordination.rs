@@ -489,48 +489,7 @@ impl LocalSessionRunner for EngineSessionRunner {
             .backends_for(&agent)
             .await
             .map_err(crate::agent::BackendInitError::into_agent_loop)?;
-        let history = EventHistory::new(backends.host.event_log.clone());
-        let page_size = EventHistoryReadLimit::new(MAX_EVENT_HISTORY_PAGE_SIZE)
-            .map_err(|error| AgentLoopError::store(error.to_string()))?;
-        let mut request = EventHistoryReadRequest::new(session_id, page_size);
-        let mut raw = Vec::new();
-        loop {
-            let page = history
-                .read_page(request)
-                .await
-                .map_err(|error| AgentLoopError::store(error.to_string()))?;
-            raw.extend(page.messages);
-            let Some(cursor) = page.next_cursor else {
-                break;
-            };
-            request = EventHistoryReadRequest::new(session_id, page_size).with_cursor(cursor);
-        }
-        // The conversation as the platform store contract reads it: what
-        // people said and what the agent said (its text or its sent messages),
-        // never its commentary.
-        let lines = conversation::transcript_lines(&raw);
-        let mut messages: Vec<PlatformMessage> = raw
-            .into_iter()
-            .zip(lines)
-            .filter_map(|(message, content)| {
-                let role = match &message.role {
-                    RuntimeMessageRole::Agent => "agent",
-                    RuntimeMessageRole::User => "user",
-                    _ => return None,
-                };
-                Some(PlatformMessage {
-                    role: role.to_string(),
-                    content: content?,
-                    created_at: message.created_at,
-                })
-            })
-            .collect();
-        // Most recent first, as the platform store contract reads them.
-        messages.reverse();
-        if let Some(limit) = limit {
-            messages.truncate(limit);
-        }
-        Ok(messages)
+        platform_messages(backends.host.event_log.clone(), session_id, limit).await
     }
 
     async fn get_session_status(&self, session_id: SessionId) -> Result<Option<String>> {
@@ -542,4 +501,54 @@ impl LocalSessionRunner for EngineSessionRunner {
             .await?
             .map(|_| "idle".to_string()))
     }
+}
+
+/// A session's conversation as the platform store contract reads it.
+pub(crate) async fn platform_messages(
+    event_log: Arc<dyn everruns_core::host::EventLog>,
+    session_id: SessionId,
+    limit: Option<usize>,
+) -> Result<Vec<PlatformMessage>> {
+    let history = EventHistory::new(event_log);
+    let page_size = EventHistoryReadLimit::new(MAX_EVENT_HISTORY_PAGE_SIZE)
+        .map_err(|error| AgentLoopError::store(error.to_string()))?;
+    let mut request = EventHistoryReadRequest::new(session_id, page_size);
+    let mut raw = Vec::new();
+    loop {
+        let page = history
+            .read_page(request)
+            .await
+            .map_err(|error| AgentLoopError::store(error.to_string()))?;
+        raw.extend(page.messages);
+        let Some(cursor) = page.next_cursor else {
+            break;
+        };
+        request = EventHistoryReadRequest::new(session_id, page_size).with_cursor(cursor);
+    }
+    // The conversation as the platform store contract reads it: what
+    // people said and what the agent said (its text or its sent messages),
+    // never its commentary.
+    let lines = conversation::transcript_lines(&raw);
+    let mut messages: Vec<PlatformMessage> = raw
+        .into_iter()
+        .zip(lines)
+        .filter_map(|(message, content)| {
+            let role = match &message.role {
+                RuntimeMessageRole::Agent => "agent",
+                RuntimeMessageRole::User => "user",
+                _ => return None,
+            };
+            Some(PlatformMessage {
+                role: role.to_string(),
+                content: content?,
+                created_at: message.created_at,
+            })
+        })
+        .collect();
+    // Most recent first, as the platform store contract reads them.
+    messages.reverse();
+    if let Some(limit) = limit {
+        messages.truncate(limit);
+    }
+    Ok(messages)
 }

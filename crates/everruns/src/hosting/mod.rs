@@ -33,6 +33,8 @@ pub use query::SessionQuerySnapshot;
 mod sqlite;
 #[cfg(feature = "local")]
 pub use sqlite::SqliteHosting;
+#[cfg(feature = "local")]
+pub(crate) use sqlite::task_is_running_elsewhere;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -447,6 +449,19 @@ pub trait SessionHosting: Send + Sync + 'static {
     /// Without the hint every waiter pays up to one poll interval per turn.
     fn changes(&self, _session: SessionId) -> Option<Arc<tokio::sync::Notify>> {
         None
+    }
+    /// Attach profile-owned host services (task registry, child sessions,
+    /// wakes) to an activation's runtime after reconciling lost executions.
+    /// Profiles without such services keep the defaults.
+    #[doc(hidden)]
+    async fn prepare_activation(
+        &self,
+        _engine: &crate::Engine,
+        _session: SessionId,
+        _environment: &crate::Environment,
+        backends: HostBackends,
+    ) -> Result<HostBackends> {
+        Ok(backends)
     }
     /// Commit a quiescent legacy session, its source boundary and ownership
     /// decision in one transaction (EVE-1298). Returns `true` when an

@@ -307,7 +307,11 @@ impl EventLog for Ports {
 #[async_trait]
 impl SessionStore for Ports {
     async fn get_session(&self, session: SessionId) -> Result<Option<ExecutionSession>> {
-        self.scope(session)?;
+        // A child session reads its ancestors' catalog records (subagent
+        // depth, delegation results); nothing else crosses sessions.
+        if session != self.session && !self.hosting.is_ancestor(self.session, session)? {
+            self.scope(session)?;
+        }
         self.hosting.transaction(session, |tx, state| {
             state.binding(session)?;
             let mut record: Option<ExecutionSession> = object(tx, session, "session", "record")?;
