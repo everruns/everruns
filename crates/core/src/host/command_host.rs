@@ -194,6 +194,11 @@ impl StoreCommandHost {
         &self,
         request: SessionCompletionRequest,
     ) -> std::result::Result<PreparedCompletion, SessionCompletionError> {
+        // THREAT[TM-LLM-053]: caller metadata is bounded and can never
+        // stand in for the authority-owned correlation keys.
+        request
+            .validate_metadata()
+            .map_err(SessionCompletionError::InvalidRequest)?;
         let assembled = self
             .assembled()
             .await
@@ -234,12 +239,12 @@ impl StoreCommandHost {
                     enabled: false,
                     threshold: usize::MAX,
                 })
-                .previous_response_id(None);
-        // Embedder metadata first, as on turn model calls, so a host's
-        // attribution reaches out-of-band completions too (EVE-1302).
-        for (key, value) in &assembled.embedder_metadata {
-            builder = builder.with_metadata(key, value);
-        }
+                .previous_response_id(None)
+                .metadata(crate::command_host::completion_metadata(
+                    &assembled.embedder_metadata,
+                    &request.metadata,
+                    self.session_id,
+                ));
         if let Some(effort) = request
             .controls
             .as_ref()
@@ -248,12 +253,6 @@ impl StoreCommandHost {
         {
             builder = builder.reasoning_effort(effort);
         }
-        for (key, value) in &request.metadata {
-            builder = builder.with_metadata(key, value);
-        }
-        // THREAT[TM-LLM-053]: the correlation id is stamped last so neither
-        // embedder nor request metadata can claim another session's identity.
-        builder = builder.with_metadata("session_id", self.session_id.to_string());
         Ok(PreparedCompletion {
             llm_messages,
             llm_config: builder.build(),

@@ -12,8 +12,8 @@ use everruns::hosting::spi::HostBackends;
 use everruns::hosting::{AgentBuild, MemoryHosting};
 use everruns::llm::Message;
 use everruns::{
-    Agent, AgentLoopError, BuildError, ChatDriver, Engine, LlmCallConfig, LlmResponseStream,
-    LlmStreamEvent, Provider, ProviderEndpoint, Session, SessionId,
+    Agent, AgentLoopError, BuildError, ChatDriver, CompletionRequest, Engine, LlmCallConfig,
+    LlmResponseStream, LlmStreamEvent, Provider, ProviderEndpoint, Session, SessionId,
 };
 
 const MODEL: &str = "recorded-model";
@@ -71,11 +71,19 @@ impl ChatDriver for Recorder {
 }
 
 fn agent(recorder: &Recorder, backends: Option<HostBackends>) -> Agent {
+    agent_with(recorder, backends, yolop_metadata())
+}
+
+fn agent_with(
+    recorder: &Recorder,
+    backends: Option<HostBackends>,
+    metadata: RequestMetadata,
+) -> Agent {
     let mut builder = Agent::builder()
         .instructions("Answer briefly.")
         .provider(Provider::new("recorder", recorder.clone()).base_url("https://rec.invalid/v1"))
         .model(MODEL)
-        .host_services(HostServices::new().request_metadata(yolop_metadata()));
+        .host_services(HostServices::new().request_metadata(metadata));
     if let Some(backends) = backends {
         builder = builder.backends(backends);
     }
@@ -197,6 +205,51 @@ async fn coherent_activations_keep_metadata_across_engine_reconstruction() {
     let resumed = second.resume(id).await.expect("resume");
     assert_turn(&resumed, &recorder, "coherent resume").await;
     assert_queries(&resumed, &recorder, "coherent resume").await;
+}
+
+/// EVE-1303's explicit completions share the one metadata assembly: host
+/// entries, then the request's `purpose`, then the authority `session_id`.
+#[tokio::test]
+async fn host_metadata_and_completion_purpose_coexist_on_every_lane() {
+    for lane in ["legacy", "default", "coherent"] {
+        let recorder = Recorder::default();
+        // The host also claims `purpose`; the request's more specific one wins.
+        let metadata = yolop_metadata().entry("purpose", "host-default");
+        let session = match lane {
+            "legacy" => Engine::new().create(agent_with(
+                &recorder,
+                Some(HostBackends::in_memory()),
+                metadata,
+            )),
+            "default" => Engine::new().create(agent_with(&recorder, None, metadata)),
+            _ => {
+                let build = AgentBuild::new("assistant", "metadata-completion-v1");
+                let engine = Engine::builder()
+                    .hosting(MemoryHosting::default())
+                    .register(build.clone(), agent_with(&recorder, None, metadata))
+                    .build();
+                engine
+                    .create_registered(SessionId::new(), &build)
+                    .await
+                    .expect("create")
+            }
+        };
+        assert_turn(&session, &recorder, lane).await;
+        let verdict = session
+            .complete(
+                CompletionRequest::new()
+                    .system_prompt("Decide whether the task is complete.")
+                    .user("evidence")
+                    .purpose("completion_review"),
+            )
+            .await
+            .expect("completion");
+        assert_eq!(verdict, "recorded");
+        assert_request(&recorder, session.session_id(), lane);
+        let (_, sent) = recorder.last();
+        assert_eq!(sent["purpose"], "completion_review", "{lane}: request wins");
+        assert!(!sent.contains_key("turn_id"), "{lane}: not a turn");
+    }
 }
 
 #[test]

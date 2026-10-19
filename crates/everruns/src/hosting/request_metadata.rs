@@ -17,8 +17,10 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use everruns_contracts::openresponses_types::{
-    MAX_METADATA_KEY_LENGTH, MAX_METADATA_KEYS, MAX_METADATA_VALUE_LENGTH, SYSTEM_LLM_METADATA_KEYS,
+    MAX_METADATA_KEY_LENGTH, MAX_METADATA_KEYS, MAX_METADATA_VALUE_LENGTH,
 };
+// One reserved list for turns, completions and host metadata (EVE-1303).
+use everruns_contracts::runtime::command_host::RESERVED_COMPLETION_METADATA_KEYS as SYSTEM_LLM_METADATA_KEYS;
 
 /// Metadata key the OpenRouter driver sends as the `HTTP-Referer` header.
 pub const OPENROUTER_HTTP_REFERER_KEY: &str = "openrouter.http_referer";
@@ -134,7 +136,7 @@ impl RequestMetadata {
                     "key may contain only ASCII letters, digits, '_', '.', '-' and ':'".into(),
                 ));
             }
-            // THREAT[TM-LLM-053]: the runtime stamps these correlation ids on
+            // THREAT[TM-LLM-054]: the runtime stamps these correlation ids on
             // every request; a host entry must not claim execution identity.
             if Self::RESERVED_KEYS
                 .iter()

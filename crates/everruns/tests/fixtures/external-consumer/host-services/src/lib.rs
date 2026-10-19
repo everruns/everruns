@@ -2,8 +2,9 @@
 //! pre-tool guard and a model-view contribution, composed into an Engine
 //! Session through `everruns::hosting::services` only. It also hot-installs
 //! an extension and drives it through the Session control surface (EVE-1297),
-//! and attaches Yolop-style request metadata and OpenRouter attribution that
-//! must reach the actual provider request (EVE-1302).
+//! including an explicit completion-review request (EVE-1303), and attaches
+//! Yolop-style request metadata and OpenRouter attribution that must reach the
+//! actual provider request (EVE-1302).
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -427,6 +428,145 @@ mod tests {
                     .request_metadata,
                 expected
             );
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // A completion controller's explicit review request (EVE-1303)
+    // -----------------------------------------------------------------------
+
+    use everruns::llm::{Message, MessageRole};
+    use everruns::{
+        AgentLoopError, ChatDriver, CompletionRequest, LlmCallConfig, LlmResponseStream,
+        LlmStreamEvent, Provider, ProviderEndpoint,
+    };
+
+    const REVIEW_PROMPT: &str = "Decide whether the task is complete. Answer COMPLETE or MORE.";
+
+    /// What one provider call received.
+    #[derive(Clone, Debug)]
+    struct Recorded {
+        model: String,
+        system: Vec<String>,
+        messages: Vec<String>,
+        tools: usize,
+        metadata: std::collections::HashMap<String, String>,
+    }
+
+    #[derive(Clone, Default)]
+    struct RecordingDriver(Arc<Mutex<Vec<Recorded>>>);
+
+    #[async_trait]
+    impl ChatDriver for RecordingDriver {
+        async fn chat_completion_stream(
+            &self,
+            _endpoint: &ProviderEndpoint,
+            messages: Vec<Message>,
+            config: &LlmCallConfig,
+        ) -> std::result::Result<LlmResponseStream, AgentLoopError> {
+            let text = |role: bool| {
+                messages
+                    .iter()
+                    .filter(|message| (message.role == MessageRole::System) == role)
+                    .map(|message| message.content.to_text())
+                    .collect::<Vec<_>>()
+            };
+            self.0.lock().expect("recorded calls").push(Recorded {
+                model: config.model.clone(),
+                system: text(true),
+                messages: text(false),
+                tools: config.tools.len(),
+                metadata: config.metadata.clone(),
+            });
+            let reply = if config.metadata.contains_key("purpose") {
+                "COMPLETE"
+            } else {
+                "done"
+            };
+            Ok(Box::pin(futures::stream::iter([
+                Ok(LlmStreamEvent::TextDelta(reply.into())),
+                Ok(LlmStreamEvent::Done(Box::default())),
+            ])))
+        }
+    }
+
+    /// The host's own reduction of session context to bounded evidence.
+    fn review_evidence(context: &everruns::SessionContext) -> String {
+        let mut evidence = format!("messages={}", context.messages.len());
+        evidence.truncate(256);
+        evidence
+    }
+
+    #[tokio::test]
+    #[allow(deprecated)] // The legacy facade lane, until its retirement (EVE-1298).
+    async fn a_completion_review_sends_exactly_the_host_envelope() {
+        for legacy in [false, true] {
+            let driver = RecordingDriver::default();
+            let mut builder = Agent::builder()
+                .instructions("AGENT_INSTRUCTIONS")
+                .provider(Provider::new("acme", driver.clone()))
+                .model("acme-1");
+            if legacy {
+                builder = builder.backends(everruns::hosting::spi::HostBackends::in_memory());
+            }
+            let session = Engine::new().create(builder.build().expect("valid agent"));
+            assert!(session.run("ship the fix").await.expect("turn").success);
+            session.set_model("acme-2").await.expect("live model");
+            let history = session.history().page().await.expect("history").messages;
+            let events = session.events_after(0).await.expect("events").len();
+
+            let context = session.command_context().await.expect("context");
+            let evidence = review_evidence(&context);
+            let verdict = session
+                .complete(
+                    CompletionRequest::new()
+                        .system_prompt(REVIEW_PROMPT)
+                        .user(evidence.clone())
+                        .purpose("completion_review"),
+                )
+                .await
+                .expect("review");
+            assert_eq!(verdict, "COMPLETE");
+
+            let review = driver.0.lock().expect("recorded").last().cloned().unwrap();
+            assert_eq!(review.system, [REVIEW_PROMPT]);
+            assert_eq!(review.messages, [evidence]);
+            assert_eq!(review.tools, 0);
+            assert_eq!(review.metadata["purpose"], "completion_review");
+            assert_eq!(review.metadata["session_id"], session.id());
+            assert_eq!(review.model, "acme-2", "the session's current model");
+
+            // An unavailable selection changes nothing and never falls back.
+            assert!(session.set_model(Model::on("other", "x")).await.is_err());
+            assert!(matches!(
+                session
+                    .complete(
+                        CompletionRequest::new()
+                            .user("x")
+                            .metadata("session_id", "spoof")
+                    )
+                    .await,
+                Err(everruns::SessionControlError::Rejected(_))
+            ));
+            session
+                .complete(
+                    CompletionRequest::new()
+                        .user("again")
+                        .purpose("completion_review"),
+                )
+                .await
+                .expect("review");
+            assert_eq!(
+                driver.0.lock().expect("recorded").last().unwrap().model,
+                "acme-2"
+            );
+
+            assert_eq!(
+                session.history().page().await.expect("history").messages,
+                history,
+                "canonical history unchanged"
+            );
+            assert_eq!(session.events_after(0).await.expect("events").len(), events);
         }
     }
 }

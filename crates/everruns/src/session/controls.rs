@@ -51,6 +51,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::{Arc, Mutex, RwLock};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use everruns_contracts::driver_registry::ProviderConfig;
@@ -78,6 +79,9 @@ pub enum SessionControlError {
     Unsupported(String),
     /// The session could not run the operation.
     Run(RunError),
+    /// The operation did not finish within the deadline the request set.
+    /// It was abandoned, with nothing appended to history.
+    TimedOut(Duration),
 }
 
 impl fmt::Display for SessionControlError {
@@ -86,6 +90,7 @@ impl fmt::Display for SessionControlError {
             Self::Rejected(reason) => write!(f, "session control rejected: {reason}"),
             Self::Unsupported(reason) => write!(f, "session control unsupported: {reason}"),
             Self::Run(error) => write!(f, "session control failed: {error}"),
+            Self::TimedOut(after) => write!(f, "session control timed out after {after:?}"),
         }
     }
 }
@@ -162,6 +167,153 @@ pub struct CapabilityChange {
     pub changed: bool,
     /// Whether the capability is effective for the next model call.
     pub active: bool,
+}
+
+/// Provider metadata key [`CompletionRequest::purpose`] sets.
+pub const COMPLETION_PURPOSE_KEY: &str = "purpose";
+/// Most messages a [`CompletionRequest`] may carry.
+pub const MAX_COMPLETION_MESSAGES: usize = 64;
+/// Most system prompts a [`CompletionRequest`] may carry.
+pub const MAX_COMPLETION_SYSTEM_PROMPTS: usize = 8;
+
+/// A host-curated, tool-less completion request for
+/// [`Session::complete`].
+///
+/// The host chooses the whole envelope: its system prompts, then its
+/// messages, nothing else. The session contributes only what it owns: its
+/// effective provider and model (live selections included), the Agent's call
+/// settings, file and image resolution, provider errors and the
+/// authority-owned `session_id` metadata. Neither the session's instructions
+/// nor its conversation, capability message filters or model views are
+/// added. A host that wants filtered session context reads
+/// [`Session::command_context`] and bounds it into its own messages.
+///
+/// ```
+/// use everruns::CompletionRequest;
+///
+/// let request = CompletionRequest::new()
+///     .system_prompt("Decide whether the task is complete.")
+///     .user("Evidence: tests pass, PR merged.")
+///     .purpose("completion_review");
+/// # let _ = request;
+/// ```
+///
+/// Stability: experimental.
+#[derive(Clone, Debug, Default)]
+#[must_use]
+pub struct CompletionRequest {
+    system_prompts: Vec<String>,
+    messages: Vec<everruns_core::RuntimeMessage>,
+    metadata: BTreeMap<String, String>,
+    reasoning_effort: Option<ReasoningEffort>,
+    timeout: Option<Duration>,
+}
+
+impl CompletionRequest {
+    /// An empty request; add at least one message.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Append a system prompt. Prompts are sent in order, before every
+    /// message. A blank prompt is rejected.
+    pub fn system_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.system_prompts.push(prompt.into());
+        self
+    }
+
+    /// Append a user message.
+    pub fn user(self, text: impl Into<String>) -> Self {
+        self.message(everruns_core::RuntimeMessage::user(text))
+    }
+
+    /// Append an assistant message, for example an earlier answer the host
+    /// asks the model to check.
+    pub fn assistant(self, text: impl Into<String>) -> Self {
+        self.message(everruns_core::RuntimeMessage::assistant(text))
+    }
+
+    /// Append a prepared user or assistant message. Image and file
+    /// references resolve through the session's resolvers. System, tool-call
+    /// and tool-result messages are rejected: the request is tool-less and
+    /// system text belongs in [`system_prompt`](Self::system_prompt).
+    pub fn message(mut self, message: everruns_core::RuntimeMessage) -> Self {
+        self.messages.push(message);
+        self
+    }
+
+    /// Mark what the completion is for, sent as provider metadata
+    /// `purpose` (for example `completion_review`).
+    pub fn purpose(self, purpose: impl Into<String>) -> Self {
+        self.metadata(COMPLETION_PURPOSE_KEY, purpose)
+    }
+
+    /// Add provider metadata. Keys are 1-64 lowercase ASCII letters, digits,
+    /// `_`, `-` or `.`; values are at most 256 bytes; at most eight entries.
+    /// Keys the host stamps from its own authority (`session_id`, `turn_id`,
+    /// `model_id` and the like) are rejected, never overwritten. Request
+    /// metadata wins over the host's own request metadata.
+    pub fn metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata.insert(key.into(), value.into());
+        self
+    }
+
+    /// Reasoning effort for this request only. Without it the request uses
+    /// the session's current selection
+    /// ([`Session::set_reasoning_effort`]). An effort the effective model's
+    /// curated profile cannot honor is rejected.
+    pub fn reasoning_effort(mut self, effort: ReasoningEffort) -> Self {
+        self.reasoning_effort = Some(effort);
+        self
+    }
+
+    /// Abandon the completion after `timeout` with
+    /// [`SessionControlError::TimedOut`].
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
+
+    fn validate(&self) -> Result<(), SessionControlError> {
+        let rejected = |reason: String| Err(SessionControlError::Rejected(reason));
+        if self.system_prompts.len() > MAX_COMPLETION_SYSTEM_PROMPTS {
+            return rejected(format!(
+                "a completion request carries at most {MAX_COMPLETION_SYSTEM_PROMPTS} system \
+                 prompts"
+            ));
+        }
+        if self
+            .system_prompts
+            .iter()
+            .any(|prompt| prompt.trim().is_empty())
+        {
+            return rejected("completion system prompts must not be blank".into());
+        }
+        if self.messages.is_empty() || self.messages.len() > MAX_COMPLETION_MESSAGES {
+            return rejected(format!(
+                "a completion request carries 1-{MAX_COMPLETION_MESSAGES} messages"
+            ));
+        }
+        for message in &self.messages {
+            use everruns_core::RuntimeMessageRole;
+            if !matches!(
+                message.role,
+                RuntimeMessageRole::User | RuntimeMessageRole::Agent
+            ) || message.has_tool_calls()
+                || message.tool_result_content().is_some()
+            {
+                return rejected(
+                    "completion messages are user or assistant text and attachments; system \
+                     text goes in system prompts, and tool calls or results are not allowed"
+                        .into(),
+                );
+            }
+        }
+        if self.timeout.is_some_and(|timeout| timeout.is_zero()) {
+            return rejected("completion timeout must be positive".into());
+        }
+        Ok(())
+    }
 }
 
 /// Trusted, process-local live settings of one session (see the module docs).
@@ -802,6 +954,9 @@ impl Session {
     /// then `prompt` as a user message. It uses the session's resolved model,
     /// provider and live selections, exactly as the next model call would.
     /// Nothing is appended to history, no tool runs and no turn starts.
+    ///
+    /// This is the convenience form of [`complete`](Self::complete), whose
+    /// host chooses the whole envelope instead.
     pub async fn complete_out_of_band(
         &self,
         instructions: Option<&str>,
@@ -819,15 +974,77 @@ impl Session {
             messages,
             ..Default::default()
         };
-        match host.completion(request).await {
-            Ok(completion) => Ok(completion.text),
-            Err(everruns_core::SessionCompletionError::InvalidRequest(error)) => Err(error.into()),
-            Err(everruns_core::SessionCompletionError::StreamingUnsupported) => Err(
-                SessionControlError::Unsupported("streaming completion".into()),
-            ),
-            Err(everruns_core::SessionCompletionError::Completion { error, .. }) => {
-                Err(SessionControlError::Run(AgentLoopError::llm(error).into()))
-            }
+        completion_text(host.completion(request).await)
+    }
+
+    /// Run a host-curated, tool-less completion against this session's
+    /// effective model (EVE-1303).
+    ///
+    /// The provider receives exactly the request's system prompts and
+    /// messages (see [`CompletionRequest`]), with no tools, through the
+    /// provider and model the session's next model call would use, live
+    /// selections included. A selection the session can no longer serve
+    /// fails instead of falling back to another provider or model. Provider
+    /// metadata is the host's own request metadata, then the request's
+    /// metadata, then the authority-owned `session_id`.
+    ///
+    /// Like [`complete_out_of_band`](Self::complete_out_of_band) it is
+    /// answered during an active turn, including from a tool of that turn,
+    /// and never starts a turn, appends to history or takes execution
+    /// ownership. Dropping the future abandons the request.
+    pub async fn complete(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<String, SessionControlError> {
+        request.validate()?;
+        match request.timeout {
+            Some(timeout) => tokio::time::timeout(timeout, self.complete_curated(request))
+                .await
+                .map_err(|_| SessionControlError::TimedOut(timeout))?,
+            None => self.complete_curated(request).await,
+        }
+    }
+
+    async fn complete_curated(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<String, SessionControlError> {
+        let runtime = self.control_runtime().await?;
+        let host = runtime.runtime().command_host(self.session_id()).await?;
+        let effort = request
+            .reasoning_effort
+            .or_else(|| self.inner.execution.live_controls().effort.get());
+        if let Some(effort) = effort {
+            // The effective model is the one the session resolves now.
+            let context = runtime.runtime().load_context(self.session_id()).await?;
+            check_effort(&context.model.provider_type, &context.model.model, effort)?;
+        }
+        let completion = everruns_core::SessionCompletionRequest {
+            system_prompts: request.system_prompts,
+            messages: request.messages,
+            controls: effort.map(|effort| everruns_core::Controls {
+                reasoning: Some(everruns_core::ReasoningConfig {
+                    effort: Some(effort),
+                }),
+                ..Default::default()
+            }),
+            metadata: request.metadata.into_iter().collect(),
+        };
+        completion_text(host.completion(completion).await)
+    }
+}
+
+fn completion_text(
+    result: Result<everruns_core::SessionCompletion, everruns_core::SessionCompletionError>,
+) -> Result<String, SessionControlError> {
+    match result {
+        Ok(completion) => Ok(completion.text),
+        Err(everruns_core::SessionCompletionError::InvalidRequest(error)) => Err(error.into()),
+        Err(everruns_core::SessionCompletionError::StreamingUnsupported) => Err(
+            SessionControlError::Unsupported("streaming completion".into()),
+        ),
+        Err(everruns_core::SessionCompletionError::Completion { error, .. }) => {
+            Err(SessionControlError::Run(AgentLoopError::llm(error).into()))
         }
     }
 }
