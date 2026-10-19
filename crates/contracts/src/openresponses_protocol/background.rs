@@ -44,7 +44,7 @@ use std::time::Duration;
 
 use eventsource_stream::Eventsource;
 use futures::{StreamExt, stream};
-use reqwest::header::HeaderMap;
+use http::header::HeaderMap;
 use serde_json::Value;
 
 use crate::background_call::{BackgroundCallContext, BackgroundResponseRecord};
@@ -104,7 +104,7 @@ pub(super) fn is_rejection(error: &crate::error::AgentLoopError) -> bool {
 /// stream stays `'static`.
 #[derive(Clone)]
 pub(super) struct BackgroundResponses {
-    client: reqwest::Client,
+    client: crate::http_transport::HttpClient,
     endpoint: ProviderEndpoint,
     /// The `.../responses` URL the request was posted to.
     api_url: String,
@@ -117,7 +117,7 @@ pub(super) struct BackgroundResponses {
 
 impl BackgroundResponses {
     pub(super) fn new(
-        client: reqwest::Client,
+        client: crate::http_transport::HttpClient,
         endpoint: &ProviderEndpoint,
         api_url: &str,
         extension_headers: &HeaderMap,
@@ -129,8 +129,8 @@ impl BackgroundResponses {
             crate::driver_helpers::merge_request_headers(Vec::new(), &config.extra_headers)
         {
             if let (Ok(name), Ok(value)) = (
-                reqwest::header::HeaderName::from_bytes(name.as_bytes()),
-                reqwest::header::HeaderValue::from_str(&value),
+                http::header::HeaderName::from_bytes(name.as_bytes()),
+                http::header::HeaderValue::from_str(&value),
             ) {
                 headers.insert(name, value);
             }
@@ -145,7 +145,11 @@ impl BackgroundResponses {
         }
     }
 
-    async fn send(&self, method: &str, url: String) -> Result<reqwest::Response, String> {
+    async fn send(
+        &self,
+        method: &str,
+        url: String,
+    ) -> Result<crate::http_transport::HttpResponse, String> {
         let resolved = self
             .endpoint
             .resolve(method, url, b"")
@@ -153,10 +157,10 @@ impl BackgroundResponses {
             .map_err(|e| e.to_string())?;
         let mut headers = self.headers.clone();
         for (name, value) in resolved.headers {
-            let name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
-                .map_err(|e| e.to_string())?;
+            let name =
+                http::header::HeaderName::from_bytes(name.as_bytes()).map_err(|e| e.to_string())?;
             let mut value =
-                reqwest::header::HeaderValue::from_str(&value).map_err(|e| e.to_string())?;
+                http::header::HeaderValue::from_str(&value).map_err(|e| e.to_string())?;
             value.set_sensitive(true);
             headers.insert(name, value);
         }
@@ -269,11 +273,15 @@ impl Drop for CancelOnDrop {
         let (Some(id), false, false) = (self.id.take(), self.finished, self.durable) else {
             return;
         };
+        #[cfg(not(target_arch = "wasm32"))]
         let Ok(runtime) = tokio::runtime::Handle::try_current() else {
             return;
         };
         let responses = self.responses.clone();
+        #[cfg(not(target_arch = "wasm32"))]
         runtime.spawn(async move { responses.cancel(&id).await });
+        #[cfg(target_arch = "wasm32")]
+        crate::rt::spawn(async move { responses.cancel(&id).await });
     }
 }
 
@@ -426,7 +434,7 @@ pub(super) fn resumable(
                 attempt = state.resumes,
                 "background response stream dropped; resuming"
             );
-            tokio::time::sleep(RESUME_BACKOFF * state.resumes).await;
+            crate::rt::sleep(RESUME_BACKOFF * state.resumes).await;
             match state.guard.responses.resume(&id, state.last_sequence).await {
                 Ok(stream) => state.current = stream,
                 Err(error) => {

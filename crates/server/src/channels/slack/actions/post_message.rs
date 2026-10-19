@@ -1,6 +1,7 @@
 //! Explicit posting binds to the signed ingress of one invocation. Session-wide
 //! thread context is insufficient for per-user and per-channel session reuse.
 use super::*;
+use crate::domains::agent_channels::record::SessionBinding;
 
 /// The channel a server-authored event provenance names as initiator, or
 /// `None` when the provenance is not channel-initiated.
@@ -26,7 +27,7 @@ fn initiator_channel_id(provenance: &serde_json::Value) -> Option<&str> {
 /// The Slack conversation `(channel, thread_ts)` a persisted input came from,
 /// when its server-authored provenance binds it to this app and endpoint.
 /// `Ok(None)` is a bound input without a thread reference.
-fn slack_target(
+pub(crate) fn slack_target(
     input: &crate::storage::EventRow,
     app_public_id: &str,
     endpoint_public_id: &str,
@@ -145,10 +146,19 @@ impl DbSlackActionInvoker {
             .ok_or(SlackActionError::NoSlackSession)?;
         let app_id = app_public_id.to_string();
         let endpoint_id = endpoint.public_id.to_string();
-        let (mut channel, mut thread_ts) =
-            slack_target(&input, &app_id, &endpoint_id)?.ok_or_else(|| {
-                SlackActionError::InvalidArgument("The input has no Slack thread reference; send a new Slack message before posting".into())
-            })?;
+        let target = match self
+            .scheduled_target(&input, &app_id, &endpoint_id, config.session_strategy)
+            .await?
+        {
+            Some(target) => Some(target),
+            None => slack_target(&input, &app_id, &endpoint_id)?,
+        };
+        let (mut channel, mut thread_ts) = target.ok_or_else(|| {
+            SlackActionError::InvalidArgument(
+                "The input has no Slack thread reference; send a new Slack message before posting"
+                    .into(),
+            )
+        })?;
         // A message that steered this turn mid-flight gets no delivery of its
         // own, so the answer goes to the newest Slack input of the turn: the
         // question it answers. Same signed-ingress checks; anything else keeps
@@ -173,6 +183,50 @@ impl DbSlackActionInvoker {
             channel,
             thread_ts,
         })
+    }
+
+    /// The Slack conversation a session-schedule turn speaks to, or `None`
+    /// when `input` is not a scheduled input.
+    ///
+    /// Decision (schedules in Slack sessions, D1): resolved here at post time
+    /// rather than stamped onto the input when the schedule fires. The input
+    /// keeps its `schedule` provenance and `schedule_id`, so the trace still
+    /// says "scheduled", and no Slack-shaped provenance is ever written for a
+    /// message Slack did not send. The target comes only from the session's
+    /// latest input that passes the same signed-ingress check
+    /// (THREAT[TM-SLACK-005]); the schedule's text never chooses a channel, and
+    /// without such an input the post fails as before (`NoSlackSession`).
+    ///
+    /// Where it lands: a thread-bound session is that thread, so it keeps it.
+    /// Any other binding posts top-level, which for a DM is the DM itself, so a
+    /// scheduled post never lands in whichever thread happened to be last.
+    async fn scheduled_target(
+        &self,
+        input: &crate::storage::EventRow,
+        app_id: &str,
+        endpoint_id: &str,
+        binding: SessionBinding,
+    ) -> Result<Option<(String, String)>, SlackActionError> {
+        let initiator = input
+            .metadata
+            .as_ref()
+            .and_then(|provenance| provenance["initiator"]["type"].as_str());
+        if initiator != Some("schedule") {
+            return Ok(None);
+        }
+        let candidates = self
+            .db
+            .recent_input_message_events_for_channel(self.session_id, endpoint_id, 20)
+            .await
+            .map_err(|e| SlackActionError::Transient(e.to_string()))?;
+        let (channel, thread_ts) = candidates
+            .iter()
+            .find_map(|row| slack_target(row, app_id, endpoint_id).ok().flatten())
+            .ok_or(SlackActionError::NoSlackSession)?;
+        Ok(Some(match binding {
+            SessionBinding::Thread => (channel, thread_ts),
+            _ => (channel, String::new()),
+        }))
     }
 }
 

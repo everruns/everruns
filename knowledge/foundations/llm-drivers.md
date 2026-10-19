@@ -142,6 +142,15 @@ headers. Drivers own protocol request construction, streaming parse logic,
 retry decision, and error mapping. Shared clients disable redirects and
 pin DNS only after private-range validation.
 
+The shared Chat Completions and Responses protocols and OpenAI/OpenRouter chat
+wrappers also accept host-injected HTTP. This allows wasm32 hosts to supply
+fetch without copying provider behavior. Injection is a trusted host boundary:
+the adapter sees auth and must enforce deployment endpoint/DNS policy, refuse
+redirects, bound network waits and cancel dropped requests/readers. The native
+default retains its hardened client. See the
+[WASM kernel decision](../framework/wasm-kernel.md) and
+[transport contract](../../crates/contracts/src/http_transport.rs).
+
 ### Message Types
 
 1. **Message**: Provider-agnostic message format
@@ -400,6 +409,16 @@ With a journal, dropping the stream no longer cancels the response: the drop may
 
 Remaining gaps: a worker that dies after OpenAI accepted the POST but before `response.created` was saved still re-posts; a response abandoned by a turn that then fails without retrying runs to completion unread; and in the native-async path the coordinator holds the turn lease, so the journal is unavailable there and the call keeps the in-process behaviour.
 
+### Strict tool argument round-trip
+
+OpenAI strict schemas encode omitted optional properties as required nullable
+values. The shared protocol drivers reverse those introduced null placeholders
+before emitting executable tool calls, so the canonical call, fingerprint and
+approval all bind the same original tool arguments. Required nulls, explicit
+nullable values, unknown properties, non-strict schemas and ambiguous union
+branches retain their values for authoritative validation. Both streamed and
+non-streamed Chat Completions and streamed Responses use the same inverse.
+
 ### WebSocket Transport (OpenAI Responses)
 
 The Open Responses driver can stream a call over OpenAI's Responses WebSocket mode instead of SSE, keeping one socket open across the turns of a tool loop. It is opt-in (the `openai/websocket` driver option, or `OpenAIChatDriver::with_websocket_transport`), offered by the OpenAI driver for `api.openai.com` only, never used for background-mode calls, and falls back to SSE whenever the socket fails before the first response event. The wire contract, commit point and reuse rules are in [OpenAI Responses WebSocket Transport](openai-responses-websocket.md).
@@ -448,6 +467,13 @@ The contract that matters:
   first-event timeout, accumulated-byte cap). Unbounded by default so no driver
   changes behavior; `limit_stream` applies the same bounds for callers that
   consume events themselves. See TM-DOS-039.
+
+The provider protocol owns its expected idle interval: long reasoning or
+continuation can legitimately go quiet longer than a generic chat watchdog
+allows. A driver may recommend a request-specific stall timeout through the
+[driver contract](../../crates/contracts/src/driver_registry.rs). The reason
+phase uses that recommendation only when the host has not set its own deadline;
+explicit host policy always takes precedence.
 
 ### Realtime Voice Driver
 
@@ -525,7 +551,11 @@ specific decision.
 Recovery is bounded by both attempts and elapsed wall-clock time. Backoff is
 exponential with jitter, honors reasonable provider retry hints, and lower
 driver layers report consumed retries so the reason loop cannot multiply the
-budget. A retry is permitted only before assistant output commits. Act phases
+budget. A retry is permitted only before assistant output commits: a tool
+call commits it, answer text alone does not. A stream that breaks after text is
+retried under the same message id, announced by a repeated
+`output.message.started`, and its `accumulated` starts over; once the
+budget is spent the text so far is kept as the answer. Act phases
 and completed tool results remain outside the retry boundary, preserving
 exactly-once side effects and provider-visible tool-call/output pairing.
 

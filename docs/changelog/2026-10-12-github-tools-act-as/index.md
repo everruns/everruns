@@ -6,20 +6,28 @@ kind: improvement
 significance: minor
 products: [platform, cloud]
 surfaces: [agent]
+release: "0.48.0"
 links:
   docs: [/capabilities/github/]
-  prs: [everruns/everruns#4604]
+  prs: [everruns/everruns#4604, everruns/everruns#4651]
 ---
 
-The GitHub capability's tools now act on GitHub as exactly one identity, set by
+The [GitHub capability](/capabilities/github/)'s tools now act on GitHub as exactly one identity, set by
 the new `acts_as` setting: `agent` (the default), `person`, or
 `person_or_agent`. Before, a run started by a person who had connected GitHub
 used that person's connection, so a review bot could post as the Everruns app
 instead of as itself.
 
 ```json
-{ "ref": "github", "config": { "acts_as": "person" } }
+{
+  "ref": "github",
+  "config": {
+    "acts_as": "person"
+  }
+}
 ```
 
 Every call also gets a short-lived token limited to the repository it names and
 the permissions that tool needs, so reading a diff no longer holds write access.
+Memory and knowledge index syncs from GitHub get read-only tokens for their one
+repository, and Daytona git tokens only reach repository contents.

@@ -34,6 +34,25 @@ pub async fn execute_waiting_turn_resolution(
             );
         }
 
+        if claim
+            .plan
+            .response
+            .get("resume")
+            .and_then(serde_json::Value::as_bool)
+            == Some(false)
+        {
+            anyhow::ensure!(
+                db.park_waiting_turn_claim(
+                    org_id,
+                    session_id,
+                    claim.resolution_id,
+                    claim.claim_token
+                )
+                .await?,
+                "waiting-turn resolution lease was lost before parking"
+            );
+            return Ok(events);
+        }
         let request = crate::turns::recorded_tool_results(session_id, claim.resolution_id);
         crate::turns::start(&**runner, request).await?;
         anyhow::ensure!(

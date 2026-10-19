@@ -32,6 +32,7 @@ pub mod client;
 pub mod client_test_override;
 pub mod computer;
 pub mod connection;
+mod git_auth;
 mod naming;
 pub mod openapi_spec;
 mod owned;

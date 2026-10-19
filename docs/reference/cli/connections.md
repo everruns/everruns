@@ -1,6 +1,6 @@
 ---
 title: everruns connections
-description: "Your LLM provider API keys. CLI reference for everruns connections."
+description: "Your LLM provider API keys. CLI reference for everruns connections: usage, flags and examples."
 sidebar:
   label: connections
 appliesTo: [platform, cloud]
@@ -26,7 +26,7 @@ everruns connections set [OPTIONS] <PROVIDER>
 
 | Flag | Description |
 |---|---|
-| `<PROVIDER>` | Required. Provider name (e.g. daytona, brave_search, browserless, deno, sprites) |
+| `<PROVIDER>` | Required. Provider name (e.g. daytona, brave_search, browserless, sprites) |
 | `--api-key-stdin` | Read provider API key from stdin. |
 
 

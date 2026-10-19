@@ -2,6 +2,10 @@
 title: Agent Skills
 description: Discover and activate portable skill packages from the session workspace at runtime.
 appliesTo: [framework, platform, cloud]
+# The feature page shares this title; keep the <title> distinct for search results.
+head:
+  - tag: title
+    content: "Agent Skills Capability | Everruns"
 ---
 
 | | |

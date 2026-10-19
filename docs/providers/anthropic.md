@@ -29,6 +29,19 @@ and reasoning onto the Anthropic wire format.
    [Anthropic Console](https://console.anthropic.com/).
 4. Save. Everruns discovers available Claude models automatically.
 
+### Claude Max and Team API credits
+
+Claude Max and Team plans include monthly Claude API credits. They land in the
+Anthropic Console organization you link to your plan, so any API key from that
+organization spends them first, before purchased credits. To run Everruns
+agents on those credits, create the key in the linked organization and add it
+as described above. Nothing else in Everruns changes.
+
+Everruns does not offer signing in with a Claude.ai account: Anthropic does not
+allow third-party products to use Claude.ai login or plan usage limits. See
+[API credits for Max and Team plans](https://platform.claude.com/docs/en/about-claude/api-credits-for-subscribers)
+for eligibility, amounts, and how to link the organization.
+
 ## Models
 
 Anthropic's `/v1/models` endpoint returns capability metadata, which Everruns
@@ -57,5 +70,6 @@ a conversation must end with a user or tool message.
 
 - [Anthropic](https://www.anthropic.com/)
 - [Anthropic Console](https://console.anthropic.com/)
+- [API credits for Max and Team plans](https://platform.claude.com/docs/en/about-claude/api-credits-for-subscribers)
 - [`everruns-drivers` on crates.io](https://crates.io/crates/everruns-drivers), feature `anthropic`
 - [Migrate between providers](/how-to/migrate-providers/)

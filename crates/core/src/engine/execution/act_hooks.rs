@@ -318,7 +318,7 @@ impl PostToolExecHook for OutputHardLimitHook {
                 // Say so in the result: a silently missing screenshot reads as
                 // a tool that returned nothing.
                 let note = format!(
-                    "[{dropped} image(s) dropped: over the {} MiB image limit for one tool result.]",
+                    "[{dropped} image(s) or document(s) dropped: over the {} MiB limit for one tool result.]",
                     MAX_TOOL_IMAGE_BYTES / (1024 * 1024)
                 );
                 result.result = Some(match result.result.take() {
@@ -1381,7 +1381,7 @@ mod tests {
                 .as_ref()
                 .and_then(|r| r.get("images_dropped"))
                 .and_then(|v| v.as_str()),
-            Some("[1 image(s) dropped: over the 5 MiB image limit for one tool result.]"),
+            Some("[1 image(s) or document(s) dropped: over the 5 MiB limit for one tool result.]"),
             "the model must be told the image was dropped"
         );
     }

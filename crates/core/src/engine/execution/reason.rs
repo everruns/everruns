@@ -20,8 +20,8 @@ use crate::engine::events::{
     ReasonThinkingDeltaData, ReasonThinkingStartedData, TokenUsage, ToolDefinitionSummary,
 };
 use crate::engine::llm_retry::{
-    LlmRetryConfig, RetryMetadata, is_transient_error_message, remaining_retry_time,
-    reserve_retry_wait,
+    LlmRetryConfig, RetryMetadata, is_transient_error_message, next_retry_wait,
+    remaining_retry_time, reserve_retry_wait,
 };
 use crate::engine::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use crate::engine::message_retriever::MessageRetriever;
@@ -49,7 +49,9 @@ mod background_call;
 mod compaction;
 mod error_policy;
 mod facts;
+mod file_resolution;
 mod finalized_calls;
+mod generation_failure;
 mod generation_outcome;
 mod hosted_tools;
 mod observability;
@@ -81,10 +83,6 @@ use stream_state::{
     batch_due, inspect_guarded_reasoning_item, merge_retry_metadata,
 };
 use transcript::repair_dangling_tool_calls;
-
-fn unix_now_secs() -> u64 {
-    everruns_contracts::rt::unix_now_secs()
-}
 
 fn default_max_iterations() -> usize {
     500
@@ -119,7 +117,6 @@ pub struct ReasonAtom {
     image_resolver: Option<Arc<dyn ImageResolver>>,
     file_resolver: Option<Arc<dyn FileResolver>>,
     /// Optional heartbeater for stream-liveness signalling (EVE-531).
-    stream_heartbeater: Option<Arc<dyn crate::engine::durability::StreamHeartbeater>>,
     /// Optional provider stall timeout (EVE-531). Default: 120s.
     provider_stall_timeout: Option<std::time::Duration>,
     /// Shared attempt/backoff/time budget for automatic provider recovery.
@@ -178,7 +175,6 @@ impl ReasonAtom {
             event_emitter: PhaseEffectEmitter::new(Arc::new(event_emitter)),
             image_resolver: None,
             file_resolver: None,
-            stream_heartbeater: None,
             provider_stall_timeout: None,
             provider_retry_config: LlmRetryConfig::default(),
             durable_tool_result_store: None,
@@ -220,15 +216,6 @@ impl ReasonAtom {
 
     pub fn with_file_resolver(mut self, resolver: Arc<dyn FileResolver>) -> Self {
         self.file_resolver = Some(resolver);
-        self
-    }
-
-    /// Set the stream heartbeater for liveness signalling during LLM streaming.
-    pub fn with_stream_heartbeater(
-        mut self,
-        heartbeater: Arc<dyn crate::engine::durability::StreamHeartbeater>,
-    ) -> Self {
-        self.stream_heartbeater = Some(heartbeater);
         self
     }
 
@@ -368,7 +355,6 @@ impl ReasonAtom {
             Some(parent_span_id.clone()),
         );
 
-        // Track reason phase timing for Braintrust observability
         let reason_start = Instant::now();
 
         // A lost attempt of this step already announced it (EVE-532).
@@ -483,8 +469,8 @@ impl ReasonAtom {
                 }
                 result
             }
-            // The session was deleted mid-call (EVE-1235): nothing to report to.
-            Err(e @ AgentLoopError::SessionNotFound(_)) => return Err(e),
+            // Not the model's failure: see `error_policy::returned_to_turn_driver`.
+            Err(e) if error_policy::returned_to_turn_driver(&e, &context) => return Err(e),
             Err(e) => {
                 let reason_duration_ms = reason_start.elapsed().as_millis() as u64;
                 // LLM call failure is a "normal" result per the spec: report it.
@@ -498,12 +484,8 @@ impl ReasonAtom {
                 let error_msg = e.to_string();
                 let mut source_error = e.user_facing_error(error_context);
 
-                // Only emit user-facing error events for non-transient errors.
-                // Transient errors (server errors, rate limits, timeouts) will be
-                // retried by the durable task engine. Emitting error events on each
-                // retry attempt causes duplicate error messages in the UI.
-                // The durable worker emits a single error event when all retries
-                // are exhausted (DLQ).
+                // Transient errors reach here only after in-call retries gave up (no
+                // durable retry follows); they surface through `turn.failed` only.
                 let is_transient = e.is_transient_llm_error()
                     || (e.llm_error_kind().is_none() && is_transient_error_message(&error_msg));
 
@@ -512,7 +494,7 @@ impl ReasonAtom {
                 // effect and/or augment the user-facing error fields — before the
                 // message is built. The atom stays behavior-agnostic; each hook
                 // (e.g. `usage_limit_auto_continue`) owns its own logic.
-                if !is_transient && !error_hooks.is_empty() {
+                if !error_hooks.is_empty() {
                     let services = crate::engine::llm_error_hook::LlmErrorHookServices {
                         schedule_store: self.schedule_store.clone(),
                     };
@@ -767,11 +749,11 @@ impl ReasonAtom {
             checkpoint_reasoning,
         )
         .filter(|_| native_reasoning_compaction);
-        let tool_changes = tool_changes::prepare(
+        let tool_changes = tool_changes::prepare_for(
             &messages,
-            model_with_provider.provider_type.as_str(),
+            &model_with_provider.provider_type,
             &model_with_provider.model,
-            &runtime_agent.tools,
+            &runtime_agent,
         );
 
         // 9. Recover a stream a lost attempt left open (EVE-532): finalize it
@@ -954,7 +936,6 @@ impl ReasonAtom {
             llm_config_builder = llm_config_builder.with_metadata(k, v.clone());
         }
 
-        // Add metadata for API tracking and debugging
         // These IDs help correlate API requests with Everruns entities
         // TypedId::to_string() produces prefixed format (e.g., "session_abc123")
         llm_config_builder = llm_config_builder
@@ -977,6 +958,7 @@ impl ReasonAtom {
             .capture_request(true) // stored on llm.generation (TM-LLM-039)
             .build();
         llm_config.background_call = self.background_call.clone();
+        tool_changes.apply_to(&mut llm_config, &llm_messages);
         if let Some(replay) = &reasoning_replay {
             llm_config.reasoning_effort = replay.state.baseline;
             llm_config.reasoning_state = Some(replay.state.clone());
@@ -1021,8 +1003,7 @@ impl ReasonAtom {
             "ReasonAtom: calling LLM"
         );
 
-        // 13. Emit output.message.started event BEFORE starting LLM call
-        // This allows UI to show a thinking indicator immediately
+        // 13. Emit output.message.started before the call: the UI shows thinking at once.
         let streaming_event_context = EventContext::from_execution_context(context);
         // An agent that talks explicitly writes working notes, never replies:
         // its assistant text is commentary from the first streamed byte, and
@@ -1062,25 +1043,23 @@ impl ReasonAtom {
         // heuristics. Each reasoning iteration reaches this point separately.
         // A restarted stream keeps the id whose started event is stored.
         let output_message_id = resumed_message_id.unwrap_or_else(MessageId::new);
+        let started = EventRequest::new(
+            session_id,
+            streaming_event_context.clone(),
+            OutputMessageStartedData {
+                reasoning_state: llm_config.reasoning_state.clone(),
+                turn_id: context.turn_id,
+                message_id: output_message_id,
+                model: Some(runtime_agent.model.clone()),
+                iteration: Some(iteration),
+                // Emitted before the LLM call — phase is not yet known, so the
+                // streamed hint starts `None` (treat as assistant text),
+                // except for explicit agents, whose text is always notes.
+                phase: notes_phase,
+            },
+        );
         if resumed_message_id.is_none()
-            && let Err(e) = self
-                .event_emitter
-                .emit(EventRequest::new(
-                    session_id,
-                    streaming_event_context.clone(),
-                    OutputMessageStartedData {
-                        reasoning_state: llm_config.reasoning_state.clone(),
-                        turn_id: context.turn_id,
-                        message_id: output_message_id,
-                        model: Some(runtime_agent.model.clone()),
-                        iteration: Some(iteration),
-                        // Emitted before the LLM call — phase is not yet known, so the
-                        // streamed hint starts `None` (treat as assistant text),
-                        // except for explicit agents, whose text is always notes.
-                        phase: notes_phase,
-                    },
-                ))
-                .await
+            && let Err(e) = self.event_emitter.emit(started.clone()).await
         {
             if llm_config.reasoning_state.is_some() {
                 return Err(e);
@@ -1125,10 +1104,22 @@ impl ReasonAtom {
         }
 
         let llm_start = Instant::now();
+        let failed_generation = generation_failure::FailedGeneration {
+            emitter: &self.event_emitter,
+            session_id,
+            context: streaming_event_context.clone(),
+            trace_id,
+            reason_span_id,
+            agent: &runtime_agent,
+            model: &model_with_provider,
+            messages: &messages_for_event,
+            request_options: build_request_options(
+                &llm_config,
+                model_with_provider.provider_type.as_str(),
+            ),
+            started: llm_start,
+        };
 
-        // Try LLM call with automatic compaction on RequestTooLarge.
-        // Transient errors (429, 5xx) are retried at the driver level.
-        // Stream-level errors are not retried here to avoid duplicate user-visible messages.
         let mut compaction_info: Option<LlmCompactionInfo> = None;
         let mut llm_messages_for_call = llm_messages.clone();
         let compaction_lifecycle = provider_managed_compaction::Lifecycle::new(
@@ -1210,7 +1201,7 @@ impl ReasonAtom {
                     Ok(result) => result,
                     Err(_) => {
                         compaction_lifecycle.fail_if(provider_managed).await;
-                        return Err(AgentLoopError::llm_kind(
+                        let error = AgentLoopError::llm_kind(
                             crate::engine::error::LlmErrorKind::Unavailable,
                             format!(
                                 "provider retry time budget exhausted after {} retries over {:.1}s; the turn is safe to resume",
@@ -1218,7 +1209,11 @@ impl ReasonAtom {
                                 retry_config.max_retry_elapsed.as_secs_f64()
                             ),
                         )
-                        .with_retry_metadata(&stream_retry_metadata));
+                        .with_retry_metadata(&stream_retry_metadata);
+                        failed_generation
+                            .emit(&error.to_string(), None, &stream_retry_metadata)
+                            .await;
+                        return Err(error);
                     }
                 }
             } else {
@@ -1236,7 +1231,7 @@ impl ReasonAtom {
                     generation_outcome::observe_overflow(&model_with_provider, &e);
                     compaction_lifecycle.fail_if(provider_managed).await;
                     if provider_managed {
-                        return Err(e);
+                        return Err(failed_generation.error(e, &stream_retry_metadata).await);
                     }
                     let Some(policy) = compaction_policy.as_deref() else {
                         tracing::warn!(
@@ -1244,7 +1239,7 @@ impl ReasonAtom {
                             turn_id = %context.turn_id,
                             "ReasonAtom: context too large and compaction capability is not enabled"
                         );
-                        return Err(e);
+                        return Err(failed_generation.error(e, &stream_retry_metadata).await);
                     };
                     let outcome = apply_reactive_compaction(
                         ReactiveCompactionContext {
@@ -1265,20 +1260,26 @@ impl ReasonAtom {
                         &mut llm_messages_for_call,
                         &mut llm_config,
                     )
-                    .await?;
+                    .await;
+                    let outcome = failed_generation
+                        .result(outcome, &stream_retry_metadata)
+                        .await?;
                     let Some(outcome) = outcome else {
-                        return Err(e);
+                        return Err(failed_generation.error(e, &stream_retry_metadata).await);
                     };
                     if outcome.generation_info.is_some() {
                         compaction_info = outcome.generation_info;
                     }
 
-                    chat_driver
+                    let stream = chat_driver
                         .chat_completion_stream(
                             &crate::engine::ProviderEndpoint::default(),
                             llm_messages_for_call.clone(),
                             &llm_config,
                         )
+                        .await;
+                    failed_generation
+                        .result(stream, &stream_retry_metadata)
                         .await?
                 }
                 Err(e)
@@ -1287,8 +1288,12 @@ impl ReasonAtom {
                         && !has_provider_executed_tools
                         && stream_retry_metadata.attempts < retry_config.max_retries =>
                 {
-                    let proposed_wait =
-                        retry_config.calculate_backoff(stream_retry_metadata.attempts);
+                    let proposed_wait = next_retry_wait(
+                        &retry_config,
+                        retry_started_at,
+                        stream_retry_metadata.attempts,
+                        e.retry_after_secs(),
+                    );
                     let Some(wait_duration) =
                         reserve_retry_wait(&retry_config, &mut retry_started_at, proposed_wait)
                     else {
@@ -1299,7 +1304,7 @@ impl ReasonAtom {
                             &retry_config,
                         );
                         compaction_lifecycle.fail_if(provider_managed).await;
-                        return Err(AgentLoopError::llm_kind(
+                        let error = AgentLoopError::llm_kind(
                             e.llm_error_kind()
                                 .unwrap_or(crate::engine::error::LlmErrorKind::Unavailable),
                             format!(
@@ -1307,7 +1312,11 @@ impl ReasonAtom {
                                 stream_retry_metadata.attempts
                             ),
                         )
-                        .with_retry_metadata(&stream_retry_metadata));
+                        .with_retry_metadata(&stream_retry_metadata);
+                        failed_generation
+                            .emit(&error.to_string(), None, &stream_retry_metadata)
+                            .await;
+                        return Err(error);
                     };
                     tracing::warn!(
                         session_id = %session_id,
@@ -1324,13 +1333,9 @@ impl ReasonAtom {
                     continue 'stream_attempt;
                 }
                 Err(error) => {
-                    let attempts = stream_retry_metadata.attempts;
-                    generation_outcome::observe_terminal(
-                        &model_with_provider,
-                        &error,
-                        attempts,
-                        &retry_config,
-                    );
+                    failed_generation
+                        .terminal_start_failure(&error, &stream_retry_metadata, &retry_config)
+                        .await;
                     return compaction_lifecycle
                         .fail_start(error, provider_managed)
                         .await;
@@ -1372,22 +1377,11 @@ impl ReasonAtom {
             let mut last_thinking_delta_emit: Option<Instant> = None;
             let mut time_to_first_token_ms: Option<u64> = None;
 
-            // EVE-531: stall timeout + keepalive heartbeat for stream-liveness
-            let stall_timeout = self
-                .provider_stall_timeout
-                .unwrap_or(std::time::Duration::from_secs(120));
+            // EVE-531: stall timeout for stream liveness
+            let stall_timeout = self.stream_stall_timeout(chat_driver.as_ref(), &llm_config);
             let initial_stall_timeout = remaining_retry_time(&retry_config, retry_started_at)
                 .map_or(stall_timeout, |remaining| remaining.min(stall_timeout));
             let mut stall_sleep = Box::pin(everruns_contracts::rt::sleep(initial_stall_timeout));
-            let mut keepalive_ticker =
-                everruns_contracts::rt::Interval::new(std::time::Duration::from_secs(12));
-            keepalive_ticker.tick().await; // consume immediate first tick
-            let mut last_stream_heartbeat = Instant::now();
-            // Tracks the wall-clock time of the last actual token received.
-            // Updated only on content events; keepalive heartbeats use this
-            // so the control plane can distinguish "alive/slow" from "making
-            // progress" without conflating keepalive pings with real tokens.
-            let mut last_token_at_unix: u64 = unix_now_secs();
 
             loop {
                 let event = tokio::select! {
@@ -1403,9 +1397,8 @@ impl ReasonAtom {
                         // as an in-stream provider error (everruns-contracts
                         // classifies this message as transient) instead of
                         // failing the turn immediately. Retrying re-issues the
-                        // same request with no artificial history messages; a
-                        // stall after partial output is not retried, and repeated
-                        // stalls stay bounded by retry_config.max_retries.
+                        // same request; a stall after text alone is retried too,
+                        // all bounded by retry_config.max_retries.
                         let stall_error =
                             crate::engine::driver_registry::LlmStreamError::new(format!(
                                 "provider stream stall: no tokens for {}s",
@@ -1452,23 +1445,13 @@ impl ReasonAtom {
                             );
                             stream_retry_metadata.record_retry(wait_duration, None);
                             everruns_contracts::rt::sleep(wait_duration).await;
+                            stream_state::restart(&self.event_emitter, &started, &text).await;
                             continue 'stream_attempt;
                         }
                         compaction_lifecycle
                             .fail_if(compaction_started_at.is_some())
                             .await;
                         return Err(AgentLoopError::llm(stall_error.message));
-                    },
-                    _ = keepalive_ticker.tick() => {
-                        if let Some(ref hb) = self.stream_heartbeater {
-                            hb.heartbeat(crate::engine::durability::StreamProgress {
-                                accumulated_len: text.len() + thinking.len(),
-                                last_delta_at: last_token_at_unix,
-                            })
-                            .await;
-                            last_stream_heartbeat = Instant::now();
-                        }
-                        continue;
                     },
                 };
                 let event = match event {
@@ -1484,7 +1467,6 @@ impl ReasonAtom {
                 let advanced_stall_deadline = advances_stall_deadline(&event);
                 if advanced_stall_deadline {
                     stall_sleep = Box::pin(everruns_contracts::rt::sleep(stall_timeout));
-                    last_token_at_unix = unix_now_secs();
                 }
                 match event {
                     LlmStreamEvent::TextDelta(delta) => {
@@ -1780,12 +1762,21 @@ impl ReasonAtom {
                         break;
                     }
                     LlmStreamEvent::Error(err) => {
-                        // If we already collected valid tool calls or text before
-                        // the error arrived, treat it as a partial success. This
-                        // handles OpenAI Responses API behaviour where a trailing
-                        // server_error can follow fully-streamed function calls.
+                        // Keep tool calls (a trailing server_error can follow them) as
+                        // a partial success, and text once no retry is left.
+                        let can_retry = replay_state.should_retry(
+                            &err,
+                            stream_retry_metadata.attempts,
+                            retry_config.max_retries,
+                        );
+                        let retry_wait = can_retry.then(|| {
+                            let proposed =
+                                retry_config.calculate_backoff(stream_retry_metadata.attempts);
+                            reserve_retry_wait(&retry_config, &mut retry_started_at, proposed)
+                        });
                         let has_partial_output = compaction_started_at.is_none()
-                            && (!tool_calls.is_empty() || !text.is_empty());
+                            && (!tool_calls.is_empty()
+                                || !text.is_empty() && !matches!(retry_wait, Some(Some(_))));
 
                         if has_partial_output {
                             tracing::warn!(
@@ -1802,18 +1793,8 @@ impl ReasonAtom {
                             break;
                         }
 
-                        if replay_state.should_retry(
-                            &err,
-                            stream_retry_metadata.attempts,
-                            retry_config.max_retries,
-                        ) {
-                            let proposed_wait =
-                                retry_config.calculate_backoff(stream_retry_metadata.attempts);
-                            let Some(wait_duration) = reserve_retry_wait(
-                                &retry_config,
-                                &mut retry_started_at,
-                                proposed_wait,
-                            ) else {
+                        if let Some(wait) = retry_wait {
+                            let Some(wait_duration) = wait else {
                                 let attempts = stream_retry_metadata.attempts;
                                 generation_outcome::retry_time_exhausted(
                                     &model_with_provider,
@@ -1842,36 +1823,16 @@ impl ReasonAtom {
                             );
                             stream_retry_metadata.record_retry(wait_duration, None);
                             everruns_contracts::rt::sleep(wait_duration).await;
+                            stream_state::restart(&self.event_emitter, &started, &text).await;
                             continue 'stream_attempt;
                         }
 
-                        // No useful output collected — treat as a real failure.
-                        let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
-                        let event_context = EventContext::from_execution_context(context)
-                            .with_span(
-                                trace_id.to_string(),
-                                Uuid::now_v7().to_string(),
-                                Some(reason_span_id.to_string()),
-                            );
-                        let tools_summary: Vec<ToolDefinitionSummary> =
-                            runtime_agent.tools.iter().map(|t| t.into()).collect();
-                        let generation_data = LlmGenerationData::failure(
-                            messages_for_event.clone(),
-                            tools_summary,
-                            runtime_agent.model.clone(),
-                            Some(model_with_provider.provider_type.to_string()),
-                            err.to_string(),
-                            Some(llm_duration_ms),
-                            time_to_first_token_ms,
-                        )
-                        .with_provider_id(Some(model_with_provider.provider.to_string()));
-                        let _ = self
-                            .event_emitter
-                            .emit(EventRequest::new(
-                                session_id,
-                                event_context,
-                                generation_data,
-                            ))
+                        failed_generation
+                            .emit(
+                                &err.to_string(),
+                                time_to_first_token_ms,
+                                &stream_retry_metadata,
+                            )
                             .await;
                         if compaction_started_at.is_some() {
                             compaction_lifecycle.fail().await;
@@ -1881,18 +1842,6 @@ impl ReasonAtom {
                     // `LlmStreamEvent` is `#[non_exhaustive]`: ignore kinds this build does
                     // not know so the turn keeps streaming (unreachable in-workspace).
                     _ => {}
-                }
-                // Per-event heartbeat after processing the event, so accumulated_len
-                // reflects the just-received tokens. Throttled to every 5s.
-                if last_stream_heartbeat.elapsed().as_millis() as u64 >= 5_000
-                    && let Some(ref hb) = self.stream_heartbeater
-                {
-                    hb.heartbeat(crate::engine::durability::StreamProgress {
-                        accumulated_len: text.len() + thinking.len(),
-                        last_delta_at: last_token_at_unix,
-                    })
-                    .await;
-                    last_stream_heartbeat = Instant::now();
                 }
             }
             compaction_lifecycle
@@ -1920,16 +1869,15 @@ impl ReasonAtom {
             (text, thinking, reasoning, tool_calls);
         compaction_lifecycle.record_observed(&mut llm_config, compaction_started_at);
 
-        // End-of-message citation annotation seam (see knowledge/runtime-resources/citations.md). Runs
-        // once on the finalized final-answer text to attach claim-level citations
-        // before guardrails inspect the complete client-visible payload. Skipped
-        // when a guardrail already tripped,
-        // when there are no citation providers, when there is no text, or while
-        // the message still carries tool calls (citations attach to answer
-        // prose, not intermediate tool-calling turns). The built-in feeds do not
-        // rewrite text, so streamed deltas stay valid and no buffering is needed;
-        // a future feed that rewrites (e.g. to strip inline markers) must also
-        // opt into delta buffering.
+        // End-of-message citation annotation seam (see knowledge/runtime-resources/citations.md).
+        // Runs once on the finalized final-answer text to attach claim-level citations, with any
+        // web citations the provider returned, before guardrails inspect the complete client-
+        // visible payload. Skipped when a guardrail already tripped, when there are no citation
+        // providers, when there is no text, or while the message still carries tool calls
+        // (citations attach to answer prose, not intermediate tool-calling turns). The built-in
+        // feeds do not rewrite text, so streamed deltas stay valid and no buffering is needed; a
+        // future feed that rewrites (e.g. to strip inline markers) must also opt into delta
+        // buffering.
         let mut citation_annotations: Vec<crate::engine::message::TextAnnotation> = Vec::new();
         if tripped.is_none()
             && !annotation_providers.is_empty()
@@ -1948,6 +1896,7 @@ impl ReasonAtom {
                 &runtime_agent.system_prompt,
                 &text,
                 &messages,
+                output_hooks::web_citations(&completion_metadata),
                 self.utility_llm_service.as_ref(),
             )
             .await;
@@ -2154,7 +2103,6 @@ impl ReasonAtom {
             )
         });
 
-        // 16. Emit llm.generation event (child of reason span)
         let event_context = EventContext::from_execution_context(context).with_span(
             trace_id.to_string(),
             Uuid::now_v7().to_string(),
@@ -2186,7 +2134,8 @@ impl ReasonAtom {
             ))
             .with_response_model(served)
             .with_provider_id(Some(model_with_provider.provider.to_string()))
-            .with_truncation_gate(truncation.label());
+            .with_truncation_gate(truncation.label())
+            .with_tool_changes(tool_changes.record.clone());
         if let Some(info) = compaction_info {
             generation_data = generation_outcome::with_compaction(generation_data, info);
         }
@@ -2510,16 +2459,7 @@ impl ReasonAtom {
             return HashMap::new();
         }
 
-        match resolver.resolve_files(&file_ids).await {
-            Ok(map) => map,
-            Err(e) => {
-                tracing::warn!(
-                    target: "reason",
-                    "ReasonAtom: file resolution failed: {e}"
-                );
-                HashMap::new()
-            }
-        }
+        file_resolution::resolve_files_one_by_one(resolver.as_ref(), file_ids).await
     }
 }
 

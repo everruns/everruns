@@ -187,3 +187,82 @@ fn an_unenforceable_method_fails_the_boot() {
         .build();
     assert!(result.is_err());
 }
+
+/// The A2A Agent Card names the schemes a caller must satisfy once auth is on,
+/// in the A2A 1.0 shape, and none while the API is open.
+#[cfg(feature = "a2a")]
+#[tokio::test]
+async fn the_a2a_card_lists_security_schemes_only_when_auth_is_on() {
+    const CARD: &str = "/v1/channels/tester/a2a/.well-known/agent-card.json";
+
+    let open = run(Server::builder(app(), Mode::Eval)).await;
+    let card: Value = open.get(CARD, None).await.json().await.unwrap();
+    assert!(card.get("securitySchemes").is_none(), "{card}");
+    assert!(card.get("securityRequirements").is_none(), "{card}");
+
+    let protected = run(Server::builder(app(), Mode::Eval).auth([
+        AuthMethod::api_key("k-1"),
+        AuthMethod::api_key("k-2"),
+        AuthMethod::oidc(ISSUER, ["support"]).requirements(crate::auth::ChannelAuthRequirements {
+            audiences: vec!["support".into()],
+            scopes: vec!["agent:call".into()],
+            ..Default::default()
+        }),
+    ]))
+    .await;
+    // Public, so a caller can learn how to authenticate before it can.
+    let response = protected.get(CARD, None).await;
+    assert_eq!(response.status(), 200);
+    let card: Value = response.json().await.unwrap();
+    assert_eq!(
+        card["securitySchemes"],
+        json!({
+            "apiKey": { "httpAuthSecurityScheme": { "scheme": "bearer" } },
+            "oidc": { "openIdConnectSecurityScheme": {
+                "openIdConnectUrl": "https://login.example.com/.well-known/openid-configuration"
+            } },
+        })
+    );
+    assert_eq!(
+        card["securityRequirements"],
+        json!([
+            { "schemes": { "apiKey": [] } },
+            { "schemes": { "oidc": ["agent:call"] } },
+        ])
+    );
+    // An A2A 1.0 client reads it back as the same requirements.
+    let parsed: ::a2a::AgentCard = serde_json::from_value(card).unwrap();
+    let requirements = parsed.security_requirements.unwrap();
+    assert_eq!(requirements.len(), 2);
+    assert_eq!(requirements[0]["apiKey"], Vec::<String>::new());
+    assert_eq!(requirements[1]["oidc"], vec!["agent:call".to_string()]);
+    assert_eq!(parsed.security_schemes.unwrap().len(), 2);
+}
+
+/// `eval --against` reaches a protected app with `--credential`, and without
+/// one fails with a pointer to the flag rather than a bare 401.
+#[tokio::test]
+async fn a_remote_eval_sends_its_credential() {
+    let server = run(Server::builder(app(), Mode::Eval).auth([AuthMethod::api_key("k-1")])).await;
+
+    let mut anonymous = crate::eval::EvalCx::remote_for_test(server.base.clone());
+    let error = anonymous.send("one").await.unwrap_err().to_string();
+    assert!(error.contains("--credential"), "{error}");
+    assert!(error.contains("SERVE_CREDENTIAL"), "{error}");
+
+    let mut wrong =
+        crate::eval::EvalCx::remote_with_credential_for_test(server.base.clone(), Some("k-2"));
+    let error = wrong.send("one").await.unwrap_err().to_string();
+    assert!(
+        !error.contains("k-2"),
+        "the credential is never echoed: {error}"
+    );
+
+    let mut eval =
+        crate::eval::EvalCx::remote_with_credential_for_test(server.base.clone(), Some("k-1"));
+    eval.send("one").await.unwrap();
+    eval.completed().unwrap().called_tool("shout").unwrap();
+    // Approvals are answered over the same authenticated client.
+    eval.send("two").await.unwrap();
+    eval.completed().unwrap().asked_approval("guarded").unwrap();
+}

@@ -49,6 +49,16 @@ The CLI defaults to [Everruns Cloud](https://app.everruns.com) at `https://app.e
 everruns login          # opens the browser for OAuth
 everruns login --token  # paste a personal access token instead (SSH, headless)
 everruns status         # show the current user and organization
+everruns whoami         # ask the server who you are, and your token's access
+```
+
+`login --token` accepts a [read-only token](/features/ui/#token-access) too,
+for scripts and CI that only read. `everruns whoami` then shows
+`Access:  read-only (personal access token)`, and a command that would change
+something fails with one line:
+
+```text
+Error: This personal access token is read-only; this command needs a full-access token.
 ```
 
 For a self-hosted deployment, point the CLI at your API first:
@@ -66,7 +76,7 @@ export EVERRUNS_API_KEY=evr_pat_...   # or run `everruns login`
 
 | Group | Subcommands |
 |---|---|
-| `login`, `logout`, `status` | Sign in, sign out, show the current user and organization |
+| `login`, `logout`, `status`, `whoami` | Sign in, sign out, show the current user and organization, show your token's access |
 | `orgs` | `list` organizations, `select` the active one |
 | `agents` | `create`, `update`, `import`, `export`, `validate`, `diff`, plus the platform commands |
 | `sessions` | `create`, `watch`, `export`, plus the platform commands |

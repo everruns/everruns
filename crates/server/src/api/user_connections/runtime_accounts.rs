@@ -69,7 +69,12 @@ pub(super) async fn register_pending_setup(
     );
     state
         .db
-        .register_connection_setup(&pending.state, &pending.provider, &hash)
+        .register_connection_setup(
+            &pending.state,
+            &pending.provider,
+            &hash,
+            chrono::Utc::now() + chrono::Duration::minutes(10),
+        )
         .await
         .map_err(|e| sanitized_internal_error("Setup state", &e))
 }
@@ -442,7 +447,7 @@ pub(super) async fn callback_authority(
     })
 }
 
-#[utoipa::path(summary = "List legacy credentials requiring an explicit organization destination.", get, path = "/v1/user/connection-migrations",   responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "List legacy credentials awaiting an organization", description = "List legacy credentials requiring an explicit organization destination.", get, path = "/v1/user/connection-migrations",   responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 pub(super) async fn list_pending_connection_migrations(
     State(state): State<AppState>,
     auth: ManagementUser,
@@ -456,7 +461,7 @@ pub(super) async fn list_pending_connection_migrations(
         serde_json::json!({"data":rows.into_iter().map(|r|serde_json::json!({"id":r.id,"provider":r.provider,"connection_type":r.connection_type,"provider_username":r.provider_username,"connected_at":r.created_at})).collect::<Vec<_>>()}),
     ))
 }
-#[utoipa::path(summary = "Move one legacy credential into the selected organization without copying it.", post, path = "/v1/user/connection-migrations/{connection_id}", params(("connection_id" = String, Path)),  responses((status = 204, description = "Success"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "Move a legacy credential into an organization", description = "Move one legacy credential into the selected organization without copying it.", post, path = "/v1/user/connection-migrations/{connection_id}", params(("connection_id" = String, Path)),  responses((status = 204, description = "Success"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 pub(super) async fn migrate_pending_connection(
     State(state): State<AppState>,
     org: ResolvedOrg,

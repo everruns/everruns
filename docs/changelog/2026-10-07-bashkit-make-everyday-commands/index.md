@@ -17,6 +17,12 @@ functions such as `foreach`, `call`, `wildcard` and `shell`, and the options
 `-f -C -n -k -q -s -i -B -e -j` (`-j` runs sequentially). Recipes run through
 the sandbox shell, and messages and exit codes follow GNU make.
 
+```bash
+printf 'greet:\n\t@echo hello from $(NAME)\n' > Makefile
+make greet NAME=bashkit       # hello from bashkit
+make -n greet NAME=bashkit    # prints the recipe without running it
+```
+
 Twenty-one commands that used to report "command not found" are added: `arch`,
 `sum`, `shasum`, `egrep`, `fgrep`, `link`, `unlink`, `chgrp`, `nohup`, `nice`,
 `flock`, `getconf`, `tty`, `sync`, `hostid`, `groups`, `logname`, `users`,

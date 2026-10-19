@@ -34,6 +34,7 @@ pub use execution::configured_max_tool_concurrency;
 mod machine;
 pub mod native_async;
 mod phase_effects;
+pub(crate) mod rate_limit_auto_retry;
 #[cfg(test)]
 mod test_fixtures;
 mod turn;

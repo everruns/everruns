@@ -13,6 +13,7 @@ import { ArrowRight, Plus, Radio, Upload } from "lucide-react";
 import { AgentImportDialog } from "@/components/agents/agent-import-dialog";
 import { ExampleCard } from "@/components/agents";
 import { NewAgentLink } from "@/components/agents/new-agent-link";
+import { CodingAgentConnectAction } from "@/components/layout/mcp-connect-button";
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
@@ -216,6 +217,11 @@ export function AgentsHome() {
   const totals = activity?.totals;
   const orgName = currentOrg?.name ?? "this organization";
   const noAgents = !agentsLoading && (agents ?? []).length === 0;
+  // Opening Platform Chat creates a built-in agent during signup. Keep this
+  // entry discoverable until the team creates its first agent, without hiding
+  // the managed agent from the operational list.
+  const onlyBuiltInAgents =
+    !agentsLoading && !noAgents && (agents ?? []).every((agent) => agent.is_built_in);
 
   return (
     <PageContainer>
@@ -281,6 +287,18 @@ export function AgentsHome() {
       )}
 
       <NeedsAttention items={attention} canManage={canManage} />
+
+      {onlyBuiltInAgents && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border bg-card p-4">
+          <div>
+            <p className="text-sm font-medium">Build your first agent with your coding tools</p>
+            <p className="text-xs text-muted-foreground">
+              Connect Claude Code, Codex, Cursor, or Gemini CLI to use Everruns.
+            </p>
+          </div>
+          <CodingAgentConnectAction />
+        </div>
+      )}
 
       {noAgents ? (
         <FreshOrganization />
@@ -372,6 +390,8 @@ export function AgentsHome() {
                     agent={agent}
                     activity={activityById.get(agent.id)}
                     attention={attentionByAgent.get(agent.id) ?? []}
+                    activityGeneratedAt={activity?.generated_at}
+                    activityWindowStart={activity?.window_start}
                   />
                 ))}
               </ul>
@@ -551,12 +571,15 @@ function FreshOrganization() {
         title="No agents yet"
         description="Create an agent for a job your team repeats. Its channels start as drafts and take no traffic until you publish them."
         action={
-          <NewAgentLink>
-            <Button variant="accent">
-              <Plus className="size-4" />
-              New agent
-            </Button>
-          </NewAgentLink>
+          <div className="flex flex-wrap justify-center gap-3">
+            <NewAgentLink>
+              <Button variant="accent">
+                <Plus className="size-4" />
+                New agent
+              </Button>
+            </NewAgentLink>
+            <CodingAgentConnectAction />
+          </div>
         }
       />
       {examples && examples.length > 0 && (

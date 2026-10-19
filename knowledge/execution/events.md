@@ -190,6 +190,26 @@ transition accompany the sealed event. See
 [`durable-execution-engine.md`](../operations/durable-execution-engine.md) for forward-progress
 and dead-letter behavior.
 
+### Failure severity: issues and errors
+
+Not every failure is broken work. The runtime, not the client, says which is
+which, using one vocabulary (`FailureSeverity` in
+[`severity.rs`](../../crates/contracts/src/runtime/events/severity.rs)):
+
+- An **issue** is a failure the work recovered from. A failed tool call is
+  returned to the model as a result and the turn carries on, so every failed
+  `tool.completed` carries `severity: issue`, and `turn.completed` reports how
+  many the turn absorbed as `issue_count`. A turn with issues still succeeded.
+- An **error** is a failure that stopped the work: `turn.failed` or a failed
+  session task. These are errors by event type or state and need no severity
+  field.
+
+Clients render issues as warnings and reserve error styling for errors. They
+must not infer severity from `success: false` alone. Failed `tool.completed`
+events recorded before the field existed omit it and read as issues, which is
+what each of them was. `act.completed.error_count` predates the vocabulary and
+keeps its name; it counts the same issues.
+
 User-facing failure events carry stable error classification and interpolation
 fields when available. Clients localize from those fields rather than matching
 English fallback text. Disclosure policy is defined in
@@ -367,3 +387,24 @@ records. Their output is derivative; it cannot mutate the source event.
   passed through as an untyped public payload.
 - Full-text and debug filters preserve the same authorization and supported-type
   checks as ordinary event listing.
+
+## Optional UI idle following
+
+Continuous following remains the default, including sessions driven by schedules,
+channels, or other clients. A client-driven embedding may opt out and accept that
+external updates wait for its next wake-up. Suspension requires a settled event
+tail, current settled session state, terminal background tasks, and cursor parity
+with the durable server tail. Uncertainty keeps following. A stale idle snapshot
+must never interrupt replay, local input, or parked work awaiting external events.
+
+Local mutations hold following across the request/commit gap. Reopening reuses the
+last durable cursor and preserves UI deduplication; ephemeral deltas cannot become
+replay cursors. Session switches, disabling, and unmount invalidate callbacks,
+checks, and retry timers belonging to the previous subscription.
+
+The [event hook](../../apps/ui/src/hooks/use-sessions.ts),
+[mutation coordination](../../apps/ui/src/lib/session-activity.ts), and
+[lifecycle tests](../../apps/ui/src/__tests__/use-events-idle.test.tsx) own the
+implementation and executable cases. [Events documentation](../../docs/features/events.md)
+explains the embedding option and its external-update tradeoff. Separate task
+subscriptions are unaffected; savings require measurement and are not promised.

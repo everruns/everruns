@@ -8,17 +8,20 @@ tags:
 ---
 # Diagram Specification
 
-Style guide for technical diagrams in documentation. All diagrams follow the Everruns brand system (see `knowledge/ui/brand.md`) and are hand-authored SVGs.
+Style guide for technical diagrams in documentation. All diagrams follow the Everruns brand system (see `knowledge/ui/brand.md`). Use hand-authored SVGs for diagrams that need precise layout and inline Mermaid fences for simple flows that benefit from editing beside the prose.
 
 Adopted from the current [`everruns/landing` diagram specification](https://github.com/everruns/landing/blob/main/specs/diagrams.md), with the restrained semantic-color rule aligned to the Chaliy web diagram system.
 
 ## Placement
+
+### Hand-authored diagrams
 
 - **File format**: SVG (rendered), Mermaid `.mmd` (source of truth)
 - **Location**: Co-locate the `.svg` and `.mmd` in the **same directory as the markdown page that embeds the diagram** (e.g. `docs/advanced/physical-architecture.md` + `docs/advanced/physical-architecture.svg` + `docs/advanced/physical-architecture.mmd`).
 - **Embedding**: `![alt text](./<diagram-name>.svg)` in markdown, relative to the page.
 - **Naming**: When a diagram is used by exactly one page, name it after the page (`<page-slug>.svg`). When a single page has multiple diagrams, use `<page-slug>-<short-suffix>.svg`.
 - **Shared diagrams**: A diagram referenced by multiple pages may live alongside its primary owner page; secondary pages embed it with a relative path.
+- **Responsive variants**: When one SVG becomes unreadable on mobile, use a second co-located SVG selected with `<picture>` in MDX. Both variants may share one `.mmd` when they express the same entities and relationships. A mobile variant may place category labels inside boxes to save space. Visually review both sizes.
 - **Legacy `docs/images/<category>/`** paths remain valid for existing diagrams and are not subject to mass migration, but new diagrams must follow the co-located convention.
 
 Every SVG diagram **must** have a co-located `.mmd` file containing the Mermaid source that describes the same content. The `.mmd` file is the **source of truth** for the diagram's information architecture, entity names, relationships, and flow. The hand-authored SVG is the rendered artifact that follows this visual spec. When updating a diagram, update the `.mmd` first, then regenerate/update the SVG to match.
@@ -27,9 +30,25 @@ This separation means:
 - `.mmd` captures **what** the diagram shows (machine-readable, diffable, easy to update)
 - `.svg` captures **how** it looks (brand-compliant rendering per this spec)
 
+### Inline Mermaid diagrams
+
+A fenced `mermaid` block in a docs page renders as a diagram with the standard
+white, Smoke, Obsidian and Navy palette, Geist type, square nodes and straight
+connectors. The fence itself is the source of truth; it needs no separate `.mmd`
+or `.svg` file. Include Mermaid `accTitle` and `accDescr` directives so the
+rendered SVG is understandable to assistive technology. The source remains
+readable when JavaScript or rendering is unavailable. Wide diagrams scroll
+horizontally on narrow screens to keep labels legible.
+
+Use the SVG workflow below when a diagram needs precise annotation placement,
+step badges or a layout that Mermaid cannot express cleanly. Inline Mermaid
+shares the visual tokens but does not reproduce those hand-authored details.
+
+The remaining layout and visual-review rules apply to hand-authored SVGs.
+
 ## Dimensions
 
-- **Width**: 800px (standard). Use `viewBox` so the SVG scales responsively.
+- **Width**: 800px (standard); a mobile variant may use a narrower viewBox. Use `viewBox` so each SVG scales responsively.
 - **Height**: Varies. Keep it tight - no empty space at the bottom. Typical range 300-500px.
 - **Fill**: Set `fill="none"` on the root `<svg>` element. Add an explicit white background rect.
 - **Root element**: Use `viewBox` only. Do **not** set `width` or `height` attributes on the root `<svg>`, let the browser scale via `viewBox`.
@@ -70,6 +89,8 @@ Suggested semantic highlights, used only when needed:
 ## Typography
 
 Each SVG embeds its own `<style>` block. No external CSS.
+The sizes below are defaults. Increase box titles to 15px and arrow labels to
+11px when the SVG will display smaller than its viewBox width in the article.
 
 ```xml
 <style>

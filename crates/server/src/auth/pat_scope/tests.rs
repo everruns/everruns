@@ -83,6 +83,25 @@ fn normalize_template_erases_parameter_names() {
 }
 
 #[test]
+fn monitoring_preserves_scoped_token_denial() {
+    for path in [
+        "/v1/monitoring",
+        "/v1/monitoring/config",
+        "/v1/monitoring/actors",
+        "/v1/monitoring/actors/{session_id}",
+        "/v1/durable/monitoring",
+        "/v1/durable/monitoring/actors",
+        "/v1/durable/monitoring/actors/{session_id}",
+    ] {
+        let access = classify(&Method::GET, path).unwrap();
+        assert_eq!(access, RouteAccess::Never);
+        assert!(!scope_permits(Some(PatScope::Read), access));
+        assert!(scope_permits(Some(PatScope::Full), access));
+        assert!(scope_permits(None, access));
+    }
+}
+
+#[test]
 fn decision_4_routes_are_never() {
     let never = [
         ("GET", "/v1/users/me/export"),

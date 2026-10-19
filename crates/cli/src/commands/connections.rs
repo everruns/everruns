@@ -5,6 +5,7 @@
 // to route them through, and the key is read from a prompt or stdin so it
 // never reaches argv.
 
+use super::api::ApiError;
 use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
 use anyhow::{Context, Result};
 use clap::Subcommand;
@@ -16,7 +17,7 @@ use std::io::Read;
 pub enum ConnectionsCommand {
     /// Set an API key connection for a provider
     Set {
-        /// Provider name (e.g. daytona, brave_search, browserless, deno, sprites)
+        /// Provider name (e.g. daytona, brave_search, browserless, sprites)
         provider: String,
 
         /// Read provider API key from stdin
@@ -127,15 +128,9 @@ async fn set(
         .await
         .context("Failed to connect to server")?;
 
-    let status = resp.status();
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!(
-            "Failed to set connection for {}: {} {}",
-            provider,
-            status,
-            body
-        );
+    if !resp.status().is_success() {
+        let action = format!("Failed to set connection for {provider}");
+        return Err(ApiError::from_response(action, resp).await.into());
     }
 
     let conn: ConnectionResponse = resp
@@ -173,10 +168,10 @@ async fn list(api_url: &str, api_key: &str, output: OutputFormat) -> Result<()> 
         .await
         .context("Failed to connect to server")?;
 
-    let status = resp.status();
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Failed to list connections: {} {}", status, body);
+    if !resp.status().is_success() {
+        return Err(ApiError::from_response("Failed to list connections", resp)
+            .await
+            .into());
     }
 
     let connections: Vec<ConnectionResponse> = resp
@@ -241,13 +236,8 @@ async fn remove(
         anyhow::bail!("Connection not found: {}", provider);
     }
     if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!(
-            "Failed to remove connection for {}: {} {}",
-            provider,
-            status,
-            body
-        );
+        let action = format!("Failed to remove connection for {provider}");
+        return Err(ApiError::from_response(action, resp).await.into());
     }
 
     if output.is_text() {

@@ -7,14 +7,7 @@
 // model was told. See knowledge/integrations/web-search.md (Details view).
 
 import { useState } from "react";
-import {
-  AlertCircle,
-  ChevronDown,
-  ChevronRight,
-  Download,
-  ExternalLink,
-  Search,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, Download, ExternalLink, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -38,19 +31,28 @@ import {
   type WebSearchDetails,
 } from "@/lib/web-search";
 import { cn } from "@/lib/utils";
+import { FailureIcon } from "./failure-severity";
 
 /** Raw bodies show this much until "Show all"; the rest is one click or a download away. */
 const RAW_PREVIEW_BYTES = 2048;
 const INLINE_RESULTS = 3;
 
-function providerKind(provider?: string): "native" | "free" | "account" {
+function providerKind(provider?: string): "native" | "hosted" | "free" | "account" {
   if (provider === "native") return "native";
+  if (provider === "hosted") return "hosted";
   if (provider === "free") return "free";
   return "account";
 }
 
-function accountProvider(provider?: string): string | undefined {
-  if (provider === "brave" || provider?.startsWith("account:")) return "brave_search";
+/** Connector id for the icon: named providers directly, accounts by their label. */
+function accountProvider(provider?: string, label?: string | null): string | undefined {
+  if (provider === "parallel") return "parallel";
+  if (provider === "brave") return "brave_search";
+  if (provider?.startsWith("account:")) {
+    if (label?.startsWith("Parallel")) return "parallel";
+    if (label?.startsWith("Cloudflare")) return "cloudflare_web_search";
+    return "brave_search";
+  }
   return undefined;
 }
 
@@ -83,7 +85,8 @@ export function WebSearchRow({
         )}
       >
         {summary.failed ? (
-          <AlertCircle className="size-3.5 shrink-0 text-destructive" aria-hidden="true" />
+          // A failed search goes back to the model like any failed call: an issue.
+          <FailureIcon severity="issue" className="size-3.5 shrink-0" />
         ) : (
           <Search className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         )}
@@ -107,7 +110,7 @@ export function WebSearchRow({
           {summary.providerLabel && (
             <SearchProviderIcon
               kind={providerKind(details.provider)}
-              provider={accountProvider(details.provider)}
+              provider={accountProvider(details.provider, summary.providerLabel)}
               className="size-3"
             />
           )}
@@ -247,6 +250,7 @@ function costLabel(details: WebSearchDetails): string {
   if (!details.ok) return "None";
   if (details.provider === "free") return "Free";
   if (details.provider === "native") return "Billed by the model provider";
+  if (details.provider === "hosted") return "Billed by this deployment";
   return `Billed on the ${details.provider_label ?? "account"} key`;
 }
 

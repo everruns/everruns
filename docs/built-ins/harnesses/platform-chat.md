@@ -26,7 +26,10 @@ an Agent or harness and test its behavior.
 
 Platform Chat uses the `everruns` command in its session shell to discover operations,
 read authoritative state, perform requested changes, and verify results. Product docs
-are mounted read-only at `/workspace/docs`.
+are mounted read-only at `/workspace/docs`. The Platform capability also supplies
+`everruns`, `everruns-cli`, and `everruns-agent-authoring` skills for product
+orientation, command workflows, and agent design. Discover and activate them
+through [Agent Skills](/capabilities/agent-skills/) as needed.
 
 `/memory/user` is private to the conversation owner. `/memory/shared` contains durable
 notes shared across Platform Chat conversations in the organization. Sharing requires

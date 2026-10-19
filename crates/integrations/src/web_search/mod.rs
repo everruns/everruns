@@ -22,19 +22,31 @@
 
 mod account;
 mod brave;
+mod cloudflare;
+mod cloudflare_connector;
 mod config;
 mod framework;
 mod free;
+mod hosted;
 mod html;
 mod http;
+mod parallel;
 mod plan;
 mod tool;
 
-pub use account::ORG_SETTINGS_TTL;
+pub use account::{ORG_SETTINGS_TTL, account_search_driver};
 pub use brave::BraveSearchDriver;
+pub use cloudflare::{CloudflareSearchDriver, CloudflareSearchIndex, CloudflareSearchOptions};
+pub use cloudflare_connector::CloudflareWebSearchConnector;
 pub use config::{FallbackMode, ProviderSetting, WebSearchConfig};
 pub use framework::WebSearch;
 pub use free::{FreeSearchDriver, FreeSearchEndpoints};
+pub use hosted::{
+    HOSTED_SEARCH_ID, HostedSearchAdmission, HostedSearchCall, HostedSearchCompletion,
+    HostedSearchGate, HostedSearchInvocation, HostedSearchPermit, HostedSearchPermitGate,
+    HostedWebSearch,
+};
+pub use parallel::ParallelSearchDriver;
 pub use plan::{
     Attempt, PlanDrivers, PlanEntry, PlanInputs, PlanStep, ResolvedPlan, SearchOutcome, plan_steps,
     resolve_plan, run_plan,
@@ -51,33 +63,85 @@ pub use everruns_contracts::runtime::web_search::WEB_SEARCH_CAPABILITY_ID;
 pub const BRAVE_SEARCH_API_KEY: &str = "BRAVE_SEARCH_API_KEY";
 /// Connection provider id of a user's Brave Search connection.
 pub const BRAVE_SEARCH_CONNECTION_PROVIDER: &str = "brave_search";
+/// Session secret and environment variable holding a Parallel key.
+pub const PARALLEL_API_KEY: &str = "PARALLEL_API_KEY";
+/// Connection provider id of a Parallel connection.
+pub const PARALLEL_CONNECTION_PROVIDER: &str = "parallel";
+/// Connection provider id of a Cloudflare Web Search account.
+pub const CLOUDFLARE_WEB_SEARCH_CONNECTION_PROVIDER: &str = "cloudflare_web_search";
+
+/// Connector plugins web search contributes to a hosted catalog: Cloudflare
+/// Web Search accounts, which exist only as search accounts. Brave and
+/// Parallel accounts come from their own integrations' connectors.
+pub const CONNECTOR_PLUGINS: &[everruns_contracts::connector::ConnectorPlugin] =
+    &[everruns_contracts::connector::ConnectorPlugin {
+        feature_flag: None,
+        factory: || Box::new(CloudflareWebSearchConnector),
+    }];
 
 /// The provider-neutral web search capability.
 ///
-/// Hosted deployments register the default, which reads Brave keys only from
-/// the session's connections and secrets. A Framework application can hand
-/// it an application-owned Brave key ([`Self::with_brave_key`],
-/// [`Self::from_env`]); the key never enters capability config.
+/// Hosted deployments register the default, which reads Brave and Parallel
+/// keys only from the session's connections and secrets. A Framework
+/// application can hand it application-owned keys ([`Self::with_brave_key`],
+/// [`Self::with_parallel_key`], [`Self::from_env`]); keys never enter
+/// capability config. A deployment that pays for a search provider itself
+/// offers it to every organization with [`Self::and_hosted`].
 #[derive(Clone, Default)]
 pub struct WebSearchCapability {
-    brave_key: Option<String>,
+    keys: tool::AppKeys,
+}
+
+fn non_empty(key: String) -> Option<String> {
+    Some(key).filter(|key| !key.trim().is_empty())
 }
 
 impl WebSearchCapability {
     /// Use an application-owned Brave Search key when no session key exists.
     pub fn with_brave_key(key: impl Into<String>) -> Self {
+        Self::default().and_brave_key(key)
+    }
+
+    /// Use an application-owned Parallel key when no session key exists.
+    pub fn with_parallel_key(key: impl Into<String>) -> Self {
+        Self::default().and_parallel_key(key)
+    }
+
+    /// Add an application-owned Brave Search key.
+    pub fn and_brave_key(mut self, key: impl Into<String>) -> Self {
+        self.keys.brave = non_empty(key.into());
+        self
+    }
+
+    /// Add an application-owned Parallel key.
+    pub fn and_parallel_key(mut self, key: impl Into<String>) -> Self {
+        self.keys.parallel = non_empty(key.into());
+        self
+    }
+
+    /// Read `BRAVE_SEARCH_API_KEY` and `PARALLEL_API_KEY` once at startup,
+    /// when set.
+    pub fn from_env() -> Self {
         Self {
-            brave_key: Some(key.into()).filter(|key| !key.trim().is_empty()),
+            keys: tool::AppKeys {
+                brave: std::env::var(BRAVE_SEARCH_API_KEY).ok().and_then(non_empty),
+                parallel: std::env::var(PARALLEL_API_KEY).ok().and_then(non_empty),
+                hosted: None,
+            },
         }
     }
 
-    /// Read `BRAVE_SEARCH_API_KEY` once at startup, if set.
-    pub fn from_env() -> Self {
-        Self {
-            brave_key: std::env::var(BRAVE_SEARCH_API_KEY)
-                .ok()
-                .filter(|key| !key.trim().is_empty()),
-        }
+    /// Offer the deployment's own search to every organization: Automatic
+    /// tries it after the organization's accounts and before free search,
+    /// and an organization can move it in its Automatic order.
+    pub fn and_hosted(mut self, hosted: HostedWebSearch) -> Self {
+        self.keys.hosted = Some(hosted);
+        self
+    }
+
+    /// The deployment's own search, when it offers one.
+    pub fn hosted(&self) -> Option<&HostedWebSearch> {
+        self.keys.hosted.as_ref()
     }
 }
 
@@ -93,7 +157,8 @@ impl Capability for WebSearchCapability {
     fn description(&self) -> &str {
         "Search the web with one web_search tool. Choose the search provider per agent \
          (organization default, Automatic, model provider search, a search account such as \
-         Brave Search, or free search); free search answers when the chosen provider cannot. \
+         Brave Search, Parallel or Cloudflare Web Search, or free search); free search \
+         answers when the chosen provider cannot. \
          Results carry titles, links, sites, dates and snippets so the agent can cite them."
     }
 
@@ -133,7 +198,7 @@ impl Capability for WebSearchCapability {
     fn tools_with_config(&self, config: &serde_json::Value) -> Vec<Box<dyn Tool>> {
         vec![Box::new(tool::WebSearchTool::new(
             WebSearchConfig::from_value(config).unwrap_or_default(),
-            self.brave_key.clone(),
+            self.keys.clone(),
         ))]
     }
 
@@ -166,7 +231,7 @@ impl Capability for WebSearchCapability {
             "Вебпошук",
             "Пошук в інтернеті одним інструментом web_search. Постачальника пошуку обирають \
              для кожного агента (типовий для організації, автоматично, пошук постачальника \
-             моделі, обліковий запис пошуку, як-от Brave Search, або безкоштовний пошук); \
+             моделі, обліковий запис пошуку, як-от Brave Search чи Parallel, або безкоштовний пошук); \
              безкоштовний пошук відповідає, коли обраний постачальник не може. Результати \
              містять заголовки, посилання, сайти, дати й уривки, щоб агент міг на них посилатися.",
         )]
@@ -222,6 +287,7 @@ mod tests {
         for config in [
             serde_json::json!({"provider": "free"}),
             serde_json::json!({"provider": "brave"}),
+            serde_json::json!({"provider": "parallel"}),
             serde_json::json!({"provider": "account", "account_id": "00000000-0000-0000-0000-000000000007"}),
         ] {
             assert!(cap.driver_options(&config).is_empty(), "{config}");
@@ -275,6 +341,14 @@ mod tests {
         let drivers: Vec<Box<dyn SearchDriver>> = vec![
             Box::new(FreeSearchDriver::default()),
             Box::new(BraveSearchDriver::new("key")),
+            Box::new(ParallelSearchDriver::new("key")),
+            Box::new(CloudflareSearchDriver::new(
+                "token",
+                CloudflareSearchOptions::new(
+                    "0123456789abcdef0123456789abcdef",
+                    CloudflareSearchIndex::Ceramic,
+                ),
+            )),
         ];
         for driver in drivers {
             for host in driver.egress_hosts() {

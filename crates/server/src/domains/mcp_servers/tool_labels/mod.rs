@@ -241,6 +241,7 @@ pub struct ListMcpServerTools {
     name = "list_mcp_server_tools",
     category = "mcp_servers",
     description = "List the tools an MCP server offers, with each tool's annotations and saved risk label.",
+    summary = "List an MCP server's tools with their risk labels",
     method = "GET",
     path = "/v1/mcp-servers/{id}/tools",
     policy = MCP_SERVER_VIEW,

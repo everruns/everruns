@@ -1,6 +1,6 @@
 ---
 title: everruns memories
-description: "Workspace memories in the organization. CLI reference for everruns memories."
+description: "Workspace memories in the organization. CLI reference for everruns memories: usage, flags and examples."
 sidebar:
   label: memories
 appliesTo: [platform, cloud]

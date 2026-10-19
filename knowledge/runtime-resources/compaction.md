@@ -22,6 +22,10 @@ Context compaction manages conversations that exceed LLM context windows. Users 
 
 ## Model View Versus Storage
 
+Attachments (images, PDFs, other files) are not yet carried through
+compaction: summarization and masking keep text only. The proposed fix is in
+[Session Attachments](session-attachments.md).
+
 Session storage remains lossless: tool results, file reads, and exec outputs are stored as events/messages exactly as produced. When the `compaction` capability is configured, it contributes a model-view provider that builds a separate **model view** from those stored messages before provider serialization.
 
 The model view applies generic cost-control masking according to the configured `compaction` capability. This masking replaces stale bulky tool results with compact summaries while preserving message/tool-call structure and the most recent tool results verbatim. Builders can tune or disable this via `cost_control`.

@@ -1,5 +1,7 @@
 // PostgreSQL repository: Sessions (instance of agentic loop), Pinned Sessions
 
+mod automatic_titles;
+pub mod failures;
 pub(super) mod rows;
 use rows::*;
 
@@ -28,6 +30,12 @@ const SESSION_COLUMNS: &str = "id, org_id, workspace_id, app_id, channel_id, tri
      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, \
      forked_from_session_id, forked_from_sequence, \
      blueprint_id, blueprint_config, archived_at, COALESCE((SELECT es.next_sequence - 1 - es.removed_count FROM event_sequences es WHERE es.session_id = id), 0)::BIGINT AS event_count, task_count";
+
+// Conversational activity is shared by ordinary and failed-turn session cards.
+const LAST_MESSAGE_AT: &str = "(SELECT e.ts FROM events e
+    WHERE e.session_id = sessions.id
+      AND e.event_type IN ('input.message', 'output.message.completed')
+    ORDER BY e.sequence DESC LIMIT 1)";
 
 /// SQL mirror of `crate::domains::sessions::record::SessionActivity::derive` — the list filters in
 /// the database while the in-memory backend filters in Rust. Both must change
@@ -520,7 +528,8 @@ impl Database {
         let limit_idx = plan.next_param_idx;
         let offset_idx = plan.next_param_idx + 1;
         let select_sql = format!(
-            r#"SELECT {SESSION_COLUMNS}
+            r#"SELECT {SESSION_COLUMNS},
+                {LAST_MESSAGE_AT} AS last_message_at
             FROM sessions {where_clause}
             ORDER BY {order_by}
             LIMIT ${limit_idx} OFFSET ${offset_idx}"#,
@@ -1267,17 +1276,18 @@ impl Database {
             SET
                 harness_id = COALESCE($3, harness_id),
                 title = COALESCE($4, title),
+                title_is_automatic = CASE WHEN $4 IS NOT NULL THEN FALSE ELSE title_is_automatic END,
                 goal = COALESCE($5, goal),
                 virtual_user_id = CASE WHEN $6 THEN $7 ELSE virtual_user_id END,
                 owner_principal_id = COALESCE($8, owner_principal_id),
                 resolved_owner_user_id = CASE WHEN $9 THEN $10 ELSE resolved_owner_user_id END,
                 locale = COALESCE($11, locale),
                 tags = COALESCE($12, tags),
-                model_id = COALESCE($13, model_id),
-                status = COALESCE($14, status),
-                started_at = COALESCE($15, started_at),
-                finished_at = COALESCE($16, finished_at),
-                tools = COALESCE($17, tools)
+                model_id = CASE WHEN $13 THEN $14 ELSE model_id END,
+                status = COALESCE($15, status),
+                started_at = COALESCE($16, started_at),
+                finished_at = COALESCE($17, finished_at),
+                tools = COALESCE($18, tools)
             WHERE org_id = $1 AND id = $2
             RETURNING id, org_id, workspace_id, app_id, channel_id, trigger_id, harness_id, agent_id, agent_revision, virtual_user_id, playground_user_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
@@ -1296,7 +1306,8 @@ impl Database {
         .bind(input.resolved_owner_user_id.into_value())
         .bind(&input.locale)
         .bind(&input.tags)
-        .bind(input.model_id.map(|m| m.uuid()))
+        .bind(input.model_id.is_changed())
+        .bind(input.model_id.into_value().map(|m| m.uuid()))
         .bind(&input.status)
         .bind(input.started_at)
         .bind(input.finished_at)

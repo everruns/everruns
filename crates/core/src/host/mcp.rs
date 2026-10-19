@@ -21,7 +21,8 @@ use everruns_contracts::tool_types::ToolDefinition;
 use futures::{StreamExt, stream};
 use uuid::Uuid;
 
-use crate::host::mcp_cache::McpDiscoveryCache;
+use crate::host::mcp_cache::{DiscoveryFailure, McpDiscoveryCache};
+use sha2::{Digest, Sha256};
 
 /// Maximum scoped MCP server discoveries run concurrently for one turn.
 const MAX_DISCOVERY_CONCURRENCY: usize = 16;
@@ -45,6 +46,7 @@ struct ResolvedServer {
     name: String,
     connection: McpConnection,
     tool_discovery: bool,
+    configuration: [u8; 32],
 }
 
 fn resolve_servers(servers: &ScopedMcpServers) -> Vec<ResolvedServer> {
@@ -56,6 +58,12 @@ fn resolve_servers(servers: &ScopedMcpServers) -> Vec<ResolvedServer> {
                 return None;
             }
             let endpoint = endpoint_for(name, server)?;
+            let mut configuration = serde_json::to_value(server).expect("scoped MCP configuration");
+            configuration.sort_all_objects();
+            let configuration = Sha256::digest(
+                serde_json::to_vec(&configuration).expect("scoped MCP configuration"),
+            )
+            .into();
             Some(ResolvedServer {
                 name: name.clone(),
                 connection: McpConnection {
@@ -71,6 +79,7 @@ fn resolve_servers(servers: &ScopedMcpServers) -> Vec<ResolvedServer> {
                     acted_as: None,
                 },
                 tool_discovery: server.tool_discovery,
+                configuration,
             })
         })
         .collect()
@@ -133,7 +142,7 @@ pub(crate) async fn discover_tool_definitions(
             let cache = cache.clone();
             let client = client.clone();
             async move {
-                let key = (session_uuid, resolved.name.clone());
+                let key = (session_uuid, resolved.name.clone(), resolved.configuration);
                 let name = resolved.name.clone();
                 let connection = resolved.connection.clone();
                 cache
@@ -143,14 +152,19 @@ pub(crate) async fn discover_tool_definitions(
                         let name = name.clone();
                         async move {
                             match client.discover(&connection).await {
-                                Ok(tools) => Some(build_definitions(session_uuid, &name, tools)),
+                                Ok(tools) => Ok(build_definitions(session_uuid, &name, tools)),
                                 Err(error) => {
-                                    tracing::warn!(
-                                        server = %name,
-                                        %error,
-                                        "scoped MCP tool discovery failed; skipping server"
-                                    );
-                                    None
+                                    let failure = if error.downcast_ref::<crate::mcp::McpHttpStatusError>()
+                                        .is_some_and(|error| matches!(error.status, 401 | 403)) {
+                                        tracing::warn!(server = %name,
+                                            "MCP authentication rejected; reconnect and reload MCP to retry discovery");
+                                        DiscoveryFailure::Authentication
+                                    } else {
+                                        tracing::warn!(server = %name, %error,
+                                            "scoped MCP discovery failed; retrying after a short cooldown");
+                                        DiscoveryFailure::Transient
+                                    };
+                                    Err(failure)
                                 }
                             }
                         }
@@ -237,6 +251,99 @@ mod tests {
         servers
     }
 
+    struct DiscoveryEgress {
+        requests: std::sync::atomic::AtomicUsize,
+        status: std::sync::atomic::AtomicU16,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::EgressService for DiscoveryEgress {
+        async fn send(
+            &self,
+            request: crate::EgressRequest,
+        ) -> crate::EgressResult<crate::EgressResponse> {
+            self.requests
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let id = serde_json::from_slice::<serde_json::Value>(&request.body)
+                .ok()
+                .and_then(|body| body.get("id").cloned());
+            Ok(crate::EgressResponse {
+                status: self.status.load(std::sync::atomic::Ordering::SeqCst),
+                headers: Default::default(),
+                body: serde_json::to_vec(&serde_json::json!({"jsonrpc":"2.0", "id":id,
+                    "result":{"tools":[{"name":"ping", "inputSchema":{"type":"object"}}]}}))
+                .unwrap(),
+            })
+        }
+        async fn send_stream(
+            &self,
+            _request: crate::EgressRequest,
+        ) -> crate::EgressResult<crate::EgressStreamResponse> {
+            Err(crate::EgressError::Transport("stream not used".into()))
+        }
+    }
+
+    #[tokio::test]
+    async fn rejected_http_discovery_stays_paused_until_reload_or_new_credentials() {
+        use std::sync::atomic::{AtomicU16, AtomicUsize, Ordering};
+        for status in [401, 403] {
+            let egress = Arc::new(DiscoveryEgress {
+                requests: AtomicUsize::new(0),
+                status: AtomicU16::new(status),
+            });
+            let client = Arc::new(McpClient::new(
+                egress.clone(),
+                Arc::new(crate::mcp::NoAuthProvider),
+            ));
+            let cache = Arc::new(McpDiscoveryCache::new());
+            let session = Uuid::new_v4();
+            let mut servers = servers_with(
+                "private",
+                ScopedMcpServer {
+                    url: "https://93.184.216.34/mcp".into(),
+                    ..Default::default()
+                },
+            );
+            assert!(
+                discover_tool_definitions(&cache, client.clone(), session, &servers)
+                    .await
+                    .is_empty()
+            );
+            let failed_requests = egress.requests.load(Ordering::SeqCst);
+            assert!(failed_requests > 0);
+            for _ in 0..20 {
+                assert!(
+                    discover_tool_definitions(&cache, client.clone(), session, &servers)
+                        .await
+                        .is_empty()
+                );
+            }
+            assert_eq!(egress.requests.load(Ordering::SeqCst), failed_requests);
+            servers
+                .get_mut("private")
+                .unwrap()
+                .headers
+                .insert("Authorization".into(), "replacement-fixture".into());
+            egress.status.store(200, Ordering::SeqCst);
+            assert_eq!(
+                discover_tool_definitions(&cache, client.clone(), session, &servers)
+                    .await
+                    .len(),
+                1
+            );
+            assert!(egress.requests.load(Ordering::SeqCst) > failed_requests);
+            let before_reload = egress.requests.load(Ordering::SeqCst);
+            cache.invalidate_session(session);
+            assert_eq!(
+                discover_tool_definitions(&cache, client, session, &servers)
+                    .await
+                    .len(),
+                1
+            );
+            assert!(egress.requests.load(Ordering::SeqCst) > before_reload);
+        }
+    }
+
     #[test]
     fn http_server_maps_to_http_endpoint() {
         let headers = HashMap::from([("X-Trace".into(), "request-trace".into())]);
@@ -275,6 +382,30 @@ mod tests {
             #[cfg(feature = "mcp-stdio")]
             other => panic!("expected HTTP, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn discovery_identity_is_stable_for_header_order_and_changes_with_credentials() {
+        let first = ScopedMcpServer {
+            url: "https://example.com/mcp".into(),
+            headers: HashMap::from([
+                ("Authorization".into(), "private-one".into()),
+                ("X-Mode".into(), "read".into()),
+            ]),
+            ..Default::default()
+        };
+        let mut reordered = first.clone();
+        reordered.headers = HashMap::from([
+            ("X-Mode".into(), "read".into()),
+            ("Authorization".into(), "private-one".into()),
+        ]);
+        let fingerprint = |server| resolve_servers(&servers_with("docs", server))[0].configuration;
+        assert_eq!(fingerprint(first.clone()), fingerprint(reordered));
+        let mut changed = first.clone();
+        changed
+            .headers
+            .insert("Authorization".into(), "private-two".into());
+        assert_ne!(fingerprint(first), fingerprint(changed));
     }
 
     #[cfg(feature = "mcp-stdio")]

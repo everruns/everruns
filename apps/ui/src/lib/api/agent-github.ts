@@ -7,12 +7,27 @@ export interface AgentGitHubStatus {
   app_created: boolean;
   app_slug: string | null;
   app_url: string | null;
+  /** `agent_app` (the agent's own App) or `everruns_app` (the shared Everruns App). */
+  kind: "agent_app" | "everruns_app" | null;
+  /** Login GitHub shows for the agent, e.g. `pr-summarizer[bot]`. */
+  bot_login: string | null;
+  /** The App's settings page on GitHub, where its logo is uploaded. */
+  app_settings_url: string | null;
   account: string | null;
   repository_selection: string | null;
   /** Permissions new Apps request that this installation lacks, as `name:level`. */
   missing_permissions: string[];
   /** GitHub accounts this organization already reached, candidates for `owner_org`. */
   suggested_owners: GitHubOwnerSuggestion[];
+  /** Shared Everruns App installations an org admin linked, which this agent may choose. */
+  everruns_app_installations: EverrunsAppInstallation[];
+}
+
+export interface EverrunsAppInstallation {
+  connection_id: string;
+  account: string;
+  account_type: string | null;
+  repository_selection: string | null;
 }
 
 export type AgentGitHubConnectResponse =
@@ -35,6 +50,18 @@ export async function connectAgentGitHub(
 ): Promise<AgentGitHubConnectResponse> {
   return (await api.post<AgentGitHubConnectResponse>(`/v1/agents/${agentId}/github/connect`, body))
     .data;
+}
+
+/** Make the agent act as the shared Everruns App through an org-linked installation. */
+export async function chooseAgentEverrunsApp(
+  agentId: string,
+  connectionId: string,
+): Promise<AgentGitHubStatus> {
+  return (
+    await api.post<AgentGitHubStatus>(`/v1/agents/${agentId}/github/everruns-app`, {
+      connection_id: connectionId,
+    })
+  ).data;
 }
 
 export async function disconnectAgentGitHub(identityId: string): Promise<void> {

@@ -1,13 +1,13 @@
 ---
 import { docsPath } from "../lib/site";
-import DefaultFooter from "@astrojs/starlight/components/Footer.astro";
-import { isChangelogEntry, productLabel } from "../lib/changelog";
-import siteFooter from "../site-chrome/footer.html?raw";
+import Pagination from "./Pagination.astro";
+import { isChangelogEntry, productLabel, prLink } from "../lib/changelog";
 
-// Every page ends with the everruns.com site footer, shared with the landing
-// site (see Header.astro). A changelog entry also links the products it is
-// about: where each one lives, so a reader can go from "what changed" to the
-// product itself.
+// The end of the article: previous and next pages. The edit link and last
+// updated date sit in the meta row under the title (PageTitle.astro), and the
+// everruns.com site footer spans the page below the column (PageFrame.astro).
+// A changelog entry closes with its pull requests and the products it is
+// about, so a reader can go from "what changed" to the code and the product.
 const PRODUCT_HOME: Record<string, string> = {
   cloud: "/getting-started/cloud/",
   platform: "/getting-started/docker-compose/",
@@ -22,7 +22,15 @@ const entry = Astro.locals.starlightRoute.entry;
 const links = isChangelogEntry(entry)
   ? (entry.data.products ?? []).map((p: string) => ({ label: productLabel(p), href: docsPath(PRODUCT_HOME[p]) }))
   : [];
+const prs = isChangelogEntry(entry) ? (entry.data.links?.prs ?? []).map(prLink) : [];
 ---
+
+{prs.length > 0 && (
+<p class="changelog-prs">
+  <span>Pull requests</span>
+  {prs.map((pr) => <a href={pr.href} rel="noopener">{pr.label}</a>)}
+</p>
+)}
 
 {links.length > 0 && (
 <div class="site-footer-links">
@@ -42,23 +50,29 @@ const links = isChangelogEntry(entry)
 </div>
 )}
 
-<DefaultFooter {...Astro.props} />
-
-<div class="site-footer">
-  <Fragment set:html={siteFooter} />
-</div>
+<Pagination />
 
 <style>
-  .site-footer {
-    margin-block-start: 3rem;
+  .changelog-prs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+    margin-block-start: 2.5rem;
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-3);
   }
 
-  .site-footer :global(.er-footer) {
-    border-top: 1px solid var(--sl-color-hairline-light);
+  .changelog-prs a {
+    font-family: var(--sl-font-mono);
+    color: var(--sl-color-text-accent);
+  }
+
+  .changelog-prs + .site-footer-links {
+    margin-block-start: 1rem;
   }
 
   .site-footer-links {
-    margin-block-end: 1rem;
+    margin-block-start: 3rem;
     padding-block-end: 1rem;
     border-bottom: 1px solid var(--sl-color-hairline-light);
   }

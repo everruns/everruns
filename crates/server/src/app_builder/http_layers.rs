@@ -209,6 +209,23 @@ pub(super) fn apply_outer_layers(
     app.layer(RequestIdLayer)
 }
 
+pub(super) fn log_configuration(config: &crate::server::ServerConfig) {
+    if !config.api_prefix.is_empty() {
+        tracing::info!(
+            prefix = %config.api_prefix,
+            "API prefix configured"
+        );
+    }
+    if config.cors_origins.is_empty() {
+        tracing::info!("CORS not configured (same-origin requests only)");
+    } else {
+        tracing::info!(
+            origins = ?config.cors_origins,
+            "CORS origins configured"
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -27,7 +27,7 @@ Both hang off the command contract every surface shares ([Command
 Tree](command-tree.md), [Domain Modules](../foundations/domains.md)), not off a
 domain, so a new editable entity gets both by declaring what it is. User-facing
 behavior is in `docs/features/change-history.md`; the guarantees of one command
-run are in `docs/advanced/command-path.md`.
+run are in `docs/explanation/command-path.md`.
 
 ## Where it lives
 

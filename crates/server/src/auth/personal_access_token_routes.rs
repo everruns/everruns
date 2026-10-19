@@ -18,6 +18,7 @@ use uuid::Uuid;
 
 use super::audit;
 use super::middleware::{AuthError, AuthMethod, AuthState, AuthUser};
+use super::pat_scope::{SCOPE_FULL, SCOPE_READ};
 use super::personal_access_token::generate_personal_access_token;
 use crate::api::common::ListResponse;
 use crate::server::ResourceLimitsConfig;
@@ -76,10 +77,10 @@ pub struct PersonalAccessTokenListItem {
 pub struct CreatePersonalAccessTokenRequest {
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
-    /// Token scopes. Scopes are not yet enforced on the request path, so only a
-    /// full-access token is supported: omit this field or pass `["*"]`. Any other
-    /// value is rejected (`unsupported_pat_scopes`) rather than silently granting
-    /// full access under a narrower-looking label. See EVE-701.
+    /// Token scope (knowledge/security/pat-scopes.md). Omit this field or pass
+    /// `["*"]` for a full-access token, or pass `["read"]` for a read-only token
+    /// that can call read routes in every organization you belong to and
+    /// nothing else. Any other value is rejected (`unsupported_pat_scopes`).
     #[serde(default)]
     pub scopes: Vec<String>,
     /// Expiration in days (optional)
@@ -133,27 +134,26 @@ async fn list_personal_access_tokens(
     Ok(Json(ListResponse::new(items)))
 }
 
-/// EVE-701: validate and normalize requested PAT scopes.
+/// Validate and normalize requested PAT scopes (pat-scopes.md, Decision 1).
 ///
-/// PAT scopes are not yet enforced on the request path — a validated token
-/// authenticates with the owning user's full authority regardless of stored
-/// scopes. Accepting a narrower scope would advertise a security control we do
-/// not honor: a user pasting a "read-only" token into CI would believe they had
-/// limited blast radius, while a leak of that token is still equivalent to full
-/// account compromise. Until per-request enforcement exists, only the full-access
-/// wildcard is accepted (empty ⇒ `["*"]`); any other scope is rejected so the API
-/// never mints a token whose advertised scopes lie.
+/// Exactly three request shapes are accepted: `[]` and `["*"]` mint a
+/// full-access token, `["read"]` a read-only one. Anything else, including
+/// `["*", "read"]`, a repeated scope or an unknown string, is rejected rather
+/// than narrowed or widened, so the stored scopes are always exactly what the
+/// caller asked for and parse to `PatScope::Full` or `PatScope::Read`.
+// THREAT[TM-AUTH-037]: a token minted with a scope no surface enforces.
+// Mitigation: only the two scopes every surface enforces can be created.
 fn normalize_pat_scopes(requested: &[String]) -> Result<Vec<String>, AuthError> {
-    if requested.is_empty() || requested.iter().all(|s| s == "*") {
-        Ok(vec!["*".to_string()])
-    } else {
-        Err(AuthError {
-            error: "Custom personal access token scopes are not yet supported. \
-                    Omit `scopes` or pass [\"*\"] to create a full-access token."
+    match requested {
+        [] => Ok(vec![SCOPE_FULL.to_string()]),
+        [scope] if scope == SCOPE_FULL || scope == SCOPE_READ => Ok(vec![scope.clone()]),
+        _ => Err(AuthError {
+            error: "Unsupported personal access token scopes. Omit `scopes` or pass \
+                    [\"*\"] for a full-access token, or pass [\"read\"] for a read-only token."
                 .to_string(),
             status: StatusCode::BAD_REQUEST,
             code: Some("unsupported_pat_scopes"),
-        })
+        }),
     }
 }
 
@@ -263,7 +263,11 @@ async fn create_personal_access_token(
         Some(user.id),
         "auth.personal_access_token.created",
         ip,
-        serde_json::json!({"token_id": token_row.id.to_string(), "name": req.name}),
+        serde_json::json!({
+            "token_id": token_row.id.to_string(),
+            "name": req.name,
+            "scopes": scopes,
+        }),
     );
 
     Ok((
@@ -325,35 +329,63 @@ async fn delete_personal_access_token(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::pat_scope::PatScope;
+
+    fn scopes(raw: &[&str]) -> Vec<String> {
+        raw.iter().map(|s| s.to_string()).collect()
+    }
 
     #[test]
     fn empty_scopes_default_to_full_access() {
-        assert_eq!(normalize_pat_scopes(&[]).unwrap(), vec!["*".to_string()]);
+        assert_eq!(normalize_pat_scopes(&[]).unwrap(), scopes(&["*"]));
     }
 
     #[test]
     fn wildcard_scope_accepted() {
         assert_eq!(
-            normalize_pat_scopes(&["*".to_string()]).unwrap(),
-            vec!["*".to_string()]
+            normalize_pat_scopes(&scopes(&["*"])).unwrap(),
+            scopes(&["*"])
         );
-        // Redundant wildcards normalize to a single full-access scope.
+    }
+
+    #[test]
+    fn read_scope_accepted() {
         assert_eq!(
-            normalize_pat_scopes(&["*".to_string(), "*".to_string()]).unwrap(),
-            vec!["*".to_string()]
+            normalize_pat_scopes(&scopes(&["read"])).unwrap(),
+            scopes(&["read"])
         );
     }
 
+    /// Tests item 1: only `[]`, `["*"]` and `["read"]` are creatable, and each
+    /// stores scopes that parse back to exactly the requested `PatScope`.
     #[test]
-    fn narrow_scope_rejected_until_enforced() {
-        let err = normalize_pat_scopes(&["read".to_string()]).unwrap_err();
-        assert_eq!(err.status, StatusCode::BAD_REQUEST);
-        assert_eq!(err.code, Some("unsupported_pat_scopes"));
+    fn accepted_shapes_parse_to_the_requested_scope() {
+        for (requested, parsed) in [
+            (scopes(&[]), PatScope::Full),
+            (scopes(&["*"]), PatScope::Full),
+            (scopes(&["read"]), PatScope::Read),
+        ] {
+            let stored = normalize_pat_scopes(&requested).unwrap();
+            assert_eq!(PatScope::parse(&stored), parsed, "{requested:?}");
+        }
     }
 
     #[test]
-    fn mixed_wildcard_and_narrow_scope_rejected() {
-        // A narrower scope alongside the wildcard must not be silently accepted.
-        assert!(normalize_pat_scopes(&["*".to_string(), "read".to_string()]).is_err());
+    fn every_other_shape_rejected() {
+        for requested in [
+            &["*", "read"][..],
+            &["read", "*"],
+            &["*", "*"],
+            &["read", "read"],
+            &["write"],
+            &["read", "write"],
+            &["agents:read"],
+            &["READ"],
+            &[""],
+        ] {
+            let err = normalize_pat_scopes(&scopes(requested)).unwrap_err();
+            assert_eq!(err.status, StatusCode::BAD_REQUEST, "{requested:?}");
+            assert_eq!(err.code, Some("unsupported_pat_scopes"), "{requested:?}");
+        }
     }
 }

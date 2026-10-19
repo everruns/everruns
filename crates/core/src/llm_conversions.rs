@@ -8,6 +8,9 @@
 //! from being `From` impls in core (both the `From` trait and the driver types
 //! are foreign to core), so they are plain functions.
 
+use everruns_contracts::runtime::attachments::{
+    ZIP_MEDIA_TYPE, attachment_label, attachment_path, unpacked_dir,
+};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -139,11 +142,31 @@ pub fn llm_message_from_message_with_attachments(
                     parts.push(LlmContentPart::Image { url: url.clone() });
                 } else if let (Some(base64), Some(media_type)) = (&img.base64, &img.media_type) {
                     let data_url = format!("data:{};base64,{}", media_type, base64);
-                    parts.push(LlmContentPart::Image { url: data_url });
+                    // Tool results carry PDFs through the same inline-media
+                    // part as images (`ToolResultImage`); drivers need them
+                    // as documents, so split them here.
+                    if media_type.starts_with("image/") {
+                        parts.push(LlmContentPart::Image { url: data_url });
+                    } else {
+                        parts.push(LlmContentPart::file(data_url, None));
+                    }
                 }
             }
             ContentPart::ImageFile(img_file) => {
+                // A label with the attachment's stable session path goes
+                // before the bytes, so the model can reopen the image after
+                // compaction drops them (session-attachments.md).
+                let path = attachment_path(
+                    &img_file.image_id.to_string(),
+                    img_file.filename.as_deref(),
+                    "image",
+                );
                 if let Some(resolved) = resolved_images.get(&img_file.image_id.uuid()) {
+                    parts.push(LlmContentPart::text(attachment_label(
+                        "image",
+                        &path,
+                        Some(&resolved.media_type),
+                    )));
                     parts.push(LlmContentPart::Image {
                         url: resolved.to_data_url(),
                     });
@@ -154,11 +177,27 @@ pub fn llm_message_from_message_with_attachments(
                 }
             }
             ContentPart::File(file_part) => {
+                let path = attachment_path(
+                    &file_part.file_id.to_string(),
+                    file_part.filename.as_deref(),
+                    "file",
+                );
                 if let Some(resolved) = resolved_files.get(&file_part.file_id.uuid()) {
-                    parts.push(LlmContentPart::file(
-                        resolved.to_data_url(),
-                        resolved.filename.clone().or(file_part.filename.clone()),
-                    ));
+                    let label = attachment_label("file", &path, Some(&resolved.media_type));
+                    // Models read PDFs; a zip is unpacked into session files
+                    // instead, so the model gets the folder, not the bytes.
+                    if resolved.media_type == ZIP_MEDIA_TYPE {
+                        parts.push(LlmContentPart::text(format!(
+                            "{label}, unpacked to {}/",
+                            unpacked_dir(&path)
+                        )));
+                    } else {
+                        parts.push(LlmContentPart::text(label));
+                        parts.push(LlmContentPart::file(
+                            resolved.to_data_url(),
+                            resolved.filename.clone().or(file_part.filename.clone()),
+                        ));
+                    }
                 } else {
                     parts.push(LlmContentPart::Text {
                         text: format!("[File not found: {}]", file_part.file_id),
@@ -448,6 +487,42 @@ mod tests {
     }
 
     #[test]
+    fn zip_file_part_names_its_folder_instead_of_sending_bytes() {
+        use crate::file_services::ResolvedFile;
+
+        let file_id = crate::typed_id::FileId::new();
+        let mut message = RuntimeMessage::user("look at this data");
+        message.content.push(ContentPart::File(
+            crate::message::FileContentPart::with_filename(file_id, "data.zip"),
+        ));
+        let resolved = HashMap::from([(
+            file_id.uuid(),
+            ResolvedFile {
+                base64: "UEsDBA==".to_string(),
+                media_type: "application/zip".to_string(),
+                filename: Some("data.zip".to_string()),
+            },
+        )]);
+
+        let llm = llm_message_from_message_with_attachments(&message, &HashMap::new(), &resolved);
+
+        let MessageContent::Parts(parts) = &llm.content else {
+            panic!("expected parts");
+        };
+        assert_eq!(parts.len(), 2);
+        let LlmContentPart::Text { text } = &parts[1] else {
+            panic!("expected a label, got {:?}", parts[1]);
+        };
+        assert_eq!(
+            text,
+            &format!(
+                "Attached file /attachments/{file_id}/data.zip (application/zip), \
+                 unpacked to /attachments/{file_id}/data/"
+            )
+        );
+    }
+
+    #[test]
     fn test_file_part_resolves_to_llm_file() {
         use crate::file_services::ResolvedFile;
 
@@ -468,8 +543,15 @@ mod tests {
         let llm = llm_message_from_message_with_attachments(&message, &HashMap::new(), &resolved);
         match &llm.content {
             MessageContent::Parts(parts) => {
-                assert_eq!(parts.len(), 2);
+                assert_eq!(parts.len(), 3);
                 match &parts[1] {
+                    LlmContentPart::Text { text } => assert_eq!(
+                        text,
+                        &format!("Attached file /attachments/{file_id}/file (application/pdf)")
+                    ),
+                    other => panic!("expected label, got {:?}", other),
+                }
+                match &parts[2] {
                     LlmContentPart::File { url, filename } => {
                         assert_eq!(url, "data:application/pdf;base64,JVBERi0=");
                         assert_eq!(filename.as_deref(), Some("stored.pdf"));
@@ -517,6 +599,38 @@ mod tests {
     }
 
     #[test]
+    fn tool_result_pdf_becomes_a_file_part() {
+        let message = RuntimeMessage::tool_result_with_images(
+            "call_1",
+            Some(serde_json::json!({"path": "/attachments/a1/report.pdf"})),
+            vec![
+                everruns_contracts::tool_types::ToolResultImage {
+                    base64: "JVBERi0=".into(),
+                    media_type: "application/pdf".into(),
+                },
+                everruns_contracts::tool_types::ToolResultImage {
+                    base64: "iVBORw0KGgo=".into(),
+                    media_type: "image/png".into(),
+                },
+            ],
+        );
+
+        let llm_message = llm_message_from_message_with_images(&message, &HashMap::new());
+
+        let MessageContent::Parts(parts) = llm_message.content else {
+            panic!("expected parts");
+        };
+        assert!(parts.iter().any(|part| matches!(
+            part,
+            LlmContentPart::File { url, .. } if url == "data:application/pdf;base64,JVBERi0="
+        )));
+        assert!(parts.iter().any(|part| matches!(
+            part,
+            LlmContentPart::Image { url } if url == "data:image/png;base64,iVBORw0KGgo="
+        )));
+    }
+
+    #[test]
     fn test_from_message_with_images_resolved_image() {
         let first = crate::typed_id::ImageId::new();
         let second = crate::typed_id::ImageId::new();
@@ -541,9 +655,11 @@ mod tests {
         assert_eq!(actual.role, MessageRole::User);
         assert!(
             matches!(&actual.content, MessageContent::Parts(parts) if matches!(&parts[..],
-            [LlmContentPart::Text { text: a }, LlmContentPart::Image { url: b },
-             LlmContentPart::Text { text: c }, LlmContentPart::Image { url: d }]
-            if a == "Look at this" && b == "data:image/png;base64,first-data" && c == "and this" && d == "data:image/jpeg;base64,second-data"))
+            [LlmContentPart::Text { text: a }, LlmContentPart::Text { text: la }, LlmContentPart::Image { url: b },
+             LlmContentPart::Text { text: c }, LlmContentPart::Text { text: lc }, LlmContentPart::Image { url: d }]
+            if a == "Look at this" && b == "data:image/png;base64,first-data" && c == "and this" && d == "data:image/jpeg;base64,second-data"
+                && *la == format!("Attached image /attachments/{first}/image (image/png)")
+                && *lc == format!("Attached image /attachments/{second}/image (image/jpeg)")))
         );
     }
 

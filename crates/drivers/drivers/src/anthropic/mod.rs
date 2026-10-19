@@ -36,6 +36,7 @@ mod driver;
 mod effort;
 mod prefill;
 mod server_compaction;
+mod web_search;
 
 pub use driver::{AnthropicChatDriver, descriptor, from_env, provider, register_driver};
 

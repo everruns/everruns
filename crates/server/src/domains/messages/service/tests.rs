@@ -746,3 +746,122 @@ async fn active_turn_cap_reserves_started_session_before_persisting() {
         "rejected turn must not persist a queued message"
     );
 }
+
+/// Fails the first fresh turn start, as a pool timeout on the read-back
+/// after the input was inserted did (chaos harness).
+struct FailFirstStartRunner {
+    calls: AtomicUsize,
+}
+
+#[async_trait]
+impl TurnBackend for FailFirstStartRunner {
+    async fn start_turn(
+        &self,
+        request: everruns_core::host::TurnRequest,
+    ) -> everruns_contracts::error::Result<everruns_core::host::TurnTicket> {
+        if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+            return Err(everruns_contracts::error::AgentLoopError::store(
+                "Failed to read the input message: pool timed out while waiting for an open connection",
+            ));
+        }
+        Ok(everruns_core::host::TurnTicket::new(
+            request.session_id,
+            request.turn_id,
+            std::future::pending(),
+        ))
+    }
+
+    async fn cancel(&self, _session_id: SessionId) -> everruns_contracts::error::Result<bool> {
+        Ok(false)
+    }
+
+    async fn is_running(&self, _session_id: SessionId) -> bool {
+        false
+    }
+
+    async fn active_count(&self) -> usize {
+        0
+    }
+}
+
+async fn input_count(db: &StorageBackend, session: &crate::storage::SessionRow) -> usize {
+    db.list_message_events_limited(session.id, None)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|row| row.event_type == "input.message")
+        .count()
+}
+
+// Chaos harness: the message was stored, the read-back that marks the
+// session's actor timed out, and the send answered 503. The message stayed
+// in the log with no turn to answer it, and the client's retry was told it
+// was a duplicate. The input and the mark now commit together: a failed
+// start stores nothing, so the 503 is true and the retry stores it once.
+#[tokio::test]
+async fn a_message_whose_turn_cannot_start_is_not_stored_and_its_retry_is() {
+    let db = Arc::new(StorageBackend::test_database());
+    let runner: Arc<dyn TurnBackend> = Arc::new(FailFirstStartRunner {
+        calls: AtomicUsize::new(0),
+    });
+    let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
+    let svc = MessageService::new(db.clone(), runner, delivery);
+    let session = create_test_session(&db, 1).await;
+    let mut req = CreateMessageRequest::user("hello");
+    req.client_message_id = Some(Uuid::now_v7());
+
+    svc.create(send_ctx(&session), req.clone())
+        .await
+        .expect_err("the turn could not start");
+    assert_eq!(input_count(&db, &session).await, 0, "nothing was stored");
+    assert_ne!(
+        db.get_session(1, session.id).await.unwrap().unwrap().status,
+        "active",
+        "the reserved turn slot was given back"
+    );
+
+    let sent = svc.create(send_ctx(&session), req).await.unwrap();
+    assert_eq!(sent.delivery, Some(MessageDelivery::Started));
+    assert_eq!(input_count(&db, &session).await, 1);
+}
+
+// A message stored without its actor mark (by a server from before the
+// fix, or any path that lost it) is answered when the client retries: the
+// duplicate send marks the actor for it, once.
+#[tokio::test]
+async fn a_duplicate_send_marks_a_stored_message_whose_turn_never_started() {
+    let db = Arc::new(StorageBackend::test_database());
+    let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
+    let session = create_test_session(&db, 1).await;
+    let mut req = CreateMessageRequest::user("hello");
+    req.client_message_id = Some(Uuid::now_v7());
+    // Stored by a runner that marks nothing: the lost mark.
+    let unmarked = MessageService::new(db.clone(), Arc::new(NoopRunner), delivery.clone());
+    let stored = unmarked
+        .create(send_ctx(&session), req.clone())
+        .await
+        .unwrap();
+    assert!(db.get_session_actor(session.id).await.unwrap().is_none());
+
+    let actors: Arc<dyn TurnBackend> =
+        Arc::new(crate::turns::ActorTurnBackend::new(db.clone(), None));
+    let svc = MessageService::new(db.clone(), actors, delivery);
+    let retried = svc.create(send_ctx(&session), req.clone()).await.unwrap();
+    assert_eq!(retried.delivery, Some(MessageDelivery::Duplicate));
+    let actor = db.get_session_actor(session.id).await.unwrap().unwrap();
+    assert!(actor.runnable_since.is_some(), "the message gets its turn");
+    assert_eq!(actor.inbox_seq, i64::from(stored.sequence));
+
+    // Once a turn consumed it, a further retry starts nothing.
+    let leased = db
+        .lease_session_actors("w", 1, std::time::Duration::from_secs(10), 32)
+        .await
+        .unwrap();
+    db.release_session_actor(session.id, "w", leased[0].fence, actor.inbox_seq)
+        .await
+        .unwrap();
+    svc.create(send_ctx(&session), req).await.unwrap();
+    let actor = db.get_session_actor(session.id).await.unwrap().unwrap();
+    assert!(actor.runnable_since.is_none(), "{actor:?}");
+    assert_eq!(input_count(&db, &session).await, 1);
+}

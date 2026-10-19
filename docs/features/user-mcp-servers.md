@@ -81,8 +81,9 @@ because one of its servers has the same name.
 With the capability's `manage` setting on, you can ask the agent instead of
 opening Settings, for example "add Linear and connect it". The agent:
 
-1. adds the server from your organization's catalog, after you approve the
-   request in chat (the card shows what it is about to add);
+1. adds the server from your organization's catalog, asking you to approve
+   first when the agent's [Tool Approval](/capabilities/tool-approval/) mode is
+   `normal` or `protective`;
 2. shows a **Connect** card, where you sign in in your own browser; the agent
    never sees your credentials;
 3. can use the server's tools from your next message.
@@ -93,11 +94,13 @@ server that acts as you (`user` or `user_or_service`) can show it without
 servers** sheet instead, where only someone who manages MCP servers can sign
 the agent in.
 
-It can also list, turn off, turn on (after your approval) and remove your
+It can also list, turn off, turn on (under the same approval policy) and remove your
 servers. It can add a server by URL only when the agent's `allow_custom_urls`
 setting is on, and never with an API key or headers. These tools only ever
 change your own list, need you to be the one chatting, and do not work in
-conversations with several people. Platform Chat has `manage` on.
+conversations with several people. Platform Chat has `manage` on. Management
+adds no hard approval gate when Tool Approval is absent or set to `off`.
+Signing in through the Connect card remains a separate authorization step.
 
 ## API
 

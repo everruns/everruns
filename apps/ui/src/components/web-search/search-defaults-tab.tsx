@@ -25,6 +25,7 @@ import { ApiError } from "@/lib/api/client";
 import type { SearchProviderCatalog, WebSearchDefaults } from "@/lib/api/types";
 import {
   NATIVE_PRICE_SHORT,
+  AUTOMATIC_HOSTED,
   WEB_SEARCH_DEFAULT_RESULTS,
   WEB_SEARCH_MAX_RESULTS,
   accountLabel,
@@ -63,7 +64,8 @@ export function SearchDefaultsTab({
   const [domainError, setDomainError] = useState<string | null>(null);
 
   const accounts = catalog.accounts;
-  const entries = automaticEntries(draft, accounts);
+  const hosted = catalog.built_in.find((provider) => provider.id === AUTOMATIC_HOSTED);
+  const entries = automaticEntries(draft, accounts, hosted);
   const busy = !canManage || save.isPending;
   const nativePrice =
     catalog.built_in.find((provider) => provider.id === "native")?.price_note ??
@@ -95,7 +97,10 @@ export function SearchDefaultsTab({
   ];
   // Keep a stored choice visible even when it is not one of the usual ones.
   if (!providerChoices.some((choice) => choice.value === providerValue)) {
-    providerChoices.push({ value: providerValue ?? "auto", label: "Brave Search (any key)" });
+    providerChoices.push({
+      value: providerValue ?? "auto",
+      label: "Brave Search (any key)",
+    });
   }
 
   const blocked = draft.blocked_domains ?? [];
@@ -123,8 +128,16 @@ export function SearchDefaultsTab({
             onValueChange={(value) => {
               if (!value) return;
               const next: WebSearchDefaults = value.startsWith("account:")
-                ? { ...draft, provider: "account", account_id: value.slice("account:".length) }
-                : { ...draft, provider: value as WebSearchDefaults["provider"], account_id: null };
+                ? {
+                    ...draft,
+                    provider: "account",
+                    account_id: value.slice("account:".length),
+                  }
+                : {
+                    ...draft,
+                    provider: value as WebSearchDefaults["provider"],
+                    account_id: null,
+                  };
               void commit(next);
             }}
             disabled={busy}
@@ -176,6 +189,11 @@ export function SearchDefaultsTab({
                   {entry.kind === "native" && !entry.inactive && (
                     <Badge variant="accent" title={nativePrice}>
                       {NATIVE_PRICE_SHORT}
+                    </Badge>
+                  )}
+                  {entry.kind === "hosted" && hosted?.price_note && (
+                    <Badge variant="outline" title={hosted.price_note}>
+                      {hosted.price_note}
                     </Badge>
                   )}
                   {fixed ? (
@@ -239,7 +257,11 @@ export function SearchDefaultsTab({
           <Select
             value={draft.fallback ?? "next"}
             onValueChange={(value) =>
-              value && void commit({ ...draft, fallback: value as WebSearchDefaults["fallback"] })
+              value &&
+              void commit({
+                ...draft,
+                fallback: value as WebSearchDefaults["fallback"],
+              })
             }
             disabled={busy}
           >

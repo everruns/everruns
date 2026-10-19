@@ -1,0 +1,95 @@
+/* Slate design tokens for the docs, the same values as the app's
+ * apps/ui/src/app/design-system.css. The docs follow Starlight's theme switch,
+ * which sets data-theme on <html>, so dark values hang off that attribute
+ * instead of the app's .dark class.
+ *
+ * Starlight's own --sl-* variables are mapped onto these at the bottom, so
+ * Starlight components (search dialog, asides, tables) pick up Slate colors
+ * without each one being restyled. */
+
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+:root,
+:root[data-theme="light"] {
+  --background: 0 0% 98%;
+  --foreground: 0 0% 10%;
+  --card: 0 0% 100%;
+  --primary: 220 62% 13%;
+  --muted: 0 0% 96%;
+  --muted-foreground: 0 0% 45%;
+  --accent: 43 60% 53%;
+  --info: 201 96% 32%;
+  --success: 163 94% 24%;
+  --warning: 26 90% 37%;
+  --destructive: 0 72% 51%;
+  --border: 0 0% 88%;
+  --ring: 43 60% 53%;
+  --dot: hsl(var(--primary) / 0.035);
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --background: 220 15% 8%;
+  --foreground: 0 0% 95%;
+  --card: 220 15% 10%;
+  --primary: 0 0% 95%;
+  --muted: 220 15% 15%;
+  --muted-foreground: 0 0% 65%;
+  --accent: 43 60% 53%;
+  --info: 198 93% 60%;
+  --success: 158 64% 52%;
+  --warning: 43 96% 56%;
+  --destructive: 0 84% 60%;
+  --border: 220 15% 18%;
+  --ring: 43 60% 53%;
+  --dot: hsl(var(--accent) / 0.045);
+  color-scheme: dark;
+}
+
+:root {
+  --navy: #0a1636;
+  --font-sans: "Geist Variable", "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --shadow-xs: 0 1px 2px 0 rgba(10, 22, 54, 0.05);
+  --er-column: 1200px;
+  --er-gutter: 24px;
+  --er-site-bar-height: 64px;
+  --er-docs-bar-height: 48px;
+  --er-ease: 220ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --er-ease: 0ms linear;
+  }
+}
+
+/* Starlight variables, mapped onto Slate. */
+:root,
+:root[data-theme="light"],
+:root[data-theme="dark"] {
+  --sl-font: var(--font-sans);
+  --sl-font-mono: var(--font-mono);
+  --sl-color-bg: hsl(var(--background));
+  --sl-color-bg-nav: hsl(var(--card));
+  --sl-color-bg-sidebar: transparent;
+  --sl-color-bg-inline-code: hsl(var(--muted));
+  --sl-color-hairline-light: hsl(var(--border));
+  --sl-color-hairline: hsl(var(--border));
+  --sl-color-hairline-shade: hsl(var(--border));
+  --sl-color-text: hsl(var(--foreground));
+  --sl-color-text-accent: hsl(var(--foreground));
+  --sl-color-white: hsl(var(--foreground));
+  --sl-color-black: hsl(var(--background));
+  --sl-color-gray-1: hsl(var(--foreground));
+  --sl-color-gray-2: hsl(var(--foreground) / 0.75);
+  --sl-color-gray-3: hsl(var(--muted-foreground));
+  --sl-color-gray-4: hsl(var(--muted-foreground));
+  --sl-color-gray-5: hsl(var(--border));
+  --sl-color-gray-6: hsl(var(--muted));
+  --sl-color-gray-7: hsl(var(--muted));
+  --sl-color-accent-low: hsl(var(--muted));
+  --sl-color-accent: hsl(var(--primary));
+  --sl-color-accent-high: hsl(var(--foreground));
+}

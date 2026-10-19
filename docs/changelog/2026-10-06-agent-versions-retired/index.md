@@ -20,7 +20,15 @@ run the agent's current configuration, and each new session records the
 
 Version endpoints, CLI verbs and fields such as `agent_version_id` and
 `default_version_id` are removed. To go back to an earlier configuration, use
-**History → Restore this point** on the agent page or `everruns history restore`.
+**History → Restore this point** on the agent page or `everruns history restore`:
+
+```bash
+# Before
+everruns agents versions list --agent agent_01h9
+# After
+everruns history list agent_01h9
+everruns history restore agent_01h9 --revision 7 --reason "Back to the pre-launch prompt"
+```
 
 See [Agent revisions replace agent versions](/features/change-history/#agent-revisions-replace-agent-versions)
 and [#4312](https://github.com/everruns/everruns/pull/4312).

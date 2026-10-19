@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::SessionId;
 use everruns_worker::actor_lease_store::{
-    ActorJournal, ActorLeaseStore, ActorRelease, ActorRenewal, LeasedActor,
+    ActorJournal, ActorLeaseStore, ActorRelease, ActorRenewal, LeasedActor, SessionActorStore,
 };
 
 use super::store_error;
@@ -51,7 +51,7 @@ impl ActorLeaseStore for DirectActorLeaseStore {
                     fence: u64::try_from(row.fence)
                         .map_err(|_| store_error(format!("negative fence {}", row.fence)))?,
                     inbox_seq: row.inbox_seq,
-                    cancel_requested: row.cancel_requested,
+                    cancel_inbox_seq: row.cancel_inbox_seq,
                     consumed_seq: row.consumed_seq,
                     next_input_seq: row.next_input_seq,
                     attempts: u32::try_from(row.attempts).unwrap_or(0),
@@ -59,7 +59,10 @@ impl ActorLeaseStore for DirectActorLeaseStore {
             })
             .collect()
     }
+}
 
+#[async_trait]
+impl SessionActorStore for DirectActorLeaseStore {
     async fn renew_actor_lease(
         &self,
         session_id: SessionId,
@@ -89,7 +92,7 @@ impl ActorLeaseStore for DirectActorLeaseStore {
         };
         Ok(Some(ActorRenewal {
             inbox_seq: row.inbox_seq,
-            cancel_requested: row.cancel_requested,
+            cancel_inbox_seq: row.cancel_inbox_seq,
         }))
     }
 

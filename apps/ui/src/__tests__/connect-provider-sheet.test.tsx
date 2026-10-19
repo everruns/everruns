@@ -9,16 +9,9 @@ import type { ModelWithProvider, Provider } from "@/lib/api/types";
 const mockCreateProvider = jest.fn();
 const mockSetModelsEnabled = jest.fn();
 const mockReview = jest.fn();
-const mockRouterPush = jest.fn();
-const mockStartChatGptLogin = jest.fn();
 const mockCheckCredentials = jest.fn();
 let mockModels: ModelWithProvider[] = [];
 let mockChatGptEnabled = false;
-
-jest.mock("next/navigation", () => ({ useRouter: () => ({ push: mockRouterPush }) }));
-jest.mock("@/lib/api/chatgpt", () => ({
-  startChatGptLogin: (...args: unknown[]) => mockStartChatGptLogin(...args),
-}));
 
 const keyDriver = (driver: string, supportsOAuth = false) => ({
   driver,
@@ -127,11 +120,12 @@ describe("ConnectProviderSheet", () => {
       />,
     );
 
-  it("lists drivers and hides ChatGPT until the server offers it", () => {
+  it("never offers ChatGPT Plan even when the server lists its driver", () => {
+    mockChatGptEnabled = true;
     renderSheet();
     expect(screen.getByText("Anthropic")).toBeInTheDocument();
     expect(screen.getByText("OpenRouter")).toBeInTheDocument();
-    expect(screen.queryByText("ChatGPT")).not.toBeInTheDocument();
+    expect(screen.queryByText("ChatGPT Plan")).not.toBeInTheDocument();
   });
 
   it("connects with a key, then enables the recommended models it chose", async () => {
@@ -205,22 +199,5 @@ describe("ConnectProviderSheet", () => {
         credentials: undefined,
       }),
     );
-  });
-
-  it("signs in to a personal ChatGPT plan and opens its settings page", async () => {
-    mockChatGptEnabled = true;
-    const popup = { opener: {}, location: { assign: jest.fn() }, close: jest.fn() };
-    const open = jest.spyOn(window, "open").mockReturnValue(popup as unknown as Window);
-    mockStartChatGptLogin.mockResolvedValue({ authorize_url: "https://auth.openai.com/authorize" });
-    renderSheet();
-
-    fireEvent.click(screen.getByRole("button", { name: /ChatGPT/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Sign in with ChatGPT/ }));
-
-    await waitFor(() => expect(mockStartChatGptLogin).toHaveBeenCalledWith("provider-new"));
-    expect(mockRouterPush).toHaveBeenCalledWith("/models/providers/provider-new");
-    expect(popup.location.assign).toHaveBeenCalledWith("https://auth.openai.com/authorize");
-    expect(popup.opener).toBeNull();
-    open.mockRestore();
   });
 });

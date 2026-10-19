@@ -16,13 +16,13 @@ After running agents via global chat, verify that sessions were created and are 
 
 ## Preconditions
 
-- Server running (`just start-dev`)
+- Canonical stack running (see root `AGENTS.md`)
 - User logged in
 - 10 agents run via global chat (TC005 completed)
 
 ## Test Data
 
-None (uses sessions created by TC005).
+The exact ten session IDs and their expected agent IDs recorded in TC005.
 
 ## Steps
 
@@ -37,8 +37,8 @@ None (uses sessions created by TC005).
 
 | Check | Expected |
 |-------|----------|
-| 10 agent sessions | At least 10 sessions with agent assignments visible |
+| 10 agent sessions | The ten recorded new run IDs from TC005 are visible, each linked to the requested agent |
 | Agent names | Each session shows the correct agent display name (e.g. "Math Tutor", not the slug) |
 | Status | All sessions are `idle` (turn completed) |
 | Messages | Each session has >= 2 messages (user + agent response) |
-| Chat history | Clicking a session shows the conversation with task and response |
+| Chat history | Clicking a session opens its read-only Trace with the task and response |

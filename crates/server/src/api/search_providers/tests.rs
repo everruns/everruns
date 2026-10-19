@@ -16,6 +16,7 @@ fn org(role: OrgRole) -> ResolvedOrg {
         role,
         is_platform_user: false,
         feature_flags: crate::domains::common::all_feature_flags_for_test(),
+        read_only: false,
     }
 }
 
@@ -28,9 +29,10 @@ async fn fixture() -> (AppState, Uuid, Uuid) {
         org_id: DEFAULT_ORG_ID,
         name: name.to_string(),
         provider: provider.to_string(),
-        access_token_encrypted: key,
+        access_token_encrypted: Some(key),
         provider_username: None,
         provider_metadata: None,
+        ..Default::default()
     };
     let team = db
         .create_organization_connection(account(
@@ -277,7 +279,9 @@ async fn preview_native_step_follows_the_models_driver_support() {
         ("openai", "gpt-3.5-turbo", false),
         ("openrouter", "anthropic/claude-opus-5-5", true),
         ("openrouter", "mistralai/mistral-large", false),
-        ("anthropic", "claude-opus-5-5", false),
+        ("anthropic", "claude-opus-5-5", true),
+        ("anthropic", "claude-3-5-sonnet-20241022", false),
+        ("gemini", "gemini-3.8-flash", true),
     ];
     for (provider_type, model_id, native) in cases {
         let id = model(provider_type, model_id).await;

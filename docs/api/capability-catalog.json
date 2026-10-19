@@ -138,6 +138,21 @@
       "tools": []
     },
     {
+      "category": "Session",
+      "dependencies": [],
+      "docs_slug": "automatic-session-titles",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "automatic_session_titles",
+      "name": "Automatic session titles",
+      "status": "available",
+      "tools": []
+    },
+    {
       "category": "Execution",
       "dependencies": [],
       "docs_slug": null,
@@ -320,6 +335,23 @@
       ],
       "id": "citation_verification",
       "name": "Citation verification",
+      "status": "available",
+      "tools": []
+    },
+    {
+      "category": "Knowledge",
+      "dependencies": [],
+      "docs_slug": "citation-web",
+      "feature_flag": null,
+      "features": [
+        "citations"
+      ],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "citation_web",
+      "name": "Web citations",
       "status": "available",
       "tools": []
     },
@@ -560,32 +592,6 @@
     },
     {
       "category": "Sandboxes",
-      "dependencies": [
-        "session_storage"
-      ],
-      "docs_slug": null,
-      "feature_flag": null,
-      "features": [
-        "leased_resources"
-      ],
-      "grades": [
-        "prod",
-        "dev"
-      ],
-      "id": "deno",
-      "name": "Deno Sandboxes",
-      "status": "available",
-      "tools": [
-        "deno_create_sandbox",
-        "deno_exec",
-        "deno_list_sandboxes",
-        "deno_manage_sandbox",
-        "deno_read_file",
-        "deno_write_file"
-      ]
-    },
-    {
-      "category": "Sandboxes",
       "dependencies": [],
       "docs_slug": "docker",
       "feature_flag": "docker_capability",
@@ -694,6 +700,7 @@
       "tools": [
         "get_github_pull_request",
         "get_github_pull_request_diff",
+        "github_checkout_pull_request",
         "submit_github_pull_request_review",
         "upsert_github_comment",
         "upsert_github_issue"
@@ -1108,6 +1115,7 @@
     {
       "category": "Platform",
       "dependencies": [
+        "skills",
         "session_file_system"
       ],
       "docs_slug": "platform",
@@ -1352,7 +1360,9 @@
         "edit_file",
         "glob",
         "grep",
+        "list_directory",
         "read_file",
+        "read_many_files",
         "write_file"
       ]
     },

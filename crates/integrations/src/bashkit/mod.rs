@@ -22,6 +22,7 @@ pub mod cli;
 
 mod egress_transport;
 pub mod hook_dispatch;
+mod http;
 pub mod tools_in_shell;
 
 use crate::bashkit::background::{
@@ -35,8 +36,8 @@ use crate::bashkit::typed_id::SessionId;
 use async_trait::async_trait;
 use bashkit::{
     Bash, BashBuilder, BashTool as BashkitTool, DirEntry, ExecutionLimits, FileSystem,
-    FileSystemExt, FileType, Metadata, NetworkAllowlist, OutputCallback, SearchCapabilities,
-    SearchCapable, SearchMatch as BashkitSearchMatch, SearchProvider, SearchQuery, SearchResults,
+    FileSystemExt, FileType, Metadata, SearchCapabilities, SearchCapable,
+    SearchMatch as BashkitSearchMatch, SearchProvider, SearchQuery, SearchResults,
     Tool as BashkitToolTrait, TraceEventKind, TraceMode,
 };
 #[cfg(test)]
@@ -298,7 +299,7 @@ impl Capability for BashkitShellCapability {
 pub struct BashTool {
     /// Opt-in outbound HTTP for curl/wget, set from per-capability config
     /// `{"enable_http": true}`. Only effective when the execution context
-    /// provides an `EgressService` (see `configure_http`).
+    /// provides an `EgressService` (see `http::configure`).
     enable_http: bool,
 }
 
@@ -425,9 +426,9 @@ impl Tool for BashTool {
             .max_memory(10 * 1024 * 1024) // 10 MB — prevent OOM from untrusted input
             .trace_mode(TraceMode::Redacted);
         let builder = install_observability_hooks(builder, context.session_id);
-        let builder = configure_http(builder, self.enable_http, context);
+        let (builder, redactor) = http::configure(builder, self.enable_http, context).await;
         let builder = install_cli_tree(builder, context);
-        let mut bash = builder.build();
+        let mut bash = builder.cpython().build();
         if let Some(held) = tools_in_shell::preflight(context, bash.analyze(command).ok()).await {
             return ToolExecutionResult::success(held);
         }
@@ -440,14 +441,14 @@ impl Tool for BashTool {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, String)>();
         let (partial_tx, partial_rx) = tokio::sync::mpsc::channel::<(String, String)>(128);
 
-        let output_callback: OutputCallback = Box::new(move |stdout_chunk, stderr_chunk| {
+        let output_callback = redactor.wrap(Box::new(move |stdout_chunk, stderr_chunk| {
             // Tool output events are text, so decode Bashkit's byte-native
             // chunks explicitly at the event boundary.
             // Best-effort: if receiver dropped, we just ignore
             let _ = tx.send((stdout_chunk.to_string(), stderr_chunk.to_string()));
             // Bounded: drop if full rather than growing without bound.
             let _ = partial_tx.try_send((stdout_chunk.to_string(), stderr_chunk.to_string()));
-        });
+        }));
 
         // Spawn a task that reads chunks from the channel and emits events
         let emit_context = context.clone();
@@ -515,8 +516,8 @@ impl Tool for BashTool {
                 );
 
                 let payload = ExecToolResultPayload::new(
-                    &output.stdout,
-                    &output.stderr,
+                    &redactor.apply(&output.stdout),
+                    &redactor.apply(&output.stderr),
                     output.exit_code,
                     output_mode,
                 );
@@ -540,7 +541,9 @@ impl Tool for BashTool {
             }
             Ok(Err(e)) => {
                 // Execution error (syntax error, resource limit, etc.)
-                ToolExecutionResult::tool_error(format!("Bash execution error: {}", e))
+                ToolExecutionResult::tool_error(
+                    redactor.apply(&format!("Bash execution error: {e}")),
+                )
             }
             Err(_) => {
                 // Timeout — signal cancellation for the in-flight execution so any
@@ -649,16 +652,16 @@ impl BackgroundExecutableTool for BashTool {
             .max_memory(10 * 1024 * 1024)
             .trace_mode(TraceMode::Redacted);
         let builder = install_observability_hooks(builder, context.session_id);
-        let builder = configure_http(builder, self.enable_http, &context);
+        let (builder, redactor) = http::configure(builder, self.enable_http, &context).await;
         let builder = install_cli_tree(builder, &context);
-        let mut bash = builder.build();
+        let mut bash = builder.cpython().build();
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<(String, String)>(128);
         let (partial_tx, partial_rx) = tokio::sync::mpsc::channel::<(String, String)>(128);
         let sink_for_output = sink.clone();
         let dropped_chunks = Arc::new(AtomicUsize::new(0));
         let dropped_chunks_for_callback = dropped_chunks.clone();
-        let output_callback: OutputCallback = Box::new(move |stdout_chunk, stderr_chunk| {
+        let output_callback = redactor.wrap(Box::new(move |stdout_chunk, stderr_chunk| {
             // Background output uses the same text boundary as foreground
             // tool events.
             if tx
@@ -668,7 +671,7 @@ impl BackgroundExecutableTool for BashTool {
                 dropped_chunks_for_callback.fetch_add(1, Ordering::Relaxed);
             }
             let _ = partial_tx.try_send((stdout_chunk.to_string(), stderr_chunk.to_string()));
-        });
+        }));
 
         let emit_task = tokio::spawn(async move {
             while let Some((stdout_chunk, stderr_chunk)) = rx.recv().await {
@@ -706,8 +709,8 @@ impl BackgroundExecutableTool for BashTool {
         match result {
             Ok(Ok(output)) => {
                 let payload = ExecToolResultPayload::new(
-                    &output.stdout,
-                    &output.stderr,
+                    &redactor.apply(&output.stdout),
+                    &redactor.apply(&output.stderr),
                     output.exit_code,
                     output_mode,
                 );
@@ -745,10 +748,9 @@ impl BackgroundExecutableTool for BashTool {
                     raw_output: Some(raw_output),
                 })
             }
-            Ok(Err(e)) => Err(ToolExecutionResult::tool_error(format!(
-                "Bash execution error: {}",
-                e
-            ))),
+            Ok(Err(e)) => Err(ToolExecutionResult::tool_error(
+                redactor.apply(&format!("Bash execution error: {e}")),
+            )),
             Err(_) => {
                 cancel_token.store(true, std::sync::atomic::Ordering::Relaxed);
 
@@ -825,7 +827,7 @@ fn install_cli_tree(builder: BashBuilder, context: &ToolContext) -> BashBuilder 
 // structural metadata (tool name, arg count, exit code, byte lengths) but
 // never the argument values or builtin stdout — those surfaces can carry
 // tenant paths, URLs, or embedded secrets. HTTP hooks (`before_http` /
-// `after_http`) are registered in `configure_http` when outbound HTTP is
+// `after_http`) are registered in `http::configure` when outbound HTTP is
 // enabled (TM-BASH-003: off by default, egress-routed when on).
 fn install_observability_hooks(builder: BashBuilder, session_id: SessionId) -> BashBuilder {
     use bashkit::hooks::{ErrorEvent, HookAction, ToolEvent, ToolResult};
@@ -867,103 +869,6 @@ fn install_observability_hooks(builder: BashBuilder, session_id: SessionId) -> B
             );
             HookAction::Continue(ev)
         }))
-}
-
-/// Enable outbound HTTP for curl/wget when the per-capability config opted in
-/// AND the execution context provides an egress service.
-///
-/// bashkit keeps its full HTTP policy pipeline — `allow_all()` retains the
-/// private-IP-blocking SSRF precheck whose resolve-then-check result is
-/// forwarded as pinned addresses — while connectivity is owned by
-/// [`egress_transport::BashkitEgressTransport`], so the merged
-/// `NetworkAccessList` and the deployment-wide system allowlist are enforced
-/// at the egress boundary for every hop (curl/wget re-dispatch redirects).
-/// Empty pins from a failed bashkit DNS precheck fail closed via
-/// `require_dns_pinning()` (EVE-1154).
-///
-/// THREAT[TM-BASH-003]: with `enable_http` off (the default) this function is
-/// a no-op and the interpreter has no network path. When on, there is no
-/// direct-dial fallback: absent an egress service the shell stays offline
-/// rather than opening host-local connectivity.
-///
-/// Bot-auth request signing mirrors web_fetch: server-wide
-/// `BOT_AUTH_SIGNING_KEY_SEED` (+ optional `BOT_AUTH_AGENT_FQDN`,
-/// `BOT_AUTH_VALIDITY_SECS`) transparently signs every outbound request
-/// before it reaches the transport.
-fn configure_http(builder: BashBuilder, enable_http: bool, context: &ToolContext) -> BashBuilder {
-    if !enable_http {
-        return builder;
-    }
-    let Some(egress) = context.egress_service.clone() else {
-        tracing::warn!(
-            capability = "bashkit_shell",
-            session_id = %context.session_id,
-            "enable_http set but no egress service in context; shell HTTP stays disabled"
-        );
-        return builder;
-    };
-    let session_id = context.session_id;
-    let mut builder = builder
-        .network(NetworkAllowlist::allow_all())
-        .http_transport(Arc::new(egress_transport::BashkitEgressTransport::new(
-            egress,
-            context.network_access.clone(),
-        )))
-        // Observational HTTP hooks (bashkit-requirements.md): log method and
-        // status only — URLs and headers can carry tenant data or secrets.
-        .before_http(Box::new(move |ev: bashkit::hooks::HttpRequestEvent| {
-            tracing::debug!(
-                target: "bashkit.hook",
-                capability = "bashkit_shell",
-                session_id = %session_id,
-                event = "before_http",
-                method = %ev.method,
-                header_count = ev.headers.len(),
-                "outbound http request"
-            );
-            bashkit::hooks::HookAction::Continue(ev)
-        }))
-        .after_http(Box::new(move |ev: bashkit::hooks::HttpResponseEvent| {
-            tracing::debug!(
-                target: "bashkit.hook",
-                capability = "bashkit_shell",
-                session_id = %session_id,
-                event = "after_http",
-                status = ev.status,
-                "outbound http response"
-            );
-            bashkit::hooks::HookAction::Continue(ev)
-        }));
-    if let Some(bot_auth) = bot_auth_config_from_env() {
-        builder = builder.bot_auth(bot_auth);
-    }
-    builder
-}
-
-/// Read the server-wide bot-auth signing config once (same env contract as
-/// `web_fetch`). Returns a fresh clone per
-/// call site because `BashBuilder::bot_auth` takes ownership.
-fn bot_auth_config_from_env() -> Option<bashkit::BotAuthConfig> {
-    static CONFIG: LazyLock<Option<bashkit::BotAuthConfig>> = LazyLock::new(|| {
-        let seed = std::env::var("BOT_AUTH_SIGNING_KEY_SEED").ok()?;
-        let mut config = match bashkit::BotAuthConfig::from_base64_seed(&seed) {
-            Ok(config) => config,
-            Err(e) => {
-                tracing::warn!(error = %e, "invalid BOT_AUTH_SIGNING_KEY_SEED, bashkit bot-auth disabled");
-                return None;
-            }
-        };
-        if let Ok(fqdn) = std::env::var("BOT_AUTH_AGENT_FQDN") {
-            config = config.with_agent_fqdn(&fqdn);
-        }
-        if let Ok(secs) = std::env::var("BOT_AUTH_VALIDITY_SECS")
-            && let Ok(secs) = secs.parse::<u64>()
-        {
-            config = config.with_validity_secs(secs);
-        }
-        Some(config)
-    });
-    CONFIG.clone()
 }
 
 /// Bounded diagnostic preview for hook log fields. The return value is
@@ -2404,10 +2309,9 @@ mod tests {
         let tool = BashTool::default();
 
         // A nonexistent path resolves but has no file — `cat` fails with a
-        // non-zero exit, not a containment error.
-        let result = tool
-            .execute_with_context(json!({"commands": "cat /etc/passwd"}), &context)
-            .await;
+        // non-zero exit, not a containment error (0.19 seeds /etc/passwd).
+        let params = json!({"commands": "cat /etc/everruns-probe-missing"});
+        let result = tool.execute_with_context(params, &context).await;
 
         match result {
             ToolExecutionResult::Success(output) => {

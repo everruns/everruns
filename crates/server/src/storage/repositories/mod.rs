@@ -4,6 +4,7 @@
 // re-exported here, so callers name them as `crate::storage::*`.
 
 mod agent_activity;
+pub use sessions::failures::{AgentFailureTotals, FailedSessionRow};
 mod agent_channels;
 pub use agent_channels::conversion::{
     ApiEndpointChannelRow, ConvertedApiChannelRow, LockedApiEndpointChannel,
@@ -34,6 +35,7 @@ pub use budgets::rows::*;
 mod compaction_checkpoints;
 pub use compaction_checkpoints::rows::*;
 mod virtual_user_connections;
+pub use virtual_user_connections::github_everruns_app::EverrunsAppOrgLink;
 pub use virtual_user_connections::rows::*;
 mod virtual_users;
 pub use advisory_locks::ADVISORY_LOCK_WAIT;
@@ -81,7 +83,9 @@ mod message_feedback;
 pub use message_feedback::rows::*;
 mod memory;
 pub use memory::rows::*;
+mod monitoring;
 mod notifications;
+pub use monitoring::*;
 pub use notifications::rows::*;
 mod oauth_grants;
 pub use oauth_grants::OAUTH_GRANT_ACCESS_READ_AND_RUN;
@@ -106,8 +110,8 @@ pub use schedules::rows::*;
 mod session_actors;
 pub use session_actors::rows::*;
 pub use session_actors::{
-    DEFAULT_ACTOR_LEASES_PER_ORG, LEGACY_TURN_ACTIVITY_TYPES, LegacyTurnSweep,
-    MAX_ACTOR_LEASE_BATCH, mark_session_actor_resumable, mark_session_actor_runnable,
+    DEFAULT_ACTOR_LEASES_PER_ORG, MAX_ACTOR_LEASE_BATCH, mark_session_actor_resumable,
+    mark_session_actor_runnable,
 };
 mod session_databases;
 pub use session_databases::{CreateSessionDatabase, SessionDatabaseRow};
@@ -512,3 +516,5 @@ impl Database {
         }
     }
 }
+
+mod session_command;

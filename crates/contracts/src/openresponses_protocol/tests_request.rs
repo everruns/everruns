@@ -1032,3 +1032,57 @@ fn stateful_endpoint_still_trims_and_chains() {
     let out = finalize_input_for_request(sample_full_transcript_items(), &effective_prev_id);
     assert_eq!(out.len(), 1, "stateful endpoint trims to the delta window");
 }
+
+/// Production 2026-10-16: OpenRouter answered 429 with `Retry-After: 45`.
+/// The 45s hint did not fit the 30s retry budget, so the turn failed 282 ms
+/// in with "exhausted after 0 retries over 30.0s". A hint that cannot fit the
+/// budget must fall back to backoff and still retry.
+#[tokio::test]
+async fn retry_after_longer_than_budget_still_retries_within_budget() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::builder().start().await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("retry-after", "45")
+                .set_body_string("rate limited upstream"),
+        )
+        .up_to_n_times(1)
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(successful_auth_stream())
+        .expect(1)
+        .mount(&server)
+        .await;
+    let provider = crate::runtime_provider::RuntimeProvider::new(
+        "retry-after-test",
+        OpenResponsesProtocolChatDriver::new(),
+    )
+    .base_url(format!("{}/v1", server.uri()))
+    .auth(RecordingAuth {
+        requests: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+        fail_on: None,
+    });
+    // Default 30s budget; millisecond backoff keeps the test fast.
+    let retry_config = crate::llm_retry::LlmRetryConfig {
+        initial_backoff: std::time::Duration::from_millis(1),
+        max_backoff: std::time::Duration::from_millis(1),
+        jitter_factor: 0.0,
+        ..Default::default()
+    };
+    assert!(std::time::Duration::from_secs(45) > retry_config.max_retry_elapsed);
+    let driver = OpenResponsesProtocolChatDriver::new().with_retry_config(retry_config);
+    let stream = driver
+        .chat_completion_stream(
+            provider.endpoint(),
+            vec![Message::text(MessageRole::User, "hi")],
+            &auth_test_config(),
+        )
+        .await
+        .expect("a Retry-After beyond the budget must still allow a retry");
+    assert_authenticated_stream(stream).await;
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}

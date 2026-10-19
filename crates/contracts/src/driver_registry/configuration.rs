@@ -125,6 +125,17 @@ pub struct LlmCallConfig {
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
     pub tools: Vec<ToolDefinition>,
+    /// Tools fixed at the start of the conversation's current epoch, when every
+    /// later change rides on [`Message::tool_changes`](crate::message::Message::tool_changes).
+    /// A driver that sends changes in a cache-safe form sends these as its tool
+    /// list and the changes inline; every other driver sends [`Self::tools`],
+    /// the tools wanted now. `None` when the changes are incomplete.
+    pub tool_baseline: Option<Vec<ToolDefinition>>,
+    /// The system prompt the epoch started with, when the text added to the
+    /// prompt since then rides in the changes' notes. A driver that sends
+    /// [`Self::tool_baseline`] sends this in place of the leading system
+    /// message; every other driver ignores it.
+    pub system_prompt_baseline: Option<String>,
     /// Reasoning effort for models that support it.
     ///
     /// `None` means unset — the provider keeps its default. `Some(None)` is the

@@ -1,6 +1,6 @@
 ---
 title: Durable execution
-description: Why Everruns persists every step of agent execution to PostgreSQL and runs each session as a leased actor, what guarantees that provides, and the trade-offs of avoiding Temporal-style infrastructure.
+description: "Why Everruns persists every step of agent execution to PostgreSQL and runs each session as a leased actor: the guarantees that gives, and the trade-offs."
 sidebar:
   order: 4
 ---
@@ -39,7 +39,7 @@ A worker that stalls instead of crashing cannot interfere: each lease has a fenc
 
 ## Why a custom engine
 
-The obvious alternative is Temporal (or Cadence, or Restate). Everruns deliberately built its own minimal durable execution instead: session leases and the event log for turns, and `everruns-durable`, a generic, published Rust crate (task queue, event log, signals, schedules, retries, dead letter queue, circuit breakers) with no agent concepts, for the background work around them. The reasoning:
+The obvious alternative is Temporal (or Cadence, or Restate). Everruns deliberately built its own minimal durable execution instead: session leases and the event log for turns, and `everruns-durable`, a generic, published Rust crate (task queue, event log, schedules, retries, dead letter queue, circuit breakers) with no agent concepts, for the background work around them. The reasoning:
 
 1. **Single dependency.** PostgreSQL is the only required stateful infrastructure (Valkey and NATS are optional). Operators don't need to run a second cluster with its own ops story.
 2. **Co-located with the rest of the platform.** Workflow events and session events live in the same database, in the same transaction when needed. There's no eventual consistency between "what happened" and "what was reported."
@@ -52,13 +52,13 @@ The trade-off: no multi-region replication beyond what PostgreSQL itself offers,
 What durable execution gives you:
 
 - **No work lost on crash.** If a worker dies, another worker resumes the turn from its log. A model response already recorded is not requested again, and an answer already recorded is not given twice.
-- **Persisted tool results.** Tool calls are persisted by their result, not their attempt, so a tool whose result was recorded is not re-run. A call cut off before its result was recorded runs again only when its tool declares that safe (read-only or idempotent); otherwise it is recorded as interrupted and the model is told its outcome is unknown.
+- **Persisted tool results.** Tool calls are persisted by their result, not their attempt, so a tool whose result was recorded is not re-run. A call cut off before its result was recorded runs again only when that is safe: its tool declares it read-only or idempotent, or the call never started. A call that must run at most once does not start until its `tool.started` event is stored, so a call without one never ran. Any other unfinished call is recorded as interrupted and the model is told its outcome is unknown. Each call also carries an idempotency key that stays the same when it runs again, sent to MCP servers in the request's `_meta` as `io.everruns/idempotency-key`, so a server or gateway that honors it can drop the repeat.
 - **One worker per session.** A session's lease keeps two workers from ever running its turn at once.
 - **Authoritative history.** Reloading a session reads back the same persisted message sequence, which makes traces and exports authoritative.
 
 What it doesn't give you:
 
-- **Idempotence of side effects.** A tool that declares itself idempotent is run again after a crash, so if it POSTs to an external API it must make the repeat harmless, for example with its own idempotency key. A tool that declares nothing is never run twice, but a crash after it acted and before its result was recorded leaves its outcome unknown.
+- **Idempotence of side effects.** A tool that declares itself idempotent is run again after a crash, so if it POSTs to an external API it must make the repeat harmless, for example by forwarding the call's idempotency key (`ToolContext::idempotency_key`). A tool that declares nothing is never run twice, but a crash after it acted and before its result was recorded leaves its outcome unknown.
 - **Real-time latency guarantees.** Persisting every event adds a few milliseconds per write. For agent workloads (already dominated by LLM latency) this is invisible; for hot-loop workloads it would be costly.
 
 ## Durability in the Framework

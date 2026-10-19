@@ -81,6 +81,7 @@ async fn session_list_lookup_count_is_independent_of_page_size() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
     })
     .execute(&ctx)
@@ -298,6 +299,7 @@ async fn session_list_batch_hydration_preserves_response_fields() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
     })
     .execute(&ctx)
@@ -331,14 +333,19 @@ async fn session_list_batch_hydration_preserves_response_fields() {
         .await
         .unwrap();
 
-    for (event_type, text) in [
+    let message_time = chrono::Utc::now() - chrono::Duration::minutes(5);
+    for (index, (event_type, text)) in [
         ("input.message", "input preview"),
         ("output.message.completed", "output preview"),
-    ] {
+        ("input.message", "follow-up message"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
         db.create_event(CreateEventRow {
             session_id: agent_session.id,
             event_type: event_type.to_string(),
-            ts: chrono::Utc::now(),
+            ts: message_time + chrono::Duration::seconds(index as i64),
             context: serde_json::json!({}),
             data: serde_json::json!({
                 "message": {"content": [{"type": "text", "text": text}]}
@@ -349,6 +356,18 @@ async fn session_list_batch_hydration_preserves_response_fields() {
         .await
         .unwrap();
     }
+    // A later tool/status event must not be presented as a sent message.
+    db.create_event(CreateEventRow {
+        session_id: agent_session.id,
+        event_type: "session.activated".to_string(),
+        ts: chrono::Utc::now(),
+        context: serde_json::json!({}),
+        data: serde_json::json!({}),
+        metadata: None,
+        tags: None,
+    })
+    .await
+    .unwrap();
     db.pin_session(
         db.default_virtual_user(
             DEFAULT_ORG_ID,
@@ -448,6 +467,11 @@ async fn session_list_batch_hydration_preserves_response_fields() {
     assert_eq!(listed_agent.agent_id, Some(agent.public_id));
     assert!(listed_agent.owner.is_some());
     assert_eq!(listed_agent.preview.as_deref(), Some("input preview"));
+    // PostgreSQL stores timestamps with microsecond precision.
+    assert_eq!(
+        listed_agent.last_message_at.map(|ts| ts.timestamp_micros()),
+        Some((message_time + chrono::Duration::seconds(2)).timestamp_micros())
+    );
     assert_eq!(
         listed_agent.output_preview.as_deref(),
         Some("output preview")
@@ -466,6 +490,7 @@ async fn session_list_batch_hydration_preserves_response_fields() {
         .find(|session| session.id == no_agent_session.id)
         .unwrap();
     assert_eq!(listed_no_agent.agent_id, None);
+    assert_eq!(listed_no_agent.last_message_at, None);
     assert_eq!(listed_no_agent.is_pinned, Some(false));
     assert!(
         listed_no_agent
@@ -811,6 +836,7 @@ async fn fork_copies_history_files_and_records_lineage() {
         session_id: parent.id,
         name: "API_TOKEN".to_string(),
         value_encrypted: b"ciphertext".to_vec(),
+        binding: None,
     })
     .await
     .unwrap();
@@ -955,6 +981,7 @@ async fn starter_files_are_copied_into_new_sessions() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
     })
     .execute(&ctx)
@@ -1070,6 +1097,7 @@ async fn scoped_memories_are_auto_created_and_mounted_for_new_sessions() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
     })
     .execute(&ctx)
@@ -1331,6 +1359,7 @@ async fn archived_dependencies_cannot_be_assigned_in_dev_mode() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
     })
     .execute(&ctx)

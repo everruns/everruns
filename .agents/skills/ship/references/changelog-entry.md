@@ -1,14 +1,24 @@
 # Changelog entry
 
 The public changelog at <https://everruns.com/docs/changelog/> gets one entry per **completed**
-user-facing feature, notable improvement, user-visible fix, breaking change, deprecation, or
+user-facing feature, notable improvement, meaningful user-visible fix, breaking change, deprecation, or
 significant Cloud incident, across every product (Cloud, self-hosted Platform, Framework, SDKs,
 CLI, Yolop, Mira, Bashkit). Intent, taxonomy and rules:
 [`knowledge/docs/changelog.md`](../../../../knowledge/docs/changelog.md).
 
 ## Does this PR owe an entry?
 
-- It finishes something a user of the UI, API, CLI or crates will notice: **yes**.
+Honor an explicit user publication hold before applying the default eligibility rules.
+Keep the entry and announcement assets out of public content until the user-specified
+conditions and approval are met. Continue authorized implementation and record
+`Changelog: withheld pending user approval after implementation` in the PR body.
+Do not treat completion, CI, merge or release as the user's publication approval.
+
+- It completes a meaningful change to what users can do, how the product behaves, or what
+  users must change: **yes**, if it meets the linked policy's impact criteria.
+- Cosmetic polish (including docs badge colors), typo fixes, routine documentation upkeep:
+  **no** (`no entry: <reason>`). Visibility alone is insufficient. Substantial usability or
+  accessibility fixes can qualify under the policy.
 - It is one step of a larger piece of work: **no**; the PR body's `Changelog:` line names the
   program or Linear issue so the PR that finishes it knows it owes the entry.
 - Refactor, CI, dependencies, tests, internal docs, design docs: **no** (`not user-facing`).
@@ -16,7 +26,10 @@ CLI, Yolop, Mira, Bashkit). Intent, taxonomy and rules:
   (`grep -ril "<feature name or slug>" docs/changelog/`): append `## Update YYYY-MM-DD`, or set
   `supersededBy: <folder>` when replaced. Fix moved links in place.
 
-Every PR body carries one line: `Changelog: <entry path> | part of <program> | not user-facing`.
+Assign significance only after the change qualifies; `minor` does not bypass eligibility.
+
+Every PR body carries one line:
+`Changelog: <entry path> | part of <program> | not user-facing | no entry: <reason>`.
 
 ## Writing it
 
@@ -26,11 +39,16 @@ frontmatter from a recent entry. Leave `release:` and `cloud:` out: `/prepare-re
 
 - `title` 30 to 70 characters: the change in plain words, with the product noun people search for.
 - `description` 120 to 160 characters: one sentence adding detail beyond the title.
-- Body 40 to 150 words: what changed, how to use it (UI path, request, CLI command or a short code
-  block that compiles), then links. For a change that matters to both audiences, two paragraphs:
-  **In the UI:** and **In code:**.
-- `links.docs` must name pages that exist; `links.prs` uses `everruns/<repo>#<n>`. Never link
-  private `saas` PRs or files.
+- Body 40 to 150 words: what changed, how to use it, then where to read more. For a change that
+  matters to both audiences, two paragraphs: **In the UI:** and **In code:**.
+- Show an example. A `feature`, `improvement`, `breaking` or `deprecation` entry carries the
+  request, CLI command, config or code a reader would write (a short code block that compiles),
+  or a screenshot of the changed UI. A breaking change shows before and after. JSON is valid and
+  pretty-printed with a two-space indent (`JSON.stringify(value, null, 2)`).
+- Link docs in the sentence that names them (`see [Prompt caching](/features/prompt-caching/)`),
+  not as a separate list. Every `links.docs` page must be linked from the body; the check fails
+  otherwise. `links.docs` must name pages that exist; `links.prs` uses `everruns/<repo>#<n>` and
+  renders at the end of the entry. Never link private `saas` PRs or files.
 - No marketing words, exclamation marks, future promises or em-dashes.
 
 ## Screenshots and video

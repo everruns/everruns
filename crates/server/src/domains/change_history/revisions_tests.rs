@@ -25,6 +25,7 @@ fn owner() -> Ctx {
         role: OrgRole::Owner,
         is_platform_user: false,
         is_internal: false,
+        read_only: false,
     };
     let encryption =
         EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[]).unwrap();
@@ -58,10 +59,15 @@ async fn history(ctx: &Ctx, id: &str) -> Vec<Value> {
 #[tokio::test]
 async fn changes_make_revisions_and_a_restore_brings_one_back_as_a_new_change() {
     let ctx = owner();
-    let created = run("create_workspace", json!({ "name": "support" }), &ctx)
-        .await
-        .unwrap();
-    let id = created["id"].as_str().unwrap().to_string();
+    let id = crate::domains::workspaces::seed_workspace(&ctx, "seeded").await;
+    // The first recorded change is revision 1.
+    run(
+        "update_workspace",
+        json!({ "workspace_id": id, "name": "support" }),
+        &ctx,
+    )
+    .await
+    .unwrap();
     let rename = json!({ "workspace_id": id, "name": "support-eu" });
     run("update_workspace", rename.clone(), &ctx).await.unwrap();
     // The same values again: an entry, but no new revision.
@@ -130,12 +136,14 @@ async fn changes_make_revisions_and_a_restore_brings_one_back_as_a_new_change() 
 #[tokio::test]
 async fn restore_needs_the_kinds_manage_policy() {
     let ctx = owner();
-    let id = run("create_workspace", json!({ "name": "ops" }), &ctx)
-        .await
-        .unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let id = crate::domains::workspaces::seed_workspace(&ctx, "seeded").await;
+    run(
+        "update_workspace",
+        json!({ "workspace_id": id, "name": "ops" }),
+        &ctx,
+    )
+    .await
+    .unwrap();
     let mut member = ctx.clone();
     member.caller.role = OrgRole::Member;
     let refused = run(

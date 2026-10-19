@@ -326,6 +326,9 @@ async fn run_token_login(api_url: &str, profile: &str) -> Result<()> {
         email: String,
         name: String,
         organizations: Option<Vec<OrgInfo>>,
+        /// `*` or `read`. Any scope is accepted: a read-only token logs in
+        /// and the server refuses the commands it does not cover.
+        token_scope: Option<String>,
     }
 
     let me: MeResponse = me_resp
@@ -350,6 +353,9 @@ async fn run_token_login(api_url: &str, profile: &str) -> Result<()> {
     store.save()?;
 
     eprintln!("Logged in as {} ({})", me.name, me.email);
+    if let Some(scope) = me.token_scope.as_deref() {
+        eprintln!("Access: {}", crate::commands::whoami::access_label(scope));
+    }
     Ok(())
 }
 

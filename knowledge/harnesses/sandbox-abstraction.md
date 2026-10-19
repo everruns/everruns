@@ -82,7 +82,13 @@ flowchart TB
 - A Session has at most one primary Sandbox. Its identity and Sandbox Template
   snapshot do not change during the Session.
 - The primary Sandbox is the only filesystem and command namespace addressed by
-  ordinary `bash`, `read_file`, `write_file`, `edit_file`, `glob`, and `grep`.
+  ordinary `bash`, `read_file`, `read_many_files`, `write_file`, `edit_file`,
+  `glob`, `grep`, and `list_directory`. With a managed Sandbox, capability
+  collection drops every session-file-system tool name from `file_system`
+  capabilities, so a VFS-only tool (`grep_files`, `delete_file`, `stat_file`)
+  is absent rather than silently reading another filesystem. Runtime-owned VFS
+  paths (`/.agents`, `/outputs`) written after seeding stay readable through a
+  read fallback when the Sandbox misses them.
 - A physical instance may disappear without terminating the Session. Recovery
   creates a new generation and restores the last committed Workspace revision.
 - A Harness- or Agent-fixed Sandbox Template cannot be overridden by Session input.

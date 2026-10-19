@@ -61,6 +61,16 @@ Resources are read with the same credential and `actsAs` as that server's
 tools, and the same egress rules apply. Both tools are rated as read-only
 in the tool risk labels.
 
+The registry and context services share the same turn-scoped invoker, and
+input-message binding preserves its attachment policy. Resource constructors
+require that scoped invoker; organization-wide connection resolution never
+stands in for conversation authorization. The worker's catalog fallback still
+serves explicitly selected organization MCP capabilities, while scoped and
+personal attachments keep their existing identity and egress contracts. See
+[tool construction](../../crates/contracts/src/runtime/mcp_proxy.rs),
+[host registration](../../crates/core/src/host/host.rs), and
+[worker lookup](../../crates/server/src/domains/mcp_servers/worker_lookup.rs).
+
 ### D2. Content mapping
 
 Read contents and tool-result blocks map the same way:

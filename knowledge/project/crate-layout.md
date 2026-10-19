@@ -25,8 +25,7 @@ Release-by-release migration history belongs in the changelog.
 - Control-plane records (agent, harness, session rows, organizations, billing, audit)
   exist only in `crates/server/`.
 - Only the server, `everruns-durable`, and the `everruns` facade open application
-  database connections. `everruns-pg-embedded` may create and drop isolated DEV_MODE
-  and test databases, but does not read application tables.
+  database connections. Server storage also owns isolated DEV_MODE and test databases.
 - A library host (yolop, `everruns-serve`, a user's app) builds against `everruns` or
   `everruns-core` plus `everruns-contracts`, and never sees a control-plane type.
 - Integrations implement contracts and do not depend on core or platform crates.
@@ -43,12 +42,11 @@ layer, never upward.
 | | `everruns-serve` (+ `-macros`, `-build`, `-agentcore`, `-celld`) | serving one app as a service | yes |
 | | yolop | terminal coding agent, own repository | own repo |
 | Entry crates | `everruns` | the Framework facade; its features pick drivers, integrations, and capabilities, and it owns the default "batteries" wiring | yes |
-| | `everruns-durable-engine` | the durable execution backend: runs core turns as queued, checkpointed steps behind core's `TurnBackend`; the worker's only path into core | yes (experimental) |
 | Building blocks | `everruns-core` | engine, host runtime, builtins, MCP, A2A, AG-UI | yes |
 | | `everruns-capabilities` | hosted capabilities (subagents, session tasks, background runs, knowledge, container sandbox) | yes |
 | | `everruns-drivers` (+ `everruns-llmsim`) | model drivers, one feature per vendor | yes |
 | `crates/integrations/` | `everruns-integrations` | maintained integrations, selected by feature | yes |
-| `crates/integrations-experimental/` | `everruns-integrations-experimental` | Deno and Sprites, selected by feature | yes |
+| `crates/integrations-experimental/` | `everruns-integrations-experimental` | Sprites, selected by feature | yes |
 | | `everruns-durable` | durable workflow primitives and their own Postgres store | yes |
 | Foundation | `everruns-contracts` | provider and capability SPIs, model profiles, typed ids, runtime view types, connector, store, sandbox, and vector-store traits; the runtime SPI (capability, tool, tool context, session, message, event) behind its `runtime` feature | yes |
 
@@ -94,13 +92,12 @@ depend on the server. Negative fixtures prove each boundary.
 The server owns the control-plane database. `everruns-durable` owns its workflow state
 (task queue, journal, timers) with its own schema and migrate. They may share one
 Postgres instance, but neither reads the other's tables except through the other's API.
-The worker reaches durable's store only through `everruns-durable-engine`.
+The worker links `everruns-durable` for its task and record types but reaches
+the store only through the control plane's gRPC service.
 [`check-database-driver-isolation.sh`](../../scripts/lib/check-database-driver-isolation.sh)
 rejects normal and build dependencies on database drivers outside these owners,
 including optional and renamed edges. Contracts' optional typed-id codecs are the
-only exception and cannot construct a connection. `everruns-pg-embedded`, the
-server's throwaway DEV_MODE and test cluster, may connect to create and drop databases;
-it reads no tables. Embedded hosts (the facade's `local` feature, the serve
+only exception and cannot construct a connection. Embedded hosts (the facade's `local` feature, the serve
 hosts) keep their own schemas and shared query callbacks, but open SQLite handles
 through `everruns::sqlite`, behind the facade's `local` feature. It used to be
 durable's `sqlite` module; owning it in durable made the facade's `local` feature
@@ -109,27 +106,23 @@ tried and dropped: about 200 lines of utility code is not worth a published crat
 and the serve hosts already depend on the facade. `UpdateField` went back to
 durable; server storage, which depends on durable anyway, uses it from there.
 [`check-durable-isolation.sh`](../../scripts/lib/check-durable-isolation.sh) also keeps
-durable generic (it has no `everruns-*` normal dependency)
-and prevents worker dependencies from bypassing durable-engine.
+durable generic (it has no `everruns-*` normal dependency) and keeps worker source
+naming core and durable only through the worker's crate re-exports.
 
 ### Turns run through one backend seam
 
 Core's host owns `TurnBackend`
 ([source](../../crates/core/src/host/turn_backend.rs)), the one interface through
 which a host starts, cancels, and observes a session's turns. The facade's session
-actor runs every turn through it, on the in-process default today.
-`everruns-durable-engine` is the durable implementation: published so an
-application can choose it from the facade, it must therefore carry nothing
-private to the platform. The gRPC stores and runner constructors, `tonic`, and
-`everruns-internal-protocol` therefore live in the worker, which implements
-durable-engine's store traits for its own gRPC client (platform turns run as
-session actors, not on `DurableRunner`, since the 2026-10-11 cutover);
-[`check-durable-isolation.sh`](../../scripts/lib/check-durable-isolation.sh) rejects
-`tonic` or the internal protocol in durable-engine's normal and build edges. Worker-only
-core features (MCP, telemetry, OpenAI Agents API, tree-sitter outlines) are selected
-by the worker's own `everruns-core` edge, which the guard allows for feature selection
-only. The worker runs the shared turn driver (`TurnTaskDriver`) over its gRPC store. Why queue plus per-step checkpoint rather than
-`Workflow` replay is recorded in [Execution Backends](../framework/execution-backends.md).
+actor runs every turn through it, on the in-process default today. The platform
+server runs every turn through `ActorTurnBackend`, which marks the session's actor
+runnable for a worker to lease and run the whole turn with core's `drive_turn`.
+`tonic` and `everruns-internal-protocol` live in the worker and server only.
+Worker-only core features (MCP, telemetry, OpenAI Agents API, tree-sitter
+outlines) are selected by the worker's own `everruns-core` edge. The per-step
+durable backend (`everruns-durable-engine`) was deleted in step 7 of the
+actor-based design; why is recorded in
+[Execution Backends](../framework/execution-backends.md).
 
 ### Core stays wasm-safe by default
 

@@ -21,7 +21,7 @@ use everruns_core::{Caller, Policy, ResourceConfigResponse, Rule, evaluate_polic
 use everruns_durable::{
     CircuitBreakerState, CircuitState, DlqEntry, DlqFilter, Pagination, SystemHealth, TaskFilter,
     TaskInfo, TaskStatus, WorkerFilter, WorkerInfo, WorkflowEventInfo, WorkflowEventStore,
-    WorkflowFilter, WorkflowInfoExtended, WorkflowSignal, WorkflowStatus,
+    WorkflowFilter, WorkflowInfoExtended, WorkflowStatus,
 };
 use futures::{
     StreamExt,
@@ -207,10 +207,6 @@ pub fn routes(state: AppState) -> Router {
         .route(
             "/v1/durable/workflows/{workflow_id}/cancel",
             post(cancel_workflow),
-        )
-        .route(
-            "/v1/durable/workflows/{workflow_id}/signal",
-            post(send_signal),
         )
         // Tasks
         .route("/v1/durable/tasks", get(list_tasks).post(enqueue_task))
@@ -953,18 +949,6 @@ pub struct ListDlqQuery {
     pub limit: Option<u32>,
 }
 
-/// Request to send a signal to a workflow
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct SendSignalRequest {
-    /// Signal name. Must match a signal the running workflow listens for.
-    #[schema(example = "user_response_received")]
-    pub signal_type: String,
-    /// Signal payload (workflow-specific JSON, any shape; defaults to `null` when omitted).
-    /// Example: `{"approved": true, "approver": "user_01933b5a00007000800000000000001"}`.
-    #[serde(default)]
-    pub payload: serde_json::Value,
-}
-
 // ============================================================================
 // Route handlers
 // ============================================================================
@@ -1309,46 +1293,9 @@ pub async fn cancel_workflow(
     Ok(StatusCode::OK)
 }
 
-/// POST /v1/durable/workflows/:workflow_id/signal - Send signal to workflow
-#[utoipa::path(
-    post,
-    path = "/v1/durable/workflows/{workflow_id}/signal",
-    params(
-        ("workflow_id" = Uuid, Path, description = "Workflow ID")
-    ),
-    request_body = SendSignalRequest,
-    responses(
-        (status = 200, description = "Signal sent"),
-        (status = 404, description = "Workflow not found", body = ErrorResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse)
-    ),
-    tag = "durable"
-)]
-pub async fn send_signal(
-    _auth: PlatformUser,
-    State(state): State<AppState>,
-    Path(workflow_id): Path<Uuid>,
-    Json(req): Json<SendSignalRequest>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let store = state.get_store()?;
-    let signal = WorkflowSignal {
-        signal_type: req.signal_type,
-        payload: req.payload,
-        sent_at: Utc::now(),
-    };
-
-    store.send_signal(workflow_id, signal).await.map_err(|e| {
-        tracing::error!("Failed to send signal: {}", e);
-        ErrorResponse::new("Internal server error".to_string())
-            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
-    })?;
-
-    Ok(StatusCode::OK)
-}
-
 /// GET /v1/durable/tasks - List tasks
 #[utoipa::path(
-    get,
+    get, operation_id = "list_durable_tasks",
     path = "/v1/durable/tasks",
     params(
         ("status" = Option<String>, Query, description = "Filter by status"),
@@ -3380,10 +3327,6 @@ mod tests {
             let cases: Vec<(String, &str)> = vec![
                 ("/v1/durable/workers/w1/drain".to_string(), "{}"),
                 (format!("/v1/durable/workflows/{wf_id}/cancel"), "{}"),
-                (
-                    format!("/v1/durable/workflows/{wf_id}/signal"),
-                    r#"{"signal_type":"test","payload":{}}"#,
-                ),
                 (
                     "/v1/durable/tasks".to_string(),
                     r#"{"activity_type":"test","input":{}}"#,

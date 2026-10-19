@@ -44,6 +44,16 @@ async fn legacy_endpoint(
     } else {
         (config, None)
     };
+    // The schema no longer admits the type (migration
+    // 20261012191427_tighten_channel_type_drop_api_endpoint), so the CHECK
+    // comes off for the write and goes back on NOT VALID: a plain re-add would
+    // revalidate this very row. It still rejects new `api_endpoint` writes,
+    // while the conversion's own UPDATE to `api` passes.
+    let mut tx = server.db.pool().begin().await.unwrap();
+    sqlx::query("ALTER TABLE agent_channels DROP CONSTRAINT agent_channels_channel_type_check")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
     sqlx::query(
         "UPDATE agent_channels
          SET channel_type = 'api_endpoint', channel_config = $2, channel_config_encrypted = $3
@@ -52,9 +62,18 @@ async fn legacy_endpoint(
     .bind(&channel.channel_id)
     .bind(plaintext)
     .bind(ciphertext)
-    .execute(server.db.pool())
+    .execute(&mut *tx)
     .await
     .unwrap();
+    sqlx::query(
+        "ALTER TABLE agent_channels ADD CONSTRAINT agent_channels_channel_type_check
+         CHECK (channel_type IN ('slack', 'ag_ui', 'schedule', 'webhook', 'a2a', 'fcp',
+                                 'public_chat', 'voice', 'api', 'poppy')) NOT VALID",
+    )
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
     key
 }
 
@@ -216,6 +235,19 @@ async fn api_endpoint_channels_convert_and_their_keys_keep_working() {
     let server = TestServer::in_memory().await;
 
     let plain = api_channel(&server, json!({}), true).await;
+    // A migrated database refuses the retired type outright.
+    let refused =
+        sqlx::query("UPDATE agent_channels SET channel_type = 'api_endpoint' WHERE public_id = $1")
+            .bind(&plain.channel_id)
+            .execute(server.db.pool())
+            .await
+            .unwrap_err();
+    assert!(
+        refused
+            .to_string()
+            .contains("agent_channels_channel_type_check"),
+        "{refused}"
+    );
     let plain_key = legacy_endpoint(&server, &plain, "shared_session", None, false).await;
     let plain_session = legacy_session(&server, &plain).await;
 

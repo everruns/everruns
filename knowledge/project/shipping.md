@@ -40,13 +40,13 @@ Relevant references:
 
 Every shipped change satisfies all of these outcomes. They are the success bar, not a menu.
 
-1. Safe branch state: no shipping from `main` or `master`; working tree clean before final push; prefer rebasing onto the latest `origin/main` before merge. Merging without the latest rebase is allowed when saving another CI cycle is more valuable; monitor main CI after merge. Migrations are named by UTC timestamp (`just new-migration`), so parallel PRs do not collide on a version; `bash scripts/lib/check-migration-ordering.sh` validates names and uniqueness and runs in CI on PRs and main.
+1. Safe branch state: no shipping from `main` or `master`; working tree clean before final push; prefer rebasing onto the latest `origin/main` before merge. Merging without the latest rebase is allowed when saving another CI cycle is more valuable; follow the coalesced-batch policy below after merge. Migrations are named by UTC timestamp (`just new-migration`), so parallel PRs do not collide on a version; `bash scripts/lib/check-migration-ordering.sh` validates names and uniqueness and runs in CI on PRs and main.
 2. Goal achieved with evidence: the requested behavior is implemented and validated with proof that matches the risk.
 3. Merge-ready code: touched code is reviewed for avoidable complexity and performance risk. A structured security review is performed against the relevant threat model categories from `knowledge/security/threat-model.md` (procedure: [`.agents/skills/ship/references/security-review.md`](../../.agents/skills/ship/references/security-review.md)). Issues found during review are addressed or explicitly blocked.
-4. Synced artifacts: only the affected artifacts are updated, including specs, threat model, docs, OpenAPI, test cases, and agent instructions when relevant. A PR that completes a user-facing feature, notable improvement, user-visible fix, breaking change or deprecation adds its entry to the public changelog, with sharp screenshots or video for UI changes; a PR that changes behavior an earlier entry describes updates that entry ([Public Changelog](../docs/changelog.md)). Specs touched by the change must not contain implementation details that duplicate code (struct fields, enum variants, exhaustive tables, code snippets), replace with links to source files per the spec hygiene guidance in `knowledge/index.md`.
+4. Synced artifacts: only the affected artifacts are updated, including specs, threat model, docs, OpenAPI, test cases, and agent instructions when relevant. A PR that meets the public changelog's impact criteria adds its entry, with sharp screenshots or video for UI changes; a PR that changes behavior an earlier entry describes updates that entry ([Public Changelog](../docs/changelog.md)). Specs touched by the change must not contain implementation details that duplicate code (struct fields, enum variants, exhaustive tables, code snippets), replace with links to source files per the spec hygiene guidance in `knowledge/index.md`.
 5. Smoke test impacted functionality: always smoke test the flows affected by the change end-to-end. This is mandatory, not conditional on risk assessment. Docs-only or config-only changes that do not affect runtime behavior may skip smoke testing with explicit justification.
-6. Follow-ups surfaced: the agent actively looks for in-scope work that risks being silently dropped (TODOs, partial fixes, declined suggestions, missed edge cases, spec/doc drift) and prefers to implement them in this PR. Anything deferred is listed under a **Follow-ups** section in the PR body with a one-line rationale; if nothing is deferred, the PR body must explicitly state "No follow-ups." so readers can distinguish completeness from omission.
-7. Safe merge: the PR uses the repo template, CI is green, no temporary `ci:skip-*` opt-out label suppresses CI affected by the PR diff, **every** review comment from all reviewers (including async bot reviewers and low-confidence suggestions) is explicitly analyzed, reasoned about, and resolved, either with a code change or a written explanation, after a final post-green sweep, merge happens with squash only, and main CI is monitored after merge.
+6. Follow-ups completed: the agent actively finds and implements work needed for the requested outcome (TODOs, partial fixes, declined suggestions, missed edge cases, integration and spec/doc drift) before shipping. Issue creation and lists of future work do not substitute for implementation. Deferral requires a concrete blocker the agent cannot resolve safely, or an explicit user exclusion. The PR's **Follow-ups** section records any such blocker and its impact, or states "No follow-ups." when the requested outcome is complete.
+7. Safe merge: the PR uses the repo template, CI is green, no temporary `ci:skip-*` opt-out label suppresses CI affected by the PR diff, **every** review comment from all reviewers (including async bot reviewers and low-confidence suggestions) is explicitly analyzed, reasoned about, and resolved, either with a code change or a written explanation, after a final post-green sweep, merge happens with squash only, and a coalesced main batch is confirmed to cover the merge. Ordinary changes need not wait for every broad post-merge job; release and CI/persistence changes verify the relevant batch result before completion.
 
 ## Constraints
 
@@ -55,7 +55,7 @@ Every shipped change satisfies all of these outcomes. They are the success bar, 
 - Bug fixes should prefer a failing test before the fix when practical, but the validation strategy may vary when a smaller or stronger proof exists.
 - Docs-only or config-only changes may skip code tests if that choice is justified and the relevant docs or build checks were run.
 - CI is slow enough that reducing unnecessary cycles is important. Temporary CI opt-out labels may skip expensive interim PR checks to conserve CI capacity, but they are not merge evidence for affected surfaces. Before merge, opt-outs must not suppress CI checks affected by the PR diff, and merge must wait for those affected checks to pass.
-- A latest-main rebase is preferred but not mandatory when migration risk is absent. If merging without it, explicitly verify no migration changes exist on either side since the merge base and watch main CI after merge.
+- A latest-main rebase is preferred but not mandatory when migration risk is absent. If merging without it, explicitly verify no migration changes exist on either side since the merge base and confirm a coalesced batch covers the merged revision.
 - Security review is mandatory for all code, configuration, and infrastructure changes. The review must identify relevant threat model categories, check the diff against them, and document findings. Perceived low risk does not justify skipping the review.
 - Every review comment must be explicitly addressed before merge, including low-confidence suggestions, nits, and bot comments. For each comment, the agent must analyze the concern, reason about whether a change is warranted, and either apply a fix or reply with a clear explanation. Dismissing or ignoring comments without reasoning is not permitted.
 - Auto-merge must not bypass the final review pass; shipping should give async reviewer bots time to comment after the last push and after CI turns green, then re-check before merge.
@@ -72,6 +72,22 @@ rather than running every check mechanically. Whatever set is chosen, the eviden
   bounded result sets
 - UI changes were captured as screenshots or recordings in validation or PR comments, never
   committed to the repo
+
+## CI tiers and post-merge handling
+
+The required PR aggregate covers affected-crate tests and relevant guards/UI/docs.
+Full PostgreSQL suites, workflow tests, and broad feature/SDK/packaging coverage
+follow the tiers in [CI Build Time](ci-build-time.md#validation-policy). The old
+separately required full PostgreSQL context is retired; it must not remain an
+expected check after the workflow moves that work to batches.
+
+Main batches coalesce pushes without cancelling running validation. Verify the
+merged SHA is an ancestor of the selected batch SHA. An ordinary change can finish
+once its PR gate passed and a covering batch is queued/running with failure tracking
+active. CI, migration, and persistence changes also verify the relevant batch result.
+Failures create owned Linear issues and block releases; continued ordinary merges
+are allowed under this policy. A skipped/cancelled run is not validation evidence.
+Releases require a full green run for their exact revision before publishing.
 
 ## CI Opt-Out Labels
 

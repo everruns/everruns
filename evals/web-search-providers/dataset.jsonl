@@ -1,0 +1,59 @@
+{"id": "tokio-select-cancel", "input": ["tokio select! cancellation safety"], "tags": ["docs"], "metadata": {"need": "Explains which futures are cancellation safe in tokio::select! (tokio docs or a solid write-up).", "fresh": false}}
+{"id": "axum-from-fn", "input": ["axum middleware from_fn example"], "tags": ["docs"], "metadata": {"need": "Shows how to write axum middleware with middleware::from_fn, ideally docs.rs or the axum repo examples.", "fresh": false}}
+{"id": "pg-jsonb-path", "input": ["postgres jsonb_path_query example"], "tags": ["docs"], "metadata": {"need": "PostgreSQL documentation or tutorial showing jsonb_path_query usage.", "fresh": false}}
+{"id": "react-effect-cleanup", "input": ["react useEffect cleanup function when does it run"], "tags": ["docs"], "metadata": {"need": "React docs or a reliable explanation of when the effect cleanup runs.", "fresh": false}}
+{"id": "k8s-pdb", "input": ["kubernetes PodDisruptionBudget minAvailable vs maxUnavailable"], "tags": ["docs"], "metadata": {"need": "Kubernetes docs or a clear guide comparing the two PDB fields.", "fresh": false}}
+{"id": "serde-flatten", "input": ["serde flatten with deny_unknown_fields"], "tags": ["docs"], "metadata": {"need": "Explains that serde flatten does not work with deny_unknown_fields (serde docs or GitHub issue).", "fresh": false}}
+{"id": "sqlx-offline", "input": ["sqlx offline mode prepare query cache"], "tags": ["docs"], "metadata": {"need": "sqlx docs on `cargo sqlx prepare` / SQLX_OFFLINE.", "fresh": false}}
+{"id": "nextjs-server-actions", "input": ["next.js server actions revalidatePath"], "tags": ["docs"], "metadata": {"need": "Next.js docs on revalidatePath inside server actions.", "fresh": false}}
+{"id": "git-rebase-onto", "input": ["git rebase --onto explained"], "tags": ["docs"], "metadata": {"need": "A clear explanation or the git docs for rebase --onto.", "fresh": false}}
+{"id": "nats-jetstream-ack", "input": ["NATS JetStream ack wait and max deliver"], "tags": ["docs"], "metadata": {"need": "NATS docs on consumer AckWait and MaxDeliver.", "fresh": false}}
+{"id": "python-asyncio-taskgroup", "input": ["python asyncio TaskGroup exception handling"], "tags": ["docs"], "metadata": {"need": "Python docs or guide on TaskGroup and ExceptionGroup handling.", "fresh": false}}
+{"id": "cargo-workspace-inherit", "input": ["cargo workspace dependency inheritance"], "tags": ["docs"], "metadata": {"need": "Cargo book section on workspace.dependencies and `workspace = true`.", "fresh": false}}
+{"id": "valkey-vs-redis", "input": ["valkey vs redis license differences"], "tags": ["docs"], "metadata": {"need": "Explains the Redis license change and Valkey fork.", "fresh": false}}
+{"id": "otel-genai-semconv", "input": ["OpenTelemetry GenAI semantic conventions spans"], "tags": ["docs"], "metadata": {"need": "OpenTelemetry semantic conventions for generative AI.", "fresh": false}}
+{"id": "mcp-spec-elicitation", "input": ["Model Context Protocol elicitation spec"], "tags": ["docs"], "metadata": {"need": "The MCP specification page on elicitation.", "fresh": false}}
+{"id": "rust-e0277-send", "input": ["error[E0277]: `dyn Future<Output = ()>` cannot be sent between threads safely"], "tags": ["errors"], "metadata": {"need": "Explains the Send bound problem with boxed futures and how to fix it (Pin<Box<dyn Future + Send>>).", "fresh": false}}
+{"id": "ts-ts2589", "input": ["TS2589 type instantiation is excessively deep and possibly infinite"], "tags": ["errors"], "metadata": {"need": "Explains the TypeScript error and workarounds.", "fresh": false}}
+{"id": "pg-deadlock", "input": ["postgres ERROR: deadlock detected how to debug"], "tags": ["errors"], "metadata": {"need": "Guide to diagnosing PostgreSQL deadlocks.", "fresh": false}}
+{"id": "docker-no-space", "input": ["docker no space left on device build cache prune"], "tags": ["errors"], "metadata": {"need": "How to free Docker build cache / disk space.", "fresh": false}}
+{"id": "npm-eresolve", "input": ["npm ERR! ERESOLVE unable to resolve dependency tree"], "tags": ["errors"], "metadata": {"need": "Explains peer dependency conflicts and --legacy-peer-deps.", "fresh": false}}
+{"id": "rust-latest", "input": ["latest stable Rust release"], "tags": ["fresh"], "metadata": {"need": "The current stable Rust version as of October 2026 and its release notes.", "fresh": true}}
+{"id": "node-lts", "input": ["current Node.js LTS version"], "tags": ["fresh"], "metadata": {"need": "Which Node.js release line is Active LTS in October 2026.", "fresh": true}}
+{"id": "python-latest", "input": ["latest Python release"], "tags": ["fresh"], "metadata": {"need": "The newest Python 3.x release as of October 2026.", "fresh": true}}
+{"id": "k8s-latest", "input": ["kubernetes latest release"], "tags": ["fresh"], "metadata": {"need": "The newest Kubernetes minor release as of October 2026.", "fresh": true}}
+{"id": "postgres-latest", "input": ["PostgreSQL latest major version release"], "tags": ["fresh"], "metadata": {"need": "Newest PostgreSQL major version as of October 2026 (PostgreSQL 19 or later).", "fresh": true}}
+{"id": "nextjs-latest", "input": ["Next.js latest version release notes"], "tags": ["fresh"], "metadata": {"need": "The current Next.js major version and its release blog post.", "fresh": true}}
+{"id": "openai-latest-model", "input": ["OpenAI newest model announcement"], "tags": ["fresh"], "metadata": {"need": "OpenAI's most recent model release as of October 2026.", "fresh": true}}
+{"id": "anthropic-latest-model", "input": ["Anthropic latest Claude model"], "tags": ["fresh"], "metadata": {"need": "The newest Claude models as of October 2026.", "fresh": true}}
+{"id": "gemini-latest", "input": ["Google Gemini latest model release"], "tags": ["fresh"], "metadata": {"need": "The newest Gemini model family as of October 2026.", "fresh": true}}
+{"id": "tokio-latest", "input": ["tokio latest version crates.io"], "tags": ["fresh"], "metadata": {"need": "The current tokio crate version.", "fresh": true}}
+{"id": "typescript-latest", "input": ["TypeScript latest version"], "tags": ["fresh"], "metadata": {"need": "The newest TypeScript release (likely 6.x or 7 native) as of October 2026.", "fresh": true}}
+{"id": "eu-ai-act-gpai", "input": ["EU AI Act general purpose AI obligations timeline"], "tags": ["fresh"], "metadata": {"need": "The dates GPAI obligations apply, with any 2025-2026 changes (digital omnibus delays).", "fresh": true}}
+{"id": "nobel-physics-2026", "input": ["2026 Nobel Prize in Physics winners"], "tags": ["fresh"], "metadata": {"need": "Who won the 2026 Nobel Prize in Physics (announced early October 2026).", "fresh": true}}
+{"id": "cloudflare-websearch", "input": ["Cloudflare Web Search API"], "tags": ["fresh"], "metadata": {"need": "Cloudflare's Web Search API announcement or docs (2026).", "fresh": true}}
+{"id": "mcp-latest-spec", "input": ["Model Context Protocol latest specification version"], "tags": ["fresh"], "metadata": {"need": "The latest MCP spec revision date as of October 2026.", "fresh": true}}
+{"id": "boiling-altitude", "input": ["boiling point of water at 3000 meters altitude"], "tags": ["facts"], "metadata": {"need": "Gives roughly 90 °C with a source.", "fresh": false}}
+{"id": "lviv-population", "input": ["population of Lviv"], "tags": ["facts"], "metadata": {"need": "A recent population figure for Lviv, Ukraine.", "fresh": false}}
+{"id": "master-margarita", "input": ["who wrote The Master and Margarita"], "tags": ["facts"], "metadata": {"need": "Mikhail Bulgakov.", "fresh": false}}
+{"id": "speed-of-sound", "input": ["speed of sound in air at 20 C"], "tags": ["facts"], "metadata": {"need": "About 343 m/s.", "fresh": false}}
+{"id": "everest-height", "input": ["Mount Everest official height 2020 survey"], "tags": ["facts"], "metadata": {"need": "8,848.86 m from the 2020 China-Nepal survey.", "fresh": false}}
+{"id": "iso-week", "input": ["ISO 8601 week number definition"], "tags": ["facts"], "metadata": {"need": "Explains week 1 contains the first Thursday.", "fresh": false}}
+{"id": "ua-time-zone", "input": ["Kyiv time zone UTC offset daylight saving"], "tags": ["facts"], "metadata": {"need": "EET/EEST, UTC+2/+3.", "fresh": false}}
+{"id": "hetzner-cx22", "input": ["Hetzner Cloud CX22 price"], "tags": ["pricing"], "metadata": {"need": "Hetzner cloud pricing page or a current listing for CX22 (or its successor).", "fresh": true}}
+{"id": "aws-t4g-small", "input": ["AWS EC2 t4g.small hourly price us-east-1"], "tags": ["pricing"], "metadata": {"need": "On-demand price for t4g.small.", "fresh": false}}
+{"id": "cf-workers-paid", "input": ["Cloudflare Workers paid plan pricing"], "tags": ["pricing"], "metadata": {"need": "Cloudflare Workers pricing page.", "fresh": false}}
+{"id": "openai-api-pricing", "input": ["OpenAI API pricing per million tokens"], "tags": ["pricing"], "metadata": {"need": "OpenAI's official API pricing page.", "fresh": true}}
+{"id": "brave-api-pricing", "input": ["Brave Search API pricing"], "tags": ["pricing"], "metadata": {"need": "Brave Search API plans and prices.", "fresh": true}}
+{"id": "github-actions-minutes", "input": ["GitHub Actions included minutes per plan"], "tags": ["pricing"], "metadata": {"need": "GitHub docs on Actions billing and included minutes.", "fresh": false}}
+{"id": "everruns", "input": ["everruns agent runtime"], "tags": ["niche"], "metadata": {"need": "Everruns project site, docs or GitHub repo (everruns/everruns).", "fresh": false}}
+{"id": "bashkit", "input": ["bashkit rust crate virtual bash"], "tags": ["niche"], "metadata": {"need": "The bashkit crate (everruns/bashkit) or its docs.", "fresh": false}}
+{"id": "fetchkit", "input": ["fetchkit rust web fetch for LLMs"], "tags": ["niche"], "metadata": {"need": "The fetchkit crate or repo (everruns/fetchkit).", "fresh": false}}
+{"id": "mojeek-api", "input": ["Mojeek search API"], "tags": ["niche"], "metadata": {"need": "Mojeek's search API page.", "fresh": false}}
+{"id": "ceramic-search", "input": ["Ceramic AI search index"], "tags": ["niche"], "metadata": {"need": "Ceramic.ai, the search index company.", "fresh": false}}
+{"id": "ag-ui-protocol", "input": ["AG-UI protocol events"], "tags": ["niche"], "metadata": {"need": "The AG-UI protocol docs (docs.ag-ui.com) or repo.", "fresh": false}}
+{"id": "a2a-protocol", "input": ["Agent2Agent A2A protocol specification"], "tags": ["niche"], "metadata": {"need": "The A2A protocol spec (a2a-protocol.org or GitHub).", "fresh": false}}
+{"id": "swe-bench-verified", "input": ["SWE-bench Verified leaderboard"], "tags": ["research"], "metadata": {"need": "The SWE-bench Verified leaderboard page.", "fresh": true}}
+{"id": "rag-eval-metrics", "input": ["RAG evaluation metrics faithfulness context precision"], "tags": ["research"], "metadata": {"need": "An article or docs (e.g. Ragas) defining these metrics.", "fresh": false}}
+{"id": "lost-in-middle", "input": ["Lost in the Middle long context paper"], "tags": ["research"], "metadata": {"need": "The arXiv paper 'Lost in the Middle: How Language Models Use Long Contexts'.", "fresh": false}}
+{"id": "prompt-caching-anthropic", "input": ["Anthropic prompt caching pricing and TTL"], "tags": ["research"], "metadata": {"need": "Anthropic docs on prompt caching, cache write/read prices and TTL.", "fresh": false}}

@@ -39,6 +39,16 @@
 //   the actor instead: its pending input counts as consumed and the caller
 //   records the cancel in the log itself. One statement decides which, under
 //   the row lock, so a lease cannot slip in between.
+// - A cancel targets the turn it was requested for. The request records the
+//   inbox position (`cancel_inbox_seq`): the cancel ends the turn whose input
+//   is at or before it, and its holder consumes input only up to it. Lease
+//   and renew report the position, and the holder ignores a cancel whose
+//   position is before its turn's input. Clearing on release alone was not
+//   enough: a holder that recorded the cancel and then died before releasing
+//   (a failed write, its lease expired) left it pending, and the next holder
+//   applied it to the follow-up message's turn (chaos harness). A position is
+//   sound where a clear is not, because nothing has to run after the
+//   `turn.cancelled` write for the cancel to stop applying.
 // - Release clears the runnable marker only when the holder consumed every
 //   input up to `inbox_seq` and no unreported cancel is pending. An input that
 //   lands while a turn finishes moves `inbox_seq` past what the holder
@@ -157,117 +167,7 @@ where
     Ok(())
 }
 
-/// What one pass of [`Database::convert_legacy_turn_tasks`] did.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, sqlx::FromRow)]
-pub struct LegacyTurnSweep {
-    /// Old per-step turn tasks cancelled.
-    pub retired_tasks: i64,
-    /// Session actors marked runnable in their place.
-    pub marked_actors: i64,
-}
-
-/// Activity types of the per-step turn workflow that session actors replaced.
-pub const LEGACY_TURN_ACTIVITY_TYPES: [&str; 3] = ["process_input", "reason", "act"];
-
 impl Database {
-    /// TEMPORARY (actor-based design, step 6c): hand old-path turn work that
-    /// appeared after the cutover migration ran to session actors. Step 7 deletes it
-    /// together with the per-step turn workflow.
-    ///
-    /// During a rolling deploy a server or worker of the previous release can
-    /// still create per-step turn tasks (`process_input`, `reason`, `act`,
-    /// under a `turn_workflow`) after the cutover migration converted the
-    /// in-flight ones: an old server starting a turn, or an old worker
-    /// finishing a step and enqueueing the next. Nothing of this release runs
-    /// them. This pass does what the cutover migration did, for at most `limit` of
-    /// them: every pending one, and every claimed one whose claim went
-    /// silent for `stale_claim` (its old worker died; a live one finishes its
-    /// step and its next task is swept in turn). It marks the session's actor
-    /// runnable with the inbox at the log's head and the cursor at the latest
-    /// turn boundary, cancels the tasks and their `turn_workflow`, all in one
-    /// statement, so it is idempotent and safe to run on every server.
-    pub async fn convert_legacy_turn_tasks(
-        &self,
-        limit: i64,
-        stale_claim: Duration,
-    ) -> Result<LegacyTurnSweep> {
-        let stale_ms = i64::try_from(stale_claim.as_millis()).unwrap_or(i64::MAX);
-        Ok(sqlx::query_as::<_, LegacyTurnSweep>(
-            r#"
-            WITH legacy AS (
-                SELECT t.id, t.workflow_id
-                FROM durable_task_queue t
-                WHERE t.activity_type = ANY($3)
-                  AND (t.status = 'pending'
-                       OR (t.status = 'claimed'
-                           AND COALESCE(t.heartbeat_at, t.claimed_at, t.created_at)
-                               < NOW() - $2::float8 * INTERVAL '1 millisecond'))
-                ORDER BY t.created_at
-                LIMIT $1
-                FOR UPDATE SKIP LOCKED
-            ),
-            retired AS (
-                UPDATE durable_task_queue q SET
-                    status = 'cancelled',
-                    last_error = 'superseded by session actors (cutover sweep)'
-                FROM legacy
-                WHERE q.id = legacy.id
-                RETURNING q.id
-            ),
-            workflows AS (
-                UPDATE durable_workflow_instances w SET
-                    status = 'cancelled',
-                    completed_at = NOW(),
-                    updated_at = NOW()
-                WHERE w.id IN (SELECT workflow_id FROM legacy)
-                  AND w.workflow_type = 'turn_workflow'
-                  AND w.status IN ('pending', 'running')
-                RETURNING w.id
-            ),
-            turns AS (
-                SELECT s.id AS session_id, s.org_id
-                FROM sessions s
-                WHERE s.id IN (SELECT workflow_id FROM legacy)
-                ORDER BY s.id
-            ),
-            marked AS (
-                INSERT INTO session_actors (
-                    session_id, org_id, runnable_since, inbox_seq, consumed_seq, next_input_seq
-                )
-                SELECT
-                    t.session_id,
-                    t.org_id,
-                    NOW(),
-                    COALESCE((SELECT MAX(e.sequence) FROM events e
-                              WHERE e.session_id = t.session_id), 0),
-                    COALESCE((
-                        SELECT MAX(e.sequence) FROM events e
-                        WHERE e.session_id = t.session_id
-                          AND e.event_type IN (
-                              'turn.started', 'turn.completed', 'turn.failed',
-                              'turn.cancelled', 'turn.sealed'
-                          )
-                    ), 0),
-                    0
-                FROM turns t
-                ON CONFLICT (session_id) DO UPDATE SET
-                    runnable_since = COALESCE(session_actors.runnable_since, NOW()),
-                    inbox_seq = GREATEST(session_actors.inbox_seq, EXCLUDED.inbox_seq),
-                    consumed_seq = GREATEST(session_actors.consumed_seq, EXCLUDED.consumed_seq)
-                RETURNING session_id
-            )
-            SELECT
-                (SELECT COUNT(*) FROM retired) AS retired_tasks,
-                (SELECT COUNT(*) FROM marked) AS marked_actors
-            "#,
-        )
-        .bind(limit.max(0))
-        .bind(stale_ms)
-        .bind(LEGACY_TURN_ACTIVITY_TYPES.map(String::from).to_vec())
-        .fetch_one(&self.pool)
-        .await?)
-    }
-
     /// [`mark_session_actor_resumable`] on the request pool, which joins the
     /// current command transaction when one is open.
     pub async fn mark_session_actor_resumable(&self, session_id: SessionId) -> Result<()> {
@@ -347,11 +247,13 @@ impl Database {
                 WHERE a.session_id = chosen.session_id
                 RETURNING a.session_id, a.org_id, a.lease_fence, a.inbox_seq,
                           a.consumed_seq, a.next_input_seq, a.attempts,
-                          a.cancel_requested_at, a.runnable_since
+                          a.cancel_requested_at, a.cancel_inbox_seq, a.runnable_since
             )
             SELECT session_id, org_id, lease_fence AS fence, inbox_seq,
                    consumed_seq, next_input_seq, attempts,
-                   (cancel_requested_at IS NOT NULL) AS cancel_requested
+                   CASE WHEN cancel_requested_at IS NOT NULL
+                        THEN COALESCE(cancel_inbox_seq, inbox_seq)
+                   END AS cancel_inbox_seq
             FROM leased
             ORDER BY runnable_since, session_id
             "#,
@@ -384,7 +286,10 @@ impl Database {
                 cancel_reported = (cancel_requested_at IS NOT NULL),
                 consumed_seq = GREATEST(consumed_seq, $5)
             WHERE session_id = $1 AND lease_holder = $2 AND lease_fence = $3
-            RETURNING inbox_seq, (cancel_requested_at IS NOT NULL) AS cancel_requested
+            RETURNING inbox_seq,
+                      CASE WHEN cancel_requested_at IS NOT NULL
+                           THEN COALESCE(cancel_inbox_seq, inbox_seq)
+                      END AS cancel_inbox_seq
             "#,
         )
         .bind(session_id)
@@ -424,6 +329,10 @@ impl Database {
                     WHEN cancel_reported THEN NULL
                     ELSE cancel_requested_at
                 END,
+                cancel_inbox_seq = CASE
+                    WHEN cancel_reported THEN NULL
+                    ELSE cancel_inbox_seq
+                END,
                 cancel_reported = FALSE
             WHERE session_id = $1 AND lease_holder = $2 AND lease_fence = $3
             RETURNING runnable_since IS NOT NULL
@@ -452,6 +361,7 @@ impl Database {
             )
             UPDATE session_actors a SET
                 cancel_requested_at = CASE WHEN c.leased THEN NOW() ELSE NULL END,
+                cancel_inbox_seq = CASE WHEN c.leased THEN a.inbox_seq ELSE NULL END,
                 cancel_reported = FALSE,
                 runnable_since = CASE WHEN c.leased THEN a.runnable_since ELSE NULL END,
                 consumed_seq = CASE

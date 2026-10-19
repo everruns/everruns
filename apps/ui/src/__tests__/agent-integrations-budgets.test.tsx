@@ -73,7 +73,11 @@ jest.mock("@/components/agents/integrations/channel-details-panel", () => ({
 }));
 
 jest.mock("@/components/agents/agent-github-card", () => ({
-  AgentGitHubCard: () => <div>Agent GitHub</div>,
+  AgentGitHubSection: ({ githubTriggerCount }: { githubTriggerCount?: number }) => (
+    <section data-testid="github-section" data-github-triggers={String(githubTriggerCount)}>
+      <h3>GitHub</h3>
+    </section>
+  ),
 }));
 
 jest.mock("@/components/budgets/budget-panel", () => ({
@@ -170,7 +174,7 @@ describe("AgentIntegrationsPanel budgets", () => {
     expect(screen.getByTestId("row-endpoint_1")).toHaveAttribute("data-expanded", "true");
   });
 
-  it("groups GitHub setup and trigger creation under one Triggers heading", () => {
+  it("gives GitHub its own section between Channels and Triggers", () => {
     mockUseFeatureFlag.mockReturnValue(false);
     mockCanBudget.mockReturnValue(false);
 
@@ -181,7 +185,15 @@ describe("AgentIntegrationsPanel budgets", () => {
       "href",
       "/agents/agent_1/triggers/new",
     );
-    expect(screen.getByText("Agent GitHub")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "No triggers yet" })).toBeInTheDocument();
+
+    const headings = screen
+      .getAllByRole("heading", { level: 3 })
+      .map((heading) => heading.textContent);
+    expect(headings.slice(0, 3)).toEqual(["Channels", "GitHub", "Triggers"]);
+    // GitHub sits beside Triggers, not inside it.
+    const triggers = screen.getByRole("heading", { name: "Triggers" }).closest("section");
+    expect(triggers).not.toContainElement(screen.getByTestId("github-section"));
+    expect(screen.getByTestId("github-section")).toHaveAttribute("data-github-triggers", "0");
   });
 });

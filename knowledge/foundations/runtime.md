@@ -58,20 +58,18 @@ own backends through the same contracts.
   helpers, reusable host-phase composition, and lifecycle-effect application.
 - `everruns-durable` is a generic durable-execution engine (persistence,
   retries, task queue, schedules) with no agent or turn semantics and no
-  `everruns-*` dependency. `everruns-durable-engine` owns the `TurnTaskDriver` that runs each turn step and checkpoints its
-  `TurnExecution` state between steps (platform turns left it for session
-  actors on 2026-10-11; the worker still runs its non-turn activities through it),
-  and the turn conventions layered on durable tasks; it implements host's
-  experimental `TurnBackend` seam (see
+  `everruns-*` dependency. Turns do not run on it: the platform runs each
+  session's turn on a leased session actor, through host's experimental
+  `TurnBackend` seam (see
   [Execution Backends](../framework/execution-backends.md)).
-- `everruns-server` and `everruns-worker` remain control-plane and durable
-  execution hosts. They adapt host effects and durable scheduling while owning worker
-  polling, retries, and process boundaries.
+- `everruns-server` and `everruns-worker` remain control-plane and execution
+  hosts. They adapt host effects, session leases and durable scheduling while
+  owning worker polling, retries, and process boundaries.
 
 ## Public Contract
 
 The public entrypoint is `InProcessRuntimeBuilder` in
-`crates/core/src/host/runtime.rs`.
+`crates/core/src/host/runtime/mod.rs`.
 
 ### Builder responsibilities
 
@@ -372,7 +370,7 @@ externally implementable.
 
 `HostBackends` carries a uniform set of optional, additive backend slots that
 the host forwards into `ActAtom` when present (see
-`crates/core/src/host/runtime.rs` and `crates/core/src/host/runtime_host.rs`):
+`crates/core/src/host/runtime/mod.rs` and `crates/core/src/host/runtime_host.rs`):
 
 - `session_task_registry`, persists background-tool / subagent / monitor task
   lifecycle (`everruns_core::session_task::SessionTaskRegistry`).
@@ -523,7 +521,7 @@ test binaries in `crates/everruns/tests/host/`.
 
 - `crates/core/src/host/mod.rs`
 - `crates/core/src/host/builders.rs`
-- `crates/core/src/host/runtime.rs`
+- `crates/core/src/host/runtime/mod.rs`
 - `crates/core/src/host/runtime_host.rs`
 - `crates/core/src/host/in_memory.rs`
 - `crates/core/src/host/backends.rs`

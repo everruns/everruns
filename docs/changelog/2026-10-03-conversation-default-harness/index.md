@@ -20,7 +20,14 @@ Generic is deprecated but unchanged. Selectors hide it behind **Show
 deprecated**. On upgrade, agents that inherited Generic as the default are
 pinned to it, so their behavior does not change. A custom harness whose name
 collides with a new built-in keeps its ID and definition, but its slug moves to
-`<name>-custom`; update callers that look it up by name.
+`<name>-custom`; update callers that look it up by name:
+
+```bash
+# Before: a custom harness named "conversation"
+everruns agents update agent_xxx --harness conversation
+# After
+everruns agents update agent_xxx --harness conversation-custom
+```
 
 **In code:** `Harness::base()`, `conversation()`, `worker_base()` and
 `worker()` build the same presets.

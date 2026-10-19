@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Box, Check, Cpu, Plus, Star, Trash2, TriangleAlert } from "lucide-react";
 import { useOrganizationConnections, useSandboxTargets, useSandboxTemplates } from "@/hooks";
 import type { OrganizationConnection } from "@/lib/api/organization-connections";
+import { ProviderIcon } from "@/components/connections/provider-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +45,47 @@ function targetLabel(target: Pick<SandboxTargetDescriptor, "kind" | "provider">)
   if (target.kind === "managed" && target.provider === "e2b") return "E2B";
   if (target.kind === "managed" && target.provider === "modal") return "Modal";
   return target.provider ? `${target.provider} (${target.kind})` : target.kind;
+}
+
+type CredentialSource = "session_user" | "agent" | "organization";
+
+/**
+ * Provider account choices, in plain words: whose connection the sandbox uses
+ * and therefore who pays the provider. Mirrors the server's resolution in
+ * sessions/service/create.rs (session_user → the caller's default Virtual
+ * User; agent → the Agent's Virtual User; organization → a named account).
+ */
+function credentialChoices(provider: string): Array<{
+  value: CredentialSource;
+  label: string;
+  description: string;
+}> {
+  return [
+    {
+      value: "session_user",
+      label: `${provider} · Personal`,
+      description: `Each person who starts a Session uses their own ${provider} connection, and their account pays.`,
+    },
+    {
+      value: "agent",
+      label: `${provider} · This Agent`,
+      description: `Uses the ${provider} connection on this Agent's Virtual User; that account pays for every Session.`,
+    },
+    {
+      value: "organization",
+      label: `${provider} · Organization account`,
+      description: `A shared organization ${provider} account pays, whoever starts the Session.`,
+    },
+  ];
+}
+
+function ProviderOptionLabel({ iconName, label }: { iconName: string; label: string }) {
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <ProviderIcon iconName={iconName} className="size-4 shrink-0" />
+      <span className="truncate">{label}</span>
+    </span>
+  );
 }
 
 function specTargetKey(spec: SandboxTemplateSpec): string {
@@ -368,6 +410,7 @@ function TemplateSpecEditor({
   isDefault,
   targets,
   organizationConnections,
+  hasTriggers,
   disabled,
   onChange,
   onRename,
@@ -380,6 +423,7 @@ function TemplateSpecEditor({
   isDefault: boolean;
   targets: SandboxTargetDescriptor[];
   organizationConnections: OrganizationConnection[];
+  hasTriggers: boolean;
   disabled: boolean;
   onChange: (spec: SandboxTemplateSpec) => void;
   onRename: (name: string) => void;
@@ -391,6 +435,14 @@ function TemplateSpecEditor({
   const managed = spec.target.kind === "managed";
   const modal = managed && spec.target.provider === "modal";
   const e2b = managed && spec.target.provider === "e2b";
+  const providerName = descriptor?.display_name || targetLabel(spec.target);
+  const providerIconName = descriptor?.icon || spec.target.provider || "cloud";
+  const credentialSource = spec.target.credential?.source ?? "session_user";
+  const credentials = credentialChoices(providerName);
+  const selectedCredential = credentials.find((choice) => choice.value === credentialSource);
+  const providerAccounts = organizationConnections.filter(
+    (account) => account.provider === spec.target.provider,
+  );
   const lifecycle = {
     idle_after_seconds: spec.lifecycle?.idle_after_seconds ?? DEFAULT_IDLE_SECONDS,
     idle_action: spec.lifecycle?.idle_action ?? "checkpoint_and_stop",
@@ -503,69 +555,123 @@ function TemplateSpecEditor({
           <div className="space-y-2">
             <Label htmlFor={`sandbox-credential-${name}`}>Provider account</Label>
             <Select
-              value={spec.target.credential?.source ?? "session_user"}
+              value={credentialSource}
               onValueChange={(source) =>
                 onChange({
                   ...spec,
                   target: {
                     ...spec.target,
-                    credential: { source: source as "session_user" | "agent" | "organization" },
+                    credential: { source: source as CredentialSource },
                   },
                 })
               }
+              // The trigger shows the compact label; descriptions live in the list.
+              items={Object.fromEntries(
+                credentials.map((choice) => [
+                  choice.value,
+                  <ProviderOptionLabel
+                    key={choice.value}
+                    iconName={providerIconName}
+                    label={choice.label}
+                  />,
+                ]),
+              )}
               disabled={disabled}
             >
               <SelectTrigger id={`sandbox-credential-${name}`} className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="session_user">Person starting the Session</SelectItem>
-                <SelectItem value="agent">This Agent</SelectItem>
-                <SelectItem value="organization">Organization provider account</SelectItem>
+                {credentials.map((choice) => (
+                  <SelectItem key={choice.value} value={choice.value} className="items-start">
+                    <span className="flex min-w-0 flex-col items-start gap-0.5">
+                      <ProviderOptionLabel iconName={providerIconName} label={choice.label} />
+                      <span className="pl-6 text-xs whitespace-normal text-muted-foreground">
+                        {choice.description}
+                      </span>
+                    </span>
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
+            {selectedCredential ? (
+              <p className="text-xs text-muted-foreground">{selectedCredential.description}</p>
+            ) : null}
             <p className="text-xs text-muted-foreground">
-              User connections are managed in{" "}
+              Personal connections are managed in{" "}
               <Link href="/settings/agent-experience" className="underline underline-offset-2">
                 My agent experience
               </Link>
               ; Agent connections belong to its Virtual User.
             </p>
+            {hasTriggers && credentialSource === "session_user" ? (
+              // A trigger starts its session without a person, so the server
+              // falls back to the organization's sole account for the provider.
+              <p className="flex items-start gap-1.5 text-xs text-warning">
+                <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+                Triggered runs have no user account; they use the organization account.
+              </p>
+            ) : null}
           </div>
           {spec.target.credential?.source === "organization" ? (
             <div className="space-y-2">
-              <Label htmlFor={`sandbox-organization-account-${name}`}>Organization account</Label>
-              <Select
-                value={spec.target.credential.connection_id ?? ""}
-                onValueChange={(connection_id) =>
-                  onChange({
-                    ...spec,
-                    target: {
-                      ...spec.target,
-                      credential: { source: "organization", connection_id },
-                    },
-                  })
+              <Label
+                htmlFor={
+                  providerAccounts.length > 0 ? `sandbox-organization-account-${name}` : undefined
                 }
-                disabled={disabled}
               >
-                <SelectTrigger id={`sandbox-organization-account-${name}`} className="w-full">
-                  <SelectValue placeholder="Select an account" />
-                </SelectTrigger>
-                <SelectContent>
-                  {organizationConnections
-                    .filter((account) => account.provider === spec.target.provider)
-                    .map((account) => (
-                      <SelectItem key={account.id} value={account.id}>
-                        {account.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                <Link href="/sandbox-provider-accounts" className="underline underline-offset-2">
-                  Manage organization provider accounts
-                </Link>
-              </p>
+                Organization account
+              </Label>
+              {providerAccounts.length > 0 ? (
+                <>
+                  <Select
+                    value={spec.target.credential.connection_id ?? ""}
+                    onValueChange={(connection_id) =>
+                      onChange({
+                        ...spec,
+                        target: {
+                          ...spec.target,
+                          credential: { source: "organization", connection_id },
+                        },
+                      })
+                    }
+                    disabled={disabled}
+                  >
+                    <SelectTrigger id={`sandbox-organization-account-${name}`} className="w-full">
+                      <SelectValue placeholder="Select an account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {providerAccounts.map((account) => (
+                        <SelectItem key={account.id} value={account.id}>
+                          <ProviderOptionLabel
+                            iconName={providerIconName}
+                            label={`${providerName} · ${account.name}`}
+                          />
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    <Link href="/sandboxes/accounts" className="underline underline-offset-2">
+                      Manage organization provider accounts
+                    </Link>
+                  </p>
+                </>
+              ) : (
+                <div className="flex items-start gap-2 border border-dashed px-3 py-2.5 text-xs text-muted-foreground">
+                  <ProviderIcon iconName={providerIconName} className="mt-0.5 size-4 shrink-0" />
+                  <p>
+                    This organization has no {providerName} account yet.{" "}
+                    <Link
+                      href="/sandboxes/accounts"
+                      className="text-foreground underline underline-offset-2"
+                    >
+                      Add a {providerName} account
+                    </Link>{" "}
+                    in Provider accounts, then pick it here.
+                  </p>
+                </div>
+              )}
             </div>
           ) : null}
           {modal ? (
@@ -746,10 +852,13 @@ export function SandboxPolicyEditor({
   onChange,
   disabled = false,
   definitionMode = false,
+  hasTriggers = false,
 }: {
   value: SandboxPolicy | null;
   onChange: (value: SandboxPolicy | null) => void;
   disabled?: boolean;
+  /** The Agent has triggers, whose sessions start without a person. */
+  hasTriggers?: boolean;
   /** Edit one reusable Sandbox Template definition, not an Agent binding policy. */
   definitionMode?: boolean;
 }) {
@@ -869,6 +978,7 @@ export function SandboxPolicyEditor({
           isDefault={value?.default === name}
           targets={targets}
           organizationConnections={organizationConnections}
+          hasTriggers={hasTriggers}
           disabled={disabled}
           onChange={(next) => update(name, { ...next, template_revision_id: undefined })}
           onRename={(next) => rename(name, next)}
@@ -905,7 +1015,7 @@ export function SandboxPolicyEditor({
                   </Button>
                 ))}
               </div>
-              <Link href="/sandbox-templates" className="text-xs text-muted-foreground underline">
+              <Link href="/sandboxes/templates" className="text-xs text-muted-foreground underline">
                 Manage Sandbox Templates
               </Link>
             </>

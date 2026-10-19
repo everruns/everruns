@@ -1,6 +1,6 @@
 ---
 title: everruns users
-description: "People in the current organization. CLI reference for everruns users."
+description: "People in the current organization. CLI reference for everruns users: usage, flags and examples."
 sidebar:
   label: users
 appliesTo: [platform, cloud]

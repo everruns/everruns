@@ -111,17 +111,6 @@ export async function cancelWorkflow(workflowId: string): Promise<void> {
   await api.post(`/v1/durable/workflows/${workflowId}/cancel`);
 }
 
-export async function signalWorkflow(
-  workflowId: string,
-  signalType: string,
-  payload?: Record<string, unknown>,
-): Promise<void> {
-  await api.post(`/v1/durable/workflows/${workflowId}/signal`, {
-    signal_type: signalType,
-    payload: payload || {},
-  });
-}
-
 // ============================================
 // Tasks
 // ============================================

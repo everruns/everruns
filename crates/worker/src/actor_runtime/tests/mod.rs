@@ -5,7 +5,9 @@
 //! returns, or a host flush that never returns), followed by the lease
 //! running out. Another worker on the same index then resumes from the log.
 
+mod cancels;
 mod resolutions;
+mod stalls;
 mod store;
 mod turns;
 mod wakeups;
@@ -18,11 +20,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
+use everruns_contracts::driver_registry::{ChatDriver, LlmCallConfig, LlmResponseStream, Message};
+use everruns_contracts::runtime_provider::{Provider, ProviderEndpoint};
 use everruns_contracts::tool_types::{
     ClientSideTool, SideEffectClass, ToolCall, ToolDefinition, ToolHints,
 };
 use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
-use everruns_llmsim::{LlmSimConfig, LlmSimRuntimeExt};
+use everruns_llmsim::{LLMSIM_MODEL_ID, LlmSimConfig, LlmSimDriver};
 use serde_json::{Value, json};
 use tokio::sync::Notify;
 
@@ -34,6 +38,7 @@ use crate::host::{
     AcceptedTurnInput, AgentBuilder, HarnessBuilder, InProcessRuntime, OpenTurn,
     RuntimeHostAdapter, SessionBuilder, TurnDrive, TurnLogFold,
 };
+use everruns_contracts::runtime::ToolContext;
 use store::MemoryActors;
 
 const ORG_ID: i64 = 1;
@@ -44,6 +49,8 @@ const WAIT: Duration = Duration::from_secs(10);
 #[derive(Default)]
 struct ToolGate {
     calls: Mutex<Vec<String>>,
+    /// Each call's idempotency key, in call order.
+    keys: Mutex<Vec<Option<String>>>,
     /// Hold the first call of any gated tool until `release`.
     hold_first: AtomicBool,
     held: Notify,
@@ -68,10 +75,26 @@ impl Tool for GatedTool {
         json!({ "type": "object", "properties": {} })
     }
     fn hints(&self) -> ToolHints {
-        ToolHints::default().with_side_effect_class(self.class.clone())
+        // One class: a batch runs its calls in order, so a test can hold the
+        // first while the next has not started.
+        ToolHints::default()
+            .with_side_effect_class(self.class.clone())
+            .with_concurrency_class("actor_test")
+    }
+    fn requires_context(&self) -> bool {
+        true
     }
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        unreachable!("the act runs tools with a context")
+    }
+    async fn execute_with_context(
+        &self,
+        _arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
         self.gate.calls.lock().unwrap().push(self.name.to_string());
+        let key = context.idempotency_key.clone();
+        self.gate.keys.lock().unwrap().push(key);
         if self.gate.hold_first.swap(false, Ordering::SeqCst) {
             self.gate.held.notify_one();
             self.gate.release.notified().await;
@@ -113,6 +136,73 @@ impl Capability for GatedTools {
     }
 }
 
+/// What the model was asked, and a gate that holds one model call open.
+struct ModelGate {
+    calls: AtomicUsize,
+    /// The model call (0-based) that never answers; `usize::MAX` = none.
+    block_call: AtomicUsize,
+    entered: Notify,
+    /// Every model call's messages, rendered for `contains` checks.
+    seen: Mutex<Vec<String>>,
+    /// When set, every model call answers that the session is gone, as the
+    /// control plane does once the session was deleted (EVE-1235).
+    deleted_session: Mutex<Option<SessionId>>,
+}
+
+impl Default for ModelGate {
+    fn default() -> Self {
+        Self {
+            calls: AtomicUsize::new(0),
+            block_call: AtomicUsize::new(usize::MAX),
+            entered: Notify::new(),
+            seen: Mutex::default(),
+            deleted_session: Mutex::default(),
+        }
+    }
+}
+
+impl ModelGate {
+    /// Hold model call `call` (0-based) open until its worker is killed. The
+    /// held call never reaches llmsim, so llmsim's script sees only the calls
+    /// that answer.
+    fn block(&self, call: usize) {
+        self.block_call.store(call, Ordering::SeqCst);
+    }
+
+    fn seen(&self) -> Vec<String> {
+        self.seen.lock().unwrap().clone()
+    }
+}
+
+/// llmsim behind a [`ModelGate`].
+struct GatedModel {
+    gate: Arc<ModelGate>,
+    inner: LlmSimDriver,
+}
+
+#[async_trait]
+impl ChatDriver for GatedModel {
+    async fn chat_completion_stream(
+        &self,
+        endpoint: &ProviderEndpoint,
+        messages: Vec<Message>,
+        config: &LlmCallConfig,
+    ) -> everruns_contracts::error::Result<LlmResponseStream> {
+        self.gate.seen.lock().unwrap().push(format!("{messages:?}"));
+        let call = self.gate.calls.fetch_add(1, Ordering::SeqCst);
+        if let Some(session_id) = *self.gate.deleted_session.lock().unwrap() {
+            return Err(everruns_contracts::error::AgentLoopError::session_not_found(session_id));
+        }
+        if call == self.gate.block_call.load(Ordering::SeqCst) {
+            self.gate.entered.notify_one();
+            std::future::pending::<()>().await;
+        }
+        self.inner
+            .chat_completion_stream(endpoint, messages, config)
+            .await
+    }
+}
+
 type Hook = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 /// What the hosts saw, and a flush that can be made to never return.
@@ -121,6 +211,8 @@ struct Probe {
     flushes: AtomicUsize,
     /// The flush (1-based) that never returns; 0 = none.
     hang_at_flush: AtomicUsize,
+    /// The flush (1-based) that reports a queued store gave up; 0 = none.
+    fail_at_flush: AtomicUsize,
     hung: Notify,
     running: Mutex<HashSet<SessionId>>,
     overlapped: AtomicBool,
@@ -130,6 +222,13 @@ struct Probe {
     /// Runs (once) where a fresh turn's host is built: after its input was
     /// taken, before its `turn.started`.
     at_turn_host: Mutex<Option<Box<dyn FnOnce() + Send>>>,
+    /// Hold the next fresh turn's input assignment (a pre-turn control-plane
+    /// write that writes no event) forever, once.
+    hang_inputs_consumed: AtomicBool,
+    checkpoints: AtomicUsize,
+    /// The checkpoint (1-based) that never returns; 0 = none. The lease's
+    /// first is its setup's, the second the one before its release.
+    hang_at_checkpoint: AtomicUsize,
 }
 
 #[derive(Clone)]
@@ -158,12 +257,47 @@ impl ActorHosts for TestHosts {
         self.runtime.clone()
     }
 
-    async fn flush(&self, _host: &InProcessRuntime) {
+    async fn checkpoint(
+        &self,
+        _host: &InProcessRuntime,
+        _tail: &[Event],
+    ) -> everruns_contracts::error::Result<()> {
+        let checkpoint = self.probe.checkpoints.fetch_add(1, Ordering::SeqCst) + 1;
+        if checkpoint == self.probe.hang_at_checkpoint.load(Ordering::SeqCst) {
+            self.probe.hung.notify_one();
+            std::future::pending::<()>().await;
+        }
+        Ok(())
+    }
+
+    async fn inputs_consumed(
+        &self,
+        _drive: &TurnDrive,
+        _inputs: &[MessageId],
+    ) -> everruns_contracts::error::Result<()> {
+        if self
+            .probe
+            .hang_inputs_consumed
+            .swap(false, Ordering::SeqCst)
+        {
+            self.probe.hung.notify_one();
+            std::future::pending::<()>().await;
+        }
+        Ok(())
+    }
+
+    async fn flush(&self, _host: &InProcessRuntime) -> everruns_contracts::error::Result<()> {
         let flush = self.probe.flushes.fetch_add(1, Ordering::SeqCst) + 1;
         if flush == self.probe.hang_at_flush.load(Ordering::SeqCst) {
             self.probe.hung.notify_one();
             std::future::pending::<()>().await;
         }
+        if flush == self.probe.fail_at_flush.load(Ordering::SeqCst) {
+            return Err(everruns_contracts::error::AgentLoopError::store(
+                "queued events were not stored: pool timed out",
+            ));
+        }
+        Ok(())
     }
 
     async fn turn_ended(&self, drive: &TurnDrive) {
@@ -181,7 +315,9 @@ struct Fixture {
     session_id: SessionId,
     store: Arc<MemoryActors>,
     gate: Arc<ToolGate>,
+    model: Arc<ModelGate>,
     poison_attempts: u32,
+    stall_timeout: Duration,
 }
 
 fn call(id: &str, name: &str) -> ToolCall {
@@ -205,6 +341,7 @@ impl Fixture {
         let agent_id = AgentId::new();
         let session_id = SessionId::new();
         let gate = Arc::new(ToolGate::default());
+        let model_gate = Arc::new(ModelGate::default());
         let client_tool = |name: &str| {
             ToolDefinition::ClientSide(ClientSideTool::new(
                 name,
@@ -237,7 +374,16 @@ impl Fixture {
                     .build(),
             )
             .session(session)
-            .llm_sim_as_default(model)
+            .provider_with_default_model(
+                Provider::new(
+                    "llmsim",
+                    GatedModel {
+                        gate: model_gate.clone(),
+                        inner: LlmSimDriver::new(model),
+                    },
+                ),
+                LLMSIM_MODEL_ID,
+            )
             .build()
             .await
             .expect("runtime builds");
@@ -246,7 +392,9 @@ impl Fixture {
             runtime,
             session_id,
             gate,
+            model: model_gate,
             poison_attempts: 3,
+            stall_timeout: crate::host::session_actor::DEFAULT_ACTOR_STALL_TIMEOUT,
         }
     }
 
@@ -270,6 +418,7 @@ impl Fixture {
             // Small pages, so the journal reads page.
             journal_page: 3,
             max_leased_per_org: None,
+            stall_timeout: self.stall_timeout,
         };
         (ActorRuntime::new(hosts, self.store.clone(), config), probe)
     }
@@ -380,6 +529,10 @@ impl Fixture {
 
     fn tool_calls(&self) -> Vec<String> {
         self.gate.calls.lock().unwrap().clone()
+    }
+
+    fn tool_keys(&self) -> Vec<Option<String>> {
+        self.gate.keys.lock().unwrap().clone()
     }
 
     /// The session has nothing to run and nobody holds it.

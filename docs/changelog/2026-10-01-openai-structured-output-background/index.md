@@ -15,7 +15,22 @@ links:
 A direct model call can require a reply that matches a JSON Schema. Everruns
 sends it as `text.format` on the OpenAI Responses API and `response_format` on
 Chat Completions. A driver that cannot enforce the schema refuses the call
-instead of dropping it.
+instead of dropping it. In the Framework:
+
+```rust
+use everruns::{Model, OpenAI};
+use everruns::llm::ResponseFormat;
+use serde_json::json;
+
+let schema = json!({"type": "object", "properties": {"sentiment": {"type": "string"}},
+    "required": ["sentiment"], "additionalProperties": false});
+let answer = Model::new("gpt-6.1-sol", OpenAI::from_env()?)
+    .completion()
+    .user("I love it")
+    .response_format(ResponseFormat::json_schema("sentiment", schema))
+    .text()
+    .await?;
+```
 
 Calls at `xhigh` and `max` reasoning effort on OpenAI and Azure run as
 background responses. If the stream drops or the worker restarts, Everruns

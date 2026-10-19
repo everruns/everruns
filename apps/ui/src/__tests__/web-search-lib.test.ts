@@ -1,4 +1,5 @@
 import {
+  accountLabel,
   attemptStatus,
   automaticEntries,
   automaticOrder,
@@ -24,6 +25,15 @@ function account(id: string, name: string, status = "ready"): SearchAccountSumma
     connected_at: "2026-10-11T00:00:00Z",
   };
 }
+
+describe("accountLabel", () => {
+  it("names the connector, then the account", () => {
+    expect(accountLabel({ provider: "cloudflare_web_search", name: "Team" })).toBe(
+      "Cloudflare Web Search · Team",
+    );
+    expect(accountLabel({ provider: "parallel", name: "parallel" })).toBe("Parallel");
+  });
+});
 
 describe("parseWebSearchDetails", () => {
   it("reads web search details and ignores anything else", () => {
@@ -120,6 +130,23 @@ describe("Automatic order", () => {
     expect(entries.map((entry) => entry.id)).toEqual(["native", "free"]);
   });
 
+  it("puts the deployment's own search before free search unless the order places it", () => {
+    const hosted = { name: "Everruns search" };
+    const natural = automaticEntries({}, [account(BRAVE, "Team")], hosted);
+    expect(natural.map((entry) => entry.id)).toEqual(["native", BRAVE, "hosted", "free"]);
+    expect(natural[2]).toMatchObject({
+      kind: "hosted",
+      label: "Everruns search",
+    });
+    const first = automaticEntries({ automatic_order: ["hosted", "native", "free"] }, [], hosted);
+    expect(first.map((entry) => entry.id)).toEqual(["hosted", "native", "free"]);
+    // A deployment without its own search drops a stored entry.
+    expect(automaticEntries({ automatic_order: ["hosted", "free"] }, []).map((e) => e.id)).toEqual([
+      "native",
+      "free",
+    ]);
+  });
+
   it("moves entries but never past free search", () => {
     const entries = automaticEntries({}, [account(BRAVE, "Team")]);
     const up = moveAutomaticEntry(entries, 1, -1);
@@ -161,7 +188,11 @@ describe("describePlan", () => {
       ...preview,
       model_has_native: false,
       steps: [
-        { ...preview.steps[0], available: false, note: "This model has no search of its own" },
+        {
+          ...preview.steps[0],
+          available: false,
+          note: "This model has no search of its own",
+        },
         preview.steps[2],
       ],
     });

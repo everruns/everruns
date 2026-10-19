@@ -1,20 +1,19 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
-// The process composes runtime services only through its entry crate,
-// `everruns-durable-engine`.
-pub use everruns_durable_engine::{core, durable, engine, host};
-// Worker-only core surface. The worker's own `everruns-core` dependency selects
-// these features; durable-engine does not need them.
-pub use everruns_durable_engine::core::mcp;
+// Worker source reaches core and the durable queue through these re-exports
+// (`crate::core`, `crate::durable`, ...), never by crate name; see
+// `scripts/lib/check-durable-isolation.sh`.
+pub use everruns_core as core;
+pub use everruns_core::{engine, host, mcp};
+pub use everruns_durable as durable;
 pub mod activities;
+pub mod actor_lease_store;
+pub mod actor_runtime;
 pub mod adapters;
 pub mod app_builder;
 mod catalog_cli;
-pub use everruns_durable_engine::durable_runner;
-pub use everruns_durable_engine::durable_turn;
 pub mod grpc_actor_lease_store;
 pub mod grpc_adapters;
 pub mod grpc_command_transport;
-pub mod grpc_durable_runner;
 pub mod grpc_durable_store;
 pub mod grpc_files_adapter;
 mod grpc_partial_stream;
@@ -36,17 +35,11 @@ mod reveal_storage;
 pub mod runtime_host;
 pub mod session_lifecycle;
 pub mod session_task_reaper;
-mod stream_heartbeater;
 mod system_decisions;
-pub mod turn_reads;
-pub use everruns_durable_engine::task_error;
-pub use everruns_durable_engine::task_heartbeat;
-pub use everruns_durable_engine::turn_store;
+pub mod task_driver;
+pub mod task_store;
 pub mod task_wakeup;
-pub use everruns_durable_engine::turn_driver;
-pub mod actor_lease_store;
-pub mod actor_runtime;
-pub mod turn_host;
+pub mod turn_reads;
 pub mod unified_worker;
 #[cfg(test)]
 mod unified_worker_test_adapters;
@@ -56,12 +49,7 @@ pub mod worker_adapters;
 pub mod write_behind;
 
 // Re-export main types
-pub use durable_runner::{DurableRunner, DurableTaskNotifier, DurableTurnInput, DurableTurnOutput};
-pub use grpc_durable_runner::{connect_grpc_durable_runner, grpc_durable_runner_from_env};
-pub use grpc_durable_store::{
-    GrpcDurableStore, HeartbeatResponse as GrpcHeartbeatResponse,
-    WorkflowStatus as GrpcWorkflowStatus,
-};
+pub use grpc_durable_store::GrpcDurableStore;
 
 // Re-export LLM driver factory helpers
 pub use adapters::{create_chat_driver, create_driver_registry};
@@ -83,7 +71,6 @@ pub use actor_lease_store::{
 pub use grpc_actor_lease_store::GrpcActorLeaseStore;
 pub use grpc_worker_adapters::GrpcWorkerAdapters;
 pub use runtime_host::WorkerRuntimeHost;
-pub use stream_heartbeater::GrpcTaskHeartbeater;
 pub use unified_worker::{ShutdownHandle, TaskWorker, TaskWorkerConfig};
 pub use worker_adapters::{
     OrgAdapter, SessionAdapter, TurnContext as WorkerTurnContext, WorkerAdapters,

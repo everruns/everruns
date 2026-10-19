@@ -7,7 +7,7 @@ use everruns_core::ag_ui::{
     Event, RunErrorEvent, RunFinishedOutcome, SCHEMA_JSON, SubagentFinishedOutcome,
 };
 use everruns_core::events::{
-    OutputMessageCompletedData, OutputMessageDeltaData, ToolCompletedData,
+    OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageStartedData, ToolCompletedData,
 };
 use everruns_core::{ContentPart, RuntimeMessage, ToolCallContentPart, ToolResultContentPart};
 use serde_json::{Value, json};
@@ -871,4 +871,75 @@ fn todo_items_carry_only_the_tools_fields() {
         snapshot.snapshot,
         json!({ "todos": [{ "content": "Plan", "activeForm": "Planning", "status": "pending" }] })
     );
+}
+
+/// A retried stream restarts its text under the same message id. AG-UI
+/// content only appends, so the retry goes to a fresh AG-UI message instead of
+/// repeating text after the cut-off attempt; the completion lands there too.
+#[test]
+fn a_restarted_stream_moves_to_a_fresh_message() {
+    // With a repeated start (a retry) the new text may even extend the old;
+    // without one (resume after a crash) it shows as text that stops extending.
+    for (announced, restart) in [(true, "Hello world"), (false, "Hello")] {
+        let mut projector = Projector::new("t", "r", policy());
+        let answer = MessageId::new();
+        let streamed = |delta: &str, accumulated: &str| {
+            serde_json::to_value(OutputMessageDeltaData {
+                turn_id: TurnId::new(),
+                message_id: answer,
+                delta: delta.into(),
+                accumulated: accumulated.into(),
+                phase: None,
+            })
+            .unwrap()
+        };
+        let started = serde_json::to_value(OutputMessageStartedData {
+            reasoning_state: None,
+            turn_id: TurnId::new(),
+            message_id: answer,
+            model: None,
+            iteration: None,
+            phase: None,
+        })
+        .unwrap();
+        projector.project("output.message.started", &started);
+        projector.project("output.message.delta", &streamed("Hel", "Hel"));
+        projector.project("output.message.delta", &streamed("lo wor", "Hello wor"));
+        if announced {
+            projector.project("output.message.started", &started);
+        }
+        projector.project("output.message.delta", &streamed(restart, restart));
+        let rest = &"Hello world."[restart.len()..];
+        projector.project("output.message.delta", &streamed(rest, "Hello world."));
+        projector.project(
+            "output.message.completed",
+            &serde_json::to_value(OutputMessageCompletedData::new(
+                RuntimeMessage::assistant("Hello world.").with_id(answer),
+            ))
+            .unwrap(),
+        );
+        let events: Vec<Event> = projector.drain().collect();
+        assert_conformant(&events);
+        let values: Vec<Value> = events
+            .iter()
+            .map(|event| serde_json::to_value(event).unwrap())
+            .collect();
+        let text = |id: &str| -> String {
+            values
+                .iter()
+                .filter(|v| v["type"] == "TEXT_MESSAGE_CONTENT" && v["messageId"] == id)
+                .map(|v| v["delta"].as_str().unwrap().to_string())
+                .collect()
+        };
+        let starts: Vec<&str> = values
+            .iter()
+            .filter(|v| v["type"] == "TEXT_MESSAGE_START")
+            .map(|v| v["messageId"].as_str().unwrap())
+            .collect();
+        assert_eq!(starts.len(), 2, "{values:?}");
+        assert_eq!(starts[0], answer.uuid().to_string());
+        assert_eq!(text(starts[0]), "Hello wor");
+        assert_eq!(text(starts[1]), "Hello world.");
+        assert!(projector.is_finished());
+    }
 }

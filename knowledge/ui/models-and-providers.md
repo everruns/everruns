@@ -14,8 +14,9 @@ tags:
 ## Purpose
 
 One page for everything that decides which models agents can use: the
-models page (`apps/ui/src/app/(main)/models/page.tsx`) under Registries,
-with three tabs. **Models** lists every model from every provider, **Providers**
+models page (`apps/ui/src/app/(main)/models/(tabs)/`) under Registries,
+with three tabs at their own paths: `/models`, `/models/providers` and
+`/models/defaults`. **Models** lists every model from every provider, **Providers**
 lists the connected vendor accounts, **Defaults** holds the org-wide picks per
 service. The provider record itself is described in
 [Providers](../foundations/providers.md).
@@ -26,7 +27,8 @@ service. The provider record itself is described in
   choosing its models is one task, and a provider is something an org builds
   and maintains like an agent or MCP server, not a workspace preference.
   `/settings/providers` and `/settings/providers/{id}` redirect to
-  `/models?tab=providers` and `/models/providers/{id}` so old links keep working.
+  `/models/providers` and `/models/providers/{id}` so old links keep working,
+  as do retired `/models?tab=…` links.
 - **One permission for both.** Providers and their models are one registry, so
   `provider.*` and `model.*` policies are both gated by `org:models:view` and
   `org:models:manage` ([permissions](../../crates/core/src/permissions.rs)).
@@ -61,10 +63,10 @@ service. The provider record itself is described in
   on its row. The decision default accepts calibrated models only. When system
   decisions use the org's own decision model there is no fallback to deployment
   keys, and the row says so.
-- **Managed and personal providers.** Host-managed providers keep their
-  credential and catalog with the host, so credentials are read-only; choosing
-  which of their models to enable stays with the org. A personal ChatGPT provider
-  is visible only to its owner and is skipped by shared defaults.
+- **Managed providers.** Host-managed providers keep their credential and
+  catalog with the host, so credentials are read-only; choosing which of their
+  models to enable stays with the org. The framework's ChatGPT Plan driver is
+  excluded from Platform provider and model lists, connect setup, and defaults.
 
 ## Limits
 

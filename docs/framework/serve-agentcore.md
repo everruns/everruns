@@ -1,6 +1,6 @@
 ---
 title: Serve on Amazon Bedrock AgentCore (experimental)
-description: Deploy a serve app to Amazon Bedrock AgentCore Runtime with everruns-serve-agentcore, with sessions on session storage, tools in the microVM and models through AgentCore Gateway.
+description: "Deploy a serve app to Amazon Bedrock AgentCore Runtime with everruns-serve-agentcore: sessions on session storage, tools in the microVM, models via the Gateway."
 sidebar:
   order: 2
 ---

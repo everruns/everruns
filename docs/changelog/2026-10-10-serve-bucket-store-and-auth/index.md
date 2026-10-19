@@ -6,9 +6,10 @@ kind: feature
 significance: notable
 products: [framework]
 surfaces: [code, cli, operations]
+release: "0.48.0"
 links:
   docs: [/framework/serve/#keep-the-data-in-a-bucket, /framework/serve/#authentication]
-  prs: [everruns/everruns#4515, everruns/everruns#4518, everruns/everruns#4485]
+  prs: [everruns/everruns#4515, everruns/everruns#4518, everruns/everruns#4485, everruns/everruns#4648]
 ---
 
 A serve daemon can now keep its data directory in an S3 bucket or any
@@ -23,8 +24,10 @@ lease, restores the data and carries on.
 
 serve apps can also require a credential on agent routes: static API keys from
 code, `serve.toml` or `SERVE_API_KEYS`, OIDC, or OAuth 2.0 introspection. The
-agent card stays public. At boot, serve resumes sessions active in the last
+agent card stays public, and the A2A Agent Card lists the accepted methods as
+security schemes. `eval --against` reaches a protected app with the credential
+in `SERVE_CREDENTIAL`. At boot, serve resumes sessions active in the last
 seven days and re-runs an unfinished tool call only when that is safe.
 
 See [Keep the data in a bucket](/framework/serve/#keep-the-data-in-a-bucket),
-[Authentication](/framework/serve/#authentication) and [#4515](https://github.com/everruns/everruns/pull/4515), [#4518](https://github.com/everruns/everruns/pull/4518), [#4485](https://github.com/everruns/everruns/pull/4485).
+[Authentication](/framework/serve/#authentication) and [#4515](https://github.com/everruns/everruns/pull/4515), [#4518](https://github.com/everruns/everruns/pull/4518), [#4485](https://github.com/everruns/everruns/pull/4485), [#4648](https://github.com/everruns/everruns/pull/4648).

@@ -4,6 +4,7 @@
 * [Migrations Specification](migrations.md) - Database migration naming, squashing, ordering, conflict resolution.
 * [Caching and Distributed Rate Limiting](cache.md) - Valkey rate limiting and in-process moka caching.
 * [Durable Execution Engine Specification](durable-execution-engine.md) - PostgreSQL-backed durable workflow engine.
+* [Execution Monitoring](monitoring.md) - Scoped fleet execution, worker ownership, and actor lease visibility.
 * [Scheduled Tasks Specification](scheduled-tasks.md) - Cron-based scheduled tasks.
 * [Prometheus Metrics Endpoint](prometheus-metrics.md) - Prometheus `/metrics` endpoint and scrape configuration.
 * [Observability Providers](observability.md) - Observability providers.

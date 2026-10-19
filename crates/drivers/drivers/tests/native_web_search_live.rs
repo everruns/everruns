@@ -1,6 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Live tests for native web search (`everruns/web_search`) on the OpenAI
-//! Responses driver and the OpenRouter driver.
+//! Responses, OpenRouter, Anthropic and Gemini drivers.
 //!
 //! Each sends the shared `web_search` function tool with a native search
 //! request, asks a question that needs the web, and checks that the provider
@@ -11,7 +11,7 @@
 //! Key-gated, never ignored: a test without its key returns early, and one
 //! whose account is out of credits or quota says so and returns, because that
 //! is a billing condition rather than a code regression. Run:
-//!   `doppler run -- cargo test -p everruns-drivers --features openai,openrouter --test native_web_search_live -- --nocapture`
+//!   `doppler run -- cargo test -p everruns-drivers --features openai,openrouter,anthropic,gemini --test native_web_search_live -- --nocapture`
 
 use everruns_contracts::driver_registry::{LlmCallConfig, LlmStreamEvent, Message, MessageRole};
 use everruns_contracts::model::ReasoningEffort;
@@ -129,4 +129,33 @@ async fn openrouter_answers_the_web_search_tool_with_the_native_engine() {
     };
     let provider = everruns_drivers::openrouter::provider("openrouter", api_key);
     assert_searched_natively(provider, config("openai/gpt-6-luna")).await;
+}
+
+/// A vendor whose search OpenRouter reports as its own `openrouter:web_search`
+/// item and `server_tool_use_details`, not a `web_search_call`.
+#[tokio::test]
+async fn openrouter_counts_a_claude_search_through_its_server_tool() {
+    let Some(api_key) = key("OPENROUTER_API_KEY") else {
+        return;
+    };
+    let provider = everruns_drivers::openrouter::provider("openrouter", api_key);
+    assert_searched_natively(provider, config("anthropic/claude-haiku-4.5")).await;
+}
+
+#[tokio::test]
+async fn anthropic_answers_the_web_search_tool_with_its_server_tool() {
+    let Some(api_key) = key("ANTHROPIC_API_KEY") else {
+        return;
+    };
+    let provider = everruns_drivers::anthropic::provider("anthropic", api_key);
+    assert_searched_natively(provider, config("claude-haiku-5-5")).await;
+}
+
+#[tokio::test]
+async fn gemini_answers_the_web_search_tool_with_google_search() {
+    let Some(api_key) = key("GEMINI_API_KEY") else {
+        return;
+    };
+    let provider = everruns_drivers::gemini::provider("gemini", api_key);
+    assert_searched_natively(provider, config("gemini-3.8-flash")).await;
 }

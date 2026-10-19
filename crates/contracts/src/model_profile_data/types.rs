@@ -11,6 +11,17 @@ pub const MID_CONVERSATION_SYSTEM_PARAMETER: &str = "mid_conversation_system";
 /// Model-profile parameter for message expiry.
 pub const CLEAR_AT_PARAMETER: &str = "clear_at";
 
+/// Model-profile parameter for tool changes sent inside the conversation
+/// (`tool_addition` by full definition), so the request's `tools` stay fixed.
+/// Set only after a live round trip showed the cache surviving a change.
+pub const INLINE_TOOL_CHANGES_PARAMETER: &str = "inline_tool_changes";
+
+/// Model-profile parameter for models that keep the cache when tools are
+/// added inside the conversation but not when a definition is replaced (a
+/// deferred stub becoming its schema). Requests with a replacement fall back
+/// to sending the tools wanted now. Set only after a live round trip.
+pub const INLINE_TOOL_ADDITIONS_PARAMETER: &str = "inline_tool_additions";
+
 /// A typed service a provider driver can offer.
 ///
 /// Drivers declare supported services in code; catalog models persist their
@@ -483,6 +494,10 @@ pub struct ModelProfile {
     /// surfaces that do not opt in remain disabled.
     #[serde(default)]
     pub supports_server_compaction: bool,
+    /// The vendor's model card or system card for this model: capabilities,
+    /// evaluations, safety testing and known limits, in the vendor's words.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_card_url: Option<String>,
     /// Typed semantics when this profile describes a decision model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decisions: Option<DecisionModelProfile>,
@@ -524,6 +539,7 @@ impl ModelProfile {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }
     }

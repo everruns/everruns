@@ -11,8 +11,8 @@
 //! - Events are subscribed before the message is sent, so the first deltas of
 //!   a fast turn are never missed. A message that steers a running turn gets
 //!   no delivery of its own: the running turn's delivery carries the answer.
-//! - A pending delivery is saved at the turn's first durable event and cleared
-//!   when it ends; [`ChannelHost::recover`] replays the rest after a restart.
+//! - A pending delivery is saved before awaiting turn assignment and cleared
+//!   when it ends or its input steers an existing delivery; [`ChannelHost::recover`] replays the rest after a restart.
 //!   It is held under a lease the running delivery renews, so processes
 //!   sharing a store recover each delivery once.
 //! - Channels are built in or resolved per call. A host whose channels are
@@ -28,6 +28,9 @@
 //!   through [`ChannelHost::conversation`] and [`ChannelHost::stream_turn`],
 //!   and encode the turn's events in their own protocol.
 
+mod admission;
+mod delivery_task;
+
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -39,6 +42,7 @@ use futures::stream::BoxStream;
 use serde_json::{Value, json};
 use tracing::{debug, warn};
 
+use super::attachments::{AttachmentIntake, AttachmentPolicy, AttachmentStore, ReceivedAttachment};
 use super::{
     ChannelDeliveryAdapter, ChannelDriver, ChannelError, ChannelRequest, ChannelResponse,
     ChannelStore, ControlAction, DeliveryEvent, DeliveryOptions, DeliveryStep, DeliveryTarget,
@@ -46,6 +50,7 @@ use super::{
     InboundMessage, InboundRoute, MemoryChannelStore, PendingDelivery, SessionBinding,
     TurnDelivery, build_session_routing_tag,
 };
+use everruns_contracts::runtime::egress::EgressService;
 use everruns_contracts::runtime::events::TOOL_CALL_REQUESTED;
 use everruns_contracts::runtime::message::ContentPart;
 use everruns_contracts::runtime::message_retriever::InputMessage;
@@ -254,16 +259,50 @@ pub struct NewChannelSession {
 /// What sending a message did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SendOutcome {
+    /// Input committed before its executor assigned a turn.
+    Pending { input_message_id: String },
     /// A turn started for this input message.
     Started { input_message_id: String },
     /// The message steered the turn already running.
     Steered,
 }
 
+/// Authoritative delivery progress after input admission.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SendResolution {
+    /// Input still awaits preparation or turn assignment.
+    Pending,
+    /// The input belongs to this turn; legacy ports may omit its identity.
+    Assigned {
+        turn_id: Option<String>,
+        steered: bool,
+    },
+    /// Preparation rejected this input without starting a turn.
+    Rejected,
+    /// Host intervention is required; retain the pending delivery.
+    Suspended,
+}
+
 /// The session side of channels, implemented by each host. Every call names
 /// the channel, so a host that lost its in-memory sessions (a restart) can
 /// reopen one with the channel's agent, and a host with tenants reads them
 /// from the channel's scope.
+/// Stores a channel's files through its session port.
+struct PortStore<'a> {
+    port: &'a dyn ChannelSessionPort,
+    channel: &'a ChannelConfig,
+    session_id: Option<&'a str>,
+}
+
+#[async_trait]
+impl AttachmentStore for PortStore<'_> {
+    async fn store(&self, attachment: ReceivedAttachment) -> Result<ContentPart, ChannelError> {
+        self.port
+            .store_attachment(self.channel, self.session_id, attachment)
+            .await
+    }
+}
+
 #[async_trait]
 pub trait ChannelSessionPort: Send + Sync {
     /// Create a session for a channel's agent. Returns its id.
@@ -277,6 +316,20 @@ pub trait ChannelSessionPort: Send + Sync {
         session_id: &str,
         message: InputMessage,
     ) -> Result<SendOutcome, ChannelError>;
+
+    /// Resolve a committed input without activating execution. The default
+    /// preserves ports whose `send` already made the start/steer decision.
+    async fn resolve_send(
+        &self,
+        _channel: &ChannelConfig,
+        _session_id: &str,
+        _input_message_id: &str,
+    ) -> Result<SendResolution, ChannelError> {
+        Ok(SendResolution::Assigned {
+            turn_id: None,
+            steered: false,
+        })
+    }
 
     /// The session's events: live from now when `after` is `None`, else the
     /// durable events after that sequence followed by live ones.
@@ -306,6 +359,41 @@ pub trait ChannelSessionPort: Send + Sync {
         _history: Vec<InputMessage>,
     ) -> Result<(), ChannelError> {
         Ok(())
+    }
+
+    /// Store a file a message brought (see [`ReceivedAttachment`]) for
+    /// `session_id`, when the caller knows the session, and return the
+    /// content part that refers to it. An error becomes a note in the
+    /// message instead; a `BadRequest` reason is shown to the model, so it
+    /// says what was wrong with the file and nothing more. The default keeps
+    /// images inline and declines other files.
+    async fn store_attachment(
+        &self,
+        _channel: &ChannelConfig,
+        _session_id: Option<&str>,
+        attachment: ReceivedAttachment,
+    ) -> Result<ContentPart, ChannelError> {
+        use base64::Engine as _;
+        if attachment.media_type.starts_with("image/") {
+            return Ok(ContentPart::Image(
+                everruns_contracts::runtime::message::ImageContentPart::from_base64(
+                    base64::engine::general_purpose::STANDARD.encode(&attachment.data),
+                    attachment.media_type,
+                ),
+            ));
+        }
+        Err(ChannelError::BadRequest("this host keeps no files".into()))
+    }
+
+    /// The egress a channel's attachment downloads go through: the host's,
+    /// which a host with tenants scopes to the channel's, so the downloads
+    /// are attributed. The default leaves it as it is.
+    fn attachment_egress(
+        &self,
+        _channel: &ChannelConfig,
+        egress: Arc<dyn EgressService>,
+    ) -> Arc<dyn EgressService> {
+        egress
     }
 
     /// Apply a platform's control event to a session. The default ignores it.
@@ -364,6 +452,8 @@ struct Inner {
     /// This process, as a holder of delivery leases.
     holder: String,
     lease: Duration,
+    egress: Option<Arc<dyn EgressService>>,
+    attachments: AttachmentPolicy,
 }
 
 /// Runs channels against one host's sessions. Cheap to clone.
@@ -380,9 +470,25 @@ pub struct ChannelHostBuilder {
     resolver: Option<Arc<dyn ChannelResolver>>,
     flush_interval: Duration,
     lease: Duration,
+    egress: Option<Arc<dyn EgressService>>,
+    attachments: AttachmentPolicy,
 }
 
 impl ChannelHostBuilder {
+    /// Download files messages link to (a Slack file) through this egress
+    /// service. Without one, such files become notes.
+    pub fn egress(mut self, egress: Arc<dyn EgressService>) -> Self {
+        self.egress = Some(egress);
+        self
+    }
+
+    /// What the host takes from one message. Defaults to
+    /// [`AttachmentPolicy::default`].
+    pub fn attachment_policy(mut self, policy: AttachmentPolicy) -> Self {
+        self.attachments = policy;
+        self
+    }
+
     /// Persist bindings and pending deliveries here. Defaults to memory.
     pub fn store(mut self, store: Arc<dyn ChannelStore>) -> Self {
         self.store = Some(store);
@@ -439,6 +545,8 @@ impl ChannelHostBuilder {
                 flush_interval: self.flush_interval,
                 holder: uuid::Uuid::now_v7().to_string(),
                 lease: self.lease,
+                egress: self.egress,
+                attachments: self.attachments,
             }),
         }
     }
@@ -453,6 +561,8 @@ impl ChannelHost {
             resolver: None,
             flush_interval: DEFAULT_FLUSH_INTERVAL,
             lease: DEFAULT_DELIVERY_LEASE,
+            egress: None,
+            attachments: AttachmentPolicy::default(),
         }
     }
 
@@ -594,6 +704,56 @@ impl ChannelHost {
             .await
     }
 
+    /// Send `message` in conversation `key` of messaging channel `channel`
+    /// and deliver that turn's replies to `target`: the session a platform
+    /// message under the same key would land in, created and bound on first
+    /// use. For a schedule that speaks in an existing conversation (a Slack
+    /// DM) rather than opening a new one, as [`start`](Self::start) does.
+    pub async fn send_in_conversation<'a>(
+        &self,
+        channel: impl Into<ChannelRef<'a>>,
+        key: &str,
+        message: InputMessage,
+        target: DeliveryTarget,
+    ) -> Result<(Conversation, SendOutcome), ChannelError> {
+        let channel = self.channel(channel.into()).await?;
+        let driver = channel.require_driver()?;
+        let conversation = match self.inner.store.session_for(channel.name(), key).await? {
+            Some(session_id) => Conversation {
+                session_id,
+                created: false,
+            },
+            None => {
+                let created = self
+                    .inner
+                    .port
+                    .create_session(NewChannelSession {
+                        channel: channel.config.clone(),
+                        binding_key: Some(key.to_string()),
+                        title: title_for(
+                            message
+                                .content
+                                .iter()
+                                .find_map(|part| part.as_text())
+                                .unwrap_or_default(),
+                        ),
+                        metadata: json!({
+                            "channel": channel.name(),
+                            "kind": channel.platform(),
+                            "binding_key": key,
+                        }),
+                    })
+                    .await?;
+                self.bind_created(&channel, key, created).await?
+            }
+        };
+        let message = with_channel(message, channel.name());
+        let outcome = self
+            .send_and_deliver(&channel, &driver, &conversation.session_id, message, target)
+            .await?;
+        Ok((conversation, outcome))
+    }
+
     /// The session behind conversation `key` of streaming channel `channel`,
     /// created and bound on first use. `title` names a new session.
     pub async fn conversation<'a>(
@@ -625,6 +785,56 @@ impl ChannelHost {
             })
             .await?;
         self.bind_created(&channel, key, created).await
+    }
+
+    /// Content parts for files a streaming channel received with a message
+    /// (AG-UI media parts, A2A file parts), through the same intake messaging
+    /// channels use: each stored as an attachment or replaced by a note. The
+    /// caller adds them to the message it sends.
+    /// `policy` replaces the host's for this message when the surface needs a
+    /// stricter one (Public Chat's anonymous visitors).
+    pub async fn attachment_parts<'a>(
+        &self,
+        channel: impl Into<ChannelRef<'a>>,
+        session_id: Option<&str>,
+        attachments: &[InboundAttachment],
+        policy: Option<AttachmentPolicy>,
+    ) -> Result<Vec<ContentPart>, ChannelError> {
+        if attachments.is_empty() {
+            return Ok(Vec::new());
+        }
+        let channel = self.channel(channel.into()).await?;
+        Ok(self
+            .intake(&channel.config, session_id, attachments, policy)
+            .await)
+    }
+
+    /// `attachments` through the intake, stored by the port for `channel`,
+    /// under `policy` or the host's.
+    async fn intake(
+        &self,
+        channel: &ChannelConfig,
+        session_id: Option<&str>,
+        attachments: &[InboundAttachment],
+        policy: Option<AttachmentPolicy>,
+    ) -> Vec<ContentPart> {
+        let store = PortStore {
+            port: self.inner.port.as_ref(),
+            channel,
+            session_id,
+        };
+        AttachmentIntake {
+            store: &store,
+            egress: self
+                .inner
+                .egress
+                .clone()
+                .map(|egress| self.inner.port.attachment_egress(channel, egress)),
+            policy: policy.unwrap_or(self.inner.attachments),
+            source: &channel.name,
+        }
+        .parts(attachments)
+        .await
     }
 
     /// A new session of streaming channel `channel` that no conversation key
@@ -682,14 +892,20 @@ impl ChannelHost {
             .port
             .send(&channel.config, session_id, message)
             .await?;
-        let turn = match &outcome {
-            SendOutcome::Started { input_message_id } => Some(input_message_id.clone()),
-            SendOutcome::Steered => None,
+        let events = match &outcome {
+            SendOutcome::Pending { input_message_id } => admission::assigned_events(
+                self.inner.port.clone(),
+                channel.config.clone(),
+                session_id.to_string(),
+                input_message_id.clone(),
+                events,
+            ),
+            SendOutcome::Started { input_message_id } => {
+                turn_events(events, Some(input_message_id.clone()))
+            }
+            SendOutcome::Steered => turn_events(events, None),
         };
-        Ok(StreamTurn {
-            outcome,
-            events: turn_events(events, turn),
-        })
+        Ok(StreamTurn { outcome, events })
     }
 
     /// The events of whichever turn runs next on a session of streaming
@@ -846,7 +1062,9 @@ impl ChannelHost {
             }
         };
 
-        let input = input_message(name, &message.event);
+        let input = self
+            .input_message(&channel.config, &session_id, &message.event)
+            .await;
         self.send_and_deliver(channel, driver, &session_id, input, message.reply_to)
             .await?;
         let mut response = ChannelResponse::accepted(&session_id);
@@ -883,6 +1101,22 @@ impl ChannelHost {
         })
     }
 
+    /// A platform message as session input: its text, then its attachments,
+    /// each stored or replaced by a note.
+    async fn input_message(
+        &self,
+        channel: &ChannelConfig,
+        session_id: &str,
+        event: &InboundChannelEvent,
+    ) -> InputMessage {
+        let mut message = input_text(&channel.name, event);
+        message.content.extend(
+            self.intake(channel, Some(session_id), &event.attachments, None)
+                .await,
+        );
+        message
+    }
+
     /// Seed a new session with the conversation's earlier messages. Best
     /// effort: a session without history still answers.
     async fn backfill(
@@ -900,10 +1134,11 @@ impl ChannelHost {
                 return;
             }
         };
-        let history = history
-            .iter()
-            .map(|event| input_message(channel.name(), event))
-            .collect();
+        let mut messages = Vec::with_capacity(history.len());
+        for event in &history {
+            messages.push(self.input_message(&channel.config, session_id, event).await);
+        }
+        let history = messages;
         if let Err(error) = self
             .inner
             .port
@@ -950,7 +1185,9 @@ impl ChannelHost {
         driver
             .decided(&decision, &driver.delivery_context(&decision.reply_to))
             .await;
-        if let SendOutcome::Started { input_message_id } = outcome {
+        if let SendOutcome::Started { input_message_id }
+        | SendOutcome::Pending { input_message_id } = outcome
+        {
             self.spawn_delivery(
                 channel.clone(),
                 driver.clone(),
@@ -1005,7 +1242,8 @@ impl ChannelHost {
             .port
             .send(&channel.config, session_id, message)
             .await?;
-        if let SendOutcome::Started { input_message_id } = &outcome
+        if let SendOutcome::Started { input_message_id } | SendOutcome::Pending { input_message_id } =
+            &outcome
             && channel.config.delivery.replies
         {
             self.spawn_delivery(
@@ -1034,7 +1272,7 @@ impl ChannelHost {
     ) {
         let inner = self.inner.clone();
         tokio::spawn(async move {
-            run_delivery(
+            delivery_task::run_delivery(
                 inner,
                 Delivery {
                     channel,
@@ -1058,97 +1296,6 @@ struct Delivery {
     session_id: String,
     input_message_id: String,
     target: DeliveryTarget,
-}
-
-async fn run_delivery(
-    inner: Arc<Inner>,
-    turn: Delivery,
-    mut events: ChannelEventStream,
-    mut pending_saved: bool,
-) {
-    let Delivery {
-        channel,
-        driver,
-        session_id,
-        input_message_id,
-        target,
-    } = turn;
-    let context = driver.delivery_context(&target);
-    let options = channel.config.delivery.clone();
-    let (adapter, options) = match &channel.planner {
-        Some(planner) => planner.plan(&session_id, &target, options).await,
-        None => (driver.clone() as Arc<dyn ChannelDeliveryAdapter>, options),
-    };
-    let typed_session = session_id
-        .parse::<SessionId>()
-        .unwrap_or_else(|_| SessionId::new());
-    let mut delivery = TurnDelivery::new(
-        adapter,
-        context,
-        typed_session,
-        input_message_id.clone(),
-        options,
-    );
-    let mut flush = tokio::time::interval(inner.flush_interval);
-    flush.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    // Renew well before the lease runs out, so a slow store round trip never
-    // lets another process take a delivery this one is running.
-    let mut renew = tokio::time::interval(inner.lease / 3);
-    renew.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    renew.tick().await;
-
-    loop {
-        tokio::select! {
-            event = events.next() => {
-                let Some(event) = event else {
-                    // The stream ended without a terminal event: the host is
-                    // shutting down. Leave the pending delivery for recovery.
-                    delivery.flush().await;
-                    return;
-                };
-                if !pending_saved
-                    && let Some(sequence) = event.sequence
-                {
-                    let pending = PendingDelivery {
-                        channel: channel.config.name.clone(),
-                        session_id: session_id.clone(),
-                        input_message_id: input_message_id.clone(),
-                        target: target.clone(),
-                        after_sequence: sequence - 1,
-                    };
-                    if let Err(error) = inner
-                        .store
-                        .save_pending(&pending, &inner.holder, inner.lease)
-                        .await
-                    {
-                        warn!(%session_id, %error, "channel: could not save a pending delivery");
-                    }
-                    pending_saved = true;
-                }
-                if let DeliveryStep::Finished(_) = delivery.observe(&event).await {
-                    break;
-                }
-            }
-            _ = flush.tick(), if delivery.has_pending_work() => delivery.flush().await,
-            _ = renew.tick(), if pending_saved => {
-                if let Err(error) = inner
-                    .store
-                    .renew_pending(&session_id, &input_message_id, &inner.holder, inner.lease)
-                    .await
-                {
-                    warn!(%session_id, %error, "channel: could not renew a delivery lease");
-                }
-            }
-        }
-    }
-
-    if let Err(error) = inner
-        .store
-        .clear_pending(&session_id, &input_message_id)
-        .await
-    {
-        warn!(%session_id, %error, "channel: could not clear a pending delivery");
-    }
 }
 
 /// `message`, tagged with the channel it came through unless it already is.
@@ -1220,28 +1367,15 @@ fn binding_key(kind: &str, binding: SessionBinding, route: &InboundRoute) -> Opt
     }
 }
 
-fn input_message(channel: &str, event: &InboundChannelEvent) -> InputMessage {
+/// A platform message's text and metadata, without its attachments.
+fn input_text(channel: &str, event: &InboundChannelEvent) -> InputMessage {
     let mut message = InputMessage::user(event.text.clone());
     for (key, value) in &event.message_metadata {
         message = message.with_metadata(key.clone(), value.clone());
     }
-    let mut message = message
-        .with_metadata("channel", json!(channel))
-        .with_external_actor(event.actor.clone());
-    for attachment in &event.attachments {
-        match attachment {
-            InboundAttachment::Image { url, .. } => {
-                message.content.push(ContentPart::image_url(url.clone()))
-            }
-            InboundAttachment::FileDescription { name, mime_type } => {
-                message.content.push(ContentPart::text(match mime_type {
-                    Some(mime) => format!("[Attached file: {name} ({mime})]"),
-                    None => format!("[Attached file: {name}]"),
-                }))
-            }
-        }
-    }
     message
+        .with_metadata("channel", json!(channel))
+        .with_external_actor(event.actor.clone())
 }
 
 fn title_for(text: &str) -> String {

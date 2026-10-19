@@ -6,6 +6,7 @@ kind: improvement
 significance: notable
 products: [platform, cloud]
 surfaces: [ui, agent]
+release: "0.48.0"
 links:
   docs: [/features/harnesses/#built-in-harnesses]
   prs: [everruns/everruns#4484]
@@ -20,5 +21,10 @@ by where commands run, and each enforces that rule on agents and sessions.
 Organizations are migrated once: agents bound to the old Worker move to Bashkit
 Worker or Sandbox Worker based on their sandbox policy. Worker Base and Generic
 stay as deprecated harnesses for existing bindings.
+
+```bash
+everruns harnesses list
+everruns agents update agent_01h9 --harness sandbox-worker --reason "Needs a real machine for builds"
+```
 
 See [Built-in harnesses](/features/harnesses/#built-in-harnesses) and [#4484](https://github.com/everruns/everruns/pull/4484).

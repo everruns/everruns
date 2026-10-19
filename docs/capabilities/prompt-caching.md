@@ -46,6 +46,27 @@ Use `explicit` when many short, unrelated sessions share long instructions or
 tools, such as a support agent: caching every conversation would cost more in
 cache writes than it saves in reads.
 
+## Tool changes during a session
+
+Tool definitions sit at the front of the cached prompt, so a tool list that
+changes mid-session (a tool revealed by [Tool Search](/capabilities/tool-search/),
+for example) used to throw the whole cache away. Sessions now record their tool
+list on the first model call and each later change in the conversation. On
+Claude Opus 5.5, Opus 5, Opus 4.8, Sonnet 5.5, Haiku 5.5 and Fable 5.1 through
+the Claude API, and on GPT-6 Astra, Sol, Luna and 6.1 Sol and GPT-5.6 Sol,
+Terra and Luna through the OpenAI API, the request keeps the first tool list
+and sends each change in the conversation, so the cache survives it. GPT-5.5
+and GPT-5.4 keep the cache when tools are added; a revealed tool there still
+costs one cache write.
+Instructions a capability adds when it is switched on mid-session travel the
+same way on those models: the request keeps the first system prompt and sends
+the new instructions in the conversation.
+Other models and endpoints receive the current tool list, which costs one cache
+write per change. A tool that goes away there (a capability switched off, for
+example) stays in the list while the cache is warm and nothing else changes,
+and a call to it is refused; it leaves with the next change, or once the
+session has been idle longer than the cache retention.
+
 ## Retention
 
 `retention` sets how long the provider keeps a cached prefix after its last
@@ -95,7 +116,8 @@ read, cache write and uncached tokens. When a call reuses less than half of
 what the previous call left cached, the trace marks a cache reset and names the
 likely cause: the model, the tool definitions, the system prompt or earlier
 messages changed, or the session sat idle longer than the cache retention. A
-long prompt sent with caching off is marked as one that caching would help.
+long prompt sent with caching off is marked as one that caching would help. A
+call that changed the tool list lists the tools added, updated or removed.
 
 ## See also
 

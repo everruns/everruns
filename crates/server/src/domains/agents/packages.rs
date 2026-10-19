@@ -281,6 +281,7 @@ pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
         "network_access",
         "max_iterations",
         "parallel_tool_calls",
+        "max_output_tokens",
         "communication",
         "tools",
         "intro_markdown",
@@ -536,6 +537,7 @@ pub async fn request(
         network_access: m.network_access.clone(),
         max_iterations: m.max_iterations,
         parallel_tool_calls: m.parallel_tool_calls,
+        max_output_tokens: m.max_output_tokens,
         communication: m.communication.unwrap_or_default(),
     };
     crate::domains::validation::validate_create_agent_input(
@@ -548,6 +550,7 @@ pub async fn request(
     )
     .map_err(|_| CommandError::bad_request("Agent configuration exceeds platform limits"))?;
     super::managed::validate_managed_name(&req.name)?;
+    super::max_output_tokens::validate(req.max_output_tokens)?;
     crate::domains::validation::check_platform_chat_content(
         req.intro_markdown.as_deref(),
         req.short_description.as_deref(),

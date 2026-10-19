@@ -129,7 +129,7 @@ expression or a filter naming an unknown tool.
 | `#[agent]`, `#[agent(default)]`, `#[agent(sub)]` | `fn() -> Agent` | An agent. New sessions use the default one; a subagent becomes an `ask_<name>` tool on the others. |
 | `#[tool]`, `#[tool(needs_approval)]`, `#[tool(needs_approval = \|a: &Args\| …)]` | `async fn([cx: &Cx,] args…) -> Result<T>` | A tool named after the function, described by its doc comment. It also generates an arguments struct (`run_sql` → `RunSql`) with a JSON Schema. |
 | `#[channel]` | `fn() -> impl Into<Channel>` (a driver such as `Slack` or `Webhook`) | `POST /v1/channels/{name}`. Each external thread maps to one session, and replies are delivered back while the turn runs. `agent = "…"` picks the agent. |
-| `#[schedule("0 9 * * MON")]` | `async fn(&Cx) -> Result` | A cron entry. |
+| `#[schedule("0 9 * * MON")]` | `async fn(&Cx) -> Result` | A cron entry. A 5-field cron counts weekdays 0-6 from Sunday (7 is also Sunday), so `0 9 * * 1-5` runs Monday through Friday. |
 | `#[connection]` | `fn() -> T` or `fn() -> Result<T>` | A value tools read with `cx.connection::<T>()`. An `McpServer` connection is attached to every agent. |
 | `#[eval]` | `async fn(&mut EvalCx) -> Result` | A conversation with assertions, run in-process or against a deployment. |
 
@@ -148,7 +148,7 @@ knows what it registered.
 | `dev` (default) | Serves the API with local SQLite under `.serve/` and a live console. Models fall back to the simulator, and Markdown prompts and skills hot-reload. |
 | `start` | Production mode. Every model must route through a gateway, and every declared secret must be set. With `--store s3://bucket/prefix` (or `SERVE_STORE`) the data lives in a bucket; see [Keep the data in a bucket](#keep-the-data-in-a-bucket). |
 | `manifest` | Prints the host contract as JSON: agents, models, tool schemas, skills, channels, cron entries, secrets, sandbox, evals and a build id. |
-| `eval [--against URL]` | Runs the evals in-process, or against a running deployment as a gate before promotion. |
+| `eval [--against URL]` | Runs the evals in-process, or against a running deployment as a gate before promotion. Against an app that requires a credential, set `SERVE_CREDENTIAL` (or pass `--credential`) and every request carries it as a bearer token. |
 | `deploy` | Prints what a host would provision from the manifest. The one supported deployment target is [Amazon Bedrock AgentCore](/framework/serve-agentcore/). |
 
 ## Keep the data in a bucket
@@ -184,7 +184,10 @@ A serve app speaks a subset of the Everruns server `/v1` API, with the same
 request and response bodies:
 
 - `POST /v1/sessions` and `GET /v1/sessions/{id}`
-- `POST /v1/sessions/{id}/messages`, which also steers an active turn
+- `POST /v1/sessions/{id}/messages`, which also steers an active turn. Its
+  `files` list sends files as base64 `data` or a public `url`, as on the
+  [Agent API](/how-to/call-your-agent-from-code/#send-files); each is kept in
+  the session's `/attachments` folder
 - `POST /v1/sessions/{id}/cancel`
 - `GET /v1/sessions/{id}/sse` (resume with `since_id` or `after_sequence`) and `GET /v1/sessions/{id}/events`
 - `POST /v1/sessions/{id}/question-answers`, for [`ask_user`](/framework/ask-user/) questions
@@ -204,7 +207,9 @@ cancellation, questions and approvals. A session is reachable only under its
 own agent's URL. This is the API an Everruns agent exposes through an API
 channel, so code written against one agent works against either host.
 Every SDK's `AgentClient` calls this API; see the
-[tutorial](/framework/serve-tutorial/#6-call-it-from-code).
+[tutorial](/framework/serve-tutorial/#6-call-it-from-code). The
+[Agent API](/features/agent-api/) reference documents the routes and shapes,
+and [what differs on serve](/features/agent-api/#the-same-api-on-serve).
 
 ### Authentication
 
@@ -249,10 +254,21 @@ in the binary, so keep real keys in the environment.
 
 A few routes stay public so clients can find the agent: `GET /health`, each
 agent's card at `GET /v1/channels/{agent}` (its `auth` list names the accepted
-methods), the A2A Agent Card and the voice test page. Messaging channel
+methods), the A2A Agent Card (its `securitySchemes` and `securityRequirements`
+name the same methods, as an Everruns A2A endpoint's card does) and the voice
+test page. Messaging channel
 webhooks stay public too, because Slack and webhook callers cannot send a serve
 credential; each channel verifies its platform's own signature. Auth does not
 separate callers: every authenticated caller can reach every session.
+
+With auth on, the `dev` console's sample requests and its approval and question
+hints include `-H 'authorization: Bearer <credential>'`; substitute your own
+key. To run evals against a protected deployment, give `eval` the credential
+through the environment, which keeps it out of the process list:
+
+```sh
+SERVE_CREDENTIAL=key-for-ci ./revenue-analyst eval --against https://preview.example.com
+```
 
 ## AG-UI and CopilotKit
 

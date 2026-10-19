@@ -52,7 +52,7 @@ Verified against `origin/main` at `c79edc4` and saas `main`.
 | `github` capability tools | `get_connection_token(session, "github")`: the invoking person's connection when the turn has a person, otherwise the agent's | Whichever of the two above was picked, implicitly | Capability on the agent | `crates/integrations/src/github/` |
 | GitHub MCP preset | `acts as service`: the agent's `github` connection (connection-backed preset). `acts as user`: a separate OAuth grant `mcp_oauth_<server>` through the preset's OAuth client | Agent bot, or the person | Agent MCP sheet | `setup/seed/mcp_servers.rs`, `domains/mcp_servers/connection_backed.rs` |
 | GitHub triggers | Per-agent App webhook only; the shared App has no webhook route | Inbound only | Agent > Integrations > Triggers | `api/github_webhooks.rs`, `domains/agent_triggers/github.rs` |
-| Sandbox git | `daytona_git_clone` writes a full installation token into `/tmp/.git-credentials` in the sandbox; Modal injects the `github` connection at its egress proxy; plain sandbox `bash` gets nothing | Same as tools | Daytona capability, Modal sandbox template | `integrations/src/daytona/tools.rs`, `integrations/src/modal/egress.rs` |
+| Sandbox git | `daytona_git_clone` writes a full installation token into `/tmp/.git-credentials` in the sandbox; Modal injects the `github` connection at its egress proxy; plain sandbox `bash` gets nothing. Since step 1c, `github_checkout_pull_request` fetches one pull request into the managed sandbox with a `contents: read, pull_requests: read` token for that repository, handed over in a file removed after the fetch (TM-GITHUB-007) | Same as tools | Daytona capability, Modal sandbox template, `github` capability with a managed sandbox | `integrations/src/daytona/tools.rs`, `integrations/src/modal/egress.rs`, `integrations/src/github/checkout.rs` |
 | Memory and knowledge index sync | `get_connection_token_for_user(resolved_owner_user_id, "github")` | The owner's shared-App installation | Memory / knowledge index source form | `domains/memory/source_sync.rs`, `domains/knowledge_indexes/source_sync/mod.rs` |
 
 What this costs people:
@@ -285,19 +285,93 @@ through the missing-permissions prompt that already exists.
 Each step is one PR unless noted, and leaves everything working.
 
 1. **One resolver call.** `acts as` plus repositories plus permissions in,
-   cut-down token out; `kind` on the connection (migration via
-   `just new-migration`). Move the `github` capability, connection-backed MCP,
-   Daytona clone, Modal injection and memory and knowledge sync onto it.
-   Started: `get_github_token` with `GitHubAccess` mints narrowed installation
-   tokens (`storage/connection_resolver/github.rs`), and the `github`
-   capability uses it with an `acts_as` setting (default `agent`).
+   cut-down token out; `kind` on the connection. Move the `github`
+   capability, connection-backed MCP, Daytona clone, Modal injection and
+   memory and knowledge sync onto it.
+   Done: `get_github_token` with `GitHubAccess` mints narrowed installation
+   tokens (`storage/connection_resolver/github.rs`); the `github` capability
+   uses it with an `acts_as` setting (default `agent`). Memory and knowledge
+   syncs use `get_github_token_for_owner` (contents read, one repository),
+   Daytona git uses contents write (one repository on clone), and Modal
+   injection uses `user_or_service` unnarrowed until step 6. Connection-backed
+   MCP already resolves through `actsAs` and the same App credentials. The
+   `kind` is derived from the stored connection, not a new column:
+   `connection_type` already marks an agent App's installation, any other
+   installation is the shared App's, and a row without one is a person's
+   token. Every GitHub token mints with the App its kind names, so an agent
+   App's installation never falls back to the shared App's key.
+   PR checkout: `github_checkout_pull_request` is the managed-sandbox use: it
+   asks for `contents: read, pull_requests: read` on the pull request's
+   repository and passes the token through the `SandboxWorkspace` tool-context
+   extension (`exec_with_secret_file`), which the worker installs when the
+   session has `session_sandbox`. Sandbox delivery additionally requires scope
+   evidence from the authenticated installation mint response, preserved across
+   the worker boundary. The checkout admission contract verifies repository,
+   read-only permissions and a remaining lifetime of at most one hour; personal
+   tokens, session-secret fallbacks and legacy responses without evidence are
+   refused. See [admission](../../crates/contracts/src/runtime/github_credential.rs)
+   and [checkout](../../crates/integrations/src/github/checkout.rs).
+   Pushing from the sandbox stays with step 6.
 2. **GitHub section on the agent page** (D7), name rules and avatar step (D2).
    Coordinate with the Yolop PR Reviewer thread's org picker, which lands first.
+   Done: the agent's Integrations tab has a **GitHub** section between Channels
+   and Triggers (`agent-github-card.tsx`), showing the bot login, the kind,
+   the installation, missing permissions, a "Set the avatar" step (download
+   the agent's avatar, open the App's settings page) and links to add and list
+   GitHub triggers. `AgentGitHubStatus` gained `kind`, `bot_login` and
+   `app_settings_url` (null when the owner's account kind is unknown). New
+   Apps are named after the agent and get a random suffix only when a public
+   App holds the slug (`default_app_name` probes `GET /apps/{slug}`). Left: the
+   logo-missing check D2 describes, and the shared App's bot login (step 3).
 3. **Shared App at org level** (D3): org opt-in, deployment webhook route by
    installation id, agent choice between own App and shared App, migration of
    person-held installations.
+   Done (3a): an org admin links a shared App installation from Settings >
+   Organization (`GET /v1/orgs/{org}/github/everruns-app`, `.../authorize`,
+   `DELETE .../{connection_id}`, `api/user_connections/github_org.rs`). The
+   link is an organization connection with `connection_type = everruns_app`,
+   proven by the same GitHub user authorization as a person's install; the
+   callback re-checks admin, and an installation linked to another org is
+   refused (partial unique index on `installation_id`). Generic org
+   connection lists skip `github` rows, so links never reach sandboxes or web
+   search. An agent without an identity chooses its own App (recommended) or
+   "Use the Everruns app" on a link of its org (`UseAgentEverrunsApp`, which
+   needs agent and identity management); its service virtual user then holds
+   an `everruns_app` row with the installation and
+   `provider_metadata.org_connection_id`, and shows as `<shared slug>[bot]`.
+   The `everruns_app` kind is now named by `connection_type`. The shared
+   App's webhook (`POST /v1/github/everruns-app/webhook`, HMAC with
+   `GITHUB_APP_WEBHOOK_SECRET`, fails closed when unset) routes by
+   installation id to the linked org and only to agents that chose it;
+   `installation.deleted` removes the link and its choices,
+   `new_permissions_accepted` refreshes scopes. Unlinking and disconnecting
+   never uninstall on GitHub, and nothing falls back to the shared App. The
+   member path to attach an installation to an agent's service virtual user
+   is closed.
+   Done (3b): migration `20261018212249_github_person_installs_to_org_links`
+   moves every installation held on a virtual user's own row (`oauth` with an
+   installation) to an org link in the org of its oldest holder; an agent's
+   row becomes its choice of that link, and people's rows and rows in other
+   orgs are removed. The `oauth`-with-installation reading of the kind is
+   gone, nobody can install the shared App on their own connection any more
+   (person and agent alike: an admin links it), and GitHub is no longer
+   listed among a person's connections until step 4 gives people their own
+   sign-in (3b and step 4 ship in one release). A source sync whose owner has no GitHub connection of their own
+   reads through the org's link for the repository's account, the `service`
+   use on the org identity this design names for syncs.
 4. **Person connection** (D1, D5): store and refresh the user token; GitHub
    MCP `user` uses it after the endpoint check.
+   Done: connecting GitHub as a person is the shared App's user
+   authorization (`/login/oauth/authorize`, no installation step). The
+   callback exchanges the code, reads the account from `GET /user`, and stores
+   the `ghu_` token, its refresh token and expiry on the person's `oauth` row
+   without an installation (`crates/server/src/github_user_token.rs`). A
+   setup state or callback that names an installation is refused, so a state
+   issued before 3b cannot store one. The resolver refreshes an expired token
+   single-flight per connection and stores the rotated pair; a refused
+   refresh yields no token, never the stale one, and the person signs in
+   again. Not done: D5 is unverified, so the GitHub MCP preset keeps its own
+   OAuth client for `user`.
 5. **GitHub channel** (D8) on the channel host, with the manifest additions.
 6. **Sandbox repositories**: repositories and access level on the sandbox
    template, injected at the egress proxy (Modal, saas egress proxy) or

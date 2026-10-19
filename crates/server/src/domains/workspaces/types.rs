@@ -38,15 +38,6 @@ pub fn workspace_response(row: WorkspaceRow) -> WorkspaceResponse {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct CreateWorkspaceRequest {
-    #[schema(example = "team-research")]
-    pub name: String,
-    #[serde(default)]
-    #[schema(example = "Shared workspace for the Q4 research project")]
-    pub description: Option<String>,
-}
-
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateWorkspaceRequest {
     #[serde(default)]

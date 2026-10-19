@@ -63,6 +63,23 @@ check(
     cells,
 )
 
+# A gateway's shared upstream pool that stayed rate-limited also asserted
+# nothing, and its verdict must say the limit was not ours.
+cells = r.parse(
+    records(
+        ("configured", "openrouter", "OPENROUTER_API_KEY", "mistralai/mistral-large-4-0"),
+        ("upstream-rate-limited", "openrouter", "OPENROUTER_API_KEY", "mistralai/mistral-large-4-0"),
+    )
+)
+check(
+    "upstream-rate-limited outranks configured",
+    cells[("openrouter", "OPENROUTER_API_KEY", "mistralai/mistral-large-4-0")]
+    == r.UPSTREAM_RATE_LIMITED,
+    cells,
+)
+body = "\n".join(r.format_report(cells))
+check("upstream skips name the shared pool", "shared upstream pool rate-limited" in body, body)
+
 check("unparseable lines are ignored", r.parse("garbage\nalso garbage\n") == {})
 check("unknown outcomes are ignored", r.parse(records(("weird", "a", "B", "c"))) == {})
 check(

@@ -227,6 +227,17 @@ The activation threshold defaults to 15 tools (`DEFAULT_TOOL_SEARCH_THRESHOLD`).
 }
 ```
 
+`reveal` (experimental) chooses how a found tool becomes callable. With
+`redefine` (the default), its full schema replaces the placeholder in the tool
+list from the next step. With `in_result`, the tool list never changes: the
+model calls the tool using the schema the search returned, and every call is
+still checked against the tool's real schema before it runs. On models that
+cannot carry tool changes inside the conversation, `in_result` keeps the
+prompt cache through a search. Some models call badly against a placeholder
+schema: in our tests Muse Spark sent numbers and objects as strings and never
+recovered, while GPT-6 Luna and Mistral Large 4 called as well as with
+`redefine`. Use it only with a model you have checked.
+
 ### Benchmarks
 
 Deferral only touches how tool *parameter schemas* reach the model, names and descriptions still go out in full, so the savings scale with how many tools an agent carries and how rich their schemas are.

@@ -1,6 +1,6 @@
 ---
 title: everruns system
-description: "Server status. CLI reference for everruns system."
+description: "Server status. CLI reference for everruns system: usage, flags and examples."
 sidebar:
   label: system
 appliesTo: [platform, cloud]

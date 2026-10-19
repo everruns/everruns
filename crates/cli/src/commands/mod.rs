@@ -20,3 +20,4 @@ pub mod logout;
 pub mod orgs;
 pub mod sessions;
 pub mod status;
+pub mod whoami;

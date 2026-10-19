@@ -1,7 +1,7 @@
 // MCP scripting catalog — inventory is the only source of truth.
 
 use crate::domains::common::CommandError;
-use bashkit::{ScriptedTool, ToolArgs, ToolDef};
+use bashkit_scripted_tool::{ScriptedTool, ToolArgs, ToolDef};
 use std::collections::{BTreeSet, HashMap};
 use std::future::Future;
 use std::pin::Pin;

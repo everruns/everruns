@@ -80,6 +80,9 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
   const errorsOnly = searchParams.get("errors") === "1";
   const showLifecycle = searchParams.get("lifecycle") === "1";
   const selectedStep = parseStepKey(searchParams.get("step"));
+  const failureSequence = Number(searchParams.get("failure") || 0);
+  const linkedFailure =
+    Number.isSafeInteger(failureSequence) && failureSequence > 0 ? failureSequence : 0;
   const initialTurn = selectedStep?.turn ?? Number(searchParams.get("turn") || 0);
 
   const setParams = useCallback(
@@ -96,7 +99,14 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
   );
 
   const overview = useSessionTraceOverview(sessionId);
-  const data = useSessionTraceTurns(sessionId, initialTurn > 0 ? { around: initialTurn } : null);
+  const data = useSessionTraceTurns(
+    sessionId,
+    linkedFailure ? { sequence: linkedFailure } : initialTurn > 0 ? { around: initialTurn } : null,
+  );
+  const failedTurn = data.turns.find(
+    (turn) =>
+      linkedFailure >= turn.start_sequence && linkedFailure <= (turn.end_sequence ?? Infinity),
+  );
   const [collapsed, setCollapsed] = useState<Set<number>>(() => new Set());
   const [batch, setBatch] = useState<{ turn: number; batch: TraceBatch } | null>(null);
   const [full, setFull] = useState(false);
@@ -158,8 +168,8 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
   useEffect(() => {
     if (openedRef.current || data.loading || rows.length === 0) return;
     openedRef.current = true;
-    if (!pending) virtualizer.scrollToIndex(rows.length - 1, { align: "end" });
-  }, [data.loading, rows.length, pending, virtualizer]);
+    if (!pending && !linkedFailure) virtualizer.scrollToIndex(rows.length - 1, { align: "end" });
+  }, [data.loading, rows.length, pending, virtualizer, linkedFailure]);
 
   // Scroll to a turn (or a step in it) once its rows exist.
   useEffect(() => {
@@ -275,6 +285,36 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
     [sessionId, selectStep, jump],
   );
 
+  // A terminal failure often falls after its model/tool step's event range.
+  // Select the last recorded failed step rather than treating the terminal
+  // event as if it were itself an assistant message or tool result.
+  const openedFailure = useRef(0);
+  const jumpToFailure = data.jumpTo;
+  useEffect(() => {
+    if (!linkedFailure || data.loading || openedFailure.current === linkedFailure) return;
+    openedFailure.current = linkedFailure;
+    const open = async () => {
+      const turn = failedTurn ?? (await findTraceSequence(sessionId, linkedFailure));
+      if (!turn || turn.status !== "failed") {
+        // The terminal event can arrive before the asynchronous trace index.
+        // Allow a later trace refresh to resolve and select the failure.
+        openedFailure.current = 0;
+        return;
+      }
+      let step: number | undefined;
+      for (const item of turn.items) {
+        if (item.type === "step" && item.status === "error") step = item.step;
+        if (item.type === "batch" && item.failures.length) step = item.failures.at(-1)?.step;
+      }
+      setParams({ turn: String(turn.turn), step: step ? stepKey(turn.turn, step) : null });
+      setPending({ turn: turn.turn, step });
+      if (!failedTurn) await jumpToFailure(turn.turn);
+    };
+    void open().catch(() => {
+      openedFailure.current = 0;
+    });
+  }, [linkedFailure, data.loading, failedTurn, sessionId, setParams, jumpToFailure]);
+
   const target: InspectorTarget | null = batch
     ? { type: "batch", turn: batch.turn, batch: batch.batch }
     : childStep
@@ -297,6 +337,31 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
 
   return (
     <section aria-label="Session trace" className="flex min-h-0 flex-1 flex-col">
+      {linkedFailure > 0 && !data.loading && (
+        <div
+          className="border-b border-l-2 border-destructive/30 border-l-destructive bg-destructive/5 px-6 py-3 text-sm"
+          role="status"
+        >
+          {failedTurn?.status === "failed" ? (
+            <>
+              <span className="font-medium text-destructive">Turn {failedTurn.turn} failed</span>
+              {failedTurn.ended_at && (
+                <span className="ml-3 text-xs text-muted-foreground">
+                  {new Date(failedTurn.ended_at).toLocaleString()}
+                </span>
+              )}
+              <p className="mt-1 break-words">
+                {failedTurn.error?.trim() || "No error details recorded"}
+              </p>
+            </>
+          ) : (
+            <p>
+              The recorded failure could not be located in this trace. Check the Events view for the
+              terminal event.
+            </p>
+          )}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-3 border-b bg-card px-6 py-3">
         <div role="radiogroup" aria-label="View" className="flex border">
           {VIEWS.map((option) => (

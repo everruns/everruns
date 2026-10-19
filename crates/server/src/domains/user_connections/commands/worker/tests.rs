@@ -62,6 +62,7 @@ impl UserConnectionResolver for Recording {
         Ok(Some(everruns_contracts::runtime::McpResolvedCredential {
             token: TOKEN.to_string(),
             acted_as: access.acts_as,
+            github_installation_scope: None,
         }))
     }
     async fn get_sandbox_connection_token(
@@ -184,7 +185,10 @@ async fn lookups_run_through_the_servers_resolver() {
     )
     .await
     .unwrap();
-    assert_eq!(github, json!({"token": TOKEN, "acted_as": "service"}));
+    assert_eq!(
+        github,
+        json!({"token": TOKEN, "acted_as": "service", "github_installation_scope": null})
+    );
     let sandbox = run(
         &ctx,
         "worker_get_sandbox_connection_token",
@@ -476,9 +480,10 @@ async fn web_search_lookups_answer_only_for_the_orgs_search_accounts() {
         org_id,
         name: format!("{provider} account"),
         provider: provider.to_string(),
-        access_token_encrypted: encryption.encrypt_string(key).unwrap(),
+        access_token_encrypted: Some(encryption.encrypt_string(key).unwrap()),
         provider_username: None,
         provider_metadata: None,
+        ..Default::default()
     };
     let brave = db
         .create_organization_connection(account(DEFAULT_ORG_ID, "brave_search", "brave-key"))

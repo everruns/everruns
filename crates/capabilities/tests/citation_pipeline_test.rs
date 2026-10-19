@@ -90,7 +90,8 @@ async fn grounded_answer_is_cited_and_verified() {
     let answer = "Photosynthesis converts sunlight into chemical energy.";
 
     // Feed: retrieval attaches a citation to the grounded sentence.
-    let collected = collect_annotations(&retrieval_providers(), "", answer, &messages, None).await;
+    let collected =
+        collect_annotations(&retrieval_providers(), "", answer, &messages, &[], None).await;
     assert_eq!(
         collected.annotations.len(),
         1,
@@ -128,7 +129,8 @@ async fn hallucinated_answer_is_not_falsely_cited() {
     // An answer unrelated to either retrieved passage.
     let answer = "The stock market rose three percent on Tuesday afternoon.";
 
-    let collected = collect_annotations(&retrieval_providers(), "", answer, &messages, None).await;
+    let collected =
+        collect_annotations(&retrieval_providers(), "", answer, &messages, &[], None).await;
     assert!(
         collected.annotations.is_empty(),
         "an ungrounded answer must not be decorated with false citations"
@@ -143,7 +145,8 @@ async fn verifier_is_the_axis_that_adds_verdicts() {
     let messages = context_with_search_results();
     let answer = "Photosynthesis converts sunlight into chemical energy.";
 
-    let without = collect_annotations(&retrieval_providers(), "", answer, &messages, None).await;
+    let without =
+        collect_annotations(&retrieval_providers(), "", answer, &messages, &[], None).await;
     assert!(without.annotations.iter().all(|a| a.verified.is_none()));
 
     let with = verify_annotations(

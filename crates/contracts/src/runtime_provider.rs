@@ -728,6 +728,16 @@ impl ChatDriver for ProviderBoundDriver {
             .unwrap_or(None)
     }
 
+    fn stream_stall_timeout(
+        &self,
+        config: &crate::driver_registry::LlmCallConfig,
+    ) -> Option<std::time::Duration> {
+        self.0
+            .driver
+            .as_ref()
+            .and_then(|driver| driver.stream_stall_timeout(config))
+    }
+
     fn supports_parallel_tool_calls(&self, model: &str) -> bool {
         self.0
             .driver

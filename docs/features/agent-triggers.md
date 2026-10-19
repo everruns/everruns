@@ -20,7 +20,7 @@ The rest of this page covers schedule triggers.
 1. Open the agent.
 2. Select the **Integrations** tab.
 3. Select **Add trigger**.
-4. Choose a preset or enter a 5-field cron expression (or a 7-field expression whose year is `*`), then enter an IANA timezone. The editor shows the schedule in human-readable form and previews the next eight runs. The default timezone is `UTC`.
+4. Choose a preset or enter a 5-field cron expression (or a 7-field expression whose year is `*`), then enter an IANA timezone. In 5-field cron, weekdays count 0-6 from Sunday (7 is also Sunday), so `0 9 * * 1-5` runs Monday through Friday. A 7-field expression counts weekdays 1-7 from Sunday, so its Monday through Friday is `2-6` (or `MON-FRI`). The editor shows the schedule in human-readable form and previews the next eight runs. The default timezone is `UTC`.
 5. Choose a session mode:
    - **Shared session** reuses one durable session for this trigger. Use it when later runs should see the trigger's previous conversation.
    - **New session per run** creates a fresh session every time. Use it when each run should be isolated.
@@ -89,6 +89,41 @@ the model. Set `script` on the trigger:
   `pull_request` object; any other string, such as `"#{{payload.number}}"`, is
   rendered as text. A missing value becomes `null`.
 - To make the trigger ask the model again, update it with `"script": {"script": ""}`.
+
+## Run in a Slack conversation
+
+A schedule trigger can run in a conversation of one of the Agent's own
+[Slack](/capabilities/slack/) channels instead of a session of its own, such as
+a 07:00 briefing in the direct message where a person already talks to the
+Agent. Set `target_channel_id` and `target_binding_key` on create or update:
+
+```json
+{
+  "trigger_type": "schedule",
+  "cron_expression": "0 7 * * *",
+  "timezone": "America/Chicago",
+  "message": "Morning briefing",
+  "target_channel_id": "appchan_01933b5a000070008000000000000001",
+  "target_binding_key": "slack:user:U0123ABCD"
+}
+```
+
+- The binding key names the conversation the way the channel keys its
+  sessions: `slack:user:{user_id}` on a `per_user` channel (a direct message
+  with that person) or `slack:channel:{channel_id}` on a `per_channel` channel
+  (a top-level post).
+- Each run lands in the session a Slack message from that conversation would,
+  so the run and the conversation share one history. The first run creates and
+  binds it, even before the person has written, and opens the direct message.
+- The run posts its replies there like an answer to a Slack message, and the
+  Agent's `send_message` reaches the same conversation. Posts are top-level,
+  never in a thread.
+- Only the Agent's own Slack channel can be targeted, by someone who can manage
+  the Agent. If the channel is disabled, retired or no longer keys sessions
+  that way, the run fails and its delivery records why. It never falls back to
+  a session of its own.
+- `session_mode` does not apply, and the trigger cannot also run a saved
+  script. Update with `"target_channel_id": ""` to remove the target.
 
 ## Migrated App Schedules
 

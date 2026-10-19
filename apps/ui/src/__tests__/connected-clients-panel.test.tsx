@@ -39,6 +39,14 @@ describe("ConnectedClientsPanel", () => {
     expect(screen.getByText("No connected AI clients")).toBeInTheDocument();
   });
 
+  it("refreshes OAuth approvals on demand without claiming plugin installation", () => {
+    const refetch = jest.fn();
+    mockUseConnectedClients.mockReturnValue({ data: [], isLoading: false, error: null, refetch });
+    render(<ConnectedClientsPanel />);
+    fireEvent.click(screen.getByRole("button", { name: /Refresh connections/ }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
   it("shows each client with its host, access and organizations", () => {
     mockUseConnectedClients.mockReturnValue({ data: [cursor], isLoading: false, error: null });
 

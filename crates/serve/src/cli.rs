@@ -5,7 +5,7 @@
 //! cargo run -- start               # production mode, same wire API
 //! cargo run -- start --store s3://bucket/prefix   # data kept in a bucket
 //! cargo run -- manifest [--out f]  # the host contract, as JSON
-//! cargo run -- eval [--against URL] [FILTER]
+//! cargo run -- eval [--against URL [--credential KEY]] [FILTER]
 //! cargo run -- deploy              # what a host would provision (stub)
 //! ```
 //!
@@ -62,6 +62,11 @@ enum Command {
         /// Base URL of a running app, e.g. a preview deploy.
         #[arg(long)]
         against: Option<String>,
+        /// Bearer credential for a protected `--against` app (an API key or
+        /// token). Prefer the environment variable: a flag shows in the
+        /// process list.
+        #[arg(long, env = crate::eval::CREDENTIAL_ENV, hide_env_values = true)]
+        credential: Option<String>,
         /// Only evals whose name contains this.
         filter: Option<String>,
     },
@@ -90,13 +95,23 @@ pub async fn start(app: App) -> crate::Result {
             }
             Ok(())
         }
-        Command::Eval { against, filter } => {
+        Command::Eval {
+            against,
+            credential,
+            filter,
+        } => {
             println!(
                 "serve eval · {} · {}",
                 app.name(),
                 against.as_deref().unwrap_or("in-process")
             );
-            let report = crate::eval::run(&app, against.as_deref(), filter.as_deref()).await?;
+            let report = crate::eval::run(
+                &app,
+                against.as_deref(),
+                credential.as_deref(),
+                filter.as_deref(),
+            )
+            .await?;
             let failed = report.results.iter().filter(|r| !r.passed).count();
             println!("{} passed, {failed} failed", report.results.len() - failed);
             if failed > 0 {
@@ -246,11 +261,7 @@ fn banner(host: &Arc<Host>, mode: Mode, port: u16, data_dir: &std::path::Path, m
 /// The banner's sample requests. With auth on, every agent route answers 401
 /// without a credential, so the samples carry the header a caller must send.
 fn try_lines(port: u16, auth: bool) -> Vec<String> {
-    let auth = if auth {
-        " -H 'authorization: Bearer <credential>'"
-    } else {
-        ""
-    };
+    let auth = auth_header(auth);
     vec![
         format!(
             "  try:  curl -s localhost:{port}/v1/sessions{auth} -H 'content-type: application/json' -d '{{}}'"
@@ -262,10 +273,21 @@ fn try_lines(port: u16, auth: bool) -> Vec<String> {
     ]
 }
 
+/// The header a sample curl adds when auth is on: a placeholder, never a
+/// configured key.
+fn auth_header(auth: bool) -> &'static str {
+    if auth {
+        " -H 'authorization: Bearer <credential>'"
+    } else {
+        ""
+    }
+}
+
 /// The dev "terminal UI": one line per meaningful event, as it happens. It
 /// follows each live session's canonical events, plus the host's notices for
 /// what has no event (pending approvals and questions, deliveries).
 async fn console(host: Arc<Host>, port: u16) {
+    let auth = host.auth().is_some();
     let mut notices = host.notices.subscribe();
     loop {
         let notice = match notices.recv().await {
@@ -279,7 +301,7 @@ async fn console(host: Arc<Host>, port: u16) {
         {
             tokio::spawn(follow(host.clone(), session_id.clone(), *after));
         }
-        if let Some((session, line)) = notice_line(&notice, port) {
+        if let Some((session, line)) = notice_line(&notice, port, auth) {
             print_line(&stamp(), &session, &line);
         }
     }
@@ -375,7 +397,10 @@ fn event_line(event: &SessionEvent) -> Option<String> {
     })
 }
 
-fn notice_line(notice: &Notice, port: u16) -> Option<(String, String)> {
+/// The console line for `notice`. Approvals and questions carry a ready curl,
+/// with the auth header when the routes need it (see [`try_lines`]).
+fn notice_line(notice: &Notice, port: u16, auth: bool) -> Option<(String, String)> {
+    let auth = auth_header(auth);
     Some(match notice {
         Notice::Live {
             session_id,
@@ -397,7 +422,7 @@ fn notice_line(notice: &Notice, port: u16) -> Option<(String, String)> {
         Notice::ApprovalRequested(view) => (
             view.session_id.clone(),
             format!(
-                "  ⏸ {} needs approval: {}\n      curl -X POST localhost:{port}/v1/sessions/{}/approvals/{} -H 'content-type: application/json' -d '{{\"decision\":\"approve\"}}'",
+                "  ⏸ {} needs approval: {}\n      curl -X POST localhost:{port}/v1/sessions/{}/approvals/{}{auth} -H 'content-type: application/json' -d '{{\"decision\":\"approve\"}}'",
                 view.tool_name,
                 clip(&view.arguments.to_string()),
                 view.session_id,
@@ -428,7 +453,7 @@ fn notice_line(notice: &Notice, port: u16) -> Option<(String, String)> {
             (
                 session_id.clone(),
                 format!(
-                    "  ? {}\n      curl -X POST localhost:{port}/v1/sessions/{session_id}/question-answers -H 'content-type: application/json' -d '{{\"tool_call_id\":\"{tool_call_id}\",\"answers\":[{{\"id\":\"…\",\"selected\":[\"…\"]}}]}}'",
+                    "  ? {}\n      curl -X POST localhost:{port}/v1/sessions/{session_id}/question-answers{auth} -H 'content-type: application/json' -d '{{\"tool_call_id\":\"{tool_call_id}\",\"answers\":[{{\"id\":\"…\",\"selected\":[\"…\"]}}]}}'",
                     asked.join("; ")
                 ),
             )
@@ -524,13 +549,40 @@ mod tests {
             tool_name: "run_sql".into(),
             arguments: json!({ "sql": "select 1" }),
         });
-        let (session, line) = notice_line(&notice, 3000).unwrap();
+        let (session, line) = notice_line(&notice, 3000, false).unwrap();
         assert_eq!(session, "session_x");
         assert!(line.contains("run_sql needs approval"), "{line}");
         assert!(
             line.contains("/v1/sessions/session_x/approvals/call_1"),
             "{line}"
         );
+        assert!(!line.contains("authorization"), "{line}");
+    }
+
+    #[test]
+    fn console_curls_carry_the_credential_only_when_auth_is_on() {
+        let notices = [
+            Notice::ApprovalRequested(PendingApprovalView {
+                session_id: "session_x".into(),
+                tool_call_id: "call_1".into(),
+                tool_name: "run_sql".into(),
+                arguments: json!({}),
+            }),
+            Notice::QuestionAsked {
+                session_id: "session_x".into(),
+                tool_call_id: "call_2".into(),
+                questions: Vec::new(),
+            },
+        ];
+        for notice in &notices {
+            let (_, open) = notice_line(notice, 3000, false).unwrap();
+            assert!(!open.contains("authorization"), "{open}");
+            let (_, protected) = notice_line(notice, 3000, true).unwrap();
+            assert!(
+                protected.contains(" -H 'authorization: Bearer <credential>' "),
+                "{protected}"
+            );
+        }
     }
 
     #[test]

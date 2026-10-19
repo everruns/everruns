@@ -727,3 +727,42 @@ async fn no_native_request_leaves_the_function_tool_alone() {
         ["function:web_search", "function:lookup"]
     );
 }
+
+#[tokio::test]
+async fn daily_quota_fails_without_short_retries() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(429).set_body_json(json!({
+            "error": {
+                "message": "Rate limit exceeded: free-models-per-day-high-balance.",
+                "code": 429,
+                "metadata": {
+                    "limit_source": "openrouter_free_tier_daily",
+                    "headers": {"X-RateLimit-Reset": "1791849600000"}
+                }
+            }
+        })))
+        .mount(&server)
+        .await;
+    let driver = provider(format!("{}/v1/responses", server.uri()));
+    let outcome = driver
+        .chat_completion_stream(
+            vec![Message::text(MessageRole::User, "hello")],
+            &base_config("example/model:free"),
+        )
+        .await;
+    let error = match outcome {
+        Err(error) => error,
+        Ok(_) => panic!("exhausted daily quota must fail"),
+    };
+    let requests = server.received_requests().await.expect("recorded requests");
+    assert_eq!(
+        requests.len(),
+        1,
+        "daily quota cannot recover in short backoff"
+    );
+    assert_eq!(
+        error.llm_error_kind(),
+        Some(everruns_contracts::LlmErrorKind::QuotaExhausted)
+    );
+}

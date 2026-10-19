@@ -9,6 +9,7 @@
 // See knowledge/integrations/web-search.md (UI, Details view and Session Trace).
 
 import type {
+  BuiltInSearchProvider,
   SearchAccountSummary,
   SearchPlanPreview,
   SearchProviderSetting,
@@ -19,6 +20,8 @@ export const WEB_SEARCH_TOOL_NAME = "web_search";
 export const WEB_SEARCH_CAPABILITY_ID = "web_search";
 export const AUTOMATIC_NATIVE = "native";
 export const AUTOMATIC_FREE = "free";
+/** The deployment's own search, when it offers one (Everruns search on the cloud). */
+export const AUTOMATIC_HOSTED = "hosted";
 /** Mirrors `WEB_SEARCH_MAX_RESULTS` / `WEB_SEARCH_DEFAULT_RESULTS` in everruns-contracts. */
 export const WEB_SEARCH_MAX_RESULTS = 20;
 export const WEB_SEARCH_DEFAULT_RESULTS = 8;
@@ -30,6 +33,7 @@ export const SETTING_LABELS: Record<SearchProviderSetting, string> = {
   auto: "Automatic",
   native: "Model provider search",
   brave: "Brave Search",
+  parallel: "Parallel",
   account: "Search account",
   free: "Free search",
 };
@@ -76,8 +80,16 @@ export interface SearchResultEntry {
 export interface WebSearchDetails {
   kind: "web_search";
   query: string;
-  setting?: { provider?: string; account_id?: string | null; fallback?: string | null };
-  resolved?: { provider?: string; account_id?: string | null; fallback?: string | null };
+  setting?: {
+    provider?: string;
+    account_id?: string | null;
+    fallback?: string | null;
+  };
+  resolved?: {
+    provider?: string;
+    account_id?: string | null;
+    fallback?: string | null;
+  };
   plan?: string[];
   ok: boolean;
   attempts: SearchAttempt[];
@@ -221,9 +233,9 @@ export function siteOf(result: SearchResultEntry): string {
 // ---------------------------------------------------------------------------
 
 export interface AutomaticEntry {
-  /** `native`, an account id, or `free`. */
+  /** `native`, an account id, `hosted`, or `free`. */
   id: string;
-  kind: "native" | "account" | "free";
+  kind: "native" | "account" | "hosted" | "free";
   label: string;
   /** Native is off, or the account has no key: listed, but not used. */
   inactive: boolean;
@@ -234,11 +246,13 @@ export interface AutomaticEntry {
  * The Automatic order as the Defaults tab lists it. Mirrors the plan
  * resolution: the stored order first (unknown accounts dropped), then entries
  * it does not name in their natural place (native first, unlisted accounts
- * after the listed ones), free search always last.
+ * after the listed ones, the deployment's own search just before free search),
+ * free search always last.
  */
 export function automaticEntries(
   defaults: WebSearchDefaults,
   accounts: SearchAccountSummary[],
+  hosted?: Pick<BuiltInSearchProvider, "name">,
 ): AutomaticEntry[] {
   const allowNative = defaults.allow_native !== false;
   const native: AutomaticEntry = {
@@ -259,9 +273,17 @@ export function automaticEntries(
     (id) => id !== AUTOMATIC_FREE,
   );
   const listed: AutomaticEntry[] = [];
+  const hostedEntry: AutomaticEntry | undefined = hosted && {
+    id: AUTOMATIC_HOSTED,
+    kind: "hosted",
+    label: hosted.name,
+    inactive: false,
+  };
   for (const id of order) {
     if (id === AUTOMATIC_NATIVE) listed.push(native);
-    else {
+    else if (id === AUTOMATIC_HOSTED) {
+      if (hostedEntry) listed.push(hostedEntry);
+    } else {
       const account = accounts.find((candidate) => candidate.id === id);
       if (account) listed.push(accountEntry(account));
     }
@@ -270,7 +292,13 @@ export function automaticEntries(
   for (const account of accounts) {
     if (!listed.some((entry) => entry.id === account.id)) listed.push(accountEntry(account));
   }
-  listed.push({ id: AUTOMATIC_FREE, kind: "free", label: "Free search", inactive: false });
+  if (hostedEntry && !listed.includes(hostedEntry)) listed.push(hostedEntry);
+  listed.push({
+    id: AUTOMATIC_FREE,
+    kind: "free",
+    label: "Free search",
+    inactive: false,
+  });
   return listed;
 }
 
@@ -292,6 +320,7 @@ export function automaticOrder(entries: AutomaticEntry[]): string[] {
 const CONNECTOR_NAMES: Record<string, string> = {
   brave_search: "Brave Search",
   parallel: "Parallel",
+  cloudflare_web_search: "Cloudflare Web Search",
 };
 
 /** "Brave Search · Team". */

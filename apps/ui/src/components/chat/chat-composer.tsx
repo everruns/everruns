@@ -66,7 +66,6 @@ export function ChatComposer({
   handlePaste,
   placeholder,
   selectedModelId,
-  usingChatGptPlan = false,
   recentModels,
   onModelChange,
   modelTriggerLabel,
@@ -120,7 +119,6 @@ export function ChatComposer({
   /** Overrides the generic prompt, e.g. to name the agent being replied to. */
   placeholder?: string;
   selectedModelId: string;
-  usingChatGptPlan?: boolean;
   recentModels: Model[];
   onModelChange: (value: string) => void;
   modelTriggerLabel: string;
@@ -244,7 +242,7 @@ export function ChatComposer({
           accept={
             supportsPdf
               ? [...ALLOWED_IMAGE_TYPES, ...ALLOWED_FILE_EXTENSIONS].join(",")
-              : ALLOWED_IMAGE_TYPES.join(",")
+              : [...ALLOWED_IMAGE_TYPES, ".zip"].join(",")
           }
           multiple
           className="hidden"
@@ -344,16 +342,6 @@ export function ChatComposer({
                 <ImagePlus className="icon-sharp h-4 w-4" />
               </Button>
 
-              {usingChatGptPlan && (
-                <a
-                  href="https://chatgpt.com/settings/usage"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                >
-                  Using ChatGPT plan
-                </a>
-              )}
               <ModelEffortMenu
                 models={models}
                 recentModels={recentModels}

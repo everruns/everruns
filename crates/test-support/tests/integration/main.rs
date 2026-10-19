@@ -22,3 +22,4 @@ mod reason_generation_outcome_test;
 mod seed_events_test;
 mod tool_changes_test;
 mod truncation_gate_test;
+mod web_citations_test;

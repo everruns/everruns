@@ -522,15 +522,7 @@ impl AgentLoopError {
                         let error = UserFacingError::new(code)
                             .with_optional_field("provider", context.provider)
                             .with_optional_field("model_id", context.model_id);
-                        if code == user_facing_error_codes::PROVIDER_RATE_LIMITED {
-                            let retry_after = match err.kind {
-                                LlmErrorKind::BillingPressure {
-                                    retry_after_secs, ..
-                                } => retry_after_secs,
-                                _ => context.retry_after,
-                            };
-                            error.with_optional_field("retry_after", retry_after)
-                        } else if code == user_facing_error_codes::PROVIDER_ATTESTATION_REQUIRED {
+                        if code == user_facing_error_codes::PROVIDER_ATTESTATION_REQUIRED {
                             // The attestation variant carries no payload, so
                             // the confirmations and URL are read from the raw
                             // body the driver retained in `message`.
@@ -538,7 +530,11 @@ impl AgentLoopError {
                                 .unwrap_or_else(AttestationRequirement::fallback)
                                 .apply_fields(error)
                         } else {
-                            error
+                            crate::provider_limit::apply_provider_limit_fields(
+                                error,
+                                err,
+                                context.retry_after,
+                            )
                         }
                     }
                     None => classify_runtime_error_message(&err.message, &context),
@@ -1304,6 +1300,7 @@ mod tests {
                 "fields": {
                     "provider": "openrouter",
                     "model_id": "vendor/model",
+                    "reason": "in_flight_budget_exhausted",
                     "retry_after": 120,
                 }
             })

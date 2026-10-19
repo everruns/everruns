@@ -9,8 +9,8 @@ appliesTo: [platform, cloud]
 | **ID** | `platform` |
 | **Category** | Platform |
 | **Risk** | High |
-| **Tools** | `discover`, `query`, `execute` |
-| **Dependencies** | `session_file_system` when embedded docs are enabled |
+| **Tools** | `discover`, `query`, `execute` by default; `everruns` in the session shell with `surface: shell` |
+| **Dependencies** | `skills`; `session_file_system` when embedded docs are enabled |
 | **Mounts** | `/workspace/docs`, the Everruns documentation, read-only, when embedded docs are enabled |
 
 The Platform capability gives an agent the same catalog-backed command surface
@@ -21,6 +21,34 @@ guessing them or relying on a separate handwritten API.
 Platform Chat includes this capability by default. Other agents and harnesses
 must be assigned it explicitly. Because `execute` can mutate platform resources,
 the capability is high-risk and follows the normal admin-only assignment rule.
+
+## Interfaces and built-in skills
+
+Platform Chat uses `{"ref":"platform","config":{"surface":"shell"}}`.
+This exposes the same operations through `everruns <noun> <verb>` in its shell,
+with progressive `--help`, JSON output, pipes, and workspace redirection. It
+hides the three tools described below. Omitting `surface` retains those tools.
+Both interfaces use the same command authorization and documentation mounts.
+
+Workspace builds also ship three read-only skills with this capability:
+
+| Skill | Purpose |
+|---|---|
+| `everruns` | Product concepts, Cloud and self-hosted entry points, and documentation links |
+| `everruns-cli` | Command usage, scripting examples, and differences between installed CLI, session shell, and MCP |
+| `everruns-agent-authoring` | Agent design, configuration, dependencies, and behavioral verification |
+
+The capability enables [Agent Skills](/capabilities/agent-skills/) for discovery
+and activation. Use `list_skills` and `activate_skill`; full instructions load
+on demand from `/workspace/.agents/skills/<name>/SKILL.md`. Follow the current
+session interface when a skill shows an external MCP example. Adding skills
+grants no additional command permissions. Like embedded docs, these product
+files are included from the repository at build time; standalone crate builds
+without the repository skills tree omit them.
+
+The external [MCP endpoint](/features/mcp/#skills-for-mcp-clients) serves these
+three skills plus `everruns-mcp`. Rust development guidance is maintained
+separately in the installable `everruns-framework` skill.
 
 ## Tools
 
@@ -47,8 +75,9 @@ Once you find a command, discover its exact name before invoking it:
 { "query": "create_agent" }
 ```
 
-Platform builtins do not implement `--help`. Use `bash_usage` and the returned
-schema instead of probing with `--help` or guessing flag names. Pass array and
+For commands with a `cli` spelling, use command-tree `--help` as directed by
+discovery. Flat-only builtins have no `--help`; use their `bash_usage` and returned
+schema. Pass array and
 object values as JSON text, for example
 `--capabilities '[{"ref":"mcp:..."}]'`.
 

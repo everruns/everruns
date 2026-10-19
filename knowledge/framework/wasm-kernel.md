@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "The Execution Kernel in a JavaScript Isolate"
-description: "Why everruns-provider, -core and -engine build for wasm32-unknown-unknown, how time and task spawning port, and why the celld engine cell commits one engine step at a time."
+description: "Why core execution and its optional host build for Wasm, how time and tasks port, and how the original celld step-machine example differs."
 tags:
   - everruns
   - framework
@@ -14,9 +14,10 @@ tags:
 
 **Status: experimental.** The kernel crates build for
 `wasm32-unknown-unknown` with default features off, and
-`examples/celld-engine` runs the engine inside a celld Durable Object. No
-crate promises wasm support yet; the CI guard
-(`scripts/lib/check-wasm-portability.sh`) keeps the build from regressing.
+`examples/durable-object-agent` runs the ordinary host and shared actor driver
+inside an object. The smaller `examples/celld-engine` remains a custom step-machine
+example. These surfaces remain experimental; the build guard
+(`scripts/lib/check-wasm-portability.sh`) and workerd tests protect their boundaries.
 
 ## Problem
 
@@ -30,9 +31,13 @@ own storage.
 
 ## Decisions
 
-- **Port the kernel, not the host.** `everruns-contracts` and `everruns-core`
-  with default features disabled, including core’s portable `engine` feature,
-  build for wasm32. The host, stores, HTTP drivers and the server stay native. The
+- **Port orchestration over injected services.** `everruns-contracts` and
+  `everruns-core` with default features disabled, including the optional
+  `engine`, `execution-host` and `actor-runtime` features, build for wasm32.
+  The portable host composes the same runtime and recovery implementation files
+  as native hosts. Native filesystem/process backends, default socket/TLS transports and server
+  hosting stay native. See [Shared Durable Object Execution](durable-object-native.md)
+  for the authority profile and its separate qualification evidence. The
   engine's `tokio` dependency is narrowed to `rt`, `sync`, `time` and
   `macros`; `getrandom` and `uuid` take their JavaScript backends on that
   target only.
@@ -46,6 +51,30 @@ own storage.
   use the multi-thread runtime. JavaScript futures are `!Send`; on the
   single-threaded wasm target, `rt::AssertSend` (and `worker::send` in the
   example) marks them `Send` there and only there.
+- **Provider protocols use host-owned HTTP.** The shared Chat Completions and
+  Responses protocols and OpenAI/OpenRouter chat drivers accept an injected
+  transport on native and wasm32. Only the native default links sockets/TLS;
+  the isolate host supplies fetch, incremental response bytes, redirect/egress
+  policy and cancellation. Protocol encoding, options, error mapping and retry
+  semantics remain shared. The celld example uses this boundary rather than a
+  local Chat Completions implementation. The
+  [workerd integration](../../tests/wasm-providers/README.md) proves model/tool/model
+  exchanges in both Worker and Durable Object contexts, including incremental
+  SSE and portable deadlines. Native non-chat services and WebSockets are
+  outside this boundary.
+
+The proposed [Engine-owned celld migration](engine-durable-sessions.md#celld-examples-and-integration-are-part-of-the-change)
+replaces the application example's custom step machine with the public Framework
+Engine and shares the agent module with the Cloudflare target. Kernel portability
+alone does not meet that integration bar. The following section describes the
+existing example, not the proposed application architecture.
+
+## Original celld-engine example
+
+The following decisions describe the original custom step machine. The shared
+actor host instead uses the canonical event log and the ordinary tool recovery
+policies described in [Execution Backends](execution-backends.md).
+
 - **The cell commits per engine step, not per event.** One step is one atom:
   a Reason (one model call) or an Act (one tool batch). The events a step
   emits are written uncommitted, and the step commits them, the next turn
@@ -65,8 +94,5 @@ own storage.
 - A tool with side effects outside the cell can run twice if the node is
   lost after it ran and before its step committed. Idempotency keys per tool
   call would close that.
-- The cell's model driver is a non-streaming Chat Completions call through
-  `fetch`; the provider crate's drivers need `reqwest` and do not build for
-  the isolate.
 - Built-in tools that need a filesystem or processes have no isolate
   equivalent; the example ships one pure tool.

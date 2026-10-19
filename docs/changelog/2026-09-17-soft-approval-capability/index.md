@@ -16,7 +16,16 @@ The `soft_approval` capability tells an agent to batch safe work and pause befor
 destructive or outward-facing actions such as deleting data, pushing, publishing
 or sending messages. The pause is a `request_approval` tool call, so a waiting
 turn is something a host can render. `record_approval` writes the grant and
-`set_approval_mode` changes the level.
+`set_approval_mode` changes the level. Add it to any agent:
+
+```json
+{
+  "ref": "soft_approval",
+  "config": {
+    "mode": "normal"
+  }
+}
+```
 
 It is enabled at `normal` on the Generic and Platform Chat harnesses. The approver
 is resolved on the server from the authenticated message, never from what the

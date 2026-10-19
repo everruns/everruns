@@ -10,10 +10,26 @@
 //!
 //! Removal is soft: a removed tool stays in the declared list (the cached
 //! prefix keeps it) and is only announced as gone.
+//!
+//! The system prompt is part of the same prefix. A baseline also fixes the
+//! epoch's system prompt; text a capability adds to it later (it was switched
+//! on mid-session) rides in the change's `note` instead, so the request keeps
+//! the epoch's system prompt. Text that disappears or changes cannot be
+//! expressed that way, and the request then sends the current prompt.
 
 // Design of record: knowledge/execution/cache-stable-tool-changes.md.
+use crate::message::{Message, MessageContent, MessageRole};
 use crate::tool_types::ToolDefinition;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
+
+/// Separator between the system prompt's parts (the base prompt and each
+/// capability's addition). Prompt text is compared part by part.
+const PART_SEPARATOR: &str = "\n\n";
+
+/// Metadata key of the completed assistant message that stores the entry
+/// recorded before its generation.
+pub const METADATA_KEY: &str = "tool_changes";
 
 /// One recorded change to the tools the model may call.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -23,6 +39,11 @@ pub struct ToolChanges {
     /// model switch; entries without it apply on top of the latest baseline.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub baseline: Option<Vec<ToolDefinition>>,
+    /// The system prompt the epoch started with, on a baseline entry. Absent
+    /// on entries recorded before system prompts were tracked; such an epoch
+    /// always sends the current prompt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_prompt: Option<String>,
     /// Tools that become callable: new names, or names announced as removed
     /// earlier and offered again.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -54,6 +75,15 @@ impl ToolChanges {
             && self.redefined.is_empty()
             && self.removed.is_empty()
             && self.note.is_none()
+    }
+
+    /// An entry that starts a new epoch with `tools` and `system_prompt`.
+    pub fn baseline_with_prompt(tools: Vec<ToolDefinition>, system_prompt: &str) -> Self {
+        Self {
+            baseline: Some(tools),
+            system_prompt: Some(system_prompt.to_string()),
+            ..Self::default()
+        }
     }
 
     /// Names this entry touches, for logs and traces.
@@ -289,5 +319,173 @@ mod tests {
         let back = serde_json::from_value::<ToolChanges>(value).unwrap();
         assert_eq!(back.removed, changes.removed);
         assert!(back.baseline.is_none() && back.added.is_empty());
+    }
+}
+
+/// The system prompt a conversation has been given: the epoch's prompt plus
+/// every part added since through a change's `note`.
+#[derive(Debug, Clone, Default)]
+pub struct DeclaredPrompt {
+    baseline: Option<String>,
+    parts: Vec<String>,
+}
+
+/// What the current system prompt is, measured against a [`DeclaredPrompt`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PromptDiff {
+    /// Every declared part is still there; these parts are new (possibly none).
+    Added(Vec<String>),
+    /// A declared part is gone or changed, or the epoch has no recorded prompt:
+    /// the request has to send the current prompt.
+    Diverged,
+}
+
+/// The prompt's parts for comparison. `compose_system_prompt` wraps the base
+/// prompt in `<system-prompt>` only once a capability adds text, so the first
+/// addition would otherwise also change the base part; the wrapper is ignored.
+fn prompt_parts(prompt: &str) -> impl Iterator<Item = &str> {
+    prompt
+        .split(PART_SEPARATOR)
+        .map(|part| {
+            let part = part.strip_prefix("<system-prompt>\n").unwrap_or(part);
+            part.strip_suffix("\n</system-prompt>").unwrap_or(part)
+        })
+        .filter(|part| !part.is_empty())
+}
+
+impl DeclaredPrompt {
+    /// Apply one recorded entry. A baseline restarts the declaration.
+    pub fn apply(&mut self, changes: &ToolChanges) {
+        if changes.baseline.is_some() {
+            *self = Self::default();
+            self.baseline.clone_from(&changes.system_prompt);
+            if let Some(prompt) = &changes.system_prompt {
+                self.parts = prompt_parts(prompt).map(str::to_string).collect();
+            }
+        }
+        if let Some(note) = &changes.note {
+            self.parts.extend(prompt_parts(note).map(str::to_string));
+        }
+    }
+
+    /// The prompt the epoch started with, sent in place of the current one
+    /// while the difference rides in notes.
+    pub fn baseline(&self) -> Option<&str> {
+        self.baseline.as_deref()
+    }
+
+    /// Compare `current` part by part with what has been declared.
+    pub fn diff(&self, current: &str) -> PromptDiff {
+        if self.baseline.is_none() {
+            return PromptDiff::Diverged;
+        }
+        let mut unmatched: Vec<&str> = self.parts.iter().map(String::as_str).collect();
+        let mut added = Vec::new();
+        for part in prompt_parts(current) {
+            match unmatched.iter().position(|declared| *declared == part) {
+                Some(index) => {
+                    unmatched.remove(index);
+                }
+                None => added.push(part.to_string()),
+            }
+        }
+        if unmatched.is_empty() {
+            PromptDiff::Added(added)
+        } else {
+            PromptDiff::Diverged
+        }
+    }
+}
+
+/// The note carrying newly added prompt parts.
+pub fn prompt_note(added: &[String]) -> Option<String> {
+    (!added.is_empty()).then(|| added.join(PART_SEPARATOR))
+}
+
+/// `messages` with the leading system message replaced by `system_prompt`:
+/// a request that sends the epoch's tools also sends the epoch's prompt, and
+/// the text added since reaches the model through the changes' notes.
+pub fn with_system_prompt<'a>(
+    messages: &'a [Message],
+    system_prompt: Option<&str>,
+) -> Cow<'a, [Message]> {
+    match (system_prompt, messages.first()) {
+        (Some(prompt), Some(first)) if first.role == MessageRole::System => {
+            let mut messages = messages.to_vec();
+            messages[0].content = MessageContent::Text(prompt.to_string());
+            Cow::Owned(messages)
+        }
+        _ => Cow::Borrowed(messages),
+    }
+}
+
+#[cfg(test)]
+mod prompt_tests {
+    use super::*;
+
+    fn declared(prompt: &str, notes: &[&str]) -> DeclaredPrompt {
+        let mut declared = DeclaredPrompt::default();
+        declared.apply(&ToolChanges::baseline_with_prompt(Vec::new(), prompt));
+        for note in notes {
+            declared.apply(&ToolChanges {
+                note: Some(note.to_string()),
+                ..ToolChanges::default()
+            });
+        }
+        declared
+    }
+
+    #[test]
+    fn an_added_capability_part_is_a_note_and_is_declared_once() {
+        let prompt = declared("base\n\nmemory how-to", &[]);
+        assert_eq!(
+            prompt.diff("base\n\ndeploy how-to\n\nmemory how-to"),
+            PromptDiff::Added(vec!["deploy how-to".to_string()])
+        );
+        let prompt = declared("base\n\nmemory how-to", &["deploy how-to"]);
+        assert_eq!(
+            prompt.diff("base\n\ndeploy how-to\n\nmemory how-to"),
+            PromptDiff::Added(Vec::new())
+        );
+        assert_eq!(prompt.baseline(), Some("base\n\nmemory how-to"));
+    }
+
+    #[test]
+    fn wrapping_the_base_prompt_for_a_first_addition_is_not_a_change() {
+        let prompt = declared("You are helpful.\n\nNotes.", &[]);
+        assert_eq!(
+            prompt.diff("<system-prompt>\nYou are helpful.\n\nNotes.\n</system-prompt>\n\nhow-to"),
+            PromptDiff::Added(vec!["how-to".to_string()])
+        );
+    }
+
+    #[test]
+    fn a_changed_or_removed_part_diverges() {
+        let prompt = declared("base\n\nmemory how-to", &[]);
+        assert_eq!(
+            prompt.diff("base\n\nmemory how-to v2"),
+            PromptDiff::Diverged
+        );
+        assert_eq!(prompt.diff("base"), PromptDiff::Diverged);
+        assert_eq!(DeclaredPrompt::default().diff("base"), PromptDiff::Diverged);
+    }
+
+    #[test]
+    fn the_epoch_prompt_replaces_only_a_leading_system_message() {
+        let messages = vec![
+            Message::text(MessageRole::System, "base\n\nadded"),
+            Message::text(MessageRole::User, "hi"),
+        ];
+        let sent = with_system_prompt(&messages, Some("base"));
+        let text = |message: &Message| match &message.content {
+            MessageContent::Text(text) => text.clone(),
+            MessageContent::Parts(_) => String::new(),
+        };
+        assert_eq!(text(&sent[0]), "base");
+        assert_eq!(text(&sent[1]), "hi");
+        assert!(matches!(
+            with_system_prompt(&messages[1..], Some("base")),
+            Cow::Borrowed(_)
+        ));
     }
 }

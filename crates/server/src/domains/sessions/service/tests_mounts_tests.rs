@@ -133,7 +133,6 @@ async fn get_skips_foreign_harness_and_agent_capability_features() {
 
     let other_agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
         service_virtual_user_id: None,
-
         id: None,
         name: "other-agent".to_string(),
         display_name: Some("Other Agent".to_string()),
@@ -154,6 +153,7 @@ async fn get_skips_foreign_harness_and_agent_capability_features() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
     })
     .execute(&other_ctx)
@@ -333,6 +333,7 @@ async fn create_rejects_high_risk_harness_capabilities_for_members() {
         role: OrgRole::Member,
         is_platform_user: false,
         is_internal: false,
+        read_only: false,
     };
 
     let err = session_service
@@ -424,6 +425,7 @@ async fn create_rejects_declarative_capability_with_high_risk_dependency_for_mem
         role: OrgRole::Member,
         is_platform_user: false,
         is_internal: false,
+        read_only: false,
     };
 
     let err = session_service
@@ -477,7 +479,6 @@ async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() 
 
     let other_agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
         service_virtual_user_id: None,
-
         id: None,
         name: "other-agent".to_string(),
         display_name: Some("Other Agent".to_string()),
@@ -498,6 +499,7 @@ async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() 
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
     })
     .execute(&other_ctx)
@@ -788,6 +790,7 @@ async fn update_rejects_reserved_routing_tags_for_external_callers() {
                     title: None,
                     goal: None,
                     virtual_user_id: UpdateField::Unchanged,
+                    model_id: UpdateField::Unchanged,
                     locale: None,
                     tags: Some(forbidden.clone()),
                 },
@@ -924,6 +927,7 @@ async fn internal_callers_can_set_reserved_routing_tags() {
                 title: None,
                 goal: None,
                 virtual_user_id: UpdateField::Unchanged,
+                model_id: UpdateField::Unchanged,
                 locale: None,
                 tags: Some(updated_tags.clone()),
             },
@@ -1410,7 +1414,6 @@ async fn agent_memory_is_visible_across_sessions_of_one_agent() {
 
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
         service_virtual_user_id: None,
-
         id: None,
         name: "memory-agent".to_string(),
         display_name: Some("Memory Agent".to_string()),
@@ -1431,6 +1434,7 @@ async fn agent_memory_is_visible_across_sessions_of_one_agent() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
     })
     .execute(&ctx)

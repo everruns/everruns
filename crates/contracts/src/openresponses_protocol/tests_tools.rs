@@ -1202,3 +1202,64 @@ fn file_part_serializes_to_input_file() {
     assert_eq!(v["input_file"]["filename"], serde_json::json!("report.pdf"));
     assert!(v["input_file"].get("file_url").is_none());
 }
+
+#[tokio::test]
+async fn strict_optional_nulls_become_omitted_tool_arguments() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    let frame = json!({"type":"response.output_item.done","item":{
+        "type":"function_call","id":"fc_null","call_id":"call_null",
+        "name":"list_tasks","arguments":r#"{"state":null,"kind":null}"#,"status":"completed"
+    }});
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("connection", "close")
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(format!("data: {frame}\n\n")),
+        )
+        .mount(&server)
+        .await;
+    let provider = crate::runtime_provider::RuntimeProvider::new(
+        "strict-null",
+        OpenResponsesProtocolChatDriver::new(),
+    )
+    .base_url(server.uri());
+    let driver =
+        OpenResponsesProtocolChatDriver::new().with_retry_config(LlmRetryConfig::no_retry());
+    let mut config = auth_test_config();
+    config.tools = vec![ToolDefinition::function(
+        "list_tasks",
+        "List tasks",
+        json!({
+            "type":"object","properties":{
+                "state":{"type":"string","enum":["running","failed"]},
+                "kind":{"type":"string"}
+            }, "additionalProperties":false
+        }),
+    )];
+    let mut stream = driver
+        .chat_completion_stream(
+            provider.endpoint(),
+            vec![Message::text(MessageRole::User, "list tasks")],
+            &config,
+        )
+        .await
+        .unwrap();
+    let mut saw_call = false;
+    while let Some(event) = stream.next().await {
+        if let LlmStreamEvent::ToolCalls(calls) = event.unwrap() {
+            assert_eq!(calls[0].arguments, json!({}));
+            saw_call = true;
+        }
+    }
+    assert!(saw_call);
+    let requests = server.received_requests().await.unwrap();
+    let body: Value = requests[0].body_json().unwrap();
+    assert_eq!(body["tools"][0]["strict"], true);
+    assert_eq!(
+        body["tools"][0]["parameters"]["properties"]["state"]["type"],
+        json!(["string", "null"])
+    );
+}

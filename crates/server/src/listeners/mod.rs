@@ -7,6 +7,7 @@
 // (`domains::usage::tracking`, `domains::audit_logs::approval_listener`,
 // `domains::mcp_servers::events`).
 
+pub mod automatic_session_titles;
 pub mod coordination;
 pub mod run_summary;
 pub mod turn_latency;

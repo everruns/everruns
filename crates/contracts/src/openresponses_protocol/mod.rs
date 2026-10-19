@@ -19,7 +19,8 @@
 //
 // The Chat Completions API remains supported for backward compatibility.
 
-use reqwest::{Client, header::HeaderMap};
+use crate::http_transport::{HttpClient, HttpResponse, HttpTransport};
+use http::HeaderMap;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::sync::{Arc, Mutex};
@@ -39,19 +40,21 @@ use crate::llm_retry::{
 use crate::openai_protocol::{is_openai_model_not_found, is_openai_request_too_large};
 use crate::openresponses_types::{self as types};
 use crate::tool_types::ToolDefinition;
-use crate::user_facing_error::is_provider_quota_message;
+use crate::user_facing_error::{is_provider_quota_message, is_usage_limit_message};
 
 // Split out of one 6000-line file. Every item keeps its visibility, so the
 // module's public surface is unchanged.
 mod background;
 mod chat_driver;
+mod citations;
 mod completion_contract;
 mod computer;
 mod hosted_tools;
 mod input;
 mod streaming;
+mod tool_changes;
 mod websocket;
-#[cfg(feature = "responses-websocket")]
+#[cfg(all(feature = "responses-websocket", not(target_arch = "wasm32")))]
 mod websocket_transport;
 mod wire;
 
@@ -155,6 +158,7 @@ pub trait OpenResponsesRequestExtension: Send + Sync {
 pub struct OpenResponsesProtocolChatDriver {
     /// Retry configuration for rate limit errors
     retry_config: LlmRetryConfig,
+    transport: HttpClient,
     /// Optional provider-specific request-body decorator (see
     /// [`OpenResponsesRequestExtension`]). `None` for vanilla OpenAI/Azure.
     request_extension: Option<Arc<dyn OpenResponsesRequestExtension>>,
@@ -167,6 +171,7 @@ pub struct OpenResponsesProtocolChatDriver {
     background_mode: bool,
     required_completion: bool,
     websocket: websocket::WebSocketPolicy,
+    inline_tool_changes: tool_changes::InlineToolChangeHosts,
 }
 
 impl OpenResponsesProtocolChatDriver {
@@ -179,6 +184,7 @@ impl OpenResponsesProtocolChatDriver {
         crate::install_default_crypto_provider();
         Self {
             retry_config: LlmRetryConfig::default(),
+            transport: HttpClient::default(),
             request_extension: None,
             stateful_responses: None,
             native_phases: false,
@@ -188,6 +194,7 @@ impl OpenResponsesProtocolChatDriver {
             background_mode: false,
             required_completion: false,
             websocket: Default::default(),
+            inline_tool_changes: Default::default(),
         }
     }
 
@@ -201,6 +208,27 @@ impl OpenResponsesProtocolChatDriver {
     pub fn with_native_features(mut self, phases: bool, hosted_tool_search: bool) -> Self {
         self.native_phases = phases;
         self.hosted_tool_search = hosted_tool_search;
+        self
+    }
+
+    /// Send recorded tool changes as `additional_tools` developer items and
+    /// keep the session's first tool list as `tools`, so a reveal keeps the
+    /// prompt cache. Applies only to `api.openai.com` and to models whose
+    /// profile lists `inline_tool_changes`; other requests send the current
+    /// tool list.
+    pub fn with_inline_tool_changes(mut self, enabled: bool) -> Self {
+        self.inline_tool_changes = if enabled {
+            tool_changes::InlineToolChangeHosts::OpenAi
+        } else {
+            tool_changes::InlineToolChangeHosts::Off
+        };
+        self
+    }
+
+    /// Inline tool changes on any endpoint, for request tests on a mock server.
+    #[cfg(test)]
+    pub(crate) fn with_inline_tool_changes_on_any_host(mut self) -> Self {
+        self.inline_tool_changes = tool_changes::InlineToolChangeHosts::Any;
         self
     }
 
@@ -264,6 +292,17 @@ impl OpenResponsesProtocolChatDriver {
         self
     }
 
+    /// Use host HTTP without replacing request encoding, parsing or retries.
+    pub fn with_transport(mut self, transport: Arc<dyn HttpTransport>) -> Self {
+        self.transport = HttpClient::new(transport);
+        self
+    }
+
+    /// The injected transport, or the lazy native default.
+    pub fn http_client(&self) -> HttpClient {
+        self.transport.clone()
+    }
+
     /// Configure retry behavior for rate limit errors
     pub fn with_retry_config(mut self, config: LlmRetryConfig) -> Self {
         self.retry_config = config;
@@ -290,7 +329,7 @@ impl OpenResponsesProtocolChatDriver {
         extension_headers: &HeaderMap,
         config: &LlmCallConfig,
         retries_consumed: u32,
-    ) -> Result<(reqwest::Response, RetryMetadata)> {
+    ) -> Result<(HttpResponse, RetryMetadata)> {
         let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let mut retry_config = self.retry_config.clone();
         retry_config.max_retries = retry_config.max_retries.saturating_sub(retries_consumed);
@@ -322,17 +361,16 @@ impl OpenResponsesProtocolChatDriver {
                     .map_err(SendOutcome::Fatal)?;
                 for (name, value) in service_headers.into_iter().chain(resolved.headers) {
                     let name =
-                        reqwest::header::HeaderName::from_bytes(name.as_bytes()).map_err(|e| {
+                        http::header::HeaderName::from_bytes(name.as_bytes()).map_err(|e| {
                             SendOutcome::Fatal(AgentLoopError::llm(format!(
                                 "invalid header name: {e}"
                             )))
                         })?;
-                    let mut value =
-                        reqwest::header::HeaderValue::from_str(&value).map_err(|e| {
-                            SendOutcome::Fatal(AgentLoopError::llm(format!(
-                                "invalid header value: {e}"
-                            )))
-                        })?;
+                    let mut value = http::header::HeaderValue::from_str(&value).map_err(|e| {
+                        SendOutcome::Fatal(AgentLoopError::llm(format!(
+                            "invalid header value: {e}"
+                        )))
+                    })?;
                     value.set_sensitive(true);
                     headers.insert(name, value);
                 }
@@ -344,12 +382,12 @@ impl OpenResponsesProtocolChatDriver {
                     crate::driver_helpers::merge_request_headers(Vec::new(), &config.extra_headers)
                 {
                     let name =
-                        reqwest::header::HeaderName::from_bytes(name.as_bytes()).map_err(|e| {
+                        http::header::HeaderName::from_bytes(name.as_bytes()).map_err(|e| {
                             SendOutcome::Fatal(AgentLoopError::llm(format!(
                                 "invalid header name: {e}"
                             )))
                         })?;
-                    let value = reqwest::header::HeaderValue::from_str(&value).map_err(|e| {
+                    let value = http::header::HeaderValue::from_str(&value).map_err(|e| {
                         SendOutcome::Fatal(AgentLoopError::llm(format!(
                             "invalid header value: {e}"
                         )))
@@ -357,7 +395,7 @@ impl OpenResponsesProtocolChatDriver {
                     headers.insert(name, value);
                 }
 
-                self.client()
+                self.http_client()
                     .post(&resolved.url)
                     .headers(headers)
                     .header("Content-Type", "application/json")
@@ -390,7 +428,9 @@ impl OpenResponsesProtocolChatDriver {
 
                         // Exhausted billing quota is surfaced as a 429 but is not
                         // transient — fail fast instead of burning retries.
-                        if is_provider_quota_message(&error_text) {
+                        if is_provider_quota_message(&error_text)
+                            || is_usage_limit_message(&error_text)
+                        {
                             return RetryDecision::Terminal(AgentLoopError::llm_kind(
                                 LlmErrorKind::QuotaExhausted,
                                 format!("OpenAI Responses API error ({}): {}", status, error_text),
@@ -479,7 +519,8 @@ impl OpenResponsesProtocolChatDriver {
     /// resolver). The api_url is org-configurable, so a bare `Client::new()`
     /// would leave this provider open to DNS-rebind / redirect SSRF
     /// (TM-API-013, EVE-623).
-    pub fn client(&self) -> Client {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn client(&self) -> reqwest::Client {
         crate::driver_helpers::shared_streaming_http_client()
     }
 
@@ -942,7 +983,7 @@ impl OpenResponsesProtocolChatDriver {
                     .resolve("POST", &compact_url, &body)
                     .await
                     .map_err(SendOutcome::Fatal)?;
-                let mut builder = self.client().post(&resolved.url);
+                let mut builder = self.http_client().post(&resolved.url);
                 for (name, value) in resolved.headers {
                     builder = builder.header(name, value);
                 }
@@ -972,6 +1013,21 @@ impl OpenResponsesProtocolChatDriver {
                             (self.request_extension.as_ref(), rate_limit_info.as_mut())
                         {
                             extension.update_rate_limit_info(info, &response_headers, &error_text);
+                        }
+
+                        if is_provider_quota_message(&error_text)
+                            || is_usage_limit_message(&error_text)
+                        {
+                            return RetryDecision::Terminal(
+                                AgentLoopError::llm_kind(
+                                    LlmErrorKind::QuotaExhausted,
+                                    format!(
+                                        "OpenAI Responses compact API error ({}): {}",
+                                        status, error_text
+                                    ),
+                                )
+                                .with_status(status.as_u16()),
+                            );
                         }
 
                         let wait = rate_limit_info
@@ -1105,9 +1161,21 @@ impl OpenResponsesProtocolChatDriver {
     /// `previous_response_id` is in play — see [`compute_delta_input_items`]. The
     /// stateful Responses invariant is: a request must not mix `previous_response_id`
     /// with prior transcript input the provider already holds server-side.
+    #[cfg(test)]
     fn build_input(
         messages: &[Message],
         supports_phases: bool,
+    ) -> (Option<String>, Vec<ResponsesInputItem>) {
+        Self::build_input_with_changes(messages, supports_phases, None)
+    }
+
+    /// The transcript conversion, plus each recorded tool change rendered after
+    /// the input it took effect at, before the next assistant output, when
+    /// `inline` is set.
+    fn build_input_with_changes(
+        messages: &[Message],
+        supports_phases: bool,
+        inline: Option<tool_changes::InlineToolChanges>,
     ) -> (Option<String>, Vec<ResponsesInputItem>) {
         // Accumulate all system messages into `instructions`. Multiple system
         // messages legitimately occur in one request — the agent system prompt
@@ -1116,8 +1184,19 @@ impl OpenResponsesProtocolChatDriver {
         // keep only the last notice. See `fold_system_messages`.
         let instructions: Option<String> = fold_system_messages(messages);
         let mut input_items = Vec::new();
+        let mut pending_changes = Vec::new();
 
         for msg in messages {
+            if let Some(mode) = inline {
+                if msg.role == MessageRole::Assistant {
+                    for changes in pending_changes.drain(..) {
+                        input_items.extend(tool_changes::items(changes, mode));
+                    }
+                }
+                if let Some(changes) = &msg.tool_changes {
+                    pending_changes.push(changes);
+                }
+            }
             if supports_phases && let Some(effort) = msg.configuration_update {
                 input_items.push(configuration_update_item(effort));
             }
@@ -1198,6 +1277,11 @@ impl OpenResponsesProtocolChatDriver {
                 }
             } else {
                 input_items.push(Self::convert_message(msg, supports_phases));
+            }
+        }
+        if let Some(mode) = inline {
+            for changes in pending_changes {
+                input_items.extend(tool_changes::items(changes, mode));
             }
         }
 

@@ -82,12 +82,14 @@ a narrow column on the right holds the settings:
 
 - **Harness**, **Capabilities** (compact chips, in precedence order), **Default model**, and **Tags**
 - **Updated**, read-only
-- **More**: one row each for Branding, MCP servers, Credentials, Service account, Files, Network
-  access, Primary sandbox, Token usage, and Health check. Each row shows its current value and
-  opens a side sheet. Service account saves immediately.
+- **More**: one row each for Branding, MCP servers, Credentials, Service account, Network
+  access, Sandbox, Token usage, and Health check. **Files** is included when the agent
+  has a filesystem (from its capabilities, a dependency, or the harness) or already has starter
+  files. Each row shows its current value and opens a side sheet. Service account saves
+  immediately.
 
 Tabs: **Agent**, **Preview**, **Integrations** (channels and triggers), **Stats**, and
-**Sessions**.
+**Sessions**. Preview's Files card follows the same filesystem rule.
 
 #### Avatar
 
@@ -120,7 +122,7 @@ Header actions:
 - **More actions**: Copy, Export, Version history, and Archive (or Delete, for an archived agent)
 - **Test in Playground**: open Playground setup with this Agent selected
 
-Use **More > Primary sandbox** to add named Bashkit or Daytona Sandbox Template bindings. Then select the
+Use **More > Sandbox** to add named Bashkit or Daytona Sandbox Template bindings. Then select the
 Agent and Sandbox when starting a **New Playground chat**. Personal Chats always use the
 managed Platform Chat and do not expose a sandbox selector. See [Sandbox Templates]
 (/features/sandbox-templates/) for recovery and lifecycle behavior.
@@ -190,7 +192,7 @@ Each capability card shows:
   rotate its key, sync its models and open its settings. Several providers of
   one kind can be connected under different names; model pickers show
   "Model (Provider name)".
-- **Defaults**: the organization's default model, default decision model,
+- **Defaults**: the organization's default model, Small model for lightweight work, default decision model,
   system decisions source, and default provider for realtime, embeddings,
   images and rerank.
 
@@ -206,9 +208,55 @@ Manage personal access tokens for programmatic access. Tokens are tied to your
 user account (not an organization) and inherit access to every organization
 available to your account:
 
-- Create new personal access tokens
-- View existing tokens (values hidden)
+- Create new personal access tokens, choosing their access
+- View existing tokens (values hidden) and each token's access
 - Revoke tokens
+
+#### Token access
+
+Every token has one access level, chosen when you create it. It cannot be
+changed later; create a new token instead.
+
+| Access | API value | What it can do |
+|---|---|---|
+| **Full access** (default) | `["*"]` | Everything your account can do, in every organization you belong to. |
+| **Read-only** | `["read"]` | Read access to all your organizations, and nothing else. |
+
+A read-only token can list and view agents, sessions, messages, files and
+other resources in every organization you belong to, run read-only CLI
+commands, and use the read-only tools on the MCP endpoint. Treat it like a
+password: if it leaks, everything you can read is exposed.
+
+A read-only token can never:
+
+- create, change, run, or delete anything (including sending messages to
+  agents or calling an agent through an Agent API channel);
+- create, list, or revoke personal access tokens, or create agent keys or
+  share links;
+- change organizations, members, or invitations, or connect providers and
+  other accounts;
+- download the full export of your account data
+  (`GET /v1/users/me/export`).
+
+A request outside the token's access fails with `403 Forbidden`, a
+`WWW-Authenticate: Bearer error="insufficient_scope"` header, and a problem
+body with `"code": "insufficient_scope"`. Use a full-access token for that
+operation. `GET /v1/auth/me` reports the scope of the token you called it
+with as `token_scope` (`"*"` or `"read"`; `null` when you are signed in
+another way).
+
+Tokens are created from a signed-in session; a personal access token cannot
+create another one. Through the API, pass `scopes`:
+
+```bash
+curl -X POST "$EVERRUNS_URL/api/v1/auth/personal-access-tokens" \
+  -H "Authorization: Bearer $SESSION_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "ci-reader", "scopes": ["read"], "expires_in_days": 90}'
+```
+
+Omitting `scopes` creates a full-access token. Any value other than `["*"]`
+or `["read"]` is rejected with `400` and `"code": "unsupported_pat_scopes"`.
 
 ### Members
 

@@ -864,6 +864,13 @@
         "help": "Maximum number of LLM iterations per turn for this agent."
       },
       {
+        "field": "max_output_tokens",
+        "long": "max-output-tokens",
+        "kind": "integer",
+        "required": false,
+        "help": "Ceiling on output tokens per model response (sent as `max_tokens`). Omit to use the provider ..."
+      },
+      {
         "field": "mcpServers",
         "long": "mcpServers",
         "kind": "json",
@@ -951,7 +958,7 @@
       "credentials"
     ],
     "verb": "create",
-    "description": "Create a write-only Agent credential setup requirement for one attached MCP tool parameter. This command never accepts a secret value; the user completes setup in the Agent Credentials UI.",
+    "description": "Create a write-only Agent credential setup requirement: one attached MCP tool parameter, or an HTTP API the agent's shell calls with $ENV_NAME (the value is injected only into requests to the bound URL). This command never accepts a secret value; the user completes setup in the Agent Credentials UI.",
     "method": "POST",
     "http_path": "/v1/agents/{agent_id}/credentials",
     "args": [
@@ -963,11 +970,32 @@
         "help": "Agent ID, populated from the request path by the HTTP API."
       },
       {
+        "field": "auth",
+        "long": "auth",
+        "kind": "string",
+        "required": false,
+        "help": "`bearer` (default) sends `Authorization: Bearer <value>`; `header` sends the value in `header..."
+      },
+      {
         "field": "description",
         "long": "description",
         "kind": "string",
         "required": false,
         "help": "Optional explanation of how the credential will be used."
+      },
+      {
+        "field": "env_name",
+        "long": "env-name",
+        "kind": "string",
+        "required": false,
+        "help": "Env var name the agent's shell uses as a placeholder (HTTP API)."
+      },
+      {
+        "field": "header_name",
+        "long": "header-name",
+        "kind": "string",
+        "required": false,
+        "help": "Header that carries the value when `auth` is `header` (HTTP API)."
       },
       {
         "field": "label",
@@ -980,28 +1008,39 @@
         "field": "mcp_server_name",
         "long": "mcp-server-name",
         "kind": "string",
-        "required": true,
-        "help": "Name of an MCP server attached to the agent."
+        "required": false,
+        "help": "Name of an MCP server attached to the agent (MCP tool parameter)."
       },
       {
         "field": "parameter_name",
         "long": "parameter-name",
         "kind": "string",
-        "required": true,
-        "help": "Top-level tool argument to inject outside model context."
+        "required": false,
+        "help": "Top-level tool argument to inject outside model context (MCP tool parameter)."
       },
       {
         "field": "tool_name",
         "long": "tool-name",
         "kind": "string",
-        "required": true,
-        "help": "MCP tool whose outbound call requires the credential."
+        "required": false,
+        "help": "MCP tool whose outbound call requires the credential (MCP tool parameter)."
+      },
+      {
+        "field": "url",
+        "long": "url",
+        "kind": "string",
+        "required": false,
+        "help": "HTTPS URL prefix the value may be sent to (HTTP API)."
       }
     ],
     "examples": [
       {
         "intent": "Declare that an MCP tool needs a secret the model must never see",
         "command": "everruns agents credentials create --agent-id agent_01h9 --mcp-server-name visti --tool-name visti_send --parameter-name channel_key --label 'Visti channel key' --reason 'Notify the on-call channel'"
+      },
+      {
+        "intent": "Declare an API key the agent's shell sends to one host without seeing it",
+        "command": "everruns agents credentials create --agent-id agent_01h9 --env-name JEV_API_KEY --url https://api.typesafe.ai --label 'Jev API key' --reason 'Ask Jev for triage decisions'"
       }
     ]
   },
@@ -1136,6 +1175,51 @@
     ]
   },
   {
+    "wire_name": "adopt_agent_example",
+    "path": [
+      "agents",
+      "examples"
+    ],
+    "verb": "adopt",
+    "description": "Create an agent from an agent example by name (see list_agent_examples). The agent is named after the example, with a short suffix when that name is taken, and tagged example:<name>. A template's guided setup (GitHub App, connections, trigger) is not run: do those steps next.",
+    "method": "POST",
+    "http_path": "/v1/agents/import",
+    "args": [
+      {
+        "field": "name",
+        "long": "name",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Example name from list_agent_examples, such as `pr-reviewer`."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Start a pull request reviewer from its template",
+        "command": "everruns agents examples adopt pr-reviewer --reason 'Set up PR reviews for the repo'"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_agent_examples",
+    "path": [
+      "agents",
+      "examples"
+    ],
+    "verb": "list",
+    "description": "List adoptable agent examples (blueprints such as pr-reviewer): name, description, harness, capabilities, and the guided setup a template needs after adoption (GitHub App, connections, trigger). Adopt one by name with adopt_agent_example.",
+    "method": "GET",
+    "http_path": "/v1/agent-examples",
+    "args": [],
+    "examples": [
+      {
+        "intent": "Find a ready-made agent to start from instead of writing one by hand",
+        "command": "everruns agents examples list"
+      }
+    ]
+  },
+  {
     "wire_name": "export_agent",
     "path": [
       "agents"
@@ -1226,6 +1310,58 @@
       {
         "intent": "Stop an agent answering on its exposed surfaces without deleting it",
         "command": "everruns agents exposures suspend agent_01h9 --reason 'Pause while the prompt is fixed'"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_agent_failures",
+    "path": [
+      "agents",
+      "failures"
+    ],
+    "verb": "list",
+    "description": "List sessions with failed turns. Filters by failure time and includes older, recovered, and archived sessions, matching agent activity. Returns the latest matching failure per session.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/failures",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent",
+        "position": 1,
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "after",
+        "long": "after",
+        "kind": "string",
+        "required": false,
+        "help": "Exclusive lower bound on failure time; defaults to 24 hours before `before`."
+      },
+      {
+        "field": "before",
+        "long": "before",
+        "kind": "string",
+        "required": false,
+        "help": "Inclusive upper bound, normally the Agents activity response's generated_at."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find an agent's failed turns, including sessions that later recovered",
+        "command": "everruns agents failures list agent_01h9 --limit 20"
       }
     ]
   },
@@ -1348,6 +1484,39 @@
       {
         "intent": "Check whether an agent's GitHub App is installed and on which account",
         "command": "everruns agents github get --agent-id agent_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "use_agent_everruns_app",
+    "path": [
+      "agents",
+      "github"
+    ],
+    "verb": "use-everruns-app",
+    "description": "Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/github/everruns-app",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      },
+      {
+        "field": "connection_id",
+        "long": "connection-id",
+        "kind": "string",
+        "required": true,
+        "help": "Connection id of one of the org's linked installations, from the agent's GitHub status (`ever..."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Let an agent act as the Everruns app through the org's acme installation",
+        "command": "everruns agents github use-everruns-app --agent-id agent_01h9 --connection-id 0190f5a2-7c1e-7a3b-9d2e-4f5a6b7c8d9e --reason 'Use the shared app for the reviewer'"
       }
     ]
   },
@@ -1945,6 +2114,20 @@
         "help": "Webhook and MCP event: template for the event subject."
       },
       {
+        "field": "target_binding_key",
+        "long": "target-binding-key",
+        "kind": "string",
+        "required": false,
+        "help": "Schedule only: the conversation on `target_channel_id`, keyed the way the channel binds sessi..."
+      },
+      {
+        "field": "target_channel_id",
+        "long": "target-channel-id",
+        "kind": "string",
+        "required": false,
+        "help": "Schedule only: the agent's channel whose conversation each run speaks in, instead of a sessio..."
+      },
+      {
         "field": "timezone",
         "long": "timezone",
         "kind": "string",
@@ -2308,6 +2491,20 @@
         "help": "Replacement subject template."
       },
       {
+        "field": "target_binding_key",
+        "long": "target-binding-key",
+        "kind": "string",
+        "required": false,
+        "help": "Replacement target conversation; given with `target_channel_id`."
+      },
+      {
+        "field": "target_channel_id",
+        "long": "target-channel-id",
+        "kind": "string",
+        "required": false,
+        "help": "Replacement target channel."
+      },
+      {
         "field": "timezone",
         "long": "timezone",
         "kind": "string",
@@ -2425,6 +2622,13 @@
         "help": "Maximum number of LLM iterations per turn for this agent."
       },
       {
+        "field": "max_output_tokens",
+        "long": "max-output-tokens",
+        "kind": "integer",
+        "required": false,
+        "help": "Ceiling on output tokens per model response (sent as `max_tokens`). Omit to leave unchanged; ..."
+      },
+      {
         "field": "mcpServers",
         "long": "mcpServers",
         "kind": "json",
@@ -2508,6 +2712,10 @@
       {
         "intent": "Rename an agent, leaving the rest of it alone",
         "command": "everruns agents update agent_01h9 --name triage-v2 --reason 'Rename after the triage split'"
+      },
+      {
+        "intent": "Cap each model response so calls fit a low provider balance",
+        "command": "everruns agents update agent_01h9 --max-output-tokens 4096 --reason 'Provider said it can only afford fewer tokens'"
       }
     ]
   },
@@ -2603,6 +2811,13 @@
         "kind": "integer",
         "required": false,
         "help": "Maximum number of LLM iterations per turn for this agent."
+      },
+      {
+        "field": "max_output_tokens",
+        "long": "max-output-tokens",
+        "kind": "integer",
+        "required": false,
+        "help": "Ceiling on output tokens per model response (sent as `max_tokens`). Omit to use the provider ..."
       },
       {
         "field": "mcpServers",
@@ -7958,6 +8173,32 @@
     ]
   },
   {
+    "wire_name": "list_organization_connections",
+    "path": [
+      "orgs",
+      "provider-accounts"
+    ],
+    "verb": "list",
+    "description": "List the organization's provider accounts (sandbox provider accounts such as Daytona or E2B, and web search accounts): id, name, provider, provider username, and timestamps. Metadata only, never credentials. Use an id as a Sandbox Template's connection or a web search account. Organization admins only.",
+    "method": "GET",
+    "http_path": "/v1/orgs/{org}/organization-connections",
+    "args": [
+      {
+        "field": "org",
+        "long": "org",
+        "kind": "string",
+        "required": true,
+        "help": "Organization public ID."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find the sandbox provider account to point a Sandbox Template at",
+        "command": "everruns orgs provider-accounts list --org org_01h9"
+      }
+    ]
+  },
+  {
     "wire_name": "resolve_org",
     "path": [
       "orgs"
@@ -10256,13 +10497,6 @@
         "kind": "string",
         "required": false,
         "help": "Optional resident virtual user used for unattended/background execution."
-      },
-      {
-        "field": "workspace_id",
-        "long": "workspace-id",
-        "kind": "string",
-        "required": false,
-        "help": "Attach this session to an existing Workspace (format: `wsp_<32-hex>`) instead of auto-creatin..."
       }
     ],
     "examples": [
@@ -11487,7 +11721,7 @@
       "messages"
     ],
     "verb": "create",
-    "description": "Create a user message in a session and start the next run. The message content is an array of content parts, e.g. --content '[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]'.",
+    "description": "Create a user message in a session and start the next run. Pass the message as one JSON object whose `content` is an array of content parts (there is no separate --content flag), e.g. --message '{\"content\":[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]}'.",
     "method": "POST",
     "http_path": "/v1/sessions/{session_id}/messages",
     "args": [
@@ -12023,6 +12257,13 @@
     "method": "PUT",
     "http_path": "/v1/sessions/{session_id}/storage/secrets",
     "args": [
+      {
+        "field": "bindings",
+        "long": "bindings",
+        "kind": "json",
+        "required": false,
+        "help": "Optional bindings keyed by secret name, e.g. `{\"JEV_API_KEY\": {\"url\": \"https://api.typesafe.a..."
+      },
       {
         "field": "secrets",
         "long": "secrets",
@@ -12839,7 +13080,7 @@
       "sessions"
     ],
     "verb": "update",
-    "description": "Update session title, tags, or locale.",
+    "description": "Update session title, tags, locale, or model. A null `model_id` clears the session model so turns follow the agent's default again.",
     "method": "PATCH",
     "http_path": "/v1/sessions/{session_id}",
     "args": [
@@ -12864,6 +13105,13 @@
         "kind": "string",
         "required": false,
         "help": "Session locale (BCP 47, e.g."
+      },
+      {
+        "field": "model_id",
+        "long": "model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Model for this session's turns."
       },
       {
         "field": "tags",
@@ -12891,6 +13139,10 @@
       {
         "intent": "Retitle a session so it is findable later",
         "command": "everruns sessions update session_01h9 --title 'Release triage' --reason 'Clarify the session topic'"
+      },
+      {
+        "intent": "Switch a running session to another model",
+        "command": "everruns sessions update session_01h9 --model-id model_01933b5a00007000800000000000001 --reason 'Provider limit on the current model'"
       }
     ]
   },
@@ -13517,38 +13769,6 @@
       {
         "intent": "Change a virtual user's display name",
         "command": "everruns virtual-users update identity_01h9 --name triage-bot --reason 'Match the team naming'"
-      }
-    ]
-  },
-  {
-    "wire_name": "create_workspace",
-    "path": [
-      "workspaces"
-    ],
-    "verb": "create",
-    "description": "Create a new Workspace in the current organization.",
-    "method": "POST",
-    "http_path": "/v1/workspaces",
-    "args": [
-      {
-        "field": "description",
-        "long": "description",
-        "kind": "string",
-        "required": false,
-        "help": "Optional human-readable description."
-      },
-      {
-        "field": "name",
-        "long": "name",
-        "kind": "string",
-        "required": true,
-        "help": "Human-readable workspace name."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Create a workspace to group related sessions and files",
-        "command": "everruns workspaces create --name platform-team --description 'Platform team sandbox work' --reason 'Separate team resources'"
       }
     ]
   },

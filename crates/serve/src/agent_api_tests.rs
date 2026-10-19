@@ -29,6 +29,57 @@ async fn create(server: &Server, agent: &str) -> Value {
 }
 
 #[tokio::test]
+async fn agent_creation_retains_a_stable_identity_after_a_lost_reply() {
+    let host = Host::new(app(), Mode::Eval, None).unwrap();
+    let server = serve(host.clone()).await;
+    let id = everruns::SessionId::new().to_string();
+    let body = json!({"id":id,"title":"retained","metadata":{"ticket":"same"}});
+    let path = "/v1/channels/tester/sessions";
+    let first = server.post(path, body.clone()).await;
+    assert_eq!(first.status(), 201);
+    let first = first.json::<Value>().await.unwrap();
+    let repeated = server.post(path, body.clone()).await;
+    assert_eq!(repeated.status(), 201);
+    assert_eq!(repeated.json::<Value>().await.unwrap(), first);
+    assert_eq!(first["id"], id);
+    assert_eq!(
+        server.get(path).await.json::<Value>().await.unwrap()["data"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    let base = format!("/v1/channels/tester/sessions/{id}");
+    server
+        .post(&format!("{base}/messages"), text_message("one"))
+        .await;
+    server.wait_turns(&id, 1).await;
+    server
+        .post(&format!("{base}/messages"), text_message("two"))
+        .await;
+    tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        loop {
+            if !host
+                .engine
+                .session_status(id.parse().unwrap())
+                .await
+                .unwrap()
+                .waiting
+                .is_empty()
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let active = host.active_turn(&id).unwrap().identity();
+    assert_eq!(server.post(path, body).await.status(), 201);
+    assert_eq!(host.active_turn(&id).unwrap().identity(), active);
+}
+
+#[tokio::test]
 async fn the_card_names_the_agent_and_its_session_collection() {
     let server = serve(Host::new(app(), Mode::Eval, None).unwrap()).await;
     let card: Value = server
@@ -41,7 +92,7 @@ async fn the_card_names_the_agent_and_its_session_collection() {
     assert_eq!(card["streaming"], true);
     assert_eq!(
         card["input"],
-        json!({ "text": true, "images": false, "files": false })
+        json!({ "text": true, "images": true, "files": true })
     );
     assert_eq!(card["auth"], json!([]));
     assert_eq!(card["links"]["sessions"], "/v1/channels/tester/sessions");
@@ -244,4 +295,48 @@ async fn tool_approvals_take_the_servers_batch_shape() {
         .unwrap();
     assert_eq!(completed["data"]["tool_name"], "guarded");
     assert_eq!(completed["data"]["success"], true);
+}
+
+#[tokio::test]
+async fn files_sent_with_a_message_are_kept_in_the_session() {
+    use base64::Engine as _;
+    let server = serve(Host::new(app(), Mode::Eval, None).unwrap()).await;
+    let session = create(&server, "tester").await;
+    let id = session["id"].as_str().unwrap();
+    let encode = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+
+    // No text: the files are the message.
+    let sent = server
+        .post(
+            &format!("/v1/channels/tester/sessions/{id}/messages"),
+            json!({
+                "message": { "role": "user", "content": [] },
+                "files": [
+                    { "name": "Q3 report.pdf", "data": encode(b"%PDF-1.7 body") },
+                    { "name": "bad.zip", "data": encode(b"PK\x03\x04 not really") },
+                ],
+            }),
+        )
+        .await;
+    assert_eq!(sent.status(), 201);
+    let message: Value = sent.json().await.unwrap();
+    let content = message["content"].as_array().unwrap();
+    assert_eq!(content.len(), 2, "{content:?}");
+    assert_eq!(content[0]["type"], "file");
+    assert_eq!(content[0]["filename"], "Q3 report.pdf");
+    let note = content[1]["text"].as_str().unwrap();
+    assert!(
+        note.contains("bad.zip") && note.contains("cannot be unpacked"),
+        "{note}"
+    );
+
+    let events = server.wait_turns(id, 1).await;
+    let input = events
+        .iter()
+        .find(|e| e["type"] == "input.message")
+        .unwrap();
+    assert_eq!(
+        input["data"]["message"]["content"][0]["filename"],
+        "Q3 report.pdf"
+    );
 }

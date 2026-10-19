@@ -1,14 +1,15 @@
 ---
 import { docsPath } from "../lib/site";
 // Header for one changelog entry, under its title: date, products and kind,
-// where the change is available today, and its links. A superseded entry keeps
-// its text and opens with a pointer to what replaced it.
+// and where the change is available today. Docs links live in the entry's own
+// text (knowledge/docs/changelog.md), and pull requests close the entry
+// (Footer.astro). A superseded entry keeps its text and opens with a pointer
+// to what replaced it.
 import { getEntry } from "astro:content";
 import {
   availability,
   formatDate,
   isoDate,
-  prLink,
   surfaceLabel,
   type Entry,
 } from "../lib/changelog";
@@ -24,17 +25,6 @@ const where = availability(entry);
 const successor = d.supersededBy
   ? await getEntry("docs", `changelog/${d.supersededBy}`)
   : undefined;
-// Docs links show the linked page's title; external links keep a generic label.
-const docs = await Promise.all(
-  (d.links?.docs ?? []).map(async (href) => {
-    if (!href.startsWith("/")) return { href, label: "Docs" };
-    // Frontmatter links are site-root paths (`/features/ui/`), like content links.
-    const id = href.replace(/#.*$/, "").replace(/^\/|\/$/g, "");
-    const page = await Promise.resolve(getEntry("docs", id)).catch(() => undefined);
-    return { href: docsPath(href), label: page?.data.title ?? "Docs" };
-  }),
-);
-const prs = (d.links?.prs ?? []).map(prLink);
 ---
 
 {
@@ -73,18 +63,6 @@ const prs = (d.links?.prs ?? []).map(prLink);
       </p>
     )
   }
-  {
-    (docs.length > 0 || prs.length > 0) && (
-      <p class="changelog-meta-row changelog-links">
-        {docs.map((doc) => (
-          <a href={doc.href}>{doc.label}</a>
-        ))}
-        {prs.map((pr) => (
-          <a href={pr.href}>{pr.label}</a>
-        ))}
-      </p>
-    )
-  }
 </div>
 
 <style>
@@ -115,15 +93,13 @@ const prs = (d.links?.prs ?? []).map(prLink);
     font-size: var(--sl-text-xs);
   }
 
-  .changelog-availability > * + *::before,
-  .changelog-links > * + *::before {
+  .changelog-availability > * + *::before {
     content: "·";
     margin-inline-end: 0.5rem;
     color: var(--sl-color-gray-4);
   }
 
-  .changelog-availability a,
-  .changelog-links a {
+  .changelog-availability a {
     color: var(--sl-color-text-accent);
   }
 

@@ -142,6 +142,15 @@ describe("AgentTriggersPanel", () => {
     expect(screen.queryByRole("button", { name: "Add trigger" })).not.toBeInTheDocument();
   });
 
+  // The GitHub section links to `#triggers`; GitHub setup no longer lives here.
+  it("is the GitHub section's link target and hosts no GitHub setup", () => {
+    const { container } = render(<AgentTriggersPanel agentId="agent_123" />);
+
+    expect(container.querySelector("section#triggers")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Connect GitHub" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Own GitHub App")).not.toBeInTheDocument();
+  });
+
   it("renders a GitHub trigger with events, repositories, and an editor link", () => {
     render(<AgentTriggersPanel agentId="agent_123" />);
 

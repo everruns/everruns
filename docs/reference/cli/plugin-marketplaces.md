@@ -1,6 +1,6 @@
 ---
 title: everruns plugin-marketplaces
-description: "Sources of installable plugins. CLI reference for everruns plugin-marketplaces."
+description: "Sources of installable plugins. CLI reference for everruns plugin-marketplaces: usage, flags and examples."
 sidebar:
   label: plugin-marketplaces
 appliesTo: [platform, cloud]

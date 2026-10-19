@@ -6,6 +6,8 @@ on:
     paths:
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - 'vendor/postgresql_archive/**'
+      - 'scripts/test-postgresql-archive-patch.sh'
       - 'crates/**'
       - 'crates/integrations/**'
       - 'deny.toml'
@@ -19,6 +21,8 @@ on:
     paths:
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - 'vendor/postgresql_archive/**'
+      - 'scripts/test-postgresql-archive-patch.sh'
       - 'crates/**'
       - 'crates/integrations/**'
       - 'deny.toml'
@@ -81,6 +85,9 @@ jobs:
 
       - name: Check advisories (RustSec)
         run: cargo deny check advisories
+
+      - name: Test PostgreSQL archive ZIP compatibility
+        run: scripts/test-postgresql-archive-patch.sh
 
       # The step above resolves the workspace Cargo.lock only. Excluded crates
       # keep their own lockfile, so they need their own pass (EVE-915).

@@ -236,6 +236,9 @@ pub struct Manifest {
     /// Whether independent tool calls may run concurrently. Omission keeps the host default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parallel_tool_calls: Option<bool>,
+    /// Ceiling on output tokens per model response. Omission keeps the provider default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<u32>,
     /// How the agent talks: `direct` (its text is the reply) or `explicit`
     /// (its text is working notes; it talks through `send_message`).
     /// Omission means `direct`.

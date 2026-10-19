@@ -5,8 +5,8 @@
 //!
 //! Decision: the preview resolves with the same `resolve_plan` the running
 //! tool uses, so the box cannot drift from what a search does. It cannot see
-//! session or user Brave keys, so a `brave` step reports which organization
-//! account it would fall back to. A test query runs through the runtime egress
+//! session or user Brave or Parallel keys, so a `brave` or `parallel` step
+//! reports which organization account it would fall back to. A test query runs through the runtime egress
 //! policy, like an agent's search, and needs an organization admin because it
 //! spends the account's quota. See knowledge/integrations/web-search.md.
 
@@ -27,8 +27,8 @@ use everruns_contracts::runtime::web_search::{
 };
 use everruns_core::OrgRole;
 use everruns_integrations::web_search::{
-    BraveSearchDriver, FreeSearchDriver, PlanEntry, PlanInputs, PlanStep, WebSearchConfig,
-    resolve_plan, run_plan,
+    FreeSearchDriver, HOSTED_SEARCH_ID, PlanEntry, PlanInputs, PlanStep, WebSearchConfig,
+    account_search_driver, resolve_plan, run_plan,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -51,7 +51,8 @@ pub fn routes(state: AppState) -> Router {
 /// A provider that needs no setup.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct BuiltInSearchProvider {
-    /// `free` or `native`.
+    /// `free`, `native`, or `hosted` (the deployment's own search, when it
+    /// offers one).
     #[schema(example = "free")]
     pub id: String,
     pub name: String,
@@ -271,7 +272,7 @@ pub async fn list_search_providers(
             icon: connector.icon().to_string(),
         })
         .collect();
-    let automatic = automatic_ids(&settings);
+    let automatic = automatic_ids(&settings, state.hosted_web_search.is_some());
     let accounts = rows
         .into_iter()
         .map(|row| SearchAccountSummary {
@@ -291,23 +292,37 @@ pub async fn list_search_providers(
             connected_at: row.created_at,
         })
         .collect();
+    let hosted = state
+        .hosted_web_search
+        .as_ref()
+        .map(|hosted| BuiltInSearchProvider {
+            id: HOSTED_SEARCH_ID.into(),
+            name: hosted.name().into(),
+            description: hosted.description().into(),
+            price_note: hosted.price_note().map(str::to_string),
+        });
     Ok(Json(SearchProviderCatalog {
-        built_in: vec![
-            BuiltInSearchProvider {
-                id: "free".into(),
-                name: "Free search".into(),
-                description: "Keyless best-effort web search (DuckDuckGo, then Mojeek). The last \
+        built_in: hosted
+            .into_iter()
+            .chain([
+                BuiltInSearchProvider {
+                    id: "free".into(),
+                    name: "Free search".into(),
+                    description:
+                        "Keyless best-effort web search (DuckDuckGo, then Mojeek). The last \
                               fallback of every plan."
-                    .into(),
-                price_note: None,
-            },
-            BuiltInSearchProvider {
-                id: "native".into(),
-                name: "Model provider search".into(),
-                description: "The search of the model running the turn, when it has one.".into(),
-                price_note: Some(NATIVE_WEB_SEARCH_PRICE_NOTE.into()),
-            },
-        ],
+                            .into(),
+                    price_note: None,
+                },
+                BuiltInSearchProvider {
+                    id: "native".into(),
+                    name: "Model provider search".into(),
+                    description: "The search of the model running the turn, when it has one."
+                        .into(),
+                    price_note: Some(NATIVE_WEB_SEARCH_PRICE_NOTE.into()),
+                },
+            ])
+            .collect(),
         native_providers,
         connectors,
         accounts,
@@ -316,7 +331,7 @@ pub async fn list_search_providers(
 }
 
 /// Plan ids of the Automatic order for a model with native search.
-fn automatic_ids(settings: &WebSearchOrgSettings) -> Vec<String> {
+fn automatic_ids(settings: &WebSearchOrgSettings, hosted: bool) -> Vec<String> {
     let config = WebSearchConfig {
         provider: SearchProviderSetting::Auto,
         fallback: Some(SearchFallbackMode::Next),
@@ -327,6 +342,8 @@ fn automatic_ids(settings: &WebSearchOrgSettings) -> Vec<String> {
         org: Some(settings),
         model_has_native: true,
         brave_key: false,
+        parallel_key: false,
+        hosted,
     })
     .ids()
 }
@@ -396,6 +413,8 @@ pub async fn preview_search_plan(
         org: Some(&settings),
         model_has_native: model_native,
         brave_key: false,
+        parallel_key: false,
+        hosted: state.hosted_web_search.is_some(),
     });
     let ready = |id: Uuid| {
         rows.iter()
@@ -406,7 +425,7 @@ pub async fn preview_search_plan(
             .accounts
             .iter()
             .find(|account| account.id == id)
-            .map(|account| format!("Brave Search · {}", account.name))
+            .map(|account| format!("{} · {}", connector_name(&account.provider), account.name))
     };
     let steps = plan
         .entries
@@ -425,27 +444,8 @@ pub async fn preview_search_plan(
                 },
                 price_note: Some(NATIVE_WEB_SEARCH_PRICE_NOTE.into()),
             },
-            PlanEntry::Brave => {
-                let fallback = settings
-                    .accounts
-                    .iter()
-                    .find(|account| account.provider == "brave_search" && ready(account.id));
-                SearchPlanStep {
-                    id: entry.id(),
-                    label: "Brave Search".into(),
-                    available: fallback.is_some(),
-                    note: Some(match fallback {
-                        Some(account) => format!(
-                            "Uses a session or user Brave key, else the organization account {}",
-                            account.name
-                        ),
-                        None => "Needs a session or user Brave key; the organization has no \
-                                 Brave account"
-                            .into(),
-                    }),
-                    price_note: None,
-                }
-            }
+            PlanEntry::Brave => keyed_step(entry, "brave_search", &settings, &ready),
+            PlanEntry::Parallel => keyed_step(entry, "parallel", &settings, &ready),
             PlanEntry::Account { id } => SearchPlanStep {
                 id: entry.id(),
                 label: account_label(*id).unwrap_or_else(|| "Search account".into()),
@@ -453,6 +453,20 @@ pub async fn preview_search_plan(
                 note: (!ready(*id))
                     .then(|| "The search account is not connected in this organization".into()),
                 price_note: None,
+            },
+            PlanEntry::Hosted => SearchPlanStep {
+                id: entry.id(),
+                label: state
+                    .hosted_web_search
+                    .as_ref()
+                    .map_or("Hosted search", |hosted| hosted.name())
+                    .into(),
+                available: state.hosted_web_search.is_some(),
+                note: None,
+                price_note: state
+                    .hosted_web_search
+                    .as_ref()
+                    .and_then(|hosted| hosted.price_note().map(str::to_string)),
             },
             PlanEntry::Free => SearchPlanStep {
                 id: entry.id(),
@@ -513,7 +527,8 @@ async fn run_test(
             })?
             .decrypt_to_string(encrypted)
             .map_err(internal("Failed to decrypt search account key"))?;
-        Arc::new(BraveSearchDriver::new(key))
+        account_search_driver(&row.provider, key, row.provider_metadata.as_ref())
+            .ok_or_else(|| bad_request("The search account has no search driver"))?
     };
     let context = SearchContext {
         egress: Arc::new(everruns_core::host::DirectEgressService::for_runtime_traffic_from_env()),
@@ -536,6 +551,47 @@ async fn run_test(
             .map(|response| response.hits.iter().map(test_result).collect())
             .unwrap_or_default(),
     })
+}
+
+/// Display name of a search account's connector.
+fn connector_name(provider: &str) -> &str {
+    match provider {
+        "brave_search" => "Brave Search",
+        "parallel" => "Parallel",
+        "cloudflare_web_search" => "Cloudflare Web Search",
+        other => other,
+    }
+}
+
+/// A keyed provider step (`brave`, `parallel`): session or user keys are
+/// invisible here, so it reports the organization account it falls back to.
+fn keyed_step(
+    entry: &PlanEntry,
+    provider: &str,
+    settings: &WebSearchOrgSettings,
+    ready: &dyn Fn(Uuid) -> bool,
+) -> SearchPlanStep {
+    let name = connector_name(provider);
+    let short = name.trim_end_matches(" Search");
+    let fallback = settings
+        .accounts
+        .iter()
+        .find(|account| account.provider == provider && ready(account.id));
+    SearchPlanStep {
+        id: entry.id(),
+        label: name.into(),
+        available: fallback.is_some(),
+        note: Some(match fallback {
+            Some(account) => format!(
+                "Uses a session or user {short} key, else the organization account {}",
+                account.name
+            ),
+            None => format!(
+                "Needs a session or user {short} key; the organization has no {short} account"
+            ),
+        }),
+        price_note: None,
+    }
 }
 
 fn test_result(hit: &SearchHit) -> SearchTestResult {

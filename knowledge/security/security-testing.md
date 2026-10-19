@@ -50,7 +50,7 @@ and test there and reference the threat ID it guards.
 
 `.deepsec/` holds a [deepsec](https://www.npmjs.com/package/deepsec) workspace
 configured for the `everruns` project (priority paths: `apps/ui/`,
-`crates/server/`, `crates/core/`, `crates/worker/`, `crates/core/src/host/`, `crates/durable-engine/`,
+`crates/server/`, `crates/core/`, `crates/worker/`, `crates/core/src/host/`, `crates/durable/`,
 `integrations/`). It pairs a free regex `scan` with an AI `process` stage that
 investigates candidates against the project context in
 `.deepsec/data/everruns/INFO.md`. The checked-in config uses Codex and a local
@@ -86,6 +86,14 @@ setup and `.deepsec/AGENTS.md` for agent usage.
 - **Dependency updates**: handled by Dependabot (`.github/dependabot.yml`),
   which covers the `cargo`, `docker`, and `npm` ecosystems, with security alerts
   reviewed in the GitHub Security tab.
+- **Compatibility patches**: the workspace selects a checksum-attributed copy of
+  `postgresql_archive` while its published PostgreSQL dependency still selects
+  vulnerable ZIP8. The compatibility adapter preserves extraction policy and
+  propagates filename decoding failures. The patch remains covered by the
+  ordinary lockfile advisory/license gates and is included in source-built
+  container images. Consumers with their own workspace root must select it explicitly;
+  see [`vendor/postgresql_archive/PATCH.md`](../../vendor/postgresql_archive/PATCH.md).
+  Replace it with a published upstream fix when available.
 - **Alert visibility**: `.github/workflows/security-alerts.yml` publishes only
   aggregate code-scanning and Dependabot alert counts into a job log daily; alert
   details remain protected by the security-alert API's access control. The alert APIs are

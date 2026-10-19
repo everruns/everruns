@@ -59,6 +59,7 @@ fn caller_with_role(role: OrgRole) -> Caller {
         role,
         is_platform_user: false,
         is_internal: false,
+        read_only: false,
     }
 }
 
@@ -587,6 +588,7 @@ async fn seed_agent(ctx: &Ctx, name: &str) -> AgentId {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
                 communication: Default::default(),
                 environments: None,
                 is_built_in: false,
@@ -796,6 +798,9 @@ const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
     // The escape hatch. Blocking copy would leave built-in agents unusable as
     // a starting point, and the rejection message tells users to copy first.
     "copy_agent",
+    // Creates a fresh agent from a bundled example through CreateAgent, which
+    // never mints a built-in; there is no existing agent to protect.
+    "adopt_agent_example",
     // --- Bindings, not definition -------------------------------------------
     // These live in adjacent domains and never touch the agents row. An org
     // must be able to wire a built-in agent into its own environment; a
@@ -807,6 +812,8 @@ const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
     // github_apps table, never the agents row; same ground as a credential.
     "connect_agent_github",
     "disconnect_agent_github",
+    // Choosing the org-linked Everruns App writes the same identity connection.
+    "use_agent_everruns_app",
     // Operational probe. Runs the agent to report health; changes no definition.
     "trigger_agent_health_check",
     // Produces an analysis report. Non-read-only only because it spends utility

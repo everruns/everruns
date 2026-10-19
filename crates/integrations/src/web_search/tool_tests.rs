@@ -1,7 +1,7 @@
 use super::*;
 use crate::web_search::free::FreeSearchEndpoints;
 use everruns_contracts::runtime::tools::ToolExecutionResult;
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{body_partial_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const DDG_HTML: &str = include_str!("fixtures/duckduckgo_html.html");
@@ -27,18 +27,20 @@ async fn server(html_status: u16, html: &str) -> MockServer {
 
 fn tool(server: &MockServer, config: Value) -> WebSearchTool {
     let base = server.uri();
-    WebSearchTool::new(WebSearchConfig::from_value(&config).unwrap(), None).with_free(
-        FreeSearchDriver::with_endpoints(FreeSearchEndpoints {
-            duckduckgo_html: format!("{base}/html/"),
-            duckduckgo_lite: format!("{base}/lite/"),
-            mojeek: format!("{base}/mojeek"),
-            wikipedia: format!("{base}/w/api.php"),
-            instant_answer: format!("{base}/ia"),
-            github: format!("{base}/github"),
-            npm: format!("{base}/npm"),
-            crates: format!("{base}/crates"),
-        }),
+    WebSearchTool::new(
+        WebSearchConfig::from_value(&config).unwrap(),
+        AppKeys::default(),
     )
+    .with_free(FreeSearchDriver::with_endpoints(FreeSearchEndpoints {
+        duckduckgo_html: format!("{base}/html/"),
+        duckduckgo_lite: format!("{base}/lite/"),
+        mojeek: format!("{base}/mojeek"),
+        wikipedia: format!("{base}/w/api.php"),
+        instant_answer: format!("{base}/ia"),
+        github: format!("{base}/github"),
+        npm: format!("{base}/npm"),
+        crates: format!("{base}/crates"),
+    }))
 }
 
 fn split(result: ToolExecutionResult) -> (Value, Value) {
@@ -140,7 +142,7 @@ async fn agent_domain_filters_cannot_be_widened_by_the_model() {
 
 #[test]
 fn rejects_an_empty_query_and_unknown_arguments() {
-    let tool = WebSearchTool::new(WebSearchConfig::default(), None);
+    let tool = WebSearchTool::new(WebSearchConfig::default(), AppKeys::default());
     assert!(
         parse(json!({"query": "  "}))
             .and_then(|arguments| tool.request(arguments))
@@ -230,6 +232,7 @@ fn org_context(defaults: Value) -> (ToolContext, Arc<OrgResolver>) {
                 id: ACCOUNT,
                 provider: "brave_search".into(),
                 name: "Team".into(),
+                options: None,
             }],
         },
         key_requests: Default::default(),
@@ -312,6 +315,7 @@ async fn an_account_without_a_key_falls_back_to_free_search() {
                 id: other,
                 provider: "brave_search".into(),
                 name: "Gone".into(),
+                options: None,
             }],
         },
         key_requests: Default::default(),
@@ -327,4 +331,178 @@ async fn an_account_without_a_key_falls_back_to_free_search() {
     assert_eq!(details["attempts"][0]["ok"], false);
     assert_eq!(details["attempts"][0]["failure_kind"], "not_configured");
     assert_eq!(details["provider"], "free");
+}
+
+async fn mount_parallel(server: &MockServer, key: &str) {
+    Mock::given(method("POST"))
+        .and(path("/v1/search"))
+        .and(wiremock::matchers::header("x-api-key", key))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "search_id": "search_1",
+            "results": [{
+                "url": "https://tokio.rs/",
+                "title": "Tokio",
+                "publish_date": null,
+                "excerpts": ["Tokio is an async runtime for Rust."]
+            }]
+        })))
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn automatic_searches_with_an_org_parallel_account() {
+    let server = server(200, DDG_HTML).await;
+    mount_parallel(&server, "org-brave-key").await;
+    let (mut context, _) = org_context(json!({}));
+    let resolver = Arc::new(OrgResolver {
+        settings: everruns_contracts::runtime::web_search::WebSearchOrgSettings {
+            defaults: Default::default(),
+            accounts: vec![everruns_contracts::runtime::web_search::SearchAccount {
+                id: ACCOUNT,
+                provider: "parallel".into(),
+                name: "Research".into(),
+                options: None,
+            }],
+        },
+        key_requests: Default::default(),
+    });
+    context.connection_resolver = Some(resolver);
+    let (model, details) = split(
+        tool(&server, json!({"provider": "auto"}))
+            .with_parallel_base(server.uri())
+            .execute_with_context(json!({"query": "tokio"}), &context)
+            .await,
+    );
+    assert_eq!(
+        details["plan"],
+        json!([format!("account:{ACCOUNT}"), "free"])
+    );
+    assert_eq!(details["provider"], format!("account:{ACCOUNT}"));
+    assert_eq!(details["provider_label"], "Parallel · Research");
+    assert_eq!(model["results"][0]["url"], "https://tokio.rs/");
+    assert_eq!(
+        model["results"][0]["excerpt"],
+        "Tokio is an async runtime for Rust."
+    );
+}
+
+#[tokio::test]
+async fn automatic_searches_with_an_org_cloudflare_account() {
+    let server = server(200, DDG_HTML).await;
+    let cloudflare_account = "0123456789abcdef0123456789abcdef";
+    Mock::given(method("POST"))
+        .and(path(format!(
+            "/client/v4/accounts/{cloudflare_account}/ai/websearch/"
+        )))
+        .and(header("authorization", "Bearer org-brave-key"))
+        .and(body_partial_json(json!({
+            "provider": "linkup",
+            "options": {"gateway": {"id": "default"}}
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "items": [{
+                "url": "https://tokio.rs/",
+                "title": "Tokio",
+                "description": "Tokio is an async runtime for Rust."
+            }],
+            "metadata": {"query": "tokio", "requestId": "r1", "latencyMs": 400}
+        })))
+        .mount(&server)
+        .await;
+    let (mut context, _) = org_context(json!({}));
+    let resolver = Arc::new(OrgResolver {
+        settings: everruns_contracts::runtime::web_search::WebSearchOrgSettings {
+            defaults: Default::default(),
+            accounts: vec![
+                everruns_contracts::runtime::web_search::SearchAccount {
+                    id: uuid::Uuid::from_u128(0xbad),
+                    provider: "cloudflare_web_search".into(),
+                    name: "Broken".into(),
+                    options: None,
+                },
+                everruns_contracts::runtime::web_search::SearchAccount {
+                    id: ACCOUNT,
+                    provider: "cloudflare_web_search".into(),
+                    name: "Team".into(),
+                    options: Some(json!({
+                        "account_id": cloudflare_account,
+                        "gateway_id": "default",
+                        "index": "linkup"
+                    })),
+                },
+            ],
+        },
+        key_requests: Default::default(),
+    });
+    context.connection_resolver = Some(resolver);
+    let (model, details) = split(
+        tool(&server, json!({"provider": "auto"}))
+            .with_cloudflare_base(server.uri())
+            .execute_with_context(json!({"query": "tokio"}), &context)
+            .await,
+    );
+    // The account stored without options stays in the order but has no
+    // driver here, so the plan moves past it.
+    assert_eq!(
+        details["plan"],
+        json!([
+            format!("account:{}", uuid::Uuid::from_u128(0xbad)),
+            format!("account:{ACCOUNT}"),
+            "free"
+        ])
+    );
+    assert_eq!(details["provider"], format!("account:{ACCOUNT}"));
+    assert_eq!(details["provider_label"], "Cloudflare (Linkup) · Team");
+    assert_eq!(model["results"][0]["url"], "https://tokio.rs/");
+}
+
+#[tokio::test]
+async fn an_application_parallel_key_answers_the_parallel_setting() {
+    let server = server(200, DDG_HTML).await;
+    mount_parallel(&server, "app-key").await;
+    let (_, details) = split(
+        WebSearchTool::new(
+            WebSearchConfig::from_value(&json!({"provider": "parallel", "fallback": "none"}))
+                .unwrap(),
+            AppKeys {
+                brave: None,
+                parallel: Some("app-key".into()),
+                hosted: None,
+            },
+        )
+        .with_parallel_base(server.uri())
+        .execute(json!({"query": "tokio"}))
+        .await,
+    );
+    assert_eq!(details["plan"], json!(["parallel"]));
+    assert_eq!(details["provider"], "parallel");
+    assert_eq!(details["provider_label"], "Parallel");
+}
+
+#[tokio::test]
+async fn the_hosted_search_answers_automatic_before_free_search() {
+    let server = server(200, DDG_HTML).await;
+    mount_brave(&server).await;
+    let hosted = crate::web_search::HostedWebSearch::new(
+        "Everruns search",
+        "Search included with the deployment",
+        Arc::new(crate::web_search::BraveSearchDriver::with_base_url(
+            "org-brave-key",
+            server.uri(),
+        )),
+    );
+    let mut tool = tool(&server, json!({}));
+    tool.app_keys.hosted = Some(hosted);
+    let (model, details) = split(tool.execute(json!({"query": "tokio"})).await);
+    assert_eq!(details["plan"], json!(["hosted", "free"]));
+    assert_eq!(details["provider"], "hosted");
+    assert_eq!(details["provider_label"], "Everruns search");
+    assert_eq!(model["results"][0]["url"], "https://tokio.rs/");
+    // The backend's raw requests belong to the deployment, not the tenant.
+    assert!(
+        details["attempts"][0]
+            .get("exchanges")
+            .is_none_or(|exchanges| exchanges.as_array().is_some_and(Vec::is_empty))
+    );
 }

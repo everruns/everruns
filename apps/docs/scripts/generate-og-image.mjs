@@ -1,156 +1,216 @@
-// Generates OG social card images:
-//   1. Generic fallback  → public/og-image.png
-//   2. Per-API-operation  → public/og/api/operations/{operationId}.png
-//   3. Per-doc-page       → public/og/{slug}.png
+// Generates the social cards (og:image) for everruns.com/docs:
+//   1. Docs home / fallback → public/og-image.png
+//   2. Per API operation    → public/og/api/operations/{operationId}.png
+//   3. Per docs page        → public/og/{slug}.png
+//   4. Changelog index      → public/og/changelog.png, listing the latest releases
+//   5. Changelog entries    → public/og/changelog/{folder}.png, with date and products
+//      Product pages        → public/og/changelog/{product}.png, the latest entries
 //
-// Uses sharp (already a project dependency for Astro image optimization).
+// Cards follow the docs redesign: flat navy, the gold mark, Geist type, square
+// corners. Text is rendered by sharp (librsvg) through fontconfig, pointed at
+// the Geist TTFs vendored in src/assets/fonts/ (OFL), so the cards look the
+// same on every machine instead of falling back to whatever sans-serif the
+// build host has. FONTCONFIG_FILE must be set before sharp loads.
 
-import sharp from "sharp";
-import { readFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
+import { mkdirSync, existsSync, readdirSync, readFileSync, writeFileSync, mkdtempSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import os from "node:os";
 import path from "node:path";
-import { globSync } from "node:fs";
+
+import { JSON_SCHEMA, load } from "js-yaml";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(root, "../..");
+const fontsDir = path.join(root, "src/assets/fonts");
 
-// ─── Shared SVG fragments ───────────────────────────────────────────────────
+const fcDir = mkdtempSync(path.join(os.tmpdir(), "og-fonts-"));
+writeFileSync(
+  path.join(fcDir, "fonts.conf"),
+  `<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "fonts.dtd"><fontconfig><dir>${fontsDir}</dir><cachedir>${fcDir}/cache</cachedir></fontconfig>`,
+);
+process.env.FONTCONFIG_FILE = path.join(fcDir, "fonts.conf");
+const { default: sharp } = await import("sharp");
 
-const BG = `
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#0A1636"/>
-      <stop offset="100%" stop-color="#060D1F"/>
-    </linearGradient>
-    <pattern id="dots" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
-      <circle cx="12" cy="12" r="1" fill="#D4A43A" opacity="0.10"/>
-    </pattern>
-  </defs>
-  <rect width="1200" height="630" fill="url(#bg)"/>
-  <rect width="1200" height="630" fill="url(#dots)"/>
-  <rect x="0" y="620" width="1200" height="10" fill="#D4A43A" opacity="0.6"/>
-`;
+// ─── Shared look ────────────────────────────────────────────────────────────
 
-const LOGO_SMALL = `
-  <g transform="translate(60, 34.69) scale(0.22)" fill="none" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
-    <defs>
-      <linearGradient id="gTop" gradientUnits="userSpaceOnUse" x1="256" y1="72.67" x2="256" y2="262.67">
-        <stop offset="0.00" stop-color="#0A1636"/><stop offset="0.70" stop-color="#0A1636"/><stop offset="1.00" stop-color="#D4A43A"/>
-      </linearGradient>
-      <linearGradient id="gLeft" gradientUnits="userSpaceOnUse" x1="70" y1="352.67" x2="256" y2="262.67">
-        <stop offset="0.00" stop-color="#081C3F"/><stop offset="0.70" stop-color="#081C3F"/><stop offset="1.00" stop-color="#D4A43A"/>
-      </linearGradient>
-      <linearGradient id="gRight" gradientUnits="userSpaceOnUse" x1="442" y1="352.67" x2="256" y2="262.67">
-        <stop offset="0.00" stop-color="#0B1233"/><stop offset="0.70" stop-color="#0B1233"/><stop offset="1.00" stop-color="#D4A43A"/>
-      </linearGradient>
-    </defs>
-    <circle cx="256" cy="192.67" r="120" stroke="url(#gTop)"/>
-    <circle cx="186" cy="287.67" r="120" stroke="url(#gLeft)"/>
-    <circle cx="326" cy="287.67" r="120" stroke="url(#gRight)"/>
-  </g>
-`;
+const W = 1200;
+const H = 630;
+const PAD = 72;
+const NAVY = "#0A1636";
+const GOLD = "#D4A43A";
+const WHITE = "#FFFFFF";
+const SILVER = "#A8B0BE";
+const MUTED = "#7D879A";
+const RULE = "rgba(255,255,255,0.12)";
+const SANS = "Geist";
+const MONO = "Geist Mono";
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const PRODUCTS = {
+  cloud: "Cloud",
+  platform: "Platform",
+  framework: "Framework",
+  sdk: "SDK",
+  cli: "CLI",
+  yolop: "Yolop",
+  mira: "Mira",
+  bashkit: "Bashkit",
+};
 
 function escXml(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-/** Truncate text to maxLen characters, adding ellipsis if needed. */
 function truncate(s, maxLen) {
-  return s.length > maxLen ? s.slice(0, maxLen - 1) + "…" : s;
+  return s.length > maxLen ? s.slice(0, maxLen - 1).trimEnd() + "…" : s;
 }
 
-/** Wrap text into lines of approximately maxChars, respecting word boundaries. */
-function wrapText(text, maxChars) {
-  const words = text.split(/\s+/);
+// Geist's average advance is about 0.5em for text at weight 400 to 600; this
+// is a little generous so wrapped lines never run past the column.
+const charsFor = (width, fontSize) => Math.floor(width / (fontSize * 0.52));
+
+function wrapText(text, width, fontSize, maxLines) {
+  const maxChars = charsFor(width, fontSize);
   const lines = [];
   let current = "";
-  for (const word of words) {
-    if (current && (current.length + 1 + word.length) > maxChars) {
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    if (current && current.length + 1 + word.length > maxChars) {
       lines.push(current);
       current = word;
     } else {
-      current = current ? current + " " + word : word;
+      current = current ? `${current} ${word}` : word;
     }
   }
   if (current) lines.push(current);
+  if (lines.length > maxLines) {
+    const kept = lines.slice(0, maxLines);
+    kept[maxLines - 1] = truncate(`${kept[maxLines - 1]} ${lines[maxLines]}`, maxChars);
+    if (!kept[maxLines - 1].endsWith("…")) kept[maxLines - 1] += "…";
+    return kept;
+  }
   return lines;
 }
 
-async function svgToPng(svg, outPath) {
-  mkdirSync(path.dirname(outPath), { recursive: true });
-  await sharp(Buffer.from(svg)).resize(1200, 630).png().toFile(outPath);
+function formatDate(iso) {
+  const [y, m, d] = String(iso).split("-").map(Number);
+  return `${MONTHS[m - 1]} ${d}, ${y}`;
 }
 
-// ─── 1. Generic fallback card ───────────────────────────────────────────────
+function textLines(lines, { x, y, size, lineHeight, weight = 400, fill, family = SANS, spacing = 0 }) {
+  return lines
+    .map(
+      (line, i) =>
+        `<text x="${x}" y="${y + i * lineHeight}" font-family="${family}" font-size="${size}" font-weight="${weight}" letter-spacing="${spacing}" fill="${fill}" xml:space="preserve">${escXml(line)}</text>`,
+    )
+    .join("\n  ");
+}
+
+// The mark: three gold rings, as on everruns.com's cards.
+function mark(x, y, size) {
+  const s = size / 512;
+  return `<g transform="translate(${x}, ${y}) scale(${s})" fill="none" stroke-width="22" stroke-linecap="round">
+    <circle cx="256" cy="196" r="120" stroke="${GOLD}"/>
+    <circle cx="186" cy="291" r="120" stroke="${GOLD}" opacity="0.7"/>
+    <circle cx="326" cy="291" r="120" stroke="${GOLD}" opacity="0.7"/>
+  </g>`;
+}
+
+/** Card frame: background, brand row with an optional eyebrow, footer with the URL. */
+function frame(content, { eyebrow = "", url = "everruns.com/docs" } = {}) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <rect width="${W}" height="${H}" fill="${NAVY}"/>
+  ${mark(PAD - 4, 52, 44)}
+  <text x="${PAD + 50}" y="83" font-family="${SANS}" font-size="26" font-weight="600" letter-spacing="-0.4" fill="${WHITE}">Everruns</text>
+  <text x="${PAD + 172}" y="83" font-family="${SANS}" font-size="26" font-weight="400" fill="${SILVER}">Docs</text>
+  ${eyebrow ? `<text x="${W - PAD}" y="82" text-anchor="end" font-family="${MONO}" font-size="17" font-weight="500" letter-spacing="2" fill="${GOLD}">${escXml(eyebrow.toUpperCase())}</text>` : ""}
+  ${content}
+  <rect x="${PAD}" y="${H - 86}" width="${W - PAD * 2}" height="1" fill="${RULE}"/>
+  <text x="${PAD}" y="${H - 44}" font-family="${MONO}" font-size="19" fill="${MUTED}">${escXml(url)}</text>
+</svg>`;
+}
+
+/** Title and description, starting at y, within width. Returns { svg, bottom }. */
+function titleBlock(title, description, { y = 196, width = W - PAD * 2, maxTitleLines = 3 } = {}) {
+  const size = title.length > 48 ? 54 : 64;
+  const lineHeight = Math.round(size * 1.1);
+  const titleLines = wrapText(title, width, size, maxTitleLines);
+  let svg = textLines(titleLines, { x: PAD, y, size, lineHeight, weight: 600, fill: WHITE, spacing: -size * 0.02 });
+  let bottom = y + (titleLines.length - 1) * lineHeight;
+  if (description) {
+    const descY = bottom + 58;
+    const descLines = wrapText(description, width, 26, titleLines.length > 2 ? 2 : titleLines.length === 1 ? 4 : 3);
+    svg += "\n  " + textLines(descLines, { x: PAD, y: descY, size: 26, lineHeight: 37, fill: SILVER });
+    bottom = descY + (descLines.length - 1) * 37;
+  }
+  return { svg, bottom };
+}
+
+async function svgToPng(svg, outPath, composite = []) {
+  mkdirSync(path.dirname(outPath), { recursive: true });
+  await sharp(Buffer.from(svg)).png().composite(composite).toFile(outPath);
+}
+
+function readEntry(filePath) {
+  const content = readFileSync(filePath, "utf8");
+  const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  if (!match) return null;
+  let fm;
+  try {
+    fm = load(match[1], { schema: JSON_SCHEMA }) ?? {};
+  } catch {
+    return null;
+  }
+  return { fm, body: match[2] };
+}
+
+// ─── 1. Docs home / fallback ────────────────────────────────────────────────
 
 async function generateFallback() {
-  const svgPath = path.join(root, "src/assets/og-image.svg");
-  const svg = readFileSync(svgPath);
-  const outPath = path.join(root, "public/og-image.png");
-  await sharp(svg).resize(1200, 630).png().toFile(outPath);
+  const { svg } = titleBlock(
+    "Build, run and operate durable agents",
+    "Tutorials, how-to guides, reference and explanation for the Everruns Framework, the self-hosted Platform and Everruns Cloud.",
+    { y: 250 },
+  );
+  await svgToPng(frame(svg, { eyebrow: "Documentation" }), path.join(root, "public/og-image.png"));
   console.log("  ✓ fallback og-image.png");
 }
 
 // ─── 2. Per-API-operation cards ─────────────────────────────────────────────
 
 const METHOD_COLORS = {
-  GET: { bg: "#22863a", text: "#ffffff" },
-  POST: { bg: "#0366d6", text: "#ffffff" },
-  PUT: { bg: "#e36209", text: "#ffffff" },
-  PATCH: { bg: "#8957e5", text: "#ffffff" },
-  DELETE: { bg: "#cb2431", text: "#ffffff" },
-  HEAD: { bg: "#6a737d", text: "#ffffff" },
-  OPTIONS: { bg: "#6a737d", text: "#ffffff" },
+  GET: "#2E7D4F",
+  POST: "#2F5FD0",
+  PUT: "#B4651F",
+  PATCH: "#7650C9",
+  DELETE: "#B83A3A",
+  HEAD: "#5B6475",
+  OPTIONS: "#5B6475",
 };
 
-function buildCurlExample(method, apiPath, hasBody) {
-  const base = "https://app.everruns.com/api";
-  // Replace path params {foo} with :foo for readability
-  const cleanPath = apiPath.replace(/\{(\w+)\}/g, ":$1");
-  let curl = `curl -X ${method} "${base}${cleanPath}"`;
-  curl += ` \\\n  -H "Authorization: Bearer $TOKEN"`;
-  if (hasBody) {
-    curl += ` \\\n  -H "Content-Type: application/json"`;
-    curl += ` \\\n  -d '{...}'`;
-  }
-  return curl;
-}
-
-function apiOperationSvg(method, apiPath, description, operationId, hasBody) {
-  const mc = METHOD_COLORS[method] || METHOD_COLORS.GET;
-  const cleanDesc = truncate(description.replace(/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+\S+\s+-\s*/, ""), 120);
-  const descLines = wrapText(cleanDesc, 55);
-  const curl = buildCurlExample(method, apiPath, hasBody);
-  const curlLines = curl.split("\n").map((l) => escXml(l));
-
-  // Method badge width based on text length
-  const methodWidth = method.length * 18 + 24;
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
-  ${BG}
-  ${LOGO_SMALL}
-  <text x="140" y="62" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="500" fill="#A0A0A0">Everruns</text>
-  <text x="260" y="62" font-family="system-ui, -apple-system, sans-serif" font-size="20" font-weight="400" fill="#D4A43A">API Reference</text>
-
-  <!-- Method badge -->
-  <rect x="60" y="110" width="${methodWidth}" height="44" rx="6" fill="${mc.bg}"/>
-  <text x="${60 + methodWidth / 2}" y="139" font-family="monospace" font-size="22" font-weight="700" fill="${mc.text}" text-anchor="middle">${method}</text>
-
-  <!-- Path -->
-  <text x="${60 + methodWidth + 16}" y="140" font-family="monospace" font-size="28" font-weight="500" fill="#FFFFFF">${escXml(apiPath)}</text>
-
-  <!-- Description -->
-  ${descLines.map((line, i) => `<text x="60" y="${200 + i * 30}" font-family="system-ui, -apple-system, sans-serif" font-size="22" fill="#A0A0A0">${escXml(line)}</text>`).join("\n  ")}
-
-  <!-- Curl example box -->
-  <rect x="60" y="${310}" width="1080" height="${curlLines.length * 28 + 40}" rx="8" fill="#0D1117" stroke="#30363d" stroke-width="1"/>
-  <text x="80" y="${338}" font-family="monospace" font-size="14" fill="#6a737d">Example Request</text>
-  ${curlLines.map((line, i) => `<text x="80" y="${366 + i * 26}" font-family="monospace" font-size="18" fill="#c9d1d9">${line}</text>`).join("\n  ")}
-
-  <!-- URL -->
-  <text x="60" y="590" font-family="system-ui, -apple-system, sans-serif" font-size="18" fill="#D4A43A">everruns.com/docs</text>
-</svg>`;
+function apiOperationSvg(method, apiPath, description, hasBody) {
+  const color = METHOD_COLORS[method] || METHOD_COLORS.GET;
+  const desc = description.replace(/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+\S+\s+-\s*/, "");
+  const methodWidth = method.length * 15 + 28;
+  const pathSize = apiPath.length > 44 ? 26 : 32;
+  const descLines = wrapText(desc, W - PAD * 2, 26, 2);
+  const curl = [
+    `curl -X ${method} "https://app.everruns.com/api${apiPath.replace(/\{(\w+)\}/g, ":$1")}"`,
+    `  -H "Authorization: Bearer $EVERRUNS_API_KEY"`,
+    ...(hasBody ? [`  -H "Content-Type: application/json" -d '{…}'`] : []),
+  ].map((line, i, all) => (i < all.length - 1 ? `${line} \\` : line));
+  const boxY = 338;
+  const content = `
+  <rect x="${PAD}" y="160" width="${methodWidth}" height="44" fill="${color}"/>
+  <text x="${PAD + methodWidth / 2}" y="190" text-anchor="middle" font-family="${MONO}" font-size="20" font-weight="500" letter-spacing="1" fill="${WHITE}">${method}</text>
+  <text x="${PAD + methodWidth + 20}" y="193" font-family="${MONO}" font-size="${pathSize}" font-weight="500" fill="${WHITE}">${escXml(truncate(apiPath, 56))}</text>
+  ${textLines(descLines, { x: PAD, y: 262, size: 26, lineHeight: 37, fill: SILVER })}
+  <rect x="${PAD}" y="${boxY}" width="${W - PAD * 2}" height="${curl.length * 32 + 34}" fill="#0A0A0A"/>
+  ${textLines(
+    curl.map((l) => truncate(l, 88)),
+    { x: PAD + 24, y: boxY + 42, size: 18, lineHeight: 32, fill: "#D4D7DD", family: MONO },
+  )}`;
+  return frame(content, { eyebrow: "API Reference" });
 }
 
 async function generateApiCards() {
@@ -161,16 +221,11 @@ async function generateApiCards() {
   }
   const spec = JSON.parse(readFileSync(specPath, "utf8"));
   let count = 0;
-
   for (const [apiPath, methods] of Object.entries(spec.paths)) {
     for (const [method, op] of Object.entries(methods)) {
       if (typeof op !== "object" || !op.operationId) continue;
-      const m = method.toUpperCase();
-      const desc = op.summary || op.description || op.operationId;
-      const hasBody = !!op.requestBody;
-      const svg = apiOperationSvg(m, apiPath, desc, op.operationId, hasBody);
-      const outPath = path.join(root, `public/og/api/operations/${op.operationId}.png`);
-      await svgToPng(svg, outPath);
+      const svg = apiOperationSvg(method.toUpperCase(), apiPath, op.summary || op.description || op.operationId, !!op.requestBody);
+      await svgToPng(svg, path.join(root, `public/og/api/operations/${op.operationId}.png`));
       count++;
     }
   }
@@ -179,193 +234,178 @@ async function generateApiCards() {
 
 // ─── 3. Per-doc-page cards ──────────────────────────────────────────────────
 
-// Hero image area: right 480px of 1200px card (with 20px gutter).
-const HERO_AREA = { x: 680, y: 80, w: 480, h: 480 };
-// Text area max-width when hero is present vs absent.
-const TEXT_MAX_CHARS_HERO = 24;
-const TEXT_MAX_CHARS_FULL = 30;
-
-function docPageSvg(title, description, breadcrumb, hasHero) {
-  const maxChars = hasHero ? TEXT_MAX_CHARS_HERO : TEXT_MAX_CHARS_FULL;
-  const maxDescChars = hasHero ? 36 : 50;
-  const titleLines = wrapText(truncate(title, 60), maxChars);
-  const descLines = description ? wrapText(truncate(description, 160), maxDescChars) : [];
-
-  // When hero present, add a subtle vertical separator and dim overlay on right
-  const heroOverlay = hasHero
-    ? `
-  <!-- Hero area: dark overlay so composited image blends with card -->
-  <rect x="${HERO_AREA.x}" y="${HERO_AREA.y}" width="${HERO_AREA.w}" height="${HERO_AREA.h}" rx="12" fill="#0D1630" stroke="#1a2744" stroke-width="1"/>
-  <line x1="${HERO_AREA.x - 20}" y1="80" x2="${HERO_AREA.x - 20}" y2="560" stroke="#D4A43A" stroke-width="1" opacity="0.15"/>`
-    : "";
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
-  ${BG}
-  ${LOGO_SMALL}
-  <text x="140" y="62" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="500" fill="#A0A0A0">Everruns</text>
-  ${breadcrumb ? `<text x="260" y="62" font-family="system-ui, -apple-system, sans-serif" font-size="20" font-weight="400" fill="#D4A43A">${escXml(breadcrumb)}</text>` : ""}
-  ${heroOverlay}
-
-  <!-- Title -->
-  ${titleLines.map((line, i) => `<text x="60" y="${180 + i * 64}" font-family="system-ui, -apple-system, sans-serif" font-size="56" font-weight="600" fill="#FFFFFF">${escXml(line)}</text>`).join("\n  ")}
-
-  <!-- Description -->
-  ${descLines.map((line, i) => `<text x="60" y="${180 + titleLines.length * 64 + 30 + i * 30}" font-family="system-ui, -apple-system, sans-serif" font-size="22" fill="#A0A0A0">${escXml(line)}</text>`).join("\n  ")}
-
-  <!-- URL -->
-  <text x="60" y="590" font-family="system-ui, -apple-system, sans-serif" font-size="18" fill="#D4A43A">everruns.com/docs</text>
-</svg>`;
-}
+// Hero area: a white panel on the right for the page's first diagram.
+const HERO = { x: 676, y: 150, w: 452, h: 372 };
 
 /**
- * Resolve a hero image path from a doc file.
- * Checks (in order):
- *   1. Frontmatter `hero: <relative-path>` field
- *   2. First markdown image `![...](path)` in the body (like the Daytona page)
- * Returns absolute path or null.
+ * Resolve a hero image from a doc: frontmatter `hero:`, else the first local
+ * markdown image in the body. Returns an absolute path or null.
  */
-function resolveHeroImage(filePath, frontmatter, body) {
-  // 1. Explicit frontmatter field
-  const heroFm = frontmatter.match(/^hero:\s*["']?(.+?)["']?\s*$/m);
-  if (heroFm) {
-    const resolved = path.resolve(path.dirname(filePath), heroFm[1]);
+function resolveHeroImage(filePath, fm, body) {
+  if (typeof fm.hero === "string") {
+    const resolved = path.resolve(path.dirname(filePath), fm.hero);
     if (existsSync(resolved)) return resolved;
   }
-
-  // 2. First ![alt](path) in body (skip http URLs)
-  const imgMatch = body.match(/!\[.*?\]\(([^)]+)\)/);
-  if (imgMatch && !imgMatch[1].startsWith("http")) {
-    const resolved = path.resolve(path.dirname(filePath), imgMatch[1]);
+  const img = body.match(/!\[.*?\]\(([^)\s]+)/);
+  if (img && !img[1].startsWith("http")) {
+    const resolved = path.resolve(path.dirname(filePath), img[1]);
     if (existsSync(resolved)) return resolved;
-    // Also try under docs/images/ relative to the doc's directory section
-    const fromImages = path.resolve(path.dirname(filePath), "../images", path.basename(path.dirname(filePath)), imgMatch[1]);
-    if (existsSync(fromImages)) return fromImages;
   }
-
   return null;
 }
 
-/**
- * Prepare a hero image buffer: resize to fit the hero area, pad with
- * transparent background, and add rounded corners via SVG mask.
- */
-async function prepareHeroImage(heroPath) {
-  const { w, h } = HERO_AREA;
-  const padding = 32; // inner padding
-  const innerW = w - padding * 2;
-  const innerH = h - padding * 2;
-
-  // Read image and get metadata
-  const img = sharp(heroPath);
-  const meta = await img.metadata();
-
-  // Determine if the image is very wide (banner/logo) vs. square/tall
-  const aspectRatio = (meta.width || 1) / (meta.height || 1);
-
-  let resized;
-  if (aspectRatio > 2.5) {
-    // Very wide image (like a logo banner): fit width, center vertically
-    resized = await img
-      .resize(innerW, innerH, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
-      .png()
-      .toBuffer();
-  } else {
-    // Normal/square image: cover the area nicely
-    resized = await img
-      .resize(innerW, innerH, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
-      .png()
-      .toBuffer();
-  }
-
-  // Create rounded-corner mask
-  const radius = 8;
-  const mask = Buffer.from(
-    `<svg width="${innerW}" height="${innerH}">
-      <rect x="0" y="0" width="${innerW}" height="${innerH}" rx="${radius}" ry="${radius}" fill="white"/>
-    </svg>`
-  );
-
-  const masked = await sharp(resized)
-    .composite([{ input: await sharp(mask).resize(innerW, innerH).png().toBuffer(), blend: "dest-in" }])
+async function heroComposite(heroPath) {
+  const inset = 20;
+  const buffer = await sharp(heroPath)
+    .resize(HERO.w - inset * 2, HERO.h - inset * 2, { fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 1 } })
+    .flatten({ background: "#ffffff" })
     .png()
     .toBuffer();
-
-  return { buffer: masked, left: HERO_AREA.x + padding, top: HERO_AREA.y + padding };
+  return [{ input: buffer, left: HERO.x + inset, top: HERO.y + inset }];
 }
 
+function sectionLabel(slug) {
+  const parts = slug.split("/");
+  return parts.length > 1 ? parts[0].replace(/-/g, " ") : "";
+}
+
+async function docPageCard(slug, fm, heroPath) {
+  const width = heroPath ? HERO.x - PAD - 40 : W - PAD * 2;
+  const { svg } = titleBlock(String(fm.title ?? slug), String(fm.description ?? ""), {
+    width,
+    y: 210,
+  });
+  const panel = heroPath ? `<rect x="${HERO.x}" y="${HERO.y}" width="${HERO.w}" height="${HERO.h}" fill="#FFFFFF"/>` : "";
+  const out = path.join(root, `public/og/${slug}.png`);
+  await svgToPng(frame(`${panel}\n  ${svg}`, { eyebrow: sectionLabel(slug) }), out, heroPath ? await heroComposite(heroPath) : []);
+}
+
+// ─── 4 and 5. Changelog ─────────────────────────────────────────────────────
+
+function productsLine(products) {
+  return (products ?? []).map((p) => PRODUCTS[p] ?? p).join(" · ");
+}
+
+async function changelogEntryCard(folder, fm) {
+  const title = String(fm.title ?? folder);
+  const { svg, bottom } = titleBlock(title, String(fm.description ?? ""), { y: 228 });
+  const meta = `<text x="${PAD}" y="160" font-family="${MONO}" font-size="20" fill="${SILVER}">${escXml(
+    `${formatDate(fm.date)}  ·  ${productsLine(fm.products)}`,
+  )}</text>`;
+  void bottom;
+  await svgToPng(
+    frame(`${meta}\n  ${svg}`, { eyebrow: fm.kind === "release" ? "Release" : "Changelog", url: "everruns.com/docs/changelog" }),
+    path.join(root, `public/og/changelog/${folder}.png`),
+  );
+}
+
+/** "Everruns 0.47.0: Codex session reliability" → { name: "Everruns 0.47.0", note: "Codex session reliability" } */
+function releaseRow(fm) {
+  const title = String(fm.title ?? "").replace(/\s+release$/i, "");
+  const [name, ...rest] = title.split(":");
+  // Without a named highlight, the description's first clause stands in.
+  const note = rest.join(":").trim() || String(fm.description ?? "").split(/[,;.]/)[0].trim();
+  return { name: name.trim(), note, date: String(fm.date) };
+}
+
+async function changelogIndexCard(entries) {
+  const releases = entries
+    .filter((e) => e.fm.kind === "release")
+    .sort((a, b) => String(b.fm.date).localeCompare(String(a.fm.date)) || b.fm.release?.localeCompare?.(a.fm.release, undefined, { numeric: true }) || 0)
+    .slice(0, 5)
+    .map((e) => releaseRow(e.fm));
+  const rowsY = 284;
+  const rowH = 58;
+  const rows = releases
+    .map((r, i) => {
+      const y = rowsY + i * rowH;
+      return `<rect x="${PAD}" y="${y - 38}" width="${W - PAD * 2}" height="1" fill="${RULE}"/>
+  <text x="${PAD}" y="${y}" font-family="${MONO}" font-size="19" fill="${MUTED}">${escXml(formatDate(r.date))}</text>
+  <text x="${PAD + 190}" y="${y}" font-family="${SANS}" font-size="25" font-weight="600" fill="${WHITE}">${escXml(r.name)}</text>
+  <text x="${PAD + 430}" y="${y}" font-family="${SANS}" font-size="23" fill="${SILVER}">${escXml(truncate(r.note, charsFor(W - PAD * 2 - 430, 23)))}</text>`;
+    })
+    .join("\n  ");
+  const content = `
+  <text x="${PAD}" y="196" font-family="${SANS}" font-size="64" font-weight="600" letter-spacing="-1.3" fill="${WHITE}">Changelog</text>
+  <text x="${W - PAD}" y="196" text-anchor="end" font-family="${MONO}" font-size="17" font-weight="500" letter-spacing="2" fill="${MUTED}">LATEST RELEASES</text>
+  ${rows}`;
+  await svgToPng(frame(content, { eyebrow: "", url: "everruns.com/docs/changelog" }), path.join(root, "public/og/changelog.png"));
+  return releases.length;
+}
+
+/** One card per product page (changelog/<product>/): its five latest entries. */
+async function changelogProductCards(entries) {
+  let cards = 0;
+  for (const [id, label] of Object.entries(PRODUCTS)) {
+    const latest = entries
+      .filter((e) => (e.fm.products ?? []).includes(id))
+      .sort((a, b) => String(b.fm.date).localeCompare(String(a.fm.date)))
+      .slice(0, 5);
+    const rows = latest
+      .map((e, i) => {
+        const y = 284 + i * 58;
+        return `<rect x="${PAD}" y="${y - 38}" width="${W - PAD * 2}" height="1" fill="${RULE}"/>
+  <text x="${PAD}" y="${y}" font-family="${MONO}" font-size="19" fill="${MUTED}">${escXml(formatDate(e.fm.date))}</text>
+  <text x="${PAD + 190}" y="${y}" font-family="${SANS}" font-size="23" fill="${SILVER}">${escXml(truncate(String(e.fm.title ?? ""), charsFor(W - PAD * 2 - 190, 23)))}</text>`;
+      })
+      .join("\n  ");
+    const content = `
+  <text x="${PAD}" y="196" font-family="${SANS}" font-size="64" font-weight="600" letter-spacing="-1.3" fill="${WHITE}">${escXml(label)} changelog</text>
+  <text x="${W - PAD}" y="196" text-anchor="end" font-family="${MONO}" font-size="17" font-weight="500" letter-spacing="2" fill="${MUTED}">LATEST</text>
+  ${rows}`;
+    await svgToPng(
+      frame(content, { eyebrow: "", url: `everruns.com/docs/changelog/${id}` }),
+      path.join(root, `public/og/changelog/${id}.png`),
+    );
+    cards++;
+  }
+  return cards;
+}
+
+// ─── Docs walk ──────────────────────────────────────────────────────────────
+
 async function generateDocCards() {
-  // Scan markdown docs for frontmatter
   const docsDir = path.join(repoRoot, "docs");
   if (!existsSync(docsDir)) {
     console.log("  ⚠ docs/ directory not found, skipping doc cards");
-    return 0;
+    return { pages: 0, heroes: 0, entries: 0, releases: 0, products: 0 };
   }
-
-  let count = 0;
-  let heroCount = 0;
-  const tasks = [];
-
-  function scanDir(dir, prefix) {
-    const entries = readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
+  const files = [];
+  (function scan(dir, prefix) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        // Skip api/ since those are generated from openapi
-        if (entry.name === "api") continue;
-        scanDir(fullPath, prefix ? `${prefix}/${entry.name}` : entry.name);
-      } else if (entry.name.endsWith(".md") || entry.name.endsWith(".mdx")) {
-        const slug = prefix
-          ? `${prefix}/${entry.name.replace(/\.(md|mdx)$/, "")}`
-          : entry.name.replace(/\.(md|mdx)$/, "");
-        // Skip index files mapped to directory slug
-        const finalSlug = slug.replace(/\/index$/, "");
-        tasks.push({ filePath: fullPath, slug: finalSlug });
-        count++;
+        // API pages come from the OpenAPI spec (section 2).
+        if (!(prefix === "" && entry.name === "api")) scan(full, prefix ? `${prefix}/${entry.name}` : entry.name);
+      } else if (/\.mdx?$/.test(entry.name)) {
+        const slug = (prefix ? `${prefix}/${entry.name}` : entry.name).replace(/\.mdx?$/, "").replace(/(^|\/)index$/, "");
+        files.push({ full, slug });
       }
     }
-  }
+  })(docsDir, "");
 
-  scanDir(docsDir, "");
-
-  for (const { filePath, slug } of tasks) {
-    const content = readFileSync(filePath, "utf8");
-    const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-    if (!fmMatch) continue;
-    const fm = fmMatch[1];
-    const body = content.slice(fmMatch[0].length);
-    const title = fm.match(/^title:\s*["']?(.+?)["']?\s*$/m)?.[1] || slug;
-    const description = fm.match(/^description:\s*["']?(.+?)["']?\s*$/m)?.[1] || "";
-
-    // Derive breadcrumb from slug path
-    const parts = slug.split("/");
-    const breadcrumb = parts.length > 1
-      ? parts.slice(0, -1).map((p) => p.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())).join(" › ")
-      : "";
-
-    // Detect hero image
-    const heroPath = resolveHeroImage(filePath, fm, body);
-    const hasHero = !!heroPath;
-
-    const svg = docPageSvg(title, description, breadcrumb, hasHero);
-    const outPath = path.join(root, `public/og/${slug}.png`);
-    mkdirSync(path.dirname(outPath), { recursive: true });
-
-    if (hasHero) {
-      // Composite: render SVG base, then overlay hero image on right side
-      const basePng = await sharp(Buffer.from(svg)).resize(1200, 630).png().toBuffer();
-      const hero = await prepareHeroImage(heroPath);
-      await sharp(basePng)
-        .composite([{ input: hero.buffer, left: hero.left, top: hero.top }])
-        .png()
-        .toFile(outPath);
-      heroCount++;
-    } else {
-      await svgToPng(svg, outPath);
+  const entries = [];
+  let pages = 0;
+  let heroes = 0;
+  for (const { full, slug } of files) {
+    const parsed = readEntry(full);
+    if (!parsed) continue;
+    const { fm, body } = parsed;
+    const entryMatch = slug.match(/^changelog\/(\d{4}-\d{2}-\d{2}-[a-z0-9-]+)$/);
+    if (entryMatch) {
+      entries.push({ folder: entryMatch[1], fm });
+      await changelogEntryCard(entryMatch[1], fm);
+      continue;
     }
+    if (slug === "changelog") continue; // the index card lists releases, below
+    const heroPath = resolveHeroImage(full, fm, body);
+    if (heroPath) heroes++;
+    await docPageCard(slug || "index", fm, heroPath);
+    pages++;
   }
-
-  console.log(`    (${heroCount} with hero images)`);
-  return count;
+  const releases = await changelogIndexCard(entries);
+  const products = await changelogProductCards(entries);
+  return { pages, heroes, entries: entries.length, releases, products };
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────
@@ -374,6 +414,7 @@ console.log("Generating OG images…");
 await generateFallback();
 const apiCount = await generateApiCards();
 console.log(`  ✓ ${apiCount} API operation cards`);
-const docCount = await generateDocCards();
-console.log(`  ✓ ${docCount} doc page cards`);
+const docs = await generateDocCards();
+console.log(`  ✓ ${docs.pages} doc page cards (${docs.heroes} with hero images)`);
+console.log(`  ✓ ${docs.entries} changelog entry cards, changelog index with ${docs.releases} releases, ${docs.products} product cards`);
 console.log("Done.");

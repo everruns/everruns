@@ -49,7 +49,7 @@ jsonschema = { version = "0.58.1", default-features = false }
 serde_yaml.workspace = true
 toml = "1.1"
 # Portable archive support is selected independently of core defaults.
-zip = { version = "8", default-features = false, features = ["deflate"], optional = true }
+zip = { version = "9", default-features = false, features = ["deflate"], optional = true }
 
 # UUID and time
 uuid.workspace = true
@@ -122,7 +122,9 @@ default = []
 engine = []
 builtins = ["dep:chrono-tz"]
 ui-capabilities = ["builtins"]
-host = ["engine", "dep:fs2", "dep:ignore", "dep:libc", "tokio/fs", "tokio/io-util"]
+host = ["engine", "dep:zip", "dep:fs2", "dep:ignore", "dep:libc", "tokio/fs", "tokio/io-util"]
+execution-host = ["engine", "dep:zip"]
+actor-runtime = ["execution-host", "builtins"]
 direct-egress = ["host", "dep:reqwest", "reqwest/blocking"]
 openai-agents-api = ["direct-egress", "dep:eventsource-stream"]
 process = ["host", "tokio/process", "tokio/time"]
@@ -144,7 +146,7 @@ a2a = ["dep:a2a-wire", "dep:a2a-client", "dep:reqwest"]
 # introspection, claim requirements), shared by the server's channels and
 # serve. It fetches identity-provider documents, so it is never a default.
 channel-auth = ["dep:reqwest", "dep:jsonwebtoken", "dep:moka", "tokio/net", "tokio/time"]
-otel = ["host", "tokio/time", "everruns-contracts/tls-aws-lc-rs", "dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:tracing-opentelemetry", "dep:tracing-subscriber"]
+otel = ["dep:reqwest", "reqwest/blocking", "host", "tokio/time", "everruns-contracts/tls-aws-lc-rs", "dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:tracing-opentelemetry", "dep:tracing-subscriber"]
 braintrust = ["direct-egress", "tokio/time"]
 observability = ["otel", "braintrust"]
 

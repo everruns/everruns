@@ -1,5 +1,5 @@
 //! PostgreSQL-backed durable execution for the [Everruns](https://everruns.com)
-//! ecosystem: a claimable task queue, signals, an event log, schedules, a
+//! ecosystem: a claimable task queue, an event log, schedules, a
 //! worker pool, and retries and circuit breakers.
 //!
 //! State lives in PostgreSQL. Workers claim tasks with
@@ -8,7 +8,7 @@
 //! infrastructure beyond the database.
 //!
 //! - [`WorkflowEventStore`] is the storage contract, split into focused traits
-//!   such as [`EventLog`], [`TaskQueue`] and [`SignalStore`].
+//!   such as [`EventLog`], [`TaskQueue`] and [`WorkerRegistry`].
 //!   [`PostgresWorkflowEventStore`] is the production store and
 //!   [`InMemoryWorkflowEventStore`] the test double.
 //! - [`WorkerPool`] claims and runs tasks with bounded concurrency, heartbeats
@@ -17,9 +17,10 @@
 //! - [`RetryPolicy`], [`ActivityOptions`] and [`DistributedCircuitBreaker`]
 //!   control retries, timeouts and failure isolation.
 //!
-//! The crate knows workflows, tasks and signals as durable records, and nothing
-//! about the domain built on top of it. Everruns' turn driver and the server's
-//! cluster jobs drive the task queue directly and own their own semantics.
+//! The crate knows workflows and tasks as durable records, and nothing about
+//! the domain built on top of it. The Everruns worker's task loop and the
+//! server's cluster jobs drive the task queue directly and own their own
+//! semantics.
 //!
 //! # Example
 //!
@@ -89,14 +90,14 @@ pub mod prelude {
     pub use crate::activity::ActivityError;
     pub use crate::persistence::{
         CircuitBreakers, ClaimedTask, DeadLetters, DurableAdmin, EventLog,
-        InMemoryWorkflowEventStore, PostgresWorkflowEventStore, Schedules, SignalStore, StoreError,
+        InMemoryWorkflowEventStore, PostgresWorkflowEventStore, Schedules, StoreError,
         TaskDefinition, TaskQueue, TraceContext, WorkerInfo, WorkerRegistry, WorkflowEventStore,
         WorkflowStatus,
     };
     pub use crate::reliability::{CircuitBreakerConfig, RetryPolicy};
     pub use crate::scheduler::{DurableScheduler, SchedulerConfig, SchedulerError};
     pub use crate::worker::{WorkerPool, WorkerPoolConfig, WorkerPoolError};
-    pub use crate::workflow::{ActivityOptions, WorkflowError, WorkflowEvent, WorkflowSignal};
+    pub use crate::workflow::{ActivityOptions, WorkflowError, WorkflowEvent};
 }
 
 // Root re-exports: the storage contract and its record types, the task event
@@ -106,20 +107,17 @@ pub mod prelude {
 pub use activity::ActivityError;
 pub use maintenance::{
     NoopReapHandler, ReapHandler, ReaperConfig, StaleTaskReaper, reap_stale_tasks,
-    requeue_stranded_workflows,
 };
 pub use persistence::{
     CircuitBreakerState, CircuitBreakers, ClaimedTask, CreateScheduleRow, DeadLetters,
-    DeadTaskInfo, DlqEntry, DlqFilter, DurableAdmin, Enqueued, EventLog, HandOff, HandedOff,
-    HeartbeatResponse, InMemoryWorkflowEventStore, NextStep, Pagination,
-    PostgresWorkflowEventStore, ReclaimResult, RequeuedWorkflow, RunStart, RunSteering,
+    DeadTaskInfo, DlqEntry, DlqFilter, DurableAdmin, EventLog, HeartbeatResponse,
+    InMemoryWorkflowEventStore, Pagination, PostgresWorkflowEventStore, ReclaimResult,
     ScheduleExecutionFilter, ScheduleExecutionRow, ScheduleExecutionStatus, ScheduleFilter,
     ScheduleRow, ScheduleStats, ScheduleTargetType, SchedulerInstanceInfo, Schedules,
-    SealedTaskInfo, SignalDrain, SignalStore, StoreError, SystemHealth, TaskDefinition,
-    TaskFailureOutcome, TaskFilter, TaskInfo, TaskQueue, TaskStatus, TraceContext, UpdateSchedule,
-    WorkerFilter, WorkerHeartbeat, WorkerInfo, WorkerRegistry, WorkflowEndSubscription,
-    WorkflowEventInfo, WorkflowEventStore, WorkflowFilter, WorkflowInfo, WorkflowInfoExtended,
-    WorkflowStatus,
+    SealedTaskInfo, StoreError, SystemHealth, TaskDefinition, TaskFailureOutcome, TaskFilter,
+    TaskInfo, TaskQueue, TaskStatus, TraceContext, UpdateSchedule, WorkerFilter, WorkerHeartbeat,
+    WorkerInfo, WorkerRegistry, WorkflowEventInfo, WorkflowEventStore, WorkflowFilter,
+    WorkflowInfo, WorkflowInfoExtended, WorkflowStatus,
 };
 pub use reliability::{
     CircuitBreakerConfig, CircuitBreakerError, CircuitState, DistributedCircuitBreaker, RetryPolicy,
@@ -131,9 +129,9 @@ pub use scheduler::{
 // `ScheduleUpdate` fields are `UpdateField`s, so the type stays nameable here.
 pub use update_field::UpdateField;
 pub use worker::{WorkerPool, WorkerPoolConfig, WorkerPoolError};
-pub use workflow::{ActivityOptions, WorkflowError, WorkflowEvent, WorkflowSignal, signal_types};
+pub use workflow::{ActivityOptions, WorkflowError, WorkflowEvent};
 
-// Task event recording, used by the Everruns turn driver and server sweeps.
+// Task event recording, used by the Everruns worker and server sweeps.
 pub use task_events::{
     append_event, record_activity_completed, record_activity_failed, record_activity_started,
     record_workflow_cancelled, record_workflow_completed, record_workflow_failed,

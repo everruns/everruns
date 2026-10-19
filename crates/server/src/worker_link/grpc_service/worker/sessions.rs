@@ -141,6 +141,7 @@ impl WorkerServiceImpl {
                     title: Some(req.title),
                     goal: None,
                     virtual_user_id: crate::storage::UpdateField::Unchanged,
+                    model_id: crate::storage::UpdateField::Unchanged,
                     locale: None,
                     tags: None,
                 },

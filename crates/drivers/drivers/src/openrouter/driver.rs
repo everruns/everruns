@@ -30,8 +30,10 @@ pub fn provider(
     id: impl Into<everruns_contracts::ProviderKey>,
     api_key: impl Into<String>,
 ) -> Provider {
-    Provider::new(id, OpenRouterChatDriver::new())
-        .with_decisions(crate::systemone::OpenRouterDecisionDriver::default())
+    let provider = Provider::new(id, OpenRouterChatDriver::new());
+    #[cfg(not(target_arch = "wasm32"))]
+    let provider = provider.with_decisions(crate::systemone::OpenRouterDecisionDriver::default());
+    provider
         .base_url("https://openrouter.ai/api/v1")
         .auth(BearerAuth::new(api_key))
 }
@@ -53,6 +55,15 @@ impl OpenRouterChatDriver {
             inner: OpenResponsesProtocolChatDriver::new()
                 .with_request_extension(Arc::new(OpenRouterRequestExtension)),
         }
+    }
+
+    /// Execute HTTP through the application's host (for example a Worker fetch).
+    pub fn with_transport(
+        mut self,
+        transport: Arc<dyn everruns_contracts::http_transport::HttpTransport>,
+    ) -> Self {
+        self.inner = self.inner.with_transport(transport);
+        self
     }
 
     /// Configure retries for `429` and transient `5xx` responses.
@@ -119,7 +130,7 @@ impl ChatDriver for OpenRouterChatDriver {
         }
 
         let models_url = models_url_for_api_url(&api_url);
-        list_openrouter_models(&self.inner.client(), endpoint, &models_url).await
+        list_openrouter_models(&self.inner.http_client(), endpoint, &models_url).await
     }
 }
 
@@ -138,7 +149,7 @@ impl std::fmt::Debug for OpenRouterChatDriver {
 /// Fetch and filter OpenRouter models, building capability profiles from the
 /// `supported_parameters` metadata OpenRouter advertises.
 async fn list_openrouter_models(
-    client: &reqwest::Client,
+    client: &everruns_contracts::http_transport::HttpClient,
     endpoint: &ProviderEndpoint,
     models_url: &str,
 ) -> Result<Option<Vec<DiscoveredModel>>> {
@@ -205,6 +216,7 @@ pub fn descriptor() -> DriverDescriptor {
     DriverDescriptor {
         services: vec![
             everruns_contracts::ServiceKind::Chat,
+            #[cfg(not(target_arch = "wasm32"))]
             everruns_contracts::ServiceKind::Decisions,
         ],
         provider: Some(Arc::new(|config| {
@@ -546,10 +558,14 @@ mod tests {
         let service = provider("catalog", "synthetic-key")
             .base_url(format!("{}/api/v1?route=custom", server.uri()));
         let url = models_url_for_api_url(&service.endpoint().url("responses").unwrap());
-        let models = list_openrouter_models(&reqwest::Client::new(), service.endpoint(), &url)
-            .await
-            .unwrap()
-            .unwrap();
+        let models = list_openrouter_models(
+            &everruns_contracts::http_transport::HttpClient::new(Arc::new(reqwest::Client::new())),
+            service.endpoint(),
+            &url,
+        )
+        .await
+        .unwrap()
+        .unwrap();
         let actual:Vec<Value>=models.into_iter().map(|m| {
             let profile=m.discovered_profile.expect("catalog model has a derived profile");
             json!({"id":m.model_id,"name":m.display_name,"owner":m.owned_by,"created":m.created_at.map(|t|t.to_rfc3339()),"capabilities":m.capabilities,"profile_name":profile.name,"profile_family":profile.family,"reasoning":profile.reasoning})

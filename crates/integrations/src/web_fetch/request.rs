@@ -174,7 +174,18 @@ fn parse(arguments: &Value) -> Result<RawRequest, String> {
             _ => return Err("body must be a string".to_string()),
         },
         Some("json") => {
-            let bytes = serde_json::to_vec(&arguments["json"]).map_err(|e| e.to_string())?;
+            // Models often pass the body as a JSON-encoded string instead of an
+            // object. Serializing that string would send a quoted string literal,
+            // so a string holding an object or array is sent as the document it
+            // encodes. Any other string stays a JSON string value.
+            let value = match &arguments["json"] {
+                Value::String(s) => match serde_json::from_str::<Value>(s) {
+                    Ok(parsed @ (Value::Object(_) | Value::Array(_))) => parsed,
+                    _ => arguments["json"].clone(),
+                },
+                other => other.clone(),
+            };
+            let bytes = serde_json::to_vec(&value).map_err(|e| e.to_string())?;
             (Some(bytes), Some("application/json"))
         }
         Some(_) => {
@@ -406,6 +417,40 @@ mod tests {
         assert_eq!(seen[0].headers["Content-Type"], "application/json");
         let body: Value = serde_json::from_slice(&seen[0].body).unwrap();
         assert_eq!(body["login_hint"], "a@example.com");
+    }
+
+    #[tokio::test]
+    async fn json_body_passed_as_encoded_string_is_sent_as_the_object() {
+        let egress = Arc::new(Recorder {
+            status: 200,
+            body: b"{}".to_vec(),
+            ..Default::default()
+        });
+        for (json_arg, expected) in [
+            (
+                json!(r#"{"type": "service_auth", "login_hint": "a@example.com"}"#),
+                json!({"type": "service_auth", "login_hint": "a@example.com"}),
+            ),
+            (json!("[1, 2]"), json!([1, 2])),
+            (json!("plain text"), json!("plain text")),
+            (json!("42"), json!("42")),
+        ] {
+            outcome(
+                execute(
+                    &json!({
+                        "url": "https://svc.example/api/agent/identity",
+                        "method": "POST",
+                        "json": json_arg
+                    }),
+                    Some(&context(egress.clone())),
+                    None,
+                )
+                .await,
+            );
+            let seen = egress.seen.lock().unwrap();
+            let body: Value = serde_json::from_slice(&seen.last().unwrap().body).unwrap();
+            assert_eq!(body, expected);
+        }
     }
 
     #[tokio::test]

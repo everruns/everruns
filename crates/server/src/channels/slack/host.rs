@@ -63,7 +63,7 @@ const SLACK_EVENT: &str = "slack_event";
 /// Routing metadata naming the surface: `pane` or `channel`.
 const SLACK_SURFACE: &str = "slack_surface";
 /// Delivery target extra naming the surface a turn answers in.
-const TARGET_SURFACE: &str = "slack_surface";
+pub(crate) const TARGET_SURFACE: &str = "slack_surface";
 
 /// The message metadata key holding a Slack message's thread.
 pub(crate) const SLACK_THREAD_KEY: &str = "slack_thread_ts";

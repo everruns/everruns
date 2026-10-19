@@ -591,6 +591,7 @@ mod tests {
                     role: everruns_core::organization::OrgRole::Owner,
                     is_platform_user: true,
                     is_internal: false,
+                    read_only: false,
                 },
                 None,
             )

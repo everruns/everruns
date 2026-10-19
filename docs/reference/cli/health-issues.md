@@ -1,6 +1,6 @@
 ---
 title: everruns health-issues
-description: "Operational problems detected in this installation. CLI reference for everruns health-issues."
+description: "Operational problems detected in this installation. CLI reference for everruns health-issues: usage, flags and examples."
 sidebar:
   label: health-issues
 appliesTo: [platform, cloud]

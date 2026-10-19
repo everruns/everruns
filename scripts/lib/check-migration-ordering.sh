@@ -47,6 +47,21 @@ timestamped=0
 lowest=""
 declare -A seen=()
 
+valid_utc_timestamp() {
+  # Python is already required by repository checks and parses calendar dates
+  # consistently on macOS and Linux, unlike GNU-only date -d.
+  python3 - "$1" <<'PY'
+import datetime
+import sys
+
+try:
+    parsed = datetime.datetime.strptime(sys.argv[1], "%Y%m%d%H%M%S")
+except ValueError:
+    sys.exit(1)
+sys.exit(parsed.strftime("%Y%m%d%H%M%S") != sys.argv[1])
+PY
+}
+
 for f in "${sql_files[@]}"; do
   name=$(basename "$f")
   if [[ "$name" =~ ^([0-9]{3})_.+\.sql$ ]]; then
@@ -57,7 +72,7 @@ for f in "${sql_files[@]}"; do
   elif [[ "$name" =~ ^([0-9]{14})_[a-z0-9_]+\.sql$ ]]; then
     ts="${BASH_REMATCH[1]}"
     version=$((10#$ts))
-    if ! date -u -d "${ts:0:8} ${ts:8:2}:${ts:10:2}:${ts:12:2}" >/dev/null 2>&1 \
+    if ! valid_utc_timestamp "$ts" \
       || [ "${ts:0:4}" -lt 2026 ]; then
       echo "error: $name: ${ts} is not a valid UTC timestamp (YYYYMMDDHHMMSS)"
       status=1

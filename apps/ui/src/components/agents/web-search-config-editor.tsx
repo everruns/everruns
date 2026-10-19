@@ -150,8 +150,8 @@ export function WebSearchConfigEditor({
       hint: account.status === "ready" ? "account" : "needs a key",
       disabled: account.status !== "ready" && value !== `account:${account.id}`,
     })),
-    ...(provider === "brave"
-      ? [{ value: "brave", label: "Brave Search", hint: "user or session key" }]
+    ...(provider === "brave" || provider === "parallel"
+      ? [{ value: provider, label: SETTING_LABELS[provider], hint: "user or session key" }]
       : []),
     { value: "free", label: "Free search", hint: "no key" },
   ];

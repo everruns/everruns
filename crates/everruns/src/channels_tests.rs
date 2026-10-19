@@ -174,3 +174,136 @@ async fn bad_requests_and_unknown_channels_are_answered_not_raised() {
         404
     );
 }
+
+/// Serves one file for every download and records the authorization sent.
+struct OneFile(Mutex<Vec<Option<String>>>);
+
+#[async_trait]
+impl everruns_core::EgressService for OneFile {
+    async fn send(
+        &self,
+        _: everruns_core::egress::EgressRequest,
+    ) -> everruns_core::egress::EgressResult<everruns_core::egress::EgressResponse> {
+        unreachable!("downloads stream")
+    }
+
+    async fn send_stream(
+        &self,
+        request: everruns_core::egress::EgressRequest,
+    ) -> everruns_core::egress::EgressResult<everruns_core::egress::EgressStreamResponse> {
+        self.0
+            .lock()
+            .unwrap()
+            .push(request.headers.get("authorization").cloned());
+        let png = b"\x89PNG\r\n\x1a\n rest".to_vec();
+        Ok(everruns_core::egress::EgressStreamResponse {
+            status: 200,
+            headers: Default::default(),
+            body: Box::pin(futures::stream::iter([Ok(png)])),
+        })
+    }
+}
+
+#[tokio::test]
+async fn a_slack_file_is_downloaded_into_the_sessions_files() {
+    let engine = InMemoryEngine::new();
+    let egress = Arc::new(OneFile(Mutex::new(Vec::new())));
+    let channels = Channels::builder(&engine)
+        .channel("slack", Slack::new("xoxb-test", "secret"), agent("ok"))
+        .egress(egress.clone())
+        .build();
+    let session = engine.create(agent("ok"));
+    let file = InboundAttachment::Remote {
+        url: "https://files.slack.com/files-pri/T1-F1/chart.png".into(),
+        name: Some("chart.png".into()),
+        media_type: Some("image/png".into()),
+        size: None,
+        credential: Some(everruns_core::RemoteCredential::bearer(
+            "files.slack.com",
+            "xoxb-test",
+        )),
+    };
+
+    let parts = channels
+        .host()
+        .attachment_parts("slack", Some(&session.id()), &[file], None)
+        .await
+        .unwrap();
+
+    // Kept in the session's files and sent by reference.
+    assert!(
+        matches!(parts.as_slice(), [everruns_core::ContentPart::ImageFile(_)]),
+        "{parts:?}"
+    );
+    assert_eq!(
+        egress.0.lock().unwrap().as_slice(),
+        [Some("Bearer xoxb-test".to_string())]
+    );
+}
+
+#[tokio::test]
+async fn rejected_preparation_clears_its_channel_delivery_without_a_turn_terminal() {
+    let engine = InMemoryEngine::new();
+    let recorder = Recorder::default();
+    let store = Arc::new(MemoryChannelStore::new());
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let agent = Agent::builder()
+        .instructions("You are concise.")
+        .model(Model::simulated("must not run"))
+        .on_turn_start({
+            let entered = entered.clone();
+            let release = release.clone();
+            move |_| {
+                let entered = entered.clone();
+                let release = release.clone();
+                async move {
+                    entered.notify_one();
+                    release.notified().await;
+                    Err::<(), _>("preparation rejected")
+                }
+            }
+        })
+        .build()
+        .unwrap();
+    let channels = Channels::builder(&engine)
+        .store(store.clone())
+        .channel("support", Channel::new(recorder.clone()), agent)
+        .build();
+    let response = tokio::time::timeout(
+        Duration::from_secs(1),
+        channels.handle("support", &message("hi", "t1")),
+    )
+    .await
+    .expect("request must acknowledge before preparation finishes");
+    assert_eq!(response.status, 200);
+    tokio::time::timeout(Duration::from_secs(2), entered.notified())
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while store
+            .claim_pending("test", DEFAULT_DELIVERY_LEASE)
+            .await
+            .unwrap()
+            .is_empty()
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    release.notify_one();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while !store
+            .claim_pending("test", DEFAULT_DELIVERY_LEASE)
+            .await
+            .unwrap()
+            .is_empty()
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("rejection has no turn terminal to wait for");
+    assert!(recorder.posts().is_empty());
+}

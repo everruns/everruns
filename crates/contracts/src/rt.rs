@@ -20,6 +20,19 @@
 
 pub use std::time::Duration;
 
+/// UTC instant supplied by a session authority.
+pub type UtcTimestamp = chrono::DateTime<chrono::Utc>;
+
+/// Current UTC time from the native or isolate host clock.
+pub fn utc_now() -> chrono::DateTime<chrono::Utc> {
+    chrono::Utc::now()
+}
+
+/// Authority/session timestamps on the native or isolate host clock.
+pub fn utc_now_iso() -> String {
+    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+}
+
 /// `wasm32-unknown-unknown`: the isolate target.
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 mod imp {
@@ -95,9 +108,26 @@ mod imp {
         }
     }
 
+    /// Run a future until a deadline on the host clock.
+    pub async fn timeout_at<F: Future>(deadline: Instant, future: F) -> Result<F::Output, Elapsed> {
+        timeout(deadline.saturating_duration_since(Instant::now()), future).await
+    }
+
     /// The task was aborted before it finished.
     #[derive(Debug)]
     pub struct JoinError(());
+
+    impl JoinError {
+        /// Isolate tasks report cancellation. A Wasm trap aborts the isolate
+        /// rather than unwinding into a recoverable task panic.
+        pub fn is_panic(&self) -> bool {
+            false
+        }
+
+        pub fn is_cancelled(&self) -> bool {
+            true
+        }
+    }
 
     impl fmt::Display for JoinError {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -163,59 +193,7 @@ mod imp {
 mod imp {
     pub use tokio::task::{JoinError, JoinHandle, spawn};
     pub use tokio::time::error::Elapsed;
-    pub use tokio::time::{Instant, Sleep, sleep, timeout};
+    pub use tokio::time::{Instant, Sleep, sleep, timeout, timeout_at};
 }
 
 pub use imp::*;
-
-/// A periodic tick that skips missed ticks, like Tokio's `interval` with
-/// `MissedTickBehavior::Skip`: the first [`Interval::tick`] completes at
-/// once, later ones one `period` apart. On native targets it is Tokio's own
-/// interval, so its scheduling (and paused-clock behavior) is unchanged.
-pub struct Interval {
-    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-    inner: tokio::time::Interval,
-    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-    period: Duration,
-    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-    next: Option<std::pin::Pin<Box<Sleep>>>,
-}
-
-impl Interval {
-    pub fn new(period: Duration) -> Self {
-        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-        {
-            let mut inner = tokio::time::interval(period);
-            inner.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-            Self { inner }
-        }
-        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-        {
-            Self { period, next: None }
-        }
-    }
-
-    /// Wait for the next tick. Cancel-safe: a dropped `tick` keeps the
-    /// schedule.
-    pub async fn tick(&mut self) {
-        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-        {
-            self.inner.tick().await;
-        }
-        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-        {
-            if let Some(next) = self.next.as_mut() {
-                next.as_mut().await;
-            }
-            self.next = Some(Box::pin(sleep(self.period)));
-        }
-    }
-}
-
-/// Seconds since the Unix epoch on the host clock.
-pub fn unix_now_secs() -> u64 {
-    web_time::SystemTime::now()
-        .duration_since(web_time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}

@@ -43,7 +43,7 @@ pub(crate) async fn init_storage(
         // schedules for one) and the in-process worker executes it, turns
         // included: it leases session actors exactly as a remote worker does.
         tracing::info!("Starting in DEV MODE (embedded PostgreSQL, deleted on exit)");
-        let pg = everruns_pg_embedded::EmbeddedPostgres::shared()
+        let pg = crate::storage::embedded_postgres::EmbeddedPostgres::shared()
             .await
             .context("Failed to start embedded PostgreSQL for DEV_MODE")?;
         let database = format!("dev_{}", uuid::Uuid::now_v7().simple());

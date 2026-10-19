@@ -90,6 +90,33 @@ impl SessionService {
         .await
     }
 
+    /// Effective configurations, including declarative dependencies. Advisory
+    /// consumers share the same tenant checks and resolution as turn loading.
+    pub(crate) async fn resolved_session_capability_configs(
+        &self,
+        org_id: i64,
+        harness_id: Option<HarnessId>,
+        agent_id: Option<AgentId>,
+        session_capabilities: &[AgentCapabilityConfig],
+    ) -> Result<Vec<AgentCapabilityConfig>> {
+        let harness_id = match harness_id {
+            Some(id) => id,
+            None => org_init::base_harness_id(&self.db, org_id).await?,
+        };
+        let configs = self
+            .collect_session_capability_configs(
+                org_id,
+                harness_id.uuid(),
+                agent_id.map(|id| id.uuid()),
+                session_capabilities,
+            )
+            .await?;
+        Ok(resolve_capability_configs(
+            &configs,
+            &self.capability_registry,
+        )?)
+    }
+
     /// EVE-709: reject session creation when a required built-in capability is not
     /// available in this deployment.
     ///

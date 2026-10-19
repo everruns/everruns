@@ -46,6 +46,7 @@ enum OAuthScope {
     Org(i64),
 }
 mod github;
+pub(crate) use github::GitHubIdentityKind;
 
 const REFRESH_LOCK_MAX_CAPACITY: u64 = 10_000;
 const REFRESH_LOCK_IDLE_TTL: StdDuration = StdDuration::from_secs(10 * 60);
@@ -84,6 +85,8 @@ struct OAuthClientConfig {
 pub struct GitHubAppTokenMinter {
     app_id: String,
     private_key: String,
+    /// The App's OAuth client, which refreshes people's own tokens (D1).
+    user_client: Option<crate::github_user_token::GitHubUserClient>,
 }
 
 impl GitHubAppTokenMinter {
@@ -91,7 +94,16 @@ impl GitHubAppTokenMinter {
         Self {
             app_id,
             private_key,
+            user_client: None,
         }
+    }
+
+    pub fn with_user_client(
+        mut self,
+        client: Option<crate::github_user_token::GitHubUserClient>,
+    ) -> Self {
+        self.user_client = client;
+        self
     }
 
     /// Mint a fresh installation access token (1h TTL).
@@ -106,6 +118,7 @@ impl GitHubAppTokenMinter {
             setup_url: String::new(),
             client_id: None,
             client_secret: None,
+            webhook_secret: None,
             endpoints: Default::default(),
         };
         let service = GitHubAppService::new(&config);
@@ -670,7 +683,7 @@ impl DbConnectionResolver {
 
 impl DbConnectionResolver {
     /// Token held by one selected connection row: GitHub installations mint a
-    /// fresh installation token (the agent's own App first), MCP OAuth grants
+    /// fresh installation token with the App their kind names, MCP OAuth grants
     /// refresh near expiry, everything else decrypts the stored token.
     async fn token_for_connection_row(
         &self,
@@ -678,21 +691,13 @@ impl DbConnectionResolver {
         provider: &str,
         row: VirtualUserConnectionRow,
     ) -> Result<Option<String>> {
-        // Per-agent GitHub App: an agent identity that created its own App
-        // (manifest flow) mints with that App's key, so the trigger, the tools
-        // and the GitHub MCP all act as the same installation.
-        if provider == "github"
-            && let Some(installation_id) = row.installation_id
-            && let Some(credentials) = self.agent_app_credentials(scope, &row).await?
-        {
-            let token = self
-                .github_apps
-                .mint_installation_token(&credentials, installation_id)
-                .await
-                .map_err(|e| {
-                    AgentLoopError::store(format!("Failed to mint GitHub installation token: {e}"))
-                })?;
-            return Ok(Some(token));
+        // GitHub mints with the App the connection's kind names, so the
+        // trigger, the tools and the GitHub MCP all act as the same
+        // installation.
+        if provider == "github" {
+            return self
+                .scoped_github_token(scope, row, &crate::github_apps::TokenScope::default())
+                .await;
         }
         if let Some(server) = Self::parse_mcp_oauth_provider(provider) {
             return self.resolve_identity_oauth_token(scope, server, row).await;
@@ -814,6 +819,15 @@ impl UserConnectionResolver for DbConnectionResolver {
         access: &everruns_contracts::runtime::GitHubAccess,
     ) -> Result<Option<everruns_contracts::runtime::McpResolvedCredential>> {
         self.github_token(session, access).await
+    }
+
+    async fn get_github_token_for_owner(
+        &self,
+        org_id: i64,
+        owner: Uuid,
+        access: &everruns_contracts::runtime::GitHubAccess,
+    ) -> Result<Option<String>> {
+        self.github_token_for_owner(org_id, owner, access).await
     }
 
     async fn get_sandbox_connection_token(
@@ -1074,6 +1088,20 @@ impl UserConnectionResolver for DbConnectionResolver {
         }))
     }
     async fn get_connection_user(&self, s: SessionId, p: &str) -> Result<Option<Uuid>> {
+        if let Some(server) = Self::parse_mcp_oauth_provider(p)
+            && let Some(subject) = self.runtime_subject(s).await?
+            && let Some(grant) = self
+                .db
+                .get_mcp_oauth_session_credentials(s, server)
+                .await
+                .map_err(|e| AgentLoopError::store(e.to_string()))?
+            && grant.virtual_user_id == Some(subject)
+        {
+            // PACT grants belong to this invocation's user without a persistent
+            // connection. Discovery must cache their tools under the same user
+            // whose token get_mcp_connection_token resolves.
+            return Ok(Some(subject.uuid()));
+        }
         Ok(self
             .selected_connection(s, p)
             .await?

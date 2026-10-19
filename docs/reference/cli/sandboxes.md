@@ -1,6 +1,6 @@
 ---
 title: everruns sandboxes
-description: "Sandboxes across providers: state, history, usage. CLI reference for everruns sandboxes."
+description: "Sandboxes across providers: state, history, usage. CLI reference for everruns sandboxes: usage, flags and examples."
 sidebar:
   label: sandboxes
 appliesTo: [platform, cloud]

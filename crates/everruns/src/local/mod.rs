@@ -17,6 +17,7 @@ mod schedule_runner;
 mod schedule_store;
 mod session_leases;
 mod session_store;
+mod task_recovery;
 mod task_registry;
 mod wake_routing;
 
@@ -37,6 +38,7 @@ pub use schedule_runner::{
 pub use schedule_store::{LocalScheduleStore, ScheduleReconcileReport};
 pub use session_leases::LocalSessionLeases;
 pub use session_store::LocalSessionStore;
+pub use task_recovery::LocalTaskRecovery;
 pub use task_registry::LocalSessionTaskRegistry;
 pub use wake_routing::{HostRoutedRunner, WakeRoutes};
 

@@ -15,6 +15,7 @@ Every Everruns deployment exposes an authenticated MCP endpoint at `/mcp` so ext
 - **Transport**: JSON-RPC 2.0 over Streamable HTTP (`POST /mcp`). Protocol versions `2026-07-28`, `2025-06-18` and `2025-03-26` are supported.
 - **Methods**: `initialize`, `server/discover`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`; under `2026-07-28`, `skills/list`, `skills/get`, and `resources/directory/read`; and, for organizations that turn on MCP Events, `events/list`, `events/subscribe` and `events/unsubscribe`.
 - **Auth**: MCP requests authenticate and resolve an organization before dispatch. OAuth 2.1 uses mandatory PKCE, and MCP access tokens are bound to the exact `/mcp` resource so they cannot be reused against the REST API. Unauthenticated requests fail with `401` and protected-resource discovery metadata is served at `/.well-known/oauth-protected-resource/mcp`.
+- **Files**: `agent_run` and `session_send_message` take an optional `files` list, each file as base64 `data` or a public `https` `url`. The files are copied into the session's `/attachments` folder, as for [channels](/features/channels/#files-people-send).
 - **Entity cards**: under protocol `2025-06-18`, tools like `agent_get_card` return a sandboxed `text/html` MCP App resource at the `ui://` scheme alongside a text summary, so MCP-Apps-aware hosts render rich cards while others fall back to text.
 
 Routing is intentionally split: REST under `/api/*`, MCP OAuth under `/oauth/*`, and MCP JSON-RPC at `/mcp`.
@@ -30,7 +31,9 @@ directly, then read instructions and supporting files with `resources/read`.
 
 | Skill | Use it for |
 |---|---|
-| `skill://everruns-mcp/SKILL.md` | Finding agents, running sessions, inspecting results, and managing resources through MCP |
+| `skill://everruns/SKILL.md` | Product concepts, getting started, and documentation links |
+| `skill://everruns-cli/SKILL.md` | Command usage and examples across CLI, session shell, and MCP |
+| `skill://everruns-mcp/SKILL.md` | Connection setup, finding agents, running sessions, inspecting results, and managing resources through MCP |
 | `skill://everruns-agent-authoring/SKILL.md` | Creating or revising agent definitions, selecting capabilities and harnesses, and verifying behavior |
 
 Each entry preserves all authored frontmatter and includes every file's URI,

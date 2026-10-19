@@ -2,6 +2,59 @@ use super::*;
 
 pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
     match model_id {
+        // https://ai.google.dev/gemini-api/docs/models/gemini-4-argon
+        // The 1M output ceiling requires continuation; the driver defaults to
+        // 64K unless the caller explicitly raises the total output budget.
+        "gemini-4-argon" => Some(ModelProfile {
+            name: "Gemini 4 Argon".into(),
+            family: "gemini-4-argon".into(),
+            description: None,
+            release_date: Some("2026-10-13".into()),
+            last_updated: Some("2026-10-13".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: None,
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            // Introductory pricing through 2026-11-30. Source: Google's model
+            // pricing page; scheduled rates thereafter are $4/$20/$0.20.
+            cost: Some(ModelCost {
+                input: 2.0,
+                output: 10.0,
+                cache_read: Some(0.10),
+                cache_write: None,
+                cost_tiers: vec![],
+            }),
+            limits: Some(ModelLimits {
+                context: 1_048_576,
+                input: None,
+                output: 1_048_576,
+                max_media: None,
+            }),
+            modalities: Some(ModelModalities {
+                input: vec![
+                    Modality::Text,
+                    Modality::Image,
+                    Modality::Audio,
+                    Modality::Video,
+                    Modality::Pdf,
+                ],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_standard()),
+            speed: None,
+            verbosity: None,
+            tool_search: false,
+            supported_parameters: Vec::new(),
+            supports_phases: false,
+            supports_server_compaction: false,
+            model_card_url: Some(
+                "https://ai.google.dev/gemini-api/docs/models/gemini-4-argon".into(),
+            ),
+            decisions: None,
+        }),
         // Gemini 3.x series (newest). Source: models.dev (google provider).
         // `gemini-3-pro-preview` is deprecated upstream; 3.1 Pro Preview is the
         // current flagship Pro. Pricing has a >200K-token tier. Reasoning effort
@@ -56,6 +109,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -140,6 +194,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -189,6 +244,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -234,6 +290,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -279,6 +336,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -324,6 +382,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -385,6 +444,7 @@ fn gemini_flash(
         supported_parameters: Vec::new(),
         supports_phases: false,
         supports_server_compaction: false,
+        model_card_url: None,
         decisions: None,
     }
 }

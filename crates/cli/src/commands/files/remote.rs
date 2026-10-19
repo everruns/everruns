@@ -11,6 +11,8 @@ use anyhow::{Context, Result};
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 
+use crate::commands::api::ApiError;
+
 /// Represents a file entry returned by the remote API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteFileEntry {
@@ -117,9 +119,9 @@ impl RemoteClient {
             .context("Failed to list remote files")?;
 
         if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("List remote files failed: {} {}", status, text);
+            return Err(ApiError::from_response("List remote files failed", resp)
+                .await
+                .into());
         }
 
         // The API returns either a file object or a directory listing.
@@ -151,9 +153,9 @@ impl RemoteClient {
             .context("Failed to read remote file")?;
 
         if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("Read remote file failed: {} {}", status, text);
+            return Err(ApiError::from_response("Read remote file failed", resp)
+                .await
+                .into());
         }
 
         let content: RemoteFileContent = resp.json().await?;
@@ -208,13 +210,13 @@ impl RemoteClient {
         };
 
         if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
             // If create fails with 409 (conflict/exists), fall back to update
-            if create && status == reqwest::StatusCode::CONFLICT {
+            if create && resp.status() == reqwest::StatusCode::CONFLICT {
                 return self.update_file(path, &body).await;
             }
-            anyhow::bail!("Write remote file failed: {} {}", status, text);
+            return Err(ApiError::from_response("Write remote file failed", resp)
+                .await
+                .into());
         }
 
         Ok(())
@@ -232,9 +234,9 @@ impl RemoteClient {
             .context("Failed to update remote file")?;
 
         if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("Update remote file failed: {} {}", status, text);
+            return Err(ApiError::from_response("Update remote file failed", resp)
+                .await
+                .into());
         }
         Ok(())
     }
@@ -253,9 +255,9 @@ impl RemoteClient {
             .context("Failed to delete remote file")?;
 
         if !resp.status().is_success() && resp.status() != reqwest::StatusCode::NOT_FOUND {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("Delete remote file failed: {} {}", status, text);
+            return Err(ApiError::from_response("Delete remote file failed", resp)
+                .await
+                .into());
         }
 
         Ok(())

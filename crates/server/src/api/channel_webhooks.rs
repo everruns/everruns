@@ -54,9 +54,21 @@ pub struct ChannelWebhookState {
     pub mcp_event_triggers: Option<Arc<crate::domains::agent_triggers::McpEventTriggers>>,
     /// The channel host webhook channels run on.
     pub channels: ServerChannels,
+    /// The deployment's shared Everruns GitHub App, for its webhook route.
+    pub everruns_app: Option<super::github_everruns_app_webhook::EverrunsAppWebhook>,
 }
 
 impl ChannelWebhookState {
+    /// Serve the shared Everruns App's webhook with this deployment's App.
+    pub fn with_everruns_app(
+        mut self,
+        config: Option<&crate::auth::config::GitHubConnectionConfig>,
+    ) -> Self {
+        self.everruns_app =
+            config.map(super::github_everruns_app_webhook::EverrunsAppWebhook::from);
+        self
+    }
+
     pub fn with_mcp_event_triggers(
         mut self,
         service: Arc<crate::domains::agent_triggers::McpEventTriggers>,
@@ -87,6 +99,7 @@ impl ChannelWebhookState {
             encryption,
             rate_limiter,
             mcp_event_triggers: None,
+            everruns_app: None,
         }
     }
 }

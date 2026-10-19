@@ -9,11 +9,6 @@ const rawPaletteUtility =
   /(?<![\w-])(?:[\w-]+:)*[\w-]+-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-(?:50|100|200|300|400|500|600|700|800|900|950)(?!\d)(?:\/\d+)?/g;
 
 const rawPaletteExceptions: Record<string, Record<string, number>> = {
-  "app/(main)/durable/page.tsx": {
-    "text-blue-600": 1,
-    "text-green-600": 1,
-    "text-yellow-600": 1,
-  },
   "app/(main)/durable/workers/page.tsx": {
     "bg-green-500": 1,
     "bg-red-500": 1,
@@ -26,7 +21,6 @@ const rawPaletteExceptions: Record<string, Record<string, number>> = {
   "app/(main)/durable/workflows/[workflowId]/page.tsx": {
     "text-blue-500": 1,
     "text-purple-500": 1,
-    "text-yellow-500": 1,
   },
   "app/(main)/evals/[evalId]/page.tsx": {
     "text-green-600": 1,

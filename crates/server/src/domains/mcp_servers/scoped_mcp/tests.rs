@@ -76,6 +76,8 @@ impl UserConnectionResolver for ActingIdentityResolver {
 #[derive(Default)]
 pub(crate) struct CatalogPreviewEgress {
     pub(crate) calls: AtomicUsize,
+    /// When set, `tools/list` answers 503, as a server that is down.
+    pub(crate) down: std::sync::atomic::AtomicBool,
 }
 
 #[async_trait::async_trait]
@@ -115,6 +117,13 @@ impl EgressService for CatalogPreviewEgress {
             }),
             "tools/list" => {
                 self.calls.fetch_add(1, Ordering::SeqCst);
+                if self.down.load(Ordering::SeqCst) {
+                    return Ok(everruns_core::EgressResponse {
+                        status: 503,
+                        headers: Default::default(),
+                        body: Vec::new(),
+                    });
+                }
                 Ok(everruns_core::EgressResponse {
                     status: 200,
                     headers: Default::default(),
@@ -397,6 +406,7 @@ pub(crate) fn test_agent() -> Agent {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
         communication: Default::default(),
         tools: vec![],
         mcp_servers: Default::default(),
@@ -420,6 +430,7 @@ pub(crate) fn test_session(
         playground_user_id: None,
         source: Default::default(),
         activity: Default::default(),
+        last_turn_status: None,
         run_summary: None,
         id: session_id,
         // Default 1:1 session<->workspace: workspace.id mirrors the session id.
@@ -438,6 +449,7 @@ pub(crate) fn test_session(
         locale: None,
         preview: None,
         output_preview: None,
+        last_message_at: None,
         tags: vec![],
         model_id: None,
         capabilities: vec![],

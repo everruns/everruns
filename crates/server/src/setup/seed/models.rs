@@ -528,7 +528,16 @@ pub(super) const SEED_MODELS: &[SeedModel] = &[
         enabled: false,
         is_favorite: false,
     },
-    // Google Gemini 3.x series (current gen)
+    // Google Gemini 4 series
+    SeedModel {
+        id: seed_ids::GEMINI_4_ARGON,
+        provider_id: seed_ids::GEMINI_PROVIDER,
+        model_id: "gemini-4-argon",
+        display_name: "Gemini 4 Argon",
+        enabled: true,
+        is_favorite: true,
+    },
+    // Google Gemini 3.x series
     SeedModel {
         id: seed_ids::GEMINI_38_FLASH,
         provider_id: seed_ids::GEMINI_PROVIDER,

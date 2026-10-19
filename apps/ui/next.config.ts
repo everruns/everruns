@@ -36,6 +36,14 @@ const nextConfig: NextConfig = {
       // Personal MCP connections live in Settings > My agent experience.
       { source: "/mcp-servers", destination: "/settings/mcp-catalog", permanent: true },
       { source: "/mcp-servers/:path*", destination: "/settings/mcp-catalog", permanent: true },
+      // Sandbox Templates and provider accounts became tabs of Sandboxes.
+      { source: "/sandbox-templates", destination: "/sandboxes/templates", permanent: true },
+      {
+        source: "/sandbox-templates/:path*",
+        destination: "/sandboxes/templates/:path*",
+        permanent: true,
+      },
+      { source: "/sandbox-provider-accounts", destination: "/sandboxes/accounts", permanent: true },
     ];
   },
   async headers() {

@@ -95,10 +95,13 @@ impl McpToolInvoker for DocsServer {
 fn tool(name: &str, invoker: Arc<dyn McpToolInvoker>) -> Box<dyn Tool> {
     let mut definitions = vec![mcp_tool("mcp_docs__search")];
     add_mcp_resource_tool_definitions(&mut definitions);
-    build_mcp_proxy_tools(&definitions, invoker)
-        .into_iter()
-        .find(|t| t.name() == name)
-        .expect("resource tool registered")
+    build_mcp_proxy_tools(
+        &definitions,
+        Arc::new(ScopedMcpToolInvoker::new(&definitions, invoker)),
+    )
+    .into_iter()
+    .find(|t| t.name() == name)
+    .expect("resource tool registered")
 }
 
 #[test]
@@ -218,4 +221,133 @@ async fn scoped_invoker_only_reaches_servers_attached_to_the_turn() {
     assert!(message.contains("not attached"), "{message}");
     assert!(message.contains("docs, linear"), "{message}");
     assert_eq!(server.calls.lock().unwrap().len(), 2);
+}
+
+#[test]
+fn resource_constructor_retains_the_scoped_invoker() {
+    struct InertInvoker;
+    #[async_trait]
+    impl McpToolInvoker for InertInvoker {
+        async fn invoke(&self, _: &ToolCall) -> crate::runtime::error::Result<ToolResult> {
+            unreachable!("constructor fixture does not execute requests")
+        }
+    }
+    let definitions = vec![mcp_tool("mcp_docs__search"), mcp_tool("mcp_linear")];
+    let scoped = Arc::new(ScopedMcpToolInvoker::new(
+        &definitions,
+        Arc::new(InertInvoker),
+    ));
+    for definition in [list_definition(), read_definition()] {
+        let tool = McpResourceTool {
+            definition: builtin(definition),
+            invoker: scoped.clone(),
+        };
+        assert_eq!(
+            std::any::type_name_of_val(&tool.invoker),
+            std::any::type_name::<Arc<ScopedMcpToolInvoker>>()
+        );
+        assert_eq!(
+            Arc::as_ptr(&tool.invoker) as *const (),
+            Arc::as_ptr(&scoped) as *const ()
+        );
+    }
+}
+
+#[tokio::test]
+async fn registered_resources_preserve_input_binding_and_allowed_results() {
+    use crate::runtime::tool_execution::ToolExecutor;
+    use crate::runtime::typed_id::{MessageId, SessionId};
+
+    #[derive(Default)]
+    struct InertResources(Option<uuid::Uuid>);
+    #[async_trait]
+    impl McpToolInvoker for InertResources {
+        fn for_execution(&self, input: uuid::Uuid) -> Option<Arc<dyn McpToolInvoker>> {
+            Some(Arc::new(Self(Some(input))))
+        }
+        async fn invoke(&self, _: &ToolCall) -> crate::runtime::error::Result<ToolResult> {
+            unreachable!("resource fixture never executes MCP tools")
+        }
+        async fn list_resources(
+            &self,
+            _: &str,
+            _: Option<&str>,
+        ) -> crate::runtime::error::Result<Option<McpResourceOutcome<McpResourceListing>>> {
+            Ok(Some(McpResourceOutcome::Done(McpResourceListing {
+                page: McpResourcesPage {
+                    next_cursor: Some(self.0.map_or("unbound".into(), |id| id.to_string())),
+                    ..Default::default()
+                },
+                ..Default::default()
+            })))
+        }
+        async fn read_resource(
+            &self,
+            _: &str,
+            uri: &str,
+        ) -> crate::runtime::error::Result<Option<McpResourceOutcome<McpReadResourceResult>>>
+        {
+            Ok(Some(McpResourceOutcome::Done(McpReadResourceResult {
+                contents: vec![McpResourceContents {
+                    uri: uri.into(),
+                    text: Some(self.0.map_or("unbound".into(), |id| id.to_string())),
+                    mime_type: None,
+                    blob: None,
+                }],
+            })))
+        }
+    }
+
+    let mut definitions = vec![mcp_tool("mcp_docs__search"), mcp_tool("mcp_wiki")];
+    add_mcp_resource_tool_definitions(&mut definitions);
+    let scoped = Arc::new(ScopedMcpToolInvoker::new(
+        &definitions,
+        Arc::new(InertResources::default()),
+    ));
+    let mut registry = crate::runtime::tools::ToolRegistry::new();
+    for tool in build_mcp_proxy_tools(&definitions, scoped.clone()) {
+        registry.register_boxed(tool);
+    }
+    let input = MessageId::from_seed(1);
+    for bound in [false, true] {
+        let mut context = ToolContext::new(SessionId::from_seed(2));
+        context.mcp_invoker = Some(scoped.clone());
+        if bound {
+            context.event_context = Some(crate::runtime::events::EventContext {
+                input_message_id: Some(input),
+                ..Default::default()
+            });
+        }
+        let expected = if bound {
+            input.uuid().to_string()
+        } else {
+            "unbound".into()
+        };
+        for (name, server) in [
+            (LIST_MCP_RESOURCES_TOOL, "docs"),
+            (READ_MCP_RESOURCE_TOOL, "wiki"),
+        ] {
+            let call = ToolCall {
+                id: "fixture".into(),
+                name: name.into(),
+                arguments: if name == READ_MCP_RESOURCE_TOOL {
+                    json!({"server": server, "uri": "fixture://document"})
+                } else {
+                    json!({"server": server})
+                },
+            };
+            let definition = definitions.iter().find(|d| d.name() == name).unwrap();
+            let result = registry
+                .execute_with_context(&call, definition, &context)
+                .await
+                .unwrap();
+            assert!(result.error.is_none(), "{result:?}");
+            let value = result.result.unwrap();
+            if name == READ_MCP_RESOURCE_TOOL {
+                assert_eq!(value["contents"][0]["text"], expected);
+            } else {
+                assert_eq!(value["next_cursor"], expected);
+            }
+        }
+    }
 }

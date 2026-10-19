@@ -36,6 +36,7 @@ fn resolved_org(user_id: Uuid) -> ResolvedOrg {
         role: OrgRole::Owner,
         is_platform_user: false,
         feature_flags: everruns_server::records::FeatureFlags::current(),
+        read_only: false,
     }
 }
 
@@ -109,6 +110,7 @@ async fn fixture() -> (AppState, ResolvedOrg, Uuid, String, MockMcpOAuthServer) 
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
                 communication: Default::default(),
                 environments: None,
                 is_built_in: false,

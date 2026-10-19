@@ -1,6 +1,6 @@
 ---
 title: everruns durable
-description: "Durable scheduled tasks and their executions. CLI reference for everruns durable."
+description: "Durable scheduled tasks and their executions. CLI reference for everruns durable: usage, flags and examples."
 sidebar:
   label: durable
 appliesTo: [platform, cloud]

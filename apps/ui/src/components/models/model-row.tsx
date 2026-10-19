@@ -167,6 +167,22 @@ export function ModelRow({
                   Released {formatReleaseDate(profile.release_date)}
                 </span>
               )}
+              {profile?.model_card_url && (
+                <span>
+                  <span aria-hidden className="mx-1">
+                    ·
+                  </span>
+                  <a
+                    href={profile.model_card_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-foreground hover:underline"
+                    title="The vendor's model card: capabilities, evaluations and safety testing"
+                  >
+                    Model card
+                  </a>
+                </span>
+              )}
               {profile && (
                 <Button
                   variant="ghost"

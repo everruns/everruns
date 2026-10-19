@@ -1,6 +1,6 @@
 # everruns-durable
 
-> PostgreSQL-backed durable execution for Everruns: a claimable task queue, signals, an event log, schedules, a worker pool, retries and circuit breakers.
+> PostgreSQL-backed durable execution for Everruns: a claimable task queue, an event log, schedules, a worker pool, retries and circuit breakers.
 
 [![Crates.io](https://img.shields.io/crates/v/everruns-durable.svg)](https://crates.io/crates/everruns-durable)
 [![Documentation](https://docs.rs/everruns-durable/badge.svg)](https://docs.rs/everruns-durable)
@@ -12,7 +12,7 @@ anything a dead worker held is reclaimed and retried. It needs no
 infrastructure beyond PostgreSQL.
 
 It is a focused crate in the [Everruns](https://everruns.com) ecosystem. The
-Everruns turn driver and the server's cluster jobs run on it, and it works on
+Everruns worker's activity tasks and the server's cluster jobs run on it, and it works on
 its own for any job queue that should survive restarts.
 
 ```sh
@@ -23,8 +23,8 @@ cargo add everruns-durable
 
 - A PostgreSQL task queue with priorities, `SKIP LOCKED` claiming, heartbeats,
   stale-claim reclamation and a dead letter queue
-- Durable workflow records: an instance row, an append-only event log and
-  signals per workflow, driven by the caller
+- Durable workflow records: an instance row and an append-only event log per
+  workflow, driven by the caller
 - Retry policies, timeouts and distributed circuit breakers
 - A worker pool with bounded concurrency and backpressure, and a stale-task
   reaper
@@ -32,26 +32,24 @@ cargo add everruns-durable
 - A self-contained PostgreSQL schema (`PostgresWorkflowEventStore::migrate`)
   and an in-memory store for tests
 
-The crate is generic: it knows workflows, activities, tasks, signals and
+The crate is generic: it knows workflows, activities, tasks and
 schedules as durable records, and depends on no other Everruns crate. It has no
 notion of agents, sessions or turns.
 
 ## How Everruns uses it
 
-Agent turns run on the task queue directly. Each turn step (`process_input`,
-`reason`, `act`) is a task; the turn driver in
-[`everruns-durable-engine`](https://crates.io/crates/everruns-durable-engine)
-runs a claimed step, checkpoints the turn's state, and enqueues the next task.
-The Everruns worker and the `everruns` framework's experimental `durable`
-feature both run turns that way. The server runs its cluster-once maintenance
-jobs on `WorkerPool` and `DurableScheduler`. This crate owns persistence,
-retries and scheduling; turn semantics, signal payloads and what a sealed task
-means to a session live in `everruns-durable-engine` and the Everruns server.
+Agent turns do not run here: the Everruns platform runs each session's turns
+on a leased session actor. The Everruns worker claims its remaining activity
+tasks (leased-resource cleanup, the session task reaper, scheduled channel and
+agent-trigger invocations) from this queue, and the server runs its
+cluster-once maintenance jobs on `WorkerPool` and `DurableScheduler`. This
+crate owns persistence, retries and scheduling; what a task or a sealed task
+means lives in the Everruns worker and server.
 
 ## Quick start
 
 A two-step job, run end to end against the in-memory store. The caller decides
-what comes next after each task, as the Everruns turn driver does. The same code
+what comes next after each task. The same code
 runs against PostgreSQL by swapping in `PostgresWorkflowEventStore::new(pool)`.
 
 ```rust
@@ -113,9 +111,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 | Piece | Role |
 | --- | --- |
-| `WorkflowEventStore` | Umbrella storage contract, blanket-implemented over focused traits: `EventLog`, `TaskQueue`, `SignalStore`, `WorkerRegistry`, `DeadLetters`, `CircuitBreakers`, `Schedules`, `DurableAdmin`. A worker needs only `TaskQueue + SignalStore + WorkerRegistry`. No method silently succeeds by default, so a new store must implement each one. `PostgresWorkflowEventStore` for production, `InMemoryWorkflowEventStore` for tests and benches. |
+| `WorkflowEventStore` | Umbrella storage contract, blanket-implemented over focused traits: `EventLog`, `TaskQueue`, `WorkerRegistry`, `DeadLetters`, `CircuitBreakers`, `Schedules`, `DurableAdmin`. A worker needs only `TaskQueue + WorkerRegistry`. No method silently succeeds by default, so a new store must implement each one. `PostgresWorkflowEventStore` for production, `InMemoryWorkflowEventStore` for tests and benches. |
 | `WorkflowEvent` | Append-only history per workflow. `task_events` records activity and workflow lifecycle events into it. |
-| `WorkflowSignal` | A message to a running workflow, held until its consumer drains it. |
 | `TaskDefinition` / `ClaimedTask` | A queued activity. `workflow_id: None` makes it a standalone queue task. |
 | `WorkerPool` | Polls for tasks, runs registered handlers with bounded concurrency, heartbeats, reclaims stale work and applies backpressure. |
 | `StaleTaskReaper` | Returns abandoned tasks to the queue and fails the workflows whose tasks died, through a host `ReapHandler`. |

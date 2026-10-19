@@ -12,12 +12,11 @@
 // Creating a provider with a credential discovers its models server-side
 // before the request returns, which is what makes step 3 possible.
 //
-// Drivers that sign in instead of taking a key (ChatGPT, OpenRouter's OAuth)
-// leave the page for the provider's consent screen; their models are reviewed
+// Drivers that sign in instead of taking a key leave the page for the
+// provider's consent screen; their models are reviewed
 // from the "new models" prompt when the browser comes back.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,7 +47,6 @@ import {
   useReviewProviderModels,
   useSetModelsEnabled,
 } from "@/hooks/use-providers";
-import { startChatGptLogin } from "@/lib/api/chatgpt";
 import { ApiError } from "@/lib/api/client";
 import { providerOAuthAuthorizeUrl } from "@/lib/api/providers";
 import { isDriverOffered } from "@/lib/api/provider-driver-types";
@@ -73,7 +71,6 @@ import { useCredentialCheck } from "./use-credential-check";
 const CONNECT_ORDER: DriverId[] = [
   "anthropic",
   "openai",
-  "chatgpt",
   "gemini",
   "openrouter",
   "mistral",
@@ -121,7 +118,6 @@ export function isProviderNameTaken(name: string, providers: Provider[]): boolea
 }
 
 function connectMethod(driver: DriverId, supportsOAuth: boolean): string {
-  if (driver === "chatgpt") return "Sign in";
   if (supportsOAuth) return "Key or sign-in";
   if (driver === "bedrock") return "Access keys";
   if (BASE_URL_REQUIRED.includes(driver)) return "Endpoint + key";
@@ -270,7 +266,6 @@ function ConnectForm({
   onCancel: () => void;
   onCreated: (provider: Provider) => void;
 }) {
-  const router = useRouter();
   const createProvider = useCreateProvider();
   const { schema, supportsOAuth } = useDriverCredentialSchema(driver);
   const existing = providers.filter((provider) => provider.provider_type === driver);
@@ -288,7 +283,6 @@ function ConnectForm({
   const [error, setError] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
-  const signInOnly = driver === "chatgpt";
 
   useEffect(() => {
     setCredentials(defaultCredentialValues(schema));
@@ -298,7 +292,6 @@ function ConnectForm({
     providerType: driver,
     credentials,
     baseUrl: customEndpoint ? baseUrl : undefined,
-    enabled: !signInOnly,
   });
 
   const trimmedName = name.trim();
@@ -329,26 +322,15 @@ function ConnectForm({
     }
   };
 
-  // Sign-in drivers need the provider row first: the consent flow binds its
-  // state to the provider id.
+  // OAuth drivers need the provider row first: consent binds its state to the provider id.
   const handleSignIn = async () => {
     if (!formReady) return;
     setError(null);
     setRedirecting(true);
-    const popup = driver === "chatgpt" ? window.open("about:blank", "_blank") : null;
-    if (popup) popup.opener = null;
     try {
       const provider = await create();
-      if (driver === "chatgpt") {
-        const { authorize_url } = await startChatGptLogin(provider.id);
-        router.push(`/models/providers/${provider.id}`);
-        if (popup) popup.location.assign(authorize_url);
-        else window.location.assign(authorize_url);
-      } else {
-        window.location.assign(providerOAuthAuthorizeUrl(provider.id));
-      }
+      window.location.assign(providerOAuthAuthorizeUrl(provider.id));
     } catch (err) {
-      popup?.close();
       setRedirecting(false);
       setError(errorText(err, `Could not start the ${label} sign-in. Please try again.`));
     }
@@ -395,70 +377,61 @@ function ConnectForm({
           </p>
         </div>
 
-        {signInOnly ? (
-          <p className="text-sm text-muted-foreground">
-            Uses your ChatGPT plan through sign-in, with no API key. It is personal to you: other
-            members do not see it, and shared defaults and Playground skip it.
-          </p>
+        {baseUrlRequired || customEndpoint ? (
+          <div className="space-y-1.5">
+            <Label htmlFor="connect-provider-endpoint">
+              Endpoint{baseUrlRequired ? "" : " (optional)"}
+            </Label>
+            <Input
+              id="connect-provider-endpoint"
+              className="font-mono"
+              value={baseUrl}
+              onChange={(event) => setBaseUrl(event.target.value)}
+              placeholder={getBaseUrlPlaceholder(driver)}
+            />
+            {driver === "azure_openai" && (
+              <p className="text-xs text-muted-foreground">
+                Your Azure OpenAI `.../openai/v1` endpoint on `openai.azure.com` or
+                `services.ai.azure.com`.
+              </p>
+            )}
+          </div>
         ) : (
-          <>
-            {baseUrlRequired || customEndpoint ? (
-              <div className="space-y-1.5">
-                <Label htmlFor="connect-provider-endpoint">
-                  Endpoint{baseUrlRequired ? "" : " (optional)"}
-                </Label>
-                <Input
-                  id="connect-provider-endpoint"
-                  className="font-mono"
-                  value={baseUrl}
-                  onChange={(event) => setBaseUrl(event.target.value)}
-                  placeholder={getBaseUrlPlaceholder(driver)}
-                />
-                {driver === "azure_openai" && (
-                  <p className="text-xs text-muted-foreground">
-                    Your Azure OpenAI `.../openai/v1` endpoint on `openai.azure.com` or
-                    `services.ai.azure.com`.
-                  </p>
-                )}
-              </div>
-            ) : (
-              <button
-                type="button"
-                className="self-start text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-                onClick={() => setCustomEndpoint(true)}
-              >
-                Use a custom endpoint
-              </button>
-            )}
+          <button
+            type="button"
+            className="self-start text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            onClick={() => setCustomEndpoint(true)}
+          >
+            Use a custom endpoint
+          </button>
+        )}
 
-            {schema && (
-              <div className="space-y-2">
-                <CredentialFields
-                  schema={schema}
-                  values={credentials}
-                  onChange={(key, value) => setCredentials((prev) => ({ ...prev, [key]: value }))}
-                  idPrefix="connect-provider"
-                  allowEmptySubmit={supportsOAuth}
-                />
-                <CredentialCheckStatus state={check} />
-                {keyConsole && (
-                  <p className="text-xs text-muted-foreground">
-                    Generate one at{" "}
-                    <a
-                      href={keyConsole.href}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-foreground hover:underline"
-                    >
-                      {keyConsole.label}
-                      <ExternalLink className="icon-sharp size-3" />
-                    </a>
-                    . Keys are encrypted at rest.
-                  </p>
-                )}
-              </div>
+        {schema && (
+          <div className="space-y-2">
+            <CredentialFields
+              schema={schema}
+              values={credentials}
+              onChange={(key, value) => setCredentials((prev) => ({ ...prev, [key]: value }))}
+              idPrefix="connect-provider"
+              allowEmptySubmit={supportsOAuth}
+            />
+            <CredentialCheckStatus state={check} />
+            {keyConsole && (
+              <p className="text-xs text-muted-foreground">
+                Generate one at{" "}
+                <a
+                  href={keyConsole.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-foreground hover:underline"
+                >
+                  {keyConsole.label}
+                  <ExternalLink className="icon-sharp size-3" />
+                </a>
+                . Keys are encrypted at rest.
+              </p>
             )}
-          </>
+          </div>
         )}
 
         {error && (
@@ -472,21 +445,19 @@ function ConnectForm({
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        {(signInOnly || supportsOAuth) && (
+        {supportsOAuth && (
           <Button
             type="button"
-            variant={signInOnly ? "default" : "outline"}
+            variant="outline"
             onClick={() => void handleSignIn()}
             disabled={!formReady || createProvider.isPending}
           >
             {redirecting ? "Redirecting…" : `Sign in with ${label}`}
           </Button>
         )}
-        {!signInOnly && (
-          <Button type="submit" disabled={!formReady || !hasCredential || createProvider.isPending}>
-            {createProvider.isPending && !redirecting ? "Connecting…" : "Connect"}
-          </Button>
-        )}
+        <Button type="submit" disabled={!formReady || !hasCredential || createProvider.isPending}>
+          {createProvider.isPending && !redirecting ? "Connecting…" : "Connect"}
+        </Button>
       </DrawerFooter>
     </form>
   );

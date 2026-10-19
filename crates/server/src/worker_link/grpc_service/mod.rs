@@ -36,10 +36,8 @@ use everruns_core::host::HostComposition;
 use everruns_core::permissions::PermissionResolver;
 use everruns_durable::{
     CircuitBreakerConfig, CircuitState, DistributedCircuitBreaker, PostgresWorkflowEventStore,
-    StoreError, TaskDefinition, TaskFailureOutcome, WorkerInfo, WorkflowError, WorkflowEvent,
-    WorkflowEventStore, WorkflowStatus, append_event, record_activity_completed,
-    record_activity_failed, record_workflow_cancelled, record_workflow_completed,
-    record_workflow_failed,
+    StoreError, TaskFailureOutcome, WorkerInfo, WorkflowError, WorkflowEventStore, WorkflowStatus,
+    record_activity_completed, record_activity_failed, record_workflow_failed,
 };
 use everruns_internal_protocol::proto::{
     self,
@@ -68,23 +66,16 @@ use everruns_internal_protocol::proto::{
     CommitExecResponse,
     CompleteDurableTaskRequest,
     CompleteDurableTaskResponse,
-    CountActiveDurableWorkflowsRequest,
-    CountActiveDurableWorkflowsResponse,
-    CreateDurableWorkflowRequest,
-    CreateDurableWorkflowResponse,
     CreateImageArtifactRequest,
     CreateImageArtifactResponse,
     DeregisterDurableWorkerRequest,
     DeregisterDurableWorkerResponse,
     DrainDurableWorkerRequest,
     DrainDurableWorkerResponse,
-    DurableWorkflowSignal as ProtoDurableWorkflowSignal,
     DurableWorkflowStatus,
     EmitEventRequest,
     EmitEventResponse,
     EmitEventStreamResponse,
-    EnqueueDurableTaskRequest,
-    EnqueueDurableTaskResponse,
     ExecuteCommandRequest,
     ExecuteCommandResponse,
     ExecuteMachinePaymentRequest,
@@ -93,14 +84,10 @@ use everruns_internal_protocol::proto::{
     FailDurableTaskResponse,
     GetAgentRequest,
     GetAgentResponse,
-    GetAndConsumeDurableWorkflowSignalsRequest,
-    GetAndConsumeDurableWorkflowSignalsResponse,
     GetDefaultModelRequest,
     GetDefaultModelResponse,
     GetDefaultProviderCredentialsRequest,
     GetDefaultProviderCredentialsResponse,
-    GetDurableWorkflowStatusRequest,
-    GetDurableWorkflowStatusResponse,
     GetHarnessRequest,
     GetHarnessResponse,
     GetImageArtifactRequest,
@@ -158,8 +145,6 @@ use everruns_internal_protocol::proto::{
     ResolveImagesResponse,
     ResolvedFileData,
     ResolvedImageData,
-    SendDurableWorkflowSignalRequest,
-    SendDurableWorkflowSignalResponse,
     SessionSqlDbExecuteRequest,
     SessionSqlDbExecuteResponse,
     SessionSqlDbQueryRequest,
@@ -171,8 +156,6 @@ use everruns_internal_protocol::proto::{
     SubscribeTaskNotificationsRequest,
     TaskNotification,
     TaskNotificationType,
-    UpdateDurableWorkflowStatusRequest,
-    UpdateDurableWorkflowStatusResponse,
 };
 use everruns_internal_protocol::{
     WorkerService, WorkerServiceServer,
@@ -349,6 +332,8 @@ pub struct WorkerServiceImpl {
     /// Central org rate limiter for gRPC-backed outbound tool calls.
     org_rate_limiter: Option<Arc<crate::auth::rate_limit::OrgRateLimiter>>,
     /// Active permission resolver for user-scoped command execution over gRPC.
+    /// The channel host targeted schedule triggers run on.
+    channels: Option<Arc<crate::channels::host::ServerChannels>>,
     slack_provisioner: Option<
         Arc<dyn crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner>,
     >,
@@ -500,6 +485,7 @@ impl WorkerServiceImpl {
             budget_service,
             org_rate_limiter: None,
             slack_provisioner: None,
+            channels: None,
             permission_resolver: Arc::new(everruns_core::DefaultPermissionResolver),
             utility_llm_service,
             connector_registry,
@@ -550,6 +536,10 @@ impl WorkerServiceImpl {
         >,
     ) {
         self.slack_provisioner = provisioner;
+    }
+
+    pub fn set_channels(&mut self, channels: Option<Arc<crate::channels::host::ServerChannels>>) {
+        self.channels = channels;
     }
 
     pub fn set_permission_resolver(&mut self, resolver: Arc<dyn PermissionResolver>) {
@@ -683,10 +673,10 @@ impl WorkerServiceImpl {
         let private_key = std::env::var("GITHUB_APP_PRIVATE_KEY")
             .ok()
             .filter(|s| !s.is_empty())?;
-        Some(crate::storage::GitHubAppTokenMinter::new(
-            app_id,
-            private_key,
-        ))
+        Some(
+            crate::storage::GitHubAppTokenMinter::new(app_id, private_key)
+                .with_user_client(crate::github_user_token::GitHubUserClient::from_env()),
+        )
     }
 
     /// Get session SQL database store or return unavailable error

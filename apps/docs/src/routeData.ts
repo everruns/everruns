@@ -17,6 +17,7 @@
 import { docsPath, docsUrl } from "./lib/site";
 import { defineRouteMiddleware } from "@astrojs/starlight/route-data";
 import { productLabel } from "./lib/changelog";
+import { byId } from "./lib/api-reference";
 
 // Matches "GET /v1/foo - Description" or "POST /v1/foo/{id}/bar - Description"
 const methodPathPrefix =
@@ -48,7 +49,16 @@ export const onRequest = defineRouteMiddleware((context) => {
   // Update both entry.data.title (affects h1) and the <title> head entry.
   if (isApiOperation) {
     const cleanTitle = route.entry.data.title.replace(methodPathPrefix, "");
-    updateRouteTitle(route, cleanTitle);
+    // A legacy alias shares its successor's summary; keep the two titles apart.
+    const operationId = slug.split("/").pop()!;
+    const legacy = byId.get(operationId)?.deprecated && !/legacy/i.test(cleanTitle);
+    updateRouteTitle(route, legacy ? `${cleanTitle.replace(/\.$/, "")} (legacy)` : cleanTitle);
+  }
+
+  // starlight-openapi titles every tag page "Overview"; 29 identical <title>s
+  // compete in search. Name each after its tag instead.
+  if (slug.startsWith("api/operations/tags/")) {
+    updateRouteTitle(route, `${tagLabel(slug)} API`);
   }
 
   // starlight-openapi derives the overview title from the spec's `info.title`.
@@ -115,6 +125,8 @@ export const onRequest = defineRouteMiddleware((context) => {
     }
   }
 
+  route.editUrl = sourceEditUrl(route.editUrl);
+
   // Set per-page og:image when a pre-generated card exists.
   // Falls back to the global /og-image.png set in astro.config.mjs.
   const ogImagePath = deriveOgImagePath(slug);
@@ -124,7 +136,27 @@ export const onRequest = defineRouteMiddleware((context) => {
     // astro.config.mjs (which describes the fallback card) no longer fits.
     setOgMeta(route, "og:image:alt", route.entry.data.title);
   }
+
+  // Search results cut titles at ~70 characters; past that the site name is
+  // what gets cut, so leave it off rather than showing half of it.
+  const titleEntry = route.head.find((e) => e.tag === "title");
+  if (titleEntry?.content && titleEntry.content.length > 70 && titleEntry.content.endsWith(" | Everruns")) {
+    titleEntry.content = titleEntry.content.slice(0, -" | Everruns".length);
+  }
 });
+
+/**
+ * Starlight builds edit links from the collection path, but
+ * `apps/docs/src/content/docs` is a symlink to the repo's `docs/`, and GitHub
+ * cannot edit a file through a symlink (it answers 404). Point at the real file.
+ */
+const SYMLINKED_CONTENT = "/apps/docs/src/content/docs/";
+export function sourceEditUrl(editUrl: URL | undefined): URL | undefined {
+  if (!editUrl?.pathname.includes(SYMLINKED_CONTENT)) return editUrl;
+  const fixed = new URL(editUrl);
+  fixed.pathname = fixed.pathname.replace(SYMLINKED_CONTENT, "/docs/");
+  return fixed;
+}
 
 /** Replace an og:* meta entry in the head, or append it when absent. */
 function setOgMeta(
@@ -164,11 +196,15 @@ function updateRouteTitle(
   title: string,
 ): void {
   route.entry.data.title = title;
+  // The API context goes in only where the title stays within ~70
+  // characters; the OpenAPI summaries are capped to fit " | Everruns".
+  const isOperation = route.entry.id.startsWith("api/operations/") && !route.entry.id.startsWith("api/operations/tags/");
+  const apiContext = isOperation && `${title} · API reference | Everruns`.length <= 70 ? " · API reference" : "";
 
   // Update the <title> head entry.
   const titleEntry = route.head.find((e) => e.tag === "title");
   if (titleEntry) {
-    titleEntry.content = `${title} | Everruns`;
+    titleEntry.content = `${title}${apiContext} | Everruns`;
   }
 
   // Update og:title.
@@ -180,20 +216,25 @@ function updateRouteTitle(
       e.attrs.property === "og:title",
   );
   if (ogTitle?.attrs) {
-    ogTitle.attrs.content = title;
+    ogTitle.attrs.content = `${title}${apiContext}`;
   }
 }
 
 function deriveDescription(slug: string, title: string): string {
   // API tag group pages: derive tag name from slug (e.g. "api/operations/tags/agents" → "agents")
   if (slug.startsWith("api/operations/tags/")) {
-    const tagName = slug.split("/").pop() ?? title;
-    return `Everruns REST API endpoints for ${tagName}.`;
+    return `Everruns REST API endpoints for ${tagLabel(slug).toLowerCase()}: requests, parameters, response schemas and status codes for each operation.`;
   }
 
-  // API operation pages (title is already cleaned of method+path prefix)
+  // API operation pages (title is already cleaned of method+path prefix).
+  // Keep it within a search snippet (~160 characters): the suffix goes only
+  // where it fits.
   if (slug.startsWith("api/operations/")) {
-    return `${title}. Parameters, request and response schemas, and status codes for this Everruns REST API endpoint.`;
+    const summary = title.replace(/\.$/, "");
+    const full = `${summary}. Parameters, request and response schemas, and status codes for this Everruns REST API endpoint.`;
+    if (full.length <= 160) return full;
+    const short = `${summary}. Everruns REST API reference.`;
+    return short.length <= 160 ? short : `${summary.slice(0, 157).replace(/\s+\S*$/, "")}...`;
   }
 
   // API overview page
@@ -208,6 +249,16 @@ function deriveDescription(slug: string, title: string): string {
 
   // Generic fallback
   return `${title} — Everruns documentation.`;
+}
+
+/** "api/operations/tags/knowledge_bases" → "Knowledge Bases"; "mcp-servers" → "MCP Servers". */
+const TAG_WORDS: Record<string, string> = { mcp: "MCP" };
+function tagLabel(slug: string): string {
+  if (slug.endsWith("/mcp_servers")) return "MCP Server Tools";
+  return (slug.split("/").pop() ?? "")
+    .split(/[-_]/)
+    .map((word) => TAG_WORDS[word] ?? word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 /** Map page slug to its pre-generated OG image path, or null for fallback. */
@@ -252,7 +303,10 @@ function addChangelogHead(
     const label = ["yolop", "bashkit", "mira", "sdk"].includes(first) ? productLabel(first) : "";
     if (label && !visible.toLowerCase().includes(label.toLowerCase())) {
       const titleEntry = route.head.find((e) => e.tag === "title");
-      if (titleEntry) titleEntry.content = `${visible} · ${label} changelog | Everruns`;
+      // Keep the <title> within ~70 characters: drop "changelog", then the
+      // site name, before dropping the product.
+      const titles = [`${visible} · ${label} changelog | Everruns`, `${label}: ${visible} | Everruns`];
+      if (titleEntry) titleEntry.content = titles.find((t) => t.length <= 70) ?? `${label}: ${visible}`;
       const ogTitle = route.head.find(
         (e) => e.tag === "meta" && e.attrs && "property" in e.attrs && e.attrs.property === "og:title",
       );
