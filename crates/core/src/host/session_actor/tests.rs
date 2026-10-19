@@ -95,3 +95,130 @@ async fn a_hung_authority_renewal_marks_the_driver_lease_lost() {
     assert!(result.is_err());
     assert!(lease.is_lost());
 }
+
+/// Counts renews; every one succeeds.
+#[derive(Default)]
+struct Renews(std::sync::atomic::AtomicUsize);
+
+#[async_trait]
+impl SessionActorStore for Renews {
+    async fn renew_actor_lease(
+        &self,
+        _id: SessionId,
+        _holder: &str,
+        _fence: u64,
+        _ttl: Duration,
+        _consumed: i64,
+    ) -> Result<Option<ActorRenewal>> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Ok(Some(ActorRenewal {
+            inbox_seq: 1,
+            cancel_inbox_seq: None,
+        }))
+    }
+    async fn release_actor(
+        &self,
+        _id: SessionId,
+        _holder: &str,
+        _fence: u64,
+        _consumed: i64,
+    ) -> Result<ActorRelease> {
+        unreachable!("the watchdog tests never release")
+    }
+    async fn read_actor_journal(
+        &self,
+        _id: SessionId,
+        _after: Option<i32>,
+        _limit: u32,
+    ) -> Result<ActorJournal> {
+        unreachable!("the watchdog tests read nothing")
+    }
+}
+
+fn leased() -> LeasedActor {
+    LeasedActor {
+        session_id: SessionId::new(),
+        org_id: 1,
+        fence: 1,
+        inbox_seq: 1,
+        cancel_inbox_seq: None,
+        consumed_seq: 0,
+        next_input_seq: 1,
+        attempts: 1,
+    }
+}
+
+/// The incident: a holder stuck before its turn started kept renewing for
+/// days. A lease armed past the stall bound stops renewing and is lost.
+#[tokio::test(start_paused = true)]
+async fn a_lease_stuck_before_its_turn_stops_renewing_at_the_stall_bound() {
+    let store = Arc::new(Renews::default());
+    let lease = Arc::new(
+        Lease::new(
+            store.clone(),
+            "worker".into(),
+            &leased(),
+            Duration::from_secs(3),
+            3,
+        )
+        .with_stall_timeout(Duration::from_secs(2)),
+    );
+    let renewer = tokio::spawn(super::lease::renew_loop(
+        lease.clone(),
+        Arc::new(tokio::sync::Notify::new()),
+    ));
+    tokio::time::timeout(Duration::from_secs(60), renewer)
+        .await
+        .expect("the renewer gives up at the stall bound")
+        .expect("renewer task");
+    assert!(lease.is_stalled());
+    assert!(
+        lease.is_lost(),
+        "a stalled lease is lost: nothing more is written"
+    );
+    // One renew at 1 s (armed for less than the bound), none after.
+    let renews = store.0.load(Ordering::SeqCst);
+    assert_eq!(renews, 1);
+    tokio::time::sleep(Duration::from_secs(30)).await;
+    assert_eq!(
+        store.0.load(Ordering::SeqCst),
+        renews,
+        "renewed past the bound"
+    );
+    assert!(
+        !lease.disarm_watchdog(),
+        "a turn must not start after the watchdog fired"
+    );
+}
+
+/// A driven turn is not bounded: long tool calls and model streams are
+/// progress with their own timeouts.
+#[tokio::test(start_paused = true)]
+async fn a_driven_turn_keeps_renewing_past_the_stall_bound() {
+    let store = Arc::new(Renews::default());
+    let lease = Arc::new(
+        Lease::new(
+            store.clone(),
+            "worker".into(),
+            &leased(),
+            Duration::from_secs(3),
+            3,
+        )
+        .with_stall_timeout(Duration::from_secs(2)),
+    );
+    assert!(lease.disarm_watchdog());
+    let renewer = tokio::spawn(super::lease::renew_loop(
+        lease.clone(),
+        Arc::new(tokio::sync::Notify::new()),
+    ));
+    tokio::time::sleep(Duration::from_secs(30)).await;
+    assert!(!lease.is_lost());
+    assert!(store.0.load(Ordering::SeqCst) >= 20);
+    // Re-armed after the turn (the post-turn flush), the bound applies again.
+    lease.arm_watchdog();
+    tokio::time::timeout(Duration::from_secs(60), renewer)
+        .await
+        .expect("the renewer gives up at the stall bound")
+        .expect("renewer task");
+    assert!(lease.is_stalled() && lease.is_lost());
+}

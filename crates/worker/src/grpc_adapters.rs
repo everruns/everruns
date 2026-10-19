@@ -34,19 +34,18 @@ use everruns_contracts::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId
 // stays compatible with workers from the preceding release.
 use everruns_internal_protocol::proto;
 use everruns_internal_protocol::{
-    WorkerServiceClient, json_to_proto_list, json_to_proto_struct, proto_list_to_json,
-    proto_struct_to_json,
+    json_to_proto_list, json_to_proto_struct, proto_list_to_json, proto_struct_to_json,
 };
 use std::sync::Arc;
-use tonic::transport::Channel;
 use uuid::Uuid;
 
-use crate::grpc_durable_store::GrpcClientAuth;
 mod checkpoint_availability;
 mod compaction_checkpoints;
+mod connect;
 mod event_batch;
 mod shared_client;
 use checkpoint_availability::CheckpointAvailability;
+pub use connect::DEFAULT_GRPC_REQUEST_TIMEOUT;
 pub use shared_client::SharedClient;
 mod definition_reads;
 use definition_reads::proto_agent_to_definition;
@@ -106,48 +105,7 @@ pub struct GrpcClient {
     checkpoints: Arc<CheckpointAvailability>,
 }
 
-/// Max gRPC message size (16MB)
-///
-/// Image data no longer flows through gRPC — workers fetch images via presigned
-/// HTTP URLs returned by resolve_image/resolve_images RPCs. The limit only needs
-/// to accommodate metadata, proto messages, and session file content.
-const MAX_GRPC_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
-
 impl GrpcClient {
-    /// Connect to the control plane gRPC server
-    pub async fn connect(addr: &str) -> Result<Self> {
-        let endpoint = format!("http://{}", addr);
-        let channel = tonic::transport::Endpoint::from_shared(endpoint)
-            .map_err(|e| AgentLoopError::store(format!("Invalid gRPC endpoint: {}", e)))?
-            .connect()
-            .await
-            .map_err(|e| AgentLoopError::store(format!("gRPC connection failed: {e}")))?;
-
-        // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
-        // Mitigation: Attach bearer token from WORKER_GRPC_AUTH_TOKEN env
-        let auth = GrpcClientAuth::from_env();
-        let client = WorkerServiceClient::with_interceptor(channel, auth)
-            .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
-            .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
-
-        Ok(Self {
-            inner: SharedClient::new(client),
-            checkpoints: CheckpointAvailability::new(),
-        })
-    }
-
-    /// Create from an existing channel
-    pub fn from_channel(channel: Channel) -> Self {
-        let auth = GrpcClientAuth::from_env();
-        let client = WorkerServiceClient::with_interceptor(channel, auth)
-            .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
-            .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
-        Self {
-            inner: SharedClient::new(client),
-            checkpoints: CheckpointAvailability::new(),
-        }
-    }
-
     /// Set session status (started, active, idle).
     ///
     /// Acknowledgement only (EVE-882): the wire response still carries the
