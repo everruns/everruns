@@ -312,6 +312,13 @@
   markers, guarded local Undo, and retry-safe result delivery. Save and Discard
   retain their existing persistence contract. See [Chat mode](ui/chat-mode.md).
 
+* **Chat adopts the public hosting SPI and transactional commands.** Build the
+  authority-side Rust reducer alongside the Engine module and exercise the full
+  chat bundle in dedicated CI. Pin each session's model across host configuration
+  changes and restart. Clarify that the single-build demo cannot upgrade
+  existing Framework sessions without retained-build routing or migration. See
+  [The isolate host](framework/wasm-kernel.md).
+
 * **Large MCP catalogs implemented.** Everruns now paginates and bounds
   per-server plus aggregate session discovery, caches complete catalogs within
   a weighted runtime budget, and shares authorized server-aware search between
@@ -488,6 +495,7 @@
 * **MCP OAuth consent redirects.** Let the browser complete client-controlled
   callback chains after approval and require a browser check with a second
   callback hop. See [MCP](integrations/mcp.md).
+
 * **Framework-hosted multiplayer chat.** Replace the demo's custom runner and protocol driver with Engine/ObjectHosting and shared OpenRouter execution. Room services retain durable delivery intents, stable tool ownership and a legacy-history migration. See [The isolate host](framework/wasm-kernel.md). The durable architecture publication hold remains in force.
 
 ## 2026-10-17

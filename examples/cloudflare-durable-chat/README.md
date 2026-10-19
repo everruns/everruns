@@ -47,6 +47,13 @@ JSON or SSE parser. `worker/provider.js` supplies endpoint and credential policy
 journal, Framework binding, execution epoch and durable alarm. There is no custom
 turn state machine, celld runtime, container or sibling-example dependency.
 
+The source-only DO adapter implements Framework's public hosting SPI. The build
+produces both its authority Wasm module and the chat Engine module. Admission,
+history seeding and other session commands run shared Rust rules inside the DO's
+storage transaction; the application does not prepare trusted command effects.
+Each session retains its model at creation. Changing the host's `MODEL` default
+affects new sessions; recovery of existing sessions uses their original model.
+
 ## What belongs to the application
 
 `ChatRoom` owns room membership, command receipts, forks, search ownership,
@@ -86,6 +93,9 @@ driver while refusing a custom runner or sibling-example dependency.
 
 ## Deploy
 
+The current Wasm bundle exceeds Workers Free's 3 MiB compressed script limit;
+use a Cloudflare Workers Paid plan.
+
 ```sh
 npx wrangler login
 npm run deploy
@@ -112,6 +122,12 @@ Build IDs hash application and shared runtime sources, manifests and locks. Keep
 matching immutable deployments available while sessions retain those bindings;
 a code-incompatible redeployment suspends existing Framework sessions rather
 than silently changing their behavior.
+
+The example registers only its current build and has no retained-build router
+or automatic Framework binding migration. A changed build cannot continue old
+sessions; retaining a Cloudflare version alone does not route those sessions.
+Test incompatible revisions in a separate Worker and namespaces. A long-lived
+deployment needs retained-build routing or an explicit migration before upgrade.
 
 This is experimental hosting for small demo rooms. There is no automatic
 compaction, individual identity or production quota system. Shared access permits

@@ -74,6 +74,14 @@ Framework owns the model/tool loop, lifecycle, event history, interruption
 recovery, iteration limits and completion metadata. The application does not
 assemble core runtime backends or author canonical agent events.
 
+`ObjectHosting` is a source-only adapter implementing Framework's public hosting
+SPI. The build also compiles its shared Rust command reducer to Wasm. The
+authority invokes that reducer inside its SQLite transaction for admission,
+history seeding and other session commands; JavaScript only supplies storage and
+activation glue. Command validation and idempotency rules stay in shared Rust.
+The session also retains its model at creation, so changing the host's `MODEL`
+default does not change an existing session's behavior during recovery.
+
 The shared OpenRouter driver handles Responses request encoding, streaming,
 provider options, retries, error mapping and usage metadata. The host adapter
 supplies `fetch`, bounded response bytes, cancellation, endpoint policy and the
@@ -165,6 +173,9 @@ hosting and driver code.
 
 ## Storage and deployment limits
 
+The current Wasm bundle exceeds the 3 MiB compressed script limit on Workers
+Free and requires a Workers Paid plan.
+
 An existing deployment retains its ChatRoom namespace. On first access the old
 room payload is backed up, settled user/assistant text is imported through
 Framework, and queued messages retain their original identities. Unfinished
@@ -174,6 +185,14 @@ schedule metadata remain available.
 A build ID hashes application and runtime inputs. Retain matching immutable
 builds while sessions depend on them; incompatible activation suspends the
 session instead of silently changing its executable definition.
+
+This example registers only the current build. It does not route sessions to
+retained older executors or migrate existing Framework bindings automatically.
+An ordinary redeployment with changed runtime inputs therefore prevents old
+sessions from continuing. Keeping a Cloudflare version alone does not provide
+per-session routing. Use a separate Worker and namespaces to try an incompatible
+revision, or implement retained-build routing or an explicit migration before
+upgrading a long-lived deployment.
 
 Rooms use a JSON metadata document without automatic compaction. Shared access
 is not individual identity or tenant authorization, and deployers own production

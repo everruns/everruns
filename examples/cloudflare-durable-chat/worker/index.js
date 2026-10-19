@@ -57,25 +57,32 @@ export class ChatSession extends SessionAuthority {
       const scope = address(request, this.env);
       check(scope.operation === "engine", "unknown session operation");
       const body = await readJson(request);
-      let room = this.ctx.storage.sql
+      const room = this.ctx.storage.sql
         .exec("SELECT value FROM chat_membership WHERE id=1")
         .toArray()[0]?.value;
+      const member = room ? JSON.parse(room) : null;
       if (body.operation === "create") {
         check(/^[a-zA-Z0-9_-]{1,64}$/.test(body.room), "invalid room");
-        const membership = JSON.stringify({ room: body.room, kind: body.kind });
-        check(!room || room === membership, "session belongs to another room");
-        this.ctx.storage.sql.exec(
-          "INSERT OR IGNORE INTO chat_membership(id,value) VALUES(1,?)",
-          membership,
+        check(
+          !member || (member.room === body.room && member.kind === body.kind),
+          "session belongs to another room",
         );
-        room = membership;
       }
-      check(room, "session not found");
-      const member = JSON.parse(room);
+      check(member || body.operation === "create", "session not found");
+      const retained = member ?? { room: body.room, kind: body.kind };
       check(
-        ["durable-chat", "history-search"].includes(member.kind),
+        ["durable-chat", "history-search"].includes(retained.kind),
         "invalid agent",
       );
+      if (!retained.model) {
+        // Runtime defaults are mutable host configuration. Capture behavior once
+        // so retry/reconstruction cannot switch an existing session's model.
+        retained.model = this.env.MODEL ?? MODEL;
+        this.ctx.storage.sql.exec(
+          "INSERT INTO chat_membership(id,value) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value",
+          JSON.stringify(retained),
+        );
+      }
       const reply = JSON.parse(
         await sessionRequest(
           scope.sessionId,
@@ -84,11 +91,11 @@ export class ChatSession extends SessionAuthority {
             session_id: scope.sessionId,
           }),
           (raw, signal) => fetchModel(this.env, raw, signal),
-          (raw) => this.tool(member, scope.sessionId, raw),
+          (raw) => this.tool(retained, scope.sessionId, raw),
           JSON.stringify({
             tenant: scope.tenant,
-            model: this.env.MODEL ?? MODEL,
-            kind: member.kind,
+            model: retained.model,
+            kind: retained.kind,
           }),
           body.operation,
           JSON.stringify(body.body ?? {}),
@@ -128,7 +135,7 @@ export class ChatSession extends SessionAuthority {
           objectPort(this.authority, activation),
           (raw, signal) => fetchModel(this.env, raw, signal),
           (raw) => this.tool(member, activation.session_id, raw),
-          this.env.MODEL ?? MODEL,
+          member.model ?? this.env.MODEL ?? MODEL,
         );
       } finally {
         // A lost notification affects freshness only. Actor completion is

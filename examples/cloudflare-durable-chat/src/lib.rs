@@ -2,9 +2,14 @@
 #![cfg(target_arch = "wasm32")]
 use everruns::{
     ChatDriver, Engine, Model, Provider,
-    hosting::{AgentBuild, SessionHosting},
+    hosting::{
+        AgentBuild, SessionHosting,
+        spi::{
+            AssertSend,
+            error::{AgentLoopError, Result as HostingResult},
+        },
+    },
 };
-use everruns_contracts::rt::AssertSend;
 use everruns_drivers::openrouter::OpenRouterChatDriver;
 use everruns_durable_object::{
     ObjectHosting, SessionApi,
@@ -80,11 +85,8 @@ async fn wait_for_admission(
     engine: &Engine,
     session: everruns::SessionId,
     body: &Value,
-) -> everruns_contracts::error::Result<Value> {
-    use everruns_contracts::{
-        error::AgentLoopError,
-        rt::{Duration, timeout},
-    };
+) -> HostingResult<Value> {
+    use everruns_contracts::rt::{Duration, timeout};
     let message = serde_json::from_value(body["message_id"].clone())
         .map_err(|_| AgentLoopError::config("stable admission identity required"))?;
     let handle = engine
@@ -105,10 +107,7 @@ async fn wait_for_admission(
 
 // Coalesce read-only queries inside the session DO. A room snapshot stays below
 // Cloudflare's outbound subrequest budget even with many conversations.
-async fn view(
-    api: &SessionApi,
-    session: everruns::SessionId,
-) -> everruns_contracts::error::Result<Value> {
+async fn view(api: &SessionApi, session: everruns::SessionId) -> HostingResult<Value> {
     let status = api.handle(session, "status", json!({})).await?;
     let mut events = Vec::new();
     let mut cursor = Value::Null;
@@ -122,9 +121,7 @@ async fn view(
             .await?;
         events.extend(page["events"].as_array().into_iter().flatten().cloned());
         if events.len() > 4096 {
-            return Err(everruns_contracts::error::AgentLoopError::store(
-                "demo history limit reached",
-            ));
+            return Err(AgentLoopError::store("demo history limit reached"));
         }
         cursor = page["next_cursor"].clone();
         if cursor.is_null() {

@@ -544,14 +544,12 @@ dependencies = [
 
 [[package]]
 name = "everruns-durable-object"
-version = "0.48.0"
+version = "0.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
  "everruns",
- "everruns-contracts",
- "everruns-core",
  "js-sys",
  "serde",
  "serde_json",

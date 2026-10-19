@@ -27,6 +27,17 @@ test("the resolved application graph contains no celld or sibling-example depend
     metadata.packages.find((p) => p.id === metadata.resolve.root).name,
     "everruns-cloudflare-durable-chat",
   );
+  const adapter = metadata.packages.find(
+    (p) => p.name === "everruns-durable-object",
+  );
+  assert.equal(adapter.publish.length, 0, "the hosting adapter is source-only");
+  assert.ok(adapter.dependencies.some((d) => d.name === "everruns"));
+  assert.ok(
+    adapter.dependencies.every(
+      (d) => !["everruns-core", "everruns-contracts"].includes(d.name),
+    ),
+    "the adapter must implement the public Framework SPI",
+  );
   for (const pkg of metadata.packages) {
     assert.doesNotMatch(pkg.name, /celld/i);
     assert.doesNotMatch(
@@ -63,4 +74,12 @@ test("the app uses Framework hosting and only native Cloudflare objects", async 
   assert.match(worker, /crates\/durable-object\/worker/);
   assert.doesNotMatch(worker, /celld|examples\//);
   await access(join(root, "pkg/everruns_cloudflare_durable_chat_bg.wasm"));
+  // SessionAuthority imports this module and invokes it inside its transaction.
+  // A build of the chat Engine alone is no longer a complete Worker deployment.
+  await access(
+    join(
+      root,
+      "../../crates/durable-object/worker/pkg/everruns_durable_object_bg.wasm",
+    ),
+  );
 });
