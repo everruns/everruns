@@ -63,7 +63,7 @@ fn parked() -> AgentLoopError {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("provider request can be retried before streaming")]
+#[error("provider request can be retried at a replay-safe boundary")]
 struct RetryableStart(AgentLoopError, Option<LlmRetryConfig>);
 
 /// Whether this failure already carries authorization for a safe retry.
@@ -71,8 +71,9 @@ pub fn is_retryable_start(error: &AgentLoopError) -> bool {
     matches!(error, AgentLoopError::Internal(inner) if inner.is::<RetryableStart>())
 }
 
-/// Call only at a safe pre-stream boundary. Mid-stream failures and requests
-/// with provider-executed side effects must never be converted to this marker.
+/// Call only at a replay-safe boundary: before streaming, or after persisting
+/// a same-message text restart. Requests with provider-executed side effects
+/// must never be converted to this marker.
 pub fn retryable_start(error: AgentLoopError) -> AgentLoopError {
     if single_attempt() && error.is_transient_llm_error() {
         AgentLoopError::Internal(RetryableStart(error, None).into())
@@ -175,7 +176,7 @@ pub async fn prepare(operation: &str) -> Result<Option<AgentLoopError>> {
     Ok(None)
 }
 
-/// One budget spans driver sends, pre-first-event reconnects and Reason-level
+/// One budget spans driver sends, replay-safe reconnects and Reason-level
 /// retries. Persisting the selected deadline also preserves jitter on restart.
 pub async fn retry(
     operation: &str,

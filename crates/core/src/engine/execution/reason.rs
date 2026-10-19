@@ -1137,9 +1137,9 @@ impl ReasonAtom {
                             retry_config.max_retries,
                         ) {
                             if durable_retry::single_attempt() {
-                                if !matches!(replay_state, StreamReplayState::Replayable) {
-                                    return Err(AgentLoopError::llm(stall_error.message));
-                                }
+                                stream_state::restart_before_parking(
+                                    &self.event_emitter, &started, &text,
+                                ).await?;
                                 return Err(durable_retry::retryable_start(AgentLoopError::llm_kind(
                                     crate::engine::error::LlmErrorKind::Unavailable, stall_error.message)));
                             }
@@ -1491,9 +1491,18 @@ impl ReasonAtom {
                     }
                     LlmStreamEvent::Error(err) => {
                         if durable_retry::single_attempt()
-                            && matches!(replay_state, StreamReplayState::Replayable)
-                            && everruns_contracts::llm_retry::is_transient_stream_error(&err)
+                            && replay_state.should_retry(
+                                &err,
+                                stream_retry_metadata.attempts,
+                                retry_config.max_retries,
+                            )
                         {
+                            stream_state::restart_before_parking(
+                                &self.event_emitter,
+                                &started,
+                                &text,
+                            )
+                            .await?;
                             return Err(durable_retry::retryable_start(AgentLoopError::llm_kind(
                                 err.kind(),
                                 err.to_string(),

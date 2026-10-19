@@ -329,7 +329,7 @@ async fn streaming_boundary(partial: bool) {
         .unwrap();
     let host = Engine::builder()
         .hosting(External(profile.clone()))
-        .register(build(), agent)
+        .register(build(), agent.clone())
         .build();
     let id = SessionId::new();
     let session = Box::pin(host.create_registered(id, &build()))
@@ -341,17 +341,21 @@ async fn streaming_boundary(partial: bool) {
         .unwrap()
         .unwrap();
     let status = profile.status(id).await.unwrap();
-    if partial {
-        assert!(
-            status.wake_at.is_none(),
-            "visible partial output is not replayed as a fresh request"
-        );
-    } else {
-        let at = status.wake_at.expect("a pre-output stream error parks");
-        assert!(!status.executing);
-        tokio::time::sleep(Duration::from_millis((at - status.now_ms) as u64 + 20)).await;
-        Box::pin(host.activate(id)).await.unwrap();
-    }
+    let at = status.wake_at.expect("a replay-safe stream error parks");
+    assert!(!status.executing);
+    // Reconstruct Engine to prove the reset boundary survives executor loss.
+    drop(session);
+    drop(host);
+    tokio::time::sleep(Duration::from_millis(
+        (at - status.now_ms).max(0) as u64 + 20,
+    ))
+    .await;
+    let host = Engine::builder()
+        .hosting(External(profile.clone()))
+        .register(build(), agent)
+        .build();
+    let session = host.resume(id).await.unwrap();
+    Box::pin(host.activate(id)).await.unwrap();
     let turn = session
         .admission(sent.message_id.parse().unwrap())
         .await
@@ -361,7 +365,20 @@ async fn streaming_boundary(partial: bool) {
         .await
         .unwrap();
     assert!(turn.success);
-    assert_eq!(calls.load(Ordering::SeqCst), if partial { 1 } else { 2 });
+    assert_eq!(turn.response, "recovered");
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    let events = session.events_after(0).await.unwrap();
+    let starts: Vec<_> = events
+        .iter()
+        .filter_map(|event| match &event.kind {
+            everruns::SessionEventKind::OutputStarted { message_id } => Some(message_id.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(starts.len(), if partial { 2 } else { 1 });
+    if partial {
+        assert_eq!(starts[0], starts[1], "a parked retry keeps its message ID");
+    }
 }
 
 #[tokio::test]
@@ -370,7 +387,7 @@ async fn a_stream_error_before_output_parks_for_recovery() {
 }
 
 #[tokio::test]
-async fn visible_partial_output_does_not_gain_automatic_replay() {
+async fn partial_text_restarts_under_the_same_message_after_executor_loss() {
     Box::pin(streaming_boundary(true)).await;
 }
 

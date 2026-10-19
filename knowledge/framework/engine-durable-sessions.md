@@ -162,7 +162,7 @@ activation ownership.
 
 Framework execution parks safe provider retries as versioned, secret-free
 continuations in the same fenced authority. The shared Reason boundary owns one
-retry count and wall-clock budget across request setup, pre-output stream recovery
+retry count and wall-clock budget across request setup, replay-safe stream recovery
 and compaction. A provider's explicit retry policy is retained, including disabling
 retries. Standalone driver calls retain their existing local retry behavior.
 See [retry policy](../../crates/contracts/src/durable_retry.rs) and
@@ -181,7 +181,9 @@ The host can derive its compute requirement from authoritative status without
 claiming execution. No active invocation is needed while waiting for time or
 external input. This does not snapshot an arbitrary future, process or running
 tool. Requests with provider-executed effects do not gain automatic replay, and
-committed or usable partial output retains the shared stream recovery rules.
+committed output retains the shared stream recovery rules. A retry after answer
+text first persists the existing same-message replacement boundary, so a new
+executor restarts the attempt instead of finalizing its abandoned partial text.
 The [Framework tests](../../crates/everruns/tests/hibernation.rs) cover reopening,
 policy limits, cancellation and the backend-free default Engine.
 

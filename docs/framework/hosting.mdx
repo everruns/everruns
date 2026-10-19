@@ -49,6 +49,11 @@ an early wake sends no model request, and cancellation can interrupt the wait.
 Retry limits survive restarting Engine. An explicit provider policy that disables
 retries remains disabled.
 
+If a stream fails after answer text, a safe retry keeps the message ID and emits
+`output.message.started` again before parking. Clients replace that attempt's
+partial text. Tool calls and provider-executed effects retain their existing
+replay restrictions.
+
 `HostingStatus::wake()` reports whether compute is needed now, at a deadline, or
 only after an external event. Hosts deliver wakeups; Engine retains execution and
 recovery policy. Default memory hosting uses its local scheduler and needs no
