@@ -33,6 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let researcher = std::env::var("RESEARCHER_URL").unwrap_or_else(|_| RESEARCHER.to_string());
 
+    #[allow(deprecated)] // Legacy facade lane until EVE-1298 moves this onto Engine hosting.
     let agent = Agent::builder()
         .name("writer")
         .instructions(

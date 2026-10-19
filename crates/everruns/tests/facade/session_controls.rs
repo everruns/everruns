@@ -1,5 +1,6 @@
 //! Session commands, live capability controls and host queries (EVE-1297).
 //! Imports only the public `everruns` API.
+#![allow(deprecated)] // Exercises the legacy facade lane until its retirement (EVE-1298).
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};

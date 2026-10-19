@@ -1,6 +1,7 @@
 //! `AgUiThreads`: one session per AG-UI thread, kept across restarts by a
 //! durable store, and seeded from the client's history when the host lost it.
 #![cfg(feature = "ag-ui")]
+#![allow(deprecated)] // Exercises the legacy facade lane until its retirement (EVE-1298).
 
 use std::sync::Arc;
 use std::time::Duration;

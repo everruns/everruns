@@ -5,6 +5,7 @@
 //! mutator, the store-level write. `engine_controls` repeats the scenarios with
 //! the Session control API from EVE-1297 (`activate_capability`,
 //! `deactivate_capability`), which performs the same write after validation.
+#![allow(deprecated)] // Exercises the legacy facade lane until its retirement (EVE-1298).
 
 use everruns::hosting::spi::{EventReadLimit, EventReadRequest, HostBackends, SessionMutator};
 use everruns::{Agent, AgentBuilder, CapabilityRef, Engine, Model, SessionId};

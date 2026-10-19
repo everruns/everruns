@@ -110,7 +110,11 @@ impl Host {
             },
         };
         if let Some(local) = local {
-            builder = builder.local(local);
+            #[allow(deprecated)]
+            // Legacy facade lane until EVE-1298 moves this onto Engine hosting.
+            {
+                builder = builder.local(local);
+            }
         }
         if let Some(workspace) = workspace {
             builder = builder.workspace(workspace);

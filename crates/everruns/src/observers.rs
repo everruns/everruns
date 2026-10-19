@@ -1047,6 +1047,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)] // Legacy facade lane until EVE-1298 retires it.
     async fn fresh_engine_attach_and_resume_delivers_only_new_events() {
         let backends = HostBackends::in_memory();
         let build_agent = || {

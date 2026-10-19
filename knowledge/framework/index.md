@@ -1,5 +1,6 @@
 # Framework
 
+* [How Sessions Run](engine-overview.md) - One-page plain-language map of the agent, Engine and hosting layers, where sessions live and what survives a crash.
 * [Purpose and Terminology](purpose-and-terminology.md) - Audience, public identity, crate relationships, and the Framework/Runtime/SDKs/Platform boundary.
 * [Application API Boundaries](application-api.md) - Application-facing composition, promotion decisions, and low-level host boundaries.
 * [Event Listeners and Observability](observability.md) - Engine-level push listener delivery, isolation, statistics, and shutdown semantics.
