@@ -4,21 +4,29 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// Ownership or consumer scope. Ownership determines lifetime, not permission to use a resource.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum ResourceScope {
+    /// A single session, subject to its verified invocation identity.
     Session,
+    /// A service agent, matched against the actual responder.
     Agent,
+    /// An end user or service virtual user, matched against the invocation subject.
     VirtualUser,
+    /// The current organization; runtime use requires an explicit grant.
     Organization,
 }
 
+/// Invocation identity under which a credential may be used; identities never fall back to each other.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum CredentialUsage {
+    /// The verified invoking end user in an eligible private session.
     User,
+    /// The authorized service identity of the actual responding agent.
     Service,
 }
 

@@ -27,11 +27,11 @@ everruns resources grants grant [OPTIONS] --consumer-scope <consumer_scope> --id
 | Flag | Description |
 |---|---|
 | `--constraints <CONSTRAINTS>` |  |
-| `--consumer-id <CONSUMER_ID>` |  |
-| `--consumer-scope <CONSUMER_SCOPE>` | Required. One of `session`, `agent`, `virtual_user`, `organization`. |
-| `--expires-at <EXPIRES_AT>` |  |
-| `--id <ID>` | Required. |
-| `--usage <USAGE>` | Required. One of `user`, `service`. |
+| `--consumer-id <CONSUMER_ID>` | Consumer agent, session, or virtual-user ID; omit for organization scope. |
+| `--consumer-scope <CONSUMER_SCOPE>` | Required. Ownership or consumer scope. One of `session`, `agent`, `virtual_user`, `organization`. |
+| `--expires-at <EXPIRES_AT>` | Absolute grant expiry in UTC; omit for a grant that lasts until revoked. |
+| `--id <ID>` | Required. Credential binding or native connection resource identifier. |
+| `--usage <USAGE>` | Required. Invocation identity under which a credential may be used; identities never fall back to each ... One of `user`, `service`. |
 
 Example:
 
@@ -50,7 +50,7 @@ everruns resources grants list [OPTIONS] --id <id>
 
 | Flag | Description |
 |---|---|
-| `--id <ID>` | Required. |
+| `--id <ID>` | Required. Credential binding or native connection resource identifier. |
 
 Example:
 
@@ -69,8 +69,8 @@ everruns resources grants revoke [OPTIONS] --grant-id <grant_id> --id <id>
 
 | Flag | Description |
 |---|---|
-| `--grant-id <GRANT_ID>` | Required. |
-| `--id <ID>` | Required. |
+| `--grant-id <GRANT_ID>` | Required. Explicit use grant identifier. |
+| `--id <ID>` | Required. Credential binding or native connection resource identifier. |
 
 Example:
 

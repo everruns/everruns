@@ -19,8 +19,10 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+/// Identifier of the newly declared binding or explicit access grant.
 #[derive(Serialize, ToSchema)]
 pub struct CreatedResource {
+    /// Stable identifier used by subsequent metadata and management requests.
     pub id: Uuid,
 }
 
@@ -82,10 +84,14 @@ pub async fn create(
     ))
 }
 
+/// Secure write-only credential provisioning. The value is encrypted and never returned.
 #[derive(Deserialize, ToSchema)]
 pub struct SetCredentialValue {
+    /// Secret value to store through this secure entry endpoint only.
     pub value: String,
+    /// Absolute expiry in UTC; omit for a value that remains valid until revoked.
     pub expires_at: Option<DateTime<Utc>>,
+    /// Last observed resource revision; stale updates are rejected.
     pub revision: i64,
 }
 #[utoipa::path(put,path="/v1/credential-bindings/{id}",params(("id"=Uuid,Path,description="Binding ID")),request_body=SetCredentialValue,responses((status=204,description="Credential securely stored; no value is returned")),tag="credentials")]
@@ -105,8 +111,10 @@ pub async fn set_value(
     .await?;
     Ok(StatusCode::NO_CONTENT)
 }
+/// Optimistic concurrency precondition for credential revocation.
 #[derive(Deserialize, ToSchema)]
 pub struct Revision {
+    /// Last observed resource revision; stale revocations are rejected.
     pub revision: i64,
 }
 #[utoipa::path(delete,path="/v1/credential-bindings/{id}",params(("id"=Uuid,Path,description="Binding ID"),("revision"=i64,Query,description="Last observed resource revision")),responses((status=204,description="Credential revoked")),tag="credentials")]

@@ -10447,9 +10447,14 @@ export interface components {
        */
       scopes?: string | null;
     };
+    /** @description Reference an eligible native GitHub App connection while preserving its installation selection. */
     ConnectionCredentialSource: {
-      /** Format: uuid */
+      /**
+       * Format: uuid
+       * @description Native connection identifier; ownership and use authorization remain enforced.
+       */
       connection_id: string;
+      /** @description Explicit repository and permission bounds for each minted installation token. */
       github_access: components["schemas"]["GitHubAccess"];
     };
     /** @description Browser URL returned to a bearer-authenticated consumer before navigation. */
@@ -12211,10 +12216,13 @@ export interface components {
        */
       timezone?: string;
     };
+    /** @description Declare binding metadata. Provision its value separately through secure entry or approved capture. */
     CreateScopedCredential: components["schemas"]["CredentialOwnerInput"] & {
       binding?: components["schemas"]["SecretBinding"] | null;
+      /** @description Human-readable label, between 1 and 128 bytes. */
       label: string;
       mcp?: components["schemas"]["McpCredentialTarget"] | null;
+      /** @description HTTP reference name; required for HTTP bindings. */
       name?: string | null;
       source?: components["schemas"]["ConnectionCredentialSource"] | null;
     };
@@ -12438,8 +12446,12 @@ export interface components {
       /** @description Runtime purpose; service accounts may be attached to agents. */
       usage?: components["schemas"]["VirtualUserUsage"];
     };
+    /** @description Identifier of the newly declared binding or explicit access grant. */
     CreatedResource: {
-      /** Format: uuid */
+      /**
+       * Format: uuid
+       * @description Stable identifier used by subsequent metadata and management requests.
+       */
       id: string;
     };
     /** @description Outcome of checking a candidate provider credential. */
@@ -12482,12 +12494,19 @@ export interface components {
       /** @description Markdown instructions shown above the form (how to get the key, etc.). */
       instructions_markdown: string;
     };
+    /** @description Authorized owner and usage of a credential. Ownership does not grant access to other consumers. */
     CredentialOwnerInput: {
+      /** @description Agent or session ID, or virtual-user ID (`me` by default); omit for organization scope. */
       owner_id?: string | null;
+      /** @description Ownership and lifetime scope within the current organization. */
       scope: components["schemas"]["ResourceScope"];
+      /** @description Required invocation identity; agent and organization owners require service usage. */
       usage: components["schemas"]["CredentialUsage"];
     };
-    /** @enum {string} */
+    /**
+     * @description Invocation identity under which a credential may be used; identities never fall back to each other.
+     * @enum {string}
+     */
     CredentialUsage: "user" | "service";
     /** @description Database info response. */
     DatabaseInfoResponse: {
@@ -14510,12 +14529,19 @@ export interface components {
       name: string;
       target: string;
     };
+    /** @description Explicit bounded use grant. It does not confer management permission or permission to reshare. */
     GrantCredential: {
       constraints?: components["schemas"]["ResourceConstraints"] | null;
+      /** @description Consumer agent, session, or virtual-user ID; omit for organization scope. */
       consumer_id?: string | null;
+      /** @description Consumer scope; organization grants explicitly opt eligible service agents in. */
       consumer_scope: components["schemas"]["ResourceScope"];
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Absolute grant expiry in UTC; omit for a grant that lasts until revoked.
+       */
       expires_at?: string | null;
+      /** @description Invocation identity that must match at every use. */
       usage: components["schemas"]["CredentialUsage"];
     };
     /** @description Grep match result */
@@ -18897,40 +18923,82 @@ export interface components {
       /** @description Absolute path of the sandbox workspace root. */
       workspace_path?: string | null;
     };
+    /** @description Credential metadata for an authorized owner. Secret values are never included. */
     ManagedCredential: {
+      /** @description HTTP destination and injection metadata, without the credential value. */
       binding?: unknown;
+      /** @description Whether a stored value or connection reference is provisioned; does not imply current access. */
       configured: boolean;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Absolute credential expiry in UTC, if configured.
+       */
       expires_at?: string | null;
-      /** Format: uuid */
+      /**
+       * Format: uuid
+       * @description Stable credential binding identifier.
+       */
       id: string;
+      /** @description Binding kind identifying HTTP or MCP parameter injection. */
       kind: string;
+      /** @description Human-readable label shown in Credentials settings and consent requests. */
       label: string;
-      /** Format: uuid */
+      /**
+       * Format: uuid
+       * @description Actual responding agent at the most recent use, if recorded.
+       */
       last_used_agent_id?: string | null;
+      /** @description Display name of the most recently recorded responding agent. */
       last_used_agent_name?: string | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Most recent authorized use, if any.
+       */
       last_used_at?: string | null;
+      /** @description Exact MCP endpoint for an MCP parameter binding. */
       mcp_server_url?: string | null;
+      /** @description HTTP reference name, used as `$NAME`; absent for MCP-only bindings. */
       name?: string | null;
+      /** @description Top-level MCP parameter receiving the injected value. */
       parameter_name?: string | null;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Current revision required for value replacement or credential revocation.
+       */
       revision: number;
+      /** @description Ownership scope; runtime authorization is evaluated separately. */
       scope: string;
-      /** Format: uuid */
+      /**
+       * Format: uuid
+       * @description Native connection supplying credentials without copying its tokens into this binding.
+       */
       source_connection_id?: string | null;
+      /** @description Exact MCP tool receiving the injected parameter. */
       tool_name?: string | null;
     };
+    /** @description Metadata for an explicit resource use grant, without credential values. */
     ManagedResourceGrant: {
       constraints?: components["schemas"]["ResourceConstraints"] | null;
-      /** Format: uuid */
+      /**
+       * Format: uuid
+       * @description Consumer identifier; absent for an organization-wide service grant.
+       */
       consumer_id?: string | null;
+      /** @description Human-readable consumer name, when available. */
       consumer_label?: string | null;
+      /** @description Scope of the consumer authorized by this grant. */
       consumer_scope: components["schemas"]["ResourceScope"];
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Absolute grant expiry in UTC, if configured.
+       */
       expires_at?: string | null;
-      /** Format: uuid */
+      /**
+       * Format: uuid
+       * @description Stable grant identifier used for revocation.
+       */
       id: string;
+      /** @description Required invocation identity for use through this grant. */
       usage: components["schemas"]["CredentialUsage"];
     };
     /** @description An entity's manager context. */
@@ -19063,10 +19131,15 @@ export interface components {
       | "unreachable"
       | "failed"
       | "not_checked";
+    /** @description Exact MCP endpoint and top-level tool parameter receiving a credential at execution time. */
     McpCredentialTarget: {
+      /** @description Top-level parameter name; dotted nested paths are rejected. */
       parameter_name: string;
+      /** @description Attached MCP server name used to identify the target. */
       server_name: string;
+      /** @description Exact tool name within the attached server. */
       tool_name: string;
+      /** @description Exact HTTPS MCP endpoint; arbitrary destinations cannot receive the value. */
       url: string;
     };
     /**
@@ -23176,7 +23249,10 @@ export interface components {
       provider: "github";
       repositories: string[];
     };
-    /** @enum {string} */
+    /**
+     * @description Ownership or consumer scope. Ownership determines lifetime, not permission to use a resource.
+     * @enum {string}
+     */
     ResourceScope: "session" | "agent" | "virtual_user" | "organization";
     /** @description Response body for resource stats. */
     ResourceStats: {
@@ -25584,11 +25660,19 @@ export interface components {
        */
       value: string;
     };
+    /** @description Secure write-only credential provisioning. The value is encrypted and never returned. */
     SetCredentialValue: {
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Absolute expiry in UTC; omit for a value that remains valid until revoked.
+       */
       expires_at?: string | null;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Last observed resource revision; stale updates are rejected.
+       */
       revision: number;
+      /** @description Secret value to store through this secure entry endpoint only. */
       value: string;
     };
     /** @description Select or clear the organization decision default. */

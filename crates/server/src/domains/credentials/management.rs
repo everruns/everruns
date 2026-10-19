@@ -15,10 +15,14 @@ fn error(e: sqlx::Error) -> CommandError {
     CommandError::internal(e.into())
 }
 
+/// Authorized owner and usage of a credential. Ownership does not grant access to other consumers.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct CredentialOwnerInput {
+    /// Ownership and lifetime scope within the current organization.
     pub scope: ResourceScope,
+    /// Agent or session ID, or virtual-user ID (`me` by default); omit for organization scope.
     pub owner_id: Option<String>,
+    /// Required invocation identity; agent and organization owners require service usage.
     pub usage: CredentialUsage,
 }
 
@@ -112,23 +116,40 @@ pub async fn owner(ctx: &Ctx, input: &CredentialOwnerInput) -> Result<AccessReco
     Ok(r)
 }
 
+/// Credential metadata for an authorized owner. Secret values are never included.
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow, ToSchema)]
 pub struct ManagedCredential {
+    /// Stable credential binding identifier.
     pub id: Uuid,
+    /// HTTP reference name, used as `$NAME`; absent for MCP-only bindings.
     pub name: Option<String>,
+    /// Human-readable label shown in Credentials settings and consent requests.
     pub label: String,
+    /// Binding kind identifying HTTP or MCP parameter injection.
     pub kind: String,
+    /// HTTP destination and injection metadata, without the credential value.
     pub binding: Option<Value>,
+    /// Exact MCP endpoint for an MCP parameter binding.
     pub mcp_server_url: Option<String>,
+    /// Exact MCP tool receiving the injected parameter.
     pub tool_name: Option<String>,
+    /// Top-level MCP parameter receiving the injected value.
     pub parameter_name: Option<String>,
+    /// Ownership scope; runtime authorization is evaluated separately.
     pub scope: String,
+    /// Whether a stored value or connection reference is provisioned; does not imply current access.
     pub configured: bool,
+    /// Absolute credential expiry in UTC, if configured.
     pub expires_at: Option<DateTime<Utc>>,
+    /// Current revision required for value replacement or credential revocation.
     pub revision: i64,
+    /// Most recent authorized use, if any.
     pub last_used_at: Option<DateTime<Utc>>,
+    /// Actual responding agent at the most recent use, if recorded.
     pub last_used_agent_id: Option<Uuid>,
+    /// Display name of the most recently recorded responding agent.
     pub last_used_agent_name: Option<String>,
+    /// Native connection supplying credentials without copying its tokens into this binding.
     pub source_connection_id: Option<Uuid>,
 }
 
@@ -170,30 +191,45 @@ pub async fn list(
     Ok(rows)
 }
 
+/// Declare binding metadata. Provision its value separately through secure entry or approved capture.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct CreateScopedCredential {
+    /// Authorized owner and required invocation identity.
     #[serde(flatten)]
     pub owner: CredentialOwnerInput,
+    /// HTTP reference name; required for HTTP bindings.
     pub name: Option<String>,
+    /// Human-readable label, between 1 and 128 bytes.
     pub label: String,
+    /// Exact HTTPS destination and injection placement; supply this or `mcp`, exclusively.
     pub binding: Option<SecretBinding>,
+    /// Exact MCP endpoint, tool, and parameter; supply this or `binding`, exclusively.
     pub mcp: Option<McpCredentialTarget>,
+    /// Optional native GitHub connection and bounded access request instead of a stored value.
     pub source: Option<ConnectionCredentialSource>,
 }
 
+/// Reference an eligible native GitHub App connection while preserving its installation selection.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ConnectionCredentialSource {
+    /// Native connection identifier; ownership and use authorization remain enforced.
     pub connection_id: Uuid,
+    /// Explicit repository and permission bounds for each minted installation token.
     pub github_access: everruns_contracts::runtime::GitHubAccess,
 }
 
+/// Exact MCP endpoint and top-level tool parameter receiving a credential at execution time.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct McpCredentialTarget {
+    /// Attached MCP server name used to identify the target.
     pub server_name: String,
+    /// Exact HTTPS MCP endpoint; arbitrary destinations cannot receive the value.
     pub url: String,
+    /// Exact tool name within the attached server.
     pub tool_name: String,
+    /// Top-level parameter name; dotted nested paths are rejected.
     pub parameter_name: String,
 }
 
@@ -428,12 +464,18 @@ pub async fn revoke(ctx: &Ctx, id: Uuid, revision: i64) -> Result<(), CommandErr
     Ok(())
 }
 
+/// Explicit bounded use grant. It does not confer management permission or permission to reshare.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct GrantCredential {
+    /// Optional access bounds; GitHub grants cannot widen native repository or permission limits.
     pub constraints: Option<ResourceConstraints>,
+    /// Consumer scope; organization grants explicitly opt eligible service agents in.
     pub consumer_scope: ResourceScope,
+    /// Consumer agent, session, or virtual-user ID; omit for organization scope.
     pub consumer_id: Option<String>,
+    /// Invocation identity that must match at every use.
     pub usage: CredentialUsage,
+    /// Absolute grant expiry in UTC; omit for a grant that lasts until revoked.
     pub expires_at: Option<DateTime<Utc>>,
 }
 
@@ -530,14 +572,22 @@ pub async fn grant(ctx: &Ctx, id: Uuid, input: GrantCredential) -> Result<Uuid, 
     Ok(grant)
 }
 
+/// Metadata for an explicit resource use grant, without credential values.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ManagedResourceGrant {
+    /// Stable grant identifier used for revocation.
     pub id: Uuid,
+    /// Scope of the consumer authorized by this grant.
     pub consumer_scope: ResourceScope,
+    /// Consumer identifier; absent for an organization-wide service grant.
     pub consumer_id: Option<Uuid>,
+    /// Human-readable consumer name, when available.
     pub consumer_label: Option<String>,
+    /// Required invocation identity for use through this grant.
     pub usage: CredentialUsage,
+    /// Absolute grant expiry in UTC, if configured.
     pub expires_at: Option<DateTime<Utc>>,
+    /// Additional access bounds applied alongside the resource's native restrictions.
     pub constraints: Option<ResourceConstraints>,
 }
 

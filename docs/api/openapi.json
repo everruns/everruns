@@ -35706,6 +35706,7 @@
       },
       "ConnectionCredentialSource": {
         "type": "object",
+        "description": "Reference an eligible native GitHub App connection while preserving its installation selection.",
         "required": [
           "connection_id",
           "github_access"
@@ -35713,10 +35714,12 @@
         "properties": {
           "connection_id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Native connection identifier; ownership and use authorization remain enforced."
           },
           "github_access": {
-            "$ref": "#/components/schemas/GitHubAccess"
+            "$ref": "#/components/schemas/GitHubAccess",
+            "description": "Explicit repository and permission bounds for each minted installation token."
           }
         },
         "additionalProperties": false
@@ -38782,7 +38785,8 @@
       "CreateScopedCredential": {
         "allOf": [
           {
-            "$ref": "#/components/schemas/CredentialOwnerInput"
+            "$ref": "#/components/schemas/CredentialOwnerInput",
+            "description": "Authorized owner and required invocation identity."
           },
           {
             "type": "object",
@@ -38793,7 +38797,8 @@
               "binding": {
                 "oneOf": [
                   {
-                    "$ref": "#/components/schemas/SecretBinding"
+                    "$ref": "#/components/schemas/SecretBinding",
+                    "description": "Exact HTTPS destination and injection placement; supply this or `mcp`, exclusively."
                   },
                   {
                     "type": "null"
@@ -38801,12 +38806,14 @@
                 ]
               },
               "label": {
-                "type": "string"
+                "type": "string",
+                "description": "Human-readable label, between 1 and 128 bytes."
               },
               "mcp": {
                 "oneOf": [
                   {
-                    "$ref": "#/components/schemas/McpCredentialTarget"
+                    "$ref": "#/components/schemas/McpCredentialTarget",
+                    "description": "Exact MCP endpoint, tool, and parameter; supply this or `binding`, exclusively."
                   },
                   {
                     "type": "null"
@@ -38817,12 +38824,14 @@
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "description": "HTTP reference name; required for HTTP bindings."
               },
               "source": {
                 "oneOf": [
                   {
-                    "$ref": "#/components/schemas/ConnectionCredentialSource"
+                    "$ref": "#/components/schemas/ConnectionCredentialSource",
+                    "description": "Optional native GitHub connection and bounded access request instead of a stored value."
                   },
                   {
                     "type": "null"
@@ -38831,7 +38840,8 @@
               }
             }
           }
-        ]
+        ],
+        "description": "Declare binding metadata. Provision its value separately through secure entry or approved capture."
       },
       "CreateSessionRequest": {
         "type": "object",
@@ -39149,13 +39159,15 @@
       },
       "CreatedResource": {
         "type": "object",
+        "description": "Identifier of the newly declared binding or explicit access grant.",
         "required": [
           "id"
         ],
         "properties": {
           "id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Stable identifier used by subsequent metadata and management requests."
           }
         }
       },
@@ -39266,6 +39278,7 @@
       },
       "CredentialOwnerInput": {
         "type": "object",
+        "description": "Authorized owner and usage of a credential. Ownership does not grant access to other consumers.",
         "required": [
           "scope",
           "usage"
@@ -39275,18 +39288,22 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Agent or session ID, or virtual-user ID (`me` by default); omit for organization scope."
           },
           "scope": {
-            "$ref": "#/components/schemas/ResourceScope"
+            "$ref": "#/components/schemas/ResourceScope",
+            "description": "Ownership and lifetime scope within the current organization."
           },
           "usage": {
-            "$ref": "#/components/schemas/CredentialUsage"
+            "$ref": "#/components/schemas/CredentialUsage",
+            "description": "Required invocation identity; agent and organization owners require service usage."
           }
         }
       },
       "CredentialUsage": {
         "type": "string",
+        "description": "Invocation identity under which a credential may be used; identities never fall back to each other.",
         "enum": [
           "user",
           "service"
@@ -42841,6 +42858,7 @@
       },
       "GrantCredential": {
         "type": "object",
+        "description": "Explicit bounded use grant. It does not confer management permission or permission to reshare.",
         "required": [
           "consumer_scope",
           "usage"
@@ -42849,7 +42867,8 @@
           "constraints": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/ResourceConstraints"
+                "$ref": "#/components/schemas/ResourceConstraints",
+                "description": "Optional access bounds; GitHub grants cannot widen native repository or permission limits."
               },
               {
                 "type": "null"
@@ -42860,20 +42879,24 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Consumer agent, session, or virtual-user ID; omit for organization scope."
           },
           "consumer_scope": {
-            "$ref": "#/components/schemas/ResourceScope"
+            "$ref": "#/components/schemas/ResourceScope",
+            "description": "Consumer scope; organization grants explicitly opt eligible service agents in."
           },
           "expires_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Absolute grant expiry in UTC; omit for a grant that lasts until revoked."
           },
           "usage": {
-            "$ref": "#/components/schemas/CredentialUsage"
+            "$ref": "#/components/schemas/CredentialUsage",
+            "description": "Invocation identity that must match at every use."
           }
         }
       },
@@ -50721,6 +50744,7 @@
       },
       "ManagedCredential": {
         "type": "object",
+        "description": "Credential metadata for an authorized owner. Secret values are never included.",
         "required": [
           "id",
           "label",
@@ -50730,89 +50754,107 @@
           "revision"
         ],
         "properties": {
-          "binding": {},
+          "binding": {
+            "description": "HTTP destination and injection metadata, without the credential value."
+          },
           "configured": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether a stored value or connection reference is provisioned; does not imply current access."
           },
           "expires_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Absolute credential expiry in UTC, if configured."
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Stable credential binding identifier."
           },
           "kind": {
-            "type": "string"
+            "type": "string",
+            "description": "Binding kind identifying HTTP or MCP parameter injection."
           },
           "label": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable label shown in Credentials settings and consent requests."
           },
           "last_used_agent_id": {
             "type": [
               "string",
               "null"
             ],
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Actual responding agent at the most recent use, if recorded."
           },
           "last_used_agent_name": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Display name of the most recently recorded responding agent."
           },
           "last_used_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Most recent authorized use, if any."
           },
           "mcp_server_url": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Exact MCP endpoint for an MCP parameter binding."
           },
           "name": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "HTTP reference name, used as `$NAME`; absent for MCP-only bindings."
           },
           "parameter_name": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Top-level MCP parameter receiving the injected value."
           },
           "revision": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Current revision required for value replacement or credential revocation."
           },
           "scope": {
-            "type": "string"
+            "type": "string",
+            "description": "Ownership scope; runtime authorization is evaluated separately."
           },
           "source_connection_id": {
             "type": [
               "string",
               "null"
             ],
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Native connection supplying credentials without copying its tokens into this binding."
           },
           "tool_name": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Exact MCP tool receiving the injected parameter."
           }
         }
       },
       "ManagedResourceGrant": {
         "type": "object",
+        "description": "Metadata for an explicit resource use grant, without credential values.",
         "required": [
           "id",
           "consumer_scope",
@@ -50822,7 +50864,8 @@
           "constraints": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/ResourceConstraints"
+                "$ref": "#/components/schemas/ResourceConstraints",
+                "description": "Additional access bounds applied alongside the resource's native restrictions."
               },
               {
                 "type": "null"
@@ -50834,30 +50877,36 @@
               "string",
               "null"
             ],
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Consumer identifier; absent for an organization-wide service grant."
           },
           "consumer_label": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable consumer name, when available."
           },
           "consumer_scope": {
-            "$ref": "#/components/schemas/ResourceScope"
+            "$ref": "#/components/schemas/ResourceScope",
+            "description": "Scope of the consumer authorized by this grant."
           },
           "expires_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Absolute grant expiry in UTC, if configured."
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Stable grant identifier used for revocation."
           },
           "usage": {
-            "$ref": "#/components/schemas/CredentialUsage"
+            "$ref": "#/components/schemas/CredentialUsage",
+            "description": "Required invocation identity for use through this grant."
           }
         }
       },
@@ -51150,6 +51199,7 @@
       },
       "McpCredentialTarget": {
         "type": "object",
+        "description": "Exact MCP endpoint and top-level tool parameter receiving a credential at execution time.",
         "required": [
           "server_name",
           "url",
@@ -51158,16 +51208,20 @@
         ],
         "properties": {
           "parameter_name": {
-            "type": "string"
+            "type": "string",
+            "description": "Top-level parameter name; dotted nested paths are rejected."
           },
           "server_name": {
-            "type": "string"
+            "type": "string",
+            "description": "Attached MCP server name used to identify the target."
           },
           "tool_name": {
-            "type": "string"
+            "type": "string",
+            "description": "Exact tool name within the attached server."
           },
           "url": {
-            "type": "string"
+            "type": "string",
+            "description": "Exact HTTPS MCP endpoint; arbitrary destinations cannot receive the value."
           }
         },
         "additionalProperties": false
@@ -58222,6 +58276,7 @@
       },
       "ResourceScope": {
         "type": "string",
+        "description": "Ownership or consumer scope. Ownership determines lifetime, not permission to use a resource.",
         "enum": [
           "session",
           "agent",
@@ -62826,6 +62881,7 @@
       },
       "SetCredentialValue": {
         "type": "object",
+        "description": "Secure write-only credential provisioning. The value is encrypted and never returned.",
         "required": [
           "value",
           "revision"
@@ -62836,14 +62892,17 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Absolute expiry in UTC; omit for a value that remains valid until revoked."
           },
           "revision": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Last observed resource revision; stale updates are rejected."
           },
           "value": {
-            "type": "string"
+            "type": "string",
+            "description": "Secret value to store through this secure entry endpoint only."
           }
         }
       },

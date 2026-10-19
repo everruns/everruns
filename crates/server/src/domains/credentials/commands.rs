@@ -7,11 +7,16 @@ use serde_json::Value;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+/// Internal credential operation tied to a persisted invocation, never arbitrary caller identity.
 #[derive(Deserialize, Serialize, ToSchema)]
 pub struct WorkerCredentials {
+    /// Session containing the persisted invocation.
     pub session_id: String,
+    /// Persisted input message establishing the invocation identity.
     pub input_message_id: Uuid,
+    /// Internal credential service operation to execute.
     pub operation: String,
+    /// Operation-specific parameters; excluded from debug output.
     pub params: Value,
 }
 impl std::fmt::Debug for WorkerCredentials {
@@ -40,8 +45,10 @@ impl Command for WorkerCredentials {
 }
 
 use super::{CREDENTIAL_MANAGE, CREDENTIAL_VIEW, management as domain};
+/// Select an authorized owner whose credential metadata should be listed.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct ListScopedCredentials {
+    /// Owner and required invocation usage.
     #[serde(flatten)]
     pub owner: domain::CredentialOwnerInput,
 }
@@ -65,9 +72,12 @@ impl Command for domain::CreateScopedCredential {
         domain::create(ctx, self).await
     }
 }
+/// Revoke a credential using an optimistic concurrency precondition.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct RevokeScopedCredential {
+    /// Credential binding identifier.
     pub id: Uuid,
+    /// Last observed resource revision; stale revocations are rejected.
     pub revision: i64,
 }
 #[command(
@@ -80,8 +90,10 @@ impl Command for RevokeScopedCredential {
         domain::revoke(ctx, self.id, self.revision).await
     }
 }
+/// Select a credential or connection whose explicit use grants should be listed.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct ListResourceGrants {
+    /// Credential binding or native connection resource identifier.
     pub id: Uuid,
 }
 #[command(
@@ -94,9 +106,12 @@ impl Command for ListResourceGrants {
         domain::grants(ctx, self.id).await
     }
 }
+/// Grant bounded resource use through an explicit owner action.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct GrantResource {
+    /// Credential binding or native connection resource identifier.
     pub id: Uuid,
+    /// Consumer, required usage, expiry, and optional access bounds.
     #[serde(flatten)]
     pub grant: domain::GrantCredential,
 }
@@ -110,9 +125,12 @@ impl Command for GrantResource {
         domain::grant(ctx, self.id, self.grant).await
     }
 }
+/// Revoke one consumer's explicit grant without revoking the resource itself.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct RevokeResourceGrant {
+    /// Credential binding or native connection resource identifier.
     pub id: Uuid,
+    /// Explicit use grant identifier.
     pub grant_id: Uuid,
 }
 #[command(

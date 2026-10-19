@@ -3759,7 +3759,8 @@
         "field": "label",
         "long": "label",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Human-readable label, between 1 and 128 bytes."
       },
       {
         "field": "mcp",
@@ -3771,19 +3772,22 @@
         "field": "name",
         "long": "name",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "HTTP reference name; required for HTTP bindings."
       },
       {
         "field": "owner_id",
         "long": "owner-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Agent or session ID, or virtual-user ID (`me` by default); omit for organization scope."
       },
       {
         "field": "scope",
         "long": "scope",
         "kind": "string",
         "required": true,
+        "help": "Ownership or consumer scope.",
         "choices": [
           "session",
           "agent",
@@ -3802,6 +3806,7 @@
         "long": "usage",
         "kind": "string",
         "required": true,
+        "help": "Invocation identity under which a credential may be used; identities never fall back to each ...",
         "choices": [
           "user",
           "service"
@@ -3829,13 +3834,15 @@
         "field": "owner_id",
         "long": "owner-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Agent or session ID, or virtual-user ID (`me` by default); omit for organization scope."
       },
       {
         "field": "scope",
         "long": "scope",
         "kind": "string",
         "required": true,
+        "help": "Ownership or consumer scope.",
         "choices": [
           "session",
           "agent",
@@ -3848,6 +3855,7 @@
         "long": "usage",
         "kind": "string",
         "required": true,
+        "help": "Invocation identity under which a credential may be used; identities never fall back to each ...",
         "choices": [
           "user",
           "service"
@@ -3875,13 +3883,15 @@
         "field": "id",
         "long": "id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Credential binding identifier."
       },
       {
         "field": "revision",
         "long": "revision",
         "kind": "integer",
-        "required": true
+        "required": true,
+        "help": "Last observed resource revision; stale revocations are rejected."
       }
     ],
     "examples": [
@@ -10095,13 +10105,15 @@
         "field": "consumer_id",
         "long": "consumer-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Consumer agent, session, or virtual-user ID; omit for organization scope."
       },
       {
         "field": "consumer_scope",
         "long": "consumer-scope",
         "kind": "string",
         "required": true,
+        "help": "Ownership or consumer scope.",
         "choices": [
           "session",
           "agent",
@@ -10113,19 +10125,22 @@
         "field": "expires_at",
         "long": "expires-at",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Absolute grant expiry in UTC; omit for a grant that lasts until revoked."
       },
       {
         "field": "id",
         "long": "id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Credential binding or native connection resource identifier."
       },
       {
         "field": "usage",
         "long": "usage",
         "kind": "string",
         "required": true,
+        "help": "Invocation identity under which a credential may be used; identities never fall back to each ...",
         "choices": [
           "user",
           "service"
@@ -10154,7 +10169,8 @@
         "field": "id",
         "long": "id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Credential binding or native connection resource identifier."
       }
     ],
     "examples": [
@@ -10179,13 +10195,15 @@
         "field": "grant_id",
         "long": "grant-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Explicit use grant identifier."
       },
       {
         "field": "id",
         "long": "id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Credential binding or native connection resource identifier."
       }
     ],
     "examples": [

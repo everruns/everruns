@@ -27,13 +27,13 @@ everruns credential-bindings create [OPTIONS] --label <label> --scope <scope> --
 | Flag | Description |
 |---|---|
 | `--binding <BINDING>` |  |
-| `--label <LABEL>` | Required. |
+| `--label <LABEL>` | Required. Human-readable label, between 1 and 128 bytes. |
 | `--mcp <MCP>` |  |
-| `--name <NAME>` |  |
-| `--owner-id <OWNER_ID>` |  |
-| `--scope <SCOPE>` | Required. One of `session`, `agent`, `virtual_user`, `organization`. |
+| `--name <NAME>` | HTTP reference name; required for HTTP bindings. |
+| `--owner-id <OWNER_ID>` | Agent or session ID, or virtual-user ID (`me` by default); omit for organization scope. |
+| `--scope <SCOPE>` | Required. Ownership or consumer scope. One of `session`, `agent`, `virtual_user`, `organization`. |
 | `--source <SOURCE>` |  |
-| `--usage <USAGE>` | Required. One of `user`, `service`. |
+| `--usage <USAGE>` | Required. Invocation identity under which a credential may be used; identities never fall back to each ... One of `user`, `service`. |
 
 Example:
 
@@ -52,9 +52,9 @@ everruns credential-bindings list [OPTIONS] --scope <scope> --usage <usage>
 
 | Flag | Description |
 |---|---|
-| `--owner-id <OWNER_ID>` |  |
-| `--scope <SCOPE>` | Required. One of `session`, `agent`, `virtual_user`, `organization`. |
-| `--usage <USAGE>` | Required. One of `user`, `service`. |
+| `--owner-id <OWNER_ID>` | Agent or session ID, or virtual-user ID (`me` by default); omit for organization scope. |
+| `--scope <SCOPE>` | Required. Ownership or consumer scope. One of `session`, `agent`, `virtual_user`, `organization`. |
+| `--usage <USAGE>` | Required. Invocation identity under which a credential may be used; identities never fall back to each ... One of `user`, `service`. |
 
 Example:
 
@@ -73,8 +73,8 @@ everruns credential-bindings revoke [OPTIONS] --id <id> --revision <revision>
 
 | Flag | Description |
 |---|---|
-| `--id <ID>` | Required. |
-| `--revision <REVISION>` | Required. |
+| `--id <ID>` | Required. Credential binding identifier. |
+| `--revision <REVISION>` | Required. Last observed resource revision; stale revocations are rejected. |
 
 Example:
 
