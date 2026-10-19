@@ -585,14 +585,16 @@ impl Engine {
             }
             self.cache_hosted(session, activation.binding.clone())?;
             let registration = self.registration(&activation.binding.behavior)?;
-            crate::hosting::execution::run(
+            // Heap-allocate the activation: the full runtime build and driver
+            // future is large, and hosts often await activation inline.
+            Box::pin(crate::hosting::execution::run(
                 self,
                 session,
                 registration.agent,
                 registration.harness,
                 activation,
                 config.clone(),
-            )
+            ))
             .await?;
             if !profile.process_scheduler() {
                 return Ok(());
