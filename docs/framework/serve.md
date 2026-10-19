@@ -151,6 +151,11 @@ knows what it registered.
 | `eval [--against URL]` | Runs the evals in-process, or against a running deployment as a gate before promotion. Against an app that requires a credential, set `SERVE_CREDENTIAL` (or pass `--credential`) and every request carries it as a bearer token. |
 | `deploy` | Prints what a host would provision from the manifest. The one supported deployment target is [Amazon Bedrock AgentCore](/framework/serve-agentcore/). |
 
+Sessions that an earlier release kept in the data directory's `everruns/`
+folder move to the current session store the first time they are opened, with
+their history and their shared workspace files. A session that cannot move
+returns an error; it is never served as missing or empty.
+
 ## Keep the data in a bucket
 
 `start --store s3://bucket/prefix` keeps a daemon's data in an S3 bucket, or

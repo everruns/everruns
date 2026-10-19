@@ -2,6 +2,11 @@
 
 ## 2026-10-19
 
+* **serve moves pre-authority sessions.** A session an older serve kept under
+  `data_dir/everruns` is cut over to the native authority on first access;
+  only rewind/redo remains in the retirement gate. See
+  [Local authority cutover](framework/local-authority-cutover.md).
+
 * **Hosted AG-UI threads.** `AgUiThreads::hosted` serves threads from a
   coherent authority; threads of cut-over sessions keep their sessions. See
   [Local authority cutover](framework/local-authority-cutover.md).
