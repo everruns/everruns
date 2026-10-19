@@ -130,6 +130,13 @@ still construct its original tools, hooks, Harness, Environment and model settin
 Do not alias old keys to the current Agent. Retaining a frontend Worker revision
 alone does not retain the implementation running inside its Durable Objects.
 
+serve's default durable build identity conservatively includes its executable.
+It does not automatically declare rebuilt behavior compatible. Hosts can supply
+an application-owned Engine with retained registrations through
+`everruns_serve::ServerBuilder::engine`; each old registration still needs
+its original Agent, Harness and Environment reference. `Server::engine()` exposes
+that same Engine for authorized compatibility inspection and retry operations.
+
 ```rust
 use everruns::{Agent, Engine};
 use everruns::hosting::AgentBuild;
