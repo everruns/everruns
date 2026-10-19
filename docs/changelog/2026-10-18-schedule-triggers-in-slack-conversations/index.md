@@ -24,3 +24,14 @@ Only someone who can manage the Agent can set a target. A channel that can no
 longer post fails the run visibly instead of falling back to a session of its
 own. See
 [Run in a Slack conversation](/features/agent-triggers/#run-in-a-slack-conversation).
+
+```json
+{
+  "trigger_type": "schedule",
+  "cron_expression": "0 7 * * *",
+  "timezone": "America/Chicago",
+  "message": "Morning briefing",
+  "target_channel_id": "appchan_01933b5a000070008000000000000001",
+  "target_binding_key": "slack:user:U0123ABCD"
+}
+```
