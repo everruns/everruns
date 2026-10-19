@@ -75,7 +75,8 @@ export async function readJson(request) {
 export const failure = (error) => {
   // Unexpected failures surface only as a generic 503 to the caller; keep the
   // cause in the Worker log so a deployment failure is diagnosable.
-  if (!(error instanceof HttpError)) console.error("authority operation failed", error);
+  if (!(error instanceof HttpError))
+    console.error("authority operation failed", error);
   return Response.json(
     {
       error:
